@@ -26,7 +26,8 @@
         "NSRemindersUsageDescription": "Mingla needs reminders access to add scheduled experiences to your device calendar.",
         "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": ["applinks:usemingla.com"]
     },
     "android": {
       "adaptiveIcon": {
@@ -37,6 +38,17 @@
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "pan",
       "package": "com.mingla.app.v2",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "usemingla.com", "pathPrefix": "/invite" },
+            { "scheme": "https", "host": "usemingla.com", "pathPrefix": "/board" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

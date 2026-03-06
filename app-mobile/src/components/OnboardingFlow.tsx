@@ -41,6 +41,8 @@ import { deckService } from '../services/deckService'
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
+import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
+import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { PulseDotLoader } from './ui/PulseDotLoader'
@@ -101,6 +103,9 @@ const INITIAL_DATA: OnboardingData = {
   audioClipDuration: null,
   contactMethod: null,
   contactValue: null,
+  addedFriends: [],
+  createdSessions: [],
+  skippedFriends: false,
 }
 
 // Extracted to its own component so the useEffect is scoped to mount/unmount
@@ -144,6 +149,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     goBack,
     goToSubStep,
     choosePath,
+    setSkippedFriends,
     progress,
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
@@ -1092,6 +1098,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'travel_time':
         return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
+      case 'friends':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'collaboration':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'pitch':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'pathA_birthday':
@@ -1659,6 +1669,47 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
 
     // ─── STEP 5 ───
+    if (subStep === 'friends') {
+      return (
+        <OnboardingFriendsStep
+          userId={user!.id}
+          onContinue={(addedFriends) => {
+            setData(prev => ({ ...prev, addedFriends, skippedFriends: false }))
+            setSkippedFriends(false)
+            goNext()
+          }}
+          onSkip={() => {
+            setData(prev => ({ ...prev, addedFriends: [], skippedFriends: true }))
+            setSkippedFriends(true)
+            goToSubStep('pitch')
+          }}
+        />
+      )
+    }
+
+    if (subStep === 'collaboration') {
+      return (
+        <OnboardingCollaborationStep
+          userId={user!.id}
+          addedFriends={data.addedFriends}
+          userPreferences={{
+            categories: data.selectedCategories,
+            priceTiers: data.selectedPriceTiers,
+            intents: data.selectedIntents,
+            travelMode: data.travelMode,
+            travelTimeMinutes: data.travelTimeMinutes,
+          }}
+          onContinue={(sessions) => {
+            setData(prev => ({ ...prev, createdSessions: sessions }))
+            goNext()
+          }}
+          onSkip={() => {
+            goNext()
+          }}
+        />
+      )
+    }
+
     if (subStep === 'pitch') {
       return (
         <View>

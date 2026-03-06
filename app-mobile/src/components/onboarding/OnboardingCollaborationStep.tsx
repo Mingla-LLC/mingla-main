@@ -1,0 +1,746 @@
+import React, { useState, useEffect, useCallback } from 'react'
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+  StyleSheet,
+} from 'react-native'
+import * as Haptics from 'expo-haptics'
+import { Ionicons } from '@expo/vector-icons'
+
+import { useSessionManagement, SessionParticipantInput } from '../../hooks/useSessionManagement'
+import { AddedFriend, CreatedSession } from '../../types/onboarding'
+import { SessionInvite } from '../../types'
+import {
+  colors,
+  typography,
+  fontWeights,
+  spacing,
+  radius,
+  shadows,
+} from '../../constants/designSystem'
+
+interface OnboardingCollaborationStepProps {
+  userId: string
+  addedFriends: AddedFriend[]
+  userPreferences: {
+    categories: string[]
+    priceTiers: string[]
+    intents: string[]
+    travelMode: string
+    travelTimeMinutes: number
+  }
+  onContinue: (sessions: CreatedSession[]) => void
+  onSkip: () => void
+}
+
+export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepProps> = ({
+  userId,
+  addedFriends,
+  userPreferences,
+  onContinue,
+  onSkip,
+}) => {
+  // Selected friends for new session (keyed by userId or phoneE164)
+  const [selectedFriendKeys, setSelectedFriendKeys] = useState<Set<string>>(new Set())
+
+  // Session name
+  const [sessionName, setSessionName] = useState('')
+
+  // Created sessions
+  const [createdSessions, setCreatedSessions] = useState<CreatedSession[]>([])
+
+  // Loading state
+  const [creating, setCreating] = useState(false)
+
+  // Pending collaboration invites
+  const [pendingCollabInvites, setPendingCollabInvites] = useState<SessionInvite[]>([])
+  const [loadingInvites, setLoadingInvites] = useState(false)
+
+  // Session management
+  const {
+    createCollaborativeSessionV2,
+    acceptInvite,
+    declineInvite,
+    loadUserSessions,
+    pendingInvites,
+    loading: sessionsLoading,
+  } = useSessionManagement()
+
+  // Load pending collaboration invites on mount
+  useEffect(() => {
+    const loadPendingInvites = async () => {
+      setLoadingInvites(true)
+      try {
+        await loadUserSessions()
+      } catch (err) {
+        console.error('Error loading collaboration invites:', err)
+      } finally {
+        setLoadingInvites(false)
+      }
+    }
+    loadPendingInvites()
+  }, [loadUserSessions])
+
+  // Sync pending invites from hook into local state
+  useEffect(() => {
+    if (pendingInvites) {
+      setPendingCollabInvites(pendingInvites)
+    }
+  }, [pendingInvites])
+
+  // All pending resolved
+  const allPendingResolved = pendingCollabInvites.length === 0
+
+  // Can continue
+  const canContinue = createdSessions.length > 0 && allPendingResolved
+
+  // Unique key for a friend — userId for existing, phoneE164 for invited
+  const getFriendKey = useCallback((friend: AddedFriend): string => {
+    return friend.userId || friend.phoneE164
+  }, [])
+
+  // Toggle friend selection
+  const toggleFriend = useCallback((key: string) => {
+    setSelectedFriendKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+  }, [])
+
+  // Create session
+  const handleCreateSession = useCallback(async () => {
+    if (!sessionName.trim() || selectedFriendKeys.size === 0) return
+
+    setCreating(true)
+    try {
+      // Build participant inputs
+      const participants: SessionParticipantInput[] = addedFriends
+        .filter((f) => selectedFriendKeys.has(getFriendKey(f)))
+        .map((f) => {
+          if (f.type === 'existing' && f.userId) {
+            return {
+              type: 'existing_user' as const,
+              userId: f.userId,
+              username: f.username ?? f.displayName,
+            }
+          }
+          return {
+            type: 'phone_invite' as const,
+            phoneE164: f.phoneE164,
+            displayName: f.displayName,
+          }
+        })
+
+      const sessionId = await createCollaborativeSessionV2(
+        participants,
+        sessionName.trim(),
+        {
+          categories: userPreferences.categories,
+          intents: userPreferences.intents,
+          priceTiers: userPreferences.priceTiers,
+          travelMode: userPreferences.travelMode,
+          travelTimeMinutes: userPreferences.travelTimeMinutes,
+        }
+      )
+
+      if (sessionId) {
+        const selectedParticipants = addedFriends.filter((f) =>
+          selectedFriendKeys.has(getFriendKey(f))
+        )
+        const newSession: CreatedSession = {
+          name: sessionName.trim(),
+          participants: selectedParticipants,
+        }
+        setCreatedSessions((prev) => [...prev, newSession])
+        setSessionName('')
+        setSelectedFriendKeys(new Set())
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+      }
+    } catch (err) {
+      console.error('Error creating session:', err)
+    } finally {
+      setCreating(false)
+    }
+  }, [
+    sessionName,
+    selectedFriendKeys,
+    addedFriends,
+    createCollaborativeSessionV2,
+    userPreferences,
+    getFriendKey,
+  ])
+
+  // Remove session
+  const handleRemoveSession = useCallback((index: number) => {
+    setCreatedSessions((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
+  // Accept collaboration invite
+  const handleAcceptInvite = useCallback(
+    async (inviteId: string) => {
+      try {
+        await acceptInvite(inviteId)
+        setPendingCollabInvites((prev) => prev.filter((i) => i.id !== inviteId))
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      } catch (err) {
+        console.error('Error accepting invite:', err)
+      }
+    },
+    [acceptInvite]
+  )
+
+  // Decline collaboration invite
+  const handleDeclineInvite = useCallback(
+    async (inviteId: string) => {
+      try {
+        await declineInvite(inviteId)
+        setPendingCollabInvites((prev) => prev.filter((i) => i.id !== inviteId))
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      } catch (err) {
+        console.error('Error declining invite:', err)
+      }
+    },
+    [declineInvite]
+  )
+
+  // Accept all
+  const handleAcceptAllInvites = useCallback(async () => {
+    try {
+      await Promise.all(pendingCollabInvites.map((i) => acceptInvite(i.id)))
+      setPendingCollabInvites([])
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    } catch (err) {
+      console.error('Error accepting all invites:', err)
+    }
+  }, [pendingCollabInvites, acceptInvite])
+
+  // Decline all
+  const handleDeclineAllInvites = useCallback(async () => {
+    try {
+      await Promise.all(pendingCollabInvites.map((i) => declineInvite(i.id)))
+      setPendingCollabInvites([])
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    } catch (err) {
+      console.error('Error declining all invites:', err)
+    }
+  }, [pendingCollabInvites, declineInvite])
+
+  const hasSelectedFriends = selectedFriendKeys.size > 0
+  const canCreateSession = hasSelectedFriends && sessionName.trim().length > 0
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <Text style={styles.headline}>Start a session</Text>
+      <Text style={styles.body}>
+        Create a collaboration session with your friends to discover experiences together.
+      </Text>
+
+      {/* Friend chips */}
+      <Text style={styles.sectionLabel}>Select friends</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsContent}
+      >
+        {addedFriends.map((friend) => {
+          const key = getFriendKey(friend)
+          const isSelected = selectedFriendKeys.has(key)
+          return (
+            <Pressable
+              key={key}
+              style={[
+                styles.chip,
+                isSelected ? styles.chipSelected : styles.chipUnselected,
+              ]}
+              onPress={() => toggleFriend(key)}
+            >
+              {friend.avatarUrl && (
+                <Image
+                  source={{ uri: friend.avatarUrl }}
+                  style={styles.chipAvatar}
+                />
+              )}
+              <Text
+                style={[
+                  styles.chipText,
+                  isSelected ? styles.chipTextSelected : styles.chipTextUnselected,
+                ]}
+                numberOfLines={1}
+              >
+                {friend.type === 'existing'
+                  ? friend.displayName
+                  : friend.phoneE164}
+              </Text>
+            </Pressable>
+          )
+        })}
+      </ScrollView>
+
+      {/* Session name input */}
+      {hasSelectedFriends && (
+        <View style={styles.nameSection}>
+          <Text style={styles.sectionLabel}>Session name</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={sessionName}
+            onChangeText={setSessionName}
+            placeholder="e.g. Weekend plans"
+            placeholderTextColor={colors.gray[400]}
+            maxLength={50}
+            autoCapitalize="sentences"
+          />
+        </View>
+      )}
+
+      {/* Create session button */}
+      {canCreateSession && (
+        <Pressable
+          style={[styles.createButton, creating && styles.createButtonDisabled]}
+          onPress={handleCreateSession}
+          disabled={creating}
+        >
+          {creating ? (
+            <ActivityIndicator size="small" color={colors.text.inverse} />
+          ) : (
+            <Text style={styles.createButtonText}>Create Session</Text>
+          )}
+        </Pressable>
+      )}
+
+      {/* Created session cards */}
+      {createdSessions.length > 0 && (
+        <View style={styles.sessionsSection}>
+          <Text style={styles.sectionLabel}>
+            Created sessions ({createdSessions.length})
+          </Text>
+          {createdSessions.map((session, index) => (
+            <View key={`${session.name}-${index}`} style={styles.sessionCard}>
+              <View style={styles.sessionCardHeader}>
+                <Text style={styles.sessionCardName} numberOfLines={1}>
+                  {session.name}
+                </Text>
+                <Pressable
+                  onPress={() => handleRemoveSession(index)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={20}
+                    color={colors.gray[400]}
+                  />
+                </Pressable>
+              </View>
+              <View style={styles.avatarStack}>
+                {session.participants.slice(0, 5).map((p, pIdx) => (
+                  <View
+                    key={p.userId || p.phoneE164}
+                    style={[
+                      styles.stackedAvatar,
+                      { marginLeft: pIdx === 0 ? 0 : -10 },
+                    ]}
+                  >
+                    {p.avatarUrl ? (
+                      <Image
+                        source={{ uri: p.avatarUrl }}
+                        style={styles.stackedAvatarImage}
+                      />
+                    ) : (
+                      <View style={styles.stackedAvatarPlaceholder}>
+                        <Text style={styles.stackedAvatarText}>
+                          {(p.displayName || '?').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+                {session.participants.length > 5 && (
+                  <View style={[styles.stackedAvatar, { marginLeft: -10 }]}>
+                    <View style={styles.stackedAvatarMore}>
+                      <Text style={styles.stackedAvatarMoreText}>
+                        +{session.participants.length - 5}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Pending collaboration invites */}
+      {loadingInvites && (
+        <View style={styles.loadingSection}>
+          <ActivityIndicator size="small" color={colors.primary[500]} />
+          <Text style={styles.loadingText}>Loading invites...</Text>
+        </View>
+      )}
+
+      {pendingCollabInvites.length > 0 && (
+        <View style={styles.invitesSection}>
+          <Text style={styles.sectionLabel}>
+            Pending collaboration invites ({pendingCollabInvites.length})
+          </Text>
+
+          {pendingCollabInvites.length > 10 && (
+            <View style={styles.bulkActions}>
+              <Pressable
+                style={styles.bulkButton}
+                onPress={handleAcceptAllInvites}
+              >
+                <Text style={styles.bulkButtonTextAccept}>Accept All</Text>
+              </Pressable>
+              <Pressable
+                style={styles.bulkButton}
+                onPress={handleDeclineAllInvites}
+              >
+                <Text style={styles.bulkButtonTextDecline}>Decline All</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {pendingCollabInvites.map((invite) => (
+            <View key={invite.id} style={styles.inviteRow}>
+              <View style={styles.inviteInfo}>
+                <Text style={styles.inviteName} numberOfLines={1}>
+                  {invite.session_name || 'Session'}
+                </Text>
+              </View>
+              <View style={styles.inviteActions}>
+                <Pressable
+                  style={styles.acceptButton}
+                  onPress={() => handleAcceptInvite(invite.id)}
+                >
+                  <Text style={styles.acceptButtonText}>Accept</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.declineButton}
+                  onPress={() => handleDeclineInvite(invite.id)}
+                >
+                  <Text style={styles.declineButtonText}>Decline</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Empty state */}
+      {addedFriends.length === 0 && (
+        <View style={styles.emptyState}>
+          <Ionicons
+            name="chatbubbles-outline"
+            size={48}
+            color={colors.gray[300]}
+          />
+          <Text style={styles.emptyStateText}>
+            No friends added yet. Go back to add friends first.
+          </Text>
+        </View>
+      )}
+
+      {/* Continue button */}
+      {canContinue && (
+        <Pressable
+          style={styles.continueButton}
+          onPress={() => onContinue(createdSessions)}
+        >
+          <Text style={styles.continueButtonText}>Continue</Text>
+        </Pressable>
+      )}
+
+      {/* Skip button */}
+      <Pressable style={styles.skipButton} onPress={onSkip}>
+        <Text style={styles.skipButtonText}>Skip for now</Text>
+      </Pressable>
+    </ScrollView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  headline: {
+    ...typography.xxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  body: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    marginBottom: spacing.lg,
+  },
+  sectionLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  chipsScroll: {
+    marginBottom: spacing.lg,
+  },
+  chipsContent: {
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    gap: spacing.xs,
+  },
+  chipSelected: {
+    backgroundColor: colors.primary[500],
+  },
+  chipUnselected: {
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  chipAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  chipText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    maxWidth: 120,
+  },
+  chipTextSelected: {
+    color: colors.text.inverse,
+  },
+  chipTextUnselected: {
+    color: colors.text.primary,
+  },
+  nameSection: {
+    marginBottom: spacing.md,
+  },
+  nameInput: {
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.md,
+    ...typography.md,
+    color: colors.text.primary,
+  },
+  createButton: {
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.md,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  createButtonDisabled: {
+    opacity: 0.6,
+  },
+  createButtonText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  sessionsSection: {
+    marginBottom: spacing.lg,
+  },
+  sessionCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
+  },
+  sessionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  sessionCardName: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stackedAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.background.primary,
+    overflow: 'hidden',
+  },
+  stackedAvatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  stackedAvatarPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary[400],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stackedAvatarText: {
+    ...typography.xs,
+    fontWeight: fontWeights.bold,
+    color: colors.text.inverse,
+  },
+  stackedAvatarMore: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stackedAvatarMoreText: {
+    ...typography.xs,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+  },
+  loadingSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  loadingText: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+  },
+  invitesSection: {
+    marginBottom: spacing.lg,
+  },
+  bulkActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  bulkButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  bulkButtonTextAccept: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.success[600],
+  },
+  bulkButtonTextDecline: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.error[500],
+  },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  inviteInfo: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  inviteName: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  acceptButton: {
+    backgroundColor: colors.primary[500],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  acceptButtonText: {
+    ...typography.xs,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  declineButton: {
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  declineButtonText: {
+    ...typography.xs,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxl,
+    gap: spacing.md,
+  },
+  emptyStateText: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+  },
+  continueButton: {
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.lg,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+  },
+  continueButtonText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  skipButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xxl,
+  },
+  skipButtonText: {
+    ...typography.md,
+    fontWeight: fontWeights.medium,
+    color: colors.text.tertiary,
+  },
+})

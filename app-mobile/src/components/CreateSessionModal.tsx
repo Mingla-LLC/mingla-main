@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,11 @@ import { InviteLinkShare } from './board/InviteLinkShare';
 import { QRCodeDisplay } from './board/QRCodeDisplay';
 import { InviteCodeDisplay } from './board/InviteCodeDisplay';
 import FriendSelectionModal from './FriendSelectionModal';
+import { PhoneInput } from './onboarding/PhoneInput';
+import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
+import { createPendingInvite, createPendingSessionInvite } from '../services/phoneLookupService';
+import { getCountryByCode, getDefaultCountryCode } from '../constants/countries';
+import { colors } from '../constants/designSystem';
 
 type SessionType = 'board' | 'collaboration';
 type Step = 'type' | 'basic' | 'friends' | 'preferences' | 'invite' | 'review' | 'success';
@@ -51,7 +57,7 @@ export const CreateSessionModal: React.FC = () => {
   // Friends
   const [selectedFriends, setSelectedFriends] = useState<SelectedFriend[]>([]);
   const [showFriendModal, setShowFriendModal] = useState(false);
-  const { friends, fetchFriends } = useFriends();
+  const { friends, fetchFriends, addFriend } = useFriends();
   
   // Preferences
   const [preferences, setPreferences] = useState<BoardPreferences | null>(null);
@@ -64,6 +70,27 @@ export const CreateSessionModal: React.FC = () => {
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [inviteLinkData, setInviteLinkData] = useState<{ inviteCode: string; inviteLink: string } | null>(null);
   
+  // Phone lookup state
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
+  const [phoneInvitees, setPhoneInvitees] = useState<Array<{ type: 'phone'; phoneE164: string; displayName: string }>>([]);
+  const [phoneInviteLoading, setPhoneInviteLoading] = useState(false);
+
+  // Referral code for share links
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+
+  // Build E.164 phone
+  const phoneCountryData = getCountryByCode(phoneCountry);
+  const phoneRawDigits = phoneDigits.replace(/\D/g, '');
+  const phoneE164 = phoneCountryData ? phoneCountryData.dialCode + phoneRawDigits : '+1' + phoneRawDigits;
+  const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
+
+  // Phone lookup
+  const {
+    data: phoneLookupResult,
+    isLoading: phoneLookupLoading,
+  } = usePhoneLookup(debouncedPhoneE164, phoneRawDigits.length >= 7);
+
   const { createCollaborativeSession } = useSessionManagement();
   const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();
   const { user } = useAppStore();
@@ -75,6 +102,20 @@ export const CreateSessionModal: React.FC = () => {
       fetchFriends();
     }
   }, [isCreateSessionModalOpen, currentStep, fetchFriends]);
+
+  // Fetch referral code for share links
+  useEffect(() => {
+    if (isCreateSessionModalOpen && user) {
+      supabase
+        .from('profiles')
+        .select('referral_code')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.referral_code) setReferralCode(data.referral_code);
+        });
+    }
+  }, [isCreateSessionModalOpen, user]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -93,6 +134,8 @@ export const CreateSessionModal: React.FC = () => {
     setInviteMethod(null);
     setCreatedSessionId(null);
     setInviteLinkData(null);
+    setPhoneDigits('');
+    setPhoneInvitees([]);
   };
 
   const handleSelectSessionType = (type: SessionType) => {
@@ -239,6 +282,18 @@ export const CreateSessionModal: React.FC = () => {
         // Create regular collaboration session
         const participantUsernames = selectedFriends.map(f => f.username);
         sessionId = await createCollaborativeSession(participantUsernames, sessionName.trim());
+
+        // Handle phone invitees for collaboration sessions
+        if (sessionId && phoneInvitees.length > 0 && user) {
+          for (const invitee of phoneInvitees) {
+            try {
+              await createPendingInvite(user.id, invitee.phoneE164);
+              await createPendingSessionInvite(sessionId, user.id, invitee.phoneE164);
+            } catch (inviteErr) {
+              console.error('Error creating phone session invite:', inviteErr);
+            }
+          }
+        }
       }
 
       if (sessionId) {
@@ -247,14 +302,14 @@ export const CreateSessionModal: React.FC = () => {
       } else {
         throw new Error('Failed to create session');
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create session');
+    } catch (error: unknown) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create session');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectFriend = (friend: any) => {
+  const handleSelectFriend = (friend: { id: string; name?: string; display_name?: string; username: string; avatar?: string; avatar_url?: string }) => {
     const isSelected = selectedFriends.some(f => f.id === friend.id);
     if (isSelected) {
       setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
@@ -351,6 +406,132 @@ export const CreateSessionModal: React.FC = () => {
                 ? 'Select friends to invite to your board session'
                 : 'Select at least one friend to add as a collaborator. This is required for safety.'}
             </Text>
+
+            {/* Phone input for adding by number */}
+            <View style={styles.phoneInputSection}>
+              <Text style={styles.phoneInputLabel}>Add by phone number</Text>
+              <View style={styles.phoneInputRow}>
+                <View style={styles.phoneInputWrapper}>
+                  <PhoneInput
+                    value={phoneDigits}
+                    countryCode={phoneCountry}
+                    onChangePhone={setPhoneDigits}
+                    onChangeCountry={setPhoneCountry}
+                    error={null}
+                    disabled={false}
+                  />
+                </View>
+                {phoneRawDigits.length >= 7 && (
+                  <TouchableOpacity
+                    style={styles.phoneActionButton}
+                    disabled={phoneLookupLoading || phoneInviteLoading}
+                    onPress={async () => {
+                      const isAlreadyInvited = phoneInvitees.some(i => i.phoneE164 === debouncedPhoneE164);
+                      if (isAlreadyInvited) return;
+
+                      if (phoneLookupResult?.found && phoneLookupResult.user) {
+                        // User found on app but not a friend — prompt to send friend request
+                        if (phoneLookupResult.friendship_status === 'none') {
+                          Alert.alert(
+                            'Send friend request first?',
+                            `${phoneLookupResult.user.display_name || phoneLookupResult.user.username} is on Mingla but not your friend yet.`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Send Request',
+                                onPress: async () => {
+                                  const lookupUser = phoneLookupResult.user!;
+                                  try {
+                                    // Actually send the friend request
+                                    await addFriend(
+                                      lookupUser.id,
+                                      '', // email not available from phone lookup
+                                      lookupUser.username,
+                                    );
+                                    // Add as selected friend from lookup
+                                    const friendData: SelectedFriend = {
+                                      id: lookupUser.id,
+                                      name: lookupUser.display_name || lookupUser.username,
+                                      username: lookupUser.username,
+                                      avatar_url: lookupUser.avatar_url || undefined,
+                                    };
+                                    if (!selectedFriends.some(f => f.id === friendData.id)) {
+                                      setSelectedFriends(prev => [...prev, friendData]);
+                                    }
+                                    setPhoneDigits('');
+                                  } catch (err: unknown) {
+                                    Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send friend request');
+                                  }
+                                },
+                              },
+                            ]
+                          );
+                        } else {
+                          // Already friends — add directly
+                          const friendData: SelectedFriend = {
+                            id: phoneLookupResult.user.id,
+                            name: phoneLookupResult.user.display_name || phoneLookupResult.user.username,
+                            username: phoneLookupResult.user.username,
+                            avatar_url: phoneLookupResult.user.avatar_url || undefined,
+                          };
+                          if (!selectedFriends.some(f => f.id === friendData.id)) {
+                            setSelectedFriends(prev => [...prev, friendData]);
+                          }
+                          setPhoneDigits('');
+                        }
+                      } else {
+                        // Not on app — invite via share
+                        setPhoneInviteLoading(true);
+                        try {
+                          if (user) {
+                            await createPendingInvite(user.id, debouncedPhoneE164);
+                          }
+                          const inviteLink = referralCode
+                            ? `https://usemingla.com/invite/${referralCode}`
+                            : 'https://usemingla.com';
+                          await Share.share({
+                            message: `Hey! Join me on Mingla and let's find amazing experiences together. ${inviteLink}`,
+                          });
+                          setPhoneInvitees(prev => [
+                            ...prev,
+                            { type: 'phone', phoneE164: debouncedPhoneE164, displayName: debouncedPhoneE164 },
+                          ]);
+                          setPhoneDigits('');
+                        } catch (err) {
+                          console.error('Error inviting by phone:', err);
+                        } finally {
+                          setPhoneInviteLoading(false);
+                        }
+                      }
+                    }}
+                  >
+                    {phoneLookupLoading || phoneInviteLoading ? (
+                      <ActivityIndicator size="small" color={colors.primary[500]} />
+                    ) : (
+                      <Text style={styles.phoneActionButtonText}>
+                        {phoneLookupResult?.found ? 'Add' : 'Invite'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Phone invitees pills */}
+              {phoneInvitees.length > 0 && (
+                <View style={styles.phoneInviteesContainer}>
+                  {phoneInvitees.map((invitee) => (
+                    <View key={invitee.phoneE164} style={styles.phoneInviteePill}>
+                      <Text style={styles.phoneInviteePillText}>{invitee.phoneE164}</Text>
+                      <TouchableOpacity
+                        onPress={() => setPhoneInvitees(prev => prev.filter(i => i.phoneE164 !== invitee.phoneE164))}
+                      >
+                        <Ionicons name="close-circle" size={16} color={colors.orange[600]} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
 
             <TouchableOpacity
               style={styles.friendButton}
@@ -910,5 +1091,57 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  phoneInputSection: {
+    marginBottom: 16,
+  },
+  phoneInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  phoneInputWrapper: {
+    flex: 1,
+  },
+  phoneActionButton: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: colors.orange[50],
+    borderWidth: 1,
+    borderColor: colors.primary[500],
+  },
+  phoneActionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary[500],
+  },
+  phoneInviteesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  phoneInviteePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning[50],
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    gap: 4,
+  },
+  phoneInviteePillText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.orange[600],
   },
 });

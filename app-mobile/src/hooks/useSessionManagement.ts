@@ -2,6 +2,55 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
+import { createPendingSessionInvite } from '../services/phoneLookupService';
+import { notificationService } from '../services/notificationService';
+
+export interface SessionParticipantInput {
+  type: 'existing_user' | 'phone_invite'
+  userId?: string
+  username?: string
+  phoneE164?: string
+  displayName?: string
+}
+
+// DB row types for useSessionManagement queries
+interface SessionRow {
+  id: string
+  name: string
+  created_by: string
+  status: string
+  board_id: string | null
+  created_at: string
+  updated_at: string
+  session_type?: string
+  is_active?: boolean
+  max_participants?: number | null
+  last_activity_at?: string
+}
+
+interface ParticipantRow {
+  session_id: string
+  user_id: string
+  has_accepted: boolean
+  joined_at?: string
+  is_admin?: boolean
+  id?: string
+}
+
+interface ProfileRow {
+  id: string
+  username: string
+  first_name: string | null
+  last_name: string | null
+  avatar_url: string | null
+}
+
+interface ParticipationRow {
+  session_id: string
+  has_accepted: boolean
+  joined_at: string | null
+  collaboration_sessions?: SessionRow | SessionRow[]
+}
 
 export const useSessionManagement = () => {
   const [sessionState, setSessionState] = useState<SessionState>(() => {
@@ -51,7 +100,7 @@ export const useSessionManagement = () => {
       const sessionIds = userParticipations?.map(p => p.session_id) || [];
 
       // 3. Load all collaboration sessions for these session IDs
-      let allSessions: any[] = [];
+      let allSessions: SessionRow[] = [];
       if (sessionIds.length > 0) {
         const { data: sessions, error: sessionsError } = await supabase
           .from('collaboration_sessions')
@@ -85,7 +134,7 @@ export const useSessionManagement = () => {
       }
 
       // 4. Load all participants for these sessions (including invite sessions)
-      let allParticipants: any[] = [];
+      let allParticipants: ParticipantRow[] = [];
       const allSessionIds = [...new Set([...sessionIds, ...(receivedInvites?.map(i => i.session_id) || [])])];
       
       if (allSessionIds.length > 0) {
@@ -103,7 +152,7 @@ export const useSessionManagement = () => {
 
       // 5. Load profiles for all participants
       const participantUserIds = [...new Set(allParticipants.map(p => p.user_id))];
-      let profiles: any[] = [];
+      let profiles: ProfileRow[] = [];
       if (participantUserIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
@@ -119,7 +168,7 @@ export const useSessionManagement = () => {
 
       // 6. Load inviter profiles for received invites
       const inviterIds = [...new Set((receivedInvites || []).map(i => i.inviter_id))];
-      let inviterProfiles: any[] = [];
+      let inviterProfiles: ProfileRow[] = [];
       if (inviterIds.length > 0) {
         const { data: invitersData, error: invitersError } = await supabase
           .from('profiles')
@@ -139,7 +188,7 @@ export const useSessionManagement = () => {
       };
 
       // Helper function to format profile name
-      const formatProfileName = (profile: any) => {
+      const formatProfileName = (profile: ProfileRow | undefined) => {
         if (!profile) return 'Unknown User';
         if (profile.first_name && profile.last_name) {
           return `${profile.first_name} ${profile.last_name}`;
@@ -258,7 +307,7 @@ export const useSessionManagement = () => {
       throw new Error('User not authenticated');
     }
 
-    let sessionData: any = null;
+    let sessionData: SessionRow | null = null;
     try {
       const resolvedName = sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`;
 
@@ -269,7 +318,7 @@ export const useSessionManagement = () => {
         .eq('user_id', user.id)
         .eq('has_accepted', true);
 
-      const hasDuplicate = (participations || []).some((p: any) => {
+      const hasDuplicate = (participations || []).some((p: ParticipationRow) => {
         const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
         return s?.name?.toLowerCase() === resolvedName.toLowerCase();
       });
@@ -289,7 +338,7 @@ export const useSessionManagement = () => {
         await supabase
           .from('collaboration_sessions')
           .delete()
-          .in('id', ghostSessions.map((s: any) => s.id));
+          .in('id', ghostSessions.map((s: { id: string }) => s.id));
       }
 
       // Create the session (no board yet - only created when all accept)
@@ -415,6 +464,70 @@ export const useSessionManagement = () => {
       return null;
     }
   }, [user, loadUserSessions]);
+
+  // Create collaborative session with mixed participant types (existing users + phone invites)
+  const createCollaborativeSessionV2 = useCallback(
+    async (
+      participants: SessionParticipantInput[],
+      sessionName: string,
+      preferences?: {
+        categories: string[]
+        intents: string[]
+        priceTiers: string[]
+        travelMode: string
+        travelTimeMinutes: number
+      }
+    ) => {
+      // Verify auth BEFORE creating anything — prevents orphaned sessions on auth failure
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) return null
+
+      // Extract usernames from existing_user participants for the existing flow
+      const existingUserParticipants = participants.filter(p => p.type === 'existing_user')
+      const phoneInviteParticipants = participants.filter(p => p.type === 'phone_invite')
+
+      // Use the existing username-based flow for existing users
+      const usernames = existingUserParticipants
+        .map(p => p.username)
+        .filter((u): u is string => !!u)
+
+      // Call the existing createCollaborativeSession for the username-based participants
+      const sessionId = await createCollaborativeSession(usernames, sessionName)
+
+      if (!sessionId) return null
+
+      for (const p of phoneInviteParticipants) {
+        if (p.phoneE164) {
+          await createPendingSessionInvite(sessionId, authUser.id, p.phoneE164)
+        }
+      }
+
+      // Copy preferences if provided
+      if (preferences) {
+        const { error: prefError } = await supabase
+          .from('board_session_preferences')
+          .upsert({
+            session_id: sessionId,
+            user_id: authUser.id,
+            categories: preferences.categories,
+            intents: preferences.intents,
+            price_tiers: preferences.priceTiers,
+            budget_min: 0,
+            budget_max: 1000,
+            travel_mode: preferences.travelMode,
+            travel_constraint_type: 'time',
+            travel_constraint_value: preferences.travelTimeMinutes,
+          }, { onConflict: 'session_id' })
+
+        if (prefError) {
+          console.error('[useSessionManagement] Failed to copy preferences:', prefError)
+        }
+      }
+
+      return sessionId
+    },
+    [createCollaborativeSession]
+  );
 
   // Accept specific invite (from notification)
   const acceptInvite = useCallback(async (inviteId: string) => {
@@ -865,9 +978,38 @@ export const useSessionManagement = () => {
         return;
       }
 
+      // Check if user is admin
+      const { data: participantData } = await supabase
+        .from('session_participants')
+        .select('is_admin')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .single()
+
+      const isAdmin = participantData?.is_admin === true
+      const isCreator = session.invitedBy === user.id
+
       // Handle pending invitations or session management
-      if (session.invitedBy === user.id) {
-        // User is the creator - revoke the session
+      if (isCreator || isAdmin) {
+        // Send notifications before deletion
+        const { data: otherParticipants } = await supabase
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', sessionId)
+          .neq('user_id', user.id);
+
+        if (otherParticipants?.length) {
+          const sessionName = sessionState.availableSessions.find(s => s.id === sessionId)?.name ?? 'Session';
+          for (const p of otherParticipants) {
+            try {
+              await notificationService.sendSessionUpdate(p.user_id, sessionName, 'session_ended');
+            } catch (notifError) {
+              console.error('[useSessionManagement] Push notification failed:', notifError);
+            }
+          }
+        }
+
+        // User is the creator or admin - revoke the session
         await supabase
           .from('collaboration_invites')
           .update({ status: 'cancelled' })
@@ -961,6 +1103,7 @@ export const useSessionManagement = () => {
     switchToSolo,
     switchToCollaborative,
     createCollaborativeSession,
+    createCollaborativeSessionV2,
     cancelSession,
     acceptInvite,
     declineInvite,

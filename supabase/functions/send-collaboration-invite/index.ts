@@ -15,6 +15,7 @@ interface CollaborationInvitePayload {
   sessionId: string;
   sessionName: string;
   inviteId?: string;
+  phone_e164?: string;  // NEW: for non-app-user invites
 }
 
 serve(async (req) => {
@@ -32,6 +33,7 @@ serve(async (req) => {
       sessionId,
       sessionName,
       inviteId,
+      phone_e164,
     } = payload;
 
     // Validate required fields
@@ -76,6 +78,20 @@ serve(async (req) => {
     const userExists = !!invitedUserProfile;
     const invitedUsername = invitedUserProfile?.username;
     const invitedDisplayName = invitedUserProfile?.display_name || invitedUsername;
+
+    // NEW: Handle phone-only invites for non-platform users
+    if (phone_e164 && !userExists) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          method: "none",
+          reason: "user_not_on_platform_phone_stored",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // If user doesn't exist on platform, skip notification entirely
     if (!userExists) {

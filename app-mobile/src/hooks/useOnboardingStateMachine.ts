@@ -13,7 +13,7 @@ const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
   2: ['value_prop', 'intents'],
   3: ['location'],
   4: ['celebration', 'categories', 'budget', 'transport', 'travel_time'],
-  5: ['pitch'],  // Step 5 sub-steps are dynamic (depends on chosen path)
+  5: ['friends'],  // Step 5 sub-steps are dynamic (depends on chosen path)
 }
 
 // Step 5 path sub-steps (appended after 'pitch' when path is chosen)
@@ -31,6 +31,7 @@ interface UseOnboardingStateMachineReturn {
   goBack: () => void
   goToSubStep: (subStep: SubStep) => void
   choosePath: (path: 'invite' | 'add' | 'skip') => void
+  setSkippedFriends: (skipped: boolean) => void
   progress: { step: OnboardingStep; segmentFill: number }  // segmentFill: 0-1 within current step
   isLaunch: boolean
 }
@@ -44,6 +45,7 @@ export function useOnboardingStateMachine({
     subStep: STEP_SUBSTEPS[initialStep][0],
   })
   const [chosenPath, setChosenPath] = useState<'invite' | 'add' | 'skip' | null>(null)
+  const [skippedFriends, setSkippedFriends] = useState(false)
   const [isLaunch, setIsLaunch] = useState(false)
 
   // ─── Fix A: Sync state when initialStep changes after mount ───
@@ -71,10 +73,18 @@ export function useOnboardingStateMachine({
 
   // Build the effective sub-step sequence for Step 5 (depends on chosen path)
   const getStep5Sequence = useCallback((): SubStep[] => {
-    if (chosenPath === 'invite') return ['pitch', ...STEP5_PATH_A]
-    if (chosenPath === 'add') return ['pitch', ...STEP5_PATH_B]
-    return ['pitch']  // skip or not yet chosen
-  }, [chosenPath])
+    const base: SubStep[] = ['friends']
+
+    if (!skippedFriends) {
+      base.push('collaboration')
+    }
+
+    base.push('pitch')
+    if (chosenPath === 'invite') base.push(...STEP5_PATH_A)
+    if (chosenPath === 'add') base.push(...STEP5_PATH_B)
+
+    return base
+  }, [chosenPath, skippedFriends])
 
   // Get full sequence for a given step
   const getSequence = useCallback((step: OnboardingStep): SubStep[] => {
@@ -178,6 +188,7 @@ export function useOnboardingStateMachine({
     goBack,
     goToSubStep,
     choosePath,
+    setSkippedFriends,
     progress,
     isLaunch,
   }

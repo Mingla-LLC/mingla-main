@@ -13,6 +13,8 @@ export type Step4SubStep =
   | 'transport'
   | 'travel_time'
 export type Step5SubStep =
+  | 'friends'
+  | 'collaboration'
   | 'pitch'
   | 'pathA_birthday'
   | 'pathA_gender'
@@ -41,6 +43,21 @@ export interface OnboardingNavState {
 import { PriceTierSlug } from '../constants/priceTiers';
 
 export const DEFAULT_PRICE_TIERS: PriceTierSlug[] = ['chill', 'comfy'];
+
+export interface AddedFriend {
+  type: 'existing' | 'invited'
+  userId?: string
+  username?: string
+  phoneE164: string
+  displayName: string
+  avatarUrl?: string | null
+  friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'friends'
+}
+
+export interface CreatedSession {
+  name: string
+  participants: AddedFriend[]
+}
 
 export interface OnboardingData {
   // Step 1
@@ -73,6 +90,11 @@ export interface OnboardingData {
   audioClipDuration: number | null
   contactMethod: 'phone' | 'username' | null
   contactValue: string | null
+
+  // Step 5 — Friends & Collaboration
+  addedFriends: AddedFriend[]
+  createdSessions: CreatedSession[]
+  skippedFriends: boolean
 }
 
 // ─── Country Data ───

@@ -982,6 +982,21 @@ function AppContent() {
   const handleDeepLink = async (url: string) => {
     console.log("Deep link received:", url);
 
+    // Handle invite deep links
+    if (url.includes('/invite/') || url.includes('invite/')) {
+      try {
+        const parts = url.split('/invite/')
+        const referralCode = parts[parts.length - 1]?.split('?')[0]
+        if (referralCode) {
+          await AsyncStorage.setItem('@mingla_referral_code', referralCode)
+          console.log('Stored referral code:', referralCode)
+        }
+      } catch (err) {
+        console.error('Error handling invite deep link:', err)
+      }
+      return
+    }
+
     // Check if it's an OAuth callback
     if (url.includes("auth/callback")) {
       try {
