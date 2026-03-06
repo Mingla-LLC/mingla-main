@@ -15,13 +15,13 @@ import { Ionicons } from "@expo/vector-icons";
  */
 // Helper descriptions for curated experience types
 const EXPERIENCE_TYPE_DESCRIPTIONS: Record<string, string> = {
-  "adventurous":   "Bold outings and unique experiences to push your comfort zone",
-  "first-date":    "Relaxed, low-pressure settings ideal for getting to know someone",
-  "romantic":      "Intimate and memorable experiences for you and your partner",
-  "friendly":      "Casual hangouts and fun activities with close friends",
-  "group-fun":     "Exciting group activities everyone will enjoy together",
-  "picnic-dates":  "Grab supplies at the store and enjoy a curated picnic",
-  "take-a-stroll": "A scenic walk with a great food spot to start and end at",
+  "adventurous":   "Something unexpected \u2014 for the ones who don\u2019t play it safe",
+  "first-date":    "Easy, low-key spots where conversation flows naturally",
+  "romantic":      "Intimate moments that actually feel special",
+  "friendly":      "Good times with your people \u2014 no agenda required",
+  "group-fun":     "The more the merrier \u2014 activities the whole crew will love",
+  "picnic-dates":  "We\u2019ll curate the spread \u2014 you just show up and enjoy",
+  "take-a-stroll": "A scenic route with a great bite at each end",
 };
 
 export const ExperienceTypesSection = memo(
@@ -47,9 +47,9 @@ export const ExperienceTypesSection = memo(
 
     return (
       <View style={[styles.section, { marginTop: 20 }]}>
-        <Text style={styles.sectionTitle}>Curated Experiences</Text>
+        <Text style={styles.sectionTitle}>Set the Mood</Text>
         <Text style={styles.sectionSubtitle}>
-          Date Idea / Friends / Romantic / Adventurous
+          What kind of outing are you feeling?
         </Text>
         <View style={styles.experienceTypesContainer}>
           {experienceTypes.map((type) => {
@@ -103,18 +103,18 @@ ExperienceTypesSection.displayName = "ExperienceTypesSection";
 
 // Helper descriptions for each category
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  nature: "Outdoor trails, parks, gardens, and scenic walks",
-  first_meet: "Low-pressure spots perfect for a first date or meeting someone new",
-  picnic_park: "Great parks and picnic-friendly locations nearby",
-  drink: "Bars, pubs, cocktail lounges, and cozy cafés",
-  casual_eats: "Relaxed restaurants, street food, and quick bites",
-  fine_dining: "Upscale restaurants and refined dining experiences",
-  watch: "Movies, live shows, theatre, and sports events",
-  creative_arts: "Art galleries, museums, performing arts, comedy clubs, and live music",
-  play: "Games, arcades, bowling, escape rooms, and fun activities",
-  wellness: "Spas, massage spas, saunas, and resort wellness",
-  groceries_flowers: "Grocery stores, supermarkets, markets, and specialty food stores",
-  work_business: "Coworking spaces, business centers, libraries, cafes, and hotels",
+  nature: "Trails, parks, gardens \u2014 fresh air and good scenery",
+  first_meet: "Relaxed spots made for first impressions",
+  picnic_park: "The best nearby parks for spreading out a blanket",
+  drink: "Cocktail bars, cozy caf\u00e9s, neighborhood pubs",
+  casual_eats: "Street food, quick bites, and laid-back dining",
+  fine_dining: "The nice places \u2014 dress up a little",
+  watch: "Movies, live shows, theatre, game day",
+  creative_arts: "Galleries, museums, comedy, live music",
+  play: "Arcades, bowling, escape rooms \u2014 bring your competitive side",
+  wellness: "Spas, saunas, and places that melt the stress away",
+  groceries_flowers: "Markets, specialty shops, and everything in between",
+  work_business: "Caf\u00e9s, coworking spots, and quiet places to lock in",
 };
 
 // IDs of categories that need wider pills due to long labels
@@ -148,7 +148,7 @@ export const CategoriesSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Categories</Text>
+        <Text style={styles.sectionTitle}>What Sounds Good?</Text>
         <View style={styles.categoriesContainer}>
           {filteredCategories.map((category) => {
             const isSelected = selectedCategories.includes(category.id);
@@ -221,8 +221,8 @@ export const DateTimeSection = memo(
     formatDateForDisplay,
   }: any) => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Date & Time</Text>
-      <Text style={styles.sectionQuestion}>When do you want to go?</Text>
+      <Text style={styles.sectionTitle}>When</Text>
+      <Text style={styles.sectionQuestion}>When are you heading out?</Text>
       <View style={styles.dateOptionsGrid}>
         {dateOptions.map((option: any) => {
           const isSelected = selectedDateOption === option.id;
@@ -259,7 +259,7 @@ export const DateTimeSection = memo(
           <View style={styles.weekendInfoContent}>
             <Text style={styles.weekendInfoLabel}>This Weekend</Text>
             <Text style={styles.weekendInfoDescription}>
-              Includes Friday, Saturday & Sunday
+              Friday through Sunday
             </Text>
           </View>
         </TouchableOpacity>
@@ -283,7 +283,7 @@ export const DateTimeSection = memo(
 
       {showTimeSection && (
         <View style={styles.exactTimeSection}>
-          <Text style={styles.exactTimeLabel}>Select Time</Text>
+          <Text style={styles.exactTimeLabel}>Around What Time?</Text>
           <TouchableOpacity
             style={styles.exactTimeInput}
             onPress={onShowTimePicker}
@@ -321,8 +321,8 @@ export const TravelModeSection = memo(
     onTravelModeChange: (mode: string) => void;
   }) => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Travel Mode</Text>
-      <Text style={styles.sectionQuestion}>How will you get there?</Text>
+      <Text style={styles.sectionTitle}>Getting There</Text>
+      <Text style={styles.sectionQuestion}>How are you rolling?</Text>
       <View style={styles.travelModesGrid}>
         {travelModes.map((mode) => {
           const isSelected = travelMode === mode.id;
@@ -365,7 +365,7 @@ TravelModeSection.displayName = "TravelModeSection";
 export const LoadingShimmer = memo(() => (
   <View style={styles.loadingContainer}>
     <ActivityIndicator size="large" color="#eb7825" />
-    <Text style={styles.loadingText}>Loading preferences...</Text>
+    <Text style={styles.loadingText}>Setting the mood...</Text>
   </View>
 ));
 
@@ -373,24 +373,25 @@ LoadingShimmer.displayName = "LoadingShimmer";
 
 const styles = StyleSheet.create({
   section: {
-    backgroundColor: "white",
+    backgroundColor: "#ffffff",
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: "#f0ebe6",
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#111827",
-    marginBottom: 3,
+    marginBottom: 4,
+    letterSpacing: -0.2,
   },
   sectionSubtitle: {
     fontSize: 12,
@@ -411,12 +412,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    backgroundColor: "white",
+    backgroundColor: "#fafafa",
   },
   experienceTypeButtonSelected: {
     backgroundColor: "#fff7ed",
@@ -445,7 +446,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    backgroundColor: "white",
+    backgroundColor: "#fafafa",
   },
   categoryButtonSelected: {
     backgroundColor: "#fff7ed",
@@ -468,10 +469,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff7ed",
     borderLeftWidth: 3,
     borderLeftColor: "#eb7825",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 10,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
   },
   helperText: {
     fontSize: 12,
@@ -602,20 +603,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fafafa",
   },
   travelModeCardSelected: {
     backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "500",
     color: "#374151",
   },

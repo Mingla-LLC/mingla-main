@@ -11,6 +11,7 @@ import {
   Platform,
   Modal,
   KeyboardAvoidingView,
+  Switch,
 } from "react-native";
 import {
   SafeAreaView,
@@ -31,6 +32,7 @@ import {
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { TRAVEL_TIME_PRESETS } from '../types/onboarding';
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -193,10 +195,9 @@ export default function CollaborationPreferences({
   const [travelMode, setTravelMode] = useState<string>("walking");
 
   // Travel Limit
-  const [constraintType, setConstraintType] = useState<"time" | "distance">(
-    "time"
-  );
-  const [constraintValue, setConstraintValue] = useState<number | "">(20);
+  const constraintType = 'time' as const;
+  const [constraintValue, setConstraintValue] = useState<number | "">(30);
+  const [showCustomTravelTime, setShowCustomTravelTime] = useState(false);
 
   // Starting Location
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
@@ -260,13 +261,13 @@ export default function CollaborationPreferences({
       if (dbPreferences.travel_mode) {
         setTravelMode(dbPreferences.travel_mode);
       }
-      if (dbPreferences.travel_constraint_type) {
-        setConstraintType(
-          dbPreferences.travel_constraint_type as "time" | "distance"
-        );
-      }
+      // travel_constraint_type is always 'time' — no need to load from DB
       if (dbPreferences.travel_constraint_value !== undefined) {
         setConstraintValue(dbPreferences.travel_constraint_value);
+        // Show custom input if value isn't a standard preset
+        if (!TRAVEL_TIME_PRESETS.includes(dbPreferences.travel_constraint_value)) {
+          setShowCustomTravelTime(true);
+        }
       }
       if (dbPreferences.date_option) {
         const optionMap: Record<string, DateOption> = {
@@ -539,9 +540,9 @@ export default function CollaborationPreferences({
         // Note: group_size column doesn't exist in board_session_preferences table
         // Group size is determined by the number of participants in the session
         travel_mode: travelMode,
-        travel_constraint_type: constraintType,
+        travel_constraint_type: 'time' as const,
         travel_constraint_value:
-          typeof constraintValue === "number" ? constraintValue : 20,
+          typeof constraintValue === "number" ? constraintValue : 30,
         time_of_day: selectedTimeSlot || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
         date_option: selectedDateOption
@@ -932,83 +933,63 @@ export default function CollaborationPreferences({
             </View>
           </View>
 
-          {/* Travel Limit Section */}
+          {/* Travel Time Section */}
           <View style={styles.section}>
-            <View style={styles.sectionHeaderWithBadge}>
-              <Text style={styles.sectionTitle}>Travel Limit</Text>
-              <View style={styles.requiredBadge}>
-                <Text style={styles.requiredBadgeText}>Required</Text>
-              </View>
-            </View>
+            <Text style={styles.sectionTitle}>Travel Time</Text>
             <Text style={styles.sectionQuestion}>
-              How far are you willing to travel?
+              How long are you willing to travel?
             </Text>
-            <View style={styles.constraintTypeContainer}>
-              <TouchableOpacity
-                onPress={() => setConstraintType("time")}
-                style={[
-                  styles.constraintTypeButton,
-                  constraintType === "time" &&
-                    styles.constraintTypeButtonSelected,
-                ]}
-              >
+            <View style={styles.quickOptionsContainer}>
+              {TRAVEL_TIME_PRESETS.map((value, index) => {
+                const isPresetActive = !showCustomTravelTime && constraintValue === value;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.quickOption,
+                      index === 3 && styles.quickOptionLast,
+                      isPresetActive && styles.quickOptionSelected,
+                      !isPresetActive && styles.quickOptionUnselected,
+                    ]}
+                    onPress={() => {
+                      setShowCustomTravelTime(false);
+                      setConstraintValue(value);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.quickOptionText,
+                        isPresetActive && styles.quickOptionTextSelected,
+                        !isPresetActive && styles.quickOptionTextUnselected,
+                      ]}
+                    >
+                      {value} min
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.customToggleRow}>
+              <Text style={styles.customToggleLabel}>Set your own</Text>
+              <Switch
+                value={showCustomTravelTime}
+                onValueChange={(val) => {
+                  setShowCustomTravelTime(val);
+                  if (!val) {
+                    const nearest = TRAVEL_TIME_PRESETS.reduce((prev, curr) =>
+                      Math.abs(curr - (typeof constraintValue === 'number' ? constraintValue : 30)) < Math.abs(prev - (typeof constraintValue === 'number' ? constraintValue : 30)) ? curr : prev
+                    );
+                    setConstraintValue(nearest);
+                  }
+                }}
+                trackColor={{ false: "#d1d5db", true: "#fdba74" }}
+                thumbColor={showCustomTravelTime ? "#eb7825" : "#f4f3f4"}
+              />
+            </View>
+            {showCustomTravelTime && (
+              <View style={styles.constraintInputContainer}>
                 <Ionicons
                   name="time-outline"
-                  size={20}
-                  color={constraintType === "time" ? "#ffffff" : "#6b7280"}
-                />
-                <Text
-                  style={[
-                    styles.constraintTypeText,
-                    constraintType === "time" &&
-                      styles.constraintTypeTextSelected,
-                  ]}
-                >
-                  By Time
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setConstraintType("distance")}
-                style={[
-                  styles.constraintTypeButton,
-                  constraintType === "distance" &&
-                    styles.constraintTypeButtonSelected,
-                ]}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={20}
-                  color={constraintType === "distance" ? "#ffffff" : "#6b7280"}
-                />
-                <Text
-                  style={[
-                    styles.constraintTypeText,
-                    constraintType === "distance" &&
-                      styles.constraintTypeTextSelected,
-                  ]}
-                >
-                  By Distance
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.constraintInputSection}>
-              <Text style={styles.constraintInputLabel}>
-                {constraintType === "time"
-                  ? "Maximum travel time (minutes)"
-                  : `Maximum travel distance (${accountPreferences?.measurementSystem === "Metric" ? "km" : "miles"})`}
-              </Text>
-              <View
-                style={[
-                  styles.constraintInputContainer,
-                  false && styles.constraintInputContainerFocused,
-                ]}
-              >
-                <Ionicons
-                  name={
-                    constraintType === "time"
-                      ? "time-outline"
-                      : "paper-plane-outline"
-                  }
                   size={20}
                   color="#6b7280"
                   style={styles.constraintInputIcon}
@@ -1017,57 +998,31 @@ export default function CollaborationPreferences({
                   value={constraintValue?.toString() || ""}
                   onChangeText={(text) => {
                     const numericValue = text.replace(/[^0-9]/g, "");
-                    setConstraintValue(
-                      numericValue ? Number(numericValue) : ""
-                    );
+                    if (numericValue === "") {
+                      setConstraintValue("");
+                      return;
+                    }
+                    const val = Number(numericValue);
+                    if (val >= 5 && val <= 120) {
+                      setConstraintValue(val);
+                    }
                   }}
                   keyboardType="numeric"
                   style={styles.constraintInput}
-                  placeholder={constraintType === "time" ? "e.g. 20" : (accountPreferences?.measurementSystem === "Metric" ? "e.g. 5" : "e.g. 3")}
+                  placeholder="5 – 120 minutes"
+                  placeholderTextColor="#9ca3af"
+                  maxLength={3}
                 />
+                <Text style={styles.travelInputUnit}>min</Text>
               </View>
-
-              {/* Quick selection options */}
-              <Text style={styles.quickOptionsLabel}>Quick Options</Text>
-              <View style={styles.quickOptionsContainer}>
-                {(constraintType === "time"
-                  ? [15, 30, 45, 60]
-                  : accountPreferences?.measurementSystem === "Metric"
-                    ? [5, 10, 15, 20]
-                    : [3, 5, 10, 15]
-                ).map((value, index, array) => (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.quickOption,
-                      index === array.length - 1 && styles.quickOptionLast,
-                      constraintValue === value && styles.quickOptionSelected,
-                      constraintValue !== value && styles.quickOptionUnselected,
-                    ]}
-                    onPress={() => setConstraintValue(value)}
-                  >
-                    <Text
-                      style={[
-                        styles.quickOptionText,
-                        constraintValue === value &&
-                          styles.quickOptionTextSelected,
-                        constraintValue !== value &&
-                          styles.quickOptionTextUnselected,
-                      ]}
-                    >
-                      {value}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+            )}
           </View>
 
           {/* Starting Location Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Starting Location</Text>
             <Text style={styles.sectionSubtitle}>
-              Your starting point will shape travel time & distance results.
+              Your starting point will shape your travel time results.
             </Text>
 
             {/* Use My Current Location Button */}
@@ -1700,44 +1655,6 @@ const styles = StyleSheet.create({
   travelModeLabelSelected: {
     color: "#ffffff",
   },
-  constraintTypeContainer: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
-  constraintTypeButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
-  },
-  constraintTypeButtonSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-  },
-  constraintTypeText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  constraintTypeTextSelected: {
-    color: "#ffffff",
-  },
-  constraintInputSection: {
-    marginBottom: 24,
-  },
-  constraintInputLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-    marginBottom: 8,
-  },
   constraintInputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1761,6 +1678,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
     padding: 0,
+  },
+  customToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  customToggleLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  travelInputUnit: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+    marginLeft: 8,
   },
   quickOptionsLabel: {
     fontSize: 14,

@@ -180,12 +180,10 @@ export default function PreferencesSheet({
   const [travelMode, setTravelMode] = useState<string>("walking");
 
   // Travel Limit
-  const [constraintType, setConstraintType] = useState<"time" | "distance">(
-    "time"
-  );
-  const [constraintValue, setConstraintValue] = useState<number | "">(20);
+  const constraintType = 'time' as const;
+  const [constraintValue, setConstraintValue] = useState<number | "">(30);
 
-  // Starting Location
+  // Starting Point
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
   const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
@@ -273,8 +271,8 @@ export default function PreferencesSheet({
     selectedDate: null,
     exactTime: "",
     travelMode: "walking",
-    constraintType: "time" as "time" | "distance",
-    constraintValue: 20,
+    constraintType: 'time' as const,
+    constraintValue: 30,
     searchLocation: "",
   };
 
@@ -315,11 +313,7 @@ export default function PreferencesSheet({
       if ((loadedPreferences as any).travel_mode) {
         setTravelMode((loadedPreferences as any).travel_mode);
       }
-      if ((loadedPreferences as any).travel_constraint_type) {
-        setConstraintType(
-          (loadedPreferences as any).travel_constraint_type as "time" | "distance"
-        );
-      }
+      // travel_constraint_type is always 'time' — no need to load from DB
       if ((loadedPreferences as any).travel_constraint_value !== undefined) {
         setConstraintValue((loadedPreferences as any).travel_constraint_value);
       }
@@ -366,10 +360,8 @@ export default function PreferencesSheet({
           : null,
         exactTime: "",
         travelMode: (loadedPreferences as any).travel_mode || "walking",
-        constraintType: ((loadedPreferences as any).travel_constraint_type || "time") as
-          | "time"
-          | "distance",
-        constraintValue: (loadedPreferences as any).travel_constraint_value || 20,
+        constraintType: 'time' as const,
+        constraintValue: (loadedPreferences as any).travel_constraint_value || 30,
         searchLocation: (loadedPreferences as any).location || "",
       });
     } else {
@@ -414,12 +406,8 @@ export default function PreferencesSheet({
         setTravelMode(loadedPreferences.travel_mode);
       }
 
-      if (loadedPreferences.travel_constraint_type) {
-        setConstraintType(
-          loadedPreferences.travel_constraint_type as "time" | "distance"
-        );
-      }
-      if (loadedPreferences.travel_constraint_value) {
+      // travel_constraint_type is always 'time' — no need to load from DB
+      if (loadedPreferences.travel_constraint_value !== undefined && loadedPreferences.travel_constraint_value !== null) {
         setConstraintValue(loadedPreferences.travel_constraint_value);
       }
 
@@ -496,9 +484,8 @@ export default function PreferencesSheet({
           : null,
         exactTime: (loadedPreferences as any).exact_time || "",
         travelMode: loadedPreferences.travel_mode || "walking",
-        constraintType: (loadedPreferences.travel_constraint_type ||
-          "time") as "time" | "distance",
-        constraintValue: loadedPreferences.travel_constraint_value || 20,
+        constraintType: 'time' as const,
+        constraintValue: loadedPreferences.travel_constraint_value || 30,
         searchLocation: (loadedPreferences as any).custom_location || "",
       });
     }
@@ -763,7 +750,6 @@ export default function PreferencesSheet({
     if (!datesEqual(selectedDate, initialPreferences.selectedDate)) changes++;
 
     if (travelMode !== initialPreferences.travelMode) changes++;
-    if (constraintType !== initialPreferences.constraintType) changes++;
     if (constraintValue !== initialPreferences.constraintValue) changes++;
     if (searchLocation !== initialPreferences.searchLocation) changes++;
 
@@ -778,7 +764,6 @@ export default function PreferencesSheet({
     exactTime,
     selectedDate,
     travelMode,
-    constraintType,
     constraintValue,
     searchLocation,
   ]);
@@ -793,7 +778,6 @@ export default function PreferencesSheet({
     setSelectedDate(defaultPreferences.selectedDate);
     setExactTime(defaultPreferences.exactTime);
     setTravelMode(defaultPreferences.travelMode);
-    setConstraintType(defaultPreferences.constraintType);
     setConstraintValue(defaultPreferences.constraintValue);
     setSearchLocation(defaultPreferences.searchLocation);
   }, []);
@@ -847,9 +831,9 @@ export default function PreferencesSheet({
             budget_min: 0,
             budget_max: backCompatBudgetMax,
             travel_mode: travelMode,
-            travel_constraint_type: constraintType,
+            travel_constraint_type: 'time' as const,
             travel_constraint_value:
-              typeof constraintValue === "number" ? constraintValue : 20,
+              typeof constraintValue === "number" ? constraintValue : 30,
             time_of_day: selectedTimeSlot || null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
           };
@@ -901,8 +885,8 @@ export default function PreferencesSheet({
     } catch (error) {
       console.error("[PreferencesSheet] Save failed:", error);
       Alert.alert(
-        'Save Failed',
-        'Your preferences could not be saved. Please try again.',
+        "Couldn\u2019t Save",
+        'Something went wrong. Give it another try.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -941,10 +925,10 @@ export default function PreferencesSheet({
           <View style={styles.titleContainer}>
             {isCollaborationMode && sessionName ? (
               <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                Preferences for {sessionName}
+                {sessionName} Vibes
               </Text>
             ) : (
-              <Text style={styles.title}>Solo Preferences</Text>
+              <Text style={styles.title}>Your Vibe</Text>
             )}
           </View>
         </View>
@@ -967,7 +951,7 @@ export default function PreferencesSheet({
           />
           {minSelectionMessage && (
             <Text style={styles.selectionCapMessage}>
-              At least one intent or category must be selected.
+              Pick at least one mood or category to get started.
             </Text>
           )}
 
@@ -979,15 +963,15 @@ export default function PreferencesSheet({
           />
           {categoryCapMessage && (
             <Text style={styles.selectionCapMessage}>
-              Maximum 3 categories. Deselect one to choose another.
+              3 max — drop one to add another.
             </Text>
           )}
 
           {/* Price Tier Section */}
           {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Price Range</Text>
-              <Text style={styles.sectionSubtitle}>Pick all the tiers that work for you</Text>
+              <Text style={styles.sectionTitle}>Budget</Text>
+              <Text style={styles.sectionSubtitle}>Select every tier you're open to</Text>
               <View style={styles.tierGrid}>
                 {PRICE_TIERS.map((tier) => {
                   const isActive = selectedPriceTiers.includes(tier.slug);
@@ -995,15 +979,19 @@ export default function PreferencesSheet({
                     <TouchableOpacity
                       key={tier.slug}
                       style={[
-                        styles.tierTile,
-                        isActive && { borderColor: tier.color, backgroundColor: `${tier.color}14` },
+                        styles.tierPill,
+                        isActive && { borderColor: tier.color, backgroundColor: tier.color + '14' },
                       ]}
                       onPress={() => handlePriceTierToggle(tier.slug)}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name={tier.icon as any} size={20} color={isActive ? tier.color : '#9CA3AF'} />
-                      <Text style={[styles.tierLabel, isActive && { color: tier.color, fontWeight: '700' as const }]}>{tier.label}</Text>
-                      <Text style={[styles.tierRange, isActive && { color: tier.color }]}>{tier.rangeLabel}</Text>
+                      <View style={[styles.tierIconDot, isActive && { backgroundColor: tier.color }]}>
+                        <Ionicons name={tier.icon as any} size={13} color={isActive ? '#fff' : '#9CA3AF'} />
+                      </View>
+                      <View style={styles.tierTextContainer}>
+                        <Text style={[styles.tierLabel, isActive && { color: tier.color }]}>{tier.label}</Text>
+                        <Text style={[styles.tierRange, isActive && { color: tier.color, opacity: 0.7 }]}>{tier.rangeLabel}</Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -1035,18 +1023,22 @@ export default function PreferencesSheet({
 
           {/* Travel Limit Section */}
           <TravelLimitSection
-            constraintType={constraintType}
             constraintValue={constraintValue}
-            onConstraintTypeChange={setConstraintType}
             onConstraintValueChange={(text) => {
               const numericValue = text.replace(/[^0-9]/g, "");
-              setConstraintValue(numericValue ? Number(numericValue) : "");
+              if (numericValue === "") {
+                setConstraintValue("");
+                return;
+              }
+              const val = Number(numericValue);
+              if (val >= 5 && val <= 120) {
+                setConstraintValue(val);
+              }
             }}
             onFocus={() => scrollToField(constraintInputContainerRef)}
-            accountPreferences={accountPreferences}
           />
 
-          {/* Starting Location Section */}
+          {/* Starting Point Section */}
           <View
             ref={locationSectionRef}
             style={styles.section}
@@ -1055,11 +1047,11 @@ export default function PreferencesSheet({
               locationSectionY.current = y;
             }}
           >
-            <Text style={styles.sectionTitle}>Starting Location</Text>
+            <Text style={styles.sectionTitle}>Starting Point</Text>
             <Text style={styles.sectionSubtitle}>
               {useGpsLocation
-                ? "Using your current GPS location."
-                : "Using your custom location. Toggle on to use GPS."}
+                ? "Using your current location."
+                : "Using a custom pin. Toggle on for GPS."}
             </Text>
 
             <LocationInputSection
@@ -1104,7 +1096,7 @@ export default function PreferencesSheet({
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  Apply {countChanges() > 0 ? `(${countChanges()})` : ""}
+                  Lock It In {countChanges() > 0 ? `(${countChanges()})` : ""}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1113,7 +1105,7 @@ export default function PreferencesSheet({
               style={styles.resetButton}
               disabled={isSaving}
             >
-              <Text style={styles.resetButtonText}>Reset</Text>
+              <Text style={styles.resetButtonText}>Start Over</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1239,12 +1231,13 @@ const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
   selectionCapMessage: {
-    color: '#EF4444',
-    fontSize: 13,
+    color: '#dc2626',
+    fontSize: 12,
     textAlign: 'center' as const,
-    marginTop: 8,
+    marginTop: 6,
+    fontWeight: '500',
   },
-  // --- New bottom-sheet modal styles (used when `visible` prop is passed) ---
+  // --- Bottom-sheet modal styles (used when `visible` prop is passed) ---
   sheetOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.35)",
@@ -1258,8 +1251,8 @@ const styles = StyleSheet.create({
     height: SHEET_HEIGHT,
     width: "100%",
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
@@ -1283,42 +1276,26 @@ const styles = StyleSheet.create({
   // --- Shared styles ---
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
+    backgroundColor: "#fafaf9",
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
+    paddingTop: 8,
     paddingBottom: 120,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
     backgroundColor: "#ffffff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
     zIndex: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    borderBottomColor: "#f0ebe6",
   },
   titleContainer: {
     flex: 1,
@@ -1327,611 +1304,100 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#1e293b",
+    color: "#111827",
     textAlign: "center",
-    marginBottom: 2,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
     color: "#374151",
     textAlign: "center",
+    letterSpacing: -0.2,
   },
+  // --- Section (used for Budget + Starting Point inline sections) ---
   section: {
-    backgroundColor: "white",
+    backgroundColor: "#ffffff",
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: "#f0ebe6",
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#111827",
-    marginBottom: 3,
+    marginBottom: 4,
+    letterSpacing: -0.2,
   },
   sectionSubtitle: {
     fontSize: 12,
     color: "#6b7280",
     marginBottom: 10,
   },
-  sectionQuestion: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 10,
-  },
-  sectionHeaderWithBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  requiredBadge: {
-    backgroundColor: "#fee2e2",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  requiredBadgeText: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#dc2626",
-  },
-  experienceTypesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  experienceTypeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
-  },
-  experienceTypeButtonSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-  },
-  experienceTypeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  experienceTypeTextSelected: {
-    color: "#ffffff",
-  },
-  budgetInputsContainer: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-  },
-  budgetInputWrapper: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 6,
-  },
-  budgetInputContainer: {
-    position: "relative",
-    marginBottom: 12,
-  },
-  dollarSign: {
-    position: "absolute",
-    left: 12,
-    top: 12,
-    fontSize: 16,
-    color: "#6b7280",
-    zIndex: 1,
-  },
-  budgetInput: {
-    paddingLeft: 28,
-    paddingRight: 10,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    fontSize: 14,
-    backgroundColor: "white",
-  },
-  budgetPresetsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
-  },
-  budgetPresetButton: {
-    flex: 1,
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: "white",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 3,
-    alignItems: "center",
-    overflow: "visible",
-  },
-  budgetPresetText: {
-    fontSize: 10,
-    color: "#374151",
-    fontWeight: "500",
-  },
+  // --- Price Tier Pills ---
   tierGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
-  tierTile: {
+  tierPill: {
     width: "47%" as any,
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: "#d1d5db",
-    backgroundColor: "#ffffff",
-    gap: 4,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fafafa",
+    gap: 8,
+  },
+  tierIconDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tierTextContainer: {
+    flex: 1,
   },
   tierLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#374151",
   },
   tierRange: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#9CA3AF",
+    marginTop: 1,
   },
-  categoriesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  categoryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
-    minWidth: "31%",
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  categoryButtonSelected: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#eb7825",
-  },
-  categoryText: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  categoryTextSelected: {
-    color: "#eb7825",
-  },
-  dateOptionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  dateOptionPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
-  },
-  dateOptionPillSelected: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#eb7825",
-  },
-  dateOptionPillLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  dateOptionPillLabelSelected: {
-    color: "#eb7825",
-    fontWeight: "600",
-  },
-  weekendInfoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#e0f2fe",
-    marginTop: 8,
-    borderWidth: 0,
-  },
-  weekendInfoIcon: {
-    marginRight: 12,
-  },
-  weekendInfoContent: {
-    flex: 1,
-  },
-  weekendInfoLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#0369a1",
-    marginBottom: 2,
-  },
-  weekendInfoDescription: {
-    fontSize: 12,
-    color: "#0c4a6e",
-    opacity: 0.9,
-  },
-  dateInputField: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#eb7825",
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  dateInputText: {
-    fontSize: 14,
-    color: "#111827",
-    marginLeft: 8,
-    flex: 1,
-  },
-  dateInputPlaceholder: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginLeft: 8,
-    flex: 1,
-  },
-  quickPresetsLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  timeSlotsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 8,
-  },
-  timeSlotCard: {
-    width: "47.5%",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "#f9fafb",
-    borderColor: "#e5e7eb",
-    minHeight: 60,
-    justifyContent: "center",
-  },
-  timeSlotCardSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  timeSlotContent: {
-    alignItems: "flex-start",
-  },
-  timeSlotIcon: {
-    marginBottom: 8,
-  },
-  timeSlotLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  timeSlotLabelSelected: {
-    color: "#ffffff",
-  },
-  timeSlotTime: {
-    fontSize: 12,
-    color: "#6b7280",
-    lineHeight: 16,
-  },
-  timeSlotTimeSelected: {
-    color: "#ffffff",
-    opacity: 0.9,
-  },
-  exactTimeSection: {
-    marginTop: 16,
-  },
-  exactTimeLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  exactTimeInput: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "#d1d5db",
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  exactTimeInputText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginLeft: 8,
-    flex: 1,
-  },
-  exactTimeInputTextSelected: {
-    fontSize: 14,
-    color: "#111827",
-    marginLeft: 8,
-    flex: 1,
-    fontWeight: "500",
-  },
-  travelModesGrid: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  travelModeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
-  },
-  travelModeCardSelected: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#eb7825",
-  },
-  travelModeLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  travelModeLabelSelected: {
-    color: "#eb7825",
-    fontWeight: "600",
-  },
-  constraintTypeContainer: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-  },
-  constraintTypeButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
-  },
-  constraintTypeButtonSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-  },
-  constraintTypeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  constraintTypeTextSelected: {
-    color: "#ffffff",
-  },
-  constraintInputSection: {
-    marginBottom: 16,
-  },
-  constraintInputLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#111827",
-    marginBottom: 6,
-  },
-  constraintInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 6,
-  },
-  constraintInputContainerFocused: {
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  constraintInputIcon: {
-    marginRight: 12,
-  },
-  constraintInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    padding: 0,
-  },
-  quickOptionsLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  quickOptionsContainer: {
-    flexDirection: "row",
-  },
-  quickOption: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  quickOptionLast: {
-    marginRight: 0,
-  },
-  quickOptionSelected: {
-    backgroundColor: "#eb7825",
-  },
-  quickOptionUnselected: {
-    backgroundColor: "#f3f4f6",
-  },
-  quickOptionText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  quickOptionTextSelected: {
-    color: "#ffffff",
-  },
-  quickOptionTextUnselected: {
-    color: "#111827",
-  },
-  useLocationButton: {
-    backgroundColor: "#ffedd5",
-    borderWidth: 1.5,
-    borderColor: "#eb7825",
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    width: "100%",
-  },
-  useLocationButtonText: {
-    color: "#eb7825",
-    fontSize: 13,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  separator: {
-    alignItems: "center",
-    marginVertical: 12,
-  },
-  separatorText: {
-    fontSize: 12,
-    color: "#9ca3af",
-    fontWeight: "400",
-  },
-  locationInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 6,
-  },
-  locationInputContainerFocused: {
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  locationInputIcon: {
-    marginRight: 12,
-  },
-  locationTextInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    padding: 0,
-  },
-  locationHelperContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 6,
-  },
-  locationHelperText: {
-    fontSize: 11,
-    color: "#6b7280",
-  },
-  suggestionsContainer: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginTop: 4,
-    marginBottom: 8,
-    maxHeight: 200,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  suggestionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  suggestionTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  suggestionText: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "500",
-  },
-  suggestionSubtext: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginTop: 2,
-  },
+  // --- Footer ---
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "white",
+    backgroundColor: "#ffffff",
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    padding: 12,
+    borderTopColor: "#f0ebe6",
+    paddingHorizontal: 16,
+    paddingTop: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 4,
   },
   footerButtonsContainer: {
@@ -1941,20 +1407,25 @@ const styles = StyleSheet.create({
   applyButton: {
     flex: 1,
     backgroundColor: "#eb7825",
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   resetButton: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#f9fafb",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#e5e7eb",
   },
   resetButtonText: {
     color: "#374151",
@@ -1966,14 +1437,16 @@ const styles = StyleSheet.create({
   },
   applyButtonText: {
     color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: -0.2,
   },
   buttonLoadingContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
+  // --- Calendar/Time Picker Modals ---
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1996,14 +1469,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#111827",
-  },
-  modalCloseButton: {
-    padding: 8,
-  },
-  modalConfirmText: {
-    fontSize: 16,
-    color: "#eb7825",
-    fontWeight: "600",
   },
   timePicker: {
     width: "100%",

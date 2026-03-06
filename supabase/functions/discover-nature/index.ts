@@ -288,7 +288,6 @@ serve(async (req: Request) => {
       location,
       budgetMax = 200,
       travelMode = 'walking',
-      travelConstraintType = 'time',
       travelConstraintValue = 30,
       datetimePref,
       dateOption = 'now',
@@ -309,11 +308,8 @@ serve(async (req: Request) => {
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // ── Calculate search radius from travel constraint ──────────────────
-    const maxDistKm =
-      travelConstraintType === 'time'
-        ? (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3
-        : travelConstraintValue;
-    const radiusMeters = Math.min(Math.round(maxDistKm * 1000), 50000);
+    const maxDistKm = (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3;
+    const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
 
     // ── Pool-first serving ──────────────────────────────────────────────
     const userId = (await supabaseAdmin.auth.getUser(

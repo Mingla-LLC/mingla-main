@@ -296,7 +296,6 @@ serve(async (req: Request) => {
       location,
       budgetMax = 200,
       travelMode = 'walking',
-      travelConstraintType = 'time',
       travelConstraintValue = 30,
       datetimePref,
       dateOption = 'now',
@@ -351,11 +350,8 @@ serve(async (req: Request) => {
     }
 
     // ── Calculate search radius from travel constraint ────────────────────
-    const maxDistKm =
-      travelConstraintType === 'time'
-        ? (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3
-        : travelConstraintValue;
-    const radiusMeters = Math.min(Math.round(maxDistKm * 1000), 50000);
+    const maxDistKm = (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3;
+    const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
 
     // ── Build category → types map (one API call per category, not per type) ──
     const categoryTypeMap = getCategoryTypeMap(categories);

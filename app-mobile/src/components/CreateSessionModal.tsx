@@ -84,12 +84,13 @@ export const CreateSessionModal: React.FC = () => {
   const phoneRawDigits = phoneDigits.replace(/\D/g, '');
   const phoneE164 = phoneCountryData ? phoneCountryData.dialCode + phoneRawDigits : '+1' + phoneRawDigits;
   const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
+  const debouncedPhoneDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
 
-  // Phone lookup
+  // Phone lookup — enabled uses debounced digit count to stay in sync with debounced phone
   const {
     data: phoneLookupResult,
     isLoading: phoneLookupLoading,
-  } = usePhoneLookup(debouncedPhoneE164, phoneRawDigits.length >= 7);
+  } = usePhoneLookup(debouncedPhoneE164, debouncedPhoneDigitCount >= 7);
 
   const { createCollaborativeSession } = useSessionManagement();
   const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();

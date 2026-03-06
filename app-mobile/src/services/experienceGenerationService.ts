@@ -397,30 +397,16 @@ export class ExperienceGenerationService {
 
     let locationScore = 0;
 
-    if (preferences.travel_constraint_type === "time") {
-      const constraintValue = preferences.travel_constraint_value || 30;
+    const constraintValue = preferences.travel_constraint_value || 30;
 
-      if (travelTime <= 5) {
-        locationScore = 1.0;
-      } else if (travelTime >= constraintValue) {
-        locationScore = 0.0;
-      } else {
-        const range = constraintValue - 5;
-        const excess = travelTime - 5;
-        locationScore = 1.0 - excess / range;
-      }
-    } else if (preferences.travel_constraint_type === "distance") {
-      const maxDistance = preferences.travel_constraint_value || 5;
-
-      if (distance <= 0.5) {
-        locationScore = 1.0;
-      } else if (distance >= maxDistance) {
-        locationScore = 0.0;
-      } else {
-        const range = maxDistance - 0.5;
-        const excess = distance - 0.5;
-        locationScore = 1.0 - excess / range;
-      }
+    if (travelTime <= 5) {
+      locationScore = 1.0;
+    } else if (travelTime >= constraintValue) {
+      locationScore = 0.0;
+    } else {
+      const range = constraintValue - 5;
+      const excess = travelTime - 5;
+      locationScore = 1.0 - excess / range;
     }
 
     // Bonus for very close locations

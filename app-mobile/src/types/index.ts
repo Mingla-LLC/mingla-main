@@ -46,9 +46,8 @@ export interface RecommendationsRequest {
   travel: {
     mode: "WALKING" | "DRIVING" | "TRANSIT";
     constraint: {
-      type: "TIME" | "DISTANCE";
-      maxMinutes?: number;
-      maxDistance?: number;
+      type: "TIME";
+      maxMinutes: number;
     };
   };
   origin: {
@@ -173,9 +172,8 @@ export interface ActivePreferences {
   experienceTypes: string[];
   time: string;
   travel: string;
-  travelConstraint: "time" | "distance";
+  travelConstraint: "time";
   travelTime: number;
-  travelDistance: number;
   location: string;
   customLocation: string;
   custom_lat: number | null;
@@ -192,7 +190,7 @@ export interface Preferences {
   people_count: number;
   categories: string[];
   travel_mode: string;
-  travel_constraint_type: string;
+  travel_constraint_type: 'time';
   travel_constraint_value: number;
   datetime_pref: string;
   date_option?: string | null; // "now", "today", "weekend", "custom"

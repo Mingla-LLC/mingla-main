@@ -5,7 +5,7 @@ export interface AggregatedNonRotatingPrefs {
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
-  travelConstraintType: string;
+  travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref: string | null;
   location: { lat: number; lng: number } | null;
@@ -21,7 +21,7 @@ export interface AggregatedNonRotatingPrefs {
  * - budgetMin: Math.min()
  * - budgetMax: Math.max()
  * - travelMode: most common, default 'walking'
- * - travelConstraintType: most common, default 'time'
+ * - travelConstraintType: always 'time' (distance option removed)
  * - travelConstraintValue: median (not min — avoids extreme restriction)
  * - datetimePref: earliest ISO string
  * - location: midpoint of all custom_lat/custom_lng, null if none
@@ -63,11 +63,8 @@ export function aggregateNonRotatingPrefs(
     'walking'
   );
 
-  // Travel constraint type: majority vote
-  const travelConstraintType = majorityVote(
-    rows.map((r) => r.travel_constraint_type || 'time'),
-    'time'
-  );
+  // Travel constraint type: always 'time' (distance option removed)
+  const travelConstraintType = 'time' as const;
 
   // Travel constraint value: MEDIAN (not min)
   const constraintValues = rows

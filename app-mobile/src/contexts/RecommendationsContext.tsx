@@ -280,7 +280,7 @@ export const RecommendationsProvider: React.FC<
         budgetMin: userPrefs.budget_min ?? 0,
         budgetMax: userPrefs.budget_max ?? 1000,
         travelMode: userPrefs.travel_mode ?? 'walking',
-        travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
+        travelConstraintType: 'time' as const,
         travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
         datetimePref: userPrefs.datetime_pref,
         dateOption: userPrefs.date_option ?? 'now',
@@ -371,9 +371,7 @@ export const RecommendationsProvider: React.FC<
     travelMode: isSoloMode
       ? (userPrefs?.travel_mode ?? 'walking')
       : (activeDeckParams?.travelMode ?? 'walking'),
-    travelConstraintType: isSoloMode
-      ? ((userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time')
-      : ((activeDeckParams?.travelConstraintType as 'time' | 'distance') ?? 'time'),
+    travelConstraintType: 'time' as const,
     travelConstraintValue: isSoloMode
       ? (userPrefs?.travel_constraint_value ?? 30)
       : (activeDeckParams?.travelConstraintValue ?? 30),
@@ -569,9 +567,7 @@ export const RecommendationsProvider: React.FC<
       const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams.budgetMin ?? 0);
       const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams.budgetMax ?? 1000);
       const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (activeDeckParams.travelMode ?? 'walking');
-      const prefetchConstraintType = isSoloMode
-        ? ((userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time')
-        : ((activeDeckParams.travelConstraintType as 'time' | 'distance') ?? 'time');
+      const prefetchConstraintType = 'time' as const;
       const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
       const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
       const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;

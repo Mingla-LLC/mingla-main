@@ -13,6 +13,7 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   Switch,
+  ScrollView,
 } from 'react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
@@ -204,6 +205,12 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
   const [manualLocationText, setManualLocationText] = useState('')
+  const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
+  const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(null)
+  const [locationSearchLoading, setLocationSearchLoading] = useState(false)
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
+  const [locationHasSearched, setLocationHasSearched] = useState(false)
+  const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [contactSearchResults, setContactSearchResults] = useState<any[]>([])
@@ -215,6 +222,8 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [resumeSubStep, setResumeSubStep] = useState<SubStep | null>(null)
+  const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
+  const [customTravelInput, setCustomTravelInput] = useState('')
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
@@ -226,6 +235,38 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       setShowDatePicker(false)
     }
   }, [navState.subStep])
+
+  // ─── Location Autocomplete Debounced Search ───
+  useEffect(() => {
+    // Only search when user is typing (not when a selection was made)
+    if (selectedLocation) return
+    if (manualLocationText.trim().length < 3) {
+      setLocationSuggestions([])
+      setShowLocationSuggestions(false)
+      setLocationHasSearched(false)
+      return
+    }
+
+    if (locationSearchTimer.current) clearTimeout(locationSearchTimer.current)
+
+    locationSearchTimer.current = setTimeout(async () => {
+      setLocationSearchLoading(true)
+      try {
+        const results = await geocodingService.autocomplete(manualLocationText.trim())
+        setLocationSuggestions(results)
+        setShowLocationSuggestions(results.length > 0)
+      } catch {
+        setLocationSuggestions([])
+        setShowLocationSuggestions(false)
+      }
+      setLocationSearchLoading(false)
+      setLocationHasSearched(true)
+    }, 350)
+
+    return () => {
+      if (locationSearchTimer.current) clearTimeout(locationSearchTimer.current)
+    }
+  }, [manualLocationText, selectedLocation])
 
   // ─── Animations ───
   const fadeAnim = useRef(new Animated.Value(1)).current
@@ -532,14 +573,38 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
         const prefs = await PreferencesService.getUserPreferences(user.id)
         if (prefs) {
+          const prefsAny = prefs as any
+          const restoredUseGps = prefsAny.use_gps_location === true
+
           setData((prev) => ({
             ...prev,
             selectedCategories: prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES,
-            selectedPriceTiers: (prefs as any).price_tiers?.length ? (prefs as any).price_tiers : DEFAULT_PRICE_TIERS,
+            selectedPriceTiers: prefsAny.price_tiers?.length ? prefsAny.price_tiers : DEFAULT_PRICE_TIERS,
             travelMode: (prefs.travel_mode as any) || DEFAULT_TRANSPORT,
-            travelTimeMinutes: prefs.travel_constraint_value || DEFAULT_TRAVEL_TIME,
-            selectedIntents: (prefs as any).intents || [],
+            travelTimeMinutes: prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME,
+            selectedIntents: prefsAny.intents || [],
+            // Restore location state from persisted preferences
+            locationGranted: restoredUseGps,
+            useGpsLocation: restoredUseGps,
+            manualLocation: prefsAny.custom_location || null,
           }))
+
+          // Restore manual location selection if user had previously set one
+          if (prefsAny.custom_location && !restoredUseGps) {
+            setManualLocationText(prefsAny.custom_location)
+            setSelectedLocation({
+              displayName: prefsAny.custom_location,
+              fullAddress: prefsAny.custom_location,
+            })
+          }
+
+          // Restore GPS permission flag — verify actual device permission still granted
+          if (restoredUseGps) {
+            const { status } = await Location.getForegroundPermissionsAsync()
+            if (status === 'granted') {
+              setHasGpsPermission(true)
+            }
+          }
         }
       } catch (e) {
         console.error('Resume load error:', e)
@@ -608,6 +673,12 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Send OTP ───
   const handleSendOtp = useCallback(async () => {
     logger.action('Send OTP pressed')
+    // Guard: if phone is already verified, skip OTP entirely and advance
+    if (data.phoneVerified) {
+      logger.onboarding('Phone already verified — skipping OTP send')
+      goToSubStep('gender_identity')
+      return
+    }
     if (!isPhoneValid()) {
       logger.onboarding('OTP send blocked — phone invalid')
       setPhoneError('Check that number — something looks off.')
@@ -620,13 +691,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     const result = await sendOtp(e164)
     setSendingOtp(false)
     if (result.success) {
+      // Server confirmed phone is already verified — skip OTP, mark verified
+      if (result.status === 'already_verified') {
+        logger.onboarding('Server says phone already verified — skipping OTP')
+        setData((prev) => ({ ...prev, phoneVerified: true }))
+        goToSubStep('gender_identity')
+        return
+      }
       setResendCountdown(30)
       setOtpAttempts(0)
       goNext() // advance to OTP sub-step
     } else {
       setPhoneError(result.error || "Couldn't send code. Try again.")
     }
-  }, [isPhoneValid, buildE164, goNext])
+  }, [isPhoneValid, buildE164, goNext, data.phoneVerified, goToSubStep])
 
   // ─── Resend OTP (does NOT advance state — used for auto-resend after 3 failures) ───
   const handleResendOtp = useCallback(async () => {
@@ -635,9 +713,16 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     const result = await sendOtp(buildE164())
     setSendingOtp(false)
     if (result.success) {
+      // Server confirmed phone is already verified — skip OTP, mark verified
+      if (result.status === 'already_verified') {
+        logger.onboarding('Server says phone already verified on resend — skipping OTP')
+        setData((prev) => ({ ...prev, phoneVerified: true }))
+        goToSubStep('gender_identity')
+        return
+      }
       setResendCountdown(30)
     }
-  }, [buildE164])
+  }, [buildE164, goToSubStep])
 
   // ─── Verify OTP ───
   const handleVerifyOtp = useCallback(
@@ -717,8 +802,14 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       logger.onboarding('Location captured', { city, lat: loc.latitude, lng: loc.longitude })
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
 
-      // Advance user immediately — locale detection must NOT block onboarding
+      // Persist location choice immediately so it survives app restart
       persistStep(4).catch(() => {})
+      if (user?.id) {
+        PreferencesService.updateUserPreferences(user.id, {
+          use_gps_location: true,
+          custom_location: null,
+        } as any).catch(() => {})
+      }
       autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
 
       // Locale detection — use country from the geocode result we already have
@@ -819,30 +910,67 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
   }, [captureLocation])
 
-  // ─── Manual Location Geocode ───
+  // ─── Location Suggestion Selection ───
+  const handleSelectLocationSuggestion = useCallback(async (suggestion: import('../services/geocodingService').AutocompleteSuggestion) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setSelectedLocation(suggestion)
+    setManualLocationText(suggestion.displayName)
+    setShowLocationSuggestions(false)
+    setLocationSuggestions([])
+    logger.action('Location suggestion selected', { displayName: suggestion.displayName, placeId: suggestion.placeId })
+
+    // Resolve coordinates if not already present (Google path returns placeId only)
+    if (!suggestion.location && suggestion.placeId) {
+      const coords = await geocodingService.getPlaceCoordinates(suggestion.placeId)
+      if (coords) {
+        setSelectedLocation({ ...suggestion, location: coords })
+      }
+    }
+  }, [])
+
+  // ─── Clear Location Selection (user wants to search again) ───
+  const handleClearLocationSelection = useCallback(() => {
+    setSelectedLocation(null)
+    setManualLocationText('')
+    setLocationSuggestions([])
+    setShowLocationSuggestions(false)
+    setLocationHasSearched(false)
+  }, [])
+
+  // ─── Manual Location Submit (uses pre-selected suggestion) ───
   const handleManualLocation = useCallback(async () => {
-    if (!manualLocationText.trim()) return
-    logger.action('Manual location submitted', { text: manualLocationText.trim() })
+    if (!selectedLocation) return
+    logger.action('Manual location submitted', { displayName: selectedLocation.displayName })
     setSavingPrefs(true)
     try {
-      // Use geocodingService (Nominatim/Google HTTP API) — NOT native Location.geocodeAsync
-      // This avoids sharing the native geocoder rate bucket with reverseGeocodeAsync
-      const suggestions = await geocodingService.autocomplete(manualLocationText.trim())
-      const firstWithLocation = suggestions.find(s => s.location)
+      // Resolve coordinates: from suggestion.location or placeId lookup
+      let lat: number | undefined
+      let lng: number | undefined
 
-      if (firstWithLocation?.location) {
-        const lat = firstWithLocation.location.lat
-        const lng = firstWithLocation.location.lng
+      if (selectedLocation.location) {
+        lat = selectedLocation.location.lat
+        lng = selectedLocation.location.lng
+      } else if (selectedLocation.placeId) {
+        const coords = await geocodingService.getPlaceCoordinates(selectedLocation.placeId)
+        if (coords) { lat = coords.lat; lng = coords.lng }
+      }
+
+      if (lat != null && lng != null) {
         setData((prev) => ({
           ...prev,
-          manualLocation: manualLocationText.trim(),
-          coordinates: { lat, lng },
+          manualLocation: selectedLocation.displayName,
+          coordinates: { lat: lat!, lng: lng! },
         }))
 
-        // Advance user immediately — locale detection must NOT block onboarding
+        if (user?.id) {
+          PreferencesService.updateUserPreferences(user.id, {
+            use_gps_location: false,
+            custom_location: selectedLocation.displayName,
+          } as any).catch(() => {})
+        }
+
         goNext()
 
-        // Fire-and-forget locale detection in background
         detectLocaleFromCoordinates(lat, lng).then((detected) => {
           if (user?.id) {
             PreferencesService.updateUserProfile(user.id, {
@@ -867,18 +995,18 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           })
         }).catch(() => {})
       } else {
-        // No results from HTTP API — try native as last resort (will share rate bucket but manual entry is rare)
-        const nativeResults = await Location.geocodeAsync(manualLocationText.trim())
+        // Coordinates could not be resolved — fallback to native geocoder
+        const nativeResults = await Location.geocodeAsync(selectedLocation.displayName)
         if (nativeResults.length > 0) {
-          const lat = nativeResults[0].latitude
-          const lng = nativeResults[0].longitude
+          const nLat = nativeResults[0].latitude
+          const nLng = nativeResults[0].longitude
           setData((prev) => ({
             ...prev,
-            manualLocation: manualLocationText.trim(),
-            coordinates: { lat, lng },
+            manualLocation: selectedLocation.displayName,
+            coordinates: { lat: nLat, lng: nLng },
           }))
           goNext()
-          detectLocaleFromCoordinates(lat, lng).then((detected) => {
+          detectLocaleFromCoordinates(nLat, nLng).then((detected) => {
             if (user?.id) {
               PreferencesService.updateUserProfile(user.id, {
                 currency: detected.currency,
@@ -902,7 +1030,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       console.error('Geocode error:', e)
     }
     setSavingPrefs(false)
-  }, [manualLocationText, goNext, user?.id, setProfile])
+  }, [selectedLocation, goNext, user?.id, setProfile])
 
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
@@ -939,7 +1067,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           location: coords,
           categories: data.selectedCategories,
           intents: data.selectedIntents,
-          priceTiers: data.selectedPriceTiers ?? ['chill', 'comfy'],
+          priceTiers: data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS,
           budgetMin: 0,
           budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
@@ -1177,8 +1305,16 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       autoAdvanceRef.current = null
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+
+    // Skip OTP step when navigating back if phone is already verified
+    // (user shouldn't land on "Enter the code" screen when already verified)
+    if (data.phoneVerified && navState.subStep === 'gender_identity') {
+      goToSubStep('phone')
+      return
+    }
+
     goBack()
-  }, [goBack])
+  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep])
 
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
@@ -1194,7 +1330,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       case 'welcome':
         return { label: "Let's go", disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'phone':
-        return { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
+        return data.phoneVerified
+          ? { label: 'Continue', disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
+          : { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
         return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'gender_identity':
@@ -1204,19 +1342,49 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       case 'value_prop':
         return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
-        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => { persistStep(3).catch(() => {}); handleGoNext() }, hide: false }
+        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => {
+          persistStep(3).catch(() => {})
+          // Persist intents immediately so they survive app restart during Step 3/4
+          if (user?.id) {
+            PreferencesService.updateUserPreferences(user.id, { intents: data.selectedIntents } as any).catch(() => {})
+          }
+          handleGoNext()
+        }, hide: false }
       case 'location':
         return { label: 'Enable location', disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'manual_location':
-        return { label: 'Next', disabled: !manualLocationText.trim(), loading: savingPrefs, onPress: handleManualLocation, hide: false }
+        return { label: 'Next', disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
       case 'categories':
-        return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: handleGoNext, hide: false }
+        return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
+          // Persist categories progressively so they survive app restart
+          if (user?.id) {
+            PreferencesService.updateUserPreferences(user.id, { categories: data.selectedCategories } as any).catch(() => {})
+          }
+          handleGoNext()
+        }, hide: false }
       case 'budget':
-        return { label: 'Next', disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: handleGoNext, hide: false }
+        return { label: 'Next', disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
+          // Persist price tiers progressively
+          if (user?.id) {
+            const highestTier = PRICE_TIERS.slice().reverse().find(t => data.selectedPriceTiers.includes(t.slug))
+            PreferencesService.updateUserPreferences(user.id, {
+              price_tiers: data.selectedPriceTiers,
+              budget_min: 0,
+              budget_max: highestTier?.max ?? 1000,
+            } as any).catch(() => {})
+          }
+          handleGoNext()
+        }, hide: false }
       case 'transport':
-        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+        return { label: 'Next', disabled: false, loading: false, onPress: () => {
+          // Persist transport mode progressively
+          if (user?.id) {
+            PreferencesService.updateUserPreferences(user.id, { travel_mode: data.travelMode } as any).catch(() => {})
+          }
+          handleGoNext()
+        }, hide: false }
       case 'travel_time':
         return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends':
@@ -1243,7 +1411,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, manualLocationText, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePerson, persistStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePerson, persistStep, goToSubStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -1294,6 +1462,28 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
 
     if (subStep === 'phone') {
+      // If phone is already verified (user navigated back or resumed), show verified state
+      if (data.phoneVerified) {
+        // Use profile.phone (persisted E.164) as primary source, fall back to buildE164()
+        // for same-session verification where profile may not have refreshed yet
+        const displayPhone = profile?.phone || buildE164()
+        return (
+          <View>
+            <Text style={styles.headline}>You're all set.</Text>
+            <Text style={styles.body}>Your number's locked in. One less thing.</Text>
+            <View style={styles.verifiedCard}>
+              <View style={styles.verifiedBadgeRow}>
+                <View style={styles.verifiedIconCircle}>
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                </View>
+                <Text style={styles.verifiedBadgeText}>Verified</Text>
+              </View>
+              <Text style={styles.verifiedPhoneNumber}>{displayPhone}</Text>
+            </View>
+          </View>
+        )
+      }
+
       return (
         <View>
           <Text style={styles.headline}>What's your number?</Text>
@@ -1759,19 +1949,113 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     if (subStep === 'manual_location') {
       return (
         <View>
-          <Text style={styles.headline}>Where are you based?</Text>
-          <Text style={styles.body}>Type your city so we can find places nearby.</Text>
+          <Text style={styles.headline}>Drop your pin on the map</Text>
+          <Text style={styles.body}>
+            Give us your exact address — down to the street — and we'll unlock the best spots around you.
+          </Text>
           <View style={styles.inputSpacing}>
-            <TextInput
-              style={styles.textInput}
-              value={manualLocationText}
-              onChangeText={setManualLocationText}
-              placeholder="e.g., San Francisco"
-              placeholderTextColor={colors.gray[400]}
-              autoCapitalize="words"
-              returnKeyType="done"
-              onSubmitEditing={handleManualLocation}
-            />
+            {selectedLocation ? (
+              // ─── Confirmed Selection State (brand orange) ───
+              <Pressable
+                style={styles.locationSelectedCard}
+                onPress={handleClearLocationSelection}
+                accessibilityLabel="Change selected location"
+                accessibilityHint="Tap to search for a different location"
+              >
+                <View style={styles.locationSelectedContent}>
+                  <View style={styles.locationSelectedIconWrap}>
+                    <Ionicons name="location" size={20} color={colors.primary[500]} />
+                  </View>
+                  <View style={styles.locationSelectedTextWrap}>
+                    <Text style={styles.locationSelectedName} numberOfLines={1}>
+                      {selectedLocation.displayName}
+                    </Text>
+                    {selectedLocation.fullAddress !== selectedLocation.displayName && (
+                      <Text style={styles.locationSelectedAddress} numberOfLines={1}>
+                        {selectedLocation.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="checkmark-circle" size={22} color={colors.primary[500]} />
+                </View>
+              </Pressable>
+            ) : (
+              // ─── Search Input + Dropdown ───
+              <View style={styles.locationSearchContainer}>
+                <View style={styles.locationSearchInputWrap}>
+                  <Ionicons
+                    name="search-outline"
+                    size={20}
+                    color={colors.text.tertiary}
+                  />
+                  <TextInput
+                    style={styles.locationSearchInput}
+                    value={manualLocationText}
+                    onChangeText={(text) => {
+                      setManualLocationText(text)
+                      if (selectedLocation) setSelectedLocation(null)
+                    }}
+                    placeholder="Start typing your address..."
+                    placeholderTextColor={colors.gray[400]}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                  />
+                  {locationSearchLoading && (
+                    <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locationSearchSpinner} />
+                  )}
+                </View>
+
+                {showLocationSuggestions && locationSuggestions.length > 0 && (
+                  <View style={styles.locationDropdown}>
+                    <ScrollView
+                      style={styles.locationDropdownScroll}
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                    >
+                      {locationSuggestions.map((suggestion, index) => (
+                        <Pressable
+                          key={suggestion.placeId || `loc-${index}`}
+                          style={({ pressed }) => [
+                            styles.locationSuggestionRow,
+                            pressed && styles.locationSuggestionRowPressed,
+                          ]}
+                          onPress={() => handleSelectLocationSuggestion(suggestion)}
+                        >
+                          <View style={styles.locationSuggestionIconWrap}>
+                            <Ionicons name="location-outline" size={20} color={colors.gray[400]} />
+                          </View>
+                          <View style={styles.locationSuggestionTextWrap}>
+                            <Text style={styles.locationSuggestionName} numberOfLines={1}>
+                              {suggestion.displayName}
+                            </Text>
+                            {suggestion.fullAddress !== suggestion.displayName && (
+                              <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
+                                {suggestion.fullAddress}
+                              </Text>
+                            )}
+                          </View>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {manualLocationText.trim().length >= 3 && !locationSearchLoading && locationHasSearched && locationSuggestions.length === 0 && (
+                  <View style={styles.locationNoResults}>
+                    <Ionicons name="search" size={16} color={colors.gray[400]} />
+                    <Text style={styles.locationNoResultsText}>Hmm, we didn't catch that. Try a nearby street or neighborhood.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+          <Text style={styles.locationHelperText}>
+            The more precise, the better your recommendations.
+          </Text>
+          <View style={styles.locPrivacyRow}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
+            <Text style={styles.locPrivacyText}>Your exact location stays between us. Always.</Text>
           </View>
         </View>
       )
@@ -1822,18 +2106,17 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     if (subStep === 'budget') {
       return (
         <View style={styles.budgetContainer}>
-          <Text style={styles.headline}>What's your sweet spot?</Text>
-          <Text style={styles.body}>Pick all the price ranges that work for you.</Text>
-          <View style={styles.tileGrid}>
+          <Text style={styles.headlineCentered}>Your sweet spot</Text>
+          <Text style={styles.bodyCentered}>Pick the price ranges that work.</Text>
+          <View style={styles.budgetGrid}>
             {PRICE_TIERS.map((tier) => {
               const isActive = data.selectedPriceTiers.includes(tier.slug)
               return (
                 <Pressable
                   key={tier.slug}
                   style={[
-                    styles.selectionTile,
-                    styles.selectionTileTall,
-                    isActive && { borderColor: tier.color, backgroundColor: `${tier.color}14` },
+                    styles.budgetTile,
+                    isActive && { backgroundColor: tier.color, borderColor: tier.color },
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -1842,7 +2125,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                       const next = current.includes(tier.slug)
                         ? current.filter((s) => s !== tier.slug)
                         : [...current, tier.slug]
-                      // Enforce min 1
                       if (next.length === 0) return p
                       return { ...p, selectedPriceTiers: next }
                     })
@@ -1851,18 +2133,18 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                   <Ionicons
                     name={tier.icon as any}
                     size={22}
-                    color={isActive ? tier.color : colors.text.tertiary}
+                    color={isActive ? colors.text.inverse : colors.text.tertiary}
                     style={styles.tierIcon}
                   />
                   <Text style={[
-                    styles.tileText,
-                    isActive && { color: tier.color, fontWeight: '700' as const },
+                    styles.budgetTileLabel,
+                    isActive && styles.budgetTileLabelActive,
                   ]}>
                     {tier.label}
                   </Text>
                   <Text style={[
-                    styles.tierRangeText,
-                    isActive && { color: tier.color },
+                    styles.budgetTileRange,
+                    isActive && styles.budgetTileRangeActive,
                   ]}>
                     {tier.rangeLabel}
                   </Text>
@@ -1907,25 +2189,89 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
     if (subStep === 'travel_time') {
       return (
-        <View>
-          <Text style={styles.headline}>How far will you go?</Text>
-          <Text style={styles.body}>Set your comfort zone.</Text>
-          <View style={styles.tileGrid}>
+        <View style={styles.travelTimeContainer}>
+          <Text style={styles.headlineCentered}>How far will you go?</Text>
+          <Text style={styles.bodyCentered}>Set your comfort zone.</Text>
+          <View style={[styles.tileGrid, styles.tileGridCentered]}>
             {TRAVEL_TIME_PRESETS.map((mins) => (
               <Pressable
                 key={mins}
-                style={[styles.selectionTile, data.travelTimeMinutes === mins && styles.selectionTileActive]}
+                style={[
+                  styles.selectionTile,
+                  !showCustomTravelTime && data.travelTimeMinutes === mins && styles.selectionTileActive,
+                  showCustomTravelTime && styles.selectionTileDimmed,
+                ]}
                 onPress={() => {
                   logger.action(`Travel time selected: ${mins} min`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setShowCustomTravelTime(false)
                   setData((p) => ({ ...p, travelTimeMinutes: mins }))
                 }}
               >
-                <Text style={[styles.tileText, data.travelTimeMinutes === mins && styles.tileTextActive]}>{mins} min</Text>
+                <Text style={[
+                  styles.tileText,
+                  !showCustomTravelTime && data.travelTimeMinutes === mins && styles.tileTextActive,
+                  showCustomTravelTime && styles.tileTextDimmed,
+                ]}>{mins} min</Text>
               </Pressable>
             ))}
           </View>
-          <Text style={styles.caption}>Up to {data.travelTimeMinutes} min by {data.travelMode}</Text>
+
+          <View style={styles.customToggleRow}>
+            <Text style={styles.customToggleLabel}>Set your own</Text>
+            <Switch
+              value={showCustomTravelTime}
+              onValueChange={(val) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setShowCustomTravelTime(val)
+                if (val) {
+                  setCustomTravelInput(data.travelTimeMinutes.toString())
+                } else {
+                  // Snap back to nearest preset
+                  const nearest = TRAVEL_TIME_PRESETS.reduce((prev, curr) =>
+                    Math.abs(curr - data.travelTimeMinutes) < Math.abs(prev - data.travelTimeMinutes) ? curr : prev
+                  )
+                  setData((p) => ({ ...p, travelTimeMinutes: nearest }))
+                }
+              }}
+              trackColor={{ false: colors.gray[200], true: colors.primary[200] }}
+              thumbColor={showCustomTravelTime ? colors.primary[500] : colors.gray[50]}
+            />
+          </View>
+
+          {showCustomTravelTime && (
+            <View style={styles.customInputContainer}>
+              <Ionicons name="time-outline" size={20} color={colors.primary[500]} style={styles.customInputIcon} />
+              <TextInput
+                value={customTravelInput}
+                onChangeText={(text) => {
+                  const numeric = text.replace(/[^0-9]/g, '')
+                  setCustomTravelInput(numeric)
+                  const val = Number(numeric)
+                  if (val >= 5 && val <= 120) {
+                    setData((p) => ({ ...p, travelTimeMinutes: val }))
+                  }
+                }}
+                keyboardType="numeric"
+                style={styles.customInputField}
+                placeholder="5 – 120 minutes"
+                placeholderTextColor={colors.text.tertiary}
+                maxLength={3}
+                onBlur={() => {
+                  let val = Number(customTravelInput)
+                  if (isNaN(val) || val < 5) val = 5
+                  if (val > 120) val = 120
+                  setCustomTravelInput(val.toString())
+                  setData((p) => ({ ...p, travelTimeMinutes: val }))
+                }}
+              />
+              <Text style={styles.customInputUnit}>min</Text>
+            </View>
+          )}
+
+          <Text style={styles.captionCentered}>
+            Up to {data.travelTimeMinutes} min by {data.travelMode}
+          </Text>
         </View>
       )
     }
@@ -2180,7 +2526,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={false}
-      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget'}
+      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -2295,17 +2641,64 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     textAlign: 'center',
   },
+  headlineCentered: {
+    ...typography.xxxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    letterSpacing: -0.5,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  bodyCentered: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
   budgetContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  tierIcon: {
-    marginBottom: spacing.xs,
+  budgetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    justifyContent: 'center',
+    width: '100%',
   },
-  tierRangeText: {
+  budgetTile: {
+    width: (SCREEN_WIDTH - 48 - 8) / 2,
+    height: 84,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  budgetTileLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: 2,
+  },
+  budgetTileLabelActive: {
+    color: colors.text.inverse,
+  },
+  budgetTileRange: {
     ...typography.xs,
     color: colors.text.tertiary,
     marginTop: 2,
+  },
+  budgetTileRangeActive: {
+    color: colors.text.inverse,
+  },
+  tierIcon: {
+    marginBottom: 2,
   },
   errorText: {
     ...typography.sm,
@@ -2452,6 +2845,64 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginTop: spacing.xs,
   },
+  // ─── Travel Time (Step 4) ───
+  travelTimeContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tileGridCentered: {
+    justifyContent: 'center',
+    width: '100%',
+  },
+  selectionTileDimmed: {
+    opacity: 0.4,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.secondary,
+  },
+  tileTextDimmed: {
+    color: colors.text.tertiary,
+  },
+  customToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xs,
+  },
+  customToggleLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+  },
+  customInputIcon: {
+    marginRight: spacing.sm,
+  },
+  customInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: spacing.md,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1.5,
+    borderColor: colors.primary[300],
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  customInputField: {
+    flex: 1,
+    ...typography.md,
+    color: colors.text.primary,
+    padding: 0,
+  },
+  customInputUnit: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.tertiary,
+    marginLeft: spacing.sm,
+  },
   // ─── Path Cards (Step 5) ───
   pathCards: {
     gap: spacing.md,
@@ -2481,13 +2932,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 52,
-    paddingHorizontal: spacing.lg,
+    height: 44,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
     backgroundColor: colors.background.primary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   genderRowSelected: {
     backgroundColor: colors.primary[500],
@@ -2502,7 +2953,44 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
   },
   genderListContainer: {
+    marginTop: spacing.md,
+  },
+  // ─── Verified Phone State ───
+  verifiedCard: {
     marginTop: spacing.lg,
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: '#34C759',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  verifiedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  verifiedIconCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#34C759',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifiedBadgeText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: '#34C759',
+    letterSpacing: 0.3,
+  },
+  verifiedPhoneNumber: {
+    ...typography.xl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    letterSpacing: 1,
   },
   // ─── Details Screen ───
   fieldLabel: {
@@ -2739,6 +3227,134 @@ const styles = StyleSheet.create({
   },
   launchText: {
     marginTop: spacing.lg,
+  },
+  // ─── Location Autocomplete ───
+  locationSearchContainer: {
+    zIndex: 10,
+  },
+  locationSearchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 56,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[300],
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.background.primary,
+    gap: 12,
+  },
+  locationSearchInputWrapFocused: {
+    borderColor: colors.primary[500],
+  },
+  locationSearchIcon: {},
+  locationSearchInput: {
+    flex: 1,
+    ...typography.md,
+    color: colors.text.primary,
+    height: '100%' as any,
+  },
+  locationSearchSpinner: {
+    marginLeft: spacing.sm,
+  },
+  locationDropdown: {
+    marginTop: 6,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
+    backgroundColor: colors.background.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 12,
+    overflow: 'hidden',
+    paddingVertical: spacing.sm,
+  },
+  locationDropdownScroll: {
+    maxHeight: 280,
+  },
+  locationSuggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    gap: 14,
+  },
+  locationSuggestionRowPressed: {
+    backgroundColor: colors.primary[50],
+  },
+  locationSuggestionBorder: {},
+  locationSuggestionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  locationSuggestionIcon: {},
+  locationSuggestionTextWrap: {
+    flex: 1,
+  },
+  locationSuggestionName: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  locationSuggestionAddress: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    marginTop: 1,
+  },
+  locationSelectedCard: {
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary[500],
+    backgroundColor: colors.primary[50],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  locationSelectedContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locationSelectedIconWrap: {
+    marginRight: spacing.sm,
+  },
+  locationSelectedTextWrap: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  locationSelectedName: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  locationSelectedAddress: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  locationNoResults: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  locationNoResultsText: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
+  locationHelperText: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: spacing.md,
+    textAlign: 'center',
   },
 })
 

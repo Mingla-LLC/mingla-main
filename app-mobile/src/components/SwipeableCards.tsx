@@ -1210,7 +1210,7 @@ export default function SwipeableCards({
     const displayIntents: string[] = currentPrefs.intents ?? [];
     const displayTravelMode = currentPrefs.travel_mode ?? "walking";
     const displayTravelConstraintValue = currentPrefs.travel_constraint_value ?? 30;
-    const displayTravelConstraintType = currentPrefs.travel_constraint_type ?? "time";
+
     const displayDateOption = currentPrefs.date_option ?? null;
     const displayTimeSlot = currentPrefs.time_slot ?? null;
     const displayDatetimePref = currentPrefs.datetime_pref ?? null;
@@ -1284,7 +1284,7 @@ export default function SwipeableCards({
               <Text style={styles.filterLabel}>Travel:</Text>
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  {formatTravelMode(displayTravelMode)} · {displayTravelConstraintValue} {displayTravelConstraintType === "time" ? "min" : "km"}
+                  {formatTravelMode(displayTravelMode)} · {displayTravelConstraintValue} min
                 </Text>
               </View>
             </View>

@@ -28,7 +28,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['comfy'] as PriceTierSlug[],
       categories: ['dining', 'sip', 'stroll'],
       travelTime: 30,
-      travelDistance: 15,
+
     },
   },
   {
@@ -43,7 +43,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['chill', 'comfy'] as PriceTierSlug[],
       categories: ['play_move', 'creative', 'freestyle'],
       travelTime: 60,
-      travelDistance: 25,
+
     },
   },
   {
@@ -58,7 +58,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['chill'] as PriceTierSlug[],
       categories: ['screen_relax', 'sip', 'casual_eats'],
       travelTime: 20,
-      travelDistance: 10,
+
     },
   },
   {
@@ -73,7 +73,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['comfy', 'bougie'] as PriceTierSlug[],
       categories: ['dining', 'sip', 'casual_eats'],
       travelTime: 45,
-      travelDistance: 20,
+
     },
   },
   {
@@ -88,7 +88,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['chill', 'comfy'] as PriceTierSlug[],
       categories: ['play_move', 'creative', 'freestyle'],
       travelTime: 30,
-      travelDistance: 15,
+
     },
   },
   {
@@ -103,7 +103,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
       priceTiers: ['chill'] as PriceTierSlug[],
       categories: ['stroll', 'screen_relax', 'creative'],
       travelTime: 25,
-      travelDistance: 12,
+
     },
   },
 ];

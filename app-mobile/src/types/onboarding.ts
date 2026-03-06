@@ -42,7 +42,7 @@ export interface OnboardingNavState {
 
 import { PriceTierSlug } from '../constants/priceTiers';
 
-export const DEFAULT_PRICE_TIERS: PriceTierSlug[] = ['chill', 'comfy'];
+export const DEFAULT_PRICE_TIERS: PriceTierSlug[] = ['comfy', 'bougie'];
 
 export interface AddedFriend {
   type: 'existing' | 'invited'

@@ -8,6 +8,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+const NOT_FOUND_RESPONSE = JSON.stringify({
+  found: false,
+  user: null,
+  friendship_status: "none",
+});
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -19,7 +27,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: jsonHeaders }
       );
     }
 
@@ -36,55 +44,72 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: jsonHeaders }
       );
     }
 
     // Parse request body
-    const { phone_e164 } = await req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
 
-    // Validate phone format
-    if (!phone_e164 || !/^\+[1-9]\d{1,14}$/.test(phone_e164)) {
+    const phone_e164 = body.phone_e164 as string | undefined;
+
+    // Validate phone format — require full E.164 (minimum 8 digits: +X plus 7+ digits)
+    if (!phone_e164 || !/^\+[1-9]\d{6,14}$/.test(phone_e164)) {
       return new Response(
         JSON.stringify({ error: "Invalid phone number format" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: jsonHeaders }
       );
     }
 
     // Service role client for cross-user queries
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get caller's phone to prevent self-lookup
-    const { data: callerProfile } = await adminClient
+    // Get caller's phone to prevent self-lookup (use maybeSingle — profile may not exist during onboarding)
+    const { data: callerProfile, error: callerError } = await adminClient
       .from("profiles")
       .select("phone")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
+
+    if (callerError) {
+      console.error("[lookup-phone] Error fetching caller profile:", callerError.message);
+      // Non-fatal: continue without self-lookup check
+    }
 
     if (callerProfile?.phone === phone_e164) {
       return new Response(
         JSON.stringify({ error: "Cannot look up your own number" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: jsonHeaders }
       );
     }
 
     // Lookup user by phone
-    const { data: foundProfile } = await adminClient
+    const { data: foundProfile, error: lookupError } = await adminClient
       .from("profiles")
       .select("id, display_name, first_name, last_name, username, avatar_url")
       .eq("phone", phone_e164)
       .limit(1)
       .maybeSingle();
 
+    if (lookupError) {
+      console.error("[lookup-phone] Error looking up profile:", lookupError.message);
+      return new Response(NOT_FOUND_RESPONSE, { headers: jsonHeaders });
+    }
+
     if (!foundProfile) {
-      return new Response(
-        JSON.stringify({ found: false, user: null, friendship_status: "none" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(NOT_FOUND_RESPONSE, { headers: jsonHeaders });
     }
 
     // Check if either user blocked the other
-    const { data: blockCheck } = await adminClient
+    const { data: blockCheck, error: blockError } = await adminClient
       .from("blocked_users")
       .select("id")
       .or(
@@ -92,18 +117,20 @@ serve(async (req) => {
       )
       .limit(1);
 
+    if (blockError) {
+      console.error("[lookup-phone] Error checking blocks:", blockError.message);
+      // Non-fatal: treat as not blocked and continue
+    }
+
     if (blockCheck && blockCheck.length > 0) {
-      return new Response(
-        JSON.stringify({ found: false, user: null, friendship_status: "none" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(NOT_FOUND_RESPONSE, { headers: jsonHeaders });
     }
 
     // Check friendship status
     let friendshipStatus: string = "none";
 
     // Check if already friends
-    const { data: friendCheck } = await adminClient
+    const { data: friendCheck, error: friendError } = await adminClient
       .from("friends")
       .select("id")
       .or(
@@ -112,11 +139,16 @@ serve(async (req) => {
       .eq("status", "accepted")
       .limit(1);
 
+    if (friendError) {
+      console.error("[lookup-phone] Error checking friends:", friendError.message);
+      // Non-fatal: default to "none"
+    }
+
     if (friendCheck && friendCheck.length > 0) {
       friendshipStatus = "friends";
     } else {
       // Check pending friend requests
-      const { data: sentRequest } = await adminClient
+      const { data: sentRequest, error: sentError } = await adminClient
         .from("friend_requests")
         .select("id")
         .eq("sender_id", user.id)
@@ -124,16 +156,24 @@ serve(async (req) => {
         .eq("status", "pending")
         .limit(1);
 
+      if (sentError) {
+        console.error("[lookup-phone] Error checking sent requests:", sentError.message);
+      }
+
       if (sentRequest && sentRequest.length > 0) {
         friendshipStatus = "pending_sent";
       } else {
-        const { data: receivedRequest } = await adminClient
+        const { data: receivedRequest, error: recvError } = await adminClient
           .from("friend_requests")
           .select("id")
           .eq("sender_id", foundProfile.id)
           .eq("receiver_id", user.id)
           .eq("status", "pending")
           .limit(1);
+
+        if (recvError) {
+          console.error("[lookup-phone] Error checking received requests:", recvError.message);
+        }
 
         if (receivedRequest && receivedRequest.length > 0) {
           friendshipStatus = "pending_received";
@@ -154,12 +194,14 @@ serve(async (req) => {
         },
         friendship_status: friendshipStatus,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: jsonHeaders }
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[lookup-phone] Unhandled error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message }),
+      { status: 500, headers: jsonHeaders }
     );
   }
 });

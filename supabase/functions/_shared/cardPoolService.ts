@@ -592,7 +592,6 @@ export async function serveCardsFromPipeline(
     openaiApiKey?: string;
     enrichFn?: (places: any[], categories: string[]) => Promise<any[]>;
     travelMode?: string;
-    travelConstraintType?: string;
     travelConstraintValue?: number;
     datetimePref?: string;
   }

@@ -44,6 +44,20 @@ serve(async (req) => {
       })
     }
 
+    // Check if this phone is already verified for this user — skip SMS if so
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('phone')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.phone === phone) {
+      return new Response(JSON.stringify({ success: true, status: 'already_verified' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')!
     const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!
     const serviceSid = Deno.env.get('TWILIO_VERIFY_SERVICE_SID')!

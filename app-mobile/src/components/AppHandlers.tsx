@@ -152,7 +152,7 @@ export function useAppHandlers(state: any) {
         budget_min: 0,
         budget_max: collabBudgetMax,
         travel_mode: preferences.travelMode || "walking",
-        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_type: 'time' as const,
         travel_constraint_value:
           typeof preferences.constraintValue === "number"
             ? preferences.constraintValue
@@ -196,7 +196,7 @@ export function useAppHandlers(state: any) {
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: preferences.travelMode || "walking",
-        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_type: 'time' as const,
         travel_constraint_value:
           typeof preferences.constraintValue === "number" ? preferences.constraintValue : 20,
         datetime_pref: preferences.selectedDate
@@ -609,15 +609,13 @@ export function useAppHandlers(state: any) {
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: normalizedTravelMode,
-        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_type: 'time' as const,
         travel_constraint_value:
           typeof preferences.constraintValue === "number"
             ? preferences.constraintValue
             : preferences.constraintValue !== ""
             ? Number(preferences.constraintValue)
-            : preferences.constraintType === "time"
-            ? 30
-            : 5,
+            : 30,
         date_option: preferences.dateOption
           ? preferences.dateOption === "Now"
             ? "now"

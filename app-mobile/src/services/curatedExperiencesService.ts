@@ -7,7 +7,7 @@ interface GenerateCuratedParams {
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
-  travelConstraintType: 'time' | 'distance';
+  travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref?: string;
   limit?: number;

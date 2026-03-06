@@ -37,7 +37,7 @@ export interface BoardSessionPreferences {
   custom_lat?: number | null;
   custom_lng?: number | null;
   travel_mode?: string;
-  travel_constraint_type?: string;
+  travel_constraint_type?: 'time';
   travel_constraint_value?: number;
   created_at?: string;
   updated_at?: string;

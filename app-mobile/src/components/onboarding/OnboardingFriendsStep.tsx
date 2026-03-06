@@ -66,15 +66,16 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   const rawDigits = phoneDigits.replace(/\D/g, '')
   const phoneE164 = country ? country.dialCode + rawDigits : '+1' + rawDigits
 
-  // Debounce phone input
+  // Debounce phone input — both the phone value and the enabled flag must be synced
   const debouncedPhone = useDebouncedValue(phoneE164, 500)
+  const debouncedDigitCount = useDebouncedValue(rawDigits.length, 500)
 
-  // Phone lookup
+  // Phone lookup — enabled uses debounced digit count to stay in sync with debounced phone
   const {
     data: lookupResult,
     isLoading: lookupLoading,
     isError: lookupError,
-  } = usePhoneLookup(debouncedPhone, rawDigits.length >= 7)
+  } = usePhoneLookup(debouncedPhone, debouncedDigitCount >= 7)
 
   // Pending incoming requests
   const incomingRequests = friendRequests.filter((r) => r.type === 'incoming')

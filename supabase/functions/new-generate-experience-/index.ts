@@ -26,7 +26,6 @@ interface UserPreferences {
   people_count: number;
   categories: string[];
   travel_mode: string;
-  travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
 }
@@ -109,9 +108,7 @@ serve(async (req) => {
 
     if (supabaseAdmin && userId !== 'anonymous') {
       try {
-        const radiusMeters = preferences.travel_constraint_type === 'distance'
-          ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
-          : 10000;
+        const radiusMeters = 10000; // Always time-based
 
         const poolResult = await serveCardsFromPipeline({
           supabaseAdmin,
@@ -345,10 +342,7 @@ async function fetchGooglePlaces(
   }
 
   const allPlaces: any[] = [];
-  const radius =
-    preferences.travel_constraint_type === "distance"
-      ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
-      : 10000; // Default 10km
+  const radius = 10000; // Default 10km (always time-based)
 
   // Create admin client for cache operations
   const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
@@ -678,17 +672,10 @@ function filterByConstraints(
 ): any[] {
   let remaining = places;
 
-  // Stage 1: Filter by travel constraint
+  // Stage 1: Filter by travel constraint (always time-based)
   remaining = remaining.filter((place) => {
-    if (preferences.travel_constraint_type === "time" && place.travelTimeMin) {
+    if (place.travelTimeMin) {
       if (place.travelTimeMin > preferences.travel_constraint_value) {
-        return false;
-      }
-    } else if (
-      preferences.travel_constraint_type === "distance" &&
-      place.distanceKm
-    ) {
-      if (place.distanceKm > preferences.travel_constraint_value) {
         return false;
       }
     }
@@ -819,28 +806,16 @@ function calculateLocationScore(
 
   let locationScore = 0;
 
-  if (preferences.travel_constraint_type === "time") {
-    const constraintValue = preferences.travel_constraint_value || 30;
-    if (travelTime <= 5) {
-      locationScore = 1.0;
-    } else if (travelTime >= constraintValue) {
-      locationScore = 0.0;
-    } else {
-      const range = constraintValue - 5;
-      const excess = travelTime - 5;
-      locationScore = 1.0 - excess / range;
-    }
-  } else if (preferences.travel_constraint_type === "distance") {
-    const maxDistance = preferences.travel_constraint_value || 5;
-    if (distance <= 0.5) {
-      locationScore = 1.0;
-    } else if (distance >= maxDistance) {
-      locationScore = 0.0;
-    } else {
-      const range = maxDistance - 0.5;
-      const excess = distance - 0.5;
-      locationScore = 1.0 - excess / range;
-    }
+  // Always time-based constraint
+  const constraintValue = preferences.travel_constraint_value || 30;
+  if (travelTime <= 5) {
+    locationScore = 1.0;
+  } else if (travelTime >= constraintValue) {
+    locationScore = 0.0;
+  } else {
+    const range = constraintValue - 5;
+    const excess = travelTime - 5;
+    locationScore = 1.0 - excess / range;
   }
 
   if (distance < 1.0 && travelTime < 10) {

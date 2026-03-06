@@ -227,8 +227,10 @@ class OfflineService {
             rec.location.coordinates
           );
           
-          const maxDistance = request.travel?.constraint?.maxDistance || 10000; // 10km default
-          return distance <= maxDistance;
+          const maxMinutes = request.travel?.constraint?.maxMinutes || 30;
+          const speedKmh = ({ WALKING: 4.5, DRIVING: 35, TRANSIT: 25 } as Record<string, number>)[request.travel?.mode || 'WALKING'] || 4.5;
+          const maxDistanceKm = (maxMinutes / 60) * speedKmh * 1.3;
+          return distance <= maxDistanceKm;
         });
       }
 

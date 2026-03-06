@@ -1118,7 +1118,7 @@ export const getTravelFallbackSuggestion = (mode: string, closestVenue: any) => 
 
 // Travel Constraint System
 export interface TravelConstraint {
-  type: 'time' | 'distance';
+  type: 'time';
   label: string;
   icon: string;
   description: string;
@@ -1137,7 +1137,7 @@ export const travelConstraints: TravelConstraint[] = [
     label: 'By Time',
     icon: '⏱️',
     description: 'Keep it under X minutes to get there',
-    microcopy: 'By Time adjusts for traffic & transit schedules',
+    microcopy: 'Adjusts for traffic & transit schedules',
     defaultValues: {
       walk: 10,
       drive: 20,
@@ -1145,101 +1145,62 @@ export const travelConstraints: TravelConstraint[] = [
     },
     unit: 'minutes'
   },
-  {
-    type: 'distance',
-    label: 'By Distance',
-    icon: '📍',
-    description: 'Keep it within X miles around me',
-    microcopy: 'By Distance is a straight radius around you',
-    defaultValues: {
-      walk: 2,
-      drive: 10,
-      transit: 8
-    },
-    unit: 'miles'
-  }
 ];
 
 // Travel Constraint Logic Functions
-export const getTravelConstraintLogic = (constraintType: string, travelMode: string) => {
-  const logic: Record<string, Record<string, { filter: string; description: string }>> = {
-    'time': {
-      'walk': {
-        filter: 'max 10 minutes walking time (adjusts for pace)',
-        description: 'Show venues within 10 minutes walking time, adjusted for walking pace'
-      },
-      'drive': {
-        filter: 'max 20 minutes driving time (adjusts for traffic)',
-        description: 'Show venues within 20 minutes driving time, adjusted for real-time traffic'
-      },
-      'transit': {
-        filter: 'max 30 minutes transit time (adjusts for schedules)',
-        description: 'Show venues within 30 minutes transit time, adjusted for real-time schedules'
-      }
+export const getTravelConstraintLogic = (_constraintType: string, travelMode: string) => {
+  const logic: Record<string, { filter: string; description: string }> = {
+    'walk': {
+      filter: 'max 10 minutes walking time (adjusts for pace)',
+      description: 'Show venues within 10 minutes walking time, adjusted for walking pace'
     },
-    'distance': {
-      'walk': {
-        filter: 'max 2 miles straight-line radius',
-        description: 'Show venues within 2 miles straight-line radius from your location'
-      },
-      'drive': {
-        filter: 'max 10 miles straight-line radius',
-        description: 'Show venues within 10 miles straight-line radius from your location'
-      },
-      'transit': {
-        filter: 'max 8 miles straight-line radius',
-        description: 'Show venues within 8 miles straight-line radius from your location'
-      }
-    }
+    'drive': {
+      filter: 'max 20 minutes driving time (adjusts for traffic)',
+      description: 'Show venues within 20 minutes driving time, adjusted for real-time traffic'
+    },
+    'transit': {
+      filter: 'max 30 minutes transit time (adjusts for schedules)',
+      description: 'Show venues within 30 minutes transit time, adjusted for real-time schedules'
+    },
   };
-  
-  return logic[constraintType]?.[travelMode] || { 
-    filter: 'all available venues', 
-    description: 'Show all available venues' 
+
+  return logic[travelMode] || {
+    filter: 'all available venues',
+    description: 'Show all available venues'
   };
 };
 
 // Human-Friendly Constraint Display
-export const getHumanFriendlyConstraint = (constraintType: string, value: number, travelMode: string) => {
-  if (constraintType === 'time') {
-    return `Keep it under ${value} minutes to get there`;
-  } else {
-    return `Keep it within ${value} miles around you`;
-  }
+export const getHumanFriendlyConstraint = (value: number) => {
+  return `Keep it under ${value} minutes to get there`;
 };
 
 // Card Preview Constraint Display
-export const getCardPreviewConstraint = (constraintType: string, travelTime: string, distance: string, userLimit: number) => {
-  if (constraintType === 'time') {
-    return `${travelTime}, within your ${userLimit} min limit`;
-  } else {
-    return `${distance} away, fits your ${userLimit}-mile radius`;
-  }
+export const getCardPreviewConstraint = (travelTime: string, userLimit: number) => {
+  return `${travelTime}, within your ${userLimit} min limit`;
 };
 
 // Constraint Validation
-export const validateTravelConstraint = (constraintType: string, value: number, travelMode: string) => {
-  const constraints = travelConstraints.find(c => c.type === constraintType);
-  if (!constraints) return { valid: false, message: 'Invalid constraint type' };
-  
+export const validateTravelConstraint = (value: number, travelMode: string) => {
+  const constraints = travelConstraints[0]; // Always time
   const defaults = constraints.defaultValues[travelMode as keyof typeof constraints.defaultValues];
   const minValue = Math.max(1, defaults * 0.5);
   const maxValue = defaults * 3;
-  
+
   if (value < minValue) {
-    return { 
-      valid: false, 
-      message: `Minimum ${constraintType === 'time' ? 'time' : 'distance'}: ${minValue}${constraints.unit}` 
+    return {
+      valid: false,
+      message: `Minimum time: ${minValue} ${constraints.unit}`
     };
   }
-  
+
   if (value > maxValue) {
-    return { 
-      valid: false, 
-      message: `Maximum ${constraintType === 'time' ? 'time' : 'distance'}: ${maxValue}${constraints.unit}` 
+    return {
+      valid: false,
+      message: `Maximum time: ${maxValue} ${constraints.unit}`
     };
   }
-  
+
   return { valid: true, message: 'Valid constraint' };
 };
 
@@ -1414,11 +1375,9 @@ export const getMapPinPreview = (location: any, constraintType: string, constrai
       latitude: location.latitude,
       longitude: location.longitude
     },
-    radius: constraintType === 'distance' ? constraintValue * 1609.34 : null, // Convert miles to meters
+    radius: null,
     title: getHumanFriendlyLocation(location),
-    description: constraintType === 'time'
-      ? `Within ${constraintValue} minutes travel time`
-      : `Within ${constraintValue} miles radius`
+    description: `Within ${constraintValue} minutes travel time`
   };
 };
 

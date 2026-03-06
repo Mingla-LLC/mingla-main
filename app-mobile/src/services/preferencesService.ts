@@ -8,7 +8,7 @@ export interface UserPreferences {
   categories: string[];
   intents?: string[];
   travel_mode: string;
-  travel_constraint_type: string;
+  travel_constraint_type: 'time';
   travel_constraint_value: number;
   datetime_pref: string;
   date_option?: string | null;

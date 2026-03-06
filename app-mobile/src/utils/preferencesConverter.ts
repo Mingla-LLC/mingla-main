@@ -9,9 +9,8 @@ interface PreferencesSheetState {
   experienceTypes?: string[];
   time: string;
   travel: string;
-  travelConstraint: 'time' | 'distance';
+  travelConstraint: 'time';
   travelTime: number;
-  travelDistance: number;
   location: string;
   customLocation?: string;
   custom_lat?: number | null;
@@ -48,11 +47,8 @@ export const convertPreferencesToRequest = (
 
   // Convert travel constraint
   const travelConstraint = {
-    type: preferences.travelConstraint.toUpperCase() as 'TIME' | 'DISTANCE',
-    ...(preferences.travelConstraint === 'time' 
-      ? { maxMinutes: preferences.travelTime }
-      : { maxDistance: preferences.travelDistance }
-    )
+    type: 'TIME' as const,
+    maxMinutes: preferences.travelTime,
   };
 
   return {

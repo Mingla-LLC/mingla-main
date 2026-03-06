@@ -2393,7 +2393,8 @@ export default function App() {
                 firstKey === "savedCards" ||
                 firstKey === "calendarEntries" ||
                 firstKey === "curated-experiences" ||
-                firstKey === "recommendations"
+                firstKey === "recommendations" ||
+                firstKey === "phone-lookup"
               ) {
                 return false;
               }

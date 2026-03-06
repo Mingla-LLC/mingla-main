@@ -37,7 +37,6 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
   categories: string[];
   experienceTypes: string[];
   travelMode: string;
-  travelConstraintType: string;
   travelConstraintValue: number;
   datetimePref?: string;
   location: { lat: number; lng: number } | null;
@@ -77,13 +76,7 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
   });
   const travelMode = Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'walking';
 
-  // Travel constraint: most restrictive
-  const constraintTypes: Record<string, number> = {};
-  allPrefs.forEach(p => {
-    const t = p.travel_constraint_type || 'time';
-    constraintTypes[t] = (constraintTypes[t] || 0) + 1;
-  });
-  const travelConstraintType = Object.entries(constraintTypes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'time';
+  // Travel constraint: most restrictive (always time-based)
   const travelConstraintValue = Math.min(
     ...allPrefs.map(p => p.travel_constraint_value ?? 30)
   );
@@ -113,7 +106,7 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
 
   return {
     budgetMin, budgetMax, categories, experienceTypes,
-    travelMode, travelConstraintType, travelConstraintValue,
+    travelMode, travelConstraintValue,
     datetimePref, location,
   };
 }
@@ -1156,7 +1149,6 @@ async function generateAdventureCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -1165,9 +1157,7 @@ async function generateAdventureCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for ALL 4 adventure groups in parallel
@@ -1253,7 +1243,7 @@ async function generateAdventureCards(
     if (totalMin > budgetMax) continue;
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stops[0].travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stops[0].travelTimeFromUserMin > travelConstraintValue * 1.5) {
       continue;
     }
 
@@ -1292,7 +1282,6 @@ async function generateFirstDateCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -1301,9 +1290,7 @@ async function generateFirstDateCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for all 3 groups in parallel
@@ -1395,7 +1382,7 @@ async function generateFirstDateCards(
         continue;
       }
 
-      if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
         globalUsedPlaceIds.add(startId);
         continue;
       }
@@ -1437,7 +1424,7 @@ async function generateFirstDateCards(
     }
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
       globalUsedPlaceIds.add(startId); // Skip — DON'T flip alternation
       continue;
     }
@@ -1505,7 +1492,6 @@ async function generateRomanticCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -1514,9 +1500,7 @@ async function generateRomanticCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for both groups in parallel
@@ -1593,7 +1577,7 @@ async function generateRomanticCards(
     }
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
       globalUsedPlaceIds.add(startId); // Skip — too far
       continue;
     }
@@ -1711,7 +1695,6 @@ async function generateFriendlyCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -1720,9 +1703,7 @@ async function generateFriendlyCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for ALL 5 groups in parallel
@@ -1816,7 +1797,7 @@ async function generateFriendlyCards(
     }
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
       globalUsedPlaceIds.add(startId); // Skip — DON'T advance rotation
       continue;
     }
@@ -1884,7 +1865,6 @@ async function generateGroupFunCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -1893,9 +1873,7 @@ async function generateGroupFunCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for ALL 3 groups in parallel
@@ -1989,7 +1967,7 @@ async function generateGroupFunCards(
     }
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
       globalUsedPlaceIds.add(startId); // Skip — DON'T advance alternation
       continue;
     }
@@ -2168,7 +2146,6 @@ async function generateStandardCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -2177,7 +2154,7 @@ async function generateStandardCards(
   if (experienceType === 'adventurous') {
     return generateAdventureCards(
       lat, lng, budgetMax, travelMode,
-      travelConstraintType, travelConstraintValue,
+      travelConstraintValue,
       limit, skipDescriptions,
     );
   }
@@ -2186,7 +2163,7 @@ async function generateStandardCards(
   if (experienceType === 'first-date') {
     return generateFirstDateCards(
       lat, lng, budgetMax, travelMode,
-      travelConstraintType, travelConstraintValue,
+      travelConstraintValue,
       limit, skipDescriptions,
     );
   }
@@ -2195,7 +2172,7 @@ async function generateStandardCards(
   if (experienceType === 'romantic') {
     return generateRomanticCards(
       lat, lng, budgetMax, travelMode,
-      travelConstraintType, travelConstraintValue,
+      travelConstraintValue,
       limit, skipDescriptions,
     );
   }
@@ -2204,7 +2181,7 @@ async function generateStandardCards(
   if (experienceType === 'friendly') {
     return generateFriendlyCards(
       lat, lng, budgetMax, travelMode,
-      travelConstraintType, travelConstraintValue,
+      travelConstraintValue,
       limit, skipDescriptions,
     );
   }
@@ -2213,7 +2190,7 @@ async function generateStandardCards(
   if (experienceType === 'group-fun') {
     return generateGroupFunCards(
       lat, lng, budgetMax, travelMode,
-      travelConstraintType, travelConstraintValue,
+      travelConstraintValue,
       limit, skipDescriptions,
     );
   }
@@ -2226,9 +2203,7 @@ async function generateStandardCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch places for ALL categories in parallel
@@ -2300,7 +2275,7 @@ async function generateStandardCards(
     if (totalMin > budgetMax) continue;
 
     // Validate travel constraint
-    if (travelConstraintType === 'time' && stops[0].travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stops[0].travelTimeFromUserMin > travelConstraintValue * 1.5) {
       continue;
     }
 
@@ -2342,7 +2317,6 @@ async function generatePicnicDatesCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -2351,9 +2325,7 @@ async function generatePicnicDatesCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch grocery stores near user
@@ -2412,7 +2384,7 @@ async function generatePicnicDatesCards(
     if (totalMin > budgetMax) continue;
 
     // Travel constraint validation
-    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+    if (stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
       continue;
     }
 
@@ -2566,7 +2538,6 @@ async function generateStrollCards(
   lng: number,
   budgetMax: number,
   travelMode: string,
-  travelConstraintType: string,
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
@@ -2575,9 +2546,7 @@ async function generateStrollCards(
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
   const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = travelConstraintType === 'time'
-    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-    : travelConstraintValue * 1000;
+  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // Step 1: Find STROLL PLACES (nature) near user — these are the anchors
@@ -2827,7 +2796,6 @@ serve(async (req) => {
       budgetMin = 0,
       budgetMax = 150,
       travelMode = 'walking',
-      travelConstraintType = 'time',
       travelConstraintValue = 30,
       datetimePref,
       skipDescriptions = false,
@@ -2852,7 +2820,6 @@ serve(async (req) => {
         budgetMin = agg.budgetMin;
         budgetMax = agg.budgetMax;
         travelMode = agg.travelMode;
-        travelConstraintType = agg.travelConstraintType;
         travelConstraintValue = agg.travelConstraintValue;
         if (agg.datetimePref) datetimePref = agg.datetimePref;
         if (agg.location) location = agg.location;
@@ -2904,9 +2871,7 @@ serve(async (req) => {
       walking: 4.5, biking: 14, transit: 20, driving: 35,
     };
     const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-    const radiusMeters = travelConstraintType === 'time'
-      ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
-      : travelConstraintValue * 1000;
+    const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
     const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
     // warmPool support
@@ -2991,20 +2956,20 @@ serve(async (req) => {
     if (experienceType === 'picnic-dates') {
       cards = await generatePicnicDatesCards(
         location.lat, location.lng, budgetMax, travelMode,
-        travelConstraintType, travelConstraintValue,
+        travelConstraintValue,
         generateLimit, skipDescriptions,
       );
     } else if (experienceType === 'take-a-stroll') {
       cards = await generateStrollCards(
         location.lat, location.lng, budgetMax, travelMode,
-        travelConstraintType, travelConstraintValue,
+        travelConstraintValue,
         generateLimit, skipDescriptions,
       );
     } else {
       cards = await generateStandardCards(
         experienceType,
         location.lat, location.lng, budgetMax, travelMode,
-        travelConstraintType, travelConstraintValue,
+        travelConstraintValue,
         generateLimit, skipDescriptions,
       );
     }

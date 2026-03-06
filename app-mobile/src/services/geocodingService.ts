@@ -397,6 +397,36 @@ class GeocodingService {
     }
   }
 
+  // Fetch coordinates for a Google Place ID via Place Details
+  async getPlaceCoordinates(placeId: string): Promise<{ lat: number; lng: number } | null> {
+    const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!GOOGLE_API_KEY || !placeId) return null;
+
+    try {
+      const response = await fetch(
+        `https://places.googleapis.com/v1/places/${placeId}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_API_KEY,
+            'X-Goog-FieldMask': 'location',
+          },
+        }
+      );
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      if (data.location?.latitude != null && data.location?.longitude != null) {
+        return { lat: data.location.latitude, lng: data.location.longitude };
+      }
+      return null;
+    } catch (error) {
+      console.error('Place Details error:', error);
+      return null;
+    }
+  }
+
   // Store autocomplete result in cache with LRU eviction
   private cacheAutocompleteResult(
     key: string,

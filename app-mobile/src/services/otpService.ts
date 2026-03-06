@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 interface SendOtpResult {
   success: boolean
   error?: string
+  status?: string
 }
 
 interface VerifyOtpResult {
@@ -47,7 +48,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
     return { success: false, error: data.error }
   }
 
-  return { success: true }
+  return { success: true, status: data?.status }
 }
 
 /**
