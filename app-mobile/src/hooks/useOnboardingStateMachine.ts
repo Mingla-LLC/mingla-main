@@ -9,7 +9,7 @@ import { logger } from '../utils/logger'
 // ─── Step Sub-Step Sequences ───
 
 const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
-  1: ['welcome', 'phone', 'otp'],
+  1: ['welcome', 'phone', 'otp', 'gender_identity', 'details'],
   2: ['value_prop', 'intents'],
   3: ['location'],
   4: ['celebration', 'categories', 'budget', 'transport', 'travel_time'],

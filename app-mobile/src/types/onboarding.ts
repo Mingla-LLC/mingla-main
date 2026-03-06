@@ -2,7 +2,7 @@
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5
 
-export type Step1SubStep = 'welcome' | 'phone' | 'otp'
+export type Step1SubStep = 'welcome' | 'phone' | 'otp' | 'gender_identity' | 'details'
 export type Step2SubStep = 'value_prop' | 'intents'
 export type Step3SubStep = 'location'
 export type Step4SubStep =
@@ -64,6 +64,12 @@ export interface OnboardingData {
   phoneNumber: string       // E.164 format
   phoneCountryCode: string  // ISO 3166-1 alpha-2 (e.g., 'US')
   phoneVerified: boolean
+
+  // Step 1 — Identity & Details (after OTP)
+  userGender: string | null            // gender identity value from GENDER_OPTIONS
+  userBirthday: Date | null            // date of birth
+  userCountry: string                  // ISO 3166-1 alpha-2 (defaults to phoneCountryCode)
+  userPreferredLanguage: string        // ISO 639-1 (defaults to device locale)
 
   // Step 2
   selectedIntents: string[]  // intent IDs: 'adventurous', 'first-date', etc.

@@ -50,6 +50,7 @@ import { PulseDotLoader } from './ui/PulseDotLoader'
 import {
   OnboardingData,
   OnboardingStep,
+  SubStep,
   ONBOARDING_INTENTS,
   DEFAULT_PRICE_TIERS,
   TRAVEL_TIME_PRESETS,
@@ -63,6 +64,9 @@ import {
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers'
 import { categories } from '../constants/categories'
 import { getDefaultCountryCode, getCountryByCode } from '../constants/countries'
+import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
+import { LanguagePickerModal } from './onboarding/LanguagePickerModal'
+import { CountryPickerModal } from './onboarding/CountryPickerModal'
 import {
   colors,
   typography,
@@ -77,6 +81,13 @@ import {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
+function formatBirthdayDisplay(date: Date): string {
+  const day = date.getDate().toString().padStart(2, '0')
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
 interface OnboardingFlowProps {
   onComplete: () => void
 }
@@ -85,6 +96,10 @@ const INITIAL_DATA: OnboardingData = {
   phoneNumber: '',
   phoneCountryCode: 'US',
   phoneVerified: false,
+  userGender: null,
+  userBirthday: null,
+  userCountry: 'US',  // overridden by phoneCountryCode after OTP
+  userPreferredLanguage: 'en',  // overridden by device locale detection
   selectedIntents: [],
   locationGranted: false,
   coordinates: null,
@@ -197,8 +212,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [launchState, setLaunchState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [launchLoadingText, setLaunchLoadingText] = useState('Finding your kind of places...')
   const [launchRetries, setLaunchRetries] = useState(0)
+  const [showCountryPicker, setShowCountryPicker] = useState(false)
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false)
+  const [resumeSubStep, setResumeSubStep] = useState<SubStep | null>(null)
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
+
+  // ─── Reset picker modals when navigating away from details ───
+  useEffect(() => {
+    if (navState.subStep !== 'details') {
+      setShowCountryPicker(false)
+      setShowLanguagePicker(false)
+      setShowDatePicker(false)
+    }
+  }, [navState.subStep])
 
   // ─── Animations ───
   const fadeAnim = useRef(new Animated.Value(1)).current
@@ -465,18 +492,42 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         const phoneAlreadyVerified = !!profile.phone
 
         if (savedStep && savedStep >= 1 && savedStep <= 5) {
-          // If phone is already verified but saved step is 1, jump to step 2
-          const resumeStep = (phoneAlreadyVerified && savedStep === 1) ? 2 : savedStep
-          setInitialStep(resumeStep as OnboardingStep)
+          if (phoneAlreadyVerified && savedStep === 1) {
+            // Phone verified but still on Step 1 — check if identity/details are complete
+            const hasIdentityData = !!profile.gender && !!profile.birthday && !!profile.country
+            if (hasIdentityData) {
+              // All Step 1 data complete — advance to Step 2
+              setInitialStep(2)
+            } else {
+              // Phone verified but identity/details incomplete — resume at gender_identity
+              setInitialStep(1)
+              setResumeSubStep('gender_identity')
+            }
+          } else {
+            setInitialStep(savedStep as OnboardingStep)
+          }
         } else if (phoneAlreadyVerified) {
-          // No saved step but phone exists — start at step 2
-          setInitialStep(2)
+          const hasIdentityData = !!profile.gender && !!profile.birthday && !!profile.country
+          if (hasIdentityData) {
+            setInitialStep(2)
+          } else {
+            setInitialStep(1)
+            setResumeSubStep('gender_identity')
+          }
         }
 
         // Mark phone as verified in onboarding data if already in DB
         if (phoneAlreadyVerified) {
           setPhonePreVerified(true)
-          setData((prev) => ({ ...prev, phoneVerified: true }))
+          setData((prev) => ({
+            ...prev,
+            phoneVerified: true,
+            // Load existing identity data from profile if available
+            userGender: profile.gender || null,
+            userBirthday: profile.birthday ? new Date(profile.birthday) : null,
+            userCountry: profile.country || prev.phoneCountryCode || 'US',
+            userPreferredLanguage: profile.preferred_language || getDefaultLanguageCode(),
+          }))
         }
 
         const prefs = await PreferencesService.getUserPreferences(user.id)
@@ -497,6 +548,15 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
     loadResume()
   }, [user?.id, profile?.id])
+
+  // ─── Resume Sub-Step Jump ───
+  // When resume logic sets a sub-step target, jump there once the state machine is ready
+  useEffect(() => {
+    if (resumeSubStep) {
+      goToSubStep(resumeSubStep)
+      setResumeSubStep(null)
+    }
+  }, [resumeSubStep, goToSubStep])
 
   // ─── Resend Countdown Timer ───
   useEffect(() => {
@@ -590,8 +650,15 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       if (result.success) {
         logger.onboarding('OTP verified successfully')
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-        setData((prev) => ({ ...prev, phoneVerified: true }))
-        persistStep(2).catch(() => {})
+        // Pre-populate identity defaults from phone context (atomic update)
+        setData((prev) => ({
+          ...prev,
+          phoneVerified: true,
+          userCountry: prev.phoneCountryCode,  // Default country = phone country
+          userPreferredLanguage: getDefaultLanguageCode(),  // Default language = device locale
+        }))
+        // NOTE: persistStep(2) intentionally removed here — moved to handleSaveIdentity
+        // to prevent bypassing gender_identity/details on resume
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
         logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1 })
@@ -606,7 +673,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         }
       }
     },
-    [buildE164, goNext, persistStep, otpAttempts, handleResendOtp]
+    [buildE164, goNext, otpAttempts, handleResendOtp]
   )
 
   // ─── Location Capture ───
@@ -896,6 +963,43 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     setSavingPrefs(false)
   }, [user?.id, data, goNext, persistStep, queryClient])
 
+  // ─── Save Identity & Details (Step 1 gender_identity + details → Step 2 transition) ───
+  const handleSaveIdentity = useCallback(async () => {
+    if (!user?.id) return
+    logger.action('Save identity pressed', {
+      gender: data.userGender,
+      country: data.userCountry,
+      language: data.userPreferredLanguage,
+      hasBirthday: !!data.userBirthday,
+    })
+
+    // Fire-and-forget profile save — do NOT block navigation
+    PreferencesService.updateUserProfile(user.id, {
+      gender: data.userGender,
+      birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+      country: data.userCountry,
+      preferred_language: data.userPreferredLanguage,
+    }).then(() => {
+      // Update local Zustand store so profile reflects new data immediately
+      const currentProfile = useAppStore.getState().profile
+      if (currentProfile) {
+        useAppStore.getState().setProfile({
+          ...currentProfile,
+          gender: data.userGender,
+          birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+          country: data.userCountry,
+          preferred_language: data.userPreferredLanguage,
+        })
+      }
+    }).catch((err) => {
+      console.warn('[Onboarding] Identity save failed:', err?.message)
+      // Non-blocking — user continues onboarding. Data will be re-saved at launch if needed.
+    })
+
+    persistStep(2).catch(() => {})
+    goNext()
+  }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, goNext, persistStep])
+
   // ─── Step 5 Save Person ───
   const handleSavePerson = useCallback(async () => {
     if (!user?.id) return
@@ -943,15 +1047,28 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     logger.onboarding('Launch sequence started')
 
     try {
-      // Mark onboarding complete
+      // Mark onboarding complete + ensure identity data is persisted (safety net)
       await supabase.from('profiles').update({
         has_completed_onboarding: true,
         onboarding_step: 0,
+        // Safety net: re-save identity data in case fire-and-forget in handleSaveIdentity failed
+        gender: data.userGender,
+        birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+        country: data.userCountry,
+        preferred_language: data.userPreferredLanguage,
       }).eq('id', user.id)
 
       const currentProfile = useAppStore.getState().profile
       if (currentProfile) {
-        useAppStore.getState().setProfile({ ...currentProfile, has_completed_onboarding: true, onboarding_step: 0 })
+        useAppStore.getState().setProfile({
+          ...currentProfile,
+          has_completed_onboarding: true,
+          onboarding_step: 0,
+          gender: data.userGender,
+          birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+          country: data.userCountry,
+          preferred_language: data.userPreferredLanguage,
+        })
       }
 
       // Wait for warm pool (max 3 seconds)
@@ -968,7 +1085,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       setLaunchState('ready')
       playRevealAnimation()
     }
-  }, [user?.id, playRevealAnimation])
+  }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, playRevealAnimation])
 
   const playRevealAnimation = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -1080,6 +1197,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         return { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
         return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
+      case 'gender_identity':
+        return { label: 'Next', disabled: !data.userGender, loading: false, onPress: handleGoNext, hide: false }
+      case 'details':
+        return { label: "Let's go", disabled: !data.userBirthday, loading: false, onPress: handleSaveIdentity, hide: false }
       case 'value_prop':
         return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
@@ -1122,7 +1243,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, manualLocationText, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSavePerson, persistStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, manualLocationText, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePerson, persistStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -1227,6 +1348,147 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
               )}
             </>
           )}
+        </View>
+      )
+    }
+
+    // ─── Step 1: Gender Identity ───
+    if (subStep === 'gender_identity') {
+      return (
+        <View>
+          <Text style={styles.headline}>Tell us about you.</Text>
+          <Text style={styles.body}>So we can get your picks right.</Text>
+          <View style={styles.genderListContainer}>
+            {GENDER_OPTIONS.map((g) => (
+              <Pressable
+                key={g}
+                style={[styles.genderRow, data.userGender === g && styles.genderRowSelected]}
+                onPress={() => {
+                  logger.action(`User gender selected: ${GENDER_DISPLAY_LABELS[g]}`)
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setData((p) => ({ ...p, userGender: g }))
+                }}
+              >
+                <Text style={[styles.genderText, data.userGender === g && styles.genderTextSelected]}>
+                  {GENDER_DISPLAY_LABELS[g]}
+                </Text>
+                {data.userGender === g && (
+                  <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )
+    }
+
+    // ─── Step 1: Details ───
+    if (subStep === 'details') {
+      return (
+        <View>
+          <Text style={styles.headline}>Almost done.</Text>
+          <Text style={styles.body}>Just the basics. We'll handle the rest.</Text>
+
+          {/* Country */}
+          <Text style={styles.fieldLabel}>Country</Text>
+          <Pressable
+            style={styles.detailsPickerButton}
+            onPress={() => setShowCountryPicker(true)}
+          >
+            <Text style={styles.detailsPickerText}>
+              {getCountryByCode(data.userCountry)?.flag ?? ''}{' '}
+              {getCountryByCode(data.userCountry)?.name ?? data.userCountry}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color={colors.text.secondary} />
+          </Pressable>
+
+          {/* Date of Birth */}
+          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Date of birth</Text>
+          <Pressable
+            style={styles.detailsPickerButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={[
+              styles.detailsPickerText,
+              !data.userBirthday && styles.detailsPickerPlaceholder,
+            ]}>
+              {data.userBirthday
+                ? formatBirthdayDisplay(data.userBirthday)
+                : "When's your birthday?"}
+            </Text>
+            <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
+          </Pressable>
+
+          {showDatePicker && (
+            Platform.OS === 'ios' ? (
+              <View style={styles.detailsDatePickerContainer}>
+                <DateTimePicker
+                  value={data.userBirthday || new Date(2000, 0, 1)}
+                  mode="date"
+                  display="spinner"
+                  maximumDate={new Date()}
+                  minimumDate={new Date(1906, 0, 1)}
+                  onChange={(event, selectedDate) => {
+                    if (selectedDate) {
+                      setData((p) => ({ ...p, userBirthday: selectedDate }))
+                    }
+                  }}
+                />
+                <Pressable
+                  style={styles.detailsDatePickerDone}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.detailsDatePickerDoneText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <DateTimePicker
+                value={data.userBirthday || new Date(2000, 0, 1)}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                minimumDate={new Date(1906, 0, 1)}
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(false)
+                  if (event.type === 'set' && selectedDate) {
+                    setData((p) => ({ ...p, userBirthday: selectedDate }))
+                  }
+                }}
+              />
+            )
+          )}
+
+          {/* Preferred Language */}
+          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Language</Text>
+          <Pressable
+            style={styles.detailsPickerButton}
+            onPress={() => setShowLanguagePicker(true)}
+          >
+            <Text style={styles.detailsPickerText}>
+              {getLanguageByCode(data.userPreferredLanguage)?.nativeName ?? 'English'}
+              {' '}
+              <Text style={styles.detailsPickerHint}>
+                ({getLanguageByCode(data.userPreferredLanguage)?.name ?? 'English'})
+              </Text>
+            </Text>
+            <Ionicons name="chevron-down" size={18} color={colors.text.secondary} />
+          </Pressable>
+
+          {/* Country Picker Modal */}
+          <CountryPickerModal
+            visible={showCountryPicker}
+            onClose={() => setShowCountryPicker(false)}
+            onSelect={(code) => setData((p) => ({ ...p, userCountry: code }))}
+            selectedCode={data.userCountry}
+          />
+
+          {/* Language Picker Modal */}
+          <LanguagePickerModal
+            visible={showLanguagePicker}
+            onClose={() => setShowLanguagePicker(false)}
+            onSelect={(code) => setData((p) => ({ ...p, userPreferredLanguage: code }))}
+            selectedCode={data.userPreferredLanguage}
+          />
         </View>
       )
     }
@@ -2238,6 +2500,57 @@ const styles = StyleSheet.create({
   },
   genderTextSelected: {
     color: colors.text.inverse,
+  },
+  genderListContainer: {
+    marginTop: spacing.lg,
+  },
+  // ─── Details Screen ───
+  fieldLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+    marginTop: spacing.md,
+  },
+  detailsPickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background.primary,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    height: 52,
+  },
+  detailsPickerText: {
+    ...typography.md,
+    fontWeight: fontWeights.medium as any,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  detailsPickerPlaceholder: {
+    color: colors.text.tertiary,
+  },
+  detailsPickerHint: {
+    ...typography.sm,
+    color: colors.text.secondary,
+  },
+  detailsDatePickerContainer: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+    overflow: 'hidden' as const,
+  },
+  detailsDatePickerDone: {
+    alignItems: 'flex-end' as const,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  detailsDatePickerDoneText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.primary[600],
   },
   // ─── Segmented Control ───
   segmentedControl: {

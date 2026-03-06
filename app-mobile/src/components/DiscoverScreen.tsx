@@ -3144,7 +3144,7 @@ export default function DiscoverScreen({
               {selectedPerson ? (
                 <PersonHolidayView
                   person={selectedPerson}
-                  location={userLocation ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : { latitude: 40.7128, longitude: -74.006 }}
+                  location={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : { latitude: 40.7128, longitude: -74.006 }}
                 />
               ) : (
                 <>
