@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { logger } from '../utils/logger';
 
 interface ErrorBoundaryState {
@@ -28,21 +28,22 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     console.error('Error Boundary caught an error:', error, errorInfo);
   }
 
+  handleRetry = () => {
+    this.setState({ hasError: false, error: undefined });
+  };
+
   render() {
     if (this.state.hasError) {
       return this.props.fallback || (
-        <View className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <View className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center">
-            <View className="text-red-500 text-4xl mb-4">⚠️</View>
-            <Text className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</Text>
-            <Text className="text-gray-600 mb-4">
-              We encountered an unexpected error. Please refresh the page to try again.
+        <View style={styles.container}>
+          <View style={styles.card}>
+            <Text style={styles.icon}>⚠️</Text>
+            <Text style={styles.title}>Something went wrong</Text>
+            <Text style={styles.message}>
+              We encountered an unexpected error. Please try again.
             </Text>
-            <TouchableOpacity 
-              onClick={() => window.location.reload()}
-              className="bg-[#eb7825] text-white px-4 py-2 rounded-lg hover:bg-[#d6691f] transition-colors"
-            >
-              Refresh Page
+            <TouchableOpacity style={styles.button} onPress={this.handleRetry}>
+              <Text style={styles.buttonText}>Try Again</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -52,5 +53,57 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     return this.props.children;
   }
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  icon: {
+    fontSize: 40,
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  button: {
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
 export default ErrorBoundary;

@@ -29,6 +29,10 @@ export interface ProfileData {
   share_budget: boolean;
   share_categories: boolean;
   share_date_time: boolean;
+  gender?: string | null;
+  birthday?: string | null;
+  country?: string | null;
+  preferred_language?: string | null;
   created_at: string;
 }
 
