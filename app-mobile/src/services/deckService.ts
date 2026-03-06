@@ -274,6 +274,17 @@ class DeckService {
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
             if (__DEV__) {
               console.log(`[DeckService] discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
+              if (data.sourceBreakdown) {
+                const sb = data.sourceBreakdown;
+                console.log(
+                  `[DeckService] SOURCE BREAKDOWN:\n` +
+                  `  Path: ${sb.path}\n` +
+                  `  From pool: ${sb.fromPool} | From Google API: ${sb.fromApi} | Total served: ${sb.totalServed}\n` +
+                  `  Google API calls: ${sb.apiCallsMade} | Cache hits: ${sb.cacheHits}\n` +
+                  `  Gap-filled categories: ${sb.gapCategories?.length > 0 ? sb.gapCategories.join(', ') : 'none'}\n` +
+                  `  Reason: ${sb.reason}`
+                );
+              }
             }
             return cards;
           } else {

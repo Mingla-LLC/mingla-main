@@ -148,7 +148,11 @@ export const LocationInputSection = memo(
   }) => (
     <View>
       <View style={styles.gpsSwitchRow}>
-        <Ionicons name="locate-outline" size={16} color="#6b7280" />
+        <Ionicons
+          name={useGpsLocation ? "navigate" : "navigate-outline"}
+          size={16}
+          color={useGpsLocation ? "#eb7825" : "#6b7280"}
+        />
         <Text style={styles.gpsSwitchLabel}>Use my current location</Text>
         <Switch
           value={useGpsLocation}
@@ -157,48 +161,48 @@ export const LocationInputSection = memo(
           thumbColor="#ffffff"
         />
       </View>
-      <View
-        style={[
-          styles.locationInputContainer,
-          isInputFocused && !useGpsLocation && styles.locationInputContainerFocused,
-        ]}
-      >
-        <Ionicons
-          name="location"
-          size={16}
-          color="#6b7280"
-          style={styles.locationInputIcon}
-        />
-        <TextInput
-          style={[
-            styles.locationTextInput,
-            useGpsLocation && styles.locationTextInputDisabled,
-          ]}
-          placeholder={
-            useGpsLocation
-              ? "Current location"
-              : "Search for a starting spot..."
-          }
-          placeholderTextColor="#9ca3af"
-          value={useGpsLocation ? "" : searchLocation}
-          onChangeText={useGpsLocation ? undefined : onLocationInputChange}
-          onFocus={useGpsLocation ? undefined : onFocus}
-          onBlur={useGpsLocation ? undefined : onBlur}
-          editable={!useGpsLocation}
-          autoCapitalize="words"
-          returnKeyType="done"
-        />
-      </View>
 
-      {/* Helper text */}
+      {!useGpsLocation && (
+        <>
+          <View
+            style={[
+              styles.locationInputContainer,
+              isInputFocused && styles.locationInputContainerFocused,
+            ]}
+          >
+            <Ionicons
+              name="location"
+              size={16}
+              color="#6b7280"
+              style={styles.locationInputIcon}
+            />
+            <TextInput
+              style={styles.locationTextInput}
+              placeholder="Search for a starting spot..."
+              placeholderTextColor="#9ca3af"
+              value={searchLocation}
+              onChangeText={onLocationInputChange}
+              onFocus={onFocus}
+              onBlur={onBlur}
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+          </View>
+
+        </>
+      )}
+
+      {/* Helper text — always visible, state-aware */}
       <View style={styles.locationHelperContainer}>
         <Ionicons
           name="information-circle-outline"
           size={14}
-          color="#6b7280"
+          color="#9ca3af"
         />
         <Text style={styles.locationHelperText}>
-          Search any address or place
+          {useGpsLocation
+            ? "We've got you pinned. Chill."
+            : "Drop a pin anywhere. Or toggle back for GPS."}
         </Text>
       </View>
 
@@ -329,8 +333,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   travelPresetPillSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#ffedd5",
     borderColor: "#eb7825",
+    borderWidth: 1.5,
   },
   travelPresetPillText: {
     fontSize: 12,
@@ -388,10 +393,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#111827",
     padding: 0,
-  },
-  locationTextInputDisabled: {
-    backgroundColor: 'transparent',
-    color: '#9ca3af',
   },
   locationHelperContainer: {
     flexDirection: "row",

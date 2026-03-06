@@ -461,7 +461,7 @@ export const useSessionManagement = () => {
           if (deleteError) console.error('Error cleaning up failed session:', deleteError);
         });
       }
-      return null;
+      throw error;
     }
   }, [user, loadUserSessions]);
 

@@ -2304,6 +2304,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       return (
         <OnboardingFriendsStep
           userId={user!.id}
+          userPhoneE164={buildE164()}
           initialFriends={data.addedFriends}
           onContinue={(addedFriends) => {
             setData(prev => ({ ...prev, addedFriends, skippedFriends: false }))

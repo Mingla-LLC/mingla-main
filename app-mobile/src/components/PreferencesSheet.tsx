@@ -100,6 +100,12 @@ const categories = [
   { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
 ];
 
+// Normalize legacy display-name categories (e.g. "Nature") to slug IDs (e.g. "nature")
+const CATEGORY_LABEL_TO_ID: Record<string, string> = {};
+categories.forEach(c => { CATEGORY_LABEL_TO_ID[c.label.toLowerCase()] = c.id; });
+const normalizeCategoryIds = (raw: string[]): string[] =>
+  raw.map(c => CATEGORY_LABEL_TO_ID[c.toLowerCase()] || c);
+
 // Travel modes matching database constraint
 const travelModes = [
   { id: "walking", label: "Walk", icon: "walk-outline" },
@@ -288,9 +294,10 @@ export default function PreferencesSheet({
       setSelectedIntents(
         Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
       );
-      setSelectedCategories(
+      const collabCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
+      setSelectedCategories(collabCats);
       if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
         setSelectedPriceTiers((loadedPreferences as any).price_tiers);
       }
@@ -329,9 +336,7 @@ export default function PreferencesSheet({
           : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: Array.isArray(loadedPreferences.categories)
-          ? loadedPreferences.categories
-          : [],
+        selectedCategories: collabCats,
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref
@@ -348,9 +353,10 @@ export default function PreferencesSheet({
       setSelectedIntents(
         Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
       );
-      setSelectedCategories(
+      const soloCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
+      setSelectedCategories(soloCats);
 
       if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
         setSelectedPriceTiers((loadedPreferences as any).price_tiers);
@@ -405,24 +411,16 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
-      const hasIntentsField = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
-      const intentIdSet = new Set([
-        "adventurous", "first-date", "romantic", "friendly",
-        "group-fun", "picnic-dates", "take-a-stroll",
-      ]);
-
       setInitialPreferences({
-        selectedIntents: hasIntentsField
+        selectedIntents: Array.isArray((loadedPreferences as any).intents)
           ? (loadedPreferences as any).intents
-          : (loadedPreferences.categories || []).filter((item: string) => intentIdSet.has(item)),
+          : [],
         selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
           ? (loadedPreferences as any).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
-        selectedCategories: hasIntentsField
-          ? (loadedPreferences.categories || [])
-          : (loadedPreferences.categories || []).filter((item: string) => !intentIdSet.has(item)),
+        selectedCategories: soloCats,
         selectedDateOption: loadedPreferences.date_option
           ? ({
               now: "Now",
@@ -916,24 +914,16 @@ export default function PreferencesSheet({
             experienceTypes={experienceTypes}
             selectedIntents={selectedIntents}
             onIntentToggle={handleIntentToggle}
+            minMessage={minSelectionMessage}
           />
-          {minSelectionMessage && (
-            <Text style={styles.selectionCapMessage}>
-              Pick at least one mood or category to get started.
-            </Text>
-          )}
 
           {/* Categories Section */}
           <CategoriesSection
             filteredCategories={filteredCategories}
             selectedCategories={selectedCategories}
             onCategoryToggle={handleCategoryToggle}
+            capMessage={categoryCapMessage}
           />
-          {categoryCapMessage && (
-            <Text style={styles.selectionCapMessage}>
-              3 max — drop one to add another.
-            </Text>
-          )}
 
           {/* Price Tier Section */}
           {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
@@ -1017,9 +1007,7 @@ export default function PreferencesSheet({
           >
             <Text style={styles.sectionTitle}>Starting Point</Text>
             <Text style={styles.sectionSubtitle}>
-              {useGpsLocation
-                ? "Using your current location."
-                : "Using a custom pin. Toggle on for GPS."}
+              Where should we start looking?
             </Text>
 
             <LocationInputSection
@@ -1198,13 +1186,6 @@ export default function PreferencesSheet({
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
-  selectionCapMessage: {
-    color: '#dc2626',
-    fontSize: 12,
-    textAlign: 'center' as const,
-    marginTop: 6,
-    fontWeight: '500',
-  },
   // --- Bottom-sheet modal styles (used when `visible` prop is passed) ---
   sheetOverlay: {
     flex: 1,

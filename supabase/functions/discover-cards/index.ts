@@ -422,6 +422,16 @@ serve(async (req: Request) => {
               poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
               batchSeed: batchSeed ?? 0,
             },
+            sourceBreakdown: {
+              fromPool: poolResult.fromPool,
+              fromApi: poolResult.fromApi,
+              totalServed: scoredPoolCards.length,
+              apiCallsMade: poolResult.diagnostics?.apiCallsMade ?? 0,
+              cacheHits: 0,
+              gapCategories: poolResult.diagnostics?.gapCategories ?? [],
+              reason: poolResult.diagnostics?.reason ?? 'Served from pipeline',
+              path: 'pipeline',
+            },
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
@@ -467,6 +477,16 @@ serve(async (req: Request) => {
                   poolSize: retryResult.totalUnseenCount ?? retryResult.totalPoolSize,
                   batchSeed: batchSeed ?? 0,
                 },
+                sourceBreakdown: {
+                  fromPool: retryResult.cards.length,
+                  fromApi: 0,
+                  totalServed: retryResult.cards.length,
+                  apiCallsMade: 0,
+                  cacheHits: 0,
+                  gapCategories: [],
+                  reason: `Pool exhausted at offset ${poolOffset}, expanded via nextPageToken, then re-served from pool`,
+                  path: 'pipeline-expanded',
+                },
               }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
           }
@@ -487,6 +507,16 @@ serve(async (req: Request) => {
               hasMore: poolResult.hasMore,
               poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
               batchSeed: batchSeed ?? 0,
+            },
+            sourceBreakdown: {
+              fromPool: poolResult.fromPool,
+              fromApi: poolResult.fromApi,
+              totalServed: scoredMixedCards.length,
+              apiCallsMade: poolResult.diagnostics?.apiCallsMade ?? 0,
+              cacheHits: 0,
+              gapCategories: poolResult.diagnostics?.gapCategories ?? [],
+              reason: poolResult.diagnostics?.reason ?? `Pipeline mixed: ${poolResult.fromPool} pool + ${poolResult.fromApi} API`,
+              path: 'pipeline-mixed',
             },
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
@@ -590,7 +620,17 @@ serve(async (req: Request) => {
 
     if (batch.length === 0 && !isWarmPool) {
       return new Response(
-        JSON.stringify({ cards: [], total: totalAvailable, source: 'api', metadata: { hasMore: false, poolSize: totalAvailable, batchSeed } }),
+        JSON.stringify({
+          cards: [], total: totalAvailable, source: 'api',
+          metadata: { hasMore: false, poolSize: totalAvailable, batchSeed },
+          sourceBreakdown: {
+            fromPool: 0, fromApi: 0, totalServed: 0,
+            apiCallsMade, cacheHits,
+            gapCategories: categories,
+            reason: `Pool skipped (no userId or pool empty), Google returned ${totalAvailable} total but batch offset ${offset} is beyond range`,
+            path: 'api-direct-empty',
+          },
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -665,7 +705,20 @@ serve(async (req: Request) => {
     storeResultsInPoolBatched(supabaseAdmin, batch, scoredCards, categories, userId);
 
     return new Response(
-      JSON.stringify({ cards: scoredCards, total: totalAvailable, source, metadata: { hasMore, poolSize: totalAvailable, batchSeed } }),
+      JSON.stringify({
+        cards: scoredCards, total: totalAvailable, source,
+        metadata: { hasMore, poolSize: totalAvailable, batchSeed },
+        sourceBreakdown: {
+          fromPool: 0,
+          fromApi: scoredCards.length,
+          totalServed: scoredCards.length,
+          apiCallsMade,
+          cacheHits,
+          gapCategories: categories,
+          reason: `Pool skipped or empty — all ${scoredCards.length} cards from Google API (${apiCallsMade} API calls, ${cacheHits} cache hits)`,
+          path: 'api-direct',
+        },
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

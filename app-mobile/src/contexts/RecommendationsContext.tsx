@@ -392,8 +392,10 @@ export const RecommendationsProvider: React.FC<
     setBatchSeed(prev => prev + 1);
   }, [recommendations]);
 
-  // Soft timeout (3s): show "Still loading..." intermediate state
-  // Hard timeout (5s): mark exhausted only if batch truly never arrived
+  // Soft timeout (3s): show "Still loading..." indicator
+  // Hard timeout (20s): match DeckService 15s + network buffer. Do NOT mark
+  // exhausted on timeout — exhaustion is determined by the query returning 0
+  // cards, not by slow network. Premature exhaustion was the #1 bug.
   useEffect(() => {
     if (!isBatchTransitioning) return;
 
@@ -406,12 +408,14 @@ export const RecommendationsProvider: React.FC<
 
     const hardTimer = setTimeout(() => {
       if (isBatchTransitioning) {
-        console.warn('[RecommendationsContext] Batch transition timed out after 5s — marking exhausted');
+        console.warn('[RecommendationsContext] Batch transition timed out after 20s — clearing transition state');
         setIsBatchTransitioning(false);
-        setIsExhausted(true);
         setIsSlowBatchLoad(false);
+        // Do NOT setIsExhausted(true) here. A slow batch is not an exhausted
+        // batch. The query result effect (line ~629) handles actual exhaustion
+        // when isDeckBatchLoaded && deckCards.length === 0.
       }
-    }, 5000);
+    }, 20000);
 
     return () => {
       clearTimeout(softTimer);
@@ -635,8 +639,9 @@ export const RecommendationsProvider: React.FC<
         if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
           setIsExhausted(false);
         }
-      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning) {
-        // Genuinely empty — no cards available
+      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad) {
+        // Genuinely empty — no cards available. All guards must be false
+        // to avoid clearing recommendations while a slow batch is still loading.
         setRecommendations([]);
       }
       // During batch transition with 0 cards from new query,

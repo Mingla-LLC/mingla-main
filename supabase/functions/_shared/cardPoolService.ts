@@ -45,6 +45,13 @@ export interface PoolQueryResult {
   totalPoolSize: number;           // DEPRECATED — kept for backward compat; equals totalUnseenCount now
   totalUnseenCount: number;        // total UNSEEN cards remaining in pool after this batch
   hasMore: boolean;                // true if more unseen cards exist beyond this batch
+  diagnostics?: {                  // gap-fill diagnostics for client-side logging
+    reason: string;                // why Google was queried (or "pool sufficient")
+    gapCategories: string[];       // which categories needed gap-fill from Google
+    apiCallsMade: number;          // number of Google API calls made
+    poolQueried: number;           // how many came from pool before gap analysis
+    limitRequested: number;        // the limit that was requested
+  };
 }
 
 // ── Helper: Google Places photo URL ─────────────────────────────────────────
@@ -660,6 +667,13 @@ export async function serveCardsFromPipeline(
       totalPoolSize,
       totalUnseenCount: remainingUnseen,
       hasMore: remainingUnseen > 0,
+      diagnostics: {
+        reason: `Pool had ${poolCards.length} unseen cards (needed ${limit}) — sufficient, no Google query`,
+        gapCategories: [],
+        apiCallsMade: 0,
+        poolQueried: poolCards.length,
+        limitRequested: limit,
+      },
     };
   }
 
@@ -926,6 +940,10 @@ export async function serveCardsFromPipeline(
   const remainingUnseen = Math.max(0, totalUnseenCount - poolApiCards.length);
   const hasMoreCards = remainingUnseen > 0 || gapCards.length >= limit;
 
+  const gapReason = neededCategories.length > 0
+    ? `Pool had ${poolCards.length}/${limit} cards — gap-filled [${neededCategories.join(', ')}] from Google (${apiCallCount} API calls)`
+    : `Pool had ${poolCards.length}/${limit} cards — no gap-fill needed`;
+
   console.log(`[card-pool] Pipeline done: ${poolApiCards.length} from pool + ${gapCards.length} from API (${apiCallCount} API calls) in ${Date.now() - startTime}ms`);
 
   return {
@@ -935,6 +953,13 @@ export async function serveCardsFromPipeline(
     totalPoolSize,
     totalUnseenCount: remainingUnseen,
     hasMore: hasMoreCards,
+    diagnostics: {
+      reason: gapReason,
+      gapCategories: neededCategories,
+      apiCallsMade: apiCallCount,
+      poolQueried: poolCards.length,
+      limitRequested: limit,
+    },
   };
 }
 

@@ -29,10 +29,12 @@ export const ExperienceTypesSection = memo(
     experienceTypes,
     selectedIntents,
     onIntentToggle,
+    minMessage,
   }: {
     experienceTypes: any[];
     selectedIntents: string[];
     onIntentToggle: (id: string) => void;
+    minMessage?: boolean;
   }) => {
     const [lastTappedIntent, setLastTappedIntent] = useState<string | null>(null);
 
@@ -89,11 +91,15 @@ export const ExperienceTypesSection = memo(
             </Text>
           </View>
         )}
+        {minMessage && (
+          <Text style={styles.capMessage}>Pick at least one mood or category.</Text>
+        )}
       </View>
     );
   },
   (prev, next) =>
     prev.selectedIntents.length === next.selectedIntents.length &&
+    prev.minMessage === next.minMessage &&
     prev.selectedIntents.every((id: string) =>
       next.selectedIntents.includes(id)
     )
@@ -129,10 +135,12 @@ export const CategoriesSection = memo(
     filteredCategories,
     selectedCategories,
     onCategoryToggle,
+    capMessage,
   }: {
     filteredCategories: any[];
     selectedCategories: string[];
     onCategoryToggle: (id: string) => void;
+    capMessage?: boolean;
   }) => {
     const [lastTappedCategory, setLastTappedCategory] = useState<string | null>(null);
 
@@ -164,9 +172,9 @@ export const CategoriesSection = memo(
                 ]}
               >
                 <Ionicons
-                  name={category.icon as any}
+                  name={isSelected ? (category.icon as string).replace('-outline', '') as any : category.icon as any}
                   size={14}
-                  color={isSelected ? "#eb7825" : "#6b7280"}
+                  color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
                   style={[
@@ -190,12 +198,16 @@ export const CategoriesSection = memo(
             </Text>
           </View>
         )}
+        {capMessage && (
+          <Text style={styles.capMessage}>3 max — drop one to add another.</Text>
+        )}
       </View>
     );
   },
   (prev, next) =>
     prev.filteredCategories.length === next.filteredCategories.length &&
     prev.selectedCategories.length === next.selectedCategories.length &&
+    prev.capMessage === next.capMessage &&
     prev.selectedCategories.every((id: string) =>
       next.selectedCategories.includes(id)
     )
@@ -420,8 +432,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   experienceTypeButtonSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#ffedd5",
     borderColor: "#eb7825",
+    borderWidth: 1.5,
   },
   experienceTypeText: {
     fontSize: 11,
@@ -430,6 +443,7 @@ const styles = StyleSheet.create({
   },
   experienceTypeTextSelected: {
     color: "#eb7825",
+    fontWeight: "600",
   },
   categoriesContainer: {
     flexDirection: "row",
@@ -444,12 +458,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#e5e7eb",
     backgroundColor: "#fafafa",
   },
   categoryButtonSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#eb7825",
     borderColor: "#eb7825",
   },
   categoryText: {
@@ -458,7 +472,8 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   categoryTextSelected: {
-    color: "#eb7825",
+    color: "#ffffff",
+    fontWeight: "700",
   },
   categoryButtonWide: {
     // Natural flex wrap — no fixed width needed
@@ -484,6 +499,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#eb7825",
   },
+  capMessage: {
+    color: "#dc2626",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "#fef2f2",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -502,8 +529,9 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
   },
   dateOptionPillSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#ffedd5",
     borderColor: "#eb7825",
+    borderWidth: 1.5,
   },
   dateOptionPillLabel: {
     fontSize: 11,
@@ -612,8 +640,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   travelModeCardSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#ffedd5",
     borderColor: "#eb7825",
+    borderWidth: 1.5,
   },
   travelModeLabel: {
     fontSize: 12,

@@ -30,6 +30,7 @@ import {
 
 interface OnboardingFriendsStepProps {
   userId: string
+  userPhoneE164?: string
   initialFriends?: AddedFriend[]
   onContinue: (addedFriends: AddedFriend[]) => void
   onSkip: () => void
@@ -37,6 +38,7 @@ interface OnboardingFriendsStepProps {
 
 export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   userId,
+  userPhoneE164,
   initialFriends,
   onContinue,
   onSkip,
@@ -72,12 +74,15 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   const debouncedPhone = useDebouncedValue(phoneE164, 500)
   const debouncedDigitCount = useDebouncedValue(rawDigits.length, 500)
 
+  // Prevent self-lookup — don't fire the edge function for the user's own number
+  const isSelfLookup = Boolean(userPhoneE164 && debouncedPhone === userPhoneE164)
+
   // Phone lookup — enabled uses debounced digit count to stay in sync with debounced phone
   const {
     data: lookupResult,
     isLoading: lookupLoading,
     isError: lookupError,
-  } = usePhoneLookup(debouncedPhone, debouncedDigitCount >= 7)
+  } = usePhoneLookup(debouncedPhone, debouncedDigitCount >= 7 && !isSelfLookup)
 
   // Pending incoming requests
   const incomingRequests = friendRequests.filter((r) => r.type === 'incoming')
@@ -139,7 +144,12 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
       friendshipStatus: lookupResult.friendship_status,
     }
 
-    setAddedFriends((prev) => [...prev, friend])
+    setAddedFriends((prev) => {
+      const isDuplicate = prev.some(
+        (f) => (friend.userId && f.userId === friend.userId) || f.phoneE164 === friend.phoneE164
+      )
+      return isDuplicate ? prev : [...prev, friend]
+    })
     clearInput()
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
   }, [lookupResult, debouncedPhone, clearInput])
@@ -167,7 +177,10 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
         friendshipStatus: 'none',
       }
 
-      setAddedFriends((prev) => [...prev, friend])
+      setAddedFriends((prev) => {
+        const isDuplicate = prev.some((f) => f.phoneE164 === friend.phoneE164)
+        return isDuplicate ? prev : [...prev, friend]
+      })
       clearInput()
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     } catch (err) {
@@ -369,9 +382,14 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
           </Pressable>
         )}
 
+      {/* Self-lookup hint */}
+      {isSelfLookup && rawDigits.length >= 7 && (
+        <Text style={styles.hintText}>That's your number! Try a friend's instead.</Text>
+      )}
+
       {/* Lookup error */}
-      {lookupError && rawDigits.length >= 7 && (
-        <Text style={styles.errorText}>Hmm, that didn't work. Give it another go!</Text>
+      {lookupError && !isSelfLookup && rawDigits.length >= 7 && (
+        <Text style={styles.errorText}>Couldn't find that one. You can still invite them.</Text>
       )}
 
       {/* Added friends pills */}
@@ -523,10 +541,12 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
         </Pressable>
       )}
 
-      {/* Skip button */}
-      <Pressable style={styles.skipButton} onPress={onSkip}>
-        <Text style={styles.skipButtonText}>Skip for now</Text>
-      </Pressable>
+      {/* Skip button — only when no friends added and no pending requests */}
+      {addedFriends.length === 0 && allPendingResolved && (
+        <Pressable style={styles.skipButton} onPress={onSkip}>
+          <Text style={styles.skipButtonText}>Skip for now</Text>
+        </Pressable>
+      )}
     </ScrollView>
   )
 }
@@ -622,6 +642,11 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.regular,
     color: colors.text.tertiary,
     marginTop: 2,
+  },
+  hintText: {
+    ...typography.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
   },
   errorText: {
     ...typography.sm,

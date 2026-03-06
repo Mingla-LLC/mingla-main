@@ -49,9 +49,25 @@ export async function extractFunctionError(
       }
     }
 
-    // Strategy 2: Check if error.message is meaningful (not the generic SDK message)
+    // Strategy 2: Use HTTP status code for a meaningful message when body is unavailable
+    const ctx2 = err.context as Record<string, unknown> | undefined
+    if (ctx2 && typeof (ctx2 as any).status === 'number') {
+      const status = (ctx2 as any).status as number
+      if (status === 400) return `${fallback} (bad request)`
+      if (status === 401) return 'Session expired — please sign in again'
+      if (status === 403) return 'Not authorized for this action'
+      if (status === 404) return `${fallback} (not found)`
+      if (status === 429) return 'Too many requests — try again in a moment'
+      if (status >= 500) return `${fallback} (server error)`
+    }
+
+    // Strategy 3: Check if error.message is meaningful (not the generic SDK message)
     const msg = err.message
-    if (typeof msg === 'string' && msg !== GENERIC_SDK_MESSAGE && msg.length > 0) {
+    if (
+      typeof msg === 'string' &&
+      msg.length > 0 &&
+      !msg.startsWith('Edge Function returned')
+    ) {
       return msg
     }
   } catch {
