@@ -56,6 +56,8 @@ export interface Recommendation {
     time: number;
     popularity: number;
   };
+  oneLiner?: string | null;
+  tip?: string | null;
   strollData?: {
     anchor: {
       id: string;

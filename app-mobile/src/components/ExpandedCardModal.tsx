@@ -1224,6 +1224,7 @@ export default function ExpandedCardModal({
                   priceTier={(card as any).priceTier}
                   priceLevel={(card as any).priceLevel}
                   description={card.description}
+                  tip={card.tip}
                   currency={accountPreferences?.currency}
                 />
 

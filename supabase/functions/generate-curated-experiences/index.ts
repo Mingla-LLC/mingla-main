@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { searchPlacesWithCache, searchCategoryPlaces } from '../_shared/placesCache.ts';
 import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 import {
   MINGLA_CATEGORY_PLACE_TYPES,
   resolveCategory,
@@ -1101,7 +1102,7 @@ Output ONLY a JSON array of 10 strings. No markdown, no keys, no explanation.
 
 Example format: ["🥖 Sourdough baguette", "🧀 Brie and crackers", ...]`;
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1113,6 +1114,7 @@ Example format: ["🥖 Sourdough baguette", "🧀 Brie and crackers", ...]`;
         max_tokens: 300,
         temperature: 0.9,
       }),
+      timeoutMs: 10000,
     });
     const json = await res.json();
     let content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
@@ -1675,7 +1677,7 @@ Output ONLY a JSON array of ${stops.length} strings with no markdown and no extr
 Stops:
 ${stopList}`;
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1687,6 +1689,7 @@ ${stopList}`;
         max_tokens: 400,
         temperature: 0.8,
       }),
+      timeoutMs: 10000,
     });
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
@@ -2534,7 +2537,7 @@ Output ONLY a JSON array of ${stops.length} strings with no markdown and no extr
 Stops:
 ${stopList}`;
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2546,6 +2549,7 @@ ${stopList}`;
         max_tokens: 400,
         temperature: 0.8,
       }),
+      timeoutMs: 10000,
     });
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
@@ -2711,11 +2715,11 @@ async function getTravelTime(originLat: number, originLng: number, destLat: numb
   const mode = travelMode === 'driving' ? 'driving' : travelMode === 'transit' ? 'transit' : travelMode === 'biking' ? 'bicycling' : 'walking';
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originLat},${originLng}&destinations=${destLat},${destLng}&mode=${mode}&key=${GOOGLE_PLACES_API_KEY}`;
   try {
-    const res = await fetch(url);
+    const res = await timeoutFetch(url, { timeoutMs: 8000 });
     const data = await res.json();
     const el = data.rows?.[0]?.elements?.[0];
     if (el?.status === 'OK') return Math.round(el.duration.value / 60);
-  } catch { /* ignore */ }
+  } catch { /* timeout or network error — fall back to estimate */ }
   return 15;
 }
 
@@ -2785,7 +2789,7 @@ Output ONLY a JSON array of ${stops.length} strings with no markdown and no extr
 Stops:
 ${stopList}`;
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2797,6 +2801,7 @@ ${stopList}`;
         max_tokens: 400,
         temperature: 0.8,
       }),
+      timeoutMs: 10000,
     });
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
@@ -3006,64 +3011,123 @@ serve(async (req) => {
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);
 
-    // Fire-and-forget: Store in pool
+    // Fire-and-forget: Batch store in pool (2-3 DB calls instead of 60-80)
     if (poolAdmin && cards.length > 0) {
       (async () => {
         try {
-          const poolIds: string[] = [];
+          // 1. Collect ALL places from ALL cards' stops
+          const placeRows: any[] = [];
           for (const card of cards) {
-            const stopPlacePoolIds: string[] = [];
-            const stopGooglePlaceIds: string[] = [];
             for (const stop of card.stops || []) {
               if (stop.placeId) {
-                const ppId = await upsertPlaceToPool(poolAdmin, {
-                  id: stop.placeId,
-                  displayName: { text: stop.placeName || '' },
-                  formattedAddress: stop.address || '',
-                  location: { latitude: stop.lat || 0, longitude: stop.lng || 0 },
-                  rating: stop.rating || 0,
-                  userRatingCount: stop.reviewCount || 0,
+                placeRows.push({
+                  google_place_id: stop.placeId,
+                  name: stop.placeName || '',
+                  address: stop.address || '',
+                  lat: stop.lat || 0,
+                  lng: stop.lng || 0,
                   types: [],
+                  primary_type: stop.placeType || null,
+                  rating: stop.rating || 0,
+                  review_count: stop.reviewCount || 0,
+                  price_level: null,
+                  price_min: stop.priceMin || 0,
+                  price_max: stop.priceMax || 0,
+                  price_tier: stop.priceTier || googleLevelToTierSlug(stop.priceLevel),
                   photos: [],
-                }, GOOGLE_PLACES_API_KEY!);
-                if (ppId) stopPlacePoolIds.push(ppId);
-                stopGooglePlaceIds.push(stop.placeId);
+                  website: null,
+                  raw_google_data: null,
+                  fetched_via: 'curated_stop',
+                  last_detail_refresh: new Date().toISOString(),
+                  refresh_failures: 0,
+                  is_active: true,
+                });
               }
             }
+          }
 
-            const cardId = await insertCardToPool(poolAdmin, {
-              cardType: 'curated',
+          // 2. Batch upsert places (1 DB call)
+          const placePoolIdMap: Record<string, string> = {};
+          if (placeRows.length > 0) {
+            const { data: upsertedPlaces, error: placeError } = await poolAdmin
+              .from('place_pool')
+              .upsert(placeRows, { onConflict: 'google_place_id' })
+              .select('id, google_place_id');
+
+            if (placeError) {
+              console.warn('[curated-v2] Batch place upsert error:', placeError.message);
+            }
+            if (upsertedPlaces) {
+              for (const row of upsertedPlaces) {
+                placePoolIdMap[row.google_place_id] = row.id;
+              }
+            }
+          }
+
+          // 3. Collect ALL card rows
+          const cardRows = cards.map(card => {
+            const stops = card.stops || [];
+            const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
+            const stopPlacePoolIds = stopGooglePlaceIds.map((gpid: string) => placePoolIdMap[gpid]).filter(Boolean);
+            const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
+
+            return {
+              card_type: 'curated' as const,
+              place_pool_id: null,
+              google_place_id: stops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               title: card.title || `${experienceType} Experience`,
-              category: card.stops?.[0]?.placeType || 'Nature',
-              categories: (card.stops || []).map((s: any) => s.placeType).filter(Boolean),
+              category: stops[0]?.placeType || 'Nature',
+              categories: stops.map((s: any) => s.placeType).filter(Boolean),
               description: card.tagline || '',
               highlights: [],
-              imageUrl: card.stops?.[0]?.imageUrl || null,
-              images: (card.stops || []).map((s: any) => s.imageUrl).filter(Boolean),
-              address: card.stops?.[0]?.address || '',
-              lat: card.stops?.[0]?.lat || location.lat,
-              lng: card.stops?.[0]?.lng || location.lng,
+              image_url: stops[0]?.imageUrl || null,
+              images: stops.map((s: any) => s.imageUrl).filter(Boolean),
+              address: stops[0]?.address || '',
+              lat: stops[0]?.lat || location.lat,
+              lng: stops[0]?.lng || location.lng,
               rating: Math.min(5, (card.matchScore || 85) / 20),
-              reviewCount: 0,
-              stopPlacePoolIds,
-              stopGooglePlaceIds,
-              experienceType,
+              review_count: 0,
+              price_min: card.totalPriceMin || 0,
+              price_max: card.totalPriceMax || 0,
+              price_tier: stops[0]?.priceTier || 'comfy',
+              opening_hours: null,
+              website: null,
+              popularity_score: popularityScore,
+              is_active: true,
+              stop_place_pool_ids: stopPlacePoolIds,
+              stop_google_place_ids: stopGooglePlaceIds,
+              curated_pairing_key: card.pairingKey || null,
+              experience_type: experienceType,
               stops: card.stops,
               tagline: card.tagline || '',
-              totalPriceMin: card.totalPriceMin || 0,
-              totalPriceMax: card.totalPriceMax || 0,
-              estimatedDurationMinutes: card.estimatedDurationMinutes || 0,
-              shoppingList: card.shoppingList || null,
-            });
-            if (cardId) poolIds.push(cardId);
+              total_price_min: card.totalPriceMin || 0,
+              total_price_max: card.totalPriceMax || 0,
+              estimated_duration_minutes: card.estimatedDurationMinutes || 0,
+              shopping_list: card.shoppingList || null,
+            };
+          });
+
+          // 4. Batch upsert cards (1 DB call)
+          if (cardRows.length > 0) {
+            const { data: insertedCards, error: cardError } = await poolAdmin
+              .from('card_pool')
+              .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
+              .select('id, google_place_id');
+
+            if (cardError) {
+              console.warn('[curated-v2] Batch card insert error:', cardError.message);
+            }
+
+            // 5. Record impressions
+            if (!warmPool && poolUserId !== 'anonymous' && insertedCards?.length) {
+              const servedIds = insertedCards.slice(0, limit).map((c: any) => c.id);
+              await recordImpressions(poolAdmin, poolUserId, servedIds);
+            }
+
+            console.log(`[curated-v2] Batch stored ${placeRows.length} places + ${cardRows.length} cards in pool`);
           }
-          if (!warmPool && poolUserId !== 'anonymous' && poolIds.length > 0) {
-            const servedIds = poolIds.slice(0, limit);
-            await recordImpressions(poolAdmin, poolUserId, servedIds);
-          }
-          console.log(`[curated-v2] Stored ${poolIds.length} cards in pool`);
         } catch (storeError) {
-          console.warn('[curated-v2] Pool store error:', storeError);
+          console.warn('[curated-v2] Pool batch store error:', storeError);
         }
       })();
     }

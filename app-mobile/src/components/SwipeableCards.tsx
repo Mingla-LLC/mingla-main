@@ -851,6 +851,7 @@ export default function SwipeableCards({
       selectedDateTime: userPreferences?.datetime_pref
         ? new Date(userPreferences.datetime_pref)
         : new Date(),
+      tip: currentRec.tip ?? undefined,
       // Include strollData if it already exists on the card
       strollData: currentRec.strollData,
       // Pass through website/phone for nature cards' Policies & Reservations
@@ -1095,6 +1096,7 @@ export default function SwipeableCards({
           selectedDateTime: userPreferences?.datetime_pref
             ? new Date(userPreferences.datetime_pref)
             : new Date(),
+          tip: card.tip ?? undefined,
           strollData: card.strollData,
           website: (card as any).website ?? undefined,
           phone: (card as any).phone ?? undefined,
@@ -1639,6 +1641,9 @@ export default function SwipeableCards({
                       },
                     ]}>
                       <Text style={styles.cardTitle}>{currentRec.title}</Text>
+                      {currentRec.oneLiner && (
+                        <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
+                      )}
 
                       {/* Info badges: distance, rating, price, category */}
                       <View style={styles.detailsBadges}>
@@ -1895,6 +1900,16 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 12,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  oneLiner: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    marginTop: 4,
+    marginBottom: 8,
+    textShadowColor: "rgba(0, 0, 0, 0.7)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },

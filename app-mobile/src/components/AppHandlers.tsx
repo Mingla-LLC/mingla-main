@@ -932,7 +932,7 @@ export function useAppHandlers(state: any) {
         };
 
       
-        const { error: boardError } = await BoardCardService.saveCardToBoard({
+        const { data: savedCardData, error: boardError } = await BoardCardService.saveCardToBoard({
           sessionId: sessionId!,
           experienceId: card.id,
           experienceData,
@@ -941,6 +941,26 @@ export function useAppHandlers(state: any) {
 
         if (boardError) {
           throw boardError;
+        }
+
+        // Auto-vote "up" on swipe-right save (fire-and-forget)
+        if (savedCardData?.id) {
+          supabase
+            .from("board_votes")
+            .upsert(
+              {
+                session_id: sessionId!,
+                saved_card_id: savedCardData.id,
+                user_id: user.id,
+                vote_type: "up",
+              },
+              { onConflict: "session_id,saved_card_id,user_id" }
+            )
+            .then(({ error: voteError }) => {
+              if (voteError) {
+                console.warn("Auto-vote failed (non-blocking):", voteError.message);
+              }
+            });
         }
 
         // Invalidate savedCards query to trigger a refetch

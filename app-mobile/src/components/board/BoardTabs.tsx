@@ -4,10 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Animated,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-
 export type BoardTab = "swipe" | "saved" | "discussion";
 
 interface BoardTabsProps {
@@ -16,6 +13,7 @@ interface BoardTabsProps {
   swipeCount?: number;
   savedCount?: number;
   unreadMessages?: number;
+  canGenerateCards?: boolean;
 }
 
 export const BoardTabs: React.FC<BoardTabsProps> = ({
@@ -24,12 +22,22 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
   swipeCount = 0,
   savedCount = 0,
   unreadMessages = 0,
+  canGenerateCards = false,
 }) => {
   const tabs: Array<{
     id: BoardTab;
     label: string;
     count?: number;
   }> = [
+    ...(canGenerateCards
+      ? [
+          {
+            id: "swipe" as BoardTab,
+            label: "Swipe",
+            count: swipeCount > 0 ? swipeCount : undefined,
+          },
+        ]
+      : []),
     {
       id: "saved",
       label: "Cards",

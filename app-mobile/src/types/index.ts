@@ -129,7 +129,7 @@ export interface CollaborationSession {
   createdAt: string;
   isActive: boolean;
   boardId?: string;
-  status: "pending" | "active" | "dormant";
+  status: "pending" | "active" | "voting" | "locked" | "completed" | "archived" | "dormant";
   invitedBy: string;
   inviterProfile?: {
     id: string;
@@ -229,7 +229,7 @@ export interface CollaborationSession {
   name: string;
   created_by: string;
   board_id?: string;
-  status: "pending" | "active" | "dormant";
+  status: "pending" | "active" | "voting" | "locked" | "completed" | "archived" | "dormant";
   created_at: string;
   updated_at: string;
 }

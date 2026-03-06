@@ -13,8 +13,39 @@ interface QueuedAction {
   retries: number;
 }
 
+// Board session callback type
+interface BoardSessionCallbacks {
+  onCardSaved?: (card: any, savedBy: string) => void;
+  onCardVoted?: (
+    savedCardId: string,
+    userId: string,
+    voteType: "up" | "down"
+  ) => void;
+  onCardRSVP?: (
+    savedCardId: string,
+    userId: string,
+    rsvpStatus: "attending" | "not_attending"
+  ) => void;
+  onMessage?: (message: any) => void;
+  onCardMessage?: (savedCardId: string, message: any) => void;
+  onPresenceUpdate?: (
+    userId: string,
+    isOnline: boolean,
+    lastSeenAt: string
+  ) => void;
+  onTypingStart?: (userId: string, savedCardId?: string) => void;
+  onTypingStop?: (userId: string, savedCardId?: string) => void;
+  onParticipantJoined?: (participant: any) => void;
+  onParticipantLeft?: (participant: any) => void;
+  onSessionUpdated?: (session: any) => void;
+  onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
+  onRotationChanged?: (newOwnerId: string, newOrder: string[]) => void;
+  onCardLocked?: (savedCardId: string, lockedAt: string) => void;
+}
+
 export class RealtimeService {
   private channels: Map<string, RealtimeChannel> = new Map();
+  private boardSessionCallbackSets: Map<string, BoardSessionCallbacks[]> = new Map();
   private offlineQueue: QueuedAction[] = [];
   private isOnline: boolean = true;
   private queueProcessing: boolean = false;
@@ -189,11 +220,27 @@ export class RealtimeService {
   }
 
   // Unsubscribe from channel
+  /**
+   * Remove a specific callback set from a board session channel without destroying the channel.
+   * Use this in hook cleanup effects to prevent callback accumulation.
+   */
+  unregisterBoardCallbacks(sessionId: string, callbacks: BoardSessionCallbacks) {
+    const channelName = `board_session:${sessionId}`;
+    const sets = this.boardSessionCallbackSets.get(channelName);
+    if (sets) {
+      const idx = sets.indexOf(callbacks);
+      if (idx !== -1) {
+        sets.splice(idx, 1);
+      }
+    }
+  }
+
   unsubscribe(channelName: string) {
     const channel = this.channels.get(channelName);
     if (channel) {
       supabase.removeChannel(channel);
       this.channels.delete(channelName);
+      this.boardSessionCallbackSets.delete(channelName);
     }
   }
 
@@ -203,6 +250,7 @@ export class RealtimeService {
       supabase.removeChannel(channel);
     });
     this.channels.clear();
+    this.boardSessionCallbackSets.clear();
   }
 
   // Get active channels
@@ -220,39 +268,33 @@ export class RealtimeService {
    */
   subscribeToBoardSession(
     sessionId: string,
-    callbacks: {
-      onCardSaved?: (card: any, savedBy: string) => void;
-      onCardVoted?: (
-        savedCardId: string,
-        userId: string,
-        voteType: "up" | "down"
-      ) => void;
-      onCardRSVP?: (
-        savedCardId: string,
-        userId: string,
-        rsvpStatus: "attending" | "not_attending"
-      ) => void;
-      onMessage?: (message: any) => void;
-      onCardMessage?: (savedCardId: string, message: any) => void;
-      onPresenceUpdate?: (
-        userId: string,
-        isOnline: boolean,
-        lastSeenAt: string
-      ) => void;
-      onTypingStart?: (userId: string, savedCardId?: string) => void;
-      onTypingStop?: (userId: string, savedCardId?: string) => void;
-      onParticipantJoined?: (participant: any) => void;
-      onParticipantLeft?: (participant: any) => void;
-      onSessionUpdated?: (session: any) => void;
-      onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
-      onRotationChanged?: (newOwnerId: string, newOrder: string[]) => void;
-    }
+    callbacks: BoardSessionCallbacks
   ) {
     const channelName = `board_session:${sessionId}`;
 
+    // Register this set of callbacks
+    if (!this.boardSessionCallbackSets.has(channelName)) {
+      this.boardSessionCallbackSets.set(channelName, []);
+    }
+    this.boardSessionCallbackSets.get(channelName)!.push(callbacks);
+
+    // If channel already exists, return it — new callbacks are already registered above
+    // and will be dispatched by the existing channel's event handlers.
     if (this.channels.has(channelName)) {
       return this.channels.get(channelName);
     }
+
+    // Helper: dispatch to ALL registered callback sets for this channel
+    const dispatch = <K extends keyof BoardSessionCallbacks>(
+      key: K,
+      ...args: Parameters<NonNullable<BoardSessionCallbacks[K]>>
+    ) => {
+      const sets = this.boardSessionCallbackSets.get(channelName) || [];
+      for (const cbSet of sets) {
+        const fn = cbSet[key] as ((...a: any[]) => void) | undefined;
+        fn?.(...args);
+      }
+    };
 
     const channel = supabase
       .channel(channelName)
@@ -266,7 +308,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onCardSaved?.(payload.new, payload.new.saved_by);
+          dispatch('onCardSaved', payload.new, payload.new.saved_by);
         }
       )
       // Votes
@@ -280,7 +322,7 @@ export class RealtimeService {
         },
         (payload) => {
           if (payload.new.saved_card_id) {
-            callbacks.onCardVoted?.(
+            dispatch('onCardVoted',
               payload.new.saved_card_id,
               payload.new.user_id,
               payload.new.vote_type
@@ -298,7 +340,7 @@ export class RealtimeService {
         },
         (payload) => {
           if (payload.new.saved_card_id) {
-            callbacks.onCardVoted?.(
+            dispatch('onCardVoted',
               payload.new.saved_card_id,
               payload.new.user_id,
               payload.new.vote_type
@@ -316,7 +358,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onCardRSVP?.(
+          dispatch('onCardRSVP',
             payload.new.saved_card_id,
             payload.new.user_id,
             payload.new.rsvp_status
@@ -332,7 +374,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onCardRSVP?.(
+          dispatch('onCardRSVP',
             payload.new.saved_card_id,
             payload.new.user_id,
             payload.new.rsvp_status
@@ -349,7 +391,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onMessage?.(payload.new);
+          dispatch('onMessage', payload.new);
         }
       )
       // Card-specific messages
@@ -362,7 +404,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onCardMessage?.(payload.new.saved_card_id, payload.new);
+          dispatch('onCardMessage', payload.new.saved_card_id, payload.new);
         }
       )
       // Presence updates
@@ -375,7 +417,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onPresenceUpdate?.(
+          dispatch('onPresenceUpdate',
             payload.new.user_id,
             payload.new.is_online,
             payload.new.last_seen_at
@@ -384,10 +426,10 @@ export class RealtimeService {
       )
       // Typing indicators via broadcast
       .on("broadcast", { event: "typing_start" }, (payload) => {
-        callbacks.onTypingStart?.(payload.userId, payload.savedCardId);
+        dispatch('onTypingStart', payload.userId, payload.savedCardId);
       })
       .on("broadcast", { event: "typing_stop" }, (payload) => {
-        callbacks.onTypingStop?.(payload.userId, payload.savedCardId);
+        dispatch('onTypingStop', payload.userId, payload.savedCardId);
       })
       // Participants
       .on(
@@ -399,7 +441,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onParticipantJoined?.(payload.new);
+          dispatch('onParticipantJoined', payload.new);
         }
       )
       .on(
@@ -411,7 +453,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onParticipantLeft?.(payload.old);
+          dispatch('onParticipantLeft', payload.old);
         }
       )
       // Preference changes — triggers deck refresh for all participants
@@ -424,7 +466,24 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onPreferencesChanged?.(payload.new as any, payload.old as any);
+          dispatch('onPreferencesChanged', payload.new as any, payload.old as any);
+        }
+      )
+      // Card lock-in detection (board_saved_cards UPDATE with is_locked change)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "board_saved_cards",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+          if (newRow.is_locked === true && oldRow?.is_locked !== true) {
+            dispatch('onCardLocked', newRow.id, newRow.locked_at);
+          }
         }
       )
       // Session updates
@@ -439,9 +498,9 @@ export class RealtimeService {
         (payload) => {
           const newSession = payload.new as any;
           if (newSession.active_preference_owner_id !== (payload.old as any)?.active_preference_owner_id) {
-            callbacks.onRotationChanged?.(newSession.active_preference_owner_id, newSession.rotation_order);
+            dispatch('onRotationChanged', newSession.active_preference_owner_id, newSession.rotation_order);
           }
-          callbacks.onSessionUpdated?.(newSession);
+          dispatch('onSessionUpdated', newSession);
         }
       )
       .subscribe();

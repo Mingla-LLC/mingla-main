@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -33,12 +33,59 @@ import { ExpandedCardData } from "../../types/expandedCardTypes";
 import ShareModal from "../ShareModal";
 import { BoardSettingsDropdown } from "./BoardSettingsDropdown";
 import { SwipeableSessionCards } from "./SwipeableSessionCards";
+import { useSessionVoting } from "../../hooks/useSessionVoting";
+import { useSessionStatus } from "../../hooks/useSessionStatus";
+import { useCollaborationCalendar } from "../../hooks/useCollaborationCalendar";
 
 interface BoardViewScreenProps {
   sessionId: string;
   onBack?: () => void;
   onNavigateToSession?: (sessionId: string) => void;
   onExitBoard?: (sessionId?: string, sessionName?: string) => void;
+}
+
+interface SavedCardData {
+  id?: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  fullDescription?: string;
+  category?: string;
+  categoryIcon?: string;
+  image?: string;
+  images?: string[];
+  rating?: number;
+  reviewCount?: number;
+  priceRange?: string;
+  distance?: string;
+  travelTime?: string;
+  address?: string;
+  openingHours?: Record<string, string>;
+  phone?: string;
+  website?: string;
+  highlights?: string[];
+  tags?: string[];
+  matchScore?: number;
+  matchFactors?: Record<string, number>;
+  socialStats?: { views?: number; likes?: number; saves?: number; shares?: number };
+  location?: { lat: number; lng: number };
+  lat?: number;
+  lng?: number;
+  selectedDateTime?: string | Date;
+  strollData?: Record<string, unknown>;
+  picnicData?: Record<string, unknown>;
+  cardType?: string;
+  stops?: unknown[];
+  tagline?: string;
+  totalPriceMin?: number;
+  totalPriceMax?: number;
+  estimatedDurationMinutes?: number;
+  pairingKey?: string;
+  experienceType?: string;
+  oneLiner?: string;
+  tip?: string;
+  priceTier?: string;
+  priceLevel?: string;
 }
 
 interface SavedCard {
@@ -49,8 +96,8 @@ interface SavedCard {
   saved_at: string;
   experience_id?: string | null;
   saved_experience_id?: string | null;
-  card_data?: any; // JSONB field containing full card data
-  experience_data?: any; // Legacy field, kept for backward compatibility
+  card_data?: SavedCardData;
+  experience_data?: SavedCardData;
 }
 
 export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
@@ -95,7 +142,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareData, setShareData] = useState<{ experienceData: any; dateTimePreferences: any } | null>(null);
+  const [shareData, setShareData] = useState<{ experienceData: ExpandedCardData; dateTimePreferences: { timeOfDay: string; dayOfWeek: string; planningTimeframe: string } } | null>(null);
 
   // Load saved cards for the session with pagination
   const [savedCardsPage, setSavedCardsPage] = useState(0);
@@ -137,34 +184,8 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
         if (append) {
           setSavedCards((prev) => [...prev, ...(data || [])]);
-          // Initialize vote counts for newly appended cards
-          const newCounts: Record<
-            string,
-            { yes: number; no: number; userVote: "yes" | "no" | null }
-          > = {};
-          (data || []).forEach((card) => {
-            newCounts[card.id] = {
-              yes: 0,
-              no: 0,
-              userVote: null,
-            };
-          });
-          setVoteCounts((prev) => ({ ...prev, ...newCounts }));
         } else {
           setSavedCards(data || []);
-          // Initialize vote counts for all cards (even if 0) so they display immediately
-          const initialCounts: Record<
-            string,
-            { yes: number; no: number; userVote: "yes" | "no" | null }
-          > = {};
-          (data || []).forEach((card) => {
-            initialCounts[card.id] = {
-              yes: 0,
-              no: 0,
-              userVote: null,
-            };
-          });
-          setVoteCounts(initialCounts);
         }
 
         setHasMoreCards((data || []).length === CARDS_PER_PAGE);
@@ -234,374 +255,36 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     }
   }, [sessionId, user?.id]);
 
-  // Handle card vote with optimistic UI updates
-  const handleVote = useCallback(
-    async (cardId: string, vote: "yes" | "no") => {
-      if (!user?.id || !sessionId) return;
+  // Phase 2: Use shared voting hook instead of duplicated inline logic
+  const activeParticipantsCount = participants.filter((p) => p.has_accepted).length;
+  const {
+    voteCounts,
+    rsvpCounts,
+    lockedCards,
+    handleVote,
+    handleRSVP,
+    loadCounts: loadVoteAndRSVPCounts,
+  } = useSessionVoting(sessionId, user?.id, activeParticipantsCount);
 
-      const savedCard = savedCards.find(
-        (c) => c.id === cardId || c.saved_card_id === cardId
-      );
-      if (!savedCard) {
-        console.error("Card not found for vote:", cardId);
-        return;
-      }
+  // Phase 2: Session status hook
+  const {
+    status: sessionStatus,
+    canGenerateCards,
+    canVote,
+    canRSVP,
+    isLocked: isSessionLocked,
+    advanceToVoting,
+    markCompleted,
+    isCreator,
+  } = useSessionStatus(sessionId, session?.created_by, user?.id);
 
-      // Use the primary key ID from board_saved_cards table
-      const savedCardId = savedCard.id;
-
-      // Get current vote state - if not in state or has default values, query DB directly
-      let currentVoteCounts = voteCounts[savedCardId];
-
-      // Check if state is missing or has default/empty values (might be stale)
-      if (
-        !currentVoteCounts ||
-        (currentVoteCounts.userVote === null &&
-          currentVoteCounts.yes === 0 &&
-          currentVoteCounts.no === 0)
-      ) {
-        // Query the database directly to get current vote state
-        const { data: allCardVotes, error: voteCheckError } = await supabase
-          .from("board_votes")
-          .select("vote_type, user_id")
-          .eq("session_id", sessionId)
-          .eq("saved_card_id", savedCardId);
-
-        if (!voteCheckError && allCardVotes) {
-          const yesVotes = allCardVotes.filter(
-            (v) => v.vote_type === "up"
-          ).length;
-          const noVotes = allCardVotes.filter(
-            (v) => v.vote_type === "down"
-          ).length;
-          const userVoteRaw = allCardVotes.find(
-            (v) => String(v.user_id) === String(user.id)
-          )?.vote_type;
-          const userVote =
-            userVoteRaw === "up" ? "yes" : userVoteRaw === "down" ? "no" : null;
-
-          currentVoteCounts = {
-            yes: yesVotes,
-            no: noVotes,
-            userVote,
-          };
-        } else {
-          currentVoteCounts = {
-            yes: 0,
-            no: 0,
-            userVote: null,
-          };
-        }
-      }
-
-      // Optimistic update: immediately update UI
-      const previousVote = currentVoteCounts.userVote;
-      let newYesCount = currentVoteCounts.yes;
-      let newNoCount = currentVoteCounts.no;
-      let finalVote: "yes" | "no" | null;
-
-      // Toggle behavior:
-      // - If clicking the same button (upvote when already upvoted, or downvote when already downvoted), remove the vote
-      // - If clicking a different button or no vote exists, switch to that vote
-      if (vote === previousVote) {
-        // User clicked the same button - toggle it off (remove vote)
-        finalVote = null;
-        if (previousVote === "yes") {
-          newYesCount = Math.max(0, newYesCount - 1);
-        } else if (previousVote === "no") {
-          newNoCount = Math.max(0, newNoCount - 1);
-        }
-      } else {
-        // User clicked a different button or has no vote - switch to the clicked vote
-        finalVote = vote;
-
-        // Remove previous vote if it exists (switching from upvote to downvote or vice versa)
-        if (previousVote === "yes") {
-          newYesCount = Math.max(0, newYesCount - 1);
-        } else if (previousVote === "no") {
-          newNoCount = Math.max(0, newNoCount - 1);
-        }
-
-        // Add the new vote
-        if (vote === "yes") {
-          newYesCount += 1;
-        } else {
-          newNoCount += 1;
-        }
-      }
-
-      // Update state immediately (optimistic)
-      setVoteCounts((prev) => ({
-        ...prev,
-        [savedCardId]: {
-          yes: newYesCount,
-          no: newNoCount,
-          userVote: finalVote,
-        },
-      }));
-
-      try {
-        // Convert 'yes'/'no' to 'up'/'down' for database
-        const voteType =
-          finalVote === "yes" ? "up" : finalVote === "no" ? "down" : null;
-
-        if (voteType === null) {
-          // Remove vote
-          const { data: deleteData, error } = await supabase
-            .from("board_votes")
-            .delete()
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCardId)
-            .eq("user_id", user.id)
-            .select();
-
-          if (error) {
-            throw error;
-          }
-        } else {
-          // Check if vote already exists
-          const { data: existingVote, error: checkError } = await supabase
-            .from("board_votes")
-            .select("id")
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCardId)
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          if (checkError) throw checkError;
-
-          if (existingVote) {
-            // Update existing vote
-            const { error } = await supabase
-              .from("board_votes")
-              .update({ vote_type: voteType })
-              .eq("id", existingVote.id);
-
-            if (error) throw error;
-          } else {
-            // Insert new vote
-            const { error } = await supabase.from("board_votes").insert({
-              session_id: sessionId,
-              saved_card_id: savedCardId,
-              user_id: user.id,
-              vote_type: voteType,
-            });
-
-            if (error) throw error;
-          }
-        }
-
-        // Broadcast vote update
-        if (voteType !== null) {
-          realtimeService.broadcastVoteUpdate(sessionId, savedCardId, {
-            user_id: user.id,
-            vote_type: voteType,
-          });
-        }
-
-        // Reload vote counts to ensure accuracy (in case of race conditions)
-        // Use a small delay to ensure database operation completes
-        setTimeout(() => {
-          loadVoteAndRSVPCounts();
-        }, 100);
-      } catch (err: any) {
-        console.error("Error voting:", err);
-
-        // Rollback optimistic update on error
-        setVoteCounts((prev) => ({
-          ...prev,
-          [savedCardId]: currentVoteCounts,
-        }));
-
-        Alert.alert("Error", "Failed to submit vote");
-      }
-    },
-    [user?.id, sessionId, savedCards, voteCounts, loadVoteAndRSVPCounts]
-  );
-
-  // Handle RSVP with optimistic UI updates
-  const handleRSVP = useCallback(
-    async (cardId: string, rsvp: "yes" | "no") => {
-      if (!user?.id || !sessionId) return;
-
-      // Check network
-      if (!networkState.isConnected) {
-        Alert.alert(
-          "No Connection",
-          "Please check your internet connection and try again."
-        );
-        return;
-      }
-
-      const savedCard = savedCards.find(
-        (c) => c.id === cardId || c.saved_card_id === cardId
-      );
-      if (!savedCard) {
-        console.error("Card not found for RSVP:", cardId);
-        Alert.alert("Error", "Card not found");
-        return;
-      }
-
-      // Get current RSVP state - if not in state or has default values, query DB directly
-      let currentRsvpCounts = rsvpCounts[savedCard.id];
-
-      // Check if state is missing or has default/empty values (might be stale)
-      if (
-        !currentRsvpCounts ||
-        (currentRsvpCounts.userRSVP === null &&
-          currentRsvpCounts.responded === 0)
-      ) {
-        // Query the database directly to get current RSVP state
-        const { data: allCardRSVPs, error: rsvpCheckError } = await supabase
-          .from("board_card_rsvps")
-          .select("rsvp_status, user_id")
-          .eq("session_id", sessionId)
-          .eq("saved_card_id", savedCard.id);
-
-        if (!rsvpCheckError && allCardRSVPs) {
-          const totalParticipants = participants.filter(
-            (p) => p.has_accepted
-          ).length;
-          const yesRSVPs = allCardRSVPs.filter(
-            (r) => r.rsvp_status === "attending"
-          ).length;
-          const noRSVPs = allCardRSVPs.filter(
-            (r) => r.rsvp_status === "not_attending"
-          ).length;
-          const userRSVPRaw = allCardRSVPs.find(
-            (r) => String(r.user_id) === String(user.id)
-          )?.rsvp_status;
-          const userRSVP =
-            userRSVPRaw === "attending"
-              ? "yes"
-              : userRSVPRaw === "not_attending"
-              ? "no"
-              : null;
-
-          currentRsvpCounts = {
-            responded: yesRSVPs + noRSVPs,
-            total: totalParticipants,
-            userRSVP,
-          };
-        } else {
-          currentRsvpCounts = {
-            responded: 0,
-            total: participants.filter((p) => p.has_accepted).length,
-            userRSVP: null,
-          };
-        }
-      }
-
-      // Optimistic update: immediately update UI
-      const previousRSVP = currentRsvpCounts.userRSVP;
-      let newResponded = currentRsvpCounts.responded;
-      let finalRSVP: "yes" | "no" | null;
-
-      // Determine the final RSVP state
-      if (rsvp === "yes") {
-        if (previousRSVP === "yes") {
-          // User clicked RSVP Yes when already RSVP'd - toggle off
-          finalRSVP = null;
-          newResponded = Math.max(0, newResponded - 1);
-        } else {
-          // User is RSVP'ing yes for the first time or changing from no
-          finalRSVP = "yes";
-          if (previousRSVP === null) {
-            // First time RSVP'ing
-            newResponded = Math.min(currentRsvpCounts.total, newResponded + 1);
-          }
-          // If changing from "no", responded count stays the same
-        }
-      } else {
-        // RSVP "no" - remove RSVP
-        finalRSVP = null;
-        if (previousRSVP === "yes") {
-          newResponded = Math.max(0, newResponded - 1);
-        }
-      }
-
-      // Update state immediately (optimistic)
-      setRsvpCounts((prev) => ({
-        ...prev,
-        [savedCard.id]: {
-          ...currentRsvpCounts,
-          responded: newResponded,
-          userRSVP: finalRSVP,
-        },
-      }));
-
-      try {
-        if (finalRSVP === null) {
-          // Remove RSVP
-          const { error } = await supabase
-            .from("board_card_rsvps")
-            .delete()
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCard.id)
-            .eq("user_id", user.id);
-
-          if (error) throw error;
-        } else {
-          // Convert 'yes'/'no' to 'attending'/'not_attending' for database
-          const rsvpStatus =
-            finalRSVP === "yes" ? "attending" : "not_attending";
-
-          // Check if RSVP already exists
-          const { data: existingRSVP, error: checkError } = await supabase
-            .from("board_card_rsvps")
-            .select("id")
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCard.id)
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          if (checkError) throw checkError;
-
-          if (existingRSVP) {
-            // Update existing RSVP
-            const { error } = await supabase
-              .from("board_card_rsvps")
-              .update({ rsvp_status: rsvpStatus })
-              .eq("id", existingRSVP.id);
-
-            if (error) throw error;
-          } else {
-            // Insert new RSVP
-            const { error } = await supabase.from("board_card_rsvps").insert({
-              session_id: sessionId,
-              saved_card_id: savedCard.id,
-              user_id: user.id,
-              rsvp_status: rsvpStatus,
-            });
-
-            if (error) throw error;
-          }
-
-          // Broadcast RSVP update
-          realtimeService.broadcastRSVPUpdate(sessionId, savedCard.id, {
-            user_id: user.id,
-            rsvp_status: rsvpStatus,
-          });
-        }
-
-        // Reload RSVP counts to ensure accuracy (in case of race conditions)
-        loadVoteAndRSVPCounts();
-      } catch (err: any) {
-        console.error("Error RSVPing:", err);
-        const boardError = BoardErrorHandler.handleNetworkError(err);
-        BoardErrorHandler.showError(boardError);
-      }
-    },
-    [
-      user?.id,
-      sessionId,
-      savedCards,
-      rsvpCounts,
-      participants,
-      loadVoteAndRSVPCounts,
-      networkState.isConnected,
-    ]
-  );
+  // Phase 2: Calendar hook for lock-in detection
+  const {
+    lockedCalendarEntry,
+    syncToDeviceCalendar,
+    showCalendarPrompt,
+    dismissCalendarPrompt,
+  } = useCollaborationCalendar(sessionId, user?.id);
 
   // Handle exit board
   const handleExitBoard = useCallback(async () => {
@@ -673,50 +356,69 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     }
   }, [sessionId, user?.id, savedCards]);
 
-  // Subscribe to real-time updates
+  // Stable refs for callbacks — prevents useEffect re-runs when callback identities change
+  const loadUnreadCountRef = useRef(loadUnreadCount);
+  const loadParticipantsRef = useRef(loadParticipants);
+  const loadCardMessageCountsRef = useRef(loadCardMessageCounts);
+  const sessionIdRef = useRef(sessionId);
+  useEffect(() => { loadUnreadCountRef.current = loadUnreadCount; }, [loadUnreadCount]);
+  useEffect(() => { loadParticipantsRef.current = loadParticipants; }, [loadParticipants]);
+  useEffect(() => { loadCardMessageCountsRef.current = loadCardMessageCounts; }, [loadCardMessageCounts]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  // Subscribe to real-time updates — only depends on sessionId to avoid channel destruction
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const boardCallbacksRef = useRef<any>(null);
   useEffect(() => {
     if (!sessionId) return;
 
-    const channel = realtimeService.subscribeToBoardSession(sessionId, {
-      onCardSaved: (card) => {
+    const callbacks = {
+      onCardSaved: (card: SavedCard) => {
         setSavedCards((prev) => {
           if (prev.find((c) => c.id === card.id)) return prev;
           return [card, ...prev];
         });
-        loadCardMessageCounts();
-      },
-      onCardVoted: () => {
-        loadVoteAndRSVPCounts();
-      },
-      onCardRSVP: () => {
-        loadVoteAndRSVPCounts();
+        loadCardMessageCountsRef.current();
       },
       onMessage: () => {
-        loadUnreadCount();
-        loadCardMessageCounts();
+        loadUnreadCountRef.current();
+        loadCardMessageCountsRef.current();
       },
       onCardMessage: () => {
-        loadCardMessageCounts();
+        loadCardMessageCountsRef.current();
       },
       onParticipantJoined: () => {
-        loadParticipants();
+        loadParticipantsRef.current();
       },
       onParticipantLeft: () => {
-        loadParticipants();
+        loadParticipantsRef.current();
       },
-    });
+    };
+
+    boardCallbacksRef.current = callbacks;
+    realtimeService.subscribeToBoardSession(sessionId, callbacks);
 
     return () => {
-      realtimeService.unsubscribe(`board_session:${sessionId}`);
+      // Only unregister this callback set — don't destroy the shared channel
+      if (boardCallbacksRef.current) {
+        realtimeService.unregisterBoardCallbacks(sessionId, boardCallbacksRef.current);
+        boardCallbacksRef.current = null;
+      }
     };
-  }, [
-    sessionId,
-    loadSavedCards,
-    loadUnreadCount,
-    loadParticipants,
-    loadCardMessageCounts,
-    loadVoteAndRSVPCounts,
-  ]);
+  }, [sessionId]);
+
+  // Destroy channel only on full component unmount — empty deps = unmount only
+  // Uses sessionIdRef to read the latest sessionId at cleanup time without
+  // adding sessionId as a dependency (which would re-run and destroy the channel
+  // in React Strict Mode double-invoke or if sessionId ever changed).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    return () => {
+      if (sessionIdRef.current) {
+        realtimeService.unsubscribe(`board_session:${sessionIdRef.current}`);
+      }
+    };
+  }, []);
 
   // Validate session and permissions on mount
   useEffect(() => {
@@ -770,132 +472,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     loadUnreadCount,
   ]);
 
-  // Load vote and RSVP counts for saved cards
-  const [voteCounts, setVoteCounts] = useState<
-    Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }>
-  >({});
-  const [rsvpCounts, setRsvpCounts] = useState<
-    Record<
-      string,
-      { responded: number; total: number; userRSVP: "yes" | "no" | null }
-    >
-  >({});
-
-  const loadVoteAndRSVPCounts = useCallback(async () => {
-    if (!sessionId || !user?.id || savedCards.length === 0) return;
-
-    try {
-      // Load vote counts for all saved cards
-      const savedCardIds = savedCards.map((c) => c.id);
-
-      // If no saved cards, return early
-      if (savedCardIds.length === 0) {
-        return;
-      }
-
-      const { data: votesData, error: votesError } = await supabase
-        .from("board_votes")
-        .select("*")
-        .eq("session_id", sessionId)
-        .in("saved_card_id", savedCardIds);
-
-      if (votesError) {
-        console.error("❌ Error loading votes:", votesError);
-        throw votesError;
-      }
-
-      // If no votes returned but we expect some, log a warning
-      if (!votesData || votesData.length === 0) {
-        console.warn(
-          "⚠️ No votes returned from database for cards:",
-          savedCardIds
-        );
-      }
-
-      // Aggregate vote counts (convert 'up'/'down' to 'yes'/'no')
-      const counts: Record<
-        string,
-        { yes: number; no: number; userVote: "yes" | "no" | null }
-      > = {};
-
-      savedCards.forEach((card) => {
-        // Try matching by both card.id and any potential saved_card_id field
-        const cardVotes =
-          votesData?.filter(
-            (v) =>
-              v.saved_card_id === card.id ||
-              v.saved_card_id === card.saved_card_id ||
-              String(v.saved_card_id) === String(card.id)
-          ) || [];
-
-        const yesVotes = cardVotes.filter((v) => v.vote_type === "up").length;
-        const noVotes = cardVotes.filter((v) => v.vote_type === "down").length;
-
-        // Find user's vote - check both string and UUID comparison
-        const userVoteRaw = cardVotes.find(
-          (v) => String(v.user_id) === String(user.id)
-        )?.vote_type;
-        const userVote =
-          userVoteRaw === "up" ? "yes" : userVoteRaw === "down" ? "no" : null;
-
-        counts[card.id] = {
-          yes: yesVotes,
-          no: noVotes,
-          userVote,
-        };
-      });
-
-      // Merge with existing counts to preserve any cards that might not be in current savedCards
-      setVoteCounts((prev) => ({ ...prev, ...counts }));
-
-      // Load RSVP counts
-      const { data: rsvpsData, error: rsvpsError } = await supabase
-        .from("board_card_rsvps")
-        .select("*")
-        .eq("session_id", sessionId)
-        .in("saved_card_id", savedCardIds);
-
-      if (rsvpsError) throw rsvpsError;
-
-      // Aggregate RSVP counts (convert 'attending'/'not_attending' to 'yes'/'no')
-      const rsvpCountsData: Record<
-        string,
-        { responded: number; total: number; userRSVP: "yes" | "no" | null }
-      > = {};
-      const totalParticipants = participants.filter(
-        (p) => p.has_accepted
-      ).length;
-      savedCards.forEach((card) => {
-        const cardRSVPs =
-          rsvpsData?.filter((r) => r.saved_card_id === card.id) || [];
-        const yesRSVPs = cardRSVPs.filter(
-          (r) => r.rsvp_status === "attending"
-        ).length;
-        const noRSVPs = cardRSVPs.filter(
-          (r) => r.rsvp_status === "not_attending"
-        ).length;
-        const userRSVPRaw = cardRSVPs.find(
-          (r) => r.user_id === user.id
-        )?.rsvp_status;
-        const userRSVP =
-          userRSVPRaw === "attending"
-            ? "yes"
-            : userRSVPRaw === "not_attending"
-            ? "no"
-            : null;
-
-        rsvpCountsData[card.id] = {
-          responded: yesRSVPs + noRSVPs,
-          total: totalParticipants,
-          userRSVP,
-        };
-      });
-      setRsvpCounts(rsvpCountsData);
-    } catch (err: any) {
-      console.error("Error loading vote/RSVP counts:", err);
-    }
-  }, [sessionId, user?.id, savedCards, participants]);
-
+  // Load vote/RSVP counts when saved cards change
   useEffect(() => {
     if (savedCards.length > 0) {
       loadVoteAndRSVPCounts();
@@ -939,7 +516,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       votes: voteData,
       rsvps: rsvpData,
       messages: messageCount,
-      isLocked: false,
+      isLocked: lockedCards[savedCard.id]?.isLocked || false,
     };
   });
 
@@ -1017,11 +594,51 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         loading={loadingCards}
       />
 
+      {/* Phase 2: Session status controls */}
+      <View style={styles.statusRow}>
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor:
+                sessionStatus === 'locked'
+                  ? '#10B981'
+                  : sessionStatus === 'voting'
+                  ? '#F59E0B'
+                  : sessionStatus === 'completed'
+                  ? '#6B7280'
+                  : '#3B82F6',
+            },
+          ]}
+        >
+          <Text style={styles.statusBadgeText}>
+            {sessionStatus === 'active' ? 'Active' :
+             sessionStatus === 'voting' ? 'Voting' :
+             sessionStatus === 'locked' ? 'Locked In' :
+             sessionStatus === 'completed' ? 'Completed' :
+             sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
+          </Text>
+        </View>
+        {isCreator && sessionStatus === 'active' && (
+          <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
+            <Ionicons name="hand-left-outline" size={14} color="white" />
+            <Text style={styles.statusActionText}>Start Voting</Text>
+          </TouchableOpacity>
+        )}
+        {isCreator && sessionStatus === 'locked' && (
+          <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
+            <Ionicons name="checkmark-circle-outline" size={14} color="white" />
+            <Text style={styles.statusActionText}>Mark Complete</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <BoardTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
         savedCount={savedCards.length}
         unreadMessages={unreadMessages}
+        canGenerateCards={canGenerateCards}
       />
 
       <View style={styles.content}>
@@ -1029,10 +646,9 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           <View style={styles.savedContainer}>
             <SwipeableSessionCards
               cards={savedCards}
-              voteCounts={voteCounts}
-              rsvpCounts={rsvpCounts}
-              onVote={handleVote}
-              onRSVP={handleRSVP}
+              sessionId={sessionId}
+              userId={user?.id}
+              participantCount={activeParticipantsCount}
               onViewDetails={(card) => {
                 const cardData = card.card_data || card.experience_data || null;
                 
@@ -1238,6 +854,34 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         />
       )}
 
+      {/* Phase 2: Calendar prompt on lock-in */}
+      {showCalendarPrompt && lockedCalendarEntry && (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.calendarPromptOverlay}>
+            <View style={styles.calendarPromptCard}>
+              <Ionicons name="checkmark-circle" size={48} color="#22c55e" />
+              <Text style={styles.calendarPromptTitle}>Locked In!</Text>
+              <Text style={styles.calendarPromptText}>
+                Everyone agreed on this experience. Add it to your calendar?
+              </Text>
+              <TouchableOpacity
+                style={styles.calendarPromptButton}
+                onPress={() => syncToDeviceCalendar(lockedCalendarEntry)}
+              >
+                <Ionicons name="calendar-outline" size={16} color="white" />
+                <Text style={styles.calendarPromptButtonText}>Add to Calendar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.calendarPromptDismiss}
+                onPress={dismissCalendarPrompt}
+              >
+                <Text style={styles.calendarPromptDismissText}>Not now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* Exit Board Menu Popover */}
       {showExitMenu && (
         <TouchableOpacity
@@ -1273,6 +917,84 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "white",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 4,
+  },
+  statusActionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "white",
+  },
+  calendarPromptOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calendarPromptCard: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    width: "80%",
+    gap: 12,
+  },
+  calendarPromptTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1a1a1a",
+  },
+  calendarPromptText: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  calendarPromptButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 6,
+    marginTop: 4,
+  },
+  calendarPromptButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "white",
+  },
+  calendarPromptDismiss: {
+    paddingVertical: 8,
+  },
+  calendarPromptDismissText: {
+    fontSize: 14,
+    color: "#9ca3af",
   },
   loadingContainer: {
     flex: 1,

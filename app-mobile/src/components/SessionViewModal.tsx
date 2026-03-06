@@ -17,6 +17,9 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { useSessionVoting } from "../hooks/useSessionVoting";
+import { useSessionStatus } from "../hooks/useSessionStatus";
+import { useCollaborationCalendar } from "../hooks/useCollaborationCalendar";
 import { supabase } from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
 import { useAppStore } from "../store/appStore";
@@ -119,13 +122,6 @@ export default function SessionViewModal({
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<{ experienceData: any; dateTimePreferences: any } | null>(null);
 
-  // Vote and RSVP counts
-  const [voteCounts, setVoteCounts] = useState<
-    Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }>
-  >({});
-  const [rsvpCounts, setRsvpCounts] = useState<
-    Record<string, { responded: number; total: number; userRSVP: "yes" | "no" | null }>
-  >({});
   const [cardMessageCounts, setCardMessageCounts] = useState<Record<string, number>>({});
 
   // Pagination
@@ -164,18 +160,8 @@ export default function SessionViewModal({
 
         if (append) {
           setSavedCards((prev) => [...prev, ...(data || [])]);
-          const newCounts: Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }> = {};
-          (data || []).forEach((card) => {
-            newCounts[card.id] = { yes: 0, no: 0, userVote: null };
-          });
-          setVoteCounts((prev) => ({ ...prev, ...newCounts }));
         } else {
           setSavedCards(data || []);
-          const initialCounts: Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }> = {};
-          (data || []).forEach((card) => {
-            initialCounts[card.id] = { yes: 0, no: 0, userVote: null };
-          });
-          setVoteCounts(initialCounts);
         }
 
         setHasMoreCards((data || []).length === CARDS_PER_PAGE);
@@ -241,70 +227,6 @@ export default function SessionViewModal({
     }
   }, [sessionId, user?.id]);
 
-  // Load vote and RSVP counts
-  const loadVoteAndRSVPCounts = useCallback(async () => {
-    if (!sessionId || !user?.id || savedCards.length === 0) return;
-
-    try {
-      const savedCardIds = savedCards.map((c) => c.id);
-
-      if (savedCardIds.length === 0) return;
-
-      const { data: votesData, error: votesError } = await supabase
-        .from("board_votes")
-        .select("*")
-        .eq("session_id", sessionId)
-        .in("saved_card_id", savedCardIds);
-
-      if (votesError) {
-        console.error("Error loading votes:", votesError);
-      }
-
-      const counts: Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }> = {};
-
-      savedCards.forEach((card) => {
-        const cardVotes = (votesData || []).filter((v) => v.saved_card_id === card.id);
-        const yesVotes = cardVotes.filter((v) => v.vote_type === "up").length;
-        const noVotes = cardVotes.filter((v) => v.vote_type === "down").length;
-        const userVoteRaw = cardVotes.find((v) => String(v.user_id) === String(user.id))?.vote_type;
-        const userVote = userVoteRaw === "up" ? "yes" : userVoteRaw === "down" ? "no" : null;
-
-        counts[card.id] = { yes: yesVotes, no: noVotes, userVote };
-      });
-
-      setVoteCounts((prev) => ({ ...prev, ...counts }));
-
-      // Load RSVP counts
-      const { data: rsvpsData, error: rsvpsError } = await supabase
-        .from("board_card_rsvps")
-        .select("*")
-        .eq("session_id", sessionId)
-        .in("saved_card_id", savedCardIds);
-
-      if (rsvpsError) console.error("Error loading RSVPs:", rsvpsError);
-
-      const rsvpCountsData: Record<string, { responded: number; total: number; userRSVP: "yes" | "no" | null }> = {};
-      const totalParticipants = participants.filter((p) => p.has_accepted).length;
-
-      savedCards.forEach((card) => {
-        const cardRsvps = (rsvpsData || []).filter((r) => r.saved_card_id === card.id);
-        const attendingCount = cardRsvps.filter((r) => r.rsvp_status === "attending").length;
-        const userRsvpRaw = cardRsvps.find((r) => String(r.user_id) === String(user.id))?.rsvp_status;
-        const userRSVP = userRsvpRaw === "attending" ? "yes" : userRsvpRaw === "not_attending" ? "no" : null;
-
-        rsvpCountsData[card.id] = {
-          responded: attendingCount,
-          total: totalParticipants,
-          userRSVP,
-        };
-      });
-
-      setRsvpCounts(rsvpCountsData);
-    } catch (err: any) {
-      console.error("Error loading vote/RSVP counts:", err);
-    }
-  }, [sessionId, user?.id, savedCards, participants]);
-
   // Load card message counts
   const loadCardMessageCounts = useCallback(async () => {
     if (!sessionId || !user?.id || savedCards.length === 0) return;
@@ -330,215 +252,6 @@ export default function SessionViewModal({
       console.error("Error loading card message counts:", err);
     }
   }, [sessionId, user?.id, savedCards]);
-
-  // Handle card vote
-  const handleVote = useCallback(
-    async (cardId: string, vote: "yes" | "no") => {
-      if (!user?.id || !sessionId) return;
-
-      const savedCard = savedCards.find((c) => c.id === cardId || c.saved_card_id === cardId);
-      if (!savedCard) {
-        console.error("Card not found for vote:", cardId);
-        return;
-      }
-
-      const savedCardId = savedCard.id;
-      let currentVoteCounts = voteCounts[savedCardId];
-
-      if (!currentVoteCounts || (currentVoteCounts.userVote === null && currentVoteCounts.yes === 0 && currentVoteCounts.no === 0)) {
-        const { data: allCardVotes, error: voteCheckError } = await supabase
-          .from("board_votes")
-          .select("vote_type, user_id")
-          .eq("session_id", sessionId)
-          .eq("saved_card_id", savedCardId);
-
-        if (!voteCheckError && allCardVotes) {
-          const yesVotes = allCardVotes.filter((v) => v.vote_type === "up").length;
-          const noVotes = allCardVotes.filter((v) => v.vote_type === "down").length;
-          const userVoteRaw = allCardVotes.find((v) => String(v.user_id) === String(user.id))?.vote_type;
-          const userVote = userVoteRaw === "up" ? "yes" : userVoteRaw === "down" ? "no" : null;
-          currentVoteCounts = { yes: yesVotes, no: noVotes, userVote };
-        } else {
-          currentVoteCounts = { yes: 0, no: 0, userVote: null };
-        }
-      }
-
-      const previousVote = currentVoteCounts.userVote;
-      let newYesCount = currentVoteCounts.yes;
-      let newNoCount = currentVoteCounts.no;
-      let finalVote: "yes" | "no" | null;
-
-      if (vote === previousVote) {
-        finalVote = null;
-        if (previousVote === "yes") newYesCount--;
-        else if (previousVote === "no") newNoCount--;
-      } else {
-        finalVote = vote;
-        if (previousVote === "yes") newYesCount--;
-        else if (previousVote === "no") newNoCount--;
-        if (vote === "yes") newYesCount++;
-        else newNoCount++;
-      }
-
-      setVoteCounts((prev) => ({
-        ...prev,
-        [savedCardId]: { yes: newYesCount, no: newNoCount, userVote: finalVote },
-      }));
-
-      try {
-        const voteType = finalVote === "yes" ? "up" : finalVote === "no" ? "down" : null;
-
-        if (voteType === null) {
-          await supabase
-            .from("board_votes")
-            .delete()
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCardId)
-            .eq("user_id", user.id);
-        } else {
-          const { data: existingVote } = await supabase
-            .from("board_votes")
-            .select("id")
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCardId)
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          if (existingVote) {
-            await supabase
-              .from("board_votes")
-              .update({ vote_type: voteType })
-              .eq("id", existingVote.id);
-          } else {
-            await supabase.from("board_votes").insert({
-              session_id: sessionId,
-              saved_card_id: savedCardId,
-              user_id: user.id,
-              vote_type: voteType,
-            });
-          }
-        }
-
-        setTimeout(() => {
-          loadVoteAndRSVPCounts();
-        }, 100);
-      } catch (err: any) {
-        console.error("Error voting:", err);
-        setVoteCounts((prev) => ({ ...prev, [savedCardId]: currentVoteCounts }));
-        Alert.alert("Error", "Failed to submit vote");
-      }
-    },
-    [user?.id, sessionId, savedCards, voteCounts, loadVoteAndRSVPCounts]
-  );
-
-  // Handle RSVP
-  const handleRSVP = useCallback(
-    async (cardId: string, rsvp: "yes" | "no") => {
-      if (!user?.id || !sessionId) return;
-
-      if (!networkState.isConnected) {
-        Alert.alert("No Connection", "Please check your internet connection and try again.");
-        return;
-      }
-
-      const savedCard = savedCards.find((c) => c.id === cardId || c.saved_card_id === cardId);
-      if (!savedCard) {
-        console.error("Card not found for RSVP:", cardId);
-        Alert.alert("Error", "Card not found");
-        return;
-      }
-
-      let currentRsvpCounts = rsvpCounts[savedCard.id];
-
-      if (!currentRsvpCounts || (currentRsvpCounts.userRSVP === null && currentRsvpCounts.responded === 0)) {
-        const { data: allCardRSVPs, error: rsvpCheckError } = await supabase
-          .from("board_card_rsvps")
-          .select("rsvp_status, user_id")
-          .eq("session_id", sessionId)
-          .eq("saved_card_id", savedCard.id);
-
-        if (!rsvpCheckError && allCardRSVPs) {
-          const attendingCount = allCardRSVPs.filter((r) => r.rsvp_status === "attending").length;
-          const userRsvpRaw = allCardRSVPs.find((r) => String(r.user_id) === String(user.id))?.rsvp_status;
-          const userRSVP = userRsvpRaw === "attending" ? "yes" : userRsvpRaw === "not_attending" ? "no" : null;
-          currentRsvpCounts = {
-            responded: attendingCount,
-            total: participants.filter((p) => p.has_accepted).length,
-            userRSVP,
-          };
-        } else {
-          currentRsvpCounts = {
-            responded: 0,
-            total: participants.filter((p) => p.has_accepted).length,
-            userRSVP: null,
-          };
-        }
-      }
-
-      const previousRSVP = currentRsvpCounts.userRSVP;
-      let newResponded = currentRsvpCounts.responded;
-      let finalRSVP: "yes" | "no" | null;
-
-      if (rsvp === "yes") {
-        if (previousRSVP === "yes") {
-          finalRSVP = null;
-          newResponded--;
-        } else {
-          finalRSVP = "yes";
-          // Only increment if user hadn't responded yet
-          if (previousRSVP === null) newResponded++;
-        }
-      } else {
-        finalRSVP = null;
-        if (previousRSVP === "yes") newResponded--;
-      }
-
-      setRsvpCounts((prev) => ({
-        ...prev,
-        [savedCard.id]: { ...currentRsvpCounts, responded: newResponded, userRSVP: finalRSVP },
-      }));
-
-      try {
-        if (finalRSVP === null) {
-          await supabase
-            .from("board_card_rsvps")
-            .delete()
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCard.id)
-            .eq("user_id", user.id);
-        } else {
-          const { data: existingRsvp } = await supabase
-            .from("board_card_rsvps")
-            .select("id")
-            .eq("session_id", sessionId)
-            .eq("saved_card_id", savedCard.id)
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          if (existingRsvp) {
-            await supabase
-              .from("board_card_rsvps")
-              .update({ rsvp_status: "attending" })
-              .eq("id", existingRsvp.id);
-          } else {
-            await supabase.from("board_card_rsvps").insert({
-              session_id: sessionId,
-              saved_card_id: savedCard.id,
-              user_id: user.id,
-              rsvp_status: "attending",
-            });
-          }
-        }
-
-        loadVoteAndRSVPCounts();
-      } catch (err: any) {
-        console.error("Error RSVPing:", err);
-        const boardError = BoardErrorHandler.handleNetworkError(err);
-        BoardErrorHandler.showError(boardError);
-      }
-    },
-    [user?.id, sessionId, savedCards, rsvpCounts, participants, loadVoteAndRSVPCounts, networkState.isConnected]
-  );
 
   // Handle exit board
   const handleExitBoard = useCallback(async () => {
@@ -644,13 +357,12 @@ export default function SessionViewModal({
     }
   }, [visible, sessionValid, hasPermission, loadSavedCards, loadParticipants, loadUnreadCount]);
 
-  // Load vote/RSVP counts when saved cards change
+  // Load card message counts when saved cards change
   useEffect(() => {
     if (savedCards.length > 0) {
-      loadVoteAndRSVPCounts();
       loadCardMessageCounts();
     }
-  }, [savedCards, loadVoteAndRSVPCounts, loadCardMessageCounts]);
+  }, [savedCards, loadCardMessageCounts]);
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -664,8 +376,6 @@ export default function SessionViewModal({
         });
         loadCardMessageCounts();
       },
-      onCardVoted: () => loadVoteAndRSVPCounts(),
-      onCardRSVP: () => loadVoteAndRSVPCounts(),
       onMessage: () => {
         loadUnreadCount();
         loadCardMessageCounts();
@@ -678,7 +388,7 @@ export default function SessionViewModal({
     return () => {
       realtimeService.unsubscribe(`board_session:${sessionId}`);
     };
-  }, [visible, sessionId, loadSavedCards, loadUnreadCount, loadParticipants, loadCardMessageCounts, loadVoteAndRSVPCounts]);
+  }, [visible, sessionId, loadSavedCards, loadUnreadCount, loadParticipants, loadCardMessageCounts]);
 
   // Load account preferences on mount
   useEffect(() => {
@@ -717,8 +427,6 @@ export default function SessionViewModal({
       setSavedCards([]);
       setParticipants([]);
       setUnreadMessages(0);
-      setVoteCounts({});
-      setRsvpCounts({});
       setCardMessageCounts({});
       setSessionValid(null);
       setHasPermission(null);
@@ -727,6 +435,35 @@ export default function SessionViewModal({
   }, [visible]);
 
   const activeParticipantsCount = participants.filter((p) => p.has_accepted).length;
+
+  // Phase 2 hooks: voting, session status, calendar
+  const {
+    voteCounts,
+    rsvpCounts,
+    lockedCards,
+    handleVote,
+    handleRSVP,
+    loadCounts: loadVoteAndRSVPCounts,
+  } = useSessionVoting(sessionId, user?.id, activeParticipantsCount);
+
+  const {
+    status: sessionStatus,
+    canGenerateCards,
+    canVote,
+    canRSVP,
+    isLocked: isSessionLocked,
+    advanceToVoting,
+    markCompleted,
+    isCreator,
+  } = useSessionStatus(sessionId, session?.created_by, user?.id);
+
+  const {
+    lockedCalendarEntry,
+    syncToDeviceCalendar,
+    showCalendarPrompt,
+    dismissCalendarPrompt,
+  } = useCollaborationCalendar(sessionId, user?.id);
+
   const showNetworkBanner = !networkState.isConnected;
 
   const handleViewCardDetails = (card: SavedCard) => {
@@ -920,11 +657,47 @@ export default function SessionViewModal({
         {/* Main Content */}
         {!sessionLoading && sessionValid && hasPermission && (
           <>
+            {/* Session Status Row */}
+            {session && (
+              <View style={styles.statusRow}>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor:
+                        sessionStatus === 'locked'
+                          ? '#10B981'
+                          : sessionStatus === 'voting'
+                          ? '#F59E0B'
+                          : sessionStatus === 'completed'
+                          ? '#6B7280'
+                          : '#3B82F6',
+                    },
+                  ]}
+                >
+                  <Text style={styles.statusBadgeText}>
+                    {sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
+                  </Text>
+                </View>
+                {isCreator && sessionStatus === 'active' && (
+                  <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
+                    <Text style={styles.statusActionText}>Start Voting</Text>
+                  </TouchableOpacity>
+                )}
+                {isCreator && sessionStatus === 'locked' && (
+                  <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
+                    <Text style={styles.statusActionText}>Mark Complete</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             <BoardTabs
               activeTab={activeTab}
               onTabChange={setActiveTab}
               savedCount={savedCards.length}
               unreadMessages={unreadMessages}
+              canGenerateCards={canGenerateCards}
             />
 
             <View style={styles.content}>
@@ -932,10 +705,9 @@ export default function SessionViewModal({
                 <View style={styles.savedContainer}>
                   <SwipeableSessionCards
                     cards={savedCards}
-                    voteCounts={voteCounts}
-                    rsvpCounts={rsvpCounts}
-                    onVote={handleVote}
-                    onRSVP={handleRSVP}
+                    sessionId={sessionId}
+                    userId={user?.id}
+                    participantCount={activeParticipantsCount}
                     onViewDetails={handleViewCardDetails}
                     loading={loadingCards}
                     accountPreferences={accountPreferences}
@@ -1053,6 +825,33 @@ export default function SessionViewModal({
             dateTimePreferences={shareData.dateTimePreferences}
           />
         )}
+        {/* Calendar Prompt Modal */}
+        {showCalendarPrompt && lockedCalendarEntry && (
+          <Modal visible={showCalendarPrompt} transparent animationType="fade">
+            <View style={styles.calendarPromptOverlay}>
+              <View style={styles.calendarPromptCard}>
+                <Ionicons name="calendar" size={40} color="#10B981" />
+                <Text style={styles.calendarPromptTitle}>Plan Locked In!</Text>
+                <Text style={styles.calendarPromptText}>
+                  Everyone is attending. Add this to your calendar?
+                </Text>
+                <TouchableOpacity
+                  style={styles.calendarPromptButton}
+                  onPress={() => syncToDeviceCalendar(lockedCalendarEntry)}
+                >
+                  <Text style={styles.calendarPromptButtonText}>Add to Calendar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.calendarPromptDismiss}
+                  onPress={dismissCalendarPrompt}
+                >
+                  <Text style={styles.calendarPromptDismissText}>Maybe Later</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
+
           </SafeAreaView>
         </View>
       </View>
@@ -1236,5 +1035,85 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     backgroundColor: "white",
     overflow: "visible",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusActionButton: {
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  statusActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  calendarPromptOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  calendarPromptCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 320,
+    gap: 12,
+  },
+  calendarPromptTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  calendarPromptText: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  calendarPromptButton: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    width: "100%",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  calendarPromptButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  calendarPromptDismiss: {
+    paddingVertical: 8,
+  },
+  calendarPromptDismissText: {
+    color: "#9CA3AF",
+    fontSize: 14,
+    fontWeight: "500",
   },
 });

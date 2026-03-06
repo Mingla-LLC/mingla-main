@@ -1,4 +1,5 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { timeoutFetch } from './timeoutFetch.ts';
 
 /**
  * Centralized Google Places API cache utility.
@@ -121,7 +122,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
         },
       };
 
-      const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      const res = await timeoutFetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,6 +130,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
           'X-Goog-FieldMask': fieldMask,
         },
         body: JSON.stringify(body),
+        timeoutMs: 8000,
       });
 
       if (res.ok) {
@@ -154,7 +156,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
       if (rankPreference) body.rankPreference = rankPreference;
       if (excludedTypes && excludedTypes.length > 0) body.excludedTypes = excludedTypes;
 
-      const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+      const res = await timeoutFetch('https://places.googleapis.com/v1/places:searchNearby', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -162,6 +164,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
           'X-Goog-FieldMask': fieldMask,
         },
         body: JSON.stringify(body),
+        timeoutMs: 8000,
       });
 
       if (res.ok) {
@@ -173,7 +176,11 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
       }
     }
   } catch (err) {
-    console.error('[places-cache] Google API call threw:', err);
+    if ((err as any)?.name === 'AbortError') {
+      console.warn(`[places-cache] Google API timed out after 8s for ${placeType} @ ${locKey}`);
+    } else {
+      console.error('[places-cache] Google API call threw:', err);
+    }
     return { places: [], cacheHit: false };
   }
 
@@ -233,7 +240,7 @@ export async function fetchNextPage(
     : 'https://places.googleapis.com/v1/places:searchNearby';
   let res: Response;
   try {
-    res = await fetch(endpoint, {
+    res = await timeoutFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -243,9 +250,14 @@ export async function fetchNextPage(
       body: JSON.stringify({
         pageToken: cacheEntry.next_page_token,
       }),
+      timeoutMs: 8000,
     });
   } catch (fetchErr) {
-    console.error('[placesCache] nextPage fetch threw:', fetchErr);
+    if ((fetchErr as any)?.name === 'AbortError') {
+      console.warn('[placesCache] nextPage fetch timed out after 8s');
+    } else {
+      console.error('[placesCache] nextPage fetch threw:', fetchErr);
+    }
     return { newPlaces: [], hasMore: false };
   }
 
@@ -511,7 +523,7 @@ export async function searchCategoryPlaces(params: CategorySearchParams): Promis
       // NOTE: excludedTypes is NOT sent to Google when includedTypes has multiple entries
       // (Google silently ignores it). We apply it as a post-fetch filter below instead.
 
-      const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+      const res = await timeoutFetch('https://places.googleapis.com/v1/places:searchNearby', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -519,6 +531,7 @@ export async function searchCategoryPlaces(params: CategorySearchParams): Promis
           'X-Goog-FieldMask': fieldMask,
         },
         body: JSON.stringify(body),
+        timeoutMs: 8000,
       });
 
       if (res.ok) {
@@ -529,7 +542,11 @@ export async function searchCategoryPlaces(params: CategorySearchParams): Promis
       }
     }
   } catch (err) {
-    console.error('[places-cache] Category Google API call threw:', err);
+    if ((err as any)?.name === 'AbortError') {
+      console.warn(`[places-cache] Category Google API timed out after 8s for ${categoryKey}`);
+    } else {
+      console.error('[places-cache] Category Google API call threw:', err);
+    }
     return { places: [], cacheHit: false };
   }
 

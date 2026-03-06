@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchByCategory, fetchNextPage, drainPaginationTokens } from '../_shared/placesCache.ts';
+import { batchSearchByCategory, fetchNextPage } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
@@ -12,6 +12,9 @@ import {
   getCategoryTypeMap,
 } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from '../_shared/priceTiers.ts';
+import { timeoutFetch } from '../_shared/timeoutFetch.ts';
+import { scoreCards } from '../_shared/scoringService.ts';
+import { enrichCardsWithCopy } from '../_shared/copyEnrichmentService.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-cards  –  Unified Card Discovery Edge Function
@@ -212,82 +215,6 @@ function calculateMatchScore(
   return Math.round(distScore + ratingScore + popScore);
 }
 
-// ── Fire-and-forget AI Description Enrichment ───────────────────────────────
-async function enrichDescriptionsInBackground(
-  supabaseAdmin: any,
-  cards: Array<{ placeId: string; title: string; placeType: string; category: string; _cardPoolId?: string }>,
-): Promise<void> {
-  if (!OPENAI_API_KEY || cards.length === 0) return;
-
-  try {
-    // Build prompt with all cards grouped by category
-    const placeList = cards
-      .map((c, i) => `${i + 1}. "${c.title}" (${formatPlaceType(c.placeType)}, category: ${c.category})`)
-      .join('\n');
-
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Generate a short, appealing 1-2 sentence description for each place. ' +
-              'Focus on what makes each place special for visitors. Be vivid but concise. ' +
-              'Tailor the tone to the category (e.g., romantic for Fine Dining, adventurous for Nature). ' +
-              'Return a JSON object with key "descriptions" containing an array of strings, one per place, in the same order.',
-          },
-          {
-            role: 'user',
-            content: `Write descriptions for these ${cards.length} places:\n${placeList}`,
-          },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.7,
-        max_tokens: Math.min(4000, cards.length * 100),
-      }),
-    });
-
-    if (!resp.ok) {
-      console.warn(`[discover-cards] OpenAI enrichment failed: ${resp.status}`);
-      return;
-    }
-
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const parsed = JSON.parse(content);
-    const descriptions: string[] = parsed.descriptions || [];
-
-    // Update card_pool entries with AI descriptions
-    const updatePromises: Promise<void>[] = [];
-    for (let i = 0; i < Math.min(descriptions.length, cards.length); i++) {
-      const card = cards[i];
-      if (!card._cardPoolId || !descriptions[i]) continue;
-
-      updatePromises.push(
-        supabaseAdmin
-          .from('card_pool')
-          .update({ description: descriptions[i] })
-          .eq('id', card._cardPoolId)
-          .then(() => {})
-          .catch(() => {})
-      );
-    }
-
-    await Promise.all(updatePromises);
-    console.log(`[discover-cards] AI enrichment: updated ${updatePromises.length} descriptions`);
-  } catch (err) {
-    console.warn('[discover-cards] AI enrichment error (non-critical):', err);
-  }
-}
-
 // ── Helper: Get cache entries that have a nextPageToken for expansion ────────
 async function getCacheEntriesWithTokens(
   supabaseAdmin: any,
@@ -433,6 +360,18 @@ serve(async (req: Request) => {
     // ── Build category → types map (one API call per category, not per type) ──
     const categoryTypeMap = getCategoryTypeMap(categories);
 
+    // ── Helper: re-score pool-served cards against CURRENT user's preferences ─
+    function scorePoolCards(cards: any[]): any[] {
+      if (!cards.length) return cards;
+      const scored = scoreCards(cards, { categories, priceTiers: priceTiers || [] });
+      scored.sort((a, b) => b.matchScore - a.matchScore);
+      return scored.map(s => ({
+        ...s.card,
+        matchScore: s.matchScore,
+        scoringFactors: s.factors,
+      }));
+    }
+
     // ── Pool-first serving (ALL categories in ONE query) ──────────────────
     // No batchSeed === 0 restriction; serve from pool for ANY batchSeed.
     // Offset pagination: batchSeed * limit skips previous batches in pool.
@@ -466,11 +405,12 @@ serve(async (req: Request) => {
         // serveCardsFromPipeline already gap-fills from Google when pool is short
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
-          console.log(`[discover-cards] Served ${poolResult.cards.length} from pipeline (offset=${poolOffset}) in ${elapsed}ms`);
+          const scoredPoolCards = scorePoolCards(poolResult.cards);
+          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (offset=${poolOffset}) in ${elapsed}ms`);
 
           // RC-003 fix: use the pipeline's hasMore (based on unseen count), not raw totalPoolSize
           return new Response(JSON.stringify({
-            cards: poolResult.cards,
+            cards: scoredPoolCards,
             total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
             metadata: {
@@ -532,10 +472,11 @@ serve(async (req: Request) => {
         // return what we have — falling through would duplicate the Google search.
         if (poolResult.fromApi > 0 && poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
-          console.log(`[discover-cards] Pipeline returned ${poolResult.cards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
+          const scoredMixedCards = scorePoolCards(poolResult.cards);
+          console.log(`[discover-cards] Pipeline returned ${scoredMixedCards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
 
           return new Response(JSON.stringify({
-            cards: poolResult.cards,
+            cards: scoredMixedCards,
             total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: 'mixed',
             metadata: {
@@ -693,14 +634,26 @@ serve(async (req: Request) => {
       };
     });
 
+    // ── Score cards using 5-factor algorithm ────────────────────────────
+    const scored = scoreCards(cards, {
+      categories,
+      priceTiers: priceTiers || [],
+    });
+    scored.sort((a, b) => b.matchScore - a.matchScore);
+    const scoredCards = scored.map(s => ({
+      ...s.card,
+      matchScore: s.matchScore,
+      scoringFactors: s.factors,
+    }));
+
     const elapsed = Date.now() - t0;
     const source: string = apiCallsMade > 0 ? (cacheHits > 0 ? 'mixed' : 'api') : 'cache';
-    console.log(`[discover-cards] Done in ${elapsed}ms: ${cards.length} cards, ${apiCallsMade} API calls`);
+    console.log(`[discover-cards] Done in ${elapsed}ms: ${scoredCards.length} cards, ${apiCallsMade} API calls`);
 
     // ── warmPool: return empty response after storing ─────────────────────
     if (isWarmPool) {
       // Store to pool in background then return empty
-      storeResultsInPoolBatched(supabaseAdmin, batch, cards, categories, userId, true);
+      storeResultsInPoolBatched(supabaseAdmin, batch, scoredCards, categories, userId, true);
 
       return new Response(
         JSON.stringify({ cards: [], total: totalAvailable, source: 'warm' }),
@@ -709,10 +662,10 @@ serve(async (req: Request) => {
     }
 
     // ── Fire-and-forget: store results + enrich with AI descriptions ──────
-    storeResultsInPoolBatched(supabaseAdmin, batch, cards, categories, userId);
+    storeResultsInPoolBatched(supabaseAdmin, batch, scoredCards, categories, userId);
 
     return new Response(
-      JSON.stringify({ cards, total: totalAvailable, source, metadata: { hasMore, poolSize: totalAvailable, batchSeed } }),
+      JSON.stringify({ cards: scoredCards, total: totalAvailable, source, metadata: { hasMore, poolSize: totalAvailable, batchSeed } }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
@@ -820,6 +773,8 @@ function storeResultsInPoolBatched(
           website: card.website || null,
           popularity_score: popularityScore,
           is_active: true,
+          match_score: card.matchScore ?? null,
+          scoring_factors: card.scoringFactors ?? {},
         };
       });
 
@@ -840,8 +795,10 @@ function storeResultsInPoolBatched(
         await recordImpressions(supabaseAdmin, userId, cardPoolIds);
       }
 
-      // ── Step 4: Fire-and-forget AI description enrichment ─────────────
-      // Build a map from placeId to card_pool id for updating
+      // ── Step 4: Build cardPoolIdMap for subsequent enrichments ─────────
+      // (enrichDescriptionsInBackground removed — Step 6 backfill handles
+      //  description generation for cards with generic fallbacks, eliminating
+      //  the duplicate OpenAI call that was doubling API cost)
       const cardPoolIdMap: Record<string, string> = {};
       if (insertedCards) {
         for (const row of insertedCards) {
@@ -849,17 +806,127 @@ function storeResultsInPoolBatched(
         }
       }
 
-      const enrichmentInput = cards.map(c => ({
-        placeId: c.placeId,
-        title: c.title,
-        placeType: c.placeType,
-        category: c.category,
-        _cardPoolId: cardPoolIdMap[c.placeId],
-      }));
+      // ── Step 5: Copy enrichment (oneLiner + tip) ──────────────────────
+      if (OPENAI_API_KEY && insertedCards?.length) {
+        try {
+          const cardsNeedingCopy = insertedCards
+            .filter((c: any) => !c.one_liner)
+            .map((c: any) => ({
+              id: c.id,
+              title: cards.find((card: any) => card.placeId === c.google_place_id)?.title || c.google_place_id,
+              category: cards.find((card: any) => card.placeId === c.google_place_id)?.category || '',
+              address: cards.find((card: any) => card.placeId === c.google_place_id)?.address,
+              rating: cards.find((card: any) => card.placeId === c.google_place_id)?.rating,
+              priceTier: cards.find((card: any) => card.placeId === c.google_place_id)?.priceTier,
+            }));
 
-      // Do not await - true fire-and-forget
-      enrichDescriptionsInBackground(supabaseAdmin, enrichmentInput)
-        .catch(err => console.warn('[discover-cards] Background enrichment failed:', err));
+          if (cardsNeedingCopy.length > 0) {
+            const copyResults = await enrichCardsWithCopy(cardsNeedingCopy, OPENAI_API_KEY, {
+              timeoutMs: 10000,
+              maxCards: 10,
+            });
+
+            // Batch update all copy results in parallel (not sequential)
+            if (copyResults.size > 0) {
+              const now = new Date().toISOString();
+              const copyUpdatePromises = Array.from(copyResults.entries()).map(
+                ([cardId, copy]) =>
+                  supabaseAdmin
+                    .from('card_pool')
+                    .update({
+                      one_liner: copy.oneLiner,
+                      tip: copy.tip,
+                      copy_generated_at: now,
+                    })
+                    .eq('id', cardId)
+                    .then(() => {})
+                    .catch(() => {})
+              );
+              await Promise.all(copyUpdatePromises);
+              console.log(`[discover-cards] Copy enrichment: updated ${copyResults.size} cards`);
+            }
+          }
+        } catch (copyErr) {
+          console.warn('[discover-cards] Copy enrichment failed:', (copyErr as any)?.message || copyErr);
+        }
+      }
+
+      // ── Step 6: Description backfill for cards with NULL description ───
+      if (OPENAI_API_KEY && insertedCards?.length) {
+        try {
+          const cardsNeedingDescription = insertedCards
+            .filter((c: any) => {
+              const matchingCard = cards.find((card: any) => card.placeId === c.google_place_id);
+              // Only backfill cards whose description is a generic fallback
+              return matchingCard && (
+                !matchingCard.description ||
+                matchingCard.description.startsWith('A great ') ||
+                matchingCard.description.startsWith('A beautiful ') ||
+                matchingCard.description.startsWith('A popular ') ||
+                matchingCard.description.startsWith('A well-loved ') ||
+                matchingCard.description.startsWith('A welcoming ') ||
+                matchingCard.description.startsWith('A lovely ') ||
+                matchingCard.description.startsWith('An upscale ') ||
+                matchingCard.description.startsWith('An exciting ') ||
+                matchingCard.description.startsWith('An inspiring ') ||
+                matchingCard.description.startsWith('A thrilling ') ||
+                matchingCard.description.startsWith('A serene ') ||
+                matchingCard.description.startsWith('A convenient ') ||
+                matchingCard.description.startsWith('A professional ')
+              );
+            })
+            .slice(0, 10);
+
+          if (cardsNeedingDescription.length > 0) {
+            const descPrompt = `Write a 1-2 sentence description for each place. Be specific and vivid.\n\n${
+              cardsNeedingDescription.map((c: any, i: number) => {
+                const matchingCard = cards.find((card: any) => card.placeId === c.google_place_id);
+                return `${i + 1}. ${matchingCard?.title || 'Unknown'} (${matchingCard?.category || 'Unknown'}) at ${matchingCard?.address || 'unknown location'}`;
+              }).join('\n')
+            }\n\nRespond with JSON: { "descriptions": ["...", "..."] }`;
+
+            const descResponse = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: descPrompt }],
+                max_tokens: cardsNeedingDescription.length * 60,
+                temperature: 0.7,
+                response_format: { type: 'json_object' },
+              }),
+              timeoutMs: 10000,
+            });
+
+            if (descResponse.ok) {
+              const descData = await descResponse.json();
+              const descriptions = JSON.parse(descData.choices[0].message.content).descriptions;
+
+              // Batch update all descriptions in parallel (not sequential)
+              const descUpdatePromises: Promise<void>[] = [];
+              for (let i = 0; i < Math.min(descriptions.length, cardsNeedingDescription.length); i++) {
+                if (descriptions[i]) {
+                  descUpdatePromises.push(
+                    supabaseAdmin
+                      .from('card_pool')
+                      .update({ description: descriptions[i] })
+                      .eq('id', cardsNeedingDescription[i].id)
+                      .then(() => {})
+                      .catch(() => {})
+                  );
+                }
+              }
+              await Promise.all(descUpdatePromises);
+              console.log(`[discover-cards] Description backfill: updated ${descUpdatePromises.length} cards`);
+            }
+          }
+        } catch (descErr) {
+          console.warn('[discover-cards] Description backfill failed:', (descErr as any)?.message || descErr);
+        }
+      }
 
       console.log(`[discover-cards] Pool storage completed in ${Date.now() - t0}ms: ${placeRows.length} places, ${cardRows.length} cards`);
     } catch (e) {

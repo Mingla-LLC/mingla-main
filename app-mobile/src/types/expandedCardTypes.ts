@@ -131,6 +131,7 @@ export interface ExpandedCardData {
   pairingKey?: string;
   experienceType?: string;
   priceTier?: PriceTierSlug;
+  tip?: string | null;
   // Night Out-specific data
   nightOutData?: {
     eventName: string;

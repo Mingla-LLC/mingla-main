@@ -59,7 +59,7 @@ Mingla/
 │   │   │   ├── CardsCacheContext.tsx        # Card caching (30min TTL, 10 entries)
 │   │   │   ├── NavigationContext.tsx        # Modal state + navigation helpers
 │   │   │   └── RecommendationsContext.tsx   # Dual-mode card pipeline (solo/collab)
-│   │   ├── hooks/                           # 36 custom React hooks
+│   │   ├── hooks/                           # 39 custom React hooks
 │   │   │   ├── useDeckCards.ts             # Unified solo deck (pool-first)
 │   │   │   ├── useFriendLinks.ts           # Friend link request lifecycle
 │   │   │   ├── useOnboardingStateMachine.ts # V2 onboarding {step, subStep} state machine
@@ -104,9 +104,12 @@ Mingla/
 │   │   ├── _shared/                        # Shared modules
 │   │   │   ├── cardPoolService.ts          # Pool-first serving engine
 │   │   │   ├── categoryPlaceTypes.ts       # Category-to-place-type mappings
+│   │   │   ├── copyEnrichmentService.ts   # AI-generated oneLiner + tip via single OpenAI prompt
 │   │   │   ├── placesCache.ts              # Google Places API caching (per-type + bundled category search)
 │   │   │   ├── priceTiers.ts              # Canonical 4-tier price system (shared source of truth)
-│   │   │   └── textSearchHelper.ts         # Text search fallback
+│   │   │   ├── scoringService.ts          # 5-factor card scoring algorithm (category, tags, popularity, quality, text)
+│   │   │   ├── textSearchHelper.ts         # Text search fallback
+│   │   │   └── timeoutFetch.ts            # Drop-in fetch() with AbortController timeout (8s Google, 10s OpenAI)
 │   │   ├── send-otp/                       # Twilio Verify: send OTP to phone number
 │   │   ├── verify-otp/                     # Twilio Verify: verify OTP + save phone to profile
 │   │   ├── search-users/                   # User search for friend linking
@@ -122,7 +125,7 @@ Mingla/
 │   │   ├── refresh-place-pool/             # Daily place data refresh
 │   │   ├── warm-cache/                    # Pre-populate Places cache on app open
 │   │   └── ... (14 more)
-│   ├── migrations/                          # 120 SQL migration files
+│   ├── migrations/                          # 121+ SQL migration files
 │   └── config.toml                          # Supabase project config
 │
 ├── oauth-redirect/                          # Static OAuth callback page
@@ -153,7 +156,7 @@ Mingla/
 
 - AI-generated experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
 - Swipe right to save, left to skip, up to expand full details
-- Unified deck pipeline (`deckService.fetchDeck()`) serves both solo and collaboration modes. Pool-first card serving from card_pool with SQL-level pagination and impression exclusion; falls back to Google Places only when the pool is exhausted (bundled category search: 1 API call per category instead of 1 per type). Synchronous impression recording prevents cross-batch duplicates. Batch timeout of 5 seconds. Prefetch threshold at 8 cards remaining
+- Unified deck pipeline (`deckService.fetchDeck()`) serves both solo and collaboration modes. Pool-first card serving from card_pool with SQL-level pagination and impression exclusion; falls back to Google Places only when the pool is exhausted (bundled category search: 1 API call per category instead of 1 per type). Synchronous impression recording prevents cross-batch duplicates. Batch timeout of 5 seconds. Prefetch threshold at 8 cards remaining. All Google Places API calls hardened with 8-second AbortController timeout; all OpenAI calls hardened with 10-second timeout. Cards ranked by 5-factor scoring algorithm (category match, tag overlap, popularity, quality, text relevance) before serving. AI-generated one-liner and insider tip displayed on swipe cards when available
 - Curated multi-stop itinerary cards interleaved at a 1:1 ratio with regular cards. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters; Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) then 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted. Group Fun intent uses 2 starting groups (Activity: bowling, arcades, go-karts, karaoke; Entertainment: movies, concerts, comedy clubs) then 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop group activity itineraries with strict 2-way alternation and dedicated exclude list (water parks, libraries, coworking spaces, business centers). Picnic Dates intent uses dedicated type groups (Grocery: grocery_store, supermarket; Picnic Spot: park, picnic_ground, beach) for 2-stop picnic itineraries with parks searched near the grocery (3km radius), an AI-generated shopping checklist (8-12 emoji-prefixed items) rendered as a tickable checklist under the grocery stop, and a 4-type exclude list (department_store, electronics_store, furniture_store, warehouse_store). Take A Stroll intent uses 3 dedicated groups (Start Point: 11 cafe/coffee types; Stroll Place: 12 nature types as anchor; Finish: 11 restaurant types) for 3-stop itineraries with anchor-based search (nature found near user first, cafe found within 2km of nature, restaurant found within 3km of nature), stroll-toned AI descriptions, stop 3 labeled "Optional", and a 26-type exclude list filtering active/loud/retail/transit venues
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown, companion stops, and timeline
 - Deck batch navigation with forward/backward history persisted across sessions
@@ -201,11 +204,17 @@ Mingla/
 
 ### Collaboration Sessions
 
-- Named sessions with multi-friend selection, real-time card swiping, voting, RSVP, and chat
+- Named sessions with multi-friend selection, real-time card swiping, voting, RSVP, lock-in, calendar sync, and chat
 - Sessions use the unified deck pipeline (`deckService.fetchDeck()`) for card generation, the same pipeline that powers solo mode
 - Preference rotation system: the session creator's preferences load first, then a "Next person's picks" button rotates through participants by join order, skipping participants who have not set preferences
 - Non-rotating preferences (price tiers, travel mode, budget) are aggregated across all participants: union of price tiers, widest budget range, median travel constraint, majority vote on travel mode
-- Realtime sync via Supabase Realtime: preference changes from any participant trigger a deck refresh for all participants within 10 seconds. State, votes, messages, presence, and typing indicators all sync in real time
+- Swipe-right auto-vote: saving a card in collaboration mode automatically records an "up" vote (fire-and-forget)
+- Vote-based ordering: saved cards sorted by descending yes-vote count in the session board
+- Lock-in consensus: when ALL accepted participants RSVP "attending" on a card, a PostgreSQL trigger auto-locks it and creates calendar entries for every participant
+- Device calendar sync: client detects lock-in via Realtime, prompts to add locked plan to device calendar via expo-calendar
+- Session status transitions: active → voting (creator manual) → locked (auto on consensus) → completed (creator manual)
+- Shared `useSessionVoting` hook replaces ~390 lines of duplicated vote/RSVP logic across BoardViewScreen and SessionViewModal
+- Realtime sync via Supabase Realtime: preference changes from any participant trigger a deck refresh for all participants within 10 seconds. State, votes, RSVPs, lock events, messages, presence, and typing indicators all sync in real time via multi-callback dispatch pattern
 - Push notifications for session invites, accepts, and declines
 
 ### Profile and Settings
@@ -281,7 +290,7 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 | Table | Purpose |
 |-------|---------|
 | `place_pool` | Shared enriched Google Places data with analytics columns (impressions, saves, schedules, reviews), price_tier column |
-| `card_pool` | Pre-built cards (single or curated type) linked to place_pool, price_tier column for tier-based filtering |
+| `card_pool` | Pre-built cards (single or curated type) linked to place_pool, price_tier column for tier-based filtering, match_score/scoring_factors for ranking, one_liner/tip for AI copy |
 | `user_card_impressions` | Per-user card "seen" tracking, session-scoped to preference changes |
 | `google_places_cache` | Google Places API response cache (24h default TTL, 72h for popular entries with hit_count > 3) with next_page_token for pagination and automatic page draining. Category-level bundled searches use `cat:` prefix keys |
 | `ticketmaster_events_cache` | Ticketmaster API response cache (2h TTL) |
@@ -310,13 +319,13 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 
 | Table | Purpose |
 |-------|---------|
-| `collaboration_sessions` | Named sessions with status lifecycle, `active_preference_owner_id` (tracks whose preferences are currently active), `rotation_order` (JSON array of participant IDs in join order for preference rotation) |
+| `collaboration_sessions` | Named sessions with status lifecycle (`pending`, `active`, `voting`, `locked`, `completed`, `archived`, `dormant`), `active_preference_owner_id` (tracks whose preferences are currently active), `rotation_order` (JSON array of participant IDs in join order for preference rotation) |
 | `session_participants` | Session membership with admin flags |
 | `collaboration_invites` | Invite lifecycle tracking |
 | `board_session_preferences` | Per-session preference overrides (categories, intents, `price_tiers`, `date_option`) |
-| `board_saved_cards` | Cards added to boards |
-| `board_votes` | User votes on board cards |
-| `board_card_rsvps` | RSVP responses for scheduled board cards |
+| `board_saved_cards` | Cards added to boards with `is_locked`, `locked_at`, `locked_by_consensus` columns for consensus lock-in tracking |
+| `board_votes` | User votes on board cards (unique index on session_id + saved_card_id + user_id) |
+| `board_card_rsvps` | RSVP responses for board cards; triggers auto-lock when all participants RSVP attending |
 | `board_messages` | Board-level chat messages |
 | `board_card_messages` | Card-level discussion threads |
 
@@ -511,13 +520,15 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
-- **Unified Card Delivery Pipeline Phase 1 (2026-03-05):** Merged solo and collaboration card delivery into a single pipeline powered by `deckService.fetchDeck()`. Deleted 4 edge functions (`generate-session-experiences`, `recommendations-enhanced`, `recommendations`, `enhance-cards`) and 3 components (`RecommendationsGrid`, `ActivityPage`, `BoardsTab`). Collaboration sessions now use preference rotation (creator first, "Next person's picks" rotates by join order) with non-rotating prefs aggregated across participants (union of price tiers, widest budget, median travel constraint, majority vote on travel mode). Realtime sync triggers deck refresh within 10 seconds of any participant's preference change.
+- **Unified Card Pipeline Phase 3 — Edge Function Hardening + Scoring + AI Copy (2026-03-05):** All Google Places API fetch() calls (4 in placesCache.ts) hardened with 8-second AbortController timeout. All OpenAI fetch() calls hardened with 10-second timeout. Curated pool storage converted from 60-80 sequential DB calls to 2 batch upserts. 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance. AI-generated one-liner and insider tip enrichment via single OpenAI prompt. Description backfill for cards with generic fallback text. 3 new shared modules (timeoutFetch, scoringService, copyEnrichmentService), 1 migration (5 new columns + 2 indexes on card_pool), 10 files modified.
 
-- **Selection Limits (2026-03-05):** Intents changed from multi-select to radio button behavior (max 1). Categories capped at 3 selections. Minimum 1 total selection (intent or category) enforced in PreferencesSheet and CollaborationPreferences. Onboarding hint text updated accordingly.
+- **Unified Card Pipeline Phase 2 — Voting / Lock-In / Calendar (2026-03-05):** Swipe-right in collaboration mode now auto-creates an "up" vote. Saved cards are sorted by descending vote count. When ALL accepted participants RSVP "attending" on a card, a PostgreSQL trigger auto-locks it and creates calendar entries for every participant. Device calendar sync prompts on lock-in via expo-calendar. Session status transitions: active → voting → locked → completed. Extracted ~390 lines of duplicated vote/RSVP logic into shared `useSessionVoting` hook. Refactored `realtimeService.ts` from first-subscriber-wins to multi-callback dispatch pattern — critical fix for multiple hooks sharing the same realtime channel. 3 new hooks, 1 migration, 7 files modified.
 
-- **Curated Card Interleave (2026-03-05):** Changed curated card interleave ratio from 1 per 3 regular cards to 1:1. Batch timeout reduced from 30s to 5s. Prefetch threshold increased from 5 cards remaining to 8.
+- **Unified Card Delivery Pipeline Phase 1 (2026-03-05):** Merged solo and collaboration card delivery into a single pipeline powered by `deckService.fetchDeck()`. Deleted 4 edge functions and 3 components. Collaboration sessions now use preference rotation with non-rotating prefs aggregated across participants.
 
-- **Likes Tab Consolidation (2026-03-05):** Likes Tab now handles boards, saved cards, and calendar (previously split across a separate Activity Tab). `ActivityPage.tsx` deleted.
+- **Curated Card Interleave (2026-03-05):** Changed curated card interleave ratio from 1 per 3 regular cards to 1:1.
+
+- **Likes Tab Consolidation (2026-03-05):** Likes Tab now handles boards, saved cards, and calendar (previously split across a separate Activity Tab).
 
 ---
 

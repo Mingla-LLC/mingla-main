@@ -128,6 +128,8 @@ function unifiedCardToRecommendation(card: any): Recommendation {
       time: 0.5,
       popularity: (card.rating ?? 0) > 4 ? 0.8 : 0.5,
     },
+    oneLiner: card.oneLiner || null,
+    tip: card.tip || null,
   };
 }
 

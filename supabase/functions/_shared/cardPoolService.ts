@@ -474,7 +474,7 @@ function poolCardToApiCard(
       title: card.title,
       tagline: card.tagline || '',
       category: card.category,
-      matchScore: card.base_match_score || 85,
+      matchScore: card.match_score ?? card.base_match_score ?? 85,
       image: card.image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
       images: card.images || [],
       rating: card.rating || 0,
@@ -494,6 +494,9 @@ function poolCardToApiCard(
       openingHours: resolveOpeningHours(card.opening_hours).hours,
       website: card.website || null,
       priceTier: card.price_tier ?? 'chill',
+      oneLiner: card.one_liner || null,
+      tip: card.tip || null,
+      scoringFactors: card.scoring_factors || null,
       _poolCardId: card.id,
     };
   }
@@ -514,7 +517,7 @@ function poolCardToApiCard(
     placeId: card.google_place_id || null,
     title: card.title,
     category: card.category,
-    matchScore: card.base_match_score || 85,
+    matchScore: card.match_score ?? card.base_match_score ?? 85,
     image: card.image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
     images: card.images || [],
     rating: card.rating || 0,
@@ -534,6 +537,9 @@ function poolCardToApiCard(
     placeTypeLabel: card.primary_type ? card.primary_type.replace(/_/g, ' ') : '',
     website: card.website || null,
     priceTier: card.price_tier ?? 'chill',
+    oneLiner: card.one_liner || null,
+    tip: card.tip || null,
+    scoringFactors: card.scoring_factors || null,
     matchFactors: {},
     _poolCardId: card.id,
   };

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { formatPriceRange, parseAndFormatDistance } from "../utils/formatters";
+import { useSessionVoting } from "../../hooks/useSessionVoting";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH * 0.75;
@@ -32,10 +33,9 @@ interface SavedCard {
 
 interface SwipeableSessionCardsProps {
   cards: SavedCard[];
-  voteCounts: Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }>;
-  rsvpCounts: Record<string, { responded: number; total: number; userRSVP: "yes" | "no" | null }>;
-  onVote: (cardId: string, vote: "yes" | "no") => void;
-  onRSVP: (cardId: string, rsvp: "yes" | "no") => void;
+  sessionId: string;
+  userId: string | undefined;
+  participantCount: number;
   onViewDetails: (card: SavedCard) => void;
   loading?: boolean;
   accountPreferences?: {
@@ -77,16 +77,34 @@ const getIconComponent = (iconName: string) => {
 
 export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   cards,
-  voteCounts,
-  rsvpCounts,
-  onVote,
-  onRSVP,
+  sessionId,
+  userId,
+  participantCount,
   onViewDetails,
   loading = false,
   accountPreferences,
 }) => {
   const scrollRef = useRef<ScrollView | null>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
+
+  const {
+    voteCounts,
+    rsvpCounts,
+    lockedCards,
+    handleVote: onVote,
+    handleRSVP: onRSVP,
+  } = useSessionVoting(sessionId, userId, participantCount);
+
+  // Vote-based ordering: descending by yes votes, then by saved_at
+  const sortedCards = useMemo(() => {
+    return [...cards].sort((a, b) => {
+      const aVotes = voteCounts[a.id]?.yes ?? 0;
+      const bVotes = voteCounts[b.id]?.yes ?? 0;
+      if (bVotes !== aVotes) return bVotes - aVotes;
+      // Secondary sort: newest first
+      return new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime();
+    });
+  }, [cards, voteCounts]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setScrollPosition(event.nativeEvent.contentOffset.x);
@@ -126,7 +144,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
     <View style={styles.container}>
       {/* Card count header */}
       <View style={styles.cardCountHeader}>
-        <Text style={styles.cardCountText}>{cards.length} card{cards.length !== 1 ? "s" : ""}</Text>
+        <Text style={styles.cardCountText}>{sortedCards.length} card{sortedCards.length !== 1 ? "s" : ""}</Text>
         {cards.length > 1 && (
           <View style={styles.scrollHint}>
             <Ionicons name="arrow-forward" size={14} color="#9ca3af" />
@@ -159,10 +177,11 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
           snapToInterval={CARD_WIDTH + CARD_GAP}
           snapToAlignment="start"
         >
-          {cards.map((card, index) => {
+          {sortedCards.map((card, index) => {
             const cardData = card.card_data || card.experience_data || {};
-            const voteCount = voteCounts[card.id] || { yes: 0, no: 0, userVote: null };
-            const rsvpCount = rsvpCounts[card.id] || { responded: 0, total: 0, userRSVP: null };
+            const voteCount = voteCounts[card.id] || { yes: 0, no: 0, userVote: null, voters: [] };
+            const rsvpCount = rsvpCounts[card.id] || { responded: 0, total: 0, userRSVP: null, attendees: [] };
+            const isCardLocked = lockedCards[card.id]?.isLocked || false;
             const isCurated = cardData.cardType === 'curated';
             const categoryIcon = getIconComponent(isCurated ? "compass" : (cardData.categoryIcon || "star"));
             const categoryLabel = isCurated ? "Adventurous" : (cardData.category || "Experience");
@@ -170,10 +189,18 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             return (
               <TouchableOpacity
                 key={card.id}
-                style={styles.card}
+                style={[styles.card, isCardLocked && styles.cardLocked]}
                 onPress={() => onViewDetails(card)}
                 activeOpacity={0.9}
               >
+                {/* Locked badge */}
+                {isCardLocked && (
+                  <View style={styles.lockedBadge}>
+                    <Ionicons name="lock-closed" size={12} color="#FFFFFF" />
+                    <Text style={styles.lockedBadgeText}>Locked In</Text>
+                  </View>
+                )}
+
                 {/* Image Section */}
                 <View style={styles.imageContainer}>
                   <Image
@@ -185,7 +212,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   {/* Card index badge */}
                   <View style={styles.cardCounter}>
                     <Text style={styles.cardCounterText}>
-                      {index + 1}/{cards.length}
+                      {index + 1}/{sortedCards.length}
                     </Text>
                   </View>
 
@@ -229,6 +256,23 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     {cardData.description || ""}
                   </Text>
 
+                  {/* RSVP Progress */}
+                  {rsvpCount.total > 0 && rsvpCount.responded > 0 && (
+                    <View style={styles.rsvpProgressRow}>
+                      <View style={styles.rsvpProgressBarBg}>
+                        <View
+                          style={[
+                            styles.rsvpProgressBarFill,
+                            { width: `${Math.min(100, (rsvpCount.responded / rsvpCount.total) * 100)}%` },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.rsvpProgressText}>
+                        {rsvpCount.responded}/{rsvpCount.total} attending
+                      </Text>
+                    </View>
+                  )}
+
                   {/* Vote/RSVP Buttons */}
                   <View style={styles.actionButtonsRow}>
                     {/* Thumbs Up */}
@@ -237,8 +281,10 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                         styles.voteButton,
                         styles.thumbsUpButton,
                         voteCount.userVote === "yes" && styles.voteButtonActive,
+                        isCardLocked && styles.buttonDisabled,
                       ]}
                       onPress={() => onVote(card.id, "yes")}
+                      disabled={isCardLocked}
                     >
                       <Ionicons name="thumbs-up" size={15} color="white" />
                       <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
@@ -250,8 +296,10 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                         styles.voteButton,
                         styles.thumbsDownButton,
                         voteCount.userVote === "no" && styles.thumbsDownButtonActive,
+                        isCardLocked && styles.buttonDisabled,
                       ]}
                       onPress={() => onVote(card.id, "no")}
+                      disabled={isCardLocked}
                     >
                       <Ionicons name="thumbs-down" size={15} color="#d63d1f" />
                       <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
@@ -262,8 +310,10 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       style={[
                         styles.rsvpButton,
                         rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
+                        isCardLocked && styles.buttonDisabled,
                       ]}
                       onPress={() => onRSVP(card.id, "yes")}
+                      disabled={isCardLocked}
                     >
                       <Text
                         style={[
@@ -271,7 +321,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                           rsvpCount.userRSVP === "yes" && styles.rsvpButtonTextActive,
                         ]}
                       >
-                        {rsvpCount.userRSVP === "yes" ? "RSVP'd ✓" : "RSVP"}
+                        {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -530,6 +580,53 @@ const styles = StyleSheet.create({
   },
   rsvpButtonTextActive: {
     color: "white",
+  },
+  cardLocked: {
+    borderWidth: 2,
+    borderColor: "#10B981",
+  },
+  lockedBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#10B981",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  lockedBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  rsvpProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  rsvpProgressBarBg: {
+    flex: 1,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  rsvpProgressBarFill: {
+    height: "100%",
+    backgroundColor: "#10B981",
+    borderRadius: 2,
+  },
+  rsvpProgressText: {
+    fontSize: 11,
+    color: "#6B7280",
+    fontWeight: "500",
   },
 });
 

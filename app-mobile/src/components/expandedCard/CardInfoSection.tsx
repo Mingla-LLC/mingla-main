@@ -16,6 +16,7 @@ interface CardInfoSectionProps {
   priceTier?: PriceTierSlug;
   priceLevel?: string | number | null;
   description?: string;
+  tip?: string | null;
   currency?: string;
 }
 
@@ -31,6 +32,7 @@ export default function CardInfoSection({
   priceTier,
   priceLevel,
   description,
+  tip,
   currency = 'USD',
 }: CardInfoSectionProps) {
   const resolvedTier = priceTier ?? googleLevelToTierSlug(priceLevel);
@@ -132,6 +134,7 @@ export default function CardInfoSection({
 
       {/* Description */}
       {description && <Text style={styles.description}>{description}</Text>}
+      {tip && <Text style={styles.tip}>{tip}</Text>}
     </View>
   );
 }
@@ -207,5 +210,11 @@ const styles = StyleSheet.create({
     color: "#374151",
     lineHeight: 22,
     marginBottom: 8,
+  },
+  tip: {
+    fontSize: 13,
+    fontStyle: "italic",
+    color: "#9CA3AF",
+    marginTop: 2,
   },
 });
