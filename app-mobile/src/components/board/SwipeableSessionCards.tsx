@@ -225,7 +225,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       <View style={styles.detailBadge}>
                         <Ionicons name="location" size={11} color="white" />
                         <Text style={styles.detailBadgeText}>
-                          {parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "N/A"}
+                          {parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "Nearby"}
                         </Text>
                       </View>
                       <View style={styles.detailBadge}>

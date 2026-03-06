@@ -11,6 +11,8 @@ interface CardInfoSectionProps {
   tags?: string[];
   rating?: number;
   distance?: string;
+  travelTime?: string;
+  travelMode?: string;
   measurementSystem?: "Metric" | "Imperial";
   priceRange?: string;
   priceTier?: PriceTierSlug;
@@ -20,6 +22,18 @@ interface CardInfoSectionProps {
   currency?: string;
 }
 
+/** Map travel mode preference to an Ionicons icon name */
+function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+  switch (mode) {
+    case 'driving': return 'car';
+    case 'transit': return 'bus';
+    case 'bicycling':
+    case 'biking': return 'bicycle';
+    case 'walking':
+    default: return 'walk';
+  }
+}
+
 export default function CardInfoSection({
   title,
   category,
@@ -27,6 +41,8 @@ export default function CardInfoSection({
   tags = [],
   rating,
   distance,
+  travelTime,
+  travelMode,
   measurementSystem,
   priceRange,
   priceTier,
@@ -118,13 +134,22 @@ export default function CardInfoSection({
             {rating !== undefined && <View style={styles.metricDivider} />}
             <View style={styles.metricItem}>
               <Ionicons name="location" size={14} color="#d97706" />
-              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem)}</Text>
+              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem) || 'Nearby'}</Text>
+            </View>
+          </>
+        )}
+        {travelTime && travelTime !== '0 min' && (
+          <>
+            {(rating !== undefined || distance) && <View style={styles.metricDivider} />}
+            <View style={styles.metricItem}>
+              <Ionicons name={getTravelModeIcon(travelMode)} size={14} color="#d97706" />
+              <Text style={styles.metricText}>{travelTime}</Text>
             </View>
           </>
         )}
         {resolvedTier && (
           <>
-            {(rating !== undefined || distance) && (
+            {(rating !== undefined || distance || (travelTime && travelTime !== '0 min')) && (
               <View style={styles.metricDivider} />
             )}
             <Text style={[styles.priceText, { color: tierColor }]}>{tierDisplayText}</Text>

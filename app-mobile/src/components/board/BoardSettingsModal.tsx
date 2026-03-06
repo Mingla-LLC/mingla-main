@@ -10,6 +10,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
+import { KeyboardAwareScrollView } from "../ui/KeyboardAwareScrollView";
 import { Ionicons } from "@expo/vector-icons";
 import { BoardSession } from "../../hooks/useBoardSession";
 import { useBoardSession } from "../../hooks/useBoardSession";
@@ -130,7 +131,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content}>
+        <KeyboardAwareScrollView style={styles.content}>
           {showInviteOptions && inviteLinkData ? (
             <View style={styles.inviteSection}>
               <TouchableOpacity
@@ -229,7 +230,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
               </View>
             </>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {!showInviteOptions && (
           <View style={styles.footer}>

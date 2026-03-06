@@ -477,7 +477,7 @@ serve(async (req: Request) => {
         lng,
         placeType: primaryType,
         placeTypeLabel: formatPlaceType(primaryType),
-        distanceKm: Math.round(dist * 10) / 10,
+        distanceKm: Math.round(dist * 100) / 100,
         travelTimeMin: travelMin,
         matchScore: calculateMatchScore(p, location.lat, location.lng, maxDistKm),
       };

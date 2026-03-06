@@ -680,6 +680,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                 // Transform to ExpandedCardData format with safe fallbacks
                 const expandedCardData: ExpandedCardData = {
                   id: cardData.id || card.id,
+                  placeId: cardData.placeId || card.id,
                   title: cardData.title || "Untitled Experience",
                   category: cardData.category || "Experience",
                   categoryIcon: cardData.categoryIcon || "star",

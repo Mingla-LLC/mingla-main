@@ -49,6 +49,18 @@ const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 const CARD_ANIMATION_DURATION = 400;
 
+/** Map travel mode preference to an Ionicons icon name */
+function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+  switch (mode) {
+    case 'driving': return 'car';
+    case 'transit': return 'bus';
+    case 'bicycling':
+    case 'biking': return 'bicycle';
+    case 'walking':
+    default: return 'walk';
+  }
+}
+
 interface StrollData {
   anchor: {
     id: string;
@@ -833,8 +845,8 @@ export default function SwipeableCards({
       rating: currentRec.rating ?? 0,
       reviewCount: currentRec.reviewCount ?? 0,
       priceRange: currentRec.priceRange || 'Free',
-      distance: currentRec.distance || '0 km',
-      travelTime: currentRec.travelTime || '0 min',
+      distance: currentRec.distance || '',
+      travelTime: currentRec.travelTime || '',
       address: currentRec.address,
       openingHours: currentRec.openingHours,
       highlights: currentRec.highlights || [],
@@ -843,7 +855,7 @@ export default function SwipeableCards({
       matchFactors: currentRec.matchFactors,
       socialStats: currentRec.socialStats,
       location:
-        currentRec.lat && currentRec.lng
+        currentRec.lat != null && currentRec.lng != null
           ? { lat: currentRec.lat, lng: currentRec.lng }
           : userLocation
           ? { lat: userLocation.lat, lng: userLocation.lng }
@@ -854,9 +866,9 @@ export default function SwipeableCards({
       tip: currentRec.tip ?? undefined,
       // Include strollData if it already exists on the card
       strollData: currentRec.strollData,
-      // Pass through website/phone for nature cards' Policies & Reservations
-      website: (currentRec as any).website ?? undefined,
-      phone: (currentRec as any).phone ?? undefined,
+      // Pass through website/phone for Policies & Reservations button
+      website: currentRec.website ?? undefined,
+      phone: currentRec.phone ?? undefined,
     };
 
     setSelectedCardForExpansion(expandedCardData);
@@ -1013,7 +1025,8 @@ export default function SwipeableCards({
     handleDeckCardProgress(currentCardIndex + 1, availableRecommendations.length);
 
     // Auto-advance to next batch when current batch runs out
-    if (currentCardIndex >= availableRecommendations.length - 1 && hasMoreCards) {
+    // generateNextBatch handles rotation when max batches reached
+    if (currentCardIndex >= availableRecommendations.length - 1 && (hasMoreCards || deckBatches.length > 1)) {
       generateNextBatch();
     }
 
@@ -1078,8 +1091,8 @@ export default function SwipeableCards({
           rating: card.rating ?? 0,
           reviewCount: card.reviewCount ?? 0,
           priceRange: card.priceRange || 'Free',
-          distance: card.distance || '0 km',
-          travelTime: card.travelTime || '0 min',
+          distance: card.distance || '',
+          travelTime: card.travelTime || '',
           address: card.address,
           openingHours: card.openingHours,
           highlights: card.highlights || [],
@@ -1088,7 +1101,7 @@ export default function SwipeableCards({
           matchFactors: card.matchFactors,
           socialStats: card.socialStats,
           location:
-            card.lat && card.lng
+            card.lat != null && card.lng != null
               ? { lat: card.lat, lng: card.lng }
               : userLocation
               ? { lat: userLocation.lat, lng: userLocation.lng }
@@ -1098,8 +1111,8 @@ export default function SwipeableCards({
             : new Date(),
           tip: card.tip ?? undefined,
           strollData: card.strollData,
-          website: (card as any).website ?? undefined,
-          phone: (card as any).phone ?? undefined,
+          website: card.website ?? undefined,
+          phone: card.phone ?? undefined,
         };
         setSelectedCardForExpansion(expandedCardData);
       }
@@ -1373,6 +1386,54 @@ export default function SwipeableCards({
     !isModeTransitioning &&
     !isWaitingForSessionResolution
   ) {
+    // If batches exist, rotate back instead of showing "everything explored"
+    if (deckBatches.length > 1) {
+      return (
+        <View style={styles.noCardsContainer}>
+          <View style={styles.noCardsContent}>
+            <View style={styles.sparklesContainer}>
+              <Ionicons name="layers-outline" size={48} color="#eb7825" />
+            </View>
+            <Text style={styles.noCardsTitle}>You've seen all {deckBatches.length} decks</Text>
+            <Text style={styles.noCardsSubtitle}>
+              Swipe through your decks and pick your favorites.
+            </Text>
+
+            {deckBatches.map((batch, idx) => (
+              <TouchableOpacity
+                key={batch.batchSeed}
+                style={[
+                  styles.changePreferencesButton,
+                  idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
+                  idx !== 0 && { marginTop: 8 },
+                ]}
+                onPress={() => navigateToDeckBatch(idx)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="albums-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.changePreferencesText}>
+                  Deck {idx + 1} — {batch.cards.length} places
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            {dismissedCards.length > 0 && (
+              <TouchableOpacity
+                style={[styles.reviewDismissedButton, { marginTop: 16 }]}
+                onPress={() => setDismissedSheetVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="refresh-outline" size={18} color="#eb7825" />
+                <Text style={styles.reviewDismissedText}>
+                  Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
@@ -1507,14 +1568,22 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, rating, price, category */}
+                      {/* Info badges: distance, travel time, rating, price */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
+                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
+                        {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
+                          <View style={styles.detailBadge}>
+                            <Ionicons name={getTravelModeIcon(userPreferences?.travel_mode)} size={12} color="white" />
+                            <Text style={styles.detailBadgeText}>
+                              {nextCard.travelTime}
+                            </Text>
+                          </View>
+                        ) : null}
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
@@ -1525,12 +1594,6 @@ export default function SwipeableCards({
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Ionicons name={NextCategoryIcon as any} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {nextCard.category}
                           </Text>
                         </View>
                       </View>
@@ -1645,14 +1708,22 @@ export default function SwipeableCards({
                         <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
                       )}
 
-                      {/* Info badges: distance, rating, price, category */}
+                      {/* Info badges: distance, travel time, rating, price */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
+                        {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
+                          <View style={styles.detailBadge}>
+                            <Ionicons name={getTravelModeIcon(userPreferences?.travel_mode)} size={12} color="white" />
+                            <Text style={styles.detailBadgeText}>
+                              {currentRec.travelTime}
+                            </Text>
+                          </View>
+                        ) : null}
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
@@ -1663,12 +1734,6 @@ export default function SwipeableCards({
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Ionicons name={CategoryIcon as any} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {currentRec.category}
                           </Text>
                         </View>
                       </View>

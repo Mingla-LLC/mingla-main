@@ -2100,7 +2100,7 @@ function buildStopFromPlace(
     website: place.websiteUri || null,
     lat,
     lng,
-    distanceFromUserKm: Math.round(distFromUser * 10) / 10,
+    distanceFromUserKm: Math.round(distFromUser * 100) / 100,
     travelTimeFromUserMin: Math.round(travelFromUser),
     travelTimeFromPreviousStopMin: travelFromPrev !== null ? Math.round(travelFromPrev) : null,
     travelModeFromPreviousStop: stopNumber > 1 ? travelMode : null,

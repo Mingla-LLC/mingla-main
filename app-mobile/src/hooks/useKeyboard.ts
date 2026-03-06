@@ -32,16 +32,28 @@ export interface KeyboardState {
  *  • keyboardHeight – number (0 when hidden)
  *  • dismiss() – helper to close the keyboard
  *
+ * Optional `onShow` callback fires with the final keyboard height the moment
+ * the keyboard event fires — use this instead of setTimeout hacks to scroll
+ * focused inputs into view.
+ *
  * Usage:
- *   const { isVisible, keyboardHeight, dismiss } = useKeyboard();
- *   // Use keyboardHeight as bottom padding on your input container.
+ *   const { isVisible, keyboardHeight, dismiss } = useKeyboard({
+ *     onShow: (height) => scrollFieldIntoView(height),
+ *   });
  */
-export function useKeyboard(): KeyboardState {
+export function useKeyboard(opts?: {
+  onShow?: (height: number) => void;
+  onHide?: () => void;
+}): KeyboardState {
   const [isVisible, setIsVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   // Keep a ref so we never get stale closures in cleanup
   const heightRef = useRef(0);
+  const onShowRef = useRef(opts?.onShow);
+  const onHideRef = useRef(opts?.onHide);
+  onShowRef.current = opts?.onShow;
+  onHideRef.current = opts?.onHide;
 
   useEffect(() => {
     // iOS fires "will" events before the animation begins (smoother).
@@ -68,6 +80,7 @@ export function useKeyboard(): KeyboardState {
 
       setKeyboardHeight(height);
       setIsVisible(true);
+      onShowRef.current?.(height);
     };
 
     const onHide = (e: KeyboardEvent) => {
@@ -85,6 +98,7 @@ export function useKeyboard(): KeyboardState {
 
       setKeyboardHeight(0);
       setIsVisible(false);
+      onHideRef.current?.();
     };
 
     const showSub = Keyboard.addListener(showEvent, onShow);

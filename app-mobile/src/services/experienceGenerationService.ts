@@ -160,6 +160,7 @@ export class ExperienceGenerationService {
     radius?: number,
     selectedCategories?: string[],
     heroCategories?: string[],
+    travelMode?: string,
   ): Promise<{
     cards: GeneratedExperience[];
     heroCards: GeneratedExperience[];
@@ -178,6 +179,9 @@ export class ExperienceGenerationService {
       }
       if (heroCategories && heroCategories.length > 0) {
         body.heroCategories = heroCategories;
+      }
+      if (travelMode) {
+        body.travelMode = travelMode;
       }
 
       const { data, error } = await supabase.functions.invoke(

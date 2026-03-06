@@ -1219,6 +1219,8 @@ export default function ExpandedCardModal({
                   tags={card.tags}
                   rating={card.rating}
                   distance={card.distance}
+                  travelTime={card.travelTime}
+                  travelMode={userPreferences?.travel_mode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={(card as any).priceTier}

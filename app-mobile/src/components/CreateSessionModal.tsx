@@ -13,6 +13,7 @@ import {
   Dimensions,
   Share,
 } from 'react-native';
+import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSessionManagement } from '../hooks/useSessionManagement';
@@ -761,9 +762,9 @@ export const CreateSessionModal: React.FC = () => {
             <View style={styles.headerSide} />
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {renderStepContent()}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           {currentStep !== 'success' && (
             <View style={styles.footer}>

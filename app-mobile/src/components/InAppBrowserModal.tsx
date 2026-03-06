@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,12 @@ export default function InAppBrowserModal({
   onClose,
 }: InAppBrowserModalProps) {
   const [loading, setLoading] = useState(true);
+
+  const handleWebViewError = useCallback(() => {
+    // WebView failed (e.g. iOS ATS blocking HTTP) — fall back to system browser
+    Linking.openURL(url).catch(() => {});
+    onClose();
+  }, [url, onClose]);
 
   return (
     <Modal
@@ -64,6 +71,11 @@ export default function InAppBrowserModal({
               style={styles.webview}
               onLoadStart={() => setLoading(true)}
               onLoadEnd={() => setLoading(false)}
+              onError={handleWebViewError}
+              onHttpError={(syntheticEvent) => {
+                const { statusCode } = syntheticEvent.nativeEvent;
+                if (statusCode >= 400) handleWebViewError();
+              }}
             />
           </View>
         </View>

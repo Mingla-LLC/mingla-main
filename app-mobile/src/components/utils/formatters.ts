@@ -217,11 +217,16 @@ export function parseAndFormatDistance(distanceString: string | undefined, syste
     return distanceString;
   }
 
+  // Guard: if distance rounds to effectively zero, show "Nearby"
+  if (distanceInKm < 0.005) {
+    return 'Nearby';
+  }
+
   // Convert to user's preferred system
   if (system === 'Metric') {
     if (distanceInKm < 1) {
       const meters = Math.round(distanceInKm * 1000);
-      return `${meters}m`;
+      return meters === 0 ? 'Nearby' : `${meters}m`;
     }
     return `${distanceInKm.toFixed(1)} km`;
   } else {
@@ -229,7 +234,7 @@ export function parseAndFormatDistance(distanceString: string | undefined, syste
     const miles = distanceInKm / 1.60934;
     if (miles < 0.1) {
       const feet = Math.round(miles * 5280);
-      return `${feet} ft`;
+      return feet === 0 ? 'Nearby' : `${feet} ft`;
     }
     return `${miles.toFixed(1)} mi`;
   }

@@ -173,6 +173,8 @@ export const useAppStore = create<AppState>()(
       addDeckBatch: (batch) => set((state) => {
         const exists = state.deckBatches.some(b => b.batchSeed === batch.batchSeed);
         if (exists) return state;
+        // Cap at 3 batches — do not store beyond the limit
+        if (state.deckBatches.length >= 3) return state;
         return {
           deckBatches: [...state.deckBatches, batch],
           currentDeckBatchIndex: state.deckBatches.length,

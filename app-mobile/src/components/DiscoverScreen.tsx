@@ -26,6 +26,7 @@ import { ExperienceGenerationService } from "../services/experienceGenerationSer
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
@@ -872,6 +873,7 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const { user } = useAuthSimple();
+  const { preferences: discoverUserPrefs } = useUserPreferences();
   const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
   const savedPeople: SavedPerson[] = savedPeopleData;
 
@@ -1420,7 +1422,7 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights || [],
     tags: rec.tags || [],
-    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
   });
 
@@ -1439,7 +1441,7 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights || [],
     tags: rec.tags || [],
-    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
   });
 
@@ -1609,6 +1611,7 @@ export default function DiscoverScreen({
           10000, // 10km radius
           undefined,              // For You: always ALL categories (never filtered by user prefs)
           ["Fine Dining", "Play"], // For You: always these 2 hero categories
+          discoverUserPrefs?.travel_mode, // Use user's chosen transport mode for travel time estimates
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1684,7 +1687,7 @@ export default function DiscoverScreen({
           distance: hc.distance,
           highlights: hc.highlights || [],
           tags: hc.highlights || [],
-          location: hc.lat && hc.lng ? { lat: hc.lat, lng: hc.lng } : undefined,
+          location: hc.lat != null && hc.lng != null ? { lat: hc.lat, lng: hc.lng } : undefined,
           openingHours: hc.openingHours || null,
         }));
 
@@ -1719,7 +1722,7 @@ export default function DiscoverScreen({
                 distance: candidate.distance,
                 highlights: candidate.highlights || [],
                 tags: candidate.highlights || [],
-                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
               });
               existingHeroIds.add(candidate.id);
@@ -1753,7 +1756,7 @@ export default function DiscoverScreen({
                 distance: candidate.distance,
                 highlights: candidate.highlights || [],
                 tags: candidate.highlights || [],
-                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
               });
               existingHeroIds.add(candidate.id);
@@ -1844,7 +1847,7 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights,
     tags: rec.tags,
-    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
   });
 
@@ -1864,7 +1867,7 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights,
     tags: rec.tags,
-    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
   });
 

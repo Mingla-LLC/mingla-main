@@ -353,8 +353,8 @@ function buildSingleCardFromPlace(
 
   let distanceKm = 0;
   let travelTimeMin = 0;
-  if (userLat != null && userLng != null && place.lat && place.lng) {
-    distanceKm = Math.round(haversine(userLat, userLng, place.lat, place.lng) * 10) / 10;
+  if (userLat != null && userLng != null && place.lat != null && place.lng != null) {
+    distanceKm = Math.round(haversine(userLat, userLng, place.lat, place.lng) * 100) / 100;
     travelTimeMin = estimateTravelMin(distanceKm, travelMode);
   }
 
@@ -512,10 +512,11 @@ function poolCardToApiCard(
   const { hours: parsedHours, isOpenNow } = resolveOpeningHours(card.opening_hours);
 
   // Compute real distance if user location is available
+  // Use explicit null checks (not truthy) so lat/lng of exactly 0 still works
   let distanceKm = 0;
   let travelTimeMin = 0;
-  if (userLat != null && userLng != null && card.lat && card.lng) {
-    distanceKm = Math.round(haversine(userLat, userLng, card.lat, card.lng) * 10) / 10;
+  if (userLat != null && userLng != null && card.lat != null && card.lng != null) {
+    distanceKm = Math.round(haversine(userLat, userLng, card.lat, card.lng) * 100) / 100;
     travelTimeMin = estimateTravelMin(distanceKm, travelMode);
   }
 
@@ -862,10 +863,10 @@ export async function serveCardsFromPipeline(
       const rating = place.rating || 0;
       const reviewCount = place.userRatingCount || 0;
       const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
-      const placeLat = place.location?.latitude || 0;
-      const placeLng = place.location?.longitude || 0;
-      const distKm = (placeLat && placeLng)
-        ? Math.round(haversine(lat, lng, placeLat, placeLng) * 10) / 10
+      const placeLat = place.location?.latitude ?? 0;
+      const placeLng = place.location?.longitude ?? 0;
+      const distKm = (place.location?.latitude != null && place.location?.longitude != null)
+        ? Math.round(haversine(lat, lng, placeLat, placeLng) * 100) / 100
         : 0;
       const travelMin = estimateTravelMin(distKm, options?.travelMode);
 

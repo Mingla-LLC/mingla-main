@@ -263,7 +263,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           </View>
                           <View style={styles.statItem}>
                             <Ionicons name="location" size={16} color="#eb7825" />
-                            <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || card.travelTime}</Text>
+                            <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || 'Nearby'}</Text>
                           </View>
                           <View style={styles.statItem}>
                             <Text style={styles.priceText}>{card.priceRange}</Text>

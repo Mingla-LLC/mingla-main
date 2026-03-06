@@ -844,26 +844,39 @@ const CalendarTab = ({
       textDecorationLine: "underline",
     },
     emptyState: {
+      flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 48,
+      marginHorizontal: 16,
+      marginVertical: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: "#fffbf5",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#f5e6d3",
     },
-    emptyStateIcon: {
-      width: 48,
-      height: 48,
-      color: "#d1d5db",
-      marginBottom: 16,
+    emptyStateIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "#fef3e2",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 12,
+    },
+    emptyStateTextContainer: {
+      flex: 1,
     },
     emptyStateTitle: {
-      fontSize: 18,
-      fontWeight: "500",
+      fontSize: 15,
+      fontWeight: "600",
       color: "#111827",
-      marginBottom: 8,
+      marginBottom: 2,
     },
     emptyStateSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
-      textAlign: "center",
-      marginBottom: 24,
+      fontSize: 13,
+      color: "#9ca3af",
+      lineHeight: 18,
     },
     filterCard: {
       marginHorizontal: 16,
@@ -1091,6 +1104,7 @@ const CalendarTab = ({
 
     const expandedCardData: ExpandedCardData = {
       id: entry.id,
+      placeId: experience.placeId || (entry as any).placeId || entry.id,
       title: experience.title || entry.title,
       category: experience.category || entry.category || "Experience",
       categoryIcon: ExperienceIcon,
@@ -1600,14 +1614,27 @@ const CalendarTab = ({
     );
   };
 
-  const renderEmptyComponent = () => {
+  const renderEmptyComponent = (section: "active" | "archive" = "active") => {
+    const isActive = section === "active";
     return (
       <View style={styles.emptyState}>
-        <Ionicons name="calendar" size={48} color="#d1d5db" />
-        <Text style={styles.emptyStateTitle}>No Scheduled Experiences</Text>
-        <Text style={styles.emptyStateSubtitle}>
-          Save and schedule experiences to see them here
-        </Text>
+        <View style={styles.emptyStateIconCircle}>
+          <Ionicons
+            name={isActive ? "calendar-outline" : "archive-outline"}
+            size={22}
+            color="#eb7825"
+          />
+        </View>
+        <View style={styles.emptyStateTextContainer}>
+          <Text style={styles.emptyStateTitle}>
+            {isActive ? "Your calendar's wide open" : "No past plans yet"}
+          </Text>
+          <Text style={styles.emptyStateSubtitle}>
+            {isActive
+              ? "Save something you love and lock in a date."
+              : "Completed plans show up here."}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -1807,7 +1834,7 @@ const CalendarTab = ({
         {expandedAccordionItems.includes("active") && (
           <View style={styles.accordionContentContainer}>
             {filteredActiveEntries.length === 0
-              ? renderEmptyComponent()
+              ? renderEmptyComponent("active")
               : filteredActiveEntries.map((entry) => {
                   const animation = getCardAnimation(entry.id);
                   return (
@@ -1860,7 +1887,7 @@ const CalendarTab = ({
         {expandedAccordionItems.includes("archive") && (
           <View style={styles.accordionContentContainer}>
             {filteredArchiveEntries.length === 0
-              ? renderEmptyComponent()
+              ? renderEmptyComponent("archive")
               : filteredArchiveEntries.map((entry) => {
                   const animation = getCardAnimation(entry.id);
                   return (

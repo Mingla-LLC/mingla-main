@@ -10,6 +10,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { Ionicons } from '@expo/vector-icons';
 import { useEnhancedBoards } from '../hooks/useEnhancedBoards';
 import { useAppStore } from '../store/appStore';
@@ -141,7 +142,7 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
   return (
     <View style={styles.overlay}>
       <View style={styles.modal}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerSidePlaceholder} />
@@ -283,7 +284,7 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
               </View>
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Actions */}
         <View style={styles.actions}>

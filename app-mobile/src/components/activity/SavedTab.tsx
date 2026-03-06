@@ -751,26 +751,39 @@ const SavedTab = ({
       color: "#6b7280",
     },
     emptyState: {
+      flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 48,
+      marginHorizontal: 16,
+      marginVertical: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: "#fffbf5",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#f5e6d3",
     },
-    emptyStateIcon: {
-      width: 48,
-      height: 48,
-      color: "#d1d5db",
-      marginBottom: 16,
+    emptyStateIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "#fef3e2",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 12,
+    },
+    emptyStateTextContainer: {
+      flex: 1,
     },
     emptyStateTitle: {
-      fontSize: 18,
-      fontWeight: "500",
+      fontSize: 15,
+      fontWeight: "600",
       color: "#111827",
-      marginBottom: 8,
+      marginBottom: 2,
     },
     emptyStateSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
-      textAlign: "center",
-      marginBottom: 24,
+      fontSize: 13,
+      color: "#9ca3af",
+      lineHeight: 18,
     },
     loadingContainer: {
       flex: 1,
@@ -1329,6 +1342,7 @@ const SavedTab = ({
 
       const cardData: ExpandedCardData = {
         id: cardToSchedule.id,
+        placeId: (cardToSchedule as any).placeId ?? cardToSchedule.id,
         title: cardToSchedule.title,
         category: cardToSchedule.category,
         categoryIcon: cardToSchedule.categoryIcon,
@@ -1454,6 +1468,7 @@ const SavedTab = ({
 
     const expandedCardData: ExpandedCardData = {
       id: card.id,
+      placeId: (card as any).placeId ?? card.id,
       title: card.title,
       category: card.category,
       categoryIcon: card.categoryIcon,
@@ -1992,11 +2007,15 @@ const SavedTab = ({
 
     return (
       <View style={styles.emptyState}>
-        <Ionicons name="heart" size={48} color="#d1d5db" />
-        <Text style={styles.emptyStateTitle}>No Saved Experiences</Text>
-        <Text style={styles.emptyStateSubtitle}>
-          Start swiping to save experiences you love
-        </Text>
+        <View style={styles.emptyStateIconCircle}>
+          <Ionicons name="heart-outline" size={22} color="#eb7825" />
+        </View>
+        <View style={styles.emptyStateTextContainer}>
+          <Text style={styles.emptyStateTitle}>Nothing saved yet</Text>
+          <Text style={styles.emptyStateSubtitle}>
+            Swipe right on something great and it lands here.
+          </Text>
+        </View>
       </View>
     );
   };

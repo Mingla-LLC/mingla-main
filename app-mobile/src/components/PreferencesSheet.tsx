@@ -19,8 +19,7 @@ import {
 } from "react-native-safe-area-context";
 import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
 import { useAppLayout } from "../hooks/useAppLayout";
-import { KeyboardAwareView } from "./ui/KeyboardAwareView";
-import { useKeyboard } from "../hooks/useKeyboard";
+import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
@@ -204,64 +203,14 @@ export default function PreferencesSheet({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSelectingSuggestion = useRef(false);
-  const scrollViewRef = useRef<ScrollView>(null);
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
-  const budgetInputContainerRef = useRef<View>(null);
-  const constraintInputContainerRef = useRef<View>(null);
-  const locationInputContainerRef = useRef<View>(null);
 
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
 
   const isSavingRef = useRef(false);
   const isInternalUpdate = useRef(false);
-  const { keyboardHeight: kbHeight } = useKeyboard();
-  const kbHeightRef = useRef(0);
-  const currentScrollOffsetRef = useRef(0);
-  kbHeightRef.current = kbHeight;
-
-  // Track scroll position in real-time
-  const handleScroll = (event: any) => {
-    currentScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-  };
-
-  /**
-   * Scroll the field to sit just above the keyboard with precision.
-   */
-  const scrollToField = useCallback((fieldRef: React.RefObject<View | null>) => {
-    if (!fieldRef.current || !scrollViewRef.current) return;
-
-    setTimeout(() => {
-      const kbH = kbHeightRef.current;
-      if (kbH === 0) return;
-      
-      try {
-        (scrollViewRef.current as any).measureInWindow((svX: number, svY: number, svW: number, svH: number) => {
-          (fieldRef.current as any).measureInWindow((fX: number, fY: number, fW: number, fH: number) => {
-            const fieldYRelativeToScrollView = fY - svY;
-            const fieldBottomRelativeToScrollView = fieldYRelativeToScrollView + fH;
-            const keyboardStartOnScreen = SCREEN_HEIGHT - kbH;
-            const scrollViewBottomOnScreen = svY + svH;
-            const visibleHeightOfScrollView = Math.min(svH, keyboardStartOnScreen - svY);
-            const BOTTOM_OFFSET = 48;
-            const targetFieldBottomPosition = visibleHeightOfScrollView - BOTTOM_OFFSET - 30;
-            const overshoot = fieldBottomRelativeToScrollView - targetFieldBottomPosition;
-            
-            if (overshoot > 0) {
-              const newScrollOffset = currentScrollOffsetRef.current + overshoot;
-              scrollViewRef.current?.scrollTo({
-                y: newScrollOffset,
-                animated: true,
-              });
-            }
-          });
-        });
-      } catch (error) {
-        console.warn("Error scrolling to field:", error);
-      }
-    }, 350);
-  }, []);
 
   // Track initial preferences for change detection
   const [initialPreferences, setInitialPreferences] = useState<any>(null);
@@ -899,15 +848,10 @@ export default function PreferencesSheet({
           </View>
         </View>
 
-        <KeyboardAwareView style={{ flex: 1 }} dismissOnTap={false}>
-          <ScrollView
-            ref={scrollViewRef}
+        <View style={{ flex: 1 }}>
+          <KeyboardAwareScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
           >
           {/* Experience Type Section */}
           <ExperienceTypesSection
@@ -993,7 +937,7 @@ export default function PreferencesSheet({
                 setConstraintValue(val);
               }
             }}
-            onFocus={() => scrollToField(constraintInputContainerRef)}
+            onFocus={() => {}}
           />
 
           {/* Starting Point Section */}
@@ -1018,7 +962,6 @@ export default function PreferencesSheet({
                 if (suggestions.length > 0) {
                   setShowSuggestions(true);
                 }
-                scrollToField(locationInputContainerRef);
               }}
               onBlur={handleInputBlur}
               showSuggestions={showSuggestions}
@@ -1031,7 +974,7 @@ export default function PreferencesSheet({
             />
           </View>
 
-          </ScrollView>
+          </KeyboardAwareScrollView>
         {/* Apply Button */}
         <View
           style={[
@@ -1065,7 +1008,7 @@ export default function PreferencesSheet({
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAwareView>
+      </View>
 
       {/* Calendar Modal */}
       <Modal

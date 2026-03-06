@@ -11,6 +11,7 @@ import {
   Alert,
   StyleSheet,
 } from "react-native";
+import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -431,14 +432,13 @@ export default function PersonEditSheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
             bounces={false}
             contentContainerStyle={styles.scrollContentContainer}
           >
             {person.is_linked ? renderLinkedView() : renderStandardView()}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
     </Modal>

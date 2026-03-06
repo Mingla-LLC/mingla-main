@@ -30,6 +30,8 @@ import { rotateToNext, getRotationLabel, initializeRotationOrder } from '../util
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
 
+const MAX_BATCHES = 3;
+
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
   budget_min: 0,
@@ -386,11 +388,23 @@ export const RecommendationsProvider: React.FC<
   });
 
   // ── Generate Next Batch ─────────────────────────────────────────────────
+  // Capped at MAX_BATCHES. Once all batches are loaded, rotate back to batch 0.
   const generateNextBatch = useCallback(() => {
+    const nextSeed = batchSeed + 1;
+
+    // If we've hit the cap, rotate to the first batch instead of fetching more
+    if (nextSeed >= MAX_BATCHES) {
+      if (deckBatches.length > 0) {
+        setIsExhausted(false);
+        navigateToDeckBatch(0);
+      }
+      return;
+    }
+
     previousBatchRef.current = recommendations;
     setIsBatchTransitioning(true);
-    setBatchSeed(prev => prev + 1);
-  }, [recommendations]);
+    setBatchSeed(nextSeed);
+  }, [recommendations, batchSeed, deckBatches, navigateToDeckBatch]);
 
   // Soft timeout (3s): show "Still loading..." indicator
   // Hard timeout (20s): match DeckService 15s + network buffer. Do NOT mark
@@ -550,6 +564,10 @@ export const RecommendationsProvider: React.FC<
       const batch = deckBatches[currentDeckBatchIndex];
       if (batch.batchSeed !== batchSeed) {
         setBatchSeed(batch.batchSeed);
+        // Clear exhaustion when navigating to a batch with cards
+        if (isExhausted) {
+          setIsExhausted(false);
+        }
       }
     }
   }, [currentDeckBatchIndex, deckBatches]);
@@ -560,7 +578,8 @@ export const RecommendationsProvider: React.FC<
     const remainingCards = total - currentIndex - 1;
 
     // When 8 or fewer cards remain, prefetch next batch (once per batch)
-    if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards) {
+    // Skip prefetch if we've already hit the max batch cap
+    if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards && batchSeed + 1 < MAX_BATCHES) {
       prefetchFiredRef.current = true;
       const nextSeed = batchSeed + 1;
       const prefetchCategories = activeDeckParams.categories ?? [];

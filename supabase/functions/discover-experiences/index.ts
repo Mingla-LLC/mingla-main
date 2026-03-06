@@ -52,6 +52,7 @@ interface DiscoverRequest {
   radius?: number; // Optional radius in meters, default 10km
   selectedCategories?: string[]; // Optional: only fetch these categories (IDs or labels)
   heroCategories?: string[]; // Optional: user's top 2 categories for hero cards
+  travelMode?: string; // Optional: 'walking' | 'driving' | 'transit' | 'bicycling'
 }
 
 interface DiscoverPlace {
@@ -87,7 +88,7 @@ serve(async (req) => {
 
   try {
     const request: DiscoverRequest = await req.json();
-    const { location, radius = 10000, selectedCategories } = request;
+    const { location, radius = 10000, selectedCategories, travelMode = 'walking' } = request;
     const usDateKey = getUsDateKey();
 
     // Validate heroCategories if provided
@@ -391,8 +392,8 @@ serve(async (req) => {
 
           // Helper: convert pool DB row to API card format
           const poolRowToApiCard = (card: any): any => {
-            const distKm = (card.lat && card.lng)
-              ? Math.round(haversineDistance(location.lat, location.lng, card.lat, card.lng) * 10) / 10
+            const distKm = (card.lat != null && card.lng != null)
+              ? Math.round(haversineDistance(location.lat, location.lng, card.lat, card.lng) * 100) / 100
               : 0;
             const travelMin = Math.round(distKm / 5 * 60); // ~5 km/h walking default
 
@@ -571,7 +572,7 @@ serve(async (req) => {
             // Annotate missed places with travel + AI
             let enrichedMissedCards: any[] = [];
             if (missedPlaces.length > 0) {
-              const withTravel = await annotateWithTravel(missedPlaces, location);
+              const withTravel = await annotateWithTravel(missedPlaces, location, travelMode);
               const enriched = await enrichWithAI(withTravel);
               enrichedMissedCards = enriched.map((place) => convertToCard(place));
             }
@@ -809,7 +810,7 @@ serve(async (req) => {
 
     // Calculate travel times for all places (including hero cards)
     const allPlacesToProcess = [...places, ...heroCards];
-    const placesWithTravel = await annotateWithTravel(allPlacesToProcess, location);
+    const placesWithTravel = await annotateWithTravel(allPlacesToProcess, location, travelMode);
 
     // Enrich with AI descriptions
     const enrichedPlaces = await enrichWithAI(placesWithTravel);
@@ -1138,8 +1139,19 @@ function transformPlaceToDiscoverPlace(
  */
 async function annotateWithTravel(
   places: DiscoverPlace[],
-  origin: { lat: number; lng: number }
+  origin: { lat: number; lng: number },
+  travelMode: string = 'walking',
 ): Promise<(DiscoverPlace & { distance: string; travelTime: string; distanceKm: number; travelTimeMin: number })[]> {
+  // Map Mingla travel modes to Google Distance Matrix API modes
+  const GOOGLE_MODE_MAP: Record<string, string> = {
+    walking: 'walking',
+    driving: 'driving',
+    transit: 'transit',
+    bicycling: 'bicycling',
+    biking: 'bicycling',
+  };
+  const googleMode = GOOGLE_MODE_MAP[travelMode] || 'walking';
+
   if (!GOOGLE_API_KEY || places.length === 0) {
     return places.map((p) => ({
       ...p,
@@ -1155,7 +1167,7 @@ async function annotateWithTravel(
       .map((p) => `${p.location.lat},${p.location.lng}`)
       .join("|");
 
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destinations}&mode=walking&key=${GOOGLE_API_KEY}`;
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destinations}&mode=${googleMode}&key=${GOOGLE_API_KEY}`;
 
     const response = await fetch(url);
     if (!response.ok) {
