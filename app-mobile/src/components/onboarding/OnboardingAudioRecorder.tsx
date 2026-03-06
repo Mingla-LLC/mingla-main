@@ -24,6 +24,7 @@ type RecorderState = 'idle' | 'recording' | 'preview' | 'done';
 
 interface OnboardingAudioRecorderProps {
   onClipReady: (uri: string, duration: number) => void;
+  onClipCleared?: () => void;
   onSkip?: () => void;
   maxDuration?: number; // default 60
   minDuration?: number; // minimum seconds required — hides skip, disables confirm if below
@@ -31,6 +32,7 @@ interface OnboardingAudioRecorderProps {
 
 export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = ({
   onClipReady,
+  onClipCleared,
   onSkip,
   maxDuration = 60,
   minDuration,
@@ -192,7 +194,8 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
     setClipDuration(0);
     setDuration(0);
     setState('idle');
-  }, []);
+    onClipCleared?.();
+  }, [onClipCleared]);
 
   const meetsMinDuration = !minDuration || clipDuration >= minDuration;
 
@@ -284,12 +287,24 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
             </TouchableOpacity>
 
             {state === 'done' && (
-              <View style={styles.checkmarkBadge}>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={24}
-                  color={colors.success[500]}
-                />
+              <View style={styles.doneActions}>
+                <View style={styles.checkmarkBadge}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={24}
+                    color={colors.success[500]}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={handleReRecord}
+                  style={styles.startOverButton}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete recording and start over"
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
+                  <Text style={styles.startOverText}>Start over</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -423,6 +438,24 @@ const styles = StyleSheet.create({
   },
   checkmarkBadge: {
     marginTop: spacing.sm,
+  },
+  doneActions: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  startOverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: touchTargets.minimum,
+    justifyContent: 'center',
+  },
+  startOverText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.tertiary,
   },
   previewActions: {
     flexDirection: 'row',

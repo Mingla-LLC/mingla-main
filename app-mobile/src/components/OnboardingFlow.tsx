@@ -1185,7 +1185,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
         await uploadAudioClip(user.id, person.id, data.audioClipUri, fileName, data.audioClipDuration || 0, 0)
 
-        // Fire-and-forget: process audio for recommendations
+        // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
         const coords = data.coordinates
         if (coords) {
           processPersonAudio({
@@ -1193,7 +1193,14 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
             audioStoragePath: storagePath,
             location: { latitude: coords.lat, longitude: coords.lng },
             occasions: buildOccasions(data.personBirthday),
-          }).catch((err) => console.warn('[Onboarding] Audio processing failed:', err?.message))
+          }).catch((err) => {
+            const msg = err?.message || ''
+            if (msg.includes('not found') || msg.includes('Not Found')) {
+              console.info('[Onboarding] process-person-audio not deployed yet — audio will be processed once deployed.')
+            } else {
+              console.warn('[Onboarding] Audio processing failed:', msg)
+            }
+          })
         }
       }
       setSaving(false)
@@ -1241,7 +1248,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
             const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
             await uploadAudioClip(user.id, person.id, clip.uri, fileName, clip.duration, 0)
 
-            // Fire-and-forget: process audio
+            // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
             const coords = data.coordinates
             if (coords) {
               processPersonAudio({
@@ -1249,7 +1256,14 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                 audioStoragePath: storagePath,
                 location: { latitude: coords.lat, longitude: coords.lng },
                 occasions: buildOccasions(null),
-              }).catch((err) => console.warn('[Onboarding] Sync audio processing failed:', err?.message))
+              }).catch((err) => {
+                const msg = err?.message || ''
+                if (msg.includes('not found') || msg.includes('Not Found')) {
+                  console.info('[Onboarding] process-person-audio not deployed yet — audio will be processed once deployed.')
+                } else {
+                  console.warn('[Onboarding] Sync audio processing failed:', msg)
+                }
+              })
             }
           }
         }
@@ -2536,6 +2550,15 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                 setAudioClipsByFriend(prev => ({ ...prev, [friendKey]: { uri, duration } }))
               }
             }}
+            onClipCleared={() => {
+              if (friendKey) {
+                setAudioClipsByFriend(prev => {
+                  const next = { ...prev }
+                  delete next[friendKey]
+                  return next
+                })
+              }
+            }}
             minDuration={10}
           />
         </View>
@@ -2627,6 +2650,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           </Text>
           <OnboardingAudioRecorder
             onClipReady={(uri, duration) => setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))}
+            onClipCleared={() => setData((p) => ({ ...p, audioClipUri: null, audioClipDuration: null }))}
             minDuration={10}
           />
         </View>

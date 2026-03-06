@@ -103,7 +103,7 @@ export async function uploadAudioClip(
     .from("voice-reviews")
     .upload(storagePath, formData, {
       contentType: "audio/mp4",
-      upsert: false,
+      upsert: true,
     });
 
   if (uploadError) {
