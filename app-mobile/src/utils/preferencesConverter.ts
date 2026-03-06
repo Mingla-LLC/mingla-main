@@ -115,6 +115,52 @@ const convertTimePreference = (time: string) => {
   }
 };
 
+/** Valid exact time format: "H:MM AM/PM" or "HH:MM AM/PM" */
+const EXACT_TIME_RE = /^(1[0-2]|0?[1-9]):[0-5][0-9]\s?(AM|PM)$/i;
+
+/**
+ * Normalize preference fields to enforce consistency before saving to DB.
+ * Eliminates conflicting combinations of date/time fields and location fields.
+ */
+export function normalizePreferencesForSave(prefs: {
+  date_option?: string | null;
+  time_slot?: string | null;
+  exact_time?: string | null;
+  datetime_pref?: string | null;
+  use_gps_location?: boolean;
+  custom_location?: string | null;
+}): typeof prefs {
+  const normalized = { ...prefs };
+
+  // Date/time consistency: clear irrelevant fields based on date_option
+  const dateOpt = (normalized.date_option || '').toLowerCase();
+  if (dateOpt === 'now') {
+    normalized.time_slot = null;
+    normalized.exact_time = null;
+    normalized.datetime_pref = null;
+  } else if (dateOpt === 'today') {
+    normalized.datetime_pref = null;
+  } else if (dateOpt === 'weekend' || dateOpt === 'this weekend') {
+    // Weekend can have a time slot but not an exact datetime
+    normalized.datetime_pref = null;
+  }
+  // "Pick a Date" / "custom" keeps datetime_pref as-is
+
+  // Exact time validation: discard malformed values
+  if (normalized.exact_time && !EXACT_TIME_RE.test(normalized.exact_time)) {
+    normalized.exact_time = null;
+  }
+
+  // Location consistency: GPS and custom are mutually exclusive
+  if (normalized.use_gps_location === true) {
+    normalized.custom_location = null;
+  } else if (normalized.custom_location) {
+    normalized.use_gps_location = false;
+  }
+
+  return normalized;
+}
+
 const convertTravelMode = (travel: string): 'WALKING' | 'DRIVING' | 'TRANSIT' => {
   switch (travel.toLowerCase()) {
     case 'walk':

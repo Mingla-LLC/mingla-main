@@ -13,7 +13,6 @@
 import { supabase } from './supabase';
 import { curatedExperiencesService } from './curatedExperiencesService';
 import {
-  separateIntentsAndCategories,
   curatedToRecommendation,
   roundRobinInterleave,
 } from '../utils/cardConverters';
@@ -138,11 +137,9 @@ class DeckService {
     pills: DeckPill[];
     categoryFilters: string[];
   } {
-    // If dedicatedIntents is provided (new DB schema), use it directly.
-    // Otherwise, fall back to parsing the mixed categories array (backwards compat).
-    const { intents: parsedIntents, categories: parsedCats } = separateIntentsAndCategories(categories);
-    const intents = dedicatedIntents && dedicatedIntents.length > 0 ? dedicatedIntents : parsedIntents;
-    const cats = dedicatedIntents && dedicatedIntents.length > 0 ? categories : parsedCats;
+    // Post-migration: intents live in their own DB column. No fallback parsing.
+    const intents = dedicatedIntents ?? [];
+    const cats = categories;
     const pills: DeckPill[] = [];
     const categoryFilters: string[] = [];
 
@@ -202,9 +199,10 @@ class DeckService {
       pills.push({ id: intent, type: 'curated' });
     }
 
-    // Final fallback: if NO pills at all (no categories AND no intents), add defaults.
-    // This only triggers when the user somehow has zero selections everywhere.
+    // Final fallback: only if BOTH intents and categories are truly empty.
+    // This should never happen — the UI enforces at least 1 selection.
     if (pills.length === 0) {
+      console.warn('[DeckService] Zero pills resolved — both intents and categories empty. Applying defaults.');
       const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink'];
       for (const cat of DEFAULT_CATEGORIES) {
         pills.push({ id: cat, type: 'category' });

@@ -299,11 +299,19 @@ serve(async (req: Request) => {
       travelConstraintValue = 30,
       datetimePref,
       dateOption = 'now',
-      timeSlot = null,
+      timeSlot: rawTimeSlot = null,
+      exactTime: rawExactTime = null,
       batchSeed = 0,
       limit = 20,
       priceTiers,
     } = body;
+
+    // Sanitize time inputs
+    const EXACT_TIME_RE = /^(1[0-2]|0?[1-9]):[0-5][0-9]\s?(AM|PM)$/i;
+    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight'].includes(rawTimeSlot)
+      ? rawTimeSlot
+      : null;
+    const _exactTime = rawExactTime && EXACT_TIME_RE.test(rawExactTime) ? rawExactTime : null;
 
     // ── Validate ──────────────────────────────────────────────────────────
     if (!location?.lat || !location?.lng) {
@@ -548,16 +556,12 @@ serve(async (req: Request) => {
       return haversine(location.lat, location.lng, lat, lng) <= maxDistKm;
     });
 
-    // ── Filter by budget / price tiers ──────────────────────────────────
+    // ── Filter by price tiers ─────────────────────────────────────────
+    // Use priceTiers exclusively. If all 4 tiers selected or none provided, skip filter (show all).
     if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
       allPlaces = allPlaces.filter(p => {
         const tier = googleLevelToTierSlug(p.priceLevel);
         return priceTiers.includes(tier);
-      });
-    } else {
-      allPlaces = allPlaces.filter(p => {
-        const range = priceLevelToRange(p.priceLevel);
-        return range.min <= budgetMax;
       });
     }
 

@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
+import { extractFunctionError } from "../../utils/edgeFunctionError";
 import { useAppState } from "../AppStateManager";
 import { mixpanelService } from "../../services/mixpanelService";
 
@@ -50,32 +51,16 @@ export default function AccountSettings() {
     setIsDeleting(true);
 
     try {
-      const response = await supabase.functions.invoke("delete-user", {
+      const { data, error } = await supabase.functions.invoke("delete-user", {
         method: "POST",
         body: { userId: user.id },
       });
 
-      // Log the full response for debugging
-      console.log("Delete user full response:", JSON.stringify(response, null, 2));
-
-      const { data, error } = response;
-
       if (error) {
-        // Try to extract more details from the error
-        console.error("Delete account error object:", JSON.stringify(error, null, 2));
-
-        // Check if there's context with the actual error message
-        let errorMessage = "An error occurred while deleting your account.";
-        if ((error as any)?.context?.json) {
-          try {
-            const jsonError = await (error as any).context.json();
-            console.error("Error JSON:", jsonError);
-            errorMessage = jsonError?.error || errorMessage;
-          } catch {}
-        }
-        if ((error as any)?.message) {
-          errorMessage = (error as any).message;
-        }
+        const errorMessage = await extractFunctionError(
+          error,
+          "An error occurred while deleting your account."
+        );
         throw new Error(errorMessage);
       }
       if (data?.error) throw new Error(data.error);
@@ -89,14 +74,9 @@ export default function AccountSettings() {
         setShowAccountSettings(false);
         await handleSignOut();
       }, 2000);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Delete account error:", e);
-      console.error("Error details:", JSON.stringify(e, Object.getOwnPropertyNames(e), 2));
-      // Try to get the most useful error message
-      let errorMsg = "Could not delete account. Please try again.";
-      if (e?.message && e.message !== "Edge Function returned a non-2xx status code") {
-        errorMsg = e.message;
-      }
+      const errorMsg = e instanceof Error ? e.message : "Could not delete account. Please try again.";
       setDeleteError(errorMsg);
       setDeleteStep('error');
     } finally {

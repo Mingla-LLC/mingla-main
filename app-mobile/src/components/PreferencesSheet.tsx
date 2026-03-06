@@ -40,6 +40,7 @@ import { getRate } from "../services/currencyService";
 import { mixpanelService } from "../services/mixpanelService";
 import { detectLocaleFromCoordinates } from "../utils/localeDetection";
 import { useAppStore } from "../store/appStore";
+import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 import {
   ExperienceTypesSection,
   CategoriesSection,
@@ -283,30 +284,13 @@ export default function PreferencesSheet({
     }
 
     if (isCollaborationMode) {
-      // Load from board session preferences
-      // Prefer dedicated `intents` field; fall back to parsing from `categories`
-      const intentIds = new Set([
-        "adventurous", "first-date", "romantic",
-        "friendly", "group-fun", "picnic-dates", "take-a-stroll",
-      ]);
-      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
-        setSelectedIntents((loadedPreferences as any).intents);
-        setSelectedCategories(
-          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
-        );
-      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
-        const loadedIntents: string[] = [];
-        const loadedCats: string[] = [];
-        loadedPreferences.categories.forEach((item: string) => {
-          if (intentIds.has(item)) {
-            loadedIntents.push(item);
-          } else {
-            loadedCats.push(item);
-          }
-        });
-        setSelectedIntents(loadedIntents);
-        setSelectedCategories(loadedCats);
-      }
+      // Load from board session preferences — intents and categories are separate DB columns
+      setSelectedIntents(
+        Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
+      );
+      setSelectedCategories(
+        Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+      );
       if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
         setSelectedPriceTiers((loadedPreferences as any).price_tiers);
       }
@@ -336,23 +320,18 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
-      const collabHasIntents = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
       setInitialPreferences({
-        selectedIntents: collabHasIntents
+        selectedIntents: Array.isArray((loadedPreferences as any).intents)
           ? (loadedPreferences as any).intents
-          : (loadedPreferences.categories || []).filter((item: string) =>
-              intentIds.has(item)
-            ),
+          : [],
         selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
           ? (loadedPreferences as any).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: collabHasIntents
-          ? (loadedPreferences.categories || [])
-          : (loadedPreferences.categories || []).filter((item: string) =>
-              !intentIds.has(item)
-            ),
+        selectedCategories: Array.isArray(loadedPreferences.categories)
+          ? loadedPreferences.categories
+          : [],
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref
@@ -365,38 +344,13 @@ export default function PreferencesSheet({
         searchLocation: (loadedPreferences as any).location || "",
       });
     } else {
-      // Load from solo preferences
-      // Prefer dedicated `intents` field (post-migration); fall back to parsing from `categories`
-      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
-        setSelectedIntents((loadedPreferences as any).intents);
-        setSelectedCategories(
-          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
-        );
-      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
-        const intentIds = new Set([
-          "adventurous",
-          "first-date",
-          "romantic",
-          "friendly",
-          "group-fun",
-          "picnic-dates",
-          "take-a-stroll",
-        ]);
-
-        const loadedIntents: string[] = [];
-        const loadedCategories: string[] = [];
-
-        loadedPreferences.categories.forEach((item: string) => {
-          if (intentIds.has(item)) {
-            loadedIntents.push(item);
-          } else {
-            loadedCategories.push(item);
-          }
-        });
-
-        setSelectedIntents(loadedIntents);
-        setSelectedCategories(loadedCategories);
-      }
+      // Load from solo preferences — intents and categories are separate DB columns
+      setSelectedIntents(
+        Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
+      );
+      setSelectedCategories(
+        Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+      );
 
       if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
         setSelectedPriceTiers((loadedPreferences as any).price_tiers);
@@ -796,6 +750,16 @@ export default function PreferencesSheet({
     const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
     const backCompatBudgetMax = highestTier?.max ?? 1000;
 
+    // Normalize date/time, exact time, and location fields for consistency
+    const normalized = normalizePreferencesForSave({
+      date_option: selectedDateOption?.toLowerCase() || null,
+      time_slot: selectedTimeSlot || null,
+      exact_time: exactTime || null,
+      datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+      use_gps_location: useGpsLocation,
+      custom_location: customLocationValue,
+    });
+
     const preferences = {
       selectedIntents,
       priceTiers: selectedPriceTiers,
@@ -803,16 +767,16 @@ export default function PreferencesSheet({
       budgetMax: backCompatBudgetMax,
       selectedCategories,
       dateOption: selectedDateOption,
-      selectedDate: selectedDate?.toISOString(),
-      selectedTimeSlot,
-      exactTime,
+      selectedDate: normalized.datetime_pref || selectedDate?.toISOString(),
+      selectedTimeSlot: normalized.time_slot || selectedTimeSlot,
+      exactTime: normalized.exact_time || '',
       travelMode,
       constraintType,
       constraintValue,
       useLocation,
       searchLocation,
-      useGpsLocation,
-      custom_location: customLocationValue,
+      useGpsLocation: normalized.use_gps_location ?? useGpsLocation,
+      custom_location: normalized.custom_location ?? customLocationValue,
     };
 
     // Allow empty categories when intents are selected — user wants curated-only.
@@ -824,7 +788,7 @@ export default function PreferencesSheet({
       // === CRITICAL PATH: Save to DB with 30s timeout ===
       const savePromise = (async () => {
         if (isCollaborationMode) {
-          const dbPrefs: any = {
+          const rawDbPrefs: any = {
             categories: finalCategories,
             intents: selectedIntents,
             price_tiers: selectedPriceTiers,
@@ -836,7 +800,13 @@ export default function PreferencesSheet({
               typeof constraintValue === "number" ? constraintValue : 30,
             time_of_day: selectedTimeSlot || null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+            date_option: selectedDateOption?.toLowerCase() || null,
+            exact_time: exactTime || null,
+            use_gps_location: useGpsLocation,
+            custom_location: customLocationValue,
           };
+
+          const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
 
           if (searchLocation) {
             dbPrefs.location = searchLocation;
@@ -865,13 +835,11 @@ export default function PreferencesSheet({
       // === CLOSE SHEET FIRST — user sees instant response ===
       onClose?.();
 
-      // === THEN invalidate caches (deferred to next frame to not block close animation) ===
-      requestAnimationFrame(() => {
-        queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
-        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-        queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-      });
+      // === Invalidate caches immediately — ensures fresh data on next render ===
+      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
       // === FIRE-AND-FORGET: Non-critical post-save operations ===
       if (user?.id) {

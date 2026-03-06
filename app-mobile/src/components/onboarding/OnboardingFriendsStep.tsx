@@ -30,12 +30,14 @@ import {
 
 interface OnboardingFriendsStepProps {
   userId: string
+  initialFriends?: AddedFriend[]
   onContinue: (addedFriends: AddedFriend[]) => void
   onSkip: () => void
 }
 
 export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   userId,
+  initialFriends,
   onContinue,
   onSkip,
 }) => {
@@ -43,8 +45,8 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   const [phoneDigits, setPhoneDigits] = useState('')
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode())
 
-  // Added friends
-  const [addedFriends, setAddedFriends] = useState<AddedFriend[]>([])
+  // Added friends — restore from parent if navigating back
+  const [addedFriends, setAddedFriends] = useState<AddedFriend[]>(initialFriends ?? [])
 
   // Referral code
   const [referralCode, setReferralCode] = useState<string | null>(null)
@@ -312,7 +314,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={styles.headline}>Add friends</Text>
       <Text style={styles.body}>
         Find friends on Mingla or invite them by phone number.
@@ -369,7 +371,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
 
       {/* Lookup error */}
       {lookupError && rawDigits.length >= 7 && (
-        <Text style={styles.errorText}>Unable to search. Please try again.</Text>
+        <Text style={styles.errorText}>Hmm, that didn't work. Give it another go!</Text>
       )}
 
       {/* Added friends pills */}
@@ -506,7 +508,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
               color={colors.gray[300]}
             />
             <Text style={styles.emptyStateText}>
-              Enter a phone number to find or invite friends
+              Drop a number, find your people
             </Text>
           </View>
         )}

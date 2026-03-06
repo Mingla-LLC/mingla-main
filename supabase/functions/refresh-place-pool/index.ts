@@ -181,13 +181,6 @@ serve(async (req) => {
       console.warn('[refresh] cleanup_stale_impressions failed:', e);
     }
 
-    // Step 4: Clean up impressions for users whose preferences changed
-    try {
-      await supabaseAdmin.rpc('cleanup_stale_impressions');
-    } catch (e) {
-      // Already ran above, this is a safety net
-    }
-
     const summary = {
       success: true,
       refreshed,

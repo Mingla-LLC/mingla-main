@@ -27,6 +27,7 @@ import {
 interface OnboardingCollaborationStepProps {
   userId: string
   addedFriends: AddedFriend[]
+  initialSessions?: CreatedSession[]
   userPreferences: {
     categories: string[]
     priceTiers: string[]
@@ -41,6 +42,7 @@ interface OnboardingCollaborationStepProps {
 export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepProps> = ({
   userId,
   addedFriends,
+  initialSessions,
   userPreferences,
   onContinue,
   onSkip,
@@ -51,11 +53,12 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   // Session name
   const [sessionName, setSessionName] = useState('')
 
-  // Created sessions
-  const [createdSessions, setCreatedSessions] = useState<CreatedSession[]>([])
+  // Created sessions — restore from parent if navigating back
+  const [createdSessions, setCreatedSessions] = useState<CreatedSession[]>(initialSessions ?? [])
 
-  // Loading state
+  // Loading + error state
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   // Pending collaboration invites
   const [pendingCollabInvites, setPendingCollabInvites] = useState<SessionInvite[]>([])
@@ -169,6 +172,12 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       }
     } catch (err) {
       console.error('Error creating session:', err)
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.toLowerCase().includes('already exists')) {
+        setCreateError("That name's taken. Get creative!")
+      } else {
+        setCreateError("Hmm, that didn't work. Give it another go.")
+      }
     } finally {
       setCreating(false)
     }
@@ -240,7 +249,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   const canCreateSession = hasSelectedFriends && sessionName.trim().length > 0
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={styles.headline}>Start a session</Text>
       <Text style={styles.body}>
         Create a collaboration session with your friends to discover experiences together.
@@ -295,7 +304,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
           <TextInput
             style={styles.nameInput}
             value={sessionName}
-            onChangeText={setSessionName}
+            onChangeText={(text) => { setSessionName(text); setCreateError(null) }}
             placeholder="e.g. Weekend plans"
             placeholderTextColor={colors.gray[400]}
             maxLength={50}
@@ -306,17 +315,22 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
       {/* Create session button */}
       {canCreateSession && (
-        <Pressable
-          style={[styles.createButton, creating && styles.createButtonDisabled]}
-          onPress={handleCreateSession}
-          disabled={creating}
-        >
-          {creating ? (
-            <ActivityIndicator size="small" color={colors.text.inverse} />
-          ) : (
-            <Text style={styles.createButtonText}>Create Session</Text>
+        <>
+          <Pressable
+            style={[styles.createButton, creating && styles.createButtonDisabled]}
+            onPress={handleCreateSession}
+            disabled={creating}
+          >
+            {creating ? (
+              <ActivityIndicator size="small" color={colors.text.inverse} />
+            ) : (
+              <Text style={styles.createButtonText}>Create Session</Text>
+            )}
+          </Pressable>
+          {createError && (
+            <Text style={styles.createErrorText}>{createError}</Text>
           )}
-        </Pressable>
+        </>
       )}
 
       {/* Created session cards */}
@@ -558,6 +572,14 @@ const styles = StyleSheet.create({
     ...typography.md,
     fontWeight: fontWeights.semibold,
     color: colors.text.inverse,
+  },
+  createErrorText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.error[500],
+    textAlign: 'center',
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
   },
   sessionsSection: {
     marginBottom: spacing.lg,

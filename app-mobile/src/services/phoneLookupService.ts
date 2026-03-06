@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { extractFunctionError } from '../utils/edgeFunctionError'
 
 export interface PhoneLookupResult {
   found: boolean
@@ -28,16 +29,7 @@ export async function lookupPhone(phoneE164: string): Promise<PhoneLookupResult>
   })
 
   if (error) {
-    // Extract the real error message from the edge function response body
-    let detail = error.message || 'Phone lookup failed'
-    try {
-      if ('context' in error && error.context instanceof Response) {
-        const body = await error.context.json()
-        if (body?.error) detail = body.error
-      }
-    } catch {
-      // Response body already consumed or not JSON — use default message
-    }
+    const detail = await extractFunctionError(error, 'Phone lookup failed')
     console.error(`[phoneLookupService] lookupPhone error for ${phoneE164}: ${detail}`)
     throw new Error(detail)
   }

@@ -240,15 +240,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           .eq("id", request.sender_id)
           .single();
 
-        console.log(`[useFriends] Loaded sender profile for ${request.sender_id}:`, {
-          error: senderError?.message,
-          hasProfile: !!senderProfile,
-          avatar_url: senderProfile?.avatar_url,
-          email: senderProfile?.email,
-          username: senderProfile?.username,
-          fullProfile: senderProfile
-        });
-
         // If profile doesn't exist, create a basic one
         if (senderError && senderError.code === "PGRST116") {
           const { data: newProfile } = await supabase
@@ -282,11 +273,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             type: "incoming" as const,
           });
         } else {
-          console.log(`[useFriends] Adding transformed request for sender ${request.sender_id}:`, {
-            avatar_url: senderProfile?.avatar_url,
-            email: senderProfile?.email,
-            username: senderProfile?.username
-          });
           transformedRequests.push({
             id: request.id,
             sender_id: request.sender_id,
@@ -375,13 +361,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           });
         }
       }
-
-      console.log(`[useFriends] Setting friend requests with data:`, transformedRequests.map(r => ({
-        id: r.id,
-        sender: r.sender.username,
-        avatar_url: r.sender.avatar_url,
-        email: r.sender.email
-      })));
 
       const requestsJson = JSON.stringify(transformedRequests);
       if (prevFriendRequestsJson.current !== requestsJson) {
@@ -490,18 +469,11 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
               receiverEmail = userByEmail.email || receiverEmail;
               receiverUsernameFinal =
                 userByEmail.username || receiverUsernameFinal;
-              console.log("User found by email:", {
-                receiverId,
-                receiverEmail,
-                userExists,
-              });
             } else if (visibility?.user_exists && visibility?.can_view && visibility?.profile_id) {
               receiverId = visibility.profile_id;
               userExists = true;
               receiverEmail = visibility.email || receiverEmail;
               receiverUsernameFinal = visibility.username || receiverUsernameFinal;
-            } else {
-              console.log("User not found by email:", receiverEmail);
             }
           }
         }
@@ -535,11 +507,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
 
           if (userExists && receiverId) {
-            console.log("Proceeding with friend request:", {
-              receiverId,
-              receiverEmail,
-              userExists,
-            });
             // Check if request already exists (any status)
             const { data: existingRequest } = await supabase
               .from("friend_requests")
@@ -591,17 +558,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
         }
 
-        // Call Edge Function to send push notification
-        console.log("Calling Edge Function with:", {
-          senderId: user.id,
-          receiverId: receiverId,
-          receiverEmail: receiverEmail,
-          receiverUsername: receiverUsernameFinal,
-          senderUsername: senderUsername,
-          requestId: requestId,
-          userExists: userExists,
-        });
-
         let notificationSent = false;
         try {
           const { data: notifyData, error: notifyError } =
@@ -624,7 +580,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
               `Failed to send notification: ${notifyError.message || "Unknown error"}`
             );
           } else {
-            console.log("Notification sent successfully:", notifyData);
             notificationSent = true;
           }
         } catch (notifyErr: any) {

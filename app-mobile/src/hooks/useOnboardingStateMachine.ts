@@ -82,6 +82,7 @@ export function useOnboardingStateMachine({
     base.push('pitch')
     if (chosenPath === 'invite') base.push(...STEP5_PATH_A)
     if (chosenPath === 'add') base.push(...STEP5_PATH_B)
+    if (chosenPath === 'skip') base.push('skip')
 
     return base
   }, [chosenPath, skippedFriends])

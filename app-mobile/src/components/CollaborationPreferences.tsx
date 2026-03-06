@@ -315,12 +315,19 @@ export default function CollaborationPreferences({
     return categories.filter((category) => allowedIds.has(category.id));
   }, [selectedIntents]);
 
-  // Filter out invalid selectedCategories when intents change
+  // Filter out invalid selectedCategories when intents change.
+  // If all categories become invalid, auto-select the first compatible one
+  // to prevent the user from being left with zero selections.
   useEffect(() => {
     const allowedIds = getAllowedCategoryIds(selectedIntents);
     if (allowedIds !== null) {
       setSelectedCategories((prev) => {
         const validCategories = prev.filter((catId) => allowedIds.has(catId));
+        if (validCategories.length === 0 && selectedIntents.length > 0) {
+          // All previous categories were invalidated — auto-select first compatible
+          const firstAllowed = categories.find((c) => allowedIds.has(c.id));
+          return firstAllowed ? [firstAllowed.id] : prev;
+        }
         return validCategories.length !== prev.length ? validCategories : prev;
       });
     }

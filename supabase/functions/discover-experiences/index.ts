@@ -783,11 +783,11 @@ serve(async (req) => {
 
     console.log(`Selected ${heroCards.length} hero cards`);
 
-    // Verify heroes are different from all grid cards
-    const gridPlaceIds = places.map(p => p.placeId);
-    for (const hero of heroCards) {
-      if (gridPlaceIds.includes(hero.placeId)) {
-        console.error(`BUG: Hero card placeId ${hero.placeId} is in grid cards!`);
+    // Actively remove any hero duplicates from grid cards (mutate in place)
+    const heroPlaceIds = new Set(heroCards.map((h: any) => h.placeId));
+    for (let i = places.length - 1; i >= 0; i--) {
+      if (heroPlaceIds.has(places[i].placeId)) {
+        places.splice(i, 1);
       }
     }
 

@@ -133,6 +133,7 @@ export function curatedToRecommendation(card: any): Recommendation {
 export function computePrefsHash(prefs: any): string {
   if (!prefs) return '';
   const key = [
+    Array.isArray(prefs.intents) ? [...prefs.intents].sort().join(',') : '',
     Array.isArray(prefs.categories) ? [...prefs.categories].sort().join(',') : '',
     Array.isArray(prefs.price_tiers) ? [...prefs.price_tiers].sort().join(',') : '',
     prefs.budget_min ?? '',
@@ -154,25 +155,3 @@ export function computePrefsHash(prefs: any): string {
   return hash.toString(36);
 }
 
-/** Well-known intent IDs — used to separate intents from category names */
-export const INTENT_IDS = new Set([
-  'adventurous', 'first-date', 'romantic', 'friendly', 'group-fun',
-  'picnic-dates', 'take-a-stroll',
-]);
-
-/** Separate a mixed categories array into intents and actual categories */
-export function separateIntentsAndCategories(categories: string[]): {
-  intents: string[];
-  categories: string[];
-} {
-  const intents: string[] = [];
-  const cats: string[] = [];
-  for (const c of categories) {
-    if (INTENT_IDS.has(c)) {
-      intents.push(c);
-    } else {
-      cats.push(c);
-    }
-  }
-  return { intents, categories: cats };
-}

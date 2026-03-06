@@ -517,7 +517,7 @@ export const useSessionManagement = () => {
             travel_mode: preferences.travelMode,
             travel_constraint_type: 'time',
             travel_constraint_value: preferences.travelTimeMinutes,
-          }, { onConflict: 'session_id' })
+          }, { onConflict: 'session_id,user_id' })
 
         if (prefError) {
           console.error('[useSessionManagement] Failed to copy preferences:', prefError)

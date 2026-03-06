@@ -31,6 +31,7 @@ import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGe
 import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
+import { saveOnboardingData, loadOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { createSavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
@@ -226,6 +227,19 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [customTravelInput, setCustomTravelInput] = useState('')
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
+
+  // ─── Persist Onboarding Data to AsyncStorage ───
+  // Debounced: saves 500ms after the last data change to avoid excessive writes
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveOnboardingData(data)
+    }, 500)
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [data])
 
   // ─── Reset picker modals when navigating away from details ───
   useEffect(() => {
@@ -526,6 +540,12 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       hasResumedRef.current = true
 
       try {
+        // Restore persisted onboarding data from AsyncStorage (survives app close)
+        const persisted = await loadOnboardingData()
+        if (persisted) {
+          setData((prev) => ({ ...prev, ...persisted }))
+        }
+
         const savedStep = profile.onboarding_step
 
         // If the user already has a verified phone number from a previous session,
@@ -1173,6 +1193,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const handleLaunch = useCallback(async () => {
     if (!user?.id) return
     logger.onboarding('Launch sequence started')
+
+    // Clear persisted onboarding data — no longer needed after completion
+    clearOnboardingData()
 
     try {
       // Mark onboarding complete + ensure identity data is persisted (safety net)
@@ -2281,6 +2304,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       return (
         <OnboardingFriendsStep
           userId={user!.id}
+          initialFriends={data.addedFriends}
           onContinue={(addedFriends) => {
             setData(prev => ({ ...prev, addedFriends, skippedFriends: false }))
             setSkippedFriends(false)
@@ -2300,6 +2324,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         <OnboardingCollaborationStep
           userId={user!.id}
           addedFriends={data.addedFriends}
+          initialSessions={data.createdSessions}
           userPreferences={{
             categories: data.selectedCategories,
             priceTiers: data.selectedPriceTiers,

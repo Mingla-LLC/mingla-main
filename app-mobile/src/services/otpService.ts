@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { extractFunctionError } from '../utils/edgeFunctionError'
 
 interface SendOtpResult {
   success: boolean
@@ -9,24 +10,6 @@ interface SendOtpResult {
 interface VerifyOtpResult {
   success: boolean
   error?: string
-}
-
-/**
- * Extract the real error message from a Supabase FunctionsHttpError.
- * supabase-js v2 wraps non-2xx responses in a FunctionsHttpError with
- * the generic message "Edge Function returned a non-2xx status code".
- * The actual error body is in error.context (the raw Response object).
- */
-async function extractFunctionError(error: any, fallback: string): Promise<string> {
-  try {
-    if (error?.context && typeof error.context.json === 'function') {
-      const body = await error.context.json()
-      if (body?.error) return body.error
-    }
-  } catch {
-    // Response body couldn't be parsed — fall through
-  }
-  return fallback
 }
 
 /**
