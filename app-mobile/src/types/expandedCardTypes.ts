@@ -235,4 +235,5 @@ export interface ExpandedCardModalProps {
     card: ExpandedCardData,
     picnicData: ExpandedCardData["picnicData"],
   ) => Promise<void> | void; // Callback to persist picnic data to database
+  hideTravelTime?: boolean;
 }

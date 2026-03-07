@@ -716,6 +716,7 @@ export default function ExpandedCardModal({
   onCardRemoved,
   onStrollDataFetched,
   onPicnicDataFetched,
+  hideTravelTime,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
@@ -1219,7 +1220,7 @@ export default function ExpandedCardModal({
                   tags={card.tags}
                   rating={card.rating}
                   distance={card.distance}
-                  travelTime={card.travelTime}
+                  travelTime={hideTravelTime ? undefined : card.travelTime}
                   travelMode={userPreferences?.travel_mode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}

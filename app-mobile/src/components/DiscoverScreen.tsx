@@ -79,6 +79,17 @@ import { SCREEN_WIDTH, s } from "../utils/responsive";
 import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG, formatTierLabel, priceTierFromAmount } from '../constants/priceTiers';
 import { getCurrencySymbol } from './utils/formatters';
 
+/** Derive a PriceTierSlug from a raw priceRange string like "$25-75" or "Free". */
+function tierFromPriceRange(priceRange?: string): PriceTierSlug {
+  if (!priceRange) return 'chill';
+  if (priceRange.toLowerCase().includes('free')) return 'chill';
+  const match = priceRange.match(/\$?(\d+)(?:\s*[-–]\s*\$?(\d+))?/);
+  if (!match) return 'chill';
+  const min = parseInt(match[1], 10) || 0;
+  const max = match[2] ? parseInt(match[2], 10) : min;
+  return priceTierFromAmount(min, max);
+}
+
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
 const HERO_CARD_WIDTH = (SCREEN_WIDTH - s(44)) / 2; // 16px padding + 12px gap between hero cards
@@ -486,9 +497,8 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
 
 // Featured Card Component
 const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
-    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
-    : formatPriceRange(card.priceRange, currency);
+  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
+  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
   const formattedDistance = parseAndFormatDistance(card.distance, measurementSystem);
   
   return (
@@ -554,9 +564,8 @@ interface HeroCardProps {
 }
 
 const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
-    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
-    : formatPriceRange(card.priceRange, currency);
+  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
+  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
   const categoryIcon = categoryIcons[card.experienceType] || "ellipse-outline";
 
   return (
@@ -597,9 +606,8 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
 
 // Grid Card Component (smaller version with category icon)
 const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) => {
-  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
-    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
-    : formatPriceRange(card.priceRange, currency);
+  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
+  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
   const categoryIcon = categoryIcons[card.category] || "ellipse-outline";
   
   return (
@@ -2907,6 +2915,7 @@ export default function DiscoverScreen({
       image: exp.imageUrl || "",
       images: exp.images,
       priceRange: `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`,
+      priceTier,
       rating: exp.rating,
       reviewCount: exp.reviewCount,
       address: exp.address,
@@ -3476,6 +3485,7 @@ export default function DiscoverScreen({
         isSaved={false}
         currentMode="solo"
         accountPreferences={accountPreferences}
+        hideTravelTime
       />
 
       {/* Add Person Modal (new multi-step component) */}
