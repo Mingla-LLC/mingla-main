@@ -32,6 +32,7 @@ import ProfileStatsRow from "./profile/ProfileStatsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
 import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
+import * as Haptics from 'expo-haptics';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -48,6 +49,7 @@ interface ProfilePageProps {
   onNotificationsToggle?: (enabled: boolean) => void;
   onUnblockUser?: (blockedUser: any, suppressNotification?: boolean) => Promise<void>;
   onNavigateToFriendProfile?: (userId: string) => void;
+  onNavigateToReplayTips?: () => void;
   userIdentity?: {
     firstName: string;
     lastName: string;
@@ -70,6 +72,7 @@ export default function ProfilePage({
   connectionsCount = 0,
   notificationsEnabled = true,
   onNotificationsToggle,
+  onNavigateToReplayTips,
   userIdentity,
 }: ProfilePageProps) {
   // Coach mark targets
@@ -79,6 +82,7 @@ export default function ProfilePage({
   const { ref: settingsSectionRef, onLayout: settingsSectionOnLayout } = useCoachMarkTarget('profile-settings-section');
   const { ref: notificationsToggleRef, onLayout: notificationsToggleOnLayout } = useCoachMarkTarget('profile-notifications-toggle');
   const { ref: activityToggleRef, onLayout: activityToggleOnLayout } = useCoachMarkTarget('profile-activity-toggle');
+  const { ref: replayTipsRef, onLayout: replayTipsOnLayout } = useCoachMarkTarget('profile-replay-tips');
 
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
@@ -337,6 +341,14 @@ export default function ProfilePage({
     }
   };
 
+  // Replay Tips
+  const handleReplayTips = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (onNavigateToReplayTips) {
+      onNavigateToReplayTips();
+    }
+  };
+
   const getActivityLabel = (activity: UserActivityRecord): string => {
     switch (activity.activity_type) {
       case "saved_card": return "Saved";
@@ -476,6 +488,25 @@ export default function ProfilePage({
                 />
               </TouchableOpacity>
             </View>
+
+            {/* Replay Tips */}
+            <TouchableOpacity
+              ref={replayTipsRef as any}
+              onLayout={replayTipsOnLayout}
+              style={styles.settingRow}
+              onPress={handleReplayTips}
+              accessibilityRole="button"
+              accessibilityLabel="Replay Tips"
+              accessibilityHint="Browse and replay tutorial tips"
+            >
+              <View style={styles.settingLabelContainer}>
+                <View style={styles.replayTipsLabelRow}>
+                  <Ionicons name="refresh-outline" size={22} color="#f97316" />
+                  <Text style={styles.settingLabel}>Replay Tips</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -603,4 +634,5 @@ const styles = StyleSheet.create({
     borderRadius: 12, borderWidth: 1, borderColor: "#fecaca",
   },
   signOutText: { fontSize: 15, fontWeight: "600", color: "#dc2626" },
+  replayTipsLabelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
 });

@@ -51,6 +51,20 @@ class CoachMarkService {
       console.error('Failed to batch persist coach mark completions:', error);
     }
   }
+  /**
+   * Delete all coach mark progress for a user (for "Replay Tips").
+   * Fire-and-forget — errors are logged, not thrown.
+   */
+  async deleteAllProgress(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('coach_mark_progress')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Failed to reset coach mark progress:', error);
+    }
+  }
 }
 
 export const coachMarkService = new CoachMarkService();

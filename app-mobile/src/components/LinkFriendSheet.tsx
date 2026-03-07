@@ -464,17 +464,6 @@ export default function LinkFriendSheet({
           </TouchableOpacity>
         </View>
 
-        {/* Friends list section label */}
-        <View style={styles.friendsSection}>
-          <Text style={styles.friendsSectionLabel}>
-            Your Friends ({friends.length})
-          </Text>
-          {friends.length > 0 && (
-            <Text style={styles.friendsSectionHint}>
-              Tap to send a link request
-            </Text>
-          )}
-        </View>
       </>
     ),
     [
@@ -487,8 +476,24 @@ export default function LinkFriendSheet({
       actionError,
       isActionDisabled,
       handlePhoneAction,
-      friends.length,
     ]
+  );
+
+  // Friends list section label — stable header for the FlatList
+  const renderFriendsListLabel = useCallback(
+    () => (
+      <View style={styles.friendsSection}>
+        <Text style={styles.friendsSectionLabel}>
+          Your Friends ({friends.length})
+        </Text>
+        {friends.length > 0 && (
+          <Text style={styles.friendsSectionHint}>
+            Tap to send a link request
+          </Text>
+        )}
+      </View>
+    ),
+    [friends.length]
   );
 
   // Empty state for friends list
@@ -619,10 +624,9 @@ export default function LinkFriendSheet({
             style={[
               styles.sheetContent,
               styles.sheetContentTall,
-              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
-            <View style={styles.glassOverlay}>
+            <View style={[styles.glassOverlay, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
               <View style={styles.handleContainer}>
                 <View style={styles.handle} />
               </View>
@@ -643,12 +647,15 @@ export default function LinkFriendSheet({
                 </TouchableOpacity>
               </View>
 
-              {/* Single scrollable list: phone section as header, friends as items */}
+              {/* Phone input section — outside FlatList to prevent remount on keystroke */}
+              {renderListHeader()}
+
+              {/* Friends list */}
               <FlatList
                 data={friends}
                 keyExtractor={(item) => item.id}
                 renderItem={renderFriendRow}
-                ListHeaderComponent={renderListHeader}
+                ListHeaderComponent={renderFriendsListLabel}
                 ListEmptyComponent={renderListEmpty}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.friendsList}

@@ -19,6 +19,14 @@ export function useCoachMarkEngine(currentPage: string) {
     // Don't evaluate if not hydrated yet
     if (!state.isHydrated) return;
 
+    // Skip normal queue logic during tutorial mode — provider handles navigation
+    if (state.isTutorialMode) return;
+
+    // Clear cooldown if active — new tab navigation takes priority
+    if (state.cooldownActive) {
+      state.clearCooldown();
+    }
+
     // Record the tab visit
     state.recordTabVisit(currentPage);
 

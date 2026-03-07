@@ -80,3 +80,12 @@ export interface MilestoneDefinition {
   body: string;
   requiredIds: string[];
 }
+
+export type TutorialPage =
+  | 'home' | 'discover' | 'connections' | 'likes'
+  | 'profile' | 'board-view';
+
+export interface TutorialStep {
+  markId: string;
+  page: TutorialPage;
+}

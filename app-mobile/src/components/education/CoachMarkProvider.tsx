@@ -11,8 +11,8 @@ import { useCoachMarkStore } from '../../store/coachMarkStore';
 import { useCoachMarkEngine } from '../../hooks/useCoachMarkEngine';
 import { coachMarkService } from '../../services/coachMarkService';
 import { mixpanelService } from '../../services/mixpanelService';
-import { COACH_MARKS, MILESTONES } from '../../constants/coachMarks';
-import { MilestoneDefinition } from '../../types/coachMark';
+import { COACH_MARKS, MILESTONES, TUTORIAL_SEQUENCE } from '../../constants/coachMarks';
+import { MilestoneDefinition, TutorialPage } from '../../types/coachMark';
 import { CoachMarkOverlay } from './CoachMarkOverlay';
 import { MilestoneCelebration } from './MilestoneCelebration';
 
@@ -34,12 +34,14 @@ interface CoachMarkProviderProps {
   children: React.ReactNode;
   currentPage: string;
   userId: string | undefined;
+  onNavigate?: (page: TutorialPage) => void;
 }
 
 export function CoachMarkProvider({
   children,
   currentPage,
   userId,
+  onNavigate,
 }: CoachMarkProviderProps) {
   const { fireAction, fireElementVisible } = useCoachMarkEngine(currentPage);
   const [activeMilestone, setActiveMilestone] = useState<MilestoneDefinition | null>(null);
@@ -125,9 +127,133 @@ export function CoachMarkProvider({
     return () => subscription.remove();
   }, []);
 
-  // Check milestones after each completion
+  // ═══════════════════════════════════════
+  // Tutorial auto-navigation orchestration
+  // ═══════════════════════════════════════
+
+  const isTutorialMode = useCoachMarkStore(s => s.isTutorialMode);
+  const tutorialPendingPage = useCoachMarkStore(s => s.tutorialPendingPage);
+  const replayPendingPage = useCoachMarkStore(s => s.replayPendingPage);
+  const replayMarkId = useCoachMarkStore(s => s.replayMarkId);
+
+  // Auto-start tutorial on first launch after hydration
+  const tutorialCompleted = useCoachMarkStore(s => s.tutorialCompleted);
+  const hasTriggeredTutorialRef = useRef(false);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (hasTriggeredTutorialRef.current) return;
+    if (tutorialCompleted) return;
+    if (isTutorialMode) return;
+
+    // Only trigger if no marks have been completed yet (truly first launch)
+    const state = useCoachMarkStore.getState();
+    if (state.completedIds.length > 0) return;
+
+    hasTriggeredTutorialRef.current = true;
+    // Brief delay to let the home screen render and register targets
+    setTimeout(() => {
+      useCoachMarkStore.getState().startTutorial();
+    }, 800);
+  }, [isHydrated, tutorialCompleted, isTutorialMode]);
+
+  // Handle tutorialPendingPage: navigate then show mark after arrival
+  useEffect(() => {
+    if (!tutorialPendingPage) return;
+    if (!onNavigate) return;
+
+    // Navigate to the pending page
+    onNavigate(tutorialPendingPage);
+  }, [tutorialPendingPage, onNavigate]);
+
+  // When currentPage matches the pending page, clear it and show the mark
+  useEffect(() => {
+    const state = useCoachMarkStore.getState();
+
+    // Handle tutorial pending navigation
+    if (state.tutorialPendingPage && currentPage === state.tutorialPendingPage) {
+      // Clear the pending page
+      useCoachMarkStore.setState({ tutorialPendingPage: null });
+      // Wait for targets to register after navigation
+      setTimeout(() => {
+        useCoachMarkStore.getState().showTutorialMark();
+      }, 600);
+      return;
+    }
+
+    // Handle replay pending navigation
+    if (state.replayPendingPage && currentPage === state.replayPendingPage) {
+      const markId = state.replayMarkId;
+      useCoachMarkStore.setState({ replayPendingPage: null, replayMarkId: null });
+
+      if (markId) {
+        const mark = COACH_MARKS[markId];
+        if (mark) {
+          // Remove from completed so it can be reshown
+          const filtered = state.completedIds.filter(id => id !== markId);
+          useCoachMarkStore.setState({ completedIds: filtered });
+
+          // Wait for targets to register, then show
+          setTimeout(() => {
+            const s = useCoachMarkStore.getState();
+            const target = s.targets[mark.targetElementId];
+            if (target && target.ref.current) {
+              target.ref.current.measureInWindow(
+                (x: number, y: number, width: number, height: number) => {
+                  if (width > 0 && height > 0) {
+                    useCoachMarkStore.setState({
+                      currentMark: mark,
+                      currentTargetLayout: { x, y, width, height },
+                      isVisible: true,
+                    });
+                  } else {
+                    useCoachMarkStore.setState({
+                      currentMark: mark,
+                      currentTargetLayout: null,
+                      isVisible: true,
+                    });
+                  }
+                }
+              );
+            } else {
+              useCoachMarkStore.setState({
+                currentMark: mark,
+                currentTargetLayout: null,
+                isVisible: true,
+              });
+            }
+          }, 600);
+        }
+      }
+      return;
+    }
+  }, [currentPage]);
+
+  // Handle replayPendingPage navigation
+  useEffect(() => {
+    if (!replayPendingPage) return;
+    if (!onNavigate) return;
+
+    onNavigate(replayPendingPage);
+  }, [replayPendingPage, onNavigate]);
+
+  // When tutorial mode starts and we're already on the right page, kick off first mark
+  useEffect(() => {
+    if (!isTutorialMode) return;
+
+    const state = useCoachMarkStore.getState();
+    // If no pending page and not already visible, show the first mark
+    if (!state.tutorialPendingPage && !state.isVisible && !state.isMeasuring) {
+      setTimeout(() => {
+        useCoachMarkStore.getState().showTutorialMark();
+      }, 600);
+    }
+  }, [isTutorialMode]);
+
+  // Check milestones after each completion (skip during tutorial mode)
   useEffect(() => {
     if (completedIds.length === 0) return;
+    if (isTutorialMode) return;
 
     for (const milestone of MILESTONES) {
       const milestoneKey = `milestone_${milestone.id}`;
@@ -149,7 +275,7 @@ export function CoachMarkProvider({
         break; // Only one milestone at a time
       }
     }
-  }, [completedIds]);
+  }, [completedIds, isTutorialMode]);
 
   const handleMilestoneDismiss = useCallback(() => {
     setActiveMilestone(null);

@@ -1,7 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { useRef, useEffect, useCallback, useState } from 'react';
+import { Animated, Pressable, StyleSheet, View, AccessibilityInfo } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useCoachMarkStore } from '../../store/coachMarkStore';
+import { COACH_MARKS, TUTORIAL_SEQUENCE } from '../../constants/coachMarks';
 import { SpotlightMask } from './SpotlightMask';
 import { CoachMarkTooltip } from './CoachMarkTooltip';
 
@@ -9,8 +11,24 @@ export function CoachMarkOverlay() {
   const isVisible = useCoachMarkStore(s => s.isVisible);
   const currentMark = useCoachMarkStore(s => s.currentMark);
   const currentTargetLayout = useCoachMarkStore(s => s.currentTargetLayout);
+  const completedIds = useCoachMarkStore(s => s.completedIds);
   const dismiss = useCoachMarkStore(s => s.dismiss);
   const skipGroup = useCoachMarkStore(s => s.skipGroup);
+  const isTutorialMode = useCoachMarkStore(s => s.isTutorialMode);
+  const tutorialIndex = useCoachMarkStore(s => s.tutorialIndex);
+  const restartTutorial = useCoachMarkStore(s => s.restartTutorial);
+  const insets = useSafeAreaInsets();
+
+  // Entrance animation protection: buttons and backdrop are inactive until animation completes
+  const [isEntranceComplete, setIsEntranceComplete] = useState(false);
+
+  // Reduced motion preference
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
 
   // Animation values
   const maskOpacity = useRef(new Animated.Value(0)).current;
@@ -22,8 +40,10 @@ export function CoachMarkOverlay() {
 
   // Entrance animation
   useEffect(() => {
-    if (isVisible && currentMark && currentTargetLayout) {
+    if (isVisible && currentMark) {
       isAnimatingOut.current = false;
+      setIsEntranceComplete(false);
+
       // Reset values
       maskOpacity.setValue(0);
       glowScale.setValue(0.9);
@@ -33,6 +53,17 @@ export function CoachMarkOverlay() {
 
       // Haptic on show
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      if (reduceMotion) {
+        // Skip animations for reduced motion
+        maskOpacity.setValue(1);
+        glowScale.setValue(1);
+        glowOpacity.setValue(1);
+        tooltipTranslateY.setValue(0);
+        tooltipOpacity.setValue(1);
+        setIsEntranceComplete(true);
+        return;
+      }
 
       // Animate in
       Animated.parallel([
@@ -62,13 +93,27 @@ export function CoachMarkOverlay() {
           duration: 300,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        setIsEntranceComplete(true);
+      });
     }
   }, [isVisible, currentMark?.id]);
+
+  // Reset isEntranceComplete when visibility drops
+  useEffect(() => {
+    if (!isVisible) {
+      setIsEntranceComplete(false);
+    }
+  }, [isVisible]);
 
   const animateOut = useCallback((callback: () => void) => {
     if (isAnimatingOut.current) return;
     isAnimatingOut.current = true;
+
+    if (reduceMotion) {
+      callback();
+      return;
+    }
 
     Animated.parallel([
       Animated.timing(maskOpacity, {
@@ -99,35 +144,52 @@ export function CoachMarkOverlay() {
     ]).start(() => {
       callback();
     });
-  }, []);
+  }, [reduceMotion]);
 
   const handleGotIt = useCallback(() => {
+    if (!isEntranceComplete) return;
     Haptics.selectionAsync();
     animateOut(() => dismiss());
-  }, [dismiss, animateOut]);
+  }, [dismiss, animateOut, isEntranceComplete]);
 
   const handleSkipAll = useCallback(() => {
+    if (!isEntranceComplete) return;
     if (!currentMark) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateOut(() => skipGroup(currentMark.group));
-  }, [currentMark, skipGroup, animateOut]);
+  }, [currentMark, skipGroup, animateOut, isEntranceComplete]);
 
-  const handleOverlayPress = useCallback(() => {
-    // Tapping outside = same as "Got it"
-    handleGotIt();
-  }, [handleGotIt]);
+  const handleBack = useCallback(() => {
+    if (!isEntranceComplete) return;
+    if (!isTutorialMode) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    animateOut(() => restartTutorial());
+  }, [isTutorialMode, restartTutorial, animateOut, isEntranceComplete]);
 
-  if (!isVisible || !currentMark || !currentTargetLayout) {
+  if (!isVisible || !currentMark) {
     return null;
   }
 
+  // Determine if we have a spotlight target
+  const hasTarget = currentTargetLayout !== null;
   const target = currentTargetLayout;
+
   const spotlightPadding = currentMark.spotlight.padding;
   const spotlightBorderRadius = currentMark.spotlight.borderRadius ?? 16;
 
-  // Glow border position (matches spotlight hole)
-  const glowStyle =
-    currentMark.spotlight.shape === 'circle'
+  // Calculate group progress for step indicator
+  const groupMarks = Object.values(COACH_MARKS).filter(m => m.group === currentMark.group);
+  const totalInGroup = groupMarks.length;
+  const completedInGroup = groupMarks.filter(m => completedIds.includes(m.id)).length;
+  const currentPosition = completedInGroup + 1;
+
+  // Tutorial global progress
+  const tutorialTotal = TUTORIAL_SEQUENCE.length;
+  const tutorialCurrent = tutorialIndex + 1;
+
+  // Glow border position (only when target exists)
+  const glowStyle = hasTarget && target
+    ? currentMark.spotlight.shape === 'circle'
       ? {
           left: target.x + target.width / 2 - Math.max(target.width, target.height) / 2 - spotlightPadding,
           top: target.y + target.height / 2 - Math.max(target.width, target.height) / 2 - spotlightPadding,
@@ -141,33 +203,51 @@ export function CoachMarkOverlay() {
           width: target.width + spotlightPadding * 2,
           height: target.height + spotlightPadding * 2,
           borderRadius: spotlightBorderRadius,
-        };
+        }
+    : null;
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      {/* Tappable backdrop behind everything */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-        <SpotlightMask
-          targetLayout={target}
-          shape={currentMark.spotlight.shape}
-          padding={spotlightPadding}
-          borderRadius={spotlightBorderRadius}
-          opacity={maskOpacity}
-        />
+    <View
+      style={styles.overlay}
+      pointerEvents="box-none"
+      accessibilityViewIsModal={true}
+    >
+      {/* Backdrop: absorbs touches but does NOT dismiss */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        pointerEvents={isEntranceComplete ? 'auto' : 'none'}
+        accessibilityLabel="Tutorial tip overlay"
+      >
+        {hasTarget && target ? (
+          <SpotlightMask
+            targetLayout={target}
+            shape={currentMark.spotlight.shape}
+            padding={spotlightPadding}
+            borderRadius={spotlightBorderRadius}
+            opacity={maskOpacity}
+          />
+        ) : (
+          // No target — just a dark backdrop, no spotlight hole
+          <Animated.View
+            style={[StyleSheet.absoluteFill, styles.darkBackdrop, { opacity: maskOpacity }]}
+          />
+        )}
       </Pressable>
 
-      {/* Glow border around target */}
-      <Animated.View
-        style={[
-          styles.glowBorder,
-          glowStyle,
-          {
-            opacity: glowOpacity,
-            transform: [{ scale: glowScale }],
-          },
-        ]}
-        pointerEvents="none"
-      />
+      {/* Glow border around target (only when target exists) */}
+      {hasTarget && glowStyle && (
+        <Animated.View
+          style={[
+            styles.glowBorder,
+            glowStyle,
+            {
+              opacity: glowOpacity,
+              transform: [{ scale: glowScale }],
+            },
+          ]}
+          pointerEvents="none"
+        />
+      )}
 
       {/* Tooltip */}
       <CoachMarkTooltip
@@ -177,6 +257,12 @@ export function CoachMarkOverlay() {
         opacity={tooltipOpacity}
         onGotIt={handleGotIt}
         onSkipAll={handleSkipAll}
+        onBack={isTutorialMode ? handleBack : undefined}
+        insets={{ top: insets.top, bottom: insets.bottom }}
+        isInteractive={isEntranceComplete}
+        groupProgress={{ current: currentPosition, total: totalInGroup }}
+        tutorialProgress={isTutorialMode ? { current: tutorialCurrent, total: tutorialTotal } : undefined}
+        isTutorialMode={isTutorialMode}
       />
     </View>
   );
@@ -196,5 +282,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOpacity: 0.6,
     elevation: 6,
+  },
+  darkBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
 });

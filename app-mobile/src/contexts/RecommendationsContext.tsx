@@ -293,11 +293,11 @@ export const RecommendationsProvider: React.FC<
     }
   }, [userLocation, userPrefs]);
 
-  // ── Stabilize deck params — only compute once categories AND intents are both available
+  // ── Stabilize deck params — only compute once categories OR intents are available
   const stableDeckParams = useMemo(() => {
     const cats = userPrefs?.categories ?? [];
     const ints = userPrefs?.intents ?? [];
-    if (cats.length === 0) return null; // not ready
+    if (cats.length === 0 && ints.length === 0) return null; // not ready
     return {
       categories: cats,
       intents: ints,

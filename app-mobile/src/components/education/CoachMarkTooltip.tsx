@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import {
   Animated,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -14,14 +15,22 @@ import { WelcomeIllustration } from './illustrations/WelcomeIllustration';
 
 const TOOLTIP_MARGIN = 24;
 const GAP = 16;
+const STATUS_BAR_CLEARANCE = 8;
+const TAB_BAR_HEIGHT = 80;
 
 interface CoachMarkTooltipProps {
   mark: CoachMarkDefinition;
-  targetLayout: TargetLayout;
+  targetLayout: TargetLayout | null;
   translateY: Animated.Value;
   opacity: Animated.Value;
   onGotIt: () => void;
   onSkipAll: () => void;
+  onBack?: () => void;
+  insets: { top: number; bottom: number };
+  isInteractive: boolean;
+  groupProgress: { current: number; total: number };
+  tutorialProgress?: { current: number; total: number };
+  isTutorialMode?: boolean;
 }
 
 export function CoachMarkTooltip({
@@ -31,11 +40,33 @@ export function CoachMarkTooltip({
   opacity,
   onGotIt,
   onSkipAll,
+  onBack,
+  insets,
+  isInteractive,
+  groupProgress,
+  tutorialProgress,
+  isTutorialMode,
 }: CoachMarkTooltipProps) {
   const { height: screenHeight } = useWindowDimensions();
   const buttonScale = useRef(new Animated.Value(1)).current;
+  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
+
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) {
+      setMeasuredHeight(height);
+    }
+  }, []);
+
+  // Reset measuredHeight when mark changes so we re-measure
+  const markIdRef = useRef(mark.id);
+  if (markIdRef.current !== mark.id) {
+    markIdRef.current = mark.id;
+    setMeasuredHeight(null);
+  }
 
   const handleGotItPressIn = () => {
+    if (!isInteractive) return;
     Animated.timing(buttonScale, {
       toValue: 0.95,
       duration: 150,
@@ -51,8 +82,15 @@ export function CoachMarkTooltip({
     }).start();
   };
 
-  // Calculate tooltip position
-  const tooltipTop = getTooltipTop(mark, targetLayout, screenHeight);
+  // Phase 1: invisible render for measurement
+  const isMeasuring = measuredHeight === null;
+
+  // Phase 2: calculate position using actual measured height
+  const tooltipTop = isMeasuring
+    ? -9999 // Off-screen during measurement phase
+    : targetLayout
+      ? getTooltipTop(mark, targetLayout, screenHeight, measuredHeight, insets)
+      : getCenteredTop(screenHeight, measuredHeight); // No target — center on screen
 
   const renderIllustration = () => {
     const { illustration } = mark.content;
@@ -68,6 +106,9 @@ export function CoachMarkTooltip({
     }
   };
 
+  // Button label: "Next" during tutorial, "Got it" otherwise
+  const gotItLabel = isTutorialMode ? 'Next' : 'Got it';
+
   return (
     <Animated.View
       style={[
@@ -75,9 +116,10 @@ export function CoachMarkTooltip({
         {
           top: tooltipTop,
           transform: [{ translateY }],
-          opacity,
+          opacity: isMeasuring ? 0 : opacity,
         },
       ]}
+      onLayout={handleLayout}
     >
       <View style={styles.accentLine} />
       <View style={styles.content}>
@@ -90,58 +132,118 @@ export function CoachMarkTooltip({
         <Text style={styles.title}>{mark.content.title}</Text>
         <Text style={styles.body}>{mark.content.body}</Text>
 
+        {/* Progress indicator */}
+        {tutorialProgress ? (
+          // Tutorial mode: show global progress
+          <Text style={styles.stepIndicator}>
+            {tutorialProgress.current} of {tutorialProgress.total}
+          </Text>
+        ) : groupProgress.total > 1 ? (
+          // Normal mode: show group progress for multi-mark groups
+          <Text style={styles.stepIndicator}>
+            {groupProgress.current} of {groupProgress.total}
+          </Text>
+        ) : null}
+
         <View style={styles.actions}>
+          {/* Back button (tutorial mode only) */}
+          {isTutorialMode && onBack && (
+            <Pressable
+              onPress={onBack}
+              hitSlop={8}
+              disabled={!isInteractive}
+              accessibilityRole="button"
+              accessibilityLabel="Restart tutorial from the beginning"
+            >
+              <Text style={[styles.backText, !isInteractive && styles.buttonDisabled]}>
+                Back to start
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Got it / Next button */}
           <Pressable
             onPress={onGotIt}
             onPressIn={handleGotItPressIn}
             onPressOut={handleGotItPressOut}
+            disabled={!isInteractive}
+            accessibilityRole="button"
+            accessibilityLabel={gotItLabel}
           >
             <Animated.View
-              style={[styles.gotItButton, { transform: [{ scale: buttonScale }] }]}
+              style={[
+                styles.gotItButton,
+                { transform: [{ scale: buttonScale }] },
+                !isInteractive && styles.buttonDisabled,
+              ]}
             >
-              <Text style={styles.gotItText}>Got it</Text>
+              <Text style={styles.gotItText}>{gotItLabel}</Text>
             </Animated.View>
           </Pressable>
 
-          <Pressable onPress={onSkipAll} hitSlop={8}>
-            <Text style={styles.skipText}>Skip all</Text>
-          </Pressable>
+          {/* Skip all (normal mode only — hidden during tutorial) */}
+          {!isTutorialMode && (
+            <Pressable
+              onPress={onSkipAll}
+              hitSlop={8}
+              disabled={!isInteractive}
+              accessibilityRole="button"
+              accessibilityLabel="Skip all tips in this group"
+            >
+              <Text style={[styles.skipText, !isInteractive && styles.buttonDisabled]}>
+                Skip all
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Animated.View>
   );
 }
 
+function getCenteredTop(
+  screenHeight: number,
+  measuredHeight: number,
+): number {
+  return (screenHeight - measuredHeight) / 2;
+}
+
 function getTooltipTop(
   mark: CoachMarkDefinition,
   target: TargetLayout,
-  screenHeight: number
+  screenHeight: number,
+  measuredHeight: number,
+  insets: { top: number; bottom: number },
 ): number {
   const position = mark.tooltip.position;
   const offsetY = mark.tooltip.offsetY ?? 0;
+  const safeTop = insets.top + STATUS_BAR_CLEARANCE;
+  const safeBottom = screenHeight - insets.bottom - TAB_BAR_HEIGHT;
+
+  // Clamp helper: ensures tooltip stays within safe viewport
+  const clamp = (top: number) =>
+    Math.min(Math.max(top, safeTop), safeBottom - measuredHeight);
 
   if (position === 'center') {
-    // Centered on screen
-    return screenHeight * 0.3 + offsetY;
+    return clamp((screenHeight - measuredHeight) / 2 + offsetY);
   }
 
   if (position === 'above') {
-    // Tooltip bottom edge above target top, with gap
-    const top = target.y - GAP - 300 + offsetY; // 300 is approx tooltip height
-    // If it would go above screen, flip to below
-    if (top < 60) {
-      return target.y + target.height + GAP + offsetY;
+    const candidateTop = target.y - GAP - measuredHeight + offsetY;
+    // If it would go above safe area, flip to below
+    if (candidateTop < safeTop) {
+      return clamp(target.y + target.height + GAP + offsetY);
     }
-    return Math.max(60, top);
+    return clamp(candidateTop);
   }
 
   // 'below'
-  const top = target.y + target.height + GAP + offsetY;
-  // If it would go below screen, flip to above
-  if (top + 300 > screenHeight - 40) {
-    return target.y - GAP - 300 + offsetY;
+  const candidateTop = target.y + target.height + GAP + offsetY;
+  // If it would go below safe area, flip to above
+  if (candidateTop + measuredHeight > safeBottom) {
+    return clamp(target.y - GAP - measuredHeight + offsetY);
   }
-  return top;
+  return clamp(candidateTop);
 }
 
 const styles = StyleSheet.create({
@@ -159,7 +261,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
   },
   content: {
-    backgroundColor: '#fdf6f0',
+    backgroundColor: '#fff7ed',
     borderRadius: 24,
     borderTopLeftRadius: 21,
     borderTopRightRadius: 21,
@@ -187,7 +289,14 @@ const styles = StyleSheet.create({
     color: '#4b5563',
     lineHeight: 22,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  stepIndicator: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginBottom: 24,
   },
   actions: {
     flexDirection: 'row',
@@ -216,5 +325,13 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 14,
     fontWeight: '400',
+  },
+  backText: {
+    color: '#9ca3af',
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

@@ -39,6 +39,7 @@ import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
 import { CoachMarkProvider } from "../src/components/education/CoachMarkProvider";
+import { ReplayTipsScreen } from "../src/components/education/ReplayTipsScreen";
 import { useCoachMarkTarget } from "../src/hooks/useCoachMarkTarget";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
@@ -1518,6 +1519,16 @@ function AppContent() {
             userIdentity={userIdentity}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
             onUnblockUser={handlers.handleUnblockUser}
+            onNavigateToReplayTips={() => {
+              logger.action('Navigate to replay tips');
+              setCurrentPage("replay-tips" as any);
+            }}
+          />
+        );
+      case "replay-tips":
+        return (
+          <ReplayTipsScreen
+            onBack={() => setCurrentPage("profile")}
           />
         );
       default:
@@ -1597,6 +1608,17 @@ function AppContent() {
                   <CoachMarkProvider
                     currentPage={currentPage}
                     userId={user?.id}
+                    onNavigate={(page) => {
+                      closeProfileOverlays();
+                      if (page === 'board-view') {
+                        // For board view, select the first board if available
+                        if (boardsSessions && boardsSessions.length > 0) {
+                          const firstBoard = boardsSessions[0] as any;
+                          setBoardViewSessionId(firstBoard.id || firstBoard.session_id);
+                        }
+                      }
+                      setCurrentPage(page as any);
+                    }}
                   >
                   <View style={styles.safeArea}>
                     <StatusBar

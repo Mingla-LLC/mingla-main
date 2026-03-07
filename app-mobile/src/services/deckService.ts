@@ -199,14 +199,11 @@ class DeckService {
       pills.push({ id: intent, type: 'curated' });
     }
 
-    // Final fallback: only if BOTH intents and categories are truly empty.
-    // This should never happen — the UI enforces at least 1 selection.
+    // If both intents and categories are empty, return zero pills.
+    // The caller (useDeckCards) should be disabled in this state,
+    // but even if reached, an empty deck is correct — never inject defaults.
     if (pills.length === 0) {
-      console.warn('[DeckService] Zero pills resolved — both intents and categories empty. Applying defaults.');
-      const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink'];
-      for (const cat of DEFAULT_CATEGORIES) {
-        pills.push({ id: cat, type: 'category' });
-      }
+      console.warn('[DeckService] Zero pills resolved — both intents and categories empty. Returning empty deck.');
     }
 
     return { pills, categoryFilters };

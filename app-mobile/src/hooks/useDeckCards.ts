@@ -45,10 +45,13 @@ export interface UseDeckCardsResult {
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const { location, enabled, ...restParams } = params;
 
-  // If this exact batch was already fetched, serve it as initialData for instant rendering
-  const latestBatch = useAppStore.getState().deckBatches.find(
-    b => b.batchSeed === params.batchSeed
-  );
+  // If this exact batch was already fetched, serve it as initialData for instant rendering.
+  // Only provide initialData when the hook is enabled — prevents stale persisted batches
+  // from leaking through when the user has cleared their category/intent preferences.
+  const isEnabled = enabled && location !== null;
+  const latestBatch = isEnabled
+    ? useAppStore.getState().deckBatches.find(b => b.batchSeed === params.batchSeed)
+    : undefined;
 
   const query = useQuery<DeckResponse>({
     queryKey: [
@@ -76,7 +79,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       }),
     staleTime: 30 * 60 * 1000,     // 30 minutes
     gcTime: 2 * 60 * 60 * 1000,    // 2 hours
-    enabled: enabled && location !== null,
+    enabled: isEnabled,
     retry: 2,
     placeholderData: (previousData) => previousData,
     initialData: latestBatch ? {

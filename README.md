@@ -38,7 +38,7 @@ Mingla/
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
 │   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
-│   │   │   ├── education/             # Coach mark system (CoachMarkProvider, Overlay, Tooltip, SpotlightMask, Milestone, Illustrations)
+│   │   │   ├── education/             # Coach mark system (CoachMarkProvider, Overlay, Tooltip, SpotlightMask, Milestone, ReplayTipsScreen, Illustrations)
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
@@ -70,18 +70,25 @@ Mingla/
 
 ### Contextual Education System (Coach Marks v2)
 
-A progressive disclosure engine that teaches users features in context, replacing the old linear tour. Key aspects:
+A progressive disclosure engine that teaches users features in context. Key aspects:
 
-- **57 coach marks** across 7 groups (Explore, Discover, Chats, Likes, Profile, Board, Action)
-- **Context-triggered**: Marks fire when users naturally encounter features (tab visits, actions, element visibility)
-- **Rate-limited**: Max 3 marks per session, 5-second cooldown between marks
-- **Dynamic positioning**: Uses `measureInWindow` for pixel-perfect spotlight placement (zero hard-coded coordinates)
+- **58 coach marks** across 7 groups (Explore, Discover, Chats, Likes, Profile, Board, Action) plus a tutorial finale
+- **First-launch tutorial**: On first app launch after onboarding, a full linear tutorial auto-navigates the user through every tab and screen, showing all 58 marks in sequence. No skip, no exit — only "Next" and "Back to start". Session limits and cooldowns are disabled during the tutorial. Marks without available targets display centered without a spotlight
+- **Auto-navigation**: The tutorial provider orchestrates tab/page navigation via `onNavigate` callback, waiting for target registration before showing each mark
+- **Context-triggered (normal mode)**: After tutorial completion, marks fire when users naturally encounter features (tab visits, actions, element visibility)
+- **Rate-limited (normal mode)**: Max 5 marks per session, 3-second cooldown between marks (cooldown clears on tab navigation)
+- **Self-measuring tooltips**: Two-phase render (invisible measure → position) with safe area awareness via `useSafeAreaInsets()` — zero hardcoded coordinates or height guesses
+- **Deliberate dismissal only**: Backdrop taps do nothing — users must press "Got it"/"Next" or "Skip all" to proceed. Buttons are locked during the entrance animation to prevent accidental dismissal
+- **Scroll-safe queue**: Off-screen targets stay in queue instead of being permanently dropped
+- **Step indicator**: Global "3 of 58" progress during tutorial, group-level "3 of 9" during normal mode
+- **Replay Tips screen**: Profile settings navigates to a dedicated screen with expandable groups. Tap a group's "Replay" button to replay all tips in that group, or tap an individual tip to auto-navigate and replay just that one
+- **Reduced motion support**: Instant show/hide when system accessibility reduce-motion is enabled
 - **SVG spotlight mask**: Semi-transparent overlay with a cutout hole highlighting the target element
 - **Animated illustrations**: Gesture demos (swipe, tap, long-press), feature icons with sparkles, welcome scenes
-- **Milestone celebrations**: Full-screen confetti celebrations when users complete mark groups (7 milestones)
+- **Milestone celebrations**: Full-screen confetti celebrations when users complete mark groups (7 milestones, skipped during tutorial)
 - **Cross-device persistence**: Progress synced via Supabase `coach_mark_progress` table with AsyncStorage fallback
-- **Prerequisite chains**: Marks only appear after their prerequisites are completed
-- **Group skip**: "Skip all [group]" dismisses remaining marks in a category
+- **Prerequisite chains**: Marks only appear after their prerequisites are completed (normal mode)
+- **Group skip**: "Skip all [group]" dismisses remaining marks in a category (normal mode only)
 - **Mixpanel analytics**: Every shown/completed/skipped mark and milestone is tracked
 
 ### Onboarding Flow
@@ -117,7 +124,7 @@ The profile page is a decomposed orchestrator (~340 lines) composing 7 sub-compo
 - **EditBioSheet** -- Bottom sheet modal with multiline text input, 160-character limit with counter
 - **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories. Uses onboarding intent definitions with per-intent colors. Saves to the preferences table
 
-The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
+The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, "Replay Tips" (navigates to a dedicated screen with expandable group lists and per-tip replay), settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
 
 ### View Friend Profile
 
@@ -242,7 +249,7 @@ The Connect page manages friend relationships:
 
 | Table | Purpose |
 |-------|---------|
-| `coach_mark_progress` | Tracks completed coach marks per user (user_id, coach_mark_id, completed_at). UNIQUE constraint on (user_id, coach_mark_id). INSERT-only RLS -- users can read and write their own rows, never delete or update. |
+| `coach_mark_progress` | Tracks completed coach marks per user (user_id, coach_mark_id, completed_at). UNIQUE constraint on (user_id, coach_mark_id). Users can read, write, and delete their own rows (DELETE enabled for "Replay Tips" reset). |
 
 ### Push Notifications
 
@@ -450,11 +457,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Contextual Education System (Coach Marks v2)** -- Replaced the linear 14-step tour with a progressive disclosure engine. 57 context-triggered coach marks across 7 groups, SVG spotlight masks with dynamic measurement, animated illustrations (gesture demos, feature icons, welcome scenes), milestone celebrations with confetti, Supabase-persisted progress, rate limiting (3/session, 5s cooldown), and full Mixpanel analytics.
-- **Old Coach Mark System Removed** -- Deleted CoachMap.tsx (987 lines), CoachMarkTour.tsx (1504 lines), CoachMarkWelcome (316 lines), GiveFeedbackModal (438 lines), and FeedbackModal (629 lines + 326 lines). Removed all related state, refs, and effects from index.tsx and AppStateManager.tsx.
-- **Mixpanel Coach Mark Events** -- Added `trackCoachMarkShown`, `trackCoachMarkCompleted`, `trackCoachMarkGroupSkipped`, and `trackMilestoneReached` to MixpanelService.
-- **Coach Mark Target Registrations** -- Wired `useCoachMarkTarget` across all major screens: HomePage (6 targets), DiscoverScreen (5 targets), ConnectionsPage (1 target), LikesPage (3 targets), ProfilePage (2 targets), ExpandedCardModal (1 target), ActionButtons (3 targets), ShareModal (1 target), PersonHolidayView (2 targets).
-- **Action Triggers** -- Added `fireAction` calls for swipe_right, card_expand, share, schedule, preferences_saved, pull_refresh, and `fireElementVisible` for expanded-card-modal.
+- **First-Launch Tutorial Mode** -- Full 58-step linear tutorial that auto-navigates users through every tab and screen on first launch. No skip, no exit — "Next" and "Back to start" only. Session limits and cooldowns disabled. Marks without targets show centered without spotlight.
+- **Auto-Navigation Orchestration** -- CoachMarkProvider watches `tutorialPendingPage` and `replayPendingPage` state, calling `onNavigate` to switch tabs, then waits for target registration before showing the next mark.
+- **Replay Tips Screen** -- Dedicated screen (accessible from Profile) with expandable groups showing individual tips. Tap a group's "Replay" button to replay the entire group, or tap a single tip to auto-navigate and replay just that one.
+- **Coach Mark System Overhaul** -- Deliberate dismissal only (backdrop tap does nothing), self-measuring tooltips, safe area awareness, scroll-safe queue, step progress indicators, reduced motion support, milestone celebrations skipped during tutorial.
+- **Tutorial-Aware Engine** -- useCoachMarkEngine skips normal queue logic during tutorial mode. Store's `dismiss()` advances tutorial without session count or cooldown. `resetSession()` is protected during tutorial.
 
 ---
 

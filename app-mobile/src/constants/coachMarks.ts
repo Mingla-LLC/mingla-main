@@ -1,4 +1,4 @@
-import { CoachMarkDefinition, MilestoneDefinition } from '../types/coachMark';
+import { CoachMarkDefinition, MilestoneDefinition, TutorialStep } from '../types/coachMark';
 
 export const COACH_MARKS: Record<string, CoachMarkDefinition> = {
 
@@ -998,9 +998,112 @@ export const COACH_MARKS: Record<string, CoachMarkDefinition> = {
     },
     delay: 300,
   },
+  // ═══════════════════════════════════════════
+  // TUTORIAL FINALE
+  // ═══════════════════════════════════════════
+
+  tutorial_replay_tips: {
+    id: 'tutorial_replay_tips',
+    group: 'profile',
+    priority: 99,
+    prerequisites: [],
+    trigger: { type: 'tab_first_visit', value: 'profile' },
+    targetElementId: 'profile-replay-tips',
+    spotlight: { shape: 'rounded-rect', padding: 6, borderRadius: 12 },
+    tooltip: { position: 'above' },
+    content: {
+      title: 'Want a refresher?',
+      body: "Tap here anytime to replay any tip you've seen. Your personal cheat sheet.",
+      illustration: { type: 'feature', icon: 'compass' },
+    },
+    delay: 600,
+  },
 };
 
 export const COACH_MARK_IDS = Object.keys(COACH_MARKS);
+
+// ═══════════════════════════════════════════
+// TUTORIAL SEQUENCE
+// ═══════════════════════════════════════════
+// Linear order for the first-launch tutorial.
+// The tutorial auto-navigates to each page and shows every mark in order.
+// If a mark's target isn't on screen, it shows as a centered informational tip.
+
+export const TUTORIAL_SEQUENCE: TutorialStep[] = [
+  // — Explore tab —
+  { markId: 'explore_welcome', page: 'home' },
+  { markId: 'explore_swipe_right', page: 'home' },
+  { markId: 'explore_swipe_left', page: 'home' },
+  { markId: 'explore_tap_card', page: 'home' },
+  { markId: 'explore_solo_mode', page: 'home' },
+  { markId: 'explore_session_pills', page: 'home' },
+  { markId: 'explore_create_session', page: 'home' },
+  { markId: 'explore_notifications', page: 'home' },
+  { markId: 'explore_preferences', page: 'home' },
+  { markId: 'explore_card_save', page: 'home' },
+  { markId: 'explore_card_share', page: 'home' },
+  { markId: 'explore_card_calendar', page: 'home' },
+
+  // — Discover tab —
+  { markId: 'discover_welcome', page: 'discover' },
+  { markId: 'discover_for_you', page: 'discover' },
+  { markId: 'discover_categories', page: 'discover' },
+  { markId: 'discover_people', page: 'discover' },
+  { markId: 'discover_add_person', page: 'discover' },
+  { markId: 'discover_holidays', page: 'discover' },
+  { markId: 'discover_custom_holiday', page: 'discover' },
+  { markId: 'discover_link_friend', page: 'discover' },
+
+  // — Chats tab —
+  { markId: 'chats_welcome', page: 'connections' },
+  { markId: 'chats_friends', page: 'connections' },
+  { markId: 'chats_messages', page: 'connections' },
+  { markId: 'chats_requests', page: 'connections' },
+  { markId: 'chats_swipe_actions', page: 'connections' },
+  { markId: 'chats_long_press', page: 'connections' },
+  { markId: 'chats_message_send', page: 'connections' },
+  { markId: 'chats_add_to_board', page: 'connections' },
+
+  // — Likes tab —
+  { markId: 'likes_welcome', page: 'likes' },
+  { markId: 'likes_saved', page: 'likes' },
+  { markId: 'likes_calendar', page: 'likes' },
+  { markId: 'likes_mode_filter', page: 'likes' },
+  { markId: 'likes_schedule', page: 'likes' },
+  { markId: 'likes_qr_code', page: 'likes' },
+
+  // — Board view —
+  { markId: 'board_welcome', page: 'board-view' },
+  { markId: 'board_deck', page: 'board-view' },
+  { markId: 'board_discussion', page: 'board-view' },
+  { markId: 'board_saved', page: 'board-view' },
+  { markId: 'board_invite', page: 'board-view' },
+  { markId: 'board_settings', page: 'board-view' },
+  { markId: 'board_mention', page: 'board-view' },
+  { markId: 'board_vote', page: 'board-view' },
+
+  // — Profile tab —
+  { markId: 'profile_welcome', page: 'profile' },
+  { markId: 'profile_photo', page: 'profile' },
+  { markId: 'profile_bio', page: 'profile' },
+  { markId: 'profile_interests', page: 'profile' },
+  { markId: 'profile_stats', page: 'profile' },
+  { markId: 'profile_settings', page: 'profile' },
+  { markId: 'profile_notifications', page: 'profile' },
+  { markId: 'profile_activity_status', page: 'profile' },
+
+  // — Action tips (informational) —
+  { markId: 'action_first_save', page: 'home' },
+  { markId: 'action_first_expand', page: 'home' },
+  { markId: 'action_first_share', page: 'home' },
+  { markId: 'action_first_schedule', page: 'home' },
+  { markId: 'action_first_preference_change', page: 'home' },
+  { markId: 'action_first_friend_add', page: 'connections' },
+  { markId: 'action_pull_refresh', page: 'home' },
+
+  // — Finale: Replay Tips —
+  { markId: 'tutorial_replay_tips', page: 'profile' },
+];
 
 // ═══════════════════════════════════════════
 // MILESTONES

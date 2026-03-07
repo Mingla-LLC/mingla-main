@@ -1657,6 +1657,10 @@ export default function SwipeableCards({
                               : formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name={NextCategoryIcon as any} size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(nextCard.category)}</Text>
+                        </View>
                       </View>
 
                       {/* View more badge */}
@@ -1671,11 +1675,6 @@ export default function SwipeableCards({
 
                   {/* White Details Section */}
                   <View style={styles.cardDetails}>
-                    {/* Category Label */}
-                    <View style={styles.categoryRow}>
-                      <Ionicons name={NextCategoryIcon as any} size={16} color="#eb7825" />
-                      <Text style={styles.categoryText}>{getReadableCategoryName(nextCard.category)}</Text>
-                    </View>
                     {/* Share Button */}
                     <TouchableOpacity
                       style={styles.shareButton}
@@ -1808,6 +1807,10 @@ export default function SwipeableCards({
                               : formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name={CategoryIcon as any} size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(currentRec.category)}</Text>
+                        </View>
                       </View>
 
                       {/* View more badge */}
@@ -1822,11 +1825,6 @@ export default function SwipeableCards({
 
                   {/* White Details Section */}
                   <View style={styles.cardDetails}>
-                    {/* Category Label */}
-                    <View style={styles.categoryRow}>
-                      <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
-                      <Text style={styles.categoryText}>{getReadableCategoryName(currentRec.category)}</Text>
-                    </View>
                     {/* Share Button */}
                     <TouchableOpacity
                       style={styles.shareButton}
@@ -2093,17 +2091,6 @@ const styles = StyleSheet.create({
   detailBadgeText: {
     color: "white",
     fontSize: 12,
-    fontWeight: "500",
-  },
-  categoryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
-  },
-  categoryText: {
-    color: "#6b7280",
-    fontSize: 14,
     fontWeight: "500",
   },
   addressRow: {
