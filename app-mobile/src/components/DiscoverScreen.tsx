@@ -544,7 +544,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
 
         {/* Bottom Row: Price Range and Rating */}
         <View style={styles.cardFooter}>
-          <Text style={styles.priceRange}>{formattedPrice}</Text>
+          <Text style={styles.priceRange} numberOfLines={1}>{formattedPrice}</Text>
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#eb7825" />
             <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
@@ -593,7 +593,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
         <Text style={styles.heroCardTitle} numberOfLines={2}>{card.title}</Text>
         <Text style={styles.heroCardDescription} numberOfLines={2}>{card.description}</Text>
         <View style={styles.heroCardFooter}>
-          <Text style={styles.heroCardPrice}>{formattedPrice}</Text>
+          <Text style={styles.heroCardPrice} numberOfLines={1}>{formattedPrice}</Text>
           <View style={styles.heroCardRating}>
             <Ionicons name="star" size={13} color="#eb7825" />
             <Text style={styles.heroCardRatingText}>{card.rating.toFixed(1)}</Text>
@@ -639,7 +639,7 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
 
         {/* Bottom Row: Price Range and Arrow Button */}
         <View style={styles.gridCardFooter}>
-          <Text style={styles.gridCardPrice}>{formattedPrice}</Text>
+          <Text style={styles.gridCardPrice} numberOfLines={1}>{formattedPrice}</Text>
           <View style={styles.gridCardArrowButton}>
             <Feather name="chevron-right" size={14} color="white" />
           </View>
@@ -4032,7 +4032,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroCardPrice: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: "600",
     color: "#eb7825",
   },
@@ -4217,7 +4217,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   priceRange: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: "600",
     color: "#eb7825",
   },
@@ -4294,8 +4294,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   gridCardPrice: {
-    fontSize: 11,
-    fontWeight: "400",
+    fontSize: 9,
+    fontWeight: "500",
     color: "#eb7825",
   },
   gridCardRatingContainer: {
