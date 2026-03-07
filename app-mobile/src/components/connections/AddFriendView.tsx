@@ -12,15 +12,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { searchUsers } from "../../services/friendLinkService";
+import { UserSearchResult } from "../../types/friendLink";
 import { useSendFriendLink } from "../../hooks/useFriendLinks";
 import { s, vs } from "../../utils/responsive";
-
-interface SearchResult {
-  id: string;
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-}
 
 interface AddFriendViewProps {
   currentUserId: string;
@@ -34,7 +28,7 @@ export function AddFriendView({
   onRequestSent,
 }: AddFriendViewProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<UserSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [searchError, setSearchError] = useState(false);
@@ -70,7 +64,7 @@ export function AddFriendView({
     }, 300);
   };
 
-  const handleSendRequest = (user: SearchResult) => {
+  const handleSendRequest = (user: UserSearchResult) => {
     sendLinkMutation.mutate(
       { targetUserId: user.id },
       {
@@ -101,8 +95,8 @@ export function AddFriendView({
       .substring(0, 2);
   };
 
-  const renderUserRow = ({ item }: { item: SearchResult }) => {
-    const displayName = item.displayName || item.username || "Unknown";
+  const renderUserRow = ({ item }: { item: UserSearchResult }) => {
+    const displayName = item.display_name || item.username || "Unknown";
     const isFriend = existingFriendIds.includes(item.id);
     const isSent = sentIds.has(item.id);
     const isSending = sendLinkMutation.isPending && sendLinkMutation.variables?.targetUserId === item.id;
