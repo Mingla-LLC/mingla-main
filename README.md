@@ -36,9 +36,10 @@ Mingla/
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
 │   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
+│   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~34 React Query hooks
-│   │   ├── services/                   # ~60 service files
+│   │   ├── hooks/                      # ~37 React Query hooks (incl. useProfilePhotos, useProfileInterests, useFriendProfile)
+│   │   ├── services/                   # ~61 service files (incl. profilePhotosService)
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store
 │   │   ├── types/                      # TypeScript types (incl. phoneInvite.ts, onboarding.ts)
@@ -85,6 +86,23 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 - **Path B (Add person):** Name, birthday, gender, then audio recording. Creates a saved person with AI-generated experience recommendations.
 - **Skip:** Goes straight to the app.
 
+### Profile Page
+
+The profile page is a decomposed orchestrator (~340 lines) composing 7 sub-components:
+
+- **ProfileHeroSection** -- Avatar with initials fallback and camera badge, display name, username, location with refresh, bio display (tappable to edit), and profile completion hints
+- **ProfilePhotosGallery** -- 3-slot horizontal gallery for additional photos beyond the avatar. Upload via image picker, long-press to remove. Photos stored as `TEXT[]` on the profiles table, uploaded to Supabase Storage "avatars" bucket
+- **ProfileInterestsSection** -- Displays user intents (filled orange pills) and categories (outlined pills). Tappable pencil icon opens the edit sheet
+- **ProfileStatsRow** -- 3-column stats display: Saved count, Connections count, Boards count
+- **EditBioSheet** -- Bottom sheet modal with multiline text input, 160-character limit with counter
+- **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories. Uses onboarding intent definitions with per-intent colors. Saves to the preferences table
+
+The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
+
+### View Friend Profile
+
+Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, photo gallery, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
+
 ### For You System
 
 The person-centric "For You" view provides personalized recommendations for each saved person:
@@ -112,6 +130,7 @@ The Connect page manages friend relationships:
 - **Blocked** -- Manage blocked users.
 - **Invite** -- Share invite link via system share sheet.
 - **Pill Filters** -- Horizontal scrollable pill navigation with badge counts for pending requests.
+- **Avatar Navigation** -- Tapping a friend's avatar in the chat list navigates to their full profile.
 
 ### Friend Links System
 
@@ -137,7 +156,7 @@ The Connect page manages friend relationships:
 - Expanded card modal with image gallery, weather forecast, busyness predictions, and match score breakdown
 - Dismissed cards review sheet for reconsidering skipped cards
 - Batch auto-advance when all cards in a batch have been swiped (regular and curated)
-- Unified loading states with pulsing-dot animation (initial load, slow batch, batch transition, overlay) — no stock spinners
+- Unified loading states with pulsing-dot animation (initial load, slow batch, batch transition, overlay) -- no stock spinners
 
 ### 12-Category System
 
@@ -195,7 +214,7 @@ The Connect page manages friend relationships:
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, photos (TEXT[]), visibility_mode |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 
@@ -210,7 +229,7 @@ The Connect page manages friend relationships:
 | Table | Purpose |
 |-------|---------|
 | `friend_requests` | Legacy friend request lifecycle (used for referral credit triggers) |
-| `friends` | Bidirectional friendship records |
+| `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
 | `friend_links` | Friend link requests (pending/accepted) for synced friends |
 | `blocked_users` | User blocks |
 | `pending_invites` | Phone invites for non-app users (auto-converts to friend_links + saved_people on signup) |
@@ -370,10 +389,10 @@ npm install
 # 3. Copy environment file and fill in keys
 cp .env.example .env
 
-# 4. Run Supabase migrations (includes phone invite auto-link trigger)
+# 4. Run Supabase migrations (includes profile photos column and RLS policies)
 supabase db push
 
-# 5. Deploy edge functions (includes send-phone-invite)
+# 5. Deploy edge functions
 supabase functions deploy
 
 # 6. Configure Twilio env vars in Supabase dashboard
@@ -404,9 +423,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Loading State Redesign** -- Replaced spinning ring + 41 rotating tips + stock ActivityIndicators with unified pulsing-dot trio animation across all 4 deck loading states. Each state has distinct copy so users know what's happening. Added indeterminate progress bar for slow-load state. Brand mark with compass icon on primary loader. Removed ~100 lines of dead tip/spinner code.
-- **Phone Invite System** -- Added "Invite by Phone" tab to Link a Friend flow. SMS invites via Twilio with auto-linking on signup (creates friend_links + saved_people). Upgraded the auto-convert trigger to create full friend connections, not just legacy friend_requests.
-- **LinkFriendSheet** -- New tabbed UI replacing direct UserSearchSheet usage. "Search Mingla" and "Invite by Phone" tabs with country picker, phone input, and status feedback.
+- **Notifications Modal Premium Redesign** -- Complete visual overhaul of NotificationsModal with glassmorphism cards (BlurView on iOS, translucent fallback on Android), warm gradient sheet background, gradient accent stripes on unread cards, premium icon circles with gradient fills, pill-style section headers, and elevated action bar with pill buttons.
+- **Profile Page Overhaul** -- Decomposed the 1,200-line ProfilePage monolith into a ~340-line orchestrator with 7 sub-components (HeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen). Added bio display/edit, 3-slot photo gallery, interests editing, and friend profile viewing.
+- **Friend Profile Navigation** -- Tapping a friend's avatar in the connections list opens their full profile as an overlay. Access controlled by 3 new RLS policies based on visibility_mode.
+- **Profile Photos** -- Added `photos TEXT[]` column to profiles table. Gallery photos uploaded to Supabase Storage with React Query hooks for CRUD operations.
 
 ---
 
