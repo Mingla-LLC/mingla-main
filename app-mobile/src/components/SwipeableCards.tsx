@@ -1935,6 +1935,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 2,
     paddingBottom: 0,
+    marginBottom: 24,
   },
   cardContainer: {
     width: SCREEN_WIDTH - 32,
@@ -1942,7 +1943,7 @@ const styles = StyleSheet.create({
     position: "relative",
     flex: 1,
     paddingTop: 12,
-    paddingBottom: 20,
+    paddingBottom: 8,
     paddingHorizontal: 8,
   },
   card: {
@@ -1955,14 +1956,14 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(0, 0, 0, 0.10)",
-    shadowColor: "#000",
+    shadowColor: Platform.OS === "android" ? "rgba(0, 0, 0, 0.08)" : "#000",
     shadowOffset: {
       width: 0,
       height: 8,
     },
     shadowOpacity: 0.18,
     shadowRadius: 16,
-    elevation: Platform.OS === "android" ? 4 : 10,
+    elevation: Platform.OS === "android" ? 12 : 10,
     zIndex: 2,
   },
   cardInner: {
