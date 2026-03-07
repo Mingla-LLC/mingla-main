@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as friendLinkService from "../services/friendLinkService";
 import { savedPeopleKeys } from "./useSavedPeople";
+import { personalizedCardKeys } from "./usePersonalizedCards";
 
 export const friendLinkKeys = {
   all: ["friend-links"] as const,
@@ -41,7 +42,8 @@ export function useUserSearch(query: string) {
 export function useSendFriendLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: friendLinkService.sendFriendLink,
+    mutationFn: ({ targetUserId, personId }: { targetUserId: string; personId?: string }) =>
+      friendLinkService.sendFriendLink(targetUserId, personId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
     },
@@ -61,6 +63,7 @@ export function useRespondToFriendLink() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+      queryClient.invalidateQueries({ queryKey: personalizedCardKeys.all });
     },
   });
 }

@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 45 Deno serverless functions |
+| Edge Functions | 47 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -31,28 +31,27 @@ Mingla/
 │   ├── app/
 │   │   └── index.tsx                    # Entry point (AppContent)
 │   ├── src/
-│   │   ├── components/                  # ~85+ UI components
-│   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput,
-│   │   │   │                           # SegmentedProgressBar, LanguagePickerModal,
-│   │   │   │                           # CountryPickerModal, OnboardingFriendsStep,
-│   │   │   │                           # OnboardingCollaborationStep, OnboardingSyncStep,
-│   │   │   │                           # OnboardingAudioRecorder, etc.
+│   │   ├── components/                  # ~90+ UI components
+│   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
+│   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~30 React Query hooks
-│   │   ├── services/                   # ~56 service files
+│   │   ├── hooks/                      # ~33 React Query hooks
+│   │   ├── services/                   # ~59 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store
-│   │   ├── types/                      # TypeScript types (incl. onboarding.ts)
-│   │   ├── constants/                  # Design tokens, config, categories, price tiers, languages
+│   │   ├── types/                      # TypeScript types (incl. onboarding.ts, holidayTypes.ts)
+│   │   ├── constants/                  # Design tokens, config, categories, holidays
 │   │   └── utils/                      # 12 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 45 Deno edge functions
+│   ├── functions/                      # 47 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
+│   │   ├── get-holiday-cards/         # Holiday card sourcing (pool + Google fallback)
+│   │   ├── generate-ai-summary/       # AI birthday/gift summary via GPT-4o-mini
 │   │   └── [function-name]/           # Individual edge functions
 │   ├── migrations/                    # 120+ SQL migration files
 │   └── config.toml
@@ -72,38 +71,61 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 1. **Welcome** -- app introduction screen
 2. **Phone** -- phone number entry with country picker
 3. **OTP** -- 6-digit verification code
-4. **Gender Identity** -- 8 inclusive gender options (Man, Woman, Non-binary, Transgender, Genderqueer, Genderfluid, Agender, Prefer not to say)
-5. **Personal Details** -- country (ISO 3166-1 alpha-2, defaults to phone country code), date of birth, and preferred language (ISO 639-1, defaults to device locale via `expo-localization`)
+4. **Gender Identity** -- 8 inclusive gender options
+5. **Personal Details** -- country, date of birth, and preferred language
 
-The language picker (`LanguagePickerModal`) supports 25 languages with search, sorted by global usage (top 10 first, then alphabetical). Device locale auto-detection determines the default selection.
-
-Resume logic handles partial Step 1 completion: if a user has verified their phone but has not finished gender identity or personal details, the flow resumes at the appropriate sub-step rather than restarting from the beginning.
-
-**Step 2 -- Intents** -- value proposition and intent selection (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
+**Step 2 -- Intents** -- value proposition and intent selection
 
 **Step 3 -- Location** -- GPS permission request
 
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
 **Step 5 -- Social** -- add friends by phone, create collaboration sessions, then choose a path:
-- **Path A (Sync):** Select friends to sync with from a pill-based selection screen, then record a 10-second minimum audio description for each selected friend. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards (fire-and-forget).
-- **Path B (Add person):** Name, birthday, gender, then a 10-second minimum audio recording. Creates a saved person with AI-generated experience recommendations.
-- **Skip:** Goes straight to the app. No intermediate screens.
+- **Path A (Sync):** Select friends to sync with, record audio descriptions, friend link requests sent automatically. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
+- **Path B (Add person):** Name, birthday, gender, then audio recording. Creates a saved person with AI-generated experience recommendations.
+- **Skip:** Goes straight to the app.
 
-Audio recording is compulsory within committed paths (no skip button). The state machine prevents silent navigation bugs with indexOf guards.
+### For You System
+
+The person-centric "For You" view provides personalized recommendations for each saved person:
+
+- **Birthday Hero Card** -- Orange hero card with birthday countdown and AI-generated gift/experience summary (~80 char). Falls back to a dark "Picks" card when no birthday is set.
+- **Person Recommendation Cards** -- Horizontal scroll of 2-3 personalized place cards powered by the linked user's swipe data via `get-personalized-cards`.
+- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Gender-filtered standard holidays plus user-created custom holidays.
+- **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
+- **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
+- **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
+
+### Connect Page
+
+The Connect page (formerly "Chats") manages friend relationships:
+
+- **Add Friends** -- Username search with debounced queries via `search-users` edge function. Send friend link requests with haptic feedback.
+- **Requests** -- View and respond to pending friend link requests with accept/decline actions.
+- **Blocked** -- Manage blocked users.
+- **Invite** -- Share invite link via system share sheet.
+- **Pill Filters** -- Horizontal scrollable pill navigation with badge counts for pending requests.
+
+### Friend Links System
+
+- Friend link requests sent via `send-friend-link` edge function with push notifications
+- Mirror writes to legacy `friend_requests` table preserve referral credit triggers
+- Duplicate-prevention on `saved_people` entries during link acceptance (`.maybeSingle()` check)
+- Saved people entries created for every synced friend during onboarding (not gated on audio recording)
+- Cross-invalidation of React Query caches on link accept (friend links + saved people + personalized cards)
 
 ### AI-Powered Recommendations
-- Experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
-- Audio-to-recommendations pipeline: voice notes are transcribed (Whisper), analyzed for interests/preferences (GPT-4o-mini), and used to generate personalized experience cards via Google Places
-- Card pool data pipeline: pool-first serving from pre-built card pool, falls back to Google Places API only when the pool is exhausted
+- Experience cards built from real Google Places data, enriched by GPT-4o-mini
+- Audio-to-recommendations pipeline: voice notes transcribed (Whisper), analyzed (GPT-4o-mini), used to generate personalized experience cards
+- Card pool data pipeline: pool-first serving, falls back to Google Places API
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
+- AI summary generation for birthday hero cards via `generate-ai-summary` edge function
 
 ### Card-Based Swipe Interface
 - Swipe right to save, left to skip, up to expand full details
-- Curated multi-stop itinerary experiences interleaved with single-place cards (Solo Adventure, First Date, Romantic, Friendly, Group Fun, Picnic, Stroll)
+- Curated multi-stop itinerary experiences interleaved with single-place cards
 - Expanded card modal with image gallery, weather forecast, busyness predictions, and match score breakdown
 - Dismissed cards review sheet for reconsidering skipped cards
-- Deck batch navigation with forward/backward history
 
 ### 12-Category System
 
@@ -135,48 +157,23 @@ Audio recording is compulsory within committed paths (no skip button). The state
 - Named sessions with multi-friend selection
 - Real-time card swiping, voting, RSVP, lock-in, calendar sync, and chat
 - Preference rotation system cycles through participants' preferences
-- Consensus lock-in: when all participants RSVP "attending," the card auto-locks and creates calendar entries
-- Realtime sync via Supabase Realtime for votes, RSVPs, messages, presence, and typing indicators
-- Push notifications for session invites, accepts, and declines
-
-### Friend System
-- Add friends by username or phone number
-- Accept/decline friend requests with push notifications
-- Block and mute functionality
-- Friend linking for personalized "For You" recommendations
-
-### Friends and Collaboration Onboarding
-- Add friends by phone number during onboarding
-- Create collaboration sessions before entering the main app
-- Phone-based invites for non-app users that auto-resolve when they sign up
+- Consensus lock-in with auto calendar entries
+- Realtime sync via Supabase Realtime
 
 ### Subscription System
 - Free, Pro, and Elite tiers with 1-week trial
 - Referral bonus months for inviting friends
 - Stripe Connect payment processing
 
-### Universal Links
-- Deep linking via usemingla.com for invite and board URLs
-
-### Discover Tab
-- Personalized daily feed driven by user preferences
-- Category browsing across all 12 categories
-- Holiday experiences with gender-specific filtering
-- Night Out section powered by Ticketmaster with genre, date, and price filtering
-- In-app ticket purchasing via expo-web-browser
-
-### Phone-Based Invites
-- Invite non-app users by phone number
-- Send collaboration invites to any phone number
-- Pending invites auto-resolve when the invited user signs up
-
 ### Additional Features
 - GPS and manual location with travel time preferences
 - Audio clips for saved people with AI-powered transcription and interest extraction
-- Holiday planning and archiving
+- Holiday planning with custom holidays, archiving, and real card sourcing
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
 - Boards with card voting, RSVP, threaded discussion, and @mentions
+- Universal deep links via usemingla.com
+- Night Out section powered by Ticketmaster
 
 ---
 
@@ -186,15 +183,15 @@ Audio recording is compulsory within committed paths (no skip button). The state
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles: phone, referral_code, gender, birthday, country (ISO 3166-1 alpha-2), preferred_language (ISO 639-1, default `'en'`) |
-| `preferences` | User preference settings (categories, price tiers, intents, travel, use_gps_location) |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language |
+| `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 
 ### Social Tables
 
 | Table | Purpose |
 |-------|---------|
-| `friend_requests` | Friend request lifecycle |
+| `friend_requests` | Legacy friend request lifecycle (used for referral credit triggers) |
 | `friends` | Bidirectional friendship records |
 | `friend_links` | Friend link requests (pending/accepted) for synced friends |
 | `blocked_users` | User blocks |
@@ -209,6 +206,8 @@ Audio recording is compulsory within committed paths (no skip button). The state
 | `saved_people` | Saved people with name, birthday, gender, AI-generated description |
 | `person_audio_clips` | Audio recordings describing saved people |
 | `person_experiences` | AI-generated experience cards per person per occasion |
+| `custom_holidays` | User-created holidays for specific saved people (name, month, day, categories) |
+| `archived_holidays` | Tracks which holidays a user has archived for a specific person |
 
 ### Collaboration Tables
 
@@ -242,13 +241,15 @@ Audio recording is compulsory within committed paths (no skip button). The state
 |----------|---------|
 | `generate-experiences` | AI-powered place recommendations |
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
-| `generate-curated-experiences` | Multi-stop itinerary generation (7 types) |
+| `generate-curated-experiences` | Multi-stop itinerary generation |
 | `generate-person-experiences` | Person-specific experience recommendations |
-| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation pipeline |
+| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation |
+| `get-personalized-cards` | Personalized card retrieval based on swipe data |
+| `get-holiday-cards` | Holiday card sourcing: pool-first + Google Places fallback |
+| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
-| `discover-[category]` | Per-category discover endpoints (nature, casual-eats, drink, fine-dining, first-meet, picnic-park, play, watch, creative-arts, wellness) |
-| `get-personalized-cards` | Personalized card retrieval |
+| `discover-[category]` | Per-category discover endpoints |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
 | `warm-cache` | Cache warming for frequently accessed data |
@@ -259,8 +260,8 @@ Audio recording is compulsory within committed paths (no skip button). The state
 |----------|---------|
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
-| `send-friend-link` | Send friend link invitations |
-| `respond-friend-link` | Process friend link responses |
+| `send-friend-link` | Send friend link invitations (with referral mirror write) |
+| `respond-friend-link` | Process friend link responses (with duplicate prevention) |
 | `unlink-friend` | Remove friend connections |
 | `send-friend-request-email` | Email notifications for friend requests |
 | `send-collaboration-invite` | Push notifications for session invites |
@@ -346,10 +347,10 @@ npm install
 # 3. Copy environment file and fill in keys
 cp .env.example .env
 
-# 4. Run Supabase migrations
+# 4. Run Supabase migrations (includes custom_holidays + archived_holidays tables)
 supabase db push
 
-# 5. Deploy edge functions
+# 5. Deploy edge functions (includes get-holiday-cards, generate-ai-summary)
 supabase functions deploy
 
 # 6. Start Expo
@@ -377,11 +378,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Onboarding Step 5 Overhaul** -- Replaced 3 redundant Path A screens (birthday, gender, contact) with a friend sync selection screen and per-friend audio recording loop. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards fire-and-forget.
-- **Audio Pipeline** -- New `process-person-audio` edge function chains Whisper transcription, GPT-4o-mini interest extraction, and `generate-person-experiences` into a single fire-and-forget pipeline.
-- **Compulsory Audio** -- Audio recording is now mandatory (10s minimum) within committed paths. No skip button within Path A or Path B.
-- **State Machine Bug Fixes** -- Fixed `indexOf()` returning -1 for unknown substeps (silent navigation to first step), persisted `chosenPath` so crash-resume works, and added Path B save handler that was previously missing.
-- **OnboardingSyncStep Component** -- New pill-based friend selection screen with phone input for adding new friends during Path A.
+- **For You System** -- Birthday hero cards with AI summary, person recommendation cards, expandable holiday rows with real card sourcing (pool-first + Google Places fallback), custom holiday creation modal, archive/unarchive with database persistence, and Elite people summary with BlurView teaser.
+- **Connect Page Redesign** -- Rewrote AddFriendView to use `sendFriendLink` edge function instead of legacy direct DB inserts. Added haptics, updated copy.
+- **Friend Link Pipeline Fixes** -- Mirror writes to `friend_requests` for referral credits, duplicate prevention on `saved_people` during link acceptance, cross-invalidation of personalized card caches.
+- **Onboarding Bug Fix** -- `saved_people` entries now created for every synced friend regardless of audio recording (was previously gated on audio existence).
+- **Re-enabled Disabled Code** -- Restored `usePersonExperiences` hook and `saveDiscoverCache()` call in DiscoverScreen.
 
 ---
 

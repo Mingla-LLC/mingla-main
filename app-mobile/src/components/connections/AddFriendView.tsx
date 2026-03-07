@@ -10,14 +10,16 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../services/supabase";
+import * as Haptics from "expo-haptics";
+import { searchUsers } from "../../services/friendLinkService";
+import { useSendFriendLink } from "../../hooks/useFriendLinks";
+import { s, vs } from "../../utils/responsive";
 
 interface SearchResult {
   id: string;
   username: string;
-  display_name?: string;
-  first_name?: string;
-  last_name?: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 interface AddFriendViewProps {
@@ -35,17 +37,19 @@ export function AddFriendView({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
-  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendLinkMutation = useSendFriendLink();
 
   const handleSearch = (text: string) => {
     setQuery(text);
+    setSearchError(false);
 
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
-    if (!text.trim()) {
+    if (!text.trim() || text.trim().length < 2) {
       setResults([]);
       return;
     }
@@ -53,85 +57,38 @@ export function AddFriendView({
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, username, display_name, first_name, last_name")
-          .ilike("username", `%${text.trim()}%`)
-          .neq("id", currentUserId)
-          .limit(20);
-
-        if (error) {
-          console.error("Error searching users:", error);
-          setResults([]);
-          return;
-        }
-
-        setResults(data || []);
+        const data = await searchUsers(text.trim());
+        // Filter out self
+        setResults(data.filter((u) => u.id !== currentUserId));
       } catch (err) {
         console.error("Error searching users:", err);
         setResults([]);
+        setSearchError(true);
       } finally {
         setLoading(false);
       }
     }, 300);
   };
 
-  const handleSendRequest = async (user: SearchResult) => {
-    setSendingId(user.id);
-    try {
-      // Check if request already exists
-      const { data: existing } = await supabase
-        .from("friend_requests")
-        .select("id, status")
-        .eq("sender_id", currentUserId)
-        .eq("receiver_id", user.id)
-        .single();
-
-      if (existing) {
-        if (existing.status === "pending") {
-          Alert.alert("Already Sent", "You already have a pending request to this user.");
-          return;
-        }
-        // Update existing declined/cancelled request to pending
-        await supabase
-          .from("friend_requests")
-          .update({ status: "pending", created_at: new Date().toISOString() })
-          .eq("id", existing.id);
-      } else {
-        // Create new request
-        const { error } = await supabase
-          .from("friend_requests")
-          .insert({
-            sender_id: currentUserId,
-            receiver_id: user.id,
-            status: "pending",
-          });
-
-        if (error) {
-          console.error("Error sending friend request:", error);
-          Alert.alert("Error", "Failed to send friend request.");
-          return;
-        }
+  const handleSendRequest = (user: SearchResult) => {
+    sendLinkMutation.mutate(
+      { targetUserId: user.id },
+      {
+        onSuccess: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setSentIds((prev) => new Set(prev).add(user.id));
+          onRequestSent();
+        },
+        onError: (err: any) => {
+          const msg = err?.message || "";
+          if (msg.includes("already exists")) {
+            Alert.alert("", "A connection already exists with this user.");
+            setSentIds((prev) => new Set(prev).add(user.id));
+          } else {
+            Alert.alert("", "Couldn't send request. Try again?");
+          }
+        },
       }
-
-      setSentIds((prev) => new Set(prev).add(user.id));
-      Alert.alert("Success", "Friend request sent");
-      onRequestSent();
-    } catch (err) {
-      console.error("Error sending friend request:", err);
-      Alert.alert("Error", "Failed to send friend request.");
-    } finally {
-      setSendingId(null);
-    }
-  };
-
-  const getDisplayName = (user: SearchResult): string => {
-    return (
-      user.display_name ||
-      (user.first_name && user.last_name
-        ? `${user.first_name} ${user.last_name}`
-        : user.username) ||
-      "Unknown"
     );
   };
 
@@ -145,10 +102,10 @@ export function AddFriendView({
   };
 
   const renderUserRow = ({ item }: { item: SearchResult }) => {
-    const displayName = getDisplayName(item);
+    const displayName = item.displayName || item.username || "Unknown";
     const isFriend = existingFriendIds.includes(item.id);
     const isSent = sentIds.has(item.id);
-    const isSending = sendingId === item.id;
+    const isSending = sendLinkMutation.isPending && sendLinkMutation.variables?.targetUserId === item.id;
 
     return (
       <View style={styles.userRow}>
@@ -167,7 +124,7 @@ export function AddFriendView({
           <Text style={styles.alreadyFriendsText}>Already friends</Text>
         ) : isSent ? (
           <View style={styles.sentButton}>
-            <Ionicons name="checkmark" size={16} color="#10b981" />
+            <Ionicons name="checkmark" size={s(16)} color="#6b7280" />
             <Text style={styles.sentText}>Sent</Text>
           </View>
         ) : (
@@ -193,7 +150,7 @@ export function AddFriendView({
       <View style={styles.searchContainer}>
         <Ionicons
           name="search"
-          size={18}
+          size={s(18)}
           color="#9ca3af"
           style={styles.searchIcon}
         />
@@ -208,13 +165,22 @@ export function AddFriendView({
         />
       </View>
 
-      {loading ? (
+      {!query.trim() ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>Search by username to find friends</Text>
+        </View>
+      ) : loading ? (
         <View style={styles.loadingState}>
           <ActivityIndicator size="small" color="#eb7825" />
+          <Text style={styles.loadingLabel}>Searching...</Text>
         </View>
-      ) : results.length === 0 && query.trim() ? (
+      ) : searchError ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No users found</Text>
+          <Text style={styles.emptyText}>Search failed. Try again?</Text>
+        </View>
+      ) : results.length === 0 && query.trim().length >= 2 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No one found for "{query.trim()}"</Text>
         </View>
       ) : (
         <FlatList
@@ -230,11 +196,11 @@ export function AddFriendView({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: s(16),
+    paddingVertical: vs(12),
     backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    borderRadius: s(12),
+    marginHorizontal: s(16),
   },
   searchContainer: {
     flexDirection: "row",
@@ -242,48 +208,53 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    borderRadius: s(10),
+    paddingHorizontal: s(12),
+    marginBottom: vs(8),
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: s(8),
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingVertical: vs(10),
+    fontSize: s(15),
     color: "#111827",
   },
   loadingState: {
-    paddingVertical: 16,
+    paddingVertical: vs(16),
     alignItems: "center",
+    gap: s(8),
+  },
+  loadingLabel: {
+    fontSize: s(14),
+    color: "#6b7280",
   },
   emptyState: {
-    paddingVertical: 16,
+    paddingVertical: vs(16),
     alignItems: "center",
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: s(14),
     color: "#6b7280",
   },
   userRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: vs(8),
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#6366f1",
+    width: s(36),
+    height: s(36),
+    borderRadius: s(18),
+    backgroundColor: "#e5e7eb",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: s(10),
   },
   avatarText: {
-    color: "#ffffff",
-    fontSize: 13,
+    color: "#6b7280",
+    fontSize: s(13),
     fontWeight: "600",
   },
   userInfo: {
@@ -291,41 +262,45 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   userName: {
-    fontSize: 15,
+    fontSize: s(15),
     fontWeight: "600",
     color: "#111827",
   },
   userUsername: {
-    fontSize: 13,
+    fontSize: s(13),
     color: "#9ca3af",
-    marginTop: 1,
+    marginTop: vs(1),
   },
   addButton: {
     backgroundColor: "#eb7825",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 8,
-    minWidth: 56,
+    paddingHorizontal: s(16),
+    paddingVertical: vs(6),
+    borderRadius: s(8),
+    minWidth: s(56),
     alignItems: "center",
   },
   addButtonText: {
     color: "#ffffff",
-    fontSize: 14,
+    fontSize: s(14),
     fontWeight: "600",
   },
   alreadyFriendsText: {
-    fontSize: 12,
+    fontSize: s(12),
     color: "#9ca3af",
     fontStyle: "italic",
   },
   sentButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: s(16),
+    paddingVertical: vs(6),
+    borderRadius: s(8),
+    gap: s(4),
   },
   sentText: {
-    fontSize: 14,
-    color: "#10b981",
+    fontSize: s(14),
+    color: "#6b7280",
     fontWeight: "500",
   },
 });

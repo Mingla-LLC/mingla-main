@@ -192,13 +192,17 @@ export async function uploadOnboardingAudio(
   key: string,
   localUri: string
 ): Promise<string> {
-  const storagePath = `${userId}/onboarding-audio/${key}.m4a`;
+  // Sanitize key for storage paths — E.164 phone numbers contain "+" which
+  // gets URL-encoded differently across HTTP implementations and can cause
+  // RLS policy failures or path mismatches.
+  const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const storagePath = `${userId}/onboarding-audio/${safeKey}.m4a`;
 
   const formData = new FormData();
   formData.append("file", {
     uri: localUri,
     type: "audio/mp4",
-    name: `${key}.m4a`,
+    name: `${safeKey}.m4a`,
   } as any);
 
   const { error } = await supabase.storage

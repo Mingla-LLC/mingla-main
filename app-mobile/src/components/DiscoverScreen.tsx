@@ -40,7 +40,9 @@ import UserSearchSheet from "./UserSearchSheet";
 import LinkRequestBanner from "./LinkRequestBanner";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
-import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { useEffectiveTier } from "../hooks/useSubscription";
+import ElitePeopleSummary from "./ElitePeopleSummary";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -790,16 +792,14 @@ export default function DiscoverScreen({
   const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
   const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
 
-  // Phase 2: Person selector — hooks disabled to prevent unnecessary Supabase queries.
-  // The UI still renders but with stub data. Re-enable hooks when person selector UI ships.
+  // Phase 2: Person selector — hooks re-enabled for For You System.
   const createPersonMutation = useCreatePerson();
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
-  // const { data: personExperiences = [] } = usePersonExperiences(
-  //   selectedPersonId !== "for-you" ? selectedPersonId : undefined
-  // );
-  const personExperiences: any[] = [];
+  const { data: personExperiences = [] } = usePersonExperiences(
+    selectedPersonId !== "for-you" ? selectedPersonId : undefined
+  );
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
@@ -879,7 +879,20 @@ export default function DiscoverScreen({
 
   // Friend link requests
   const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
+  const { data: sentLinkRequests = [] } = useSentLinkRequests(user?.id ?? "");
   const respondToLinkMutation = useRespondToFriendLink();
+  const effectiveTier = useEffectiveTier(user?.id);
+
+  // Track which person IDs have pending outbound links (for greyed pills)
+  const pendingOutboundLinkedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    sentLinkRequests.forEach((req: any) => {
+      if (req.status === "pending" && req.targetId) {
+        ids.add(req.targetId);
+      }
+    });
+    return ids;
+  }, [sentLinkRequests]);
 
   // Get the currently selected person (null if "for-you" is selected)
   const selectedPerson = useMemo(() => {
@@ -2004,9 +2017,8 @@ export default function DiscoverScreen({
     setSelectedFeaturedCard(featured);
     setSelectedGridCards(grid);
 
-    // CACHING DISABLED FOR TESTING
     // Save to cache for daily persistence
-    // saveDiscoverCache(recommendations, featured, grid);
+    saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
 
   // Use the stable selected cards
@@ -3089,58 +3101,74 @@ export default function DiscoverScreen({
                 </TouchableOpacity>
 
                 {/* Saved People Pills */}
-                {savedPeople.map((person) => (
-                  <View
-                    key={person.id}
-                    style={[
-                      styles.personPill,
-                      selectedPersonId === person.id && styles.personPillSelectedGradient,
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={styles.personPillTouchable}
-                      onPress={() => handlePersonSelect(person.id)}
-                      onLongPress={() => handleLongPressPerson(person)}
-                      activeOpacity={0.7}
+                {savedPeople.map((person) => {
+                  const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
+                  const isSelected = selectedPersonId === person.id;
+
+                  return (
+                    <View
+                      key={person.id}
+                      style={[
+                        styles.personPill,
+                        isSelected && styles.personPillSelectedGradient,
+                        isPending && { opacity: 0.5 },
+                      ]}
                     >
-                      <View
-                        style={[
-                          styles.personPillAvatar,
-                          selectedPersonId === person.id && styles.personPillAvatarSelectedGradient,
-                        ]}
+                      <TouchableOpacity
+                        style={styles.personPillTouchable}
+                        onPress={() => {
+                          if (isPending) {
+                            // Show tooltip for pending pills
+                            Alert.alert("", `Waiting for ${person.name} to accept`);
+                          } else {
+                            handlePersonSelect(person.id);
+                          }
+                        }}
+                        onLongPress={() => !isPending && handleLongPressPerson(person)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={isPending ? `Waiting for ${person.name} to accept` : person.name}
                       >
-                        <Text
+                        <View
                           style={[
-                            styles.personPillInitials,
-                            selectedPersonId === person.id && styles.personPillInitialsSelected,
+                            styles.personPillAvatar,
+                            isSelected && styles.personPillAvatarSelectedGradient,
+                            isPending && { backgroundColor: "#d1d5db" },
                           ]}
                         >
-                          {person.initials}
-                        </Text>
-                        {/* Link icon badge for linked persons */}
-                        {person.is_linked && (
-                          <View style={styles.linkedBadge}>
-                            <Ionicons name="link-outline" size={10} color="#eb7825" />
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.personPillRemoveButton,
-                        selectedPersonId === person.id && styles.personPillRemoveButtonSelected,
-                      ]}
-                      onPress={() => handleConfirmRemovePerson(person)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name="close"
-                        size={14}
-                        color={selectedPersonId === person.id ? "white" : "#9ca3af"}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                          <Text
+                            style={[
+                              styles.personPillInitials,
+                              isSelected && styles.personPillInitialsSelected,
+                              isPending && { color: "#9ca3af" },
+                            ]}
+                          >
+                            {person.initials}
+                          </Text>
+                          {/* Link icon badge for linked persons */}
+                          {person.is_linked && (
+                            <View style={styles.linkedBadge}>
+                              <Ionicons name="link-outline" size={10} color="#eb7825" />
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.personPillRemoveButton,
+                          isSelected && styles.personPillRemoveButtonSelected,
+                        ]}
+                        onPress={() => handleConfirmRemovePerson(person)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={14}
+                          color={isSelected ? "white" : "#9ca3af"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </ScrollView>
 
               {/* Person-specific view when a person is selected */}
@@ -3148,9 +3176,20 @@ export default function DiscoverScreen({
                 <PersonHolidayView
                   person={selectedPerson}
                   location={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : { latitude: 40.7128, longitude: -74.006 }}
+                  userId={user?.id ?? ""}
                 />
               ) : (
                 <>
+                  {/* Elite People Summary Hero */}
+                  {savedPeople.length > 0 && (
+                    <ElitePeopleSummary
+                      people={savedPeople}
+                      isElite={effectiveTier === "elite"}
+                      onPersonPress={(id) => setSelectedPersonId(id)}
+                      onUpgradePress={() => { /* navigate to subscription */ }}
+                    />
+                  )}
+
                   {/* Loading State */}
                   {recommendationsLoading && !hasCompletedInitialFetch && (
                     <View style={styles.loadingContainer}>

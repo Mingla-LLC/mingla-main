@@ -1229,45 +1229,58 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     try {
       for (const friend of data.selectedSyncFriends) {
         // 1. Send friend_link request for existing users
+        let linkId: string | undefined
         if (friend.type === 'existing' && friend.userId) {
           try {
-            await sendFriendLink(friend.userId)
+            const result = await sendFriendLink(friend.userId)
+            linkId = result.linkId
           } catch (e) {
             // Link may already exist — log and continue
             console.warn(`[Onboarding] Friend link for ${friend.userId} failed:`, e)
           }
         }
 
-        // 2. Create saved_person + link audio clip if recorded for this friend
+        // 2. ALWAYS create saved_person (not just when audio exists)
+        const personData = {
+          user_id: user.id,
+          name: friend.displayName || 'Friend',
+          initials: (friend.displayName || 'F').slice(0, 2).toUpperCase(),
+          birthday: null as string | null,
+          gender: null as SavedPerson['gender'],
+          description: null as string | null,
+          // Link data if friend link was created
+          ...(linkId ? { link_id: linkId, linked_user_id: friend.userId, is_linked: false } : {}),
+        }
+        const person = await createSavedPerson(personData)
+
+        // 3. Create audio clip record if audio was recorded
         const friendKey = friend.userId || friend.phoneE164
         const clip = audioClipsByFriend[friendKey]
-        if (clip && clip.storagePath) {
-          // Create a saved_person for this friend (for audio-based recommendations)
-          const personData = {
-            user_id: user.id,
-            name: friend.displayName || 'Friend',
-            initials: (friend.displayName || 'F').slice(0, 2).toUpperCase(),
-            birthday: null as string | null,
-            gender: null as SavedPerson['gender'],
-            description: null as string | null,
+        if (clip && clip.storagePath && person?.id) {
+          const fileName = clip.storagePath.split('/').pop() || `onboarding_sync_${Date.now()}.m4a`
+          await createAudioClipRecord(user.id, person.id, clip.storagePath, fileName, clip.duration, 0)
+
+          // Fire-and-forget: process audio
+          const coords = data.coordinates
+          if (coords) {
+            processPersonAudio({
+              personId: person.id,
+              audioStoragePath: clip.storagePath,
+              location: { latitude: coords.lat, longitude: coords.lng },
+              occasions: buildOccasions(null),
+            }).catch((err) => console.info('[Onboarding] Sync audio processing (fire-and-forget):', err?.message))
           }
-          const person = await createSavedPerson(personData)
+        }
 
-          if (person?.id) {
-            const fileName = clip.storagePath.split('/').pop() || `onboarding_sync_${Date.now()}.m4a`
-            // Audio was eagerly uploaded to staging — just create the DB record
-            await createAudioClipRecord(user.id, person.id, clip.storagePath, fileName, clip.duration, 0)
-
-            // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
-            const coords = data.coordinates
-            if (coords) {
-              processPersonAudio({
-                personId: person.id,
-                audioStoragePath: clip.storagePath,
-                location: { latitude: coords.lat, longitude: coords.lng },
-                occasions: buildOccasions(null),
-              }).catch((err) => console.info('[Onboarding] Sync audio processing (fire-and-forget):', err?.message))
-            }
+        // 4. Update friend_link with person_id
+        if (linkId && person?.id) {
+          try {
+            await supabase
+              .from('friend_links')
+              .update({ requester_person_id: person.id })
+              .eq('id', linkId)
+          } catch (e) {
+            console.warn('[Onboarding] Failed to update link with person_id:', e)
           }
         }
       }

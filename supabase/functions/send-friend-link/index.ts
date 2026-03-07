@@ -19,7 +19,7 @@ serve(async (req: Request) => {
 
   try {
     // Parse body
-    const { targetUserId } = await req.json();
+    const { targetUserId, personId } = await req.json();
 
     // Validate targetUserId
     if (!targetUserId || typeof targetUserId !== "string" || !UUID_REGEX.test(targetUserId)) {
@@ -155,6 +155,30 @@ serve(async (req: Request) => {
 
     const linkId = newLink.id;
 
+    // ── If personId provided, link it to this friend_link ─────────────────
+    if (personId && UUID_REGEX.test(personId)) {
+      await supabase
+        .from("friend_links")
+        .update({ requester_person_id: personId })
+        .eq("id", linkId);
+    }
+
+    // ── Referral compatibility: also create a friend_requests mirror row ──
+    // The referral credit triggers fire on friend_requests status changes.
+    try {
+      await supabaseAdmin
+        .from("friend_requests")
+        .insert({
+          sender_id: requesterId,
+          receiver_id: targetUserId,
+          status: "pending",
+          friend_link_id: linkId,
+        });
+    } catch (e) {
+      // Non-fatal: referral tracking is nice-to-have, not critical
+      console.warn("Failed to create mirror friend_request:", e);
+    }
+
     // Look up requester's display_name
     const { data: requesterProfile } = await supabaseAdmin
       .from("profiles")
@@ -173,8 +197,8 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             to: targetProfile.expo_push_token,
             sound: "default",
-            title: "Friend Link Request",
-            body: `${requesterDisplayName} wants to link with you on Mingla`,
+            title: `${requesterDisplayName} wants to connect`,
+            body: "Tap to accept and start planning together.",
             data: {
               type: "friend_link_request",
               linkId,

@@ -20,8 +20,17 @@ import { muteService } from "../services/muteService";
 import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
+import * as Haptics from "expo-haptics";
 import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
+import {
+  usePendingLinkRequests,
+  useSentLinkRequests,
+  useSendFriendLink,
+  useRespondToFriendLink as useRespondToLink,
+  useCancelLinkRequest,
+  useUserSearch,
+} from "../hooks/useFriendLinks";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -290,15 +299,15 @@ export default function ConnectionsPageRefactored({
 
   // ── Pill handler ─────────────────────────────────────────
   const handlePillPress = (id: PillId) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (id === "invite") {
       // Immediately copy invite link — do not set activePill
       try {
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
         Clipboard.setString(inviteLink);
-        Alert.alert("Invite link copied!", "Share it with your friends.");
+        Alert.alert("", "Invite link copied!");
       } catch (e) {
         console.error("Error copying invite link:", e);
-        Alert.alert("Error", "Failed to copy invite link");
       }
       return;
     }
@@ -1091,7 +1100,7 @@ export default function ConnectionsPageRefactored({
         <View style={styles.content}>
           {/* Header: "Chats" + "+" button */}
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Chats</Text>
+            <Text style={styles.title}>Connect</Text>
             <TouchableOpacity
               onPress={() => setFriendPickerVisible(true)}
               style={styles.plusButton}

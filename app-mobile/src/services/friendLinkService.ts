@@ -49,8 +49,10 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   );
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to search users");
+    const text = await response.text();
+    let errorMsg = "Failed to search users";
+    try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+    throw new Error(errorMsg);
   }
 
   const data = await response.json();
@@ -58,9 +60,13 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 }
 
 export async function sendFriendLink(
-  targetUserId: string
+  targetUserId: string,
+  personId?: string
 ): Promise<SendLinkResponse> {
   const token = await getAuthToken();
+
+  const body: Record<string, string> = { targetUserId };
+  if (personId) body.personId = personId;
 
   const response = await fetch(
     `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-friend-link`,
@@ -70,13 +76,15 @@ export async function sendFriendLink(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ targetUserId }),
+      body: JSON.stringify(body),
     }
   );
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to send friend link");
+    const text = await response.text();
+    let errorMsg = "Failed to send friend link";
+    try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+    throw new Error(errorMsg);
   }
 
   return response.json();
@@ -101,8 +109,10 @@ export async function respondToFriendLink(
   );
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to respond to friend link");
+    const text = await response.text();
+    let errorMsg = "Failed to respond to friend link";
+    try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+    throw new Error(errorMsg);
   }
 
   return response.json();
@@ -124,8 +134,10 @@ export async function unlinkFriend(linkId: string): Promise<void> {
   );
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to unlink friend");
+    const text = await response.text();
+    let errorMsg = "Failed to unlink friend";
+    try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+    throw new Error(errorMsg);
   }
 }
 

@@ -197,72 +197,121 @@ serve(async (req: Request) => {
     const requesterInitials = generateInitials(requesterProfile.display_name || requesterProfile.username || "");
     const targetInitials = generateInitials(targetProfile.display_name || targetProfile.username || "");
 
-    // Create saved_people entry for requester on TARGET's side
-    // (so the target can see the requester in their people list)
-    const { data: targetPersonEntry, error: targetPersonError } = await supabaseAdmin
+    // ── Create/update saved_people entry for requester on TARGET's side ──
+    // Check if target already has a saved_people entry for this linked_user
+    const { data: existingTargetPerson } = await supabaseAdmin
       .from("saved_people")
-      .insert({
-        user_id: targetId,
-        name: requesterProfile.display_name || requesterProfile.username || "Linked Friend",
-        initials: requesterInitials,
-        birthday: requesterProfile.birthday || null,
-        gender: requesterProfile.gender || null,
-        is_linked: true,
-        linked_user_id: requesterId,
-        link_id: linkId,
-      })
       .select("id")
-      .single();
+      .eq("user_id", targetId)
+      .eq("linked_user_id", requesterId)
+      .maybeSingle();
 
-    if (targetPersonError || !targetPersonEntry) {
-      console.error("Target saved_people insert error:", targetPersonError);
-      return new Response(
-        JSON.stringify({ error: "Failed to process link response" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    let targetPersonId: string;
+    if (existingTargetPerson) {
+      // Update existing entry to mark as linked
+      await supabaseAdmin
+        .from("saved_people")
+        .update({
+          is_linked: true,
+          link_id: linkId,
+          name: requesterProfile.display_name || requesterProfile.username || "Linked Friend",
+          initials: requesterInitials,
+          birthday: requesterProfile.birthday || null,
+          gender: requesterProfile.gender || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingTargetPerson.id);
+      targetPersonId = existingTargetPerson.id;
+    } else {
+      const { data: targetPersonEntry, error: targetPersonError } = await supabaseAdmin
+        .from("saved_people")
+        .insert({
+          user_id: targetId,
+          name: requesterProfile.display_name || requesterProfile.username || "Linked Friend",
+          initials: requesterInitials,
+          birthday: requesterProfile.birthday || null,
+          gender: requesterProfile.gender || null,
+          is_linked: true,
+          linked_user_id: requesterId,
+          link_id: linkId,
+        })
+        .select("id")
+        .single();
+
+      if (targetPersonError || !targetPersonEntry) {
+        console.error("Target saved_people insert error:", targetPersonError);
+        return new Response(
+          JSON.stringify({ error: "Failed to process link response" }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      targetPersonId = targetPersonEntry.id;
     }
 
-    // Create saved_people entry for target on REQUESTER's side
-    // (so the requester can see the target in their people list)
-    const { data: requesterPersonEntry, error: requesterPersonError } = await supabaseAdmin
+    // ── Create/update saved_people entry for target on REQUESTER's side ──
+    const { data: existingRequesterPerson } = await supabaseAdmin
       .from("saved_people")
-      .insert({
-        user_id: requesterId,
-        name: targetProfile.display_name || targetProfile.username || "Linked Friend",
-        initials: targetInitials,
-        birthday: targetProfile.birthday || null,
-        gender: targetProfile.gender || null,
-        is_linked: true,
-        linked_user_id: targetId,
-        link_id: linkId,
-      })
       .select("id")
-      .single();
+      .eq("user_id", requesterId)
+      .eq("linked_user_id", targetId)
+      .maybeSingle();
 
-    if (requesterPersonError || !requesterPersonEntry) {
-      console.error("Requester saved_people insert error:", requesterPersonError);
-      return new Response(
-        JSON.stringify({ error: "Failed to process link response" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    let requesterPersonId: string;
+    if (existingRequesterPerson) {
+      // Update existing entry to mark as linked
+      await supabaseAdmin
+        .from("saved_people")
+        .update({
+          is_linked: true,
+          link_id: linkId,
+          name: targetProfile.display_name || targetProfile.username || "Linked Friend",
+          initials: targetInitials,
+          birthday: targetProfile.birthday || null,
+          gender: targetProfile.gender || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingRequesterPerson.id);
+      requesterPersonId = existingRequesterPerson.id;
+    } else {
+      const { data: requesterPersonEntry, error: requesterPersonError } = await supabaseAdmin
+        .from("saved_people")
+        .insert({
+          user_id: requesterId,
+          name: targetProfile.display_name || targetProfile.username || "Linked Friend",
+          initials: targetInitials,
+          birthday: targetProfile.birthday || null,
+          gender: targetProfile.gender || null,
+          is_linked: true,
+          linked_user_id: targetId,
+          link_id: linkId,
+        })
+        .select("id")
+        .single();
+
+      if (requesterPersonError || !requesterPersonEntry) {
+        console.error("Requester saved_people insert error:", requesterPersonError);
+        return new Response(
+          JSON.stringify({ error: "Failed to process link response" }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      requesterPersonId = requesterPersonEntry.id;
     }
 
     // Update friend_links with accepted status and person IDs
-    // requester_person_id = the saved_people entry on the requester's side (requesterPersonEntry)
-    // target_person_id = the saved_people entry on the target's side (targetPersonEntry)
     const { error: acceptError } = await supabaseAdmin
       .from("friend_links")
       .update({
         status: "accepted",
         accepted_at: new Date().toISOString(),
-        requester_person_id: requesterPersonEntry.id,
-        target_person_id: targetPersonEntry.id,
+        requester_person_id: requesterPersonId,
+        target_person_id: targetPersonId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", linkId);
@@ -278,6 +327,18 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── Mirror accept to legacy friend_requests for referral credit triggers ──
+    try {
+      await supabaseAdmin
+        .from("friend_requests")
+        .update({ status: "accepted" })
+        .eq("sender_id", requesterId)
+        .eq("receiver_id", targetId)
+        .eq("status", "pending");
+    } catch (e) {
+      console.warn("Failed to mirror accept to friend_requests:", e);
+    }
+
     // Send push notification to requester (fire-and-forget)
     try {
       if (requesterProfile.expo_push_token) {
@@ -288,8 +349,8 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             to: requesterProfile.expo_push_token,
             sound: "default",
-            title: "Link Accepted!",
-            body: `${targetDisplayName} accepted your link request`,
+            title: `You're connected with ${targetDisplayName}!`,
+            body: "Check out their picks in For You.",
             data: {
               type: "friend_link_accepted",
               linkId,
@@ -308,8 +369,8 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         status: "accepted",
-        personId: targetPersonEntry.id,
-        linkedPersonId: requesterPersonEntry.id,
+        personId: targetPersonId,
+        linkedPersonId: requesterPersonId,
       }),
       {
         status: 200,

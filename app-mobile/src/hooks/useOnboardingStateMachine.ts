@@ -50,6 +50,12 @@ export function useOnboardingStateMachine({
   const [skippedFriends, setSkippedFriends] = useState(false)
   const [isLaunch, setIsLaunch] = useState(false)
 
+  // Mirror state in a ref so goNext/goBack can read it synchronously
+  // without relying on setState updater functions (which React 18 may
+  // defer when there are pending updates, breaking the shouldLaunch pattern).
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   // ─── Fix A: Sync state when initialStep changes after mount ───
   // React's useState only uses the initial value on the first render.
   // When the resume logic in OnboardingFlow calls setInitialStep(N),
@@ -96,42 +102,37 @@ export function useOnboardingStateMachine({
   }, [getStep4Sequence, getStep5Sequence])
 
   const goNext = useCallback(() => {
-    let shouldLaunch = false
-    setState((prev) => {
-      const seq = getSequence(prev.step)
-      const idx = seq.indexOf(prev.subStep)
+    const prev = stateRef.current
+    const seq = getSequence(prev.step)
+    const idx = seq.indexOf(prev.subStep)
 
-      // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
-      if (idx === -1) {
-        logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
-        return prev
-      }
-
-      // If not at end of current step's sub-steps, advance within step
-      if (idx < seq.length - 1) {
-        const next = { step: prev.step, subStep: seq[idx + 1] }
-        logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-        return next
-      }
-
-      // At end of step — advance to next step
-      if (prev.step < 5) {
-        const nextStep = (prev.step + 1) as OnboardingStep
-        const nextSeq = getSequence(nextStep)
-        const next = { step: nextStep, subStep: nextSeq[0] }
-        logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-        return next
-      }
-
-      // At end of Step 5 — flag for launch (side effect handled outside setState)
-      logger.onboarding('LAUNCH triggered from end of Step 5')
-      shouldLaunch = true
-      return prev
-    })
-    // Set launch state outside the updater — setState updaters must be pure functions
-    if (shouldLaunch) {
-      setIsLaunch(true)
+    // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
+    if (idx === -1) {
+      logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+      return
     }
+
+    // If not at end of current step's sub-steps, advance within step
+    if (idx < seq.length - 1) {
+      const next = { step: prev.step, subStep: seq[idx + 1] }
+      logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+      setState(next)
+      return
+    }
+
+    // At end of step — advance to next step
+    if (prev.step < 5) {
+      const nextStep = (prev.step + 1) as OnboardingStep
+      const nextSeq = getSequence(nextStep)
+      const next = { step: nextStep, subStep: nextSeq[0] }
+      logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+      setState(next)
+      return
+    }
+
+    // At end of Step 5 — trigger launch directly (no updater indirection)
+    logger.onboarding('LAUNCH triggered from end of Step 5')
+    setIsLaunch(true)
   }, [getSequence])
 
   // ─── Fix C: goBack floor is always Step 1 ───
@@ -140,36 +141,36 @@ export function useOnboardingStateMachine({
   // even if the component remounts and resume re-runs, goBack always allows
   // navigating all the way back to Step 1.
   const goBack = useCallback(() => {
-    setState((prev) => {
-      const seq = getSequence(prev.step)
-      const idx = seq.indexOf(prev.subStep)
+    const prev = stateRef.current
+    const seq = getSequence(prev.step)
+    const idx = seq.indexOf(prev.subStep)
 
-      // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
-      if (idx === -1) {
-        logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
-        return prev
-      }
+    // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
+    if (idx === -1) {
+      logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+      return
+    }
 
-      // If not at start of current step, go back within step
-      if (idx > 0) {
-        const next = { step: prev.step, subStep: seq[idx - 1] }
-        logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-        return next
-      }
+    // If not at start of current step, go back within step
+    if (idx > 0) {
+      const next = { step: prev.step, subStep: seq[idx - 1] }
+      logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+      setState(next)
+      return
+    }
 
-      // At start of step — go to previous step's last sub-step
-      if (prev.step > 1) {
-        const prevStep = (prev.step - 1) as OnboardingStep
-        const prevSeq = getSequence(prevStep)
-        const next = { step: prevStep, subStep: prevSeq[prevSeq.length - 1] }
-        logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-        return next
-      }
+    // At start of step — go to previous step's last sub-step
+    if (prev.step > 1) {
+      const prevStep = (prev.step - 1) as OnboardingStep
+      const prevSeq = getSequence(prevStep)
+      const next = { step: prevStep, subStep: prevSeq[prevSeq.length - 1] }
+      logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+      setState(next)
+      return
+    }
 
-      // At Step 1 welcome — can't go back further
-      logger.onboarding(`goBack: already at Step 1/welcome — no-op`)
-      return prev
-    })
+    // At Step 1 welcome — can't go back further
+    logger.onboarding(`goBack: already at Step 1/welcome — no-op`)
   }, [getSequence])
 
   const goToSubStep = useCallback((subStep: SubStep) => {
