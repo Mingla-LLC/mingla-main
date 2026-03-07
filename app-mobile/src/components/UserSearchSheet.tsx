@@ -73,7 +73,7 @@ export default function UserSearchSheet({
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await sendLinkMutation.mutateAsync(selectedUser.id);
+      const result = await sendLinkMutation.mutateAsync({ targetUserId: selectedUser.id });
       setLinkSent(true);
 
       // Auto-close after 2 seconds

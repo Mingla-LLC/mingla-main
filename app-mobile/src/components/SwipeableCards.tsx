@@ -7,9 +7,9 @@ import {
   Image,
   StyleSheet,
   Animated,
+  Easing,
   PanResponder,
   StatusBar,
-  ActivityIndicator,
   ScrollView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -182,6 +182,150 @@ const getIconComponent = (iconName: string) => {
   return iconMap[iconName] || iconName || "heart";
 };
 
+/** Shared pulsing-dots loading indicator */
+function PulseDots({ size = 8, speed = 600 }: { size?: number; speed?: number }) {
+  const dots = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+
+  useEffect(() => {
+    const stagger = Math.round(speed / 3);
+    const halfSpeed = speed / 2;
+    const handles: ReturnType<typeof setTimeout>[] = [];
+    const anims: Animated.CompositeAnimation[] = [];
+
+    dots.forEach((dot, i) => {
+      const timeout = setTimeout(() => {
+        const anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(dot, {
+              toValue: 1,
+              duration: halfSpeed,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(dot, {
+              toValue: 0,
+              duration: halfSpeed,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        anims.push(anim);
+        anim.start();
+      }, i * stagger);
+      handles.push(timeout);
+    });
+
+    return () => {
+      handles.forEach(clearTimeout);
+      anims.forEach((a) => a.stop());
+      dots.forEach((d) => d.setValue(0));
+    };
+  }, [speed]);
+
+  return (
+    <View style={pulseDotsStyles.container}>
+      {dots.map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            {
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              backgroundColor: '#eb7825',
+            },
+            {
+              opacity: dot.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.35, 1],
+              }),
+              transform: [
+                {
+                  scale: dot.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.4],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+const pulseDotsStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+});
+
+/** Indeterminate progress bar for slow-load state */
+function IndeterminateBar() {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(progress, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  return (
+    <View style={indeterminateBarStyles.track}>
+      <Animated.View
+        style={[
+          indeterminateBarStyles.fill,
+          {
+            width: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [24, 96],
+            }),
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+const indeterminateBarStyles = StyleSheet.create({
+  track: {
+    width: 120,
+    height: 2,
+    backgroundColor: '#ffedd5',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  fill: {
+    height: 2,
+    backgroundColor: '#fb923c',
+    borderRadius: 1,
+  },
+});
+
 export default function SwipeableCards({
   userPreferences,
   currentMode = "solo",
@@ -231,14 +375,14 @@ export default function SwipeableCards({
 
   // Combine all loading states for UI consistency and to prevent animation freezing
   // Note: We only block the UI for initial loading (loading), not background refetches (isFetching)
-  // Include isBatchTransitioning so the spinner shows while curated batch is loading
+  // Include isBatchTransitioning so the loader shows while curated batch is loading,
+  // but exclude it when isSlowBatchLoad is true so the slow-load state can render instead
   const isAnyLoading =
-    loading || isModeTransitioning || isWaitingForSessionResolution || isBatchTransitioning;
+    loading || isModeTransitioning || isWaitingForSessionResolution ||
+    (isBatchTransitioning && !isSlowBatchLoad);
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [currentTipIndex, setCurrentTipIndex] = useState(0);
-  const spinValue = useRef(new Animated.Value(0)).current;
 
   // Card content entrance animation values
   const cardContentOpacity = useRef(new Animated.Value(0)).current;
@@ -254,7 +398,6 @@ export default function SwipeableCards({
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
-  const batchSpinValue = useRef(new Animated.Value(0)).current;
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
   );
@@ -338,13 +481,17 @@ export default function SwipeableCards({
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
   const previousBatchIdsRef = useRef<string>('');
+  const handleSwipeRef = useRef<((direction: "left" | "right", card: Recommendation) => Promise<void>) | null>(null);
+  const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
+  const removedCardIdsRef = useRef<string[]>(removedCardIds);
 
   // Update refs when state changes
   useEffect(() => {
     recommendationsRef.current = recommendations;
     removedCardsRef.current = removedCards;
     currentCardIndexRef.current = currentCardIndex;
-  }, [recommendations, removedCards, currentCardIndex]);
+    removedCardIdsRef.current = removedCardIds;
+  }, [recommendations, removedCards, currentCardIndex, removedCardIds]);
 
   // Swipe animation values
   const position = useRef(new Animated.ValueXY()).current;
@@ -364,53 +511,6 @@ export default function SwipeableCards({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
   });
-
-  // Tips related to vibes, intents, and categories
-  const tips = [
-    "💡 Solo adventures are perfect for discovering hidden gems at your own pace",
-    "🌟 First dates? Try cozy cafes or scenic walks for a relaxed atmosphere",
-    "💕 Romantic vibes? Look for intimate dining experiences or sunset spots",
-    "👥 Group fun works best with interactive activities like escape rooms or game nights",
-    "☕ Drink spots are great for casual meetups and conversation",
-    "🌿 Nature experiences let you explore parks and scenic trails",
-    "🍽️ Fine Dining offers unique culinary adventures beyond the ordinary",
-    "🎨 Creative & Arts activities like pottery or painting classes spark creativity",
-    "🧘‍♀️ Wellness experiences combine relaxation with meaningful connection",
-    "🎬 Watch options are perfect for rainy days or cozy evenings",
-    "🎮 Play activities keep you active while having fun",
-    "🧺 Picnics are budget-friendly and perfect for sunny afternoons",
-    "✨ Freestyle experiences let you discover something completely unexpected",
-    "🍔 Casual Eats offer great food without the formal atmosphere",
-    "💼 Business meetings? Choose quiet cafes or professional spaces",
-    "🌆 Explore new neighborhoods to find unique local experiences",
-    "⏰ Adjust your travel time to discover places just outside your usual radius",
-    "💰 Budget-friendly options exist in every category - explore different price ranges",
-    "🎯 Mix different categories to keep your experiences diverse and exciting",
-    "🌙 Late night spots offer a different vibe - perfect for night owls",
-    "☀️ Afternoon activities often have better availability and pricing",
-    "🍳 Brunch spots are great for weekend socializing",
-    "🌳 Nature-based activities are free and refreshing",
-    "🎪 Look for pop-up events and seasonal experiences",
-    "🏛️ Museums and galleries offer cultural enrichment",
-    "🎵 Live music venues create memorable atmosphere",
-    "🍷 Wine tastings and brewery tours are great for groups",
-    "🏖️ Waterfront locations offer scenic views and fresh air",
-    "🎭 Theaters and comedy clubs provide entertainment value",
-    "🛍️ Markets and festivals showcase local culture",
-    "🏋️ Fitness classes combine health with social connection",
-    "📚 Bookstores and libraries offer quiet, intellectual spaces",
-    "🎨 Art galleries provide inspiration and conversation starters",
-    "🍕 Food tours let you sample multiple places in one experience",
-    "🌉 Iconic landmarks make for great photo opportunities",
-    "🏞️ Hiking trails offer exercise and beautiful scenery",
-    "🎪 Festivals and events create shared memorable experiences",
-    "🍰 Dessert spots are perfect for sweet-tooth satisfaction",
-    "🌮 Food trucks offer variety and casual dining",
-    "🎯 Try something new - you might discover a new favorite activity",
-  ];
-
-  // Shuffle tips array for random order
-  const shuffledTips = useRef(tips.sort(() => Math.random() - 0.5)).current;
 
   // Filter out removed cards (needed for shouldShowLoader calculation)
   // Note: removedCards is a state variable, so we need to use it carefully
@@ -458,62 +558,21 @@ export default function SwipeableCards({
     isWaitingForSessionResolution,
   ]);
 
-  // Rotate tips every 5 seconds
+  // Fade-in animation for primary loader
+  const loaderFadeIn = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    if (!shouldShowLoader) return;
-
-    const tipInterval = setInterval(() => {
-      setCurrentTipIndex((prev) => (prev + 1) % shuffledTips.length);
-    }, 5000);
-
-    return () => clearInterval(tipInterval);
-  }, [shouldShowLoader, shuffledTips.length]);
-
-  // Animate spinner
-  useEffect(() => {
-    if (!shouldShowLoader) return;
-
-    const spinAnimation = Animated.loop(
-      Animated.timing(spinValue, {
+    if (shouldShowLoader) {
+      loaderFadeIn.setValue(0);
+      const anim = Animated.timing(loaderFadeIn, {
         toValue: 1,
-        duration: 2000,
+        duration: 400,
         useNativeDriver: true,
-      })
-    );
-
-    spinAnimation.start();
-
-    return () => spinAnimation.stop();
-  }, [shouldShowLoader, spinValue]);
-
-  useEffect(() => {
-    if (!showNextBatchLoader) return;
-
-    const spinAnimation = Animated.loop(
-      Animated.timing(batchSpinValue, {
-        toValue: 1,
-        duration: 900,
-        useNativeDriver: true,
-      })
-    );
-
-    spinAnimation.start();
-
-    return () => {
-      spinAnimation.stop();
-      batchSpinValue.setValue(0);
-    };
-  }, [showNextBatchLoader, batchSpinValue]);
-
-  const spin = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-
-  const batchSpin = batchSpinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
+      });
+      anim.start();
+      return () => anim.stop();
+    }
+  }, [shouldShowLoader]);
 
   // Location and fetching are now handled by RecommendationsContext
 
@@ -714,6 +773,11 @@ export default function SwipeableCards({
   }, [recommendations]);
 
   // PanResponder for swipe gestures
+  // CLOSURE INVARIANT: This PanResponder is created once and never recreated.
+  // All external values (functions, props, state) MUST be accessed via refs inside
+  // these handlers. Direct variable access will be stale (captured from initial render).
+  // Current refs: recommendationsRef, removedCardsRef, currentCardIndexRef,
+  // removedCardIdsRef, handleSwipeRef, handleCardExpandRef.
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -736,14 +800,14 @@ export default function SwipeableCards({
         const availableCards = recommendationsRef.current.filter(
           (rec) =>
             !removedCardsRef.current.has(rec.id) &&
-            !removedCardIds.includes(rec.id)
+            !removedCardIdsRef.current.includes(rec.id)
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
 
         // Check for swipe up (expand card)
         if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
           if (cardToRemove) {
-            handleCardExpand();
+            handleCardExpandRef.current?.();
           }
           Animated.spring(position, {
             toValue: { x: 0, y: 0 },
@@ -785,7 +849,7 @@ export default function SwipeableCards({
             setCurrentCardIndex(0);
 
             // Handle swipe logic (tracking, saving, etc.) in background
-            handleSwipe(direction, cardToRemove);
+            handleSwipeRef.current?.(direction, cardToRemove);
 
             // Wait for React to render the next card before resetting position
             // This prevents the flash/flicker
@@ -891,7 +955,7 @@ export default function SwipeableCards({
       if (user?.id) {
         // Curated cards don't have a single place_id — skip Supabase operations
         if ((card as any).cardType === 'curated') {
-          // HF-002 fix: Track curated card interaction in DB
+          // Track curated card interaction in DB
           try {
             const interactionType = direction === 'right' ? 'swipe_right' : 'swipe_left';
             await ExperiencesService.trackInteraction(
@@ -907,13 +971,9 @@ export default function SwipeableCards({
 
           if (direction === 'right') {
             onCardLike(card);
-          } else {
-            // HF-001 fix: Add curated card to dismissed list so it appears in "Review dismissed cards"
-            addDismissedCard(card);
           }
-          position.setValue({ x: 0, y: 0 });
-          return;
-        }
+          // Left-swipe dismissal tracking handled in the shared block below
+        } else {
 
         const interactionType =
           direction === "right" ? "swipe_right" : "swipe_left";
@@ -1007,6 +1067,7 @@ export default function SwipeableCards({
             // Continue even if swipe state tracking fails
           }
         }
+        }
       } else {
         // User not authenticated - just handle locally
         if (direction === "right" && onCardLike) {
@@ -1023,17 +1084,25 @@ export default function SwipeableCards({
     }
 
     // Report progress for prefetch trigger
-    handleDeckCardProgress(currentCardIndex + 1, availableRecommendations.length);
+    // availableRecommendations still includes the card being swiped (state not committed yet)
+    // currentCardIndex is always 0 in the removed-cards pattern, so remaining = length - 1
+    handleDeckCardProgress(0, availableRecommendations.length);
 
-    // Auto-advance to next batch when current batch runs out
-    // generateNextBatch handles rotation when max batches reached
-    if (currentCardIndex >= availableRecommendations.length - 1 && (hasMoreCards || deckBatches.length > 1)) {
+    // Auto-advance to next batch when all cards in current batch have been swiped
+    // availableRecommendations.length is pre-swipe count, so <= 1 means this was the last card
+    if (availableRecommendations.length <= 1 && (hasMoreCards || deckBatches.length > 1)) {
       generateNextBatch();
     }
-
-    // Reset card position for the next swipe
-    position.setValue({ x: 0, y: 0 });
   };
+
+  // Sync function refs for PanResponder (must be after function definitions)
+  useEffect(() => {
+    handleSwipeRef.current = handleSwipe;
+  });
+
+  useEffect(() => {
+    handleCardExpandRef.current = handleCardExpand;
+  });
 
   const handleBuyNow = () => {
     if (onAddToCalendar) {
@@ -1138,38 +1207,22 @@ export default function SwipeableCards({
     onResetCards?.();
   };
 
-  // Loading state with spinner and rotating tips
-  // Show loader if: loading, transitioning modes, or waiting for session resolution
+  // Loading state — primary loader with brand mark and pulse dots
   if (shouldShowLoader) {
     return (
       <View style={styles.loadingContainer}>
-        <View style={styles.loadingContent}>
-          {/* Animated Spinner */}
-          <Animated.View
-            style={[
-              styles.spinnerContainer,
-              {
-                transform: [{ rotate: spin }],
-              },
-            ]}
-          >
-            <View style={styles.spinnerOuter}>
-              <View style={styles.spinnerInner}>
-                <Ionicons name="sparkles" size={32} color="#eb7825" />
-              </View>
-            </View>
-          </Animated.View>
-
-          {/* Loading Text */}
-          <Text style={styles.loadingTitle}>
-            Finding your perfect experiences...
-          </Text>
-
-          {/* Rotating Tip */}
-          <View style={styles.tipContainer}>
-            <Text style={styles.tipText}>{shuffledTips[currentTipIndex]}</Text>
+        <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
+          <View style={styles.brandMark}>
+            <Ionicons name="compass-outline" size={28} color="#eb7825" />
           </View>
-        </View>
+          <PulseDots size={8} speed={600} />
+          <View style={styles.loaderTextGroup}>
+            <Text style={styles.loadingTitle}>Curating your lineup</Text>
+            <Text style={styles.loaderSubtitle}>
+              Finding experiences that match your energy
+            </Text>
+          </View>
+        </Animated.View>
       </View>
     );
   }
@@ -1366,16 +1419,19 @@ export default function SwipeableCards({
     );
   }
 
-  // Slow batch load — show "Still loading" instead of exhaustion
+  // Slow batch load — reassuring state with progress hint
   if (isSlowBatchLoad && !isExhausted) {
     return (
-      <View style={styles.noCardsContainer}>
-        <View style={styles.noCardsContent}>
-          <ActivityIndicator size="large" color="#eb7825" />
-          <Text style={styles.noCardsTitle}>Still loading...</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Finding more places nearby. This is taking a bit longer than usual.
-          </Text>
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingContent}>
+          <PulseDots size={10} speed={600} />
+          <View style={styles.loaderTextGroup}>
+            <Text style={styles.loadingTitle}>Digging a little deeper</Text>
+            <Text style={styles.loaderSubtitle}>
+              The best spots don't always surface first
+            </Text>
+          </View>
+          <IndeterminateBar />
         </View>
       </View>
     );
@@ -1475,7 +1531,7 @@ export default function SwipeableCards({
     );
   }
 
-  // End of current batch — more available, seamless transition (safety fallback)
+  // End of current batch — more available, brief transition
   if (
     !isExhausted &&
     hasCompletedInitialFetch &&
@@ -1485,12 +1541,11 @@ export default function SwipeableCards({
     !isWaitingForSessionResolution
   ) {
     return (
-      <View style={styles.noCardsContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
-        <Text style={styles.loadingNextBatch}>Loading more experiences...</Text>
-        <Text style={styles.loadingNextBatchSubtitle}>
-          This should only take a moment
-        </Text>
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingContent}>
+          <PulseDots size={8} speed={400} />
+          <Text style={styles.batchTransitionText}>Pulling up more for you</Text>
+        </View>
       </View>
     );
   }
@@ -1522,14 +1577,7 @@ export default function SwipeableCards({
           )}
           {showNextBatchLoader && (
             <View style={styles.nextBatchOverlay} pointerEvents="none">
-              <Animated.View
-                style={[
-                  styles.nextBatchSpinnerRing,
-                  { transform: [{ rotate: batchSpin }] },
-                ]}
-              >
-                <View style={styles.nextBatchSpinnerCore} />
-              </Animated.View>
+              <PulseDots size={8} speed={400} />
             </View>
           )}
 
@@ -2137,58 +2185,38 @@ const styles = StyleSheet.create({
   },
   loadingContent: {
     alignItems: "center",
-    gap: 32,
+    gap: 24,
     maxWidth: 320,
   },
-  spinnerContainer: {
-    width: 72,
-    height: 72,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  spinnerOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: "#ffedd5",
-    borderTopColor: "#eb7825",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  spinnerInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  brandMark: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#fff7ed",
     justifyContent: "center",
     alignItems: "center",
   },
+  loaderTextGroup: {
+    alignItems: "center",
+    gap: 6,
+  },
   loadingTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "600",
     color: "#111827",
     textAlign: "center",
   },
-  tipContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    minHeight: 80,
-    justifyContent: "center",
-  },
-  tipText: {
-    fontSize: 15,
-    color: "#374151",
+  loaderSubtitle: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#6b7280",
     textAlign: "center",
-    lineHeight: 22,
+  },
+  batchTransitionText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#4b5563",
+    textAlign: "center",
   },
   nextBatchOverlay: {
     position: "absolute",
@@ -2200,23 +2228,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 60,
     borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.38)",
-  },
-  nextBatchSpinnerRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 4,
-    borderColor: "rgba(235, 120, 37, 0.25)",
-    borderTopColor: "#eb7825",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  nextBatchSpinnerCore: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: "rgba(255, 255, 255, 0.55)",
   },
   noCardsScrollView: {
     flex: 1,
@@ -2507,16 +2519,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
-  },
-  loadingNextBatch: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    marginTop: 12,
-  },
-  loadingNextBatchSubtitle: {
-    fontSize: 13,
-    color: "#999",
-    marginTop: 4,
   },
   batchHistorySection: {
     marginTop: 16,

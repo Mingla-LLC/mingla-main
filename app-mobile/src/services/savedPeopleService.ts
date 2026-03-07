@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseUrl } from "./supabase";
 import { FriendLink } from "../types/friendLink";
 
 export interface SavedPerson {
@@ -108,7 +108,7 @@ export async function generatePersonExperiences(params: {
   if (!token) throw new Error("Not authenticated");
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/generate-person-experiences`,
+    `${supabaseUrl}/functions/v1/generate-person-experiences`,
     {
       method: "POST",
       headers: {

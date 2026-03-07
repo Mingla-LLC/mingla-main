@@ -10,6 +10,8 @@ export const friendLinkKeys = {
   sent: (userId: string) => [...friendLinkKeys.all, "sent", userId] as const,
   search: (query: string) =>
     [...friendLinkKeys.all, "search", query] as const,
+  phoneInvites: (userId: string) =>
+    [...friendLinkKeys.all, "phone-invites", userId] as const,
 };
 
 export function usePendingLinkRequests(userId: string) {

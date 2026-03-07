@@ -12,10 +12,11 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 47 Deno serverless functions |
+| Edge Functions | 48 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
+| SMS | Twilio (OTP verification + Programmable Messaging for invites) |
 | Payments | Stripe Connect |
 | Push Notifications | Expo Push Notifications |
 | Navigation | Custom state-driven (no React Navigation) |
@@ -36,11 +37,11 @@ Mingla/
 │   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~33 React Query hooks
-│   │   ├── services/                   # ~59 service files
+│   │   ├── hooks/                      # ~34 React Query hooks
+│   │   ├── services/                   # ~60 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store
-│   │   ├── types/                      # TypeScript types (incl. onboarding.ts, holidayTypes.ts)
+│   │   ├── types/                      # TypeScript types (incl. phoneInvite.ts, onboarding.ts)
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
 │   │   └── utils/                      # 12 utility files
 │   ├── app.json
@@ -48,10 +49,9 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 47 Deno edge functions
+│   ├── functions/                      # 48 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
-│   │   ├── get-holiday-cards/         # Holiday card sourcing (pool + Google fallback)
-│   │   ├── generate-ai-summary/       # AI birthday/gift summary via GPT-4o-mini
+│   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
 │   ├── migrations/                    # 120+ SQL migration files
 │   └── config.toml
@@ -96,9 +96,16 @@ The person-centric "For You" view provides personalized recommendations for each
 - **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
 
+### Link a Friend
+
+The "Link a Friend" flow supports two methods:
+
+- **Search Mingla** -- Search existing Mingla users by username and send friend link requests.
+- **Invite by Phone** -- Enter a phone number with country picker (defaults to device locale), send an SMS invite via Twilio. When the invited person signs up and verifies their phone, both users are automatically linked as friends with `saved_people` entries created on both sides. Rate limited to 10 invites per 24 hours.
+
 ### Connect Page
 
-The Connect page (formerly "Chats") manages friend relationships:
+The Connect page manages friend relationships:
 
 - **Add Friends** -- Username search with debounced queries via `search-users` edge function. Send friend link requests with haptic feedback.
 - **Requests** -- View and respond to pending friend link requests with accept/decline actions.
@@ -109,7 +116,9 @@ The Connect page (formerly "Chats") manages friend relationships:
 ### Friend Links System
 
 - Friend link requests sent via `send-friend-link` edge function with push notifications
+- Phone invites via `send-phone-invite` edge function with Twilio SMS and auto-linking on signup
 - Mirror writes to legacy `friend_requests` table preserve referral credit triggers
+- Auto-convert trigger creates `friend_links` + `saved_people` when invited users sign up
 - Duplicate-prevention on `saved_people` entries during link acceptance (`.maybeSingle()` check)
 - Saved people entries created for every synced friend during onboarding (not gated on audio recording)
 - Cross-invalidation of React Query caches on link accept (friend links + saved people + personalized cards)
@@ -123,9 +132,12 @@ The Connect page (formerly "Chats") manages friend relationships:
 
 ### Card-Based Swipe Interface
 - Swipe right to save, left to skip, up to expand full details
+- PanResponder with ref-based closure management for reliable gesture handling
 - Curated multi-stop itinerary experiences interleaved with single-place cards
 - Expanded card modal with image gallery, weather forecast, busyness predictions, and match score breakdown
 - Dismissed cards review sheet for reconsidering skipped cards
+- Batch auto-advance when all cards in a batch have been swiped (regular and curated)
+- Unified loading states with pulsing-dot animation (initial load, slow batch, batch transition, overlay) — no stock spinners
 
 ### 12-Category System
 
@@ -187,6 +199,12 @@ The Connect page (formerly "Chats") manages friend relationships:
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 
+### Push Notifications
+
+| Table | Purpose |
+|-------|---------|
+| `user_push_tokens` | Expo push tokens per user/device (platform, device_id, updated_at) |
+
 ### Social Tables
 
 | Table | Purpose |
@@ -195,7 +213,7 @@ The Connect page (formerly "Chats") manages friend relationships:
 | `friends` | Bidirectional friendship records |
 | `friend_links` | Friend link requests (pending/accepted) for synced friends |
 | `blocked_users` | User blocks |
-| `pending_invites` | Phone invites for non-app users |
+| `pending_invites` | Phone invites for non-app users (auto-converts to friend_links + saved_people on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `referral_credits` | Referral credit audit log |
 
@@ -263,10 +281,11 @@ The Connect page (formerly "Chats") manages friend relationships:
 | `send-friend-link` | Send friend link invitations (with referral mirror write) |
 | `respond-friend-link` | Process friend link responses (with duplicate prevention) |
 | `unlink-friend` | Remove friend connections |
+| `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
 | `send-friend-request-email` | Email notifications for friend requests |
 | `send-collaboration-invite` | Push notifications for session invites |
 | `notify-invite-response` | Push notifications for invite responses |
-| `send-message-email` | Email notifications for messages |
+| `send-message-email` | Push notifications for new direct messages |
 | `process-referral` | Manual referral credit reconciliation |
 
 ### Authentication
@@ -320,6 +339,10 @@ OPENAI_API_KEY
 TICKETMASTER_API_KEY
 STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+TWILIO_VERIFY_SERVICE_SID
+TWILIO_FROM_PHONE (or TWILIO_MESSAGING_SERVICE_SID)
 ```
 
 ---
@@ -347,16 +370,19 @@ npm install
 # 3. Copy environment file and fill in keys
 cp .env.example .env
 
-# 4. Run Supabase migrations (includes custom_holidays + archived_holidays tables)
+# 4. Run Supabase migrations (includes phone invite auto-link trigger)
 supabase db push
 
-# 5. Deploy edge functions (includes get-holiday-cards, generate-ai-summary)
+# 5. Deploy edge functions (includes send-phone-invite)
 supabase functions deploy
 
-# 6. Start Expo
+# 6. Configure Twilio env vars in Supabase dashboard
+#    TWILIO_FROM_PHONE or TWILIO_MESSAGING_SERVICE_SID
+
+# 7. Start Expo
 npx expo start
 
-# 7. Test on physical device (Android/iPhone)
+# 8. Test on physical device (Android/iPhone)
 ```
 
 ### EAS Build
@@ -378,11 +404,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **For You System** -- Birthday hero cards with AI summary, person recommendation cards, expandable holiday rows with real card sourcing (pool-first + Google Places fallback), custom holiday creation modal, archive/unarchive with database persistence, and Elite people summary with BlurView teaser.
-- **Connect Page Redesign** -- Rewrote AddFriendView to use `sendFriendLink` edge function instead of legacy direct DB inserts. Added haptics, updated copy.
-- **Friend Link Pipeline Fixes** -- Mirror writes to `friend_requests` for referral credits, duplicate prevention on `saved_people` during link acceptance, cross-invalidation of personalized card caches.
-- **Onboarding Bug Fix** -- `saved_people` entries now created for every synced friend regardless of audio recording (was previously gated on audio existence).
-- **Re-enabled Disabled Code** -- Restored `usePersonExperiences` hook and `saveDiscoverCache()` call in DiscoverScreen.
+- **Loading State Redesign** -- Replaced spinning ring + 41 rotating tips + stock ActivityIndicators with unified pulsing-dot trio animation across all 4 deck loading states. Each state has distinct copy so users know what's happening. Added indeterminate progress bar for slow-load state. Brand mark with compass icon on primary loader. Removed ~100 lines of dead tip/spinner code.
+- **Phone Invite System** -- Added "Invite by Phone" tab to Link a Friend flow. SMS invites via Twilio with auto-linking on signup (creates friend_links + saved_people). Upgraded the auto-convert trigger to create full friend connections, not just legacy friend_requests.
+- **LinkFriendSheet** -- New tabbed UI replacing direct UserSearchSheet usage. "Search Mingla" and "Invite by Phone" tabs with country picker, phone input, and status feedback.
 
 ---
 

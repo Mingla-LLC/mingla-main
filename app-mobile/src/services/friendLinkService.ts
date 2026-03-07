@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseUrl } from "./supabase";
 import {
   FriendLink,
   UserSearchResult,
@@ -37,7 +37,7 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const token = await getAuthToken();
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/search-users`,
+    `${supabaseUrl}/functions/v1/search-users`,
     {
       method: "POST",
       headers: {
@@ -69,7 +69,7 @@ export async function sendFriendLink(
   if (personId) body.personId = personId;
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-friend-link`,
+    `${supabaseUrl}/functions/v1/send-friend-link`,
     {
       method: "POST",
       headers: {
@@ -97,7 +97,7 @@ export async function respondToFriendLink(
   const token = await getAuthToken();
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/respond-friend-link`,
+    `${supabaseUrl}/functions/v1/respond-friend-link`,
     {
       method: "POST",
       headers: {
@@ -122,7 +122,7 @@ export async function unlinkFriend(linkId: string): Promise<void> {
   const token = await getAuthToken();
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/unlink-friend`,
+    `${supabaseUrl}/functions/v1/unlink-friend`,
     {
       method: "POST",
       headers: {

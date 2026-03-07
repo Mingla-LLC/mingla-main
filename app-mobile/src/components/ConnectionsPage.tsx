@@ -9,6 +9,9 @@ import {
   FlatList,
   TextInput,
   Clipboard,
+  Modal,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -34,12 +37,13 @@ import {
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
-import { PillFilters, PillId } from "./connections/PillFilters";
 import { FriendPickerSheet } from "./connections/FriendPickerSheet";
 import { AddFriendView } from "./connections/AddFriendView";
 import { RequestsView } from "./connections/RequestsView";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
 import MessageInterface from "./MessageInterface";
+
+type PanelId = "add" | "requests" | "blocked" | null;
 
 // Modals kept for MessageInterface actions
 import AddToBoardModal from "./AddToBoardModal";
@@ -92,7 +96,7 @@ export default function ConnectionsPageRefactored({
   const { user } = useAuthSimple();
 
   // ── UI state ─────────────────────────────────────────────
-  const [activePill, setActivePill] = useState<PillId | null>(null);
+  const [activePanel, setActivePanel] = useState<PanelId>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
 
@@ -297,11 +301,10 @@ export default function ConnectionsPageRefactored({
     onUnreadCountChange?.(totalUnread);
   }, [conversations, onUnreadCountChange, mutedUserIds]);
 
-  // ── Pill handler ─────────────────────────────────────────
-  const handlePillPress = (id: PillId) => {
+  // ── Panel handler ────────────────────────────────────────
+  const handleActionPress = (id: PanelId | "invite") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (id === "invite") {
-      // Immediately copy invite link — do not set activePill
       try {
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
         Clipboard.setString(inviteLink);
@@ -311,8 +314,7 @@ export default function ConnectionsPageRefactored({
       }
       return;
     }
-    // Toggle pill — tapping active pill deactivates it
-    setActivePill((prev) => (prev === id ? null : id));
+    setActivePanel((prev) => (prev === id ? null : id));
   };
 
   // ── Friend request actions ───────────────────────────────
@@ -1098,60 +1100,66 @@ export default function ConnectionsPageRefactored({
     <>
       <View style={styles.container}>
         <View style={styles.content}>
-          {/* Header: "Chats" + "+" button */}
+          {/* Compact header: title + action icons */}
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Connect</Text>
-            <TouchableOpacity
-              onPress={() => setFriendPickerVisible(true)}
-              style={styles.plusButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add" size={28} color="#eb7825" />
-            </TouchableOpacity>
+            <Text style={styles.title}>Chats</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => handleActionPress("add")}
+                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleActionPress("requests")}
+                style={[styles.headerIconBtn, activePanel === "requests" && styles.headerIconBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="people-outline" size={18} color={activePanel === "requests" ? "#ffffff" : "#eb7825"} />
+                {incomingRequests.length > 0 && (
+                  <View style={styles.headerBadge}>
+                    <Text style={styles.headerBadgeText}>
+                      {incomingRequests.length > 9 ? "9+" : incomingRequests.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleActionPress("blocked")}
+                style={[styles.headerIconBtn, activePanel === "blocked" && styles.headerIconBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="ban-outline" size={18} color={activePanel === "blocked" ? "#ffffff" : "#eb7825"} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleActionPress("invite")}
+                style={styles.headerIconBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="link-outline" size={18} color="#eb7825" />
+              </TouchableOpacity>
+
+              <View style={styles.headerDivider} />
+
+              <TouchableOpacity
+                onPress={() => setFriendPickerVisible(true)}
+                style={styles.composeBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={18} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
           </View>
-
-          {/* Pill Filters */}
-          <PillFilters
-            activePill={activePill}
-            onPillPress={handlePillPress}
-            requestCount={incomingRequests.length}
-          />
-
-          {/* Conditional pill content */}
-          {activePill === "add" && (
-            <View style={styles.pillContent}>
-              <AddFriendView
-                currentUserId={user?.id || ""}
-                existingFriendIds={existingFriendIds}
-                onRequestSent={() => loadFriendRequests()}
-              />
-            </View>
-          )}
-          {activePill === "requests" && (
-            <View style={styles.pillContent}>
-              <RequestsView
-                requests={incomingRequests}
-                loading={friendsLoading}
-                onAccept={handleAcceptRequest}
-                onDecline={handleDeclineRequest}
-              />
-            </View>
-          )}
-          {activePill === "blocked" && (
-            <View style={styles.pillContent}>
-              <BlockedUsersView
-                blockedUsers={blockedUsers}
-                loading={friendsLoading}
-                onUnblock={handleUnblock}
-              />
-            </View>
-          )}
 
           {/* Search bar */}
           <View style={styles.searchContainer}>
             <Ionicons
               name="search"
-              size={18}
+              size={16}
               color="#9ca3af"
               style={styles.searchIcon}
             />
@@ -1171,20 +1179,19 @@ export default function ConnectionsPageRefactored({
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
-            // Empty state — no conversations at all
             <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={64} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No conversations yet</Text>
+              <Ionicons name="chatbubbles-outline" size={56} color="#d1d5db" />
+              <Text style={styles.emptyTitle}>Your chats live here</Text>
+              <Text style={styles.emptySubtitle}>Tap the compose button to start a conversation</Text>
               <TouchableOpacity
                 onPress={() => setFriendPickerVisible(true)}
                 style={styles.emptyCtaButton}
                 activeOpacity={0.7}
               >
-                <Text style={styles.emptyCtaText}>Message a friend</Text>
+                <Text style={styles.emptyCtaText}>Start a chat</Text>
               </TouchableOpacity>
             </View>
           ) : filteredConversations.length === 0 && searchQuery.trim() ? (
-            // Search returned no results
             <View style={styles.emptyContainer}>
               <Ionicons name="search" size={48} color="#d1d5db" />
               <Text style={styles.emptyTitle}>No results</Text>
@@ -1208,10 +1215,57 @@ export default function ConnectionsPageRefactored({
               }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.chatListContent}
+              ItemSeparatorComponent={() => <View style={styles.chatSeparator} />}
             />
           )}
         </View>
       </View>
+
+      {/* Action Panel Bottom Sheet */}
+      <Modal
+        visible={activePanel !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActivePanel(null)}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => setActivePanel(null)}>
+          <Pressable style={styles.sheetContainer} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>
+                {activePanel === "add" ? "Add Friend" : activePanel === "requests" ? "Friend Requests" : "Blocked Users"}
+              </Text>
+              <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.sheetBody}>
+              {activePanel === "add" && (
+                <AddFriendView
+                  currentUserId={user?.id || ""}
+                  existingFriendIds={existingFriendIds}
+                  onRequestSent={() => loadFriendRequests()}
+                />
+              )}
+              {activePanel === "requests" && (
+                <RequestsView
+                  requests={incomingRequests}
+                  loading={friendsLoading}
+                  onAccept={handleAcceptRequest}
+                  onDecline={handleDeclineRequest}
+                />
+              )}
+              {activePanel === "blocked" && (
+                <BlockedUsersView
+                  blockedUsers={blockedUsers}
+                  loading={friendsLoading}
+                  onUnblock={handleUnblock}
+                />
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Friend Picker Sheet */}
       <FriendPickerSheet
@@ -1225,92 +1279,149 @@ export default function ConnectionsPageRefactored({
   );
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
   },
   content: {
     flex: 1,
   },
+  // ── Header ────────────────────────────────
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingVertical: 15,
     backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#6B7280",
   },
-  plusButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  headerDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: "#E5E7EB",
+    marginHorizontal: 2,
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff7ed",
+    position: "relative",
   },
-  pillContent: {
-    marginTop: 8,
+  headerIconBtnActive: {
+    backgroundColor: "#eb7825",
   },
+  headerBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+  },
+  headerBadgeText: {
+    fontSize: 9,
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  composeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eb7825",
+  },
+  // ── Search ────────────────────────────────
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 6,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 20,
+    paddingHorizontal: 14,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 10,
-    fontSize: 16,
+    paddingVertical: 9,
+    fontSize: 15,
     color: "#111827",
   },
+  // ── Chat list ─────────────────────────────
   chatListContent: {
     paddingBottom: 16,
+  },
+  chatSeparator: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginLeft: 78,
+    marginRight: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
+  // ── Empty state ───────────────────────────
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     color: "#111827",
-    marginTop: 16,
+    marginTop: 14,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 6,
   },
   emptyCtaButton: {
-    marginTop: 16,
+    marginTop: 20,
     backgroundColor: "#eb7825",
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 24,
   },
   emptyCtaText: {
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
+  // ── Error state ───────────────────────────
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1333,5 +1444,44 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "500",
+  },
+  // ── Bottom Sheet ──────────────────────────
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  sheetContainer: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: SCREEN_HEIGHT * 0.6,
+    paddingBottom: 32,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: "#d1d5db",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  sheetBody: {
+    paddingTop: 8,
   },
 });

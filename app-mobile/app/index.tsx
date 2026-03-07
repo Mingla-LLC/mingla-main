@@ -1954,7 +1954,7 @@ function AppContent() {
                           >
                             <View style={styles.navIconContainer}>
                               <Ionicons
-                                name="people-outline"
+                                name="chatbubbles-outline"
                                 size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "connections"
@@ -1980,7 +1980,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Connect
+                              Chats
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity

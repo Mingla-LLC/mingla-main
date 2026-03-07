@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseUrl } from "./supabase";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export async function getPersonalizedCards(
   if (!token) throw new Error("Not authenticated");
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/get-personalized-cards`,
+    `${supabaseUrl}/functions/v1/get-personalized-cards`,
     {
       method: "POST",
       headers: {

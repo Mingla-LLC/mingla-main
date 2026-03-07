@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseUrl } from "./supabase";
 
 export async function getAiSummary(params: {
   personId: string;
@@ -12,7 +12,7 @@ export async function getAiSummary(params: {
   if (!token) throw new Error("Not authenticated");
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/generate-ai-summary`,
+    `${supabaseUrl}/functions/v1/generate-ai-summary`,
     {
       method: "POST",
       headers: {

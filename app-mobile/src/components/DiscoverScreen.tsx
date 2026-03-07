@@ -11,6 +11,7 @@ import {
   TextInput,
   Platform,
   Animated,
+  LayoutAnimation,
   ActivityIndicator,
   Alert,
 } from "react-native";
@@ -36,7 +37,7 @@ import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
 import AddPersonModal from "./AddPersonModal";
-import UserSearchSheet from "./UserSearchSheet";
+import LinkFriendSheet from "./LinkFriendSheet";
 import LinkRequestBanner from "./LinkRequestBanner";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
@@ -791,6 +792,8 @@ export default function DiscoverScreen({
   const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
   const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
   const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
+  const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
+  const deletingAnimRef = useRef(new Animated.Value(1)).current;
 
   // Phase 2: Person selector — hooks re-enabled for For You System.
   const createPersonMutation = useCreatePerson();
@@ -2570,22 +2573,36 @@ export default function DiscoverScreen({
     setSelectedPersonId("for-you");
   };
 
-  // Handle removing a person
+  // Handle removing a person with fade-out animation
   const handleRemovePerson = async (person: SavedPerson) => {
-    try {
-      await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
-    } catch (error) {
-      console.error("[Discover] Failed to delete person:", error);
-    }
+    // Start fade-out animation
+    setDeletingPersonId(person.id);
+    deletingAnimRef.setValue(1);
 
-    // Also remove custom holidays associated with this person
-    const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
-    setCustomHolidays(updatedHolidays);
-    await saveCustomHolidaysToStorage(updatedHolidays);
+    Animated.timing(deletingAnimRef, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(async () => {
+      // Animate the list reflow
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setDeletingPersonId(null);
 
-    if (selectedPersonId === person.id) {
-      setSelectedPersonId("for-you");
-    }
+      if (selectedPersonId === person.id) {
+        setSelectedPersonId("for-you");
+      }
+
+      try {
+        await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
+      } catch (error) {
+        console.error("[Discover] Failed to delete person:", error);
+      }
+
+      // Also remove custom holidays associated with this person
+      const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
+      setCustomHolidays(updatedHolidays);
+      await saveCustomHolidaysToStorage(updatedHolidays);
+    });
   };
 
   // Handle long-press to edit a person
@@ -3104,14 +3121,19 @@ export default function DiscoverScreen({
                 {savedPeople.map((person) => {
                   const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
                   const isSelected = selectedPersonId === person.id;
+                  const isDeleting = deletingPersonId === person.id;
 
                   return (
-                    <View
+                    <Animated.View
                       key={person.id}
                       style={[
                         styles.personPill,
                         isSelected && styles.personPillSelectedGradient,
                         isPending && { opacity: 0.5 },
+                        isDeleting && {
+                          opacity: deletingAnimRef,
+                          transform: [{ scale: deletingAnimRef }],
+                        },
                       ]}
                     >
                       <TouchableOpacity
@@ -3124,7 +3146,7 @@ export default function DiscoverScreen({
                             handlePersonSelect(person.id);
                           }
                         }}
-                        onLongPress={() => !isPending && handleLongPressPerson(person)}
+                        onLongPress={() => handleLongPressPerson(person)}
                         activeOpacity={0.7}
                         accessibilityLabel={isPending ? `Waiting for ${person.name} to accept` : person.name}
                       >
@@ -3166,7 +3188,7 @@ export default function DiscoverScreen({
                           color={isSelected ? "white" : "#9ca3af"}
                         />
                       </TouchableOpacity>
-                    </View>
+                    </Animated.View>
                   );
                 })}
               </ScrollView>
@@ -3433,8 +3455,8 @@ export default function DiscoverScreen({
         }}
       />
 
-      {/* User Search Sheet (for friend linking) */}
-      <UserSearchSheet
+      {/* Link Friend Sheet (search + phone invite) */}
+      <LinkFriendSheet
         visible={isUserSearchVisible}
         onClose={() => setIsUserSearchVisible(false)}
         onLinkSent={() => {

@@ -87,7 +87,7 @@ serve(async (req: Request) => {
     // Check target user exists
     const { data: targetProfile, error: targetError } = await supabaseAdmin
       .from("profiles")
-      .select("id, display_name, expo_push_token")
+      .select("id, display_name")
       .eq("id", targetUserId)
       .maybeSingle();
 
@@ -190,12 +190,21 @@ serve(async (req: Request) => {
 
     // Send push notification to target (fire-and-forget, never fail the request)
     try {
-      if (targetProfile.expo_push_token) {
+      // Read push token from user_push_tokens table (where the app stores it)
+      const { data: tokenRow } = await supabaseAdmin
+        .from("user_push_tokens")
+        .select("push_token")
+        .eq("user_id", targetUserId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (tokenRow?.push_token) {
         await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: targetProfile.expo_push_token,
+            to: tokenRow.push_token,
             sound: "default",
             title: `${requesterDisplayName} wants to connect`,
             body: "Tap to accept and start planning together.",

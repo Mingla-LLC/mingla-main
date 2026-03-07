@@ -25,7 +25,6 @@ class EnhancedNotificationService {
   private expoPushToken: string | null = null;
   private isInitialized = false;
   private pushTokenStored = false;
-  private pushTokenStoreFailed = false;
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
@@ -93,8 +92,7 @@ class EnhancedNotificationService {
 
   async registerForPushNotifications(userId: string): Promise<boolean> {
     try {
-      // Don't retry if we already stored or if the table doesn't exist
-      if (this.pushTokenStored || this.pushTokenStoreFailed) return true;
+      if (this.pushTokenStored) return true;
 
       const initialized = await this.initialize();
       if (!initialized) return false;
@@ -104,7 +102,7 @@ class EnhancedNotificationService {
         return true;
       }
 
-      // Store push token in Supabase
+      // Store push token in user_push_tokens table
       const { error } = await supabase
         .from('user_push_tokens')
         .upsert({
@@ -116,16 +114,24 @@ class EnhancedNotificationService {
         });
 
       if (error) {
-        // Table doesn't exist yet — stop retrying to avoid log spam
-        if (error.code === 'PGRST205') {
-          this.pushTokenStoreFailed = true;
-          return true;
-        }
-        console.error('Error storing push token:', error);
-        return false;
+        console.error('Error storing push token in user_push_tokens:', error);
       }
 
-      this.pushTokenStored = true;
+      // Always also store in profiles.expo_push_token as fallback
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ expo_push_token: this.expoPushToken })
+        .eq('id', userId);
+
+      if (profileError) {
+        console.error('Error storing push token in profiles:', profileError);
+      }
+
+      // Mark as stored if at least one location succeeded
+      if (!error || !profileError) {
+        this.pushTokenStored = true;
+      }
+
       return true;
     } catch (error) {
       console.error('Error registering for push notifications:', error);
@@ -157,24 +163,35 @@ class EnhancedNotificationService {
     notification: NotificationData
   ): Promise<boolean> {
     try {
-      // Table doesn't exist yet — skip silently
-      if (this.pushTokenStoreFailed) return false;
+      // Try user_push_tokens first, fall back to profiles.expo_push_token
+      let pushToken: string | null = null;
 
-      // Get user's push token
-      const { data: tokenData, error: tokenError } = await supabase
+      const { data: tokenData } = await supabase
         .from('user_push_tokens')
         .select('push_token')
         .eq('user_id', userId)
         .single();
 
-      if (tokenError || !tokenData) {
-        // User hasn't registered for push notifications - this is normal, silently return
+      pushToken = tokenData?.push_token || null;
+
+      if (!pushToken) {
+        // Fallback: check profiles.expo_push_token
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('expo_push_token')
+          .eq('id', userId)
+          .single();
+
+        pushToken = profileData?.expo_push_token || null;
+      }
+
+      if (!pushToken) {
         return false;
       }
 
       // Send push notification via Expo
       const message = {
-        to: tokenData.push_token,
+        to: pushToken,
         sound: 'default',
         title: notification.title,
         body: notification.body,

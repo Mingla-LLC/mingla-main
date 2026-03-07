@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseUrl } from "./supabase";
 
 export interface HolidayCard {
   id: string;
@@ -23,7 +23,7 @@ export async function getHolidayCards(params: {
   if (!token) throw new Error("Not authenticated");
 
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/get-holiday-cards`,
+    `${supabaseUrl}/functions/v1/get-holiday-cards`,
     {
       method: "POST",
       headers: {

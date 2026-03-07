@@ -37,6 +37,8 @@ export interface Conversation {
 
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
+  private senderProfileCache: Map<string, { name: string; cachedAt: number }> = new Map();
+  private static PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
    * Get or create a direct conversation between two users
@@ -425,7 +427,7 @@ export class MessagingService {
           filter: `conversation_id=eq.${conversationId}`,
         },
         async (payload) => {
-          const enrichedMessage = await this.enrichMessage(payload.new as any, userId);
+          const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
           callbacks.onMessage?.(enrichedMessage);
         }
       )
@@ -438,7 +440,7 @@ export class MessagingService {
           filter: `conversation_id=eq.${conversationId}`,
         },
         async (payload) => {
-          const enrichedMessage = await this.enrichMessage(payload.new as any, userId);
+          const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
           callbacks.onMessageUpdated?.(enrichedMessage);
         }
       )
@@ -477,19 +479,33 @@ export class MessagingService {
   }
 
   /**
-   * Enrich message with sender name and read status
+   * Get sender name with caching to avoid N+1 queries
    */
-  private async enrichMessage(message: any, userId: string): Promise<DirectMessage> {
-    // Get sender profile
+  private async getSenderName(senderId: string): Promise<string> {
+    const cached = this.senderProfileCache.get(senderId);
+    if (cached && Date.now() - cached.cachedAt < MessagingService.PROFILE_CACHE_TTL) {
+      return cached.name;
+    }
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('display_name, username, first_name, last_name')
-      .eq('id', message.sender_id)
+      .eq('id', senderId)
       .single();
 
-    const senderName = profile?.display_name || 
+    const senderName = profile?.display_name ||
       (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : profile?.username) ||
       'Unknown';
+
+    this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
+    return senderName;
+  }
+
+  /**
+   * Enrich message with sender name and read status
+   */
+  private async enrichMessage(message: any, userId: string): Promise<DirectMessage> {
+    const senderName = await this.getSenderName(message.sender_id);
 
     // Check if message is read by current user
     const { data: readData } = await supabase
@@ -503,6 +519,20 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
+    };
+  }
+
+  /**
+   * Lightweight enrichment for real-time messages — skips read-status query
+   * (a message that just arrived is unread by definition)
+   */
+  private async enrichMessageRealtime(message: any): Promise<DirectMessage> {
+    const senderName = await this.getSenderName(message.sender_id);
+
+    return {
+      ...message,
+      sender_name: senderName,
+      is_read: false,
     };
   }
 

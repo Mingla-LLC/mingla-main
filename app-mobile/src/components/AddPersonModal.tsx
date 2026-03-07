@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   scrollContent: {
-    flex: 1,
+    flexShrink: 1,
   },
   stepContainer: {
     paddingBottom: 24,
