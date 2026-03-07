@@ -89,3 +89,16 @@ export function priceLevelToRange(priceLevel: string | number | null | undefined
 export function cardMatchesTiers(cardTier: PriceTierSlug, userTiers: PriceTierSlug[]): boolean {
   return userTiers.includes(cardTier);
 }
+
+/**
+ * Derive a price tier from a dollar amount (uses the upper bound of the range).
+ * Used when we have price_min/price_max but no Google priceLevel.
+ */
+export function priceTierFromAmount(priceMin: number, priceMax: number): PriceTierSlug {
+  const amount = priceMax > 0 ? priceMax : priceMin;
+  if (amount <= 0) return 'chill';
+  for (const tier of PRICE_TIERS) {
+    if (tier.max !== null && amount <= tier.max) return tier.slug;
+  }
+  return 'lavish';
+}

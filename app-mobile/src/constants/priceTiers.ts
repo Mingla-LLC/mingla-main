@@ -72,3 +72,18 @@ export function formatTierLabel(slug: PriceTierSlug, currencySymbol: string = '$
   if (!tier) return 'Chill';
   return `${tier.label} · ${tierRangeLabel(slug, currencySymbol, rate)}`;
 }
+
+/**
+ * Derive a price tier from a dollar amount (uses the upper bound of the range).
+ * Used when we have price_min/price_max but no Google priceLevel.
+ * Logic: use max if available, otherwise min. Match against tier brackets.
+ */
+export function priceTierFromAmount(priceMin: number, priceMax: number): PriceTierSlug {
+  // Use the higher bound to determine tier; if both are 0, it's chill (free)
+  const amount = priceMax > 0 ? priceMax : priceMin;
+  if (amount <= 0) return 'chill';
+  for (const tier of PRICE_TIERS) {
+    if (tier.max !== null && amount <= tier.max) return tier.slug;
+  }
+  return 'lavish';
+}

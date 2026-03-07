@@ -563,7 +563,6 @@ export const CreateSessionModal: React.FC = () => {
                     </View>
                     <View style={styles.selectedFriendInfo}>
                       <Text style={styles.selectedFriendText}>{friend.name}</Text>
-                      <Text style={styles.selectedFriendUsername}>@{friend.username}</Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
@@ -762,7 +761,7 @@ export const CreateSessionModal: React.FC = () => {
             <View style={styles.headerSide} />
           </View>
 
-          <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false} bottomOffset={76}>
             {renderStepContent()}
           </KeyboardAwareScrollView>
 

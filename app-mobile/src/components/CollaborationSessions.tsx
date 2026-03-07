@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Text,
   View,
@@ -12,14 +12,21 @@ import {
   NativeScrollEvent,
   Dimensions,
   ActivityIndicator,
-  Image
+  Image,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { mixpanelService } from '../services/mixpanelService';
 import SessionViewModal from './SessionViewModal';
-import AddFriendModal from './AddFriendModal';
 import { supabase } from '../services/supabase';
+import { COUNTRIES, getDefaultCountryCode, getCountryByCode } from '../constants/countries';
+import { CountryData } from '../types/onboarding';
+import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
+import { createPendingInvite } from '../services/phoneLookupService';
+import { useSendFriendLink } from '../hooks/useFriendLinks';
+import { useAppStore } from '../store/appStore';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
@@ -56,7 +63,7 @@ interface CollaborationSessionsProps {
   selectedSessionId: string | null;
   onSessionSelect: (sessionId: string | null) => void;
   onSoloSelect: () => void;
-  onCreateSession: (sessionName: string, selectedFriends: Friend[]) => void;
+  onCreateSession: (sessionName: string, selectedFriends: Friend[], phoneInvitees?: { phoneE164: string }[]) => void;
   onAcceptInvite: (sessionId: string) => void;
   onDeclineInvite: (sessionId: string) => void;
   onCancelInvite: (sessionId: string) => void;
@@ -98,26 +105,61 @@ export default function CollaborationSessions({
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSessionViewModal, setShowSessionViewModal] = useState(false);
   const [sessionToView, setSessionToView] = useState<CollaborationSession | null>(null);
   const [inviteModalSession, setInviteModalSession] = useState<CollaborationSession | null>(null);
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
-  const [isSendingFriendRequest, setIsSendingFriendRequest] = useState(false);
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const lastHandledInviteTriggerNonce = useRef<number | null>(null);
 
-  const isSoloMode = currentMode === 'solo';
-
-  // Filter friends based on search query
-  const filteredFriends = availableFriends.filter(friend =>
-    friend.name.toLowerCase().includes(friendSearchQuery.toLowerCase()) ||
-    (friend.username && friend.username.toLowerCase().includes(friendSearchQuery.toLowerCase()))
+  // Phone input state
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryData>(
+    () => getCountryByCode(getDefaultCountryCode()) ?? COUNTRIES[0]
   );
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
+  const [phoneActionStatus, setPhoneActionStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [phoneActionError, setPhoneActionError] = useState('');
+  const [phoneInvitees, setPhoneInvitees] = useState<{ phoneE164: string }[]>([]);
+
+  const sendLinkMutation = useSendFriendLink();
+  const { user } = useAppStore();
+
+  // Build E.164 phone
+  const phoneRawDigits = phoneNumber.replace(/\D/g, '');
+  const phoneE164 = useMemo(() => {
+    if (!phoneRawDigits) return '';
+    return `${selectedCountry.dialCode}${phoneRawDigits}`;
+  }, [phoneRawDigits, selectedCountry]);
+
+  const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
+  const debouncedDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
+
+  const {
+    data: phoneLookupResult,
+    isLoading: phoneLookupLoading,
+  } = usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
+
+  const isPhoneValid = useMemo(() => {
+    return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15;
+  }, [phoneRawDigits]);
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch.trim()) return COUNTRIES;
+    const q = countrySearch.toLowerCase();
+    return COUNTRIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.dialCode.includes(q) ||
+        c.code.toLowerCase().includes(q)
+    );
+  }, [countrySearch]);
+
+  const isSoloMode = currentMode === 'solo';
 
   const toggleFriendSelection = (friend: Friend) => {
     setSelectedFriends(prev => {
@@ -204,10 +246,12 @@ export default function CollaborationSessions({
         sessionName: newSessionName.trim(),
         invitedFriendsCount: selectedFriends.length,
       });
-      onCreateSession(newSessionName.trim(), selectedFriends);
+      onCreateSession(newSessionName.trim(), selectedFriends, phoneInvitees.length > 0 ? phoneInvitees : undefined);
       setNewSessionName('');
       setSelectedFriends([]);
-      setFriendSearchQuery('');
+      setPhoneNumber('');
+      setPhoneActionStatus('idle');
+      setPhoneInvitees([]);
       setShowCreateModal(false);
     }
   };
@@ -215,112 +259,130 @@ export default function CollaborationSessions({
   const handleCloseCreateModal = () => {
     setNewSessionName('');
     setSelectedFriends([]);
-    setFriendSearchQuery('');
+    setPhoneNumber('');
+    setPhoneActionStatus('idle');
+    setPhoneActionError('');
+    setPhoneInvitees([]);
     setShowCreateModal(false);
   };
 
-  const handleAddTypedUserAsFriend = async () => {
-    const typedUsername = friendSearchQuery.trim().replace(/^@+/, '');
+  // Handle phone action — context-aware for session creation
+  const handlePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164) return;
 
-    if (!typedUsername) {
-      Alert.alert('Enter a username', 'Type a username first to send a friend request.');
-      return;
-    }
-
-    setIsSendingFriendRequest(true);
+    setPhoneActionStatus('sending');
+    setPhoneActionError('');
 
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const currentUser = authData.user;
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        const lookupUser = phoneLookupResult.user;
 
-      if (!currentUser) {
-        Alert.alert('Sign in required', 'Please sign in and try again.');
-        return;
-      }
+        // Guard: can't add yourself
+        if (user && lookupUser.id === user.id) {
+          Alert.alert('That\'s you', 'You can\'t add yourself as a collaborator.');
+          setPhoneActionStatus('idle');
+          return;
+        }
 
-      const { data: targetProfile, error: targetError } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .ilike('username', typedUsername)
-        .maybeSingle();
+        if (phoneLookupResult.friendship_status === 'friends') {
+          // Already friends — auto-add to selectedFriends as collaborator
+          const alreadySelected = selectedFriends.some(f => f.id === lookupUser.id);
+          if (alreadySelected) {
+            Alert.alert('Already selected', 'This friend is already added as a collaborator.');
+          } else {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const friendData: Friend = {
+              id: lookupUser.id,
+              name: lookupUser.display_name || lookupUser.username || 'User',
+              username: lookupUser.username,
+              avatar: lookupUser.avatar_url || undefined,
+            };
+            setSelectedFriends(prev => [...prev, friendData]);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          setPhoneActionStatus('sent');
+          setTimeout(() => {
+            setPhoneNumber('');
+            setPhoneActionStatus('idle');
+          }, 1500);
+        } else if (phoneLookupResult.friendship_status === 'none') {
+          // Not friends yet — send friend request
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          await sendLinkMutation.mutateAsync({
+            targetUserId: lookupUser.id,
+          });
+          setPhoneActionStatus('sent');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert(
+            'Friend request sent',
+            `${lookupUser.display_name || lookupUser.username} will appear in your collaborators list once they accept.`
+          );
+          setTimeout(() => {
+            setPhoneNumber('');
+            setPhoneActionStatus('idle');
+          }, 2000);
+        } else {
+          // pending_sent or pending_received
+          Alert.alert('Request Pending', 'A friend request is already pending with this person.');
+          setPhoneActionStatus('idle');
+        }
+      } else {
+        // Not on Mingla — save pending invite + track for session + native share
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+        }
 
-      if (targetError) {
-        throw targetError;
-      }
+        // Track this phone invitee for session creation (dedup)
+        const alreadyInvited = phoneInvitees.some(i => i.phoneE164 === debouncedPhoneE164);
+        if (!alreadyInvited) {
+          setPhoneInvitees(prev => [...prev, { phoneE164: debouncedPhoneE164 }]);
+        }
 
-      if (!targetProfile) {
-        Alert.alert('User not found', 'No user was found with that username.');
-        return;
-      }
-
-      if (targetProfile.id === currentUser.id) {
-        Alert.alert('Invalid user', 'You cannot add yourself as a friend.');
-        return;
-      }
-
-      const { data: existingFriend, error: existingFriendError } = await supabase
-        .from('friends')
-        .select('id')
-        .eq('user_id', currentUser.id)
-        .eq('friend_user_id', targetProfile.id)
-        .eq('status', 'accepted')
-        .maybeSingle();
-
-      if (existingFriendError) {
-        throw existingFriendError;
-      }
-
-      if (existingFriend) {
-        Alert.alert('Already friends', `@${targetProfile.username} is already in your friends list.`);
-        return;
-      }
-
-      const { data: existingRequest, error: existingRequestError } = await supabase
-        .from('friend_requests')
-        .select('id, status, sender_id, receiver_id')
-        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetProfile.id}),and(sender_id.eq.${targetProfile.id},receiver_id.eq.${currentUser.id})`)
-        .in('status', ['pending', 'accepted'])
-        .maybeSingle();
-
-      if (existingRequestError) {
-        throw existingRequestError;
-      }
-
-      if (existingRequest?.status === 'pending') {
-        const alreadySentByYou = existingRequest.sender_id === currentUser.id;
-        Alert.alert(
-          'Request already pending',
-          alreadySentByYou
-            ? `A friend request to @${targetProfile.username} is already pending.`
-            : `@${targetProfile.username} already sent you a friend request. Please accept it first.`
-        );
-        return;
-      }
-
-      const { error: insertError } = await supabase
-        .from('friend_requests')
-        .insert({
-          sender_id: currentUser.id,
-          receiver_id: targetProfile.id,
-          status: 'pending',
+        await Share.share({
+          message: `Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com`,
         });
-
-      if (insertError) {
-        throw insertError;
+        setPhoneActionStatus('sent');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 2000);
       }
-
-      Alert.alert(
-        'Friend request sent',
-        `@${targetProfile.username} is not your friend yet. For safety, please come back and add them after they accept your request.`
-      );
-    } catch (error: any) {
-      Alert.alert('Unable to send request', error?.message || 'Please try again.');
-    } finally {
-      setIsSendingFriendRequest(false);
+    } catch (err) {
+      console.error('[CollaborationSessions] Phone action error:', err);
+      setPhoneActionError(err instanceof Error ? err.message : 'Something went wrong');
+      setPhoneActionStatus('error');
     }
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, selectedFriends, phoneInvitees]);
+
+  const getPhoneActionLabel = (): string => {
+    if (phoneLookupLoading) return 'Looking up...';
+    if (!isPhoneValid) return 'Enter phone number';
+    if (phoneLookupResult?.found) {
+      if (phoneLookupResult.friendship_status === 'friends') {
+        // Check if already selected
+        const alreadySelected = selectedFriends.some(f => f.id === phoneLookupResult.user?.id);
+        return alreadySelected ? 'Already added' : 'Add as collaborator';
+      }
+      if (phoneLookupResult.friendship_status === 'none') return 'Send friend request';
+      return 'Request pending';
+    }
+    return 'Invite to Mingla';
   };
 
-  const canCreateSession = newSessionName.trim().length > 0 && selectedFriends.length > 0 && !isCreatingSession;
+  const isPhoneActionDisabled =
+    !isPhoneValid ||
+    phoneLookupLoading ||
+    phoneActionStatus === 'sending' ||
+    phoneActionStatus === 'sent' ||
+    (phoneLookupResult?.found &&
+      phoneLookupResult.friendship_status !== 'none' &&
+      phoneLookupResult.friendship_status !== 'friends') ||
+    (phoneLookupResult?.found &&
+      phoneLookupResult.friendship_status === 'friends' &&
+      selectedFriends.some(f => f.id === phoneLookupResult.user?.id));
+
+  const canCreateSession = newSessionName.trim().length > 0 && (selectedFriends.length > 0 || phoneInvitees.length > 0) && !isCreatingSession;
 
   const scrollLeft = () => {
     scrollViewRef.current?.scrollTo({ x: 0, animated: true });
@@ -379,7 +441,29 @@ export default function CollaborationSessions({
         </TouchableOpacity>
       )}
 
-      {/* Scrollable pills */}
+      {/* Fixed pills */}
+      <TouchableOpacity
+        style={[styles.pill, isSoloMode && styles.soloPill]}
+        onPress={() => {
+          onSoloSelect();
+          mixpanelService.trackSessionSwitched({ mode: 'solo' });
+        }}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
+          Solo
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.pill, styles.createPill]}
+        onPress={() => setShowCreateModal(true)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="add" size={16} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Scrollable session pills */}
       <View style={styles.scrollViewWrapper}>
         <ScrollView
           ref={scrollViewRef}
@@ -391,30 +475,6 @@ export default function CollaborationSessions({
           onContentSizeChange={(w) => setContentWidth(w)}
           onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
         >
-        {/* Solo pill */}
-        <TouchableOpacity
-          style={[styles.pill, isSoloMode && styles.soloPill]}
-          onPress={() => {
-            onSoloSelect();
-            mixpanelService.trackSessionSwitched({ mode: 'solo' });
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
-            Solo
-          </Text>
-        </TouchableOpacity>
-
-        {/* Create new session pill */}
-        <TouchableOpacity
-          style={[styles.pill, styles.createPill]}
-          onPress={() => setShowCreateModal(true)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={16} color="#FFFFFF" />
-        </TouchableOpacity>
-
-        {/* Session pills */}
         {sortedSessions.map(renderPill)}
         </ScrollView>
       </View>
@@ -464,19 +524,131 @@ export default function CollaborationSessions({
                 maxLength={30}
               />
 
-              {/* Friend Selection Section */}
+              {/* Invite by phone */}
               <View style={styles.friendSelectionSection}>
-                <Text style={styles.modalLabel}>Invite Collaborators</Text>
+                <Text style={styles.modalLabel}>Add by phone number</Text>
 
+                <View style={styles.csPhoneRow}>
+                  <TouchableOpacity
+                    style={styles.csCountryPicker}
+                    onPress={() => setShowCountryPicker(true)}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={styles.csCountryFlag}>{selectedCountry.flag}</Text>
+                    <Text style={styles.csCountryDial}>{selectedCountry.dialCode}</Text>
+                    <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+                  </TouchableOpacity>
+
+                  <View style={styles.csPhoneDivider} />
+
+                  <TextInput
+                    style={styles.csPhoneInput}
+                    value={phoneNumber}
+                    onChangeText={(text) => {
+                      setPhoneNumber(text);
+                      if (phoneActionStatus !== 'idle' && phoneActionStatus !== 'sending') {
+                        setPhoneActionStatus('idle');
+                        setPhoneActionError('');
+                      }
+                    }}
+                    placeholder="Phone number"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="phone-pad"
+                    autoCorrect={false}
+                    maxLength={15}
+                  />
+
+                  {phoneLookupLoading && (
+                    <ActivityIndicator size="small" color="#eb7825" style={{ marginRight: 10 }} />
+                  )}
+                </View>
+
+                {/* Lookup result */}
+                {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+                  <View style={styles.csLookupResult}>
+                    {phoneLookupResult.found ? (
+                      <View style={styles.csLookupRow}>
+                        <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+                        <Text style={styles.csLookupTextGreen}>
+                          {phoneLookupResult.user?.display_name || phoneLookupResult.user?.username || 'User'} is on Mingla
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.csLookupRow}>
+                        <Ionicons name="person-add-outline" size={14} color="#6b7280" />
+                        <Text style={styles.csLookupTextMuted}>Not on Mingla yet</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Status */}
+                {phoneActionStatus === 'sent' && (
+                  <View style={styles.csStatusRow}>
+                    <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                    <Text style={styles.csStatusSuccess}>
+                      {phoneLookupResult?.found
+                        ? phoneLookupResult.friendship_status === 'friends'
+                          ? 'Added as collaborator!'
+                          : 'Friend request sent!'
+                        : 'Invite shared!'}
+                    </Text>
+                  </View>
+                )}
+                {phoneActionStatus === 'error' && (
+                  <View style={styles.csStatusRow}>
+                    <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                    <Text style={styles.csStatusError}>{phoneActionError}</Text>
+                  </View>
+                )}
+
+                {/* Action button */}
                 <TouchableOpacity
-                  style={styles.addFriendInlineButton}
-                  onPress={() => setShowAddFriendModal(true)}
-                  activeOpacity={0.8}
+                  style={[styles.csActionButton, isPhoneActionDisabled && styles.csActionButtonDisabled]}
+                  onPress={handlePhoneAction}
+                  activeOpacity={0.7}
+                  disabled={!!isPhoneActionDisabled}
                 >
-                  <Ionicons name="person-add" size={16} color="#eb7825" />
-                  <Text style={styles.addFriendInlineButtonText}>Add Friend</Text>
+                  {phoneActionStatus === 'sending' ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
+                        size={14}
+                        color="#ffffff"
+                        style={{ marginRight: 5 }}
+                      />
+                      <Text style={styles.csActionButtonText}>{getPhoneActionLabel()}</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
-                
+
+                {/* Phone invitees (not on Mingla) */}
+                {phoneInvitees.length > 0 && (
+                  <View style={styles.csPhoneInviteesContainer}>
+                    <Text style={styles.csPhoneInviteesLabel}>Pending invites</Text>
+                    <View style={styles.csPhoneInviteesList}>
+                      {phoneInvitees.map((invitee) => (
+                        <View key={invitee.phoneE164} style={styles.csPhoneInviteePill}>
+                          <Text style={styles.csPhoneInviteePillText}>{invitee.phoneE164}</Text>
+                          <TouchableOpacity
+                            onPress={() => setPhoneInvitees(prev => prev.filter(i => i.phoneE164 !== invitee.phoneE164))}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Select existing friends as collaborators */}
+              <View style={styles.friendSelectionSection}>
+                <Text style={styles.modalLabel}>Select Collaborators</Text>
+
                 {/* Selected Friends */}
                 {selectedFriends.length > 0 && (
                   <View style={styles.selectedFriendsContainer}>
@@ -508,64 +680,19 @@ export default function CollaborationSessions({
                   </View>
                 )}
 
-                {/* Friend Search */}
-                <View style={styles.friendSearchContainer}>
-                  <Ionicons name="search" size={16} color="#9CA3AF" style={styles.friendSearchIcon} />
-                  <TextInput
-                    style={styles.friendSearchInput}
-                    placeholder="Search friends..."
-                    value={friendSearchQuery}
-                    onChangeText={setFriendSearchQuery}
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-
                 {/* Friends List */}
                 {availableFriends.length === 0 ? (
                   <View style={styles.noFriendsContainer}>
                     <Ionicons name="people-outline" size={32} color="#D1D5DB" />
-                    <Text style={styles.noFriendsText}>No friends available</Text>
+                    <Text style={styles.noFriendsText}>No friends yet</Text>
                     <Text style={styles.noFriendsSubtext}>
-                      Add friends to invite them to sessions
+                      Invite someone by phone number above
                     </Text>
-                  </View>
-                ) : filteredFriends.length === 0 ? (
-                  <View style={styles.noFriendsContainer}>
-                    <Ionicons name="search-outline" size={32} color="#D1D5DB" />
-                    <Text style={styles.noFriendsText}>No matches found</Text>
-
-                    {friendSearchQuery.trim().length > 0 && (
-                      <View style={styles.notFriendNoticeCard}>
-                        <Text style={styles.notFriendNoticeTitle}>
-                          This person is not your friend
-                        </Text>
-                        <Text style={styles.notFriendNoticeText}>
-                          Add them as a friend first, then come back and add them as a collaborator after they accept. This is for safety purposes.
-                        </Text>
-                        <TouchableOpacity
-                          style={[
-                            styles.addFriendNoticeButton,
-                            isSendingFriendRequest && styles.addFriendNoticeButtonDisabled,
-                          ]}
-                          onPress={handleAddTypedUserAsFriend}
-                          disabled={isSendingFriendRequest}
-                        >
-                          {isSendingFriendRequest ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <Text style={styles.addFriendNoticeButtonText}>
-                              Add @{friendSearchQuery.trim().replace(/^@+/, '')} as Friend
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    )}
                   </View>
                 ) : (
                   <View style={styles.friendsList}>
-                    {filteredFriends.map((friend) => {
+                    {availableFriends.map((friend) => {
                       const isSelected = selectedFriends.some(f => f.id === friend.id);
-                      const initials = friend.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
                       return (
                         <TouchableOpacity
                           key={friend.id}
@@ -590,9 +717,6 @@ export default function CollaborationSessions({
                           </View>
                           <View style={styles.friendInfo}>
                             <Text style={styles.friendName}>{friend.name}</Text>
-                            {friend.username && (
-                              <Text style={styles.friendUsername}>@{friend.username}</Text>
-                            )}
                           </View>
                           {isSelected && (
                             <View style={styles.friendCheckmark}>
@@ -630,6 +754,64 @@ export default function CollaborationSessions({
             </View>
           </View>
         </View>
+
+        {/* Country Picker Modal */}
+        <Modal
+          visible={showCountryPicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowCountryPicker(false)}
+        >
+          <View style={styles.csPickerOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setShowCountryPicker(false)}
+            />
+            <View style={styles.csPickerSheet}>
+              <View style={styles.csPickerHeader}>
+                <Text style={styles.csPickerTitle}>Select Country</Text>
+                <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                  <Ionicons name="close" size={22} color="#374151" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.csPickerSearchRow}>
+                <Ionicons name="search-outline" size={18} color="#9ca3af" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.csPickerSearchInput}
+                  value={countrySearch}
+                  onChangeText={setCountrySearch}
+                  placeholder="Search countries"
+                  placeholderTextColor="#9ca3af"
+                  autoFocus
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {filteredCountries.map((item) => (
+                  <TouchableOpacity
+                    key={item.code}
+                    style={[
+                      styles.csCountryRow,
+                      item.code === selectedCountry.code && styles.csCountryRowSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedCountry(item);
+                      setShowCountryPicker(false);
+                      setCountrySearch('');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.csCountryRowFlag}>{item.flag}</Text>
+                    <Text style={styles.csCountryRowName}>{item.name}</Text>
+                    <Text style={styles.csCountryRowDial}>{item.dialCode}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </Modal>
 
       {/* Invite Action Modal */}
@@ -767,10 +949,6 @@ export default function CollaborationSessions({
         />
       )}
 
-      <AddFriendModal
-        isOpen={showAddFriendModal}
-        onClose={() => setShowAddFriendModal(false)}
-      />
     </View>
   );
 }
@@ -781,10 +959,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     backgroundColor: 'transparent',
-    paddingVertical: 0,
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    marginVertical: 6,
     marginHorizontal: 12,
+    gap: 6,
   },
   scrollViewWrapper: {
     flex: 1,
@@ -793,8 +971,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
     gap: 6,
   },
   scrollArrowLeft: {
@@ -830,7 +1006,7 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 12,
     borderRadius: 18,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FEF3E7',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0,
@@ -1180,22 +1356,189 @@ const styles = StyleSheet.create({
   friendSelectionSection: {
     marginTop: 20,
   },
-  addFriendInlineButton: {
+  // Inline phone input styles
+  csPhoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#FDDCAB',
-    backgroundColor: '#FEF3E7',
+    borderColor: '#e5e7eb',
     borderRadius: 10,
+    height: 46,
+    overflow: 'hidden',
+  },
+  csCountryPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 10,
+    paddingRight: 6,
+    height: '100%',
+  },
+  csCountryFlag: {
+    fontSize: 16,
+    marginRight: 3,
+  },
+  csCountryDial: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginRight: 3,
+  },
+  csPhoneDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: '#d1d5db',
+  },
+  csPhoneInput: {
+    flex: 1,
+    paddingHorizontal: 10,
+    fontSize: 15,
+    color: '#111827',
+    height: '100%',
+  },
+  csLookupResult: {
+    marginTop: 6,
+  },
+  csLookupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  csLookupTextGreen: {
+    fontSize: 12,
+    color: '#16a34a',
+    fontWeight: '500',
+  },
+  csLookupTextMuted: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  csStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  csStatusSuccess: {
+    fontSize: 13,
+    color: '#16a34a',
+    fontWeight: '500',
+  },
+  csStatusError: {
+    fontSize: 13,
+    color: '#dc2626',
+  },
+  csActionButton: {
+    flexDirection: 'row',
+    backgroundColor: '#eb7825',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  csActionButtonDisabled: {
+    opacity: 0.45,
+  },
+  csActionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  csPhoneInviteesContainer: {
+    marginTop: 10,
+  },
+  csPhoneInviteesLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  csPhoneInviteesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  csPhoneInviteePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    gap: 4,
+  },
+  csPhoneInviteePillText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  // Country picker modal
+  csPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  csPickerSheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+    maxHeight: '75%',
+  },
+  csPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  csPickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  csPickerSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
   },
-  addFriendInlineButtonText: {
+  csPickerSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
+    padding: 0,
+  },
+  csCountryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  csCountryRowSelected: {
+    backgroundColor: '#fff7ed',
+  },
+  csCountryRowFlag: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  csCountryRowName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+  },
+  csCountryRowDial: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#eb7825',
+    color: '#6b7280',
   },
   selectedFriendsContainer: {
     flexDirection: 'row',
@@ -1247,25 +1590,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  friendSearchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-  },
-  friendSearchIcon: {
-    marginRight: 8,
-  },
-  friendSearchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#111827',
   },
   noFriendsContainer: {
     alignItems: 'center',
@@ -1338,41 +1662,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#eb7825',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  notFriendNoticeCard: {
-    marginTop: 12,
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FDDCAB',
-    borderRadius: 12,
-    padding: 12,
-    width: '100%',
-  },
-  notFriendNoticeTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#9A3412',
-    marginBottom: 4,
-  },
-  notFriendNoticeText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#7C2D12',
-    marginBottom: 10,
-  },
-  addFriendNoticeButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addFriendNoticeButtonDisabled: {
-    opacity: 0.6,
-  },
-  addFriendNoticeButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

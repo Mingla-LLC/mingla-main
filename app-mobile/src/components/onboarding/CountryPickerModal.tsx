@@ -107,7 +107,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" statusBarTranslucent>
       <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <Text style={styles.title}>Select Country</Text>

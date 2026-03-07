@@ -99,9 +99,6 @@ export function FriendPickerSheet({
           <Text style={styles.friendName} numberOfLines={1}>
             {displayName}
           </Text>
-          <Text style={styles.friendUsername} numberOfLines={1}>
-            @{friend.username || "unknown"}
-          </Text>
         </View>
         {isLoading && (
           <ActivityIndicator size="small" color="#eb7825" />

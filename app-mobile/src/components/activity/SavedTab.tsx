@@ -28,7 +28,8 @@ import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
-import { formatPriceRange, formatCurrency } from "../utils/formatters";
+import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from "../../types/curatedExperience";
 
 interface SavedCard {
@@ -41,6 +42,7 @@ interface SavedCard {
   rating: number;
   reviewCount: number;
   priceRange: string;
+  priceTier?: string;
   travelTime: string;
   description: string;
   fullDescription: string;
@@ -123,7 +125,6 @@ const SavedTab = ({
   >("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
-  const [expandedAccordionItems, setExpandedAccordionItems] = useState<string[]>(["active"]); // Start with Active expanded
   const { user } = useAppStore();
   const queryClient = useQueryClient();
 
@@ -256,28 +257,9 @@ const SavedTab = ({
     selectedCategory,
   ]);
 
-  // Split filtered cards into active (not scheduled) and archive (scheduled)
-  const { activeCards, archiveCards } = useMemo(() => {
-    const active: SavedCard[] = [];
-    const archive: SavedCard[] = [];
-
-    filteredCards.forEach((card) => {
-      // Check if card has been scheduled (exists in calendar entries)
-      const isScheduled = calendarCardIdsSet.has(card.id) || scheduledCardIdsSet.has(card.id);
-      
-      if (isScheduled) {
-        archive.push(card);
-      } else {
-        active.push(card);
-      }
-    });
-
-    return { activeCards: active, archiveCards: archive };
-  }, [filteredCards, calendarCardIdsSet, scheduledCardIdsSet]);
-
-  // Run card pop animations when active cards change
+  // Run card pop animations when filtered cards change
   useEffect(() => {
-    activeCards.forEach((card, index) => {
+    filteredCards.forEach((card, index) => {
       const animation = getCardAnimation(card.id);
       animation.scale.setValue(0.8);
 
@@ -290,26 +272,7 @@ const SavedTab = ({
         }).start();
       }, index * 60);
     });
-  }, [activeCards.length, expandedAccordionItems]);
-
-  // Run card pop animations for archive cards
-  useEffect(() => {
-    if (expandedAccordionItems.includes("archive")) {
-      archiveCards.forEach((card, index) => {
-        const animation = getCardAnimation(card.id);
-        animation.scale.setValue(0.8);
-
-        setTimeout(() => {
-          Animated.spring(animation.scale, {
-            toValue: 1,
-            friction: 6,
-            tension: 100,
-            useNativeDriver: true,
-          }).start();
-        }, index * 60);
-      });
-    }
-  }, [archiveCards.length, expandedAccordionItems]);
+  }, [filteredCards.length]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -335,42 +298,6 @@ const SavedTab = ({
       paddingTop: 16,
       paddingBottom: 62, // Add padding to prevent tab bar from touching last card
     },
-    accordionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomColor: "#e5e7eb",
-      backgroundColor: "#FFFFFF",
-      borderWidth: 1,
-      borderColor: "#e5e7eb",
-      borderRadius: 12,
-      marginHorizontal: 16,
-      marginBottom: 8,
-      elevation: 3,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 3,
-    },
-    accordionTitleContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    accordionTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#111827",
-    },
-    accordionCount: {
-      fontSize: 14,
-      color: "#6b7280",
-      marginLeft: 8,
-    },
-    accordionContentContainer: {
-      backgroundColor: "#f9fafb",
-    },
     cardWrapper: {
       paddingHorizontal: 16,
       paddingVertical: 8,
@@ -388,16 +315,16 @@ const SavedTab = ({
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "white",
+      backgroundColor: "#FFFFFF",
       borderRadius: 12,
       paddingHorizontal: 12,
       borderWidth: 1,
-      borderColor: "#e5e7eb",
-      elevation: 5,
+      borderColor: "#f0f0f0",
+      elevation: 1,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
     },
     searchIcon: {
       marginRight: 8,
@@ -418,13 +345,13 @@ const SavedTab = ({
       justifyContent: "center",
       flexDirection: "row",
       borderWidth: 1,
-      borderColor: "#e5e7eb",
-      backgroundColor: "white",
-      elevation: 5,
+      borderColor: "#f0f0f0",
+      backgroundColor: "#FFFFFF",
+      elevation: 1,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
     },
     filterSection: {
       marginTop: 12,
@@ -457,14 +384,14 @@ const SavedTab = ({
       fontWeight: "600",
     },
     experienceCard: {
-      backgroundColor: "white",
+      backgroundColor: "#FFFFFF",
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: "#e5e7eb",
+      borderColor: "#f0f0f0",
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
       elevation: 1,
       overflow: "hidden",
     },
@@ -1885,7 +1812,9 @@ const SavedTab = ({
                     </Text>
                   </View>
                   <Text style={styles.priceText}>
-                    {card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
+                    {card.priceTier && TIER_BY_SLUG[card.priceTier as PriceTierSlug]
+                      ? formatTierLabel(card.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency || "USD"), getCurrencyRate(accountPreferences?.currency || "USD"))
+                      : card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
@@ -2173,105 +2102,23 @@ const SavedTab = ({
             </>
           )}
         </Animated.View>
-        {/* Active Section */}
-        <TouchableOpacity
-          style={[styles.accordionHeader]}
-          onPress={() =>
-            setExpandedAccordionItems((prev) =>
-              prev.includes("active")
-                ? prev.filter((i) => i !== "active")
-                : [...prev, "active"]
-            )
-          }
-          activeOpacity={0.7}
-        >
-          <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>Active</Text>
-            <Text style={styles.accordionCount}>
-              ({activeCards.length})
-            </Text>
-          </View>
-          <Ionicons
-            name={
-              expandedAccordionItems.includes("active")
-                ? "chevron-down"
-                : "chevron-forward"
-            }
-            size={20}
-            color="#9ca3af"
-          />
-        </TouchableOpacity>
-
-        {expandedAccordionItems.includes("active") && (
-          <View style={styles.accordionContentContainer}>
-            {activeCards.length === 0
-              ? renderEmptyComponent()
-              : activeCards.map((card) => {
-                  const animation = getCardAnimation(card.id);
-                  return (
-                  <Animated.View
-                    key={card.id}
-                    style={[
-                      styles.cardWrapper,
-                      { transform: [{ scale: animation.scale }] },
-                    ]}
-                  >
-                    {renderCard({ item: card })}
-                  </Animated.View>
-                  );
-                })}
-          </View>
-        )}
-
-        {/* Archive Section */}
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() =>
-            setExpandedAccordionItems((prev) =>
-              prev.includes("archive")
-                ? prev.filter((i) => i !== "archive")
-                : [...prev, "archive"]
-            )
-          }
-          activeOpacity={0.7}
-        >
-          <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>Archives</Text>
-            <Text style={styles.accordionCount}>
-              ({archiveCards.length})
-            </Text>
-          </View>
-          <Ionicons
-            name={
-              expandedAccordionItems.includes("archive")
-                ? "chevron-down"
-                : "chevron-forward"
-            }
-            size={20}
-            color="#9ca3af"
-          />
-        </TouchableOpacity>
-
-        {expandedAccordionItems.includes("archive") && (
-          <View style={styles.accordionContentContainer}>
-            {archiveCards.length === 0
-              ? renderEmptyComponent()
-              : archiveCards.map((card) => {
-                  const animation = getCardAnimation(card.id);
-                  return (
-                  <Animated.View
-                    key={card.id}
-                    style={[
-                      styles.cardWrapper,
-                      { transform: [{ scale: animation.scale }] },
-                    ]}
-                  >
-                    {renderCard({ item: card })}
-                  </Animated.View>
-                  );
-                })}
-          </View>
-        )}
+        {/* Saved Cards List */}
+        {filteredCards.length === 0
+          ? renderEmptyComponent()
+          : filteredCards.map((card) => {
+              const animation = getCardAnimation(card.id);
+              return (
+                <Animated.View
+                  key={card.id}
+                  style={[
+                    styles.cardWrapper,
+                    { transform: [{ scale: animation.scale }] },
+                  ]}
+                >
+                  {renderCard({ item: card })}
+                </Animated.View>
+              );
+            })}
       </ScrollView>
 
       {/* Expanded Card Modal */}

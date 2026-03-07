@@ -11,12 +11,14 @@ import {
   PanResponder,
   StatusBar,
   ScrollView,
+  Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol } from "./utils/formatters";
+import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
+import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG, formatTierLabel } from "../constants/priceTiers";
 import {
   ExperiencesService,
   Experience,
@@ -1598,6 +1600,7 @@ export default function SwipeableCards({
                     },
                   ]}
                 >
+                  <View style={styles.cardInner}>
                   {/* Hero Image Section */}
                   <View style={styles.imageContainer}>
                     <Image
@@ -1645,7 +1648,9 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
+                            {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
+                              ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                              : formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                       </View>
@@ -1680,6 +1685,7 @@ export default function SwipeableCards({
                       <Text style={styles.shareButtonText}>Share</Text>
                     </TouchableOpacity>
                   </View>
+                  </View>
                 </Animated.View>
               );
             })()}
@@ -1698,6 +1704,7 @@ export default function SwipeableCards({
             ]}
             {...panResponder.panHandlers}
           >
+            <View style={styles.cardInner}>
             {/* Swipe Direction Overlays */}
             <Animated.View
               style={[styles.swipeOverlayRight, { opacity: likeOpacity }]}
@@ -1787,7 +1794,9 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
+                            {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
+                              ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                              : formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                       </View>
@@ -1821,6 +1830,7 @@ export default function SwipeableCards({
                 </>
               )}
             </TouchableOpacity>
+            </View>
           </Animated.View>
         </View>
       </View>
@@ -1923,7 +1933,7 @@ const styles = StyleSheet.create({
     width: "100%",
     justifyContent: "flex-start",
     alignItems: "center",
-    paddingTop: 4,
+    paddingTop: 2,
     paddingBottom: 0,
   },
   cardContainer: {
@@ -1931,8 +1941,9 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     position: "relative",
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingTop: 12,
+    paddingBottom: 20,
+    paddingHorizontal: 8,
   },
   card: {
     position: "absolute",
@@ -1942,16 +1953,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: "white",
     borderRadius: 24,
-    borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.10)",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 12,
+      height: 8,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 12,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: Platform.OS === "android" ? 4 : 10,
     zIndex: 2,
+  },
+  cardInner: {
+    flex: 1,
+    borderRadius: 24,
     overflow: "hidden",
   },
   nextCard: {
@@ -2127,10 +2143,11 @@ const styles = StyleSheet.create({
   },
   cardDetails: {
     flex: DETAILS_SECTION_RATIO,
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderTopWidth: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0, 0, 0, 0.06)",
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     justifyContent: "center",
@@ -2166,10 +2183,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 12,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "rgba(249, 250, 251, 0.7)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(0, 0, 0, 0.08)",
   },
   shareButtonText: {
     fontSize: 15,

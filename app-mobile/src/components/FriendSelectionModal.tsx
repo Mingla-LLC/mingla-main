@@ -113,7 +113,6 @@ export default function FriendSelectionModal({
                     <Text style={styles.friendName}>
                       {friend.name}
                     </Text>
-                    <Text style={styles.friendUsername}>@{friend.username}</Text>
                   </View>
 
                   <View style={styles.messageButton}>

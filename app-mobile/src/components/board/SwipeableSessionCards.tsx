@@ -12,7 +12,8 @@ import {
   NativeScrollEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatPriceRange, parseAndFormatDistance } from "../utils/formatters";
+import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -236,7 +237,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       </View>
                       <View style={styles.detailBadge}>
                         <Text style={styles.detailBadgeText}>
-                          {formatPriceRange(cardData.priceRange, accountPreferences?.currency) || "$"}
+                          {(cardData as any).priceTier && TIER_BY_SLUG[(cardData as any).priceTier as PriceTierSlug]
+                            ? formatTierLabel((cardData as any).priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                            : formatPriceRange(cardData.priceRange, accountPreferences?.currency) || "$"}
                         </Text>
                       </View>
                     </View>

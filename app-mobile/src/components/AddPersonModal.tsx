@@ -18,8 +18,10 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import { GENDER_OPTIONS, GenderOption } from "../types/holidayTypes";
 import { PersonAudioClip } from "../types/personAudio";
-import { useCreatePerson } from "../hooks/useSavedPeople";
-import { useUploadAudioClip } from "../hooks/usePersonAudio";
+import { savedPeopleKeys } from "../hooks/useSavedPeople";
+import { createSavedPerson } from "../services/savedPeopleService";
+import { uploadAudioClip } from "../services/personAudioService";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { generateInitials } from "../utils/stringUtils";
 import { s } from "../utils/responsive";
@@ -54,8 +56,7 @@ export default function AddPersonModal({
 }: AddPersonModalProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuthSimple();
-  const createPersonMutation = useCreatePerson();
-  const uploadClipMutation = useUploadAudioClip();
+  const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState("");
@@ -134,11 +135,16 @@ export default function AddPersonModal({
   const handleSubmit = useCallback(async () => {
     if (!user?.id || !name.trim() || !birthday || !gender) return;
 
-    try {
-      setIsSubmitting(true);
-      setError(null);
+    setIsSubmitting(true);
+    setError(null);
 
-      const newPerson = await createPersonMutation.mutateAsync({
+    try {
+      // Call service directly — bypasses React Query mutateAsync which can
+      // stall under PersistQueryClientProvider cache rehydration timing.
+      // The Supabase client has its own 30-second fetch timeout, so no
+      // separate component-level timeout is needed.
+      console.log("[AddPersonModal] Creating person…");
+      const newPerson = await createSavedPerson({
         user_id: user.id,
         name: name.trim(),
         initials: generateInitials(name.trim()),
@@ -146,34 +152,40 @@ export default function AddPersonModal({
         gender,
         description: null,
       });
+      console.log("[AddPersonModal] Person created:", newPerson.id);
 
-      // Upload audio clips
-      for (let i = 0; i < audioClips.length; i++) {
-        const clip = audioClips[i];
-        if (clip.localUri) {
-          try {
-            await uploadClipMutation.mutateAsync({
-              userId: user.id,
-              personId: newPerson.id,
-              localUri: clip.localUri,
-              fileName: clip.fileName,
-              durationSeconds: clip.durationSeconds,
-              sortOrder: i,
-            });
-          } catch (uploadErr) {
-            console.error("[AddPersonModal] Clip upload error:", uploadErr);
-          }
-        }
-      }
+      // Refresh the saved-people list so the new person shows up
+      queryClient.invalidateQueries({ queryKey: savedPeopleKeys.list(user.id) });
 
+      // Close modal immediately — don't block on audio uploads
       onPersonCreated(newPerson.id);
       handleClose();
+
+      // Upload audio clips in the background (fire-and-forget)
+      const clipsToUpload = audioClips.filter((c) => c.localUri);
+      if (clipsToUpload.length > 0) {
+        Promise.all(
+          clipsToUpload.map((clip, i) =>
+            uploadAudioClip(
+              user.id,
+              newPerson.id,
+              clip.localUri!,
+              clip.fileName,
+              clip.durationSeconds,
+              i
+            ).catch((err) =>
+              console.error("[AddPersonModal] Background clip upload error:", err)
+            )
+          )
+        ).catch(() => {});
+      }
     } catch (err: any) {
+      console.error("[AddPersonModal] Submit error:", err);
       setError(err.message || "Failed to add person");
     } finally {
       setIsSubmitting(false);
     }
-  }, [user, name, birthday, gender, audioClips, createPersonMutation, uploadClipMutation, onPersonCreated, handleClose]);
+  }, [user, name, birthday, gender, audioClips, queryClient, onPersonCreated, handleClose]);
 
   const renderStepContent = () => {
     switch (step) {

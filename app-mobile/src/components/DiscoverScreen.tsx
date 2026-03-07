@@ -55,8 +55,8 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v5";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v4";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v7";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v6";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
 const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
 
@@ -76,7 +76,8 @@ interface CustomHoliday {
 }
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
-import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG } from '../constants/priceTiers';
+import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG, formatTierLabel, priceTierFromAmount } from '../constants/priceTiers';
+import { getCurrencySymbol } from './utils/formatters';
 
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
@@ -271,6 +272,7 @@ interface FeaturedCardData {
   image: string;
   images?: string[];
   priceRange: string;
+  priceTier?: PriceTierSlug;
   rating: number;
   reviewCount?: number;
   address?: string;
@@ -300,6 +302,7 @@ interface GridCardData {
   image: string;
   images?: string[];
   priceRange: string;
+  priceTier?: PriceTierSlug;
   rating: number;
   reviewCount?: number;
   address?: string;
@@ -483,7 +486,9 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
 
 // Featured Card Component
 const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const formattedPrice = formatPriceRange(card.priceRange, currency);
+  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
+    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
+    : formatPriceRange(card.priceRange, currency);
   const formattedDistance = parseAndFormatDistance(card.distance, measurementSystem);
   
   return (
@@ -549,7 +554,9 @@ interface HeroCardProps {
 }
 
 const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const formattedPrice = formatPriceRange(card.priceRange, currency);
+  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
+    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
+    : formatPriceRange(card.priceRange, currency);
   const categoryIcon = categoryIcons[card.experienceType] || "ellipse-outline";
 
   return (
@@ -590,7 +597,9 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
 
 // Grid Card Component (smaller version with category icon)
 const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) => {
-  const formattedPrice = formatPriceRange(card.priceRange, currency);
+  const formattedPrice = card.priceTier && TIER_BY_SLUG[card.priceTier]
+    ? formatTierLabel(card.priceTier, getCurrencySymbol(currency), getCurrencyRate(currency))
+    : formatPriceRange(card.priceRange, currency);
   const categoryIcon = categoryIcons[card.category] || "ellipse-outline";
   
   return (
@@ -1412,6 +1421,7 @@ export default function DiscoverScreen({
     image: card.image,
     images: card.images || [card.image],
     priceRange: card.priceRange,
+    priceTier: card.priceTier,
     rating: card.rating,
     reviewCount: card.reviewCount,
     address: card.address,
@@ -1421,6 +1431,8 @@ export default function DiscoverScreen({
     tags: card.tags || [],
     location: card.location,
     openingHours: card.openingHours || null,
+    website: card.website || null,
+    phone: card.phone || null,
   });
 
   const featuredFromRecommendation = (rec: Recommendation): FeaturedCardData => ({
@@ -1431,6 +1443,7 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images || [rec.image],
     priceRange: rec.priceRange,
+    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1440,6 +1453,8 @@ export default function DiscoverScreen({
     tags: rec.tags || [],
     location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   const gridFromRecommendation = (rec: Recommendation): GridCardData => ({
@@ -1450,6 +1465,7 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images || [rec.image],
     priceRange: rec.priceRange,
+    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1459,6 +1475,8 @@ export default function DiscoverScreen({
     tags: rec.tags || [],
     location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   const applyCachedDiscoverData = (cachedData: DiscoverCache) => {
@@ -1556,13 +1574,8 @@ export default function DiscoverScreen({
       let waitingForLocation = false;
       const today = getTodayDateString();
 
-      // Reset once-per-session guard when US day changes (refresh at US midnight)
-      if (lastDiscoverFetchDateRef.current && lastDiscoverFetchDateRef.current !== today) {
-        hasFetchedRef.current = false;
-      }
-
-      // Only fetch once per session
-      if (hasFetchedRef.current && lastDiscoverFetchDateRef.current === today) {
+      // Only fetch once per session — cache expiry (rolling 24h) handles refresh timing
+      if (hasFetchedRef.current) {
         return;
       }
 
@@ -1658,6 +1671,7 @@ export default function DiscoverScreen({
           image: exp.heroImage,
           images: exp.images || [exp.heroImage],
           priceRange: exp.priceRange,
+          priceTier: exp.priceTier,
           distance: exp.distance,
           travelTime: exp.travelTime,
           experienceType: exp.category,
@@ -1684,6 +1698,8 @@ export default function DiscoverScreen({
             popularity: 85,
           },
           strollData: exp.strollData,
+          website: exp.website || null,
+          phone: exp.phone || null,
         }));
 
         // Transform hero cards from server response
@@ -1696,6 +1712,7 @@ export default function DiscoverScreen({
           image: hc.heroImage,
           images: hc.images || [hc.heroImage],
           priceRange: hc.priceRange,
+          priceTier: hc.priceTier as PriceTierSlug | undefined,
           rating: hc.rating,
           reviewCount: hc.reviewCount,
           address: hc.address,
@@ -1705,6 +1722,8 @@ export default function DiscoverScreen({
           tags: hc.highlights || [],
           location: hc.lat != null && hc.lng != null ? { lat: hc.lat, lng: hc.lng } : undefined,
           openingHours: hc.openingHours || null,
+          website: hc.website || null,
+          phone: hc.phone || null,
         }));
 
         // CLIENT-SIDE FALLBACK: If server returned < 2 hero cards, extract from grid cards
@@ -1731,6 +1750,7 @@ export default function DiscoverScreen({
                 image: candidate.heroImage,
                 images: candidate.images || [candidate.heroImage],
                 priceRange: candidate.priceRange,
+                priceTier: candidate.priceTier as PriceTierSlug | undefined,
                 rating: candidate.rating,
                 reviewCount: candidate.reviewCount,
                 address: candidate.address,
@@ -1740,6 +1760,8 @@ export default function DiscoverScreen({
                 tags: candidate.highlights || [],
                 location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
+                website: candidate.website || null,
+                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               existingHeroCats.add(heroCategory);
@@ -1765,6 +1787,7 @@ export default function DiscoverScreen({
                 image: candidate.heroImage,
                 images: candidate.images || [candidate.heroImage],
                 priceRange: candidate.priceRange,
+                priceTier: candidate.priceTier as PriceTierSlug | undefined,
                 rating: candidate.rating,
                 reviewCount: candidate.reviewCount,
                 address: candidate.address,
@@ -1774,6 +1797,8 @@ export default function DiscoverScreen({
                 tags: candidate.highlights || [],
                 location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
+                website: candidate.website || null,
+                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               console.log(`[For You] Filled hero slot with "${candidate.title}" (${candidate.category})`);
@@ -1799,6 +1824,7 @@ export default function DiscoverScreen({
             image: exp.heroImage,
             images: exp.images || [exp.heroImage],
             priceRange: exp.priceRange,
+            priceTier: exp.priceTier as PriceTierSlug | undefined,
             rating: exp.rating,
             reviewCount: exp.reviewCount,
             address: exp.address,
@@ -1808,6 +1834,8 @@ export default function DiscoverScreen({
             tags: exp.highlights || [],
             location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
             openingHours: exp.openingHours || null,
+            website: exp.website || null,
+            phone: exp.phone || null,
           }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
@@ -1856,6 +1884,7 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images,
     priceRange: rec.priceRange,
+    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1865,6 +1894,8 @@ export default function DiscoverScreen({
     tags: rec.tags,
     location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   // Transform Recommendation to GridCardData
@@ -1876,6 +1907,7 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images,
     priceRange: rec.priceRange,
+    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1885,6 +1917,8 @@ export default function DiscoverScreen({
     tags: rec.tags,
     location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   // State for selected cards (to prevent re-randomization on every render)
@@ -2174,6 +2208,7 @@ export default function DiscoverScreen({
       rating: card.rating,
       reviewCount: card.reviewCount || 0,
       priceRange: card.priceRange,
+      priceTier: card.priceTier,
       distance: card.distance || "",
       travelTime: card.travelTime || "",
       address: card.address || "",
@@ -2222,6 +2257,7 @@ export default function DiscoverScreen({
       rating: card.rating,
       reviewCount: card.reviewCount || 0,
       priceRange: card.priceRange,
+      priceTier: card.priceTier,
       distance: card.distance || "",
       travelTime: card.travelTime || "",
       address: card.address || "",
@@ -3083,13 +3119,8 @@ export default function DiscoverScreen({
               )}
 
               {/* For You Tab Header with People Pills */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.tabHeaderScrollView}
-                contentContainerStyle={styles.tabHeaderContent}
-              >
-                {/* For You Pill - Always First */}
+              <View style={styles.tabHeaderRow}>
+                {/* Fixed pills */}
                 <TouchableOpacity
                   style={[
                     styles.personPill,
@@ -3108,7 +3139,6 @@ export default function DiscoverScreen({
                   </Text>
                 </TouchableOpacity>
 
-                {/* Add Person Button */}
                 <TouchableOpacity
                   style={styles.addUserButtonPill}
                   onPress={handleOpenAddPersonModal}
@@ -3117,81 +3147,88 @@ export default function DiscoverScreen({
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Saved People Pills */}
-                {savedPeople.map((person) => {
-                  const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
-                  const isSelected = selectedPersonId === person.id;
-                  const isDeleting = deletingPersonId === person.id;
+                {/* Scrollable Saved People Pills */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tabHeaderScrollContent}
+                  style={styles.tabHeaderScrollView}
+                >
+                  {savedPeople.map((person) => {
+                    const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
+                    const isSelected = selectedPersonId === person.id;
+                    const isDeleting = deletingPersonId === person.id;
 
-                  return (
-                    <Animated.View
-                      key={person.id}
-                      style={[
-                        styles.personPill,
-                        isSelected && styles.personPillSelectedGradient,
-                        isPending && { opacity: 0.5 },
-                        isDeleting && {
-                          opacity: deletingAnimRef,
-                          transform: [{ scale: deletingAnimRef }],
-                        },
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.personPillTouchable}
-                        onPress={() => {
-                          if (isPending) {
-                            // Show tooltip for pending pills
-                            Alert.alert("", `Waiting for ${person.name} to accept`);
-                          } else {
-                            handlePersonSelect(person.id);
-                          }
-                        }}
-                        onLongPress={() => handleLongPressPerson(person)}
-                        activeOpacity={0.7}
-                        accessibilityLabel={isPending ? `Waiting for ${person.name} to accept` : person.name}
+                    return (
+                      <Animated.View
+                        key={person.id}
+                        style={[
+                          styles.personPill,
+                          isSelected && styles.personPillSelectedGradient,
+                          isPending && { opacity: 0.5 },
+                          isDeleting && {
+                            opacity: deletingAnimRef,
+                            transform: [{ scale: deletingAnimRef }],
+                          },
+                        ]}
                       >
-                        <View
-                          style={[
-                            styles.personPillAvatar,
-                            isSelected && styles.personPillAvatarSelectedGradient,
-                            isPending && { backgroundColor: "#d1d5db" },
-                          ]}
+                        <TouchableOpacity
+                          style={styles.personPillTouchable}
+                          onPress={() => {
+                            if (isPending) {
+                              // Show tooltip for pending pills
+                              Alert.alert("", `Waiting for ${person.name} to accept`);
+                            } else {
+                              handlePersonSelect(person.id);
+                            }
+                          }}
+                          onLongPress={() => handleLongPressPerson(person)}
+                          activeOpacity={0.7}
+                          accessibilityLabel={isPending ? `Waiting for ${person.name} to accept` : person.name}
                         >
-                          <Text
+                          <View
                             style={[
-                              styles.personPillInitials,
-                              isSelected && styles.personPillInitialsSelected,
-                              isPending && { color: "#9ca3af" },
+                              styles.personPillAvatar,
+                              isSelected && styles.personPillAvatarSelectedGradient,
+                              isPending && { backgroundColor: "#d1d5db" },
                             ]}
                           >
-                            {person.initials}
-                          </Text>
-                          {/* Link icon badge for linked persons */}
-                          {person.is_linked && (
-                            <View style={styles.linkedBadge}>
-                              <Ionicons name="link-outline" size={10} color="#eb7825" />
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.personPillRemoveButton,
-                          isSelected && styles.personPillRemoveButtonSelected,
-                        ]}
-                        onPress={() => handleConfirmRemovePerson(person)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons
-                          name="close"
-                          size={14}
-                          color={isSelected ? "white" : "#9ca3af"}
-                        />
-                      </TouchableOpacity>
-                    </Animated.View>
-                  );
-                })}
-              </ScrollView>
+                            <Text
+                              style={[
+                                styles.personPillInitials,
+                                isSelected && styles.personPillInitialsSelected,
+                                isPending && { color: "#9ca3af" },
+                              ]}
+                            >
+                              {person.initials}
+                            </Text>
+                            {/* Link icon badge for linked persons */}
+                            {person.is_linked && (
+                              <View style={styles.linkedBadge}>
+                                <Ionicons name="link-outline" size={10} color="#eb7825" />
+                              </View>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.personPillRemoveButton,
+                            isSelected && styles.personPillRemoveButtonSelected,
+                          ]}
+                          onPress={() => handleConfirmRemovePerson(person)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name="close"
+                            size={14}
+                            color={isSelected ? "white" : "#9ca3af"}
+                          />
+                        </TouchableOpacity>
+                      </Animated.View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
 
               {/* Person-specific view when a person is selected */}
               {selectedPerson ? (
@@ -4010,15 +4047,22 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 16,
   },
-  tabHeaderScrollView: {
-    marginBottom: 16,
-    marginHorizontal: -16,
-  },
-  tabHeaderContent: {
+  tabHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 16,
+    marginBottom: 16,
+    marginHorizontal: -16,
+    paddingLeft: 16,
+  },
+  tabHeaderScrollView: {
+    flex: 1,
+  },
+  tabHeaderScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingRight: 16,
   },
   headerButton: {
     paddingVertical: 8,
@@ -4552,9 +4596,8 @@ const styles = StyleSheet.create({
   personPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f9fafb",
-    // borderWidth: 1,
-    borderColor: "#e5e7eb",
+    backgroundColor: "#FEF3E7",
+    borderColor: "#fcd9b6",
     borderRadius: 24,
     paddingVertical: 8,
     paddingHorizontal: 12,

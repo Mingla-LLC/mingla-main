@@ -12,6 +12,8 @@ export interface UserProfile {
   bio?: string;
   location?: string;
   active?: boolean;
+  visibility_mode?: "public" | "friends" | "private";
+  photos?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -293,6 +295,15 @@ class AuthService {
       });
       return null;
     }
+  }
+
+  async updateBio(userId: string, bio: string): Promise<void> {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ bio })
+      .eq("id", userId);
+    if (error) throw new Error(error.message);
+    await this.loadUserProfile(userId);
   }
 
   // Listen for auth state changes

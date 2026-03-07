@@ -116,7 +116,6 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
                 <Ionicons name="flag" size={20} color="#dc2626" />
               </View>
               <Text style={styles.headerTitle}>Report User</Text>
-              <Text style={styles.headerSubtitle}>@{user.username}</Text>
             </View>
             <TouchableOpacity
               onPress={handleClose}

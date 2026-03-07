@@ -72,7 +72,6 @@ export default function FriendCard({
                   </View>
                 )}
               </View>
-              <Text style={styles.friendUsername}>@{friend.username}</Text>
               {friend.mutualFriends && (
                 <Text style={styles.mutualFriends}>{friend.mutualFriends} mutual friends</Text>
               )}

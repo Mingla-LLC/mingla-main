@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
@@ -395,10 +395,10 @@ export const useSessionManagement = () => {
 
       // Process participants
       const participantPromises = participants.map(async (username) => {
-        // Find user by username
+        // Find user by username (include email for push notification edge function)
         const { data: userData, error: userError } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, email')
           .eq('username', username)
           .single();
 
@@ -421,20 +421,36 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
-        // Send invitation
-        const { error: inviteError } = await supabase
+        // Send invitation and get invite ID back for the notification
+        const { data: inviteData, error: inviteError } = await supabase
           .from('collaboration_invites')
           .insert({
             session_id: sessionData.id,
             inviter_id: user.id,
             invitee_id: userData.id,
             status: 'pending'
-          });
+          })
+          .select('id')
+          .single();
 
         if (inviteError) {
           console.error('Error sending invitation:', inviteError);
           return { success: false, username };
         }
+
+        // Send push notification via edge function (fire-and-forget — don't block invite creation)
+        supabase.functions.invoke('send-collaboration-invite', {
+          body: {
+            inviterId: user.id,
+            invitedUserId: userData.id,
+            invitedUserEmail: userData.email || '',
+            sessionId: sessionData.id,
+            sessionName: resolvedName,
+            inviteId: inviteData?.id,
+          }
+        }).catch(err => {
+          console.error('[useSessionManagement] Push notification failed for', username, err);
+        });
 
         return { success: true, username, userId: userData.id };
       });
@@ -1048,13 +1064,38 @@ export const useSessionManagement = () => {
     }
   }, [sessionState.availableSessions, sessionState.currentSession, user, loadUserSessions]);
 
+  // Debounced reload — collapses rapid Realtime events into a single query burst.
+  // Creating a session inserts into 3 tables in quick succession; without debouncing,
+  // each insert fires loadUserSessions() independently (3× the queries).
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedReload = useCallback(() => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      loadUserSessions();
+    }, 300);
+  }, [loadUserSessions]);
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    };
+  }, []);
+
   // Load sessions on mount and when user changes
   useEffect(() => {
+    if (!user) return;
+
     loadUserSessions();
 
-    // Set up realtime subscription for collaboration updates
+    // Set up realtime subscriptions for collaboration updates.
+    // Filter collaboration_invites to only events targeting this user (invitee_id)
+    // so the pill appears instantly when an invite is created for them.
+    // session_participants and collaboration_sessions rely on RLS for access
+    // control — we can't filter by a single column since involvement is
+    // determined by the session_participants join.
     const channel = supabase
-      .channel('collaboration-updates')
+      .channel(`collaboration-updates-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -1063,20 +1104,7 @@ export const useSessionManagement = () => {
           table: 'session_participants'
         },
         () => {
-          // Reload sessions when participants change
-          loadUserSessions();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public', 
-          table: 'collaboration_sessions'
-        },
-        () => {
-          // Reload sessions when sessions change
-          loadUserSessions();
+          debouncedReload();
         }
       )
       .on(
@@ -1084,11 +1112,46 @@ export const useSessionManagement = () => {
         {
           event: '*',
           schema: 'public',
+          table: 'collaboration_sessions'
+        },
+        () => {
+          debouncedReload();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invitee_id=eq.${user.id}`
+        },
+        () => {
+          // New invite targeting this user — reload immediately (no debounce)
+          // so the collaboration pill appears as fast as possible.
+          loadUserSessions();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
           table: 'collaboration_invites'
         },
         () => {
-          // Reload sessions when invites change
-          loadUserSessions();
+          debouncedReload();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'collaboration_invites'
+        },
+        () => {
+          debouncedReload();
         }
       )
       .subscribe();
@@ -1096,7 +1159,7 @@ export const useSessionManagement = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadUserSessions]);
+  }, [user, loadUserSessions, debouncedReload]);
 
   return {
     ...sessionState,

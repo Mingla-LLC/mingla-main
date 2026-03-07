@@ -296,9 +296,6 @@ export default function FriendRequestsModal({
                               {/* User Info */}
                               <View style={styles.userInfo}>
                                 <Text style={styles.userName} numberOfLines={1}>{senderName}</Text>
-                                <Text style={styles.userUsername} numberOfLines={1}>
-                                  @{request.sender.username}
-                                </Text>
                                 {request.sender.email && (
                                   <Text style={styles.userEmail} numberOfLines={1}>
                                     {request.sender.email}

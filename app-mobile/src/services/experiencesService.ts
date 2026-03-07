@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { priceTierFromAmount } from '../constants/priceTiers';
 
 export interface Experience {
   id: string;
@@ -457,6 +458,7 @@ export class ExperiencesService {
       rating: rating,
       reviewCount: reviews,
       priceRange: this.formatPriceRange(exp.price_min, exp.price_max),
+      priceTier: priceTierFromAmount(exp.price_min, exp.price_max),
       distance: this.calculateDistance(exp.lat, exp.lng),
       travelTime: this.calculateTravelTime(exp.lat, exp.lng),
       experienceType: this.getExperienceType(exp.category),

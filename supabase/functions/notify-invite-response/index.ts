@@ -104,15 +104,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    let pushToken = pushTokenData?.push_token;
-    if (!pushToken) {
-      const { data: inviterProfileData } = await supabase
-        .from("profiles")
-        .select("expo_push_token")
-        .eq("id", inviterId)
-        .single();
-      pushToken = inviterProfileData?.expo_push_token;
-    }
+    const pushToken = pushTokenData?.push_token;
 
     if (!pushToken) {
       console.log("No push token found for inviter:", inviterId);

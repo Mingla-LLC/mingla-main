@@ -15,6 +15,36 @@ import {
   StyleProp,
   ViewStyle,
 } from "react-native";
+
+/**
+ * Measure a view's position on screen. Works in both the old (Bridge) and
+ * new (Bridgeless/Fabric) React Native architectures.
+ *
+ * New arch: `UIManager.measureInWindow` is removed — call the method
+ * directly on the native node/ref instead.
+ */
+function measureInWindow(
+  nodeOrHandle: any,
+  callback: (x: number, y: number, w: number, h: number) => void
+): void {
+  // New architecture — the node itself exposes measureInWindow
+  if (typeof nodeOrHandle?.measureInWindow === "function") {
+    nodeOrHandle.measureInWindow(callback);
+    return;
+  }
+  // Old architecture — go through UIManager
+  if (typeof UIManager.measureInWindow === "function") {
+    const handle =
+      typeof nodeOrHandle === "number"
+        ? nodeOrHandle
+        : findNodeHandle(nodeOrHandle);
+    if (handle) {
+      UIManager.measureInWindow(handle, callback);
+      return;
+    }
+  }
+  // Neither path available — silently skip
+}
 import { useKeyboard } from "../../hooks/useKeyboard";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -87,9 +117,54 @@ const KeyboardAwareScrollView = forwardRef<
     useImperativeHandle(ref, () => scrollViewRef.current as ScrollView);
 
     /**
-     * Given the real keyboard height (from the keyboard event, not a guess),
-     * find and scroll to the focused input.
+     * Check whether `child` is a descendant of `ancestor` in the native
+     * view hierarchy.  Works on both old arch (findNodeHandle → number)
+     * and new arch (host-component refs that expose measureLayout).
+     *
+     * Returns `true` only when we can positively confirm ancestry.
+     * Returns `false` when we cannot confirm (missing refs, cross-modal
+     * inputs, etc.) — callers should skip scrolling in that case.
      */
+    const isDescendant = useCallback(
+      (ancestor: any, child: any): Promise<boolean> =>
+        new Promise((resolve) => {
+          try {
+            // New arch: the child ref exposes measureLayout directly
+            if (typeof child?.measureLayout === "function") {
+              child.measureLayout(
+                ancestor,
+                () => resolve(true), // success → child is inside ancestor
+                () => resolve(false) // failure → not a descendant
+              );
+              return;
+            }
+
+            // Old arch: use findNodeHandle + UIManager.measureLayout
+            const ancestorHandle =
+              typeof ancestor === "number"
+                ? ancestor
+                : findNodeHandle(ancestor);
+            const childHandle =
+              typeof child === "number" ? child : findNodeHandle(child);
+
+            if (!ancestorHandle || !childHandle) {
+              resolve(false);
+              return;
+            }
+
+            UIManager.measureLayout(
+              childHandle,
+              ancestorHandle,
+              () => resolve(false), // error → not a descendant
+              () => resolve(true) // success → is a descendant
+            );
+          } catch {
+            resolve(false);
+          }
+        }),
+      []
+    );
+
     const scrollToFocusedInput = useCallback(
       (kbHeight: number) => {
         // Find the currently focused TextInput
@@ -105,17 +180,25 @@ const KeyboardAwareScrollView = forwardRef<
         // Android fires after didShow. Both need a beat for measurement.
         const delay = Platform.OS === "ios" ? 50 : 80;
 
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
-            const scrollNode = findNodeHandle(scrollViewRef.current);
+            const scrollNode =
+              scrollViewRef.current ?? findNodeHandle(scrollViewRef.current);
             if (!scrollNode) return;
 
+            // Guard: only scroll to inputs that are inside THIS scroll view.
+            // Prevents ghost-scrolling when a nested modal (e.g. CountryPickerModal)
+            // focuses its own TextInput — the keyboard event fires globally but
+            // the focused input isn't in our view tree.
+            const inside = await isDescendant(scrollNode, focusedInput);
+            if (!inside) return;
+
             // Measure ScrollView position on screen
-            UIManager.measureInWindow(
+            measureInWindow(
               scrollNode,
-              (_svX: number, svY: number, _svW: number, svH: number) => {
+              (_svX: number, svY: number, _svW: number, _svH: number) => {
                 // Measure focused input position on screen
-                UIManager.measureInWindow(
+                measureInWindow(
                   focusedInput,
                   (
                     _fX: number,
@@ -156,7 +239,7 @@ const KeyboardAwareScrollView = forwardRef<
           }
         }, delay);
       },
-      [bottomOffset, keyboardPadding]
+      [bottomOffset, keyboardPadding, isDescendant]
     );
 
     // Use the hook's returned STATE (not just a ref) so re-renders happen

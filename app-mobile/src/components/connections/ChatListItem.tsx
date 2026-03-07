@@ -13,6 +13,7 @@ interface ChatListItemProps {
   currentUserId: string;
   onPress: (conversation: Conversation) => void;
   isMuted?: boolean;
+  onAvatarPress?: (userId: string) => void;
 }
 
 /**
@@ -72,6 +73,7 @@ export function ChatListItem({
   currentUserId,
   onPress,
   isMuted = false,
+  onAvatarPress,
 }: ChatListItemProps) {
   // Find the other participant (for direct conversations)
   const otherParticipant = conversation.participants.find(
@@ -120,7 +122,17 @@ export function ChatListItem({
       activeOpacity={0.7}
     >
       {/* Avatar */}
-      <View style={styles.avatarContainer}>
+      <TouchableOpacity
+        style={styles.avatarContainer}
+        onPress={() => {
+          if (onAvatarPress && otherParticipant?.id) {
+            onAvatarPress(otherParticipant.id);
+          } else {
+            onPress(conversation);
+          }
+        }}
+        activeOpacity={0.7}
+      >
         <View
           style={[
             styles.avatar,
@@ -134,7 +146,7 @@ export function ChatListItem({
           <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
         </View>
         {otherParticipant?.is_online && <View style={styles.onlineDot} />}
-      </View>
+      </TouchableOpacity>
 
       {/* Content */}
       <View style={styles.content}>

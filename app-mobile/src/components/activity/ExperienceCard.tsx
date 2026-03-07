@@ -3,7 +3,8 @@ import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
-import { formatPriceRange } from '../utils/formatters';
+import { formatPriceRange, getCurrencySymbol, getCurrencyRate } from '../utils/formatters';
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 
 interface ExperienceCardProps {
   experience: {
@@ -16,6 +17,7 @@ interface ExperienceCardProps {
     rating: number;
     reviewCount: number;
     priceRange: string;
+    priceTier?: string;
     travelTime: string;
     description: string;
     fullDescription: string;
@@ -437,7 +439,9 @@ const ExperienceCard = ({
                   <Text style={styles.statText}>{experience.travelTime || '15 min'}</Text>
                 </View>
                 <Text style={styles.priceText}>
-                  {experience.priceRange ? formatPriceRange(experience.priceRange, currency) : 'Varies'}
+                  {experience.priceTier && TIER_BY_SLUG[experience.priceTier as PriceTierSlug]
+                    ? formatTierLabel(experience.priceTier as PriceTierSlug, getCurrencySymbol(currency), getCurrencyRate(currency))
+                    : experience.priceRange ? formatPriceRange(experience.priceRange, currency) : 'Varies'}
                 </Text>
               </View>
               

@@ -105,30 +105,20 @@ class EnhancedNotificationService {
       // Store push token in user_push_tokens table
       const { error } = await supabase
         .from('user_push_tokens')
-        .upsert({
-          user_id: userId,
-          push_token: this.expoPushToken,
-          platform: Platform.OS,
-          device_id: Device.osInternalBuildId || 'unknown',
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            user_id: userId,
+            push_token: this.expoPushToken,
+            platform: Platform.OS,
+            device_id: Device.osInternalBuildId || 'unknown',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,push_token' }
+        );
 
       if (error) {
         console.error('Error storing push token in user_push_tokens:', error);
-      }
-
-      // Always also store in profiles.expo_push_token as fallback
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ expo_push_token: this.expoPushToken })
-        .eq('id', userId);
-
-      if (profileError) {
-        console.error('Error storing push token in profiles:', profileError);
-      }
-
-      // Mark as stored if at least one location succeeded
-      if (!error || !profileError) {
+      } else {
         this.pushTokenStored = true;
       }
 
@@ -163,27 +153,15 @@ class EnhancedNotificationService {
     notification: NotificationData
   ): Promise<boolean> {
     try {
-      // Try user_push_tokens first, fall back to profiles.expo_push_token
-      let pushToken: string | null = null;
-
       const { data: tokenData } = await supabase
         .from('user_push_tokens')
         .select('push_token')
         .eq('user_id', userId)
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      pushToken = tokenData?.push_token || null;
-
-      if (!pushToken) {
-        // Fallback: check profiles.expo_push_token
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('expo_push_token')
-          .eq('id', userId)
-          .single();
-
-        pushToken = profileData?.expo_push_token || null;
-      }
+      const pushToken = tokenData?.push_token || null;
 
       if (!pushToken) {
         return false;

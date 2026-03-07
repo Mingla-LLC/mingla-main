@@ -8,8 +8,8 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
-import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
+import { s, vs } from "../utils/responsive";
+import { colors } from "../constants/designSystem";
 import { SavedPerson } from "../services/savedPeopleService";
 
 interface ElitePeopleSummaryProps {
@@ -102,6 +102,7 @@ const ElitePeopleSummary: React.FC<ElitePeopleSummaryProps> = ({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.scrollContainer}
       contentContainerStyle={styles.scrollContent}
     >
       {peopleWithEvents.map(({ person, daysAway }) => (
@@ -130,15 +131,20 @@ const ElitePeopleSummary: React.FC<ElitePeopleSummaryProps> = ({
 };
 
 const styles = StyleSheet.create({
+  scrollContainer: {
+    marginHorizontal: -16,
+    marginBottom: 16,
+  },
   scrollContent: {
-    paddingHorizontal: s(16),
-    gap: s(12),
+    paddingHorizontal: 16,
+    gap: 12,
   },
   teaserContainer: {
     position: "relative",
     overflow: "hidden",
     borderRadius: s(16),
-    marginHorizontal: s(16),
+    marginHorizontal: -16,
+    marginBottom: 16,
   },
   card: {
     width: s(200),

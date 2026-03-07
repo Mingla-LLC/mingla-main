@@ -136,14 +136,15 @@ export class NotificationService {
     inviterName: string
   ): Promise<boolean> {
     try {
-      // Get the invited user's push token from the database
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('expo_push_token')
-        .eq('id', invitedUserId)
-        .single();
+      const { data: tokenData } = await supabase
+        .from('user_push_tokens')
+        .select('push_token')
+        .eq('user_id', invitedUserId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (!userProfile?.expo_push_token) {
+      if (!tokenData?.push_token) {
         return false;
       }
 
@@ -157,7 +158,7 @@ export class NotificationService {
         },
       };
 
-      return await this.sendPushNotification(userProfile.expo_push_token, notification);
+      return await this.sendPushNotification(tokenData.push_token, notification);
     } catch (error) {
       console.error('Error sending collaboration invite:', error);
       return false;
@@ -170,13 +171,15 @@ export class NotificationService {
     updateType: 'new_experience' | 'experience_finalized' | 'session_ended'
   ): Promise<boolean> {
     try {
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('expo_push_token')
-        .eq('id', userId)
-        .single();
+      const { data: tokenData } = await supabase
+        .from('user_push_tokens')
+        .select('push_token')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (!userProfile?.expo_push_token) {
+      if (!tokenData?.push_token) {
         return false;
       }
 
@@ -208,7 +211,7 @@ export class NotificationService {
         },
       };
 
-      return await this.sendPushNotification(userProfile.expo_push_token, notification);
+      return await this.sendPushNotification(tokenData.push_token, notification);
     } catch (error) {
       console.error('Error sending session update:', error);
       return false;
@@ -218,9 +221,16 @@ export class NotificationService {
   async updateUserPushToken(userId: string, pushToken: string): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('profiles')
-        .update({ expo_push_token: pushToken })
-        .eq('id', userId);
+        .from('user_push_tokens')
+        .upsert(
+          {
+            user_id: userId,
+            push_token: pushToken,
+            platform: Platform.OS,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,push_token' }
+        );
 
       if (error) throw error;
       return true;

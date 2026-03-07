@@ -390,11 +390,6 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                     </View>
                     <View style={styles.friendInfo}>
                       <Text style={styles.friendName}>{friend.name}</Text>
-                      {friend.username && (
-                        <Text style={styles.friendUsername}>
-                          @{friend.username}
-                        </Text>
-                      )}
                     </View>
                     {isSelected && (
                       <View style={styles.friendCheckmark}>

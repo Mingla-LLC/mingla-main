@@ -321,11 +321,6 @@ export default function CollaborationFriendsTab({
                     </View>
                   )}
                 </View>
-                <Text style={styles.friendUsername}>
-                  @
-                  {friend.username ||
-                    friend.name.toLowerCase().replace(" ", "")}
-                </Text>
                 <Text style={styles.mutualFriends}>
                   {friend.mutualFriends || 0} mutual{" "}
                   {friend.mutualFriends === 1 ? "friend" : "friends"}

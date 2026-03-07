@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Text,
   View,
@@ -8,12 +8,21 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  Share,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { searchUsers } from "../../services/friendLinkService";
-import { UserSearchResult } from "../../types/friendLink";
+import {
+  COUNTRIES,
+  getDefaultCountryCode,
+  getCountryByCode,
+} from "../../constants/countries";
+import { CountryData } from "../../types/onboarding";
 import { useSendFriendLink } from "../../hooks/useFriendLinks";
+import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
+import { createPendingInvite } from "../../services/phoneLookupService";
+import { useAppStore } from "../../store/appStore";
 import { s, vs } from "../../utils/responsive";
 
 interface AddFriendViewProps {
@@ -27,163 +36,274 @@ export function AddFriendView({
   existingFriendIds,
   onRequestSent,
 }: AddFriendViewProps) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<UserSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
-  const [searchError, setSearchError] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sendLinkMutation = useSendFriendLink();
+  const { user } = useAppStore();
 
-  const handleSearch = (text: string) => {
-    setQuery(text);
-    setSearchError(false);
+  // Phone input state
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<CountryData>(
+    () => getCountryByCode(getDefaultCountryCode()) ?? COUNTRIES[0]
+  );
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+  const [actionStatus, setActionStatus] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [actionError, setActionError] = useState("");
 
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
+  // Build E.164 phone
+  const phoneRawDigits = phoneNumber.replace(/\D/g, "");
+  const phoneE164 = useMemo(() => {
+    if (!phoneRawDigits) return "";
+    return `${selectedCountry.dialCode}${phoneRawDigits}`;
+  }, [phoneRawDigits, selectedCountry]);
 
-    if (!text.trim() || text.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+  const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
+  const debouncedDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
 
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const data = await searchUsers(text.trim());
-        // Filter out self
-        setResults(data.filter((u) => u.id !== currentUserId));
-      } catch (err) {
-        console.error("Error searching users:", err);
-        setResults([]);
-        setSearchError(true);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-  };
+  const {
+    data: phoneLookupResult,
+    isLoading: phoneLookupLoading,
+  } = usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
 
-  const handleSendRequest = (user: UserSearchResult) => {
-    sendLinkMutation.mutate(
-      { targetUserId: user.id },
-      {
-        onSuccess: () => {
+  const isPhoneValid = useMemo(() => {
+    return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15;
+  }, [phoneRawDigits]);
+
+  const handlePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164) return;
+
+    setActionStatus("sending");
+    setActionError("");
+
+    try {
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        if (phoneLookupResult.friendship_status === "none") {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          await sendLinkMutation.mutateAsync({
+            targetUserId: phoneLookupResult.user.id,
+          });
+          setActionStatus("sent");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setSentIds((prev) => new Set(prev).add(user.id));
           onRequestSent();
-        },
-        onError: (err: any) => {
-          const msg = err?.message || "";
-          if (msg.includes("already exists")) {
-            Alert.alert("", "A connection already exists with this user.");
-            setSentIds((prev) => new Set(prev).add(user.id));
-          } else {
-            Alert.alert("", "Couldn't send request. Try again?");
-          }
-        },
+          setTimeout(() => {
+            setPhoneNumber("");
+            setActionStatus("idle");
+          }, 2000);
+        } else if (phoneLookupResult.friendship_status === "friends") {
+          Alert.alert("Already Friends", "You're already connected with this person.");
+          setActionStatus("idle");
+        } else {
+          Alert.alert("Request Pending", "A friend request is already pending with this person.");
+          setActionStatus("idle");
+        }
+      } else {
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+        }
+        await Share.share({
+          message: `Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com`,
+        });
+        setActionStatus("sent");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => {
+          setPhoneNumber("");
+          setActionStatus("idle");
+        }, 2000);
       }
+    } catch (err) {
+      console.error("[AddFriendView] Action error:", err);
+      setActionError(err instanceof Error ? err.message : "Something went wrong");
+      setActionStatus("error");
+    }
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, onRequestSent]);
+
+  const getActionLabel = (): string => {
+    if (phoneLookupLoading) return "Looking up...";
+    if (!isPhoneValid) return "Enter phone number";
+    if (phoneLookupResult?.found) {
+      if (phoneLookupResult.friendship_status === "friends") return "Already friends";
+      if (phoneLookupResult.friendship_status === "none") return "Send request";
+      return "Request pending";
+    }
+    return "Invite to Mingla";
+  };
+
+  const isActionDisabled =
+    !isPhoneValid ||
+    phoneLookupLoading ||
+    actionStatus === "sending" ||
+    actionStatus === "sent" ||
+    (phoneLookupResult?.found && phoneLookupResult.friendship_status !== "none");
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch.trim()) return COUNTRIES;
+    const q = countrySearch.toLowerCase();
+    return COUNTRIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.dialCode.includes(q) ||
+        c.code.toLowerCase().includes(q)
     );
-  };
-
-  const getInitials = (name: string): string => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
-  const renderUserRow = ({ item }: { item: UserSearchResult }) => {
-    const displayName = item.display_name || item.username || "Unknown";
-    const isFriend = existingFriendIds.includes(item.id);
-    const isSent = sentIds.has(item.id);
-    const isSending = sendLinkMutation.isPending && sendLinkMutation.variables?.targetUserId === item.id;
-
-    return (
-      <View style={styles.userRow}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Text style={styles.userUsername} numberOfLines={1}>
-            @{item.username}
-          </Text>
-        </View>
-        {isFriend ? (
-          <Text style={styles.alreadyFriendsText}>Already friends</Text>
-        ) : isSent ? (
-          <View style={styles.sentButton}>
-            <Ionicons name="checkmark" size={s(16)} color="#6b7280" />
-            <Text style={styles.sentText}>Sent</Text>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => handleSendRequest(item)}
-            style={styles.addButton}
-            disabled={isSending}
-            activeOpacity={0.7}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Text style={styles.addButtonText}>Add</Text>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
+  }, [countrySearch]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={s(18)}
-          color="#9ca3af"
-          style={styles.searchIcon}
-        />
+      {/* Compact single-line phone input */}
+      <View style={styles.phoneRow}>
+        <TouchableOpacity
+          style={styles.countryPicker}
+          onPress={() => setShowCountryPicker(true)}
+          activeOpacity={0.6}
+        >
+          <Text style={styles.countryPickerFlag}>{selectedCountry.flag}</Text>
+          <Text style={styles.countryPickerDial}>{selectedCountry.dialCode}</Text>
+          <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+        </TouchableOpacity>
+
+        <View style={styles.phoneDivider} />
+
         <TextInput
-          placeholder="Search by username..."
-          value={query}
-          onChangeText={handleSearch}
-          style={styles.searchInput}
+          style={styles.phoneInput}
+          value={phoneNumber}
+          onChangeText={(text) => {
+            setPhoneNumber(text);
+            if (actionStatus !== "idle" && actionStatus !== "sending") {
+              setActionStatus("idle");
+              setActionError("");
+            }
+          }}
+          placeholder="Phone number"
           placeholderTextColor="#9ca3af"
-          autoCapitalize="none"
+          keyboardType="phone-pad"
           autoCorrect={false}
+          maxLength={15}
         />
+
+        {phoneLookupLoading && (
+          <ActivityIndicator size="small" color="#eb7825" style={styles.spinner} />
+        )}
       </View>
 
-      {!query.trim() ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Search by username to find friends</Text>
+      {/* Lookup result */}
+      {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+        <View style={styles.lookupResult}>
+          {phoneLookupResult.found ? (
+            <View style={styles.lookupRow}>
+              <Ionicons name="checkmark-circle" size={s(14)} color="#22c55e" />
+              <Text style={styles.lookupTextGreen}>
+                {phoneLookupResult.user?.display_name ||
+                  phoneLookupResult.user?.username ||
+                  "User"}{" "}
+                is on Mingla
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.lookupRow}>
+              <Ionicons name="person-add-outline" size={s(14)} color="#6b7280" />
+              <Text style={styles.lookupTextMuted}>Not on Mingla yet</Text>
+            </View>
+          )}
         </View>
-      ) : loading ? (
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="small" color="#eb7825" />
-          <Text style={styles.loadingLabel}>Searching...</Text>
-        </View>
-      ) : searchError ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Search failed. Try again?</Text>
-        </View>
-      ) : results.length === 0 && query.trim().length >= 2 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No one found for "{query.trim()}"</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => item.id}
-          renderItem={renderUserRow}
-          scrollEnabled={false}
-        />
       )}
+
+      {/* Status */}
+      {actionStatus === "sent" && (
+        <View style={styles.statusRow}>
+          <Ionicons name="checkmark-circle" size={s(16)} color="#22c55e" />
+          <Text style={styles.statusSuccess}>
+            {phoneLookupResult?.found ? "Request sent!" : "Invite sent!"}
+          </Text>
+        </View>
+      )}
+      {actionStatus === "error" && (
+        <View style={styles.statusRow}>
+          <Ionicons name="alert-circle" size={s(16)} color="#ef4444" />
+          <Text style={styles.statusError}>{actionError}</Text>
+        </View>
+      )}
+
+      {/* Action button */}
+      <TouchableOpacity
+        style={[styles.actionButton, isActionDisabled && styles.actionButtonDisabled]}
+        onPress={handlePhoneAction}
+        activeOpacity={0.7}
+        disabled={!!isActionDisabled}
+      >
+        {actionStatus === "sending" ? (
+          <ActivityIndicator size="small" color="#ffffff" />
+        ) : (
+          <>
+            <Ionicons
+              name={phoneLookupResult?.found ? "person-add" : "paper-plane-outline"}
+              size={s(14)}
+              color="#ffffff"
+              style={styles.actionButtonIcon}
+            />
+            <Text style={styles.actionButtonText}>{getActionLabel()}</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      {/* Country picker modal */}
+      <Modal
+        visible={showCountryPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setShowCountryPicker(false)}
+          />
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Select Country</Text>
+              <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                <Ionicons name="close" size={22} color="#374151" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerSearchRow}>
+              <Ionicons name="search-outline" size={18} color="#9ca3af" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.pickerSearchInput}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                placeholder="Search countries"
+                placeholderTextColor="#9ca3af"
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            <FlatList
+              data={filteredCountries}
+              keyExtractor={(item) => item.code}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.countryRow,
+                    item.code === selectedCountry.code && styles.countryRowSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedCountry(item);
+                    setShowCountryPicker(false);
+                    setCountrySearch("");
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.countryFlag}>{item.flag}</Text>
+                  <Text style={styles.countryName}>{item.name}</Text>
+                  <Text style={styles.countryDial}>{item.dialCode}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -196,105 +316,162 @@ const styles = StyleSheet.create({
     borderRadius: s(12),
     marginHorizontal: s(16),
   },
-  searchContainer: {
+  phoneRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: s(10),
-    paddingHorizontal: s(12),
-    marginBottom: vs(8),
+    height: 46,
+    overflow: "hidden",
   },
-  searchIcon: {
-    marginRight: s(8),
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: vs(10),
-    fontSize: s(15),
-    color: "#111827",
-  },
-  loadingState: {
-    paddingVertical: vs(16),
-    alignItems: "center",
-    gap: s(8),
-  },
-  loadingLabel: {
-    fontSize: s(14),
-    color: "#6b7280",
-  },
-  emptyState: {
-    paddingVertical: vs(16),
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: s(14),
-    color: "#6b7280",
-  },
-  userRow: {
+  countryPicker: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: vs(8),
+    paddingLeft: s(10),
+    paddingRight: s(6),
+    height: "100%",
   },
-  avatar: {
-    width: s(36),
-    height: s(36),
-    borderRadius: s(18),
-    backgroundColor: "#e5e7eb",
-    alignItems: "center",
-    justifyContent: "center",
+  countryPickerFlag: {
+    fontSize: 16,
+    marginRight: 3,
+  },
+  countryPickerDial: {
+    fontSize: s(13),
+    fontWeight: "600",
+    color: "#374151",
+    marginRight: 3,
+  },
+  phoneDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: "#d1d5db",
+  },
+  phoneInput: {
+    flex: 1,
+    paddingHorizontal: s(10),
+    fontSize: s(15),
+    color: "#111827",
+    height: "100%",
+  },
+  spinner: {
     marginRight: s(10),
   },
-  avatarText: {
-    color: "#6b7280",
-    fontSize: s(13),
-    fontWeight: "600",
+  lookupResult: {
+    marginTop: vs(6),
   },
-  userInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  userName: {
-    fontSize: s(15),
-    fontWeight: "600",
-    color: "#111827",
-  },
-  userUsername: {
-    fontSize: s(13),
-    color: "#9ca3af",
-    marginTop: vs(1),
-  },
-  addButton: {
-    backgroundColor: "#eb7825",
-    paddingHorizontal: s(16),
-    paddingVertical: vs(6),
-    borderRadius: s(8),
-    minWidth: s(56),
+  lookupRow: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 5,
   },
-  addButtonText: {
+  lookupTextGreen: {
+    fontSize: s(12),
+    color: "#16a34a",
+    fontWeight: "500",
+  },
+  lookupTextMuted: {
+    fontSize: s(12),
+    color: "#6b7280",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: vs(6),
+  },
+  statusSuccess: {
+    fontSize: s(13),
+    color: "#16a34a",
+    fontWeight: "500",
+  },
+  statusError: {
+    fontSize: s(13),
+    color: "#dc2626",
+  },
+  actionButton: {
+    flexDirection: "row",
+    backgroundColor: "#eb7825",
+    borderRadius: s(8),
+    paddingVertical: vs(10),
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: vs(10),
+  },
+  actionButtonDisabled: {
+    opacity: 0.45,
+  },
+  actionButtonIcon: {
+    marginRight: 5,
+  },
+  actionButtonText: {
     color: "#ffffff",
     fontSize: s(14),
     fontWeight: "600",
   },
-  alreadyFriendsText: {
-    fontSize: s(12),
-    color: "#9ca3af",
-    fontStyle: "italic",
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
-  sentButton: {
+  pickerSheet: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+    maxHeight: "75%",
+  },
+  pickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  pickerSearchRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f3f4f6",
-    paddingHorizontal: s(16),
-    paddingVertical: vs(6),
-    borderRadius: s(8),
-    gap: s(4),
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
   },
-  sentText: {
-    fontSize: s(14),
+  pickerSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#111827",
+    padding: 0,
+  },
+  countryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  countryRowSelected: {
+    backgroundColor: "#fff7ed",
+  },
+  countryFlag: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 14,
+    color: "#111827",
+  },
+  countryDial: {
+    fontSize: 13,
     color: "#6b7280",
-    fontWeight: "500",
   },
 });

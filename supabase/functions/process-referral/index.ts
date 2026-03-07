@@ -122,22 +122,13 @@ serve(async (req) => {
     try {
       const { data: referrerTokenData } = await adminClient
         .from("user_push_tokens")
-        .select("token")
+        .select("push_token")
         .eq("user_id", referrer_id)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      let pushToken = referrerTokenData?.token;
-
-      if (!pushToken) {
-        const { data: referrerProfile } = await adminClient
-          .from("profiles")
-          .select("expo_push_token")
-          .eq("id", referrer_id)
-          .single();
-        pushToken = referrerProfile?.expo_push_token;
-      }
+      const pushToken = referrerTokenData?.push_token;
 
       if (pushToken) {
         await fetch("https://exp.host/--/api/v2/push/send", {

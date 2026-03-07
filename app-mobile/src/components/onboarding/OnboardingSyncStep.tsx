@@ -351,9 +351,6 @@ export const OnboardingSyncStep: React.FC<OnboardingSyncStepProps> = ({
                     ? `${lookupResult.user.first_name} ${lookupResult.user.last_name}`
                     : lookupResult.user.username)}
               </Text>
-              <Text style={styles.lookupUsername} numberOfLines={1}>
-                @{lookupResult.user.username}
-              </Text>
             </View>
             <Ionicons name="add-circle" size={24} color={colors.primary[500]} />
           </Pressable>

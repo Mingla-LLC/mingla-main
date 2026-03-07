@@ -374,9 +374,6 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                     ? `${lookupResult.user.first_name} ${lookupResult.user.last_name}`
                     : lookupResult.user.username)}
               </Text>
-              <Text style={styles.lookupUsername} numberOfLines={1}>
-                @{lookupResult.user.username}
-              </Text>
             </View>
             <Ionicons name="add-circle" size={24} color={colors.primary[500]} />
           </Pressable>
@@ -490,9 +487,6 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
               <View style={styles.requestInfo}>
                 <Text style={styles.requestName} numberOfLines={1}>
                   {request.sender.display_name || request.sender.username}
-                </Text>
-                <Text style={styles.requestUsername} numberOfLines={1}>
-                  @{request.sender.username}
                 </Text>
               </View>
               <View style={styles.requestActions}>

@@ -579,25 +579,19 @@ export default function ActionButtons({
   };
 
   const handlePoliciesAndReservations = () => {
-    if (!onOpenBrowser) return;
+    if (!onOpenBrowser || !card.website) return;
 
-    if (card.website) {
-      let url = card.website;
-      if (url.startsWith('http://')) {
-        // Force HTTPS — iOS ATS blocks insecure HTTP connections in WebView
-        url = url.replace('http://', 'https://');
-      } else if (!url.startsWith('https://')) {
-        url = `https://${url}`;
-      }
-      onOpenBrowser(url, card.title);
-    } else if (card.placeId) {
-      // Fallback: open Google Maps page for this place (has reviews, hours, reservation links)
-      const url = `https://www.google.com/maps/place/?q=place_id:${card.placeId}`;
-      onOpenBrowser(url, card.title);
+    let url = card.website;
+    if (url.startsWith('http://')) {
+      // Force HTTPS — iOS ATS blocks insecure HTTP connections in WebView
+      url = url.replace('http://', 'https://');
+    } else if (!url.startsWith('https://')) {
+      url = `https://${url}`;
     }
+    onOpenBrowser(url, card.title);
   };
 
-  const showPoliciesButton = !!(card.website || card.placeId);
+  const showPoliciesButton = !!card.website;
 
   return (
     <View style={styles.container}>
@@ -791,7 +785,7 @@ export default function ActionButtons({
         >
           <Ionicons name="globe-outline" size={18} color="#ffffff" />
           <Text style={styles.policiesButtonText}>
-            {card.website ? "Policies & Reservations" : "View on Google Maps"}
+            Policies & Reservations
           </Text>
         </TouchableOpacity>
       )}

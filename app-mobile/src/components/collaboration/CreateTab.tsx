@@ -784,9 +784,6 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                           <Text style={styles.preSelectedBadge}>Pre-selected</Text>
                         )}
                       </View>
-                      <Text style={styles.friendUsername}>
-                        @{(friend.username || friend.name.toLowerCase().replace(' ', ''))}
-                      </Text>
                     </View>
                     {isSelected && (
                       <Ionicons name="checkmark" size={20} color="#eb7825" />

@@ -36,10 +36,21 @@ serve(async (req) => {
       phone_e164,
     } = payload;
 
-    // Validate required fields
-    if (!inviterId || !invitedUserEmail || !sessionId || !sessionName) {
+    // Validate required fields — email is only required when userId is absent
+    // (push notifications use userId to look up tokens, not email)
+    if (!inviterId || !sessionId || !sessionName) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Missing required fields: inviterId, sessionId, sessionName" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!invitedUserId && !invitedUserEmail) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: invitedUserId or invitedUserEmail" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -116,15 +127,7 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      let pushToken = tokenData?.push_token;
-      if (!pushToken) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("expo_push_token")
-          .eq("id", invitedUserId)
-          .single();
-        pushToken = profileData?.expo_push_token;
-      }
+      const pushToken = tokenData?.push_token;
 
       if (pushToken) {
         await fetch("https://exp.host/--/api/v2/push/send", {
@@ -165,15 +168,7 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      let inviterPushToken = inviterTokenData?.push_token;
-      if (!inviterPushToken) {
-        const { data: inviterProfileData } = await supabase
-          .from("profiles")
-          .select("expo_push_token")
-          .eq("id", inviterId)
-          .single();
-        inviterPushToken = inviterProfileData?.expo_push_token;
-      }
+      const inviterPushToken = inviterTokenData?.push_token;
 
       if (inviterPushToken && invitedDisplayName) {
         await fetch("https://exp.host/--/api/v2/push/send", {

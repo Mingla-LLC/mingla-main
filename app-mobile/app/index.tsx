@@ -29,6 +29,7 @@ import TermsOfService from "../src/components/profile/TermsOfService";
 import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
 import ProfileSettings from "../src/components/profile/ProfileSettings";
+import ViewFriendProfileScreen from "../src/components/profile/ViewFriendProfileScreen";
 import OnboardingFlow from "../src/components/OnboardingFlow";
 import LikesPage from "../src/components/LikesPage";
 import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
@@ -198,6 +199,8 @@ function AppContent() {
     setPreferencesRefreshKey,
     boardViewSessionId,
     setBoardViewSessionId,
+    viewingFriendProfileId,
+    setViewingFriendProfileId,
     updateBoardsSessions,
     handleUserIdentityUpdate,
     safeAsyncStorageSet,
@@ -557,7 +560,7 @@ function AppContent() {
     setIsLoadingBoards(false);
   };
 
-  const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
+  const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
     if (!user?.id) return;
     logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
@@ -695,6 +698,19 @@ function AppContent() {
       // fail fast instead of showing a misleading success toast.
       if (selectedFriends.length > 0 && successfulParticipantAdds === 0 && successfulInvites === 0) {
         throw new Error('No collaborators could be added to the session.');
+      }
+
+      // Process phone invitees — tie pending invites to this session
+      if (createdSessionId && phoneInvitees && phoneInvitees.length > 0) {
+        const { createPendingSessionInvite } = await import('../src/services/phoneLookupService');
+        for (const invitee of phoneInvitees) {
+          try {
+            await createPendingSessionInvite(createdSessionId, user.id, invitee.phoneE164);
+          } catch (inviteErr) {
+            console.error('Error creating pending session invite for', invitee.phoneE164, inviteErr);
+            // Non-fatal — don't fail session creation for this
+          }
+        }
       }
 
       // Refresh all sessions (active + pending)
@@ -1595,6 +1611,7 @@ function AppContent() {
               setCurrentPage("board-view");
             }}
             onUnreadCountChange={setTotalUnreadMessages}
+            onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
           />
         );
       case "likes":
@@ -1732,12 +1749,12 @@ function AppContent() {
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             connectionsCount={friendsList?.length || 0}
-            placesVisited={0}
             notificationsEnabled={notificationsEnabled}
             onNotificationsToggle={(enabled: boolean) =>
               console.log("Toggle notifications:", enabled)
             }
             userIdentity={userIdentity}
+            onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
             onUnblockUser={handlers.handleUnblockUser}
           />
         );
@@ -1795,6 +1812,7 @@ function AppContent() {
     setShowAccountSettings(false);
     setShowPrivacyPolicy(false);
     setShowTermsOfService(false);
+    setViewingFriendProfileId(null);
   };
 
   // Show main app if user is authenticated AND has completed onboarding
@@ -1829,7 +1847,12 @@ function AppContent() {
                     <View style={styles.container}>
                       {/* Main Content — paddingTop for safe area since we use a raw View root */}
                       <View style={[styles.mainContent, { paddingTop: layout.insets.top }]}>
-                        {showTermsOfService ? (
+                        {viewingFriendProfileId ? (
+                          <ViewFriendProfileScreen
+                            userId={viewingFriendProfileId}
+                            onBack={() => setViewingFriendProfileId(null)}
+                          />
+                        ) : showTermsOfService ? (
                           <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
                         ) : showPrivacyPolicy ? (
                           <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />

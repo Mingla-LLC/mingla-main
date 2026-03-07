@@ -64,7 +64,6 @@ export function RequestsView({
 
   const renderRequest = ({ item }: { item: FriendRequest }) => {
     const displayName = getDisplayName(item);
-    const username = item.sender?.username || "unknown";
 
     return (
       <View style={styles.requestRow}>
@@ -74,9 +73,6 @@ export function RequestsView({
         <View style={styles.userInfo}>
           <Text style={styles.userName} numberOfLines={1}>
             {displayName}
-          </Text>
-          <Text style={styles.userUsername} numberOfLines={1}>
-            @{username}
           </Text>
         </View>
         <View style={styles.actionButtons}>

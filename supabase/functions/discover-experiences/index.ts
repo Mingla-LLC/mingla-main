@@ -8,7 +8,7 @@ import {
   ALL_CATEGORY_NAMES,
   DISCOVER_EXCLUDED_PLACE_TYPES,
 } from '../_shared/categoryPlaceTypes.ts';
-import { priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+import { priceLevelToRange, googleLevelToTierSlug, priceTierFromAmount } from '../_shared/priceTiers.ts';
 // resolveCategories no longer used — per-category selection handles this directly
 
 const corsHeaders = {
@@ -74,6 +74,7 @@ interface DiscoverPlace {
   price_min: number;
   price_max: number;
   placeTypes: string[];
+  website?: string | null;
 }
 
 interface DiscoverDailyCacheRow {
@@ -415,6 +416,7 @@ serve(async (req) => {
               priceMin: card.price_min ?? 0,
               priceMax: card.price_max ?? 0,
               priceRange: formatPriceRange(card.price_min ?? 0, card.price_max ?? 0),
+              priceTier: card.price_tier || priceTierFromAmount(card.price_min ?? 0, card.price_max ?? 0),
               distanceKm: distKm,
               travelTimeMin: travelMin,
               travelTime: `${travelMin} min`,
@@ -893,6 +895,7 @@ serve(async (req) => {
                 photos: [],
                 priceLevel: 0,
                 regularOpeningHours: card.openingHours,
+                websiteUri: card.website || null,
               },
               GOOGLE_API_KEY!,
               'discover_experiences'
@@ -917,6 +920,7 @@ serve(async (req) => {
               priceMin: 0,
               priceMax: 0,
               openingHours: card.openingHours,
+              website: card.website || null,
             });
 
             if (cardPoolId) poolCardIds.push(cardPoolId);
@@ -1389,6 +1393,7 @@ function convertToCard(place: any): any {
     travelTime: place.travelTime || "15 min",
     distance: place.distance || "3 km",
     priceRange: formatPriceRange(place.price_min, place.price_max),
+    priceTier: place.priceTier || priceTierFromAmount(place.price_min, place.price_max),
     description: place.description || generateFallbackDescription(place),
     highlights: place.highlights || generateFallbackHighlights(place),
     address: place.address || "",

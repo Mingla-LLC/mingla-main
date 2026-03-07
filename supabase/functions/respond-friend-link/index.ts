@@ -160,7 +160,7 @@ serve(async (req: Request) => {
     // Fetch requester profile
     const { data: requesterProfile, error: reqProfileError } = await supabaseAdmin
       .from("profiles")
-      .select("display_name, username, birthday, gender, avatar_url, expo_push_token")
+      .select("display_name, username, birthday, gender, avatar_url")
       .eq("id", requesterId)
       .single();
 
@@ -341,13 +341,21 @@ serve(async (req: Request) => {
 
     // Send push notification to requester (fire-and-forget)
     try {
-      if (requesterProfile.expo_push_token) {
+      const { data: requesterTokenData } = await supabaseAdmin
+        .from("user_push_tokens")
+        .select("push_token")
+        .eq("user_id", requesterId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (requesterTokenData?.push_token) {
         const targetDisplayName = targetProfile.display_name || targetProfile.username || "Your friend";
         await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: requesterProfile.expo_push_token,
+            to: requesterTokenData.push_token,
             sound: "default",
             title: `You're connected with ${targetDisplayName}!`,
             body: "Check out their picks in For You.",

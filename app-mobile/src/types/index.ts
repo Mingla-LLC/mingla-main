@@ -25,6 +25,7 @@ export interface User {
   onboarding_step?: number | null; // 0 = completed, 2-10 = current step
   coach_map_tour_status?: 'completed' | 'skipped' | null; // Track coach map tour status
   active?: boolean; // Account status (default true)
+  photos?: string[]; // Up to 3 additional profile photo URLs
   gender?: string | null;
   birthday?: string | null;       // ISO date string: 'YYYY-MM-DD'
   country?: string | null;        // ISO 3166-1 alpha-2

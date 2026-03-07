@@ -198,6 +198,7 @@ export function useAppState() {
   const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(
     null
   );
+  const [viewingFriendProfileId, setViewingFriendProfileId] = useState<string | null>(null);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
@@ -407,6 +408,7 @@ export function useAppState() {
       setShowOnboardingFlow(false);
       setHasCompletedOnboarding(false);
       setOnboardingData(null);
+      setViewingFriendProfileId(null);
     }
   }, [user]);
 
@@ -912,6 +914,8 @@ export function useAppState() {
     setPreferencesRefreshKey,
     boardViewSessionId,
     setBoardViewSessionId,
+    viewingFriendProfileId,
+    setViewingFriendProfileId,
 
     // Utilities
     updateBoardsSessions,

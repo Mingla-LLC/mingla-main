@@ -50,6 +50,8 @@ const transformToRecommendation = (exp: any): Recommendation => {
       popularity: 85,
     },
     strollData: exp.strollData,
+    website: exp.website || null,
+    phone: exp.phone || null,
   };
 };
 

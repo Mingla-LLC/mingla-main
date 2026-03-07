@@ -76,11 +76,6 @@ export function BlockedUsersView({
           <Text style={styles.userName} numberOfLines={1}>
             {displayName}
           </Text>
-          {item.username && (
-            <Text style={styles.userUsername} numberOfLines={1}>
-              @{item.username}
-            </Text>
-          )}
         </View>
         <TouchableOpacity
           onPress={() => handleUnblock(item)}

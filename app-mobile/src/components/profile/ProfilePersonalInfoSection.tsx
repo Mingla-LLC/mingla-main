@@ -5,10 +5,13 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import { useAppState } from "../AppStateManager";
+import { useAppStore } from "../../store/appStore";
+import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
 
 interface UserIdentity {
@@ -20,24 +23,44 @@ interface UserIdentity {
 
 // Personal Information section moved out of ProfileSettings.
 // Logic is the same, just localized here.
+const BIO_MAX_LENGTH = 160;
+
 export default function ProfilePersonalInfoSection() {
   const { userIdentity, handleUserIdentityUpdate } = useAppState();
+  const profile = useAppStore((s) => s.profile);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,
     lastName: userIdentity.lastName,
     username: userIdentity.username,
   });
+  const [tempBio, setTempBio] = useState(profile?.bio ?? "");
 
   const handleEditField = (field: string) => {
     setIsEditing(field);
-    setTempValues((prev) => ({
-      ...prev,
-      [field]: userIdentity[field as keyof typeof userIdentity],
-    }));
+    if (field === "bio") {
+      setTempBio(profile?.bio ?? "");
+    } else {
+      setTempValues((prev) => ({
+        ...prev,
+        [field]: userIdentity[field as keyof typeof userIdentity],
+      }));
+    }
   };
 
-  const handleSaveField = (field: string) => {
+  const handleSaveField = async (field: string) => {
+    if (field === "bio") {
+      if (!profile?.id) return;
+      try {
+        await authService.updateBio(profile.id, tempBio.trim());
+        mixpanelService.trackProfileSettingUpdated({ field: "bio" });
+      } catch {
+        Alert.alert("Error", "Failed to update bio. Please try again.");
+      }
+      setIsEditing(null);
+      return;
+    }
+
     const updatedIdentity = {
       ...userIdentity,
       [field]: tempValues[field as keyof typeof tempValues],
@@ -56,6 +79,7 @@ export default function ProfilePersonalInfoSection() {
       lastName: userIdentity.lastName,
       username: userIdentity.username,
     });
+    setTempBio(profile?.bio ?? "");
     setIsEditing(null);
   };
 
@@ -208,6 +232,70 @@ export default function ProfilePersonalInfoSection() {
             )}
           </View>
         </View>
+
+        {/* Bio */}
+        <View style={[styles.formField, styles.formFieldLast]}>
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Bio</Text>
+            {isEditing === "bio" ? (
+              <View style={styles.bioEditContainer}>
+                <TextInput
+                  value={tempBio}
+                  onChangeText={setTempBio}
+                  style={styles.bioInput}
+                  autoFocus
+                  multiline
+                  numberOfLines={3}
+                  maxLength={BIO_MAX_LENGTH}
+                  placeholder="Tell people about yourself"
+                  placeholderTextColor="#9ca3af"
+                  textAlignVertical="top"
+                />
+                <View style={styles.bioFooter}>
+                  <Text
+                    style={[
+                      styles.bioCounter,
+                      tempBio.length >= BIO_MAX_LENGTH && styles.bioCounterLimit,
+                    ]}
+                  >
+                    {tempBio.length}/{BIO_MAX_LENGTH}
+                  </Text>
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      onPress={() => handleSaveField("bio")}
+                      style={styles.saveButton}
+                    >
+                      <Ionicons name="checkmark" size={16} color="#10b981" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleCancelEdit}
+                      style={styles.cancelButton}
+                    >
+                      <Ionicons name="close" size={16} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.fieldRow}>
+                <Text
+                  style={[
+                    styles.fieldValue,
+                    !profile?.bio && styles.fieldValuePlaceholder,
+                  ]}
+                >
+                  {profile?.bio || "Not set"}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => handleEditField("bio")}
+                  style={styles.editButton}
+                >
+                  <Feather name="edit-3" size={16} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -314,5 +402,38 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
+  },
+  formFieldLast: {
+    borderBottomWidth: 0,
+  },
+  fieldValuePlaceholder: {
+    color: "#9ca3af",
+    fontStyle: "italic",
+  },
+  bioEditContainer: {
+    gap: 8,
+  },
+  bioInput: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    fontSize: 16,
+    color: "#111827",
+    backgroundColor: "white",
+    height: 80,
+  },
+  bioFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  bioCounter: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  bioCounterLimit: {
+    color: "#ef4444",
   },
 });

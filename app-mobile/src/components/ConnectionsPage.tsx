@@ -70,6 +70,7 @@ interface ConnectionsPageProps {
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   friendsList?: any[];
   onUnreadCountChange?: (count: number) => void;
+  onNavigateToFriendProfile?: (userId: string) => void;
 }
 
 const CONNECTIONS_CACHE_VERSION = "v1";
@@ -92,6 +93,7 @@ export default function ConnectionsPageRefactored({
   onCreateSession,
   onNavigateToBoard,
   onUnreadCountChange,
+  onNavigateToFriendProfile,
 }: ConnectionsPageProps) {
   const { user } = useAuthSimple();
 
@@ -1210,6 +1212,7 @@ export default function ConnectionsPageRefactored({
                     currentUserId={user?.id || ""}
                     onPress={handleSelectConversation}
                     isMuted={isMuted}
+                    onAvatarPress={onNavigateToFriendProfile}
                   />
                 );
               }}

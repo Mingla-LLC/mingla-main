@@ -145,11 +145,6 @@ export default function BlockedUsersModal({
           <Text style={styles.userName} numberOfLines={1}>
             {user.name || "Unknown User"}
           </Text>
-          {user.username && (
-            <Text style={styles.userUsername} numberOfLines={1}>
-              @{user.username}
-            </Text>
-          )}
           {user.blocked_at && (
             <Text style={styles.blockedTime} numberOfLines={1}>
               {formatBlockedTime(user.blocked_at)}

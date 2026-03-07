@@ -3,7 +3,8 @@ import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, Cli
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
-import { formatPriceRange, parseAndFormatDistance } from './utils/formatters';
+import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from './utils/formatters';
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../constants/priceTiers';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 
@@ -69,7 +70,9 @@ export default function ShareModal({
   const distance = rawDistance
     ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
     : 'Nearby';
-  const priceRange = formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
+  const priceRange = experienceData.priceTier && TIER_BY_SLUG[experienceData.priceTier as PriceTierSlug]
+    ? formatTierLabel(experienceData.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+    : formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
   const rating = experienceData.rating || experienceData.ratingValue || '4.8';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
   const description = experienceData.description || experienceData.fullDescription || '';

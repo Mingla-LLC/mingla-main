@@ -50,7 +50,7 @@ interface HomePageProps {
   selectedSessionId?: string | null;
   onSessionSelect?: (sessionId: string | null) => void;
   onSoloSelect?: () => void;
-  onCreateSession?: (sessionName: string, selectedFriends: Friend[]) => void;
+  onCreateSession?: (sessionName: string, selectedFriends: Friend[], phoneInvitees?: { phoneE164: string }[]) => void;
   onAcceptInvite?: (sessionId: string) => void;
   onDeclineInvite?: (sessionId: string) => void;
   onCancelInvite?: (sessionId: string) => void;
