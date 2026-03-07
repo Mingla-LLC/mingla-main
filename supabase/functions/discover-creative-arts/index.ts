@@ -8,7 +8,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
-import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { getPlaceTypesForCategory, filterExcludedPlaces, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -395,6 +395,11 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-creative-arts] ${allPlaces.length} unique places after merge`);
+
+    // ── Filter out excluded place types ──────────────────────────────────
+    const artsExcluded = getExcludedTypesForCategory('Creative & Arts');
+    allPlaces = filterExcludedPlaces(allPlaces, artsExcluded) as typeof allPlaces;
+    console.log(`[discover-creative-arts] ${allPlaces.length} places after exclusion filter`);
 
     // ── Filter by distance ──────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

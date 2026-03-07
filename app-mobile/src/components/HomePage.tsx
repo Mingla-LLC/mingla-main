@@ -19,6 +19,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
+import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -44,7 +45,6 @@ interface HomePageProps {
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string;
-  isHighlightingHeader?: boolean;
   // Collaboration sessions props
   collaborationSessions?: CollaborationSession[];
   selectedSessionId?: string | null;
@@ -76,7 +76,6 @@ export default function HomePage({
   generateNewMockCard,
   onboardingData,
   refreshKey,
-  isHighlightingHeader,
   // Collaboration sessions props
   collaborationSessions = [],
   selectedSessionId = null,
@@ -91,6 +90,12 @@ export default function HomePage({
   isCreatingSession = false,
   onNotificationNavigate,
 }: HomePageProps) {
+  // Coach mark targets
+  const { ref: cardStackRef, onLayout: cardStackOnLayout } = useCoachMarkTarget('explore-card-stack');
+  const { ref: sessionPillsRef, onLayout: sessionPillsOnLayout } = useCoachMarkTarget('explore-session-pills');
+  const { ref: notificationsRef, onLayout: notificationsOnLayout } = useCoachMarkTarget('explore-notifications-bell');
+  const { ref: preferencesRef, onLayout: preferencesOnLayout } = useCoachMarkTarget('explore-preferences-gear');
+
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
@@ -210,32 +215,33 @@ export default function HomePage({
         <Animated.View
           style={[
             styles.header,
-            isHighlightingHeader && { zIndex: 1000, elevation: 1000 },
             { transform: [{ translateY: headerSlideAnim }] },
           ]}
         >
           <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={() => {
-                if (currentMode === "solo") {
-                  onOpenPreferences();
-                } else {
-                  onOpenCollabPreferences?.();
-                }
-              }}
-              style={[
-                styles.preferencesButton,
-                currentMode !== "solo" && styles.preferencesButtonActive,
-              ]}
-              activeOpacity={0.6}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-            >
-              <Ionicons
-                name="options-outline"
-                size={18}
-                color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
-              />
-            </TouchableOpacity>
+            <View ref={preferencesRef} onLayout={preferencesOnLayout}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (currentMode === "solo") {
+                    onOpenPreferences();
+                  } else {
+                    onOpenCollabPreferences?.();
+                  }
+                }}
+                style={[
+                  styles.preferencesButton,
+                  currentMode !== "solo" && styles.preferencesButtonActive,
+                ]}
+                activeOpacity={0.6}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              >
+                <Ionicons
+                  name="options-outline"
+                  size={18}
+                  color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.headerCenter}>
@@ -249,16 +255,18 @@ export default function HomePage({
           </View>
 
           <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={handleOpenNotifications}
-              style={styles.notificationButton}
-              activeOpacity={0.6}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="notifications-outline" size={18} color="#1f2937" />
-              {/* Notification indicator dot */}
-              {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
-            </TouchableOpacity>
+            <View ref={notificationsRef} onLayout={notificationsOnLayout}>
+              <TouchableOpacity
+                onPress={handleOpenNotifications}
+                style={styles.notificationButton}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="notifications-outline" size={18} color="#1f2937" />
+                {/* Notification indicator dot */}
+                {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
+              </TouchableOpacity>
+            </View>
           </View>
         </Animated.View>
 
@@ -275,6 +283,8 @@ export default function HomePage({
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
           {onSessionSelect && onSoloSelect && onCreateSession && (
             <Animated.View
+              ref={sessionPillsRef}
+              onLayout={sessionPillsOnLayout}
               style={[
                 styles.sessionsAnimatedWrapper,
                 { opacity: sessionsOpacity },
@@ -298,23 +308,25 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <SwipeableCards
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            currentMode={currentMode}
-            onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || noop}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            removedCardIds={removedCardIds}
-            onResetCards={onResetCards}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={onOpenCollabPreferences}
-            generateNewMockCard={generateNewMockCard}
-            onboardingData={onboardingData}
-            refreshKey={refreshKey}
-            savedCards={savedCards}
-          />
+          <View ref={cardStackRef} onLayout={cardStackOnLayout} style={{ flex: 1, width: '100%' }}>
+            <SwipeableCards
+              userPreferences={userPreferences}
+              accountPreferences={accountPreferences}
+              currentMode={currentMode}
+              onAddToCalendar={onAddToCalendar}
+              onCardLike={onSaveCard || noop}
+              onShareCard={onShareCard}
+              onPurchaseComplete={onPurchaseComplete}
+              removedCardIds={removedCardIds}
+              onResetCards={onResetCards}
+              onOpenPreferences={onOpenPreferences}
+              onOpenCollabPreferences={onOpenCollabPreferences}
+              generateNewMockCard={generateNewMockCard}
+              onboardingData={onboardingData}
+              refreshKey={refreshKey}
+              savedCards={savedCards}
+            />
+          </View>
         </View>
 
         {/* Notifications Modal */}

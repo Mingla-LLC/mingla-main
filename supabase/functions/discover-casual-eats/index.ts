@@ -7,6 +7,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { filterExcludedPlaces, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -421,6 +422,11 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-casual-eats] ${allPlaces.length} unique places across ${Object.keys(results).length} types`);
+
+    // ── Filter out excluded place types ──────────────────────────────────
+    const casualEatsExcluded = getExcludedTypesForCategory('Casual Eats');
+    allPlaces = filterExcludedPlaces(allPlaces, casualEatsExcluded) as typeof allPlaces;
+    console.log(`[discover-casual-eats] ${allPlaces.length} places after exclusion filter`);
 
     // ── Filter by distance ──────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

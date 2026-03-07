@@ -10,6 +10,7 @@ import {
 import {
   resolveCategories,
   getCategoryTypeMap,
+  getExcludedTypesForCategory,
 } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
@@ -577,6 +578,15 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-cards] ${allPlaces.length} unique places across ${Object.keys(results).length} categories`);
+
+    // ── Filter out excluded place types (per-category) ───────────────────
+    allPlaces = allPlaces.filter(p => {
+      const excluded = getExcludedTypesForCategory(p._category);
+      const excludedSet = new Set(excluded);
+      if (!p.types) return true;
+      return !p.types.some((t: string) => excludedSet.has(t));
+    });
+    console.log(`[discover-cards] ${allPlaces.length} places after exclusion filter`);
 
     // ── Filter by distance ────────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

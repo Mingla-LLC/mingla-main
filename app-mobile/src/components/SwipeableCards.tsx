@@ -16,6 +16,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
+import { useCoachMarkActions } from './education/CoachMarkProvider';
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG, formatTierLabel } from "../constants/priceTiers";
@@ -345,6 +346,7 @@ export default function SwipeableCards({
   refreshKey,
   savedCards = [],
 }: SwipeableCardsProps) {
+  const { fireAction } = useCoachMarkActions();
   // Use recommendations from context
 
   const {
@@ -884,6 +886,7 @@ export default function SwipeableCards({
   const handleCardExpand = async () => {
     if (!currentRec) return;
     setIsExpandedModalVisible(true);
+    fireAction('card_expand');
 
     // Curated cards have their own shape — pass through directly
     if ((currentRec as any).cardType === 'curated') {
@@ -951,6 +954,7 @@ export default function SwipeableCards({
     card: Recommendation
   ) => {
     if (!card) return;
+    if (direction === 'right') fireAction('swipe_right');
 
     try {
       // Track interaction in Supabase (only if user is authenticated)
@@ -1667,6 +1671,11 @@ export default function SwipeableCards({
 
                   {/* White Details Section */}
                   <View style={styles.cardDetails}>
+                    {/* Category Label */}
+                    <View style={styles.categoryRow}>
+                      <Ionicons name={NextCategoryIcon as any} size={16} color="#eb7825" />
+                      <Text style={styles.categoryText}>{getReadableCategoryName(nextCard.category)}</Text>
+                    </View>
                     {/* Share Button */}
                     <TouchableOpacity
                       style={styles.shareButton}
@@ -1811,9 +1820,14 @@ export default function SwipeableCards({
                     </Animated.View>
                   </View>
 
-                  {/* White Details Section - Share button only */}
+                  {/* White Details Section */}
                   <View style={styles.cardDetails}>
-                    {/* Share Button - Centered at bottom */}
+                    {/* Category Label */}
+                    <View style={styles.categoryRow}>
+                      <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
+                      <Text style={styles.categoryText}>{getReadableCategoryName(currentRec.category)}</Text>
+                    </View>
+                    {/* Share Button */}
                     <TouchableOpacity
                       style={styles.shareButton}
                       onPress={handleShare}

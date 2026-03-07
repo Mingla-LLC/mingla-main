@@ -518,26 +518,22 @@ class MixpanelService {
     });
   }
 
-  // ─── Coach mark tour helpers ──────────────────────────────────────
+  // ─── Coach mark education system ──────────────────────────────────
 
-  /**
-   * Track when the coach mark tour is started.
-   */
-  trackCoachMarkTourStarted(): void {
-    this.track("Coach Mark Tour Started");
+  trackCoachMarkShown(coachMarkId: string, group: string): void {
+    this.track('Coach Mark Shown', { coach_mark_id: coachMarkId, group });
   }
 
-  /**
-   * Track when the coach mark tour is finished (completed or skipped).
-   */
-  trackCoachMarkTourFinished(props: {
-    outcome: "completed" | "skipped";
-    lastStepViewed?: number;
-  }): void {
-    this.track("Coach Mark Tour Finished", {
-      outcome: props.outcome,
-      last_step_viewed: props.lastStepViewed,
-    });
+  trackCoachMarkCompleted(coachMarkId: string, group: string): void {
+    this.track('Coach Mark Completed', { coach_mark_id: coachMarkId, group });
+  }
+
+  trackCoachMarkGroupSkipped(group: string): void {
+    this.track('Coach Mark Group Skipped', { group });
+  }
+
+  trackMilestoneReached(milestoneId: string): void {
+    this.track('Education Milestone Reached', { milestone_id: milestoneId });
   }
 }
 

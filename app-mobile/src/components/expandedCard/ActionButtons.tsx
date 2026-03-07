@@ -21,6 +21,8 @@ import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
+import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
+import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 interface ActionButtonsProps {
   card: ExpandedCardData;
@@ -69,6 +71,10 @@ export default function ActionButtons({
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const { data: calendarEntries = [] } = useCalendarEntries(user?.id);
+  const { fireAction } = useCoachMarkActions();
+  const { ref: saveRef, onLayout: saveOnLayout } = useCoachMarkTarget('expanded-card-save-button');
+  const { ref: shareRef, onLayout: shareOnLayout } = useCoachMarkTarget('expanded-card-share-button');
+  const { ref: calendarRef, onLayout: calendarOnLayout } = useCoachMarkTarget('expanded-card-calendar-button');
 
   // Check if card is already scheduled
   const isScheduled = useMemo(() => {
@@ -354,6 +360,7 @@ export default function ActionButtons({
 
   const handleSchedule = () => {
     if (isScheduling || isScheduled || !user?.id) return;
+    fireAction('schedule');
 
     // Always reset and show date/time picker
     setAvailabilityCheck(null);
@@ -571,6 +578,7 @@ export default function ActionButtons({
   };
 
   const handleShare = () => {
+    fireAction('share');
     if (onShare) {
       onShare(card);
     } else {
@@ -716,6 +724,8 @@ export default function ActionButtons({
       <View style={styles.topRow}>
         {/* Save Button */}
         <TouchableOpacity
+          ref={saveRef}
+          onLayout={saveOnLayout}
           style={[
             styles.saveButton,
             (isSaving || isSaved) && styles.actionButtonDisabled,
@@ -742,6 +752,8 @@ export default function ActionButtons({
 
         {/* Schedule Button */}
         <TouchableOpacity
+          ref={calendarRef}
+          onLayout={calendarOnLayout}
           style={[
             styles.scheduleButton,
             (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
@@ -768,6 +780,8 @@ export default function ActionButtons({
 
         {/* Share Button */}
         <TouchableOpacity
+          ref={shareRef}
+          onLayout={shareOnLayout}
           style={styles.shareIconButton}
           onPress={handleShare}
           activeOpacity={0.7}

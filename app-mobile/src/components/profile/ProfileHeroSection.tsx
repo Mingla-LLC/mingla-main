@@ -9,6 +9,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { useCoachMarkTarget } from '../../hooks/useCoachMarkTarget';
 
 interface ProfileHeroSectionProps {
   isOwnProfile: boolean;
@@ -48,6 +49,10 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   onLocationRefresh,
   isUploading,
 }) => {
+  // Coach mark targets
+  const { ref: photoRef, onLayout: photoOnLayout } = useCoachMarkTarget('profile-photo');
+  const { ref: bioRef, onLayout: bioOnLayout } = useCoachMarkTarget('profile-bio');
+
   const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
   const missingBio = !bio || bio.trim().length === 0;
   const missingAvatar = !avatarUrl;
@@ -61,35 +66,37 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
     <View style={styles.container}>
       <LinearGradient colors={['#fef3e2', '#ffffff']} style={styles.gradient} />
 
-      <TouchableOpacity
-        style={styles.avatarWrap}
-        onPress={onAvatarPress}
-        disabled={!isOwnProfile || isUploading}
-        activeOpacity={0.8}
-      >
-        {isUploading ? (
-          <View style={styles.avatar}>
-            <ActivityIndicator size="large" color="#eb7825" />
-          </View>
-        ) : avatarUrl ? (
-          <ImageWithFallback
-            source={{ uri: avatarUrl }}
-            style={styles.avatar}
-          />
-        ) : (
-          <LinearGradient
-            colors={['#eb7825', '#f5a623']}
-            style={styles.avatar}
-          >
-            <Text style={styles.initials}>{getInitials(firstName, lastName)}</Text>
-          </LinearGradient>
-        )}
-        {isOwnProfile && !isUploading && (
-          <View style={styles.cameraBadge}>
-            <Ionicons name="camera" size={14} color="#ffffff" />
-          </View>
-        )}
-      </TouchableOpacity>
+      <View ref={photoRef} onLayout={photoOnLayout}>
+        <TouchableOpacity
+          style={styles.avatarWrap}
+          onPress={onAvatarPress}
+          disabled={!isOwnProfile || isUploading}
+          activeOpacity={0.8}
+        >
+          {isUploading ? (
+            <View style={styles.avatar}>
+              <ActivityIndicator size="large" color="#eb7825" />
+            </View>
+          ) : avatarUrl ? (
+            <ImageWithFallback
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+            />
+          ) : (
+            <LinearGradient
+              colors={['#eb7825', '#f5a623']}
+              style={styles.avatar}
+            >
+              <Text style={styles.initials}>{getInitials(firstName, lastName)}</Text>
+            </LinearGradient>
+          )}
+          {isOwnProfile && !isUploading && (
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={14} color="#ffffff" />
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.name}>{displayName}</Text>
 
@@ -109,15 +116,17 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
         </View>
       )}
 
-      {missingBio && isOwnProfile ? (
-        <TouchableOpacity onPress={onBioPress}>
-          <Text style={styles.addBio}>Add a bio</Text>
-        </TouchableOpacity>
-      ) : bio ? (
-        <TouchableOpacity onPress={isOwnProfile ? onBioPress : undefined} disabled={!isOwnProfile}>
-          <Text style={styles.bio} numberOfLines={3}>{bio}</Text>
-        </TouchableOpacity>
-      ) : null}
+      <View ref={bioRef} onLayout={bioOnLayout}>
+        {missingBio && isOwnProfile ? (
+          <TouchableOpacity onPress={onBioPress}>
+            <Text style={styles.addBio}>Add a bio</Text>
+          </TouchableOpacity>
+        ) : bio ? (
+          <TouchableOpacity onPress={isOwnProfile ? onBioPress : undefined} disabled={!isOwnProfile}>
+            <Text style={styles.bio} numberOfLines={3}>{bio}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {showHint && (
         <View style={styles.hintContainer}>

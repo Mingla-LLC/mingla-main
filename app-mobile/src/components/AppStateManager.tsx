@@ -207,7 +207,6 @@ export function useAppState() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
-  const [showCoachMap, setShowCoachMap] = useState(false);
   // Load currentMode from storage first, then verify with database
   const [currentMode, setCurrentModeState] = useState<"solo" | string | null>(
     null
@@ -873,8 +872,6 @@ export function useAppState() {
     setShowShareModal,
     shareData,
     setShareData,
-    showCoachMap,
-    setShowCoachMap,
     currentMode,
     setCurrentMode,
     preSelectedFriend,

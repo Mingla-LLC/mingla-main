@@ -31,6 +31,7 @@ import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
 import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from "../../types/curatedExperience";
+import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 interface SavedCard {
   id: string;
@@ -103,6 +104,7 @@ const SavedTab = ({
     isLoadingSavedCards: contextIsLoadingSavedCards,
     calendarEntries,
   } = useAppState();
+  const { fireElementVisible } = useCoachMarkActions();
   const effectiveIsLoading = isLoading || contextIsLoadingSavedCards;
   // Use boardSavedCards if provided, otherwise use savedCards from context
   const savedCards = boardSavedCards ?? contextSavedCards;
@@ -142,6 +144,13 @@ const SavedTab = ({
     }
     return cardAnimations.current[cardId];
   };
+
+  // Fire element visibility trigger when saved cards are available
+  useEffect(() => {
+    if (savedCards.length > 0) {
+      fireElementVisible('saved-card-actions');
+    }
+  }, [savedCards.length, fireElementVisible]);
 
   // Run search bar entrance animation on mount
   useEffect(() => {

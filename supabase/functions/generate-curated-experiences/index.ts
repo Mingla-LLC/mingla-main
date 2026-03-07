@@ -4,8 +4,6 @@ import { searchPlacesWithCache, searchCategoryPlaces } from '../_shared/placesCa
 import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 import {
-  MINGLA_CATEGORY_PLACE_TYPES,
-  resolveCategory,
   GLOBAL_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
 } from '../_shared/categoryPlaceTypes.ts';
@@ -937,71 +935,6 @@ async function searchByText(textQuery: string, lat: number, lng: number, radiusM
 }
 
 // ── Place fetching, card building, and generators ─────────────────
-
-/**
- * Fetch places for a single Mingla category.
- * Uses searchCategoryPlaces directly with canonical category name so cache
- * is shared with discover-cards (same key format: cat:CategoryName).
- * Falls back to text search for niche types if needed.
- */
-async function fetchPlacesForCategory(
-  categoryName: string,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const allTypes = MINGLA_CATEGORY_PLACE_TYPES[categoryName] || [];
-  if (allTypes.length === 0) return [];
-
-  const excludedTypes = GLOBAL_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = allTypes.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes   = allTypes.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  // 1. Bundled Nearby Search — single API call with all types
-  // Uses canonical category name as cache key (shares cache with discover-cards)
-  if (nearbyTypes.length > 0) {
-    const { places: nearbyPlaces } = await searchCategoryPlaces({
-      supabaseAdmin,
-      apiKey: GOOGLE_PLACES_API_KEY,
-      categoryKey: categoryName,
-      includedTypes: nearbyTypes,
-      lat, lng, radiusMeters,
-      maxResults: 20,
-      excludedTypes,
-      ttlHours: 24,
-    });
-    results.push(...nearbyPlaces);
-  }
-
-  // 2. Text search fallback for niche types (only if nearby gave < 5 results)
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForCategory] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  // Dedupe by place ID, sort by score
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  // Post-fetch filter: remove any places with excluded types
-  const filtered = filterExcludedPlaces(deduped);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
 
 /**
  * Generic place fetcher for any intent group (adventure, first-date, romantic, etc.).
@@ -2025,29 +1958,6 @@ function buildGroupFunStop(
   return stop;
 }
 
-function generateCategoryCombos(pool: string[], count: number): string[][] {
-  if (pool.length === 3) {
-    return Array.from({ length: count }, () => [...pool]);
-  }
-
-  const combos: string[][] = [];
-  for (let i = 0; i < pool.length - 2; i++) {
-    for (let j = i + 1; j < pool.length - 1; j++) {
-      for (let k = j + 1; k < pool.length; k++) {
-        combos.push([pool[i], pool[j], pool[k]]);
-      }
-    }
-  }
-
-  const shuffled = shuffle(combos);
-  const result = [...shuffled];
-  while (result.length < count) {
-    result.push(...shuffle([...combos]));
-  }
-
-  return result.slice(0, count);
-}
-
 function buildStopFromPlace(
   place: any,
   stopNumber: number,
@@ -2195,111 +2105,10 @@ async function generateStandardCards(
     );
   }
 
-  // ── All other intents: existing category pool pipeline (unchanged) ──
-  const pool = CURATED_TYPE_CATEGORIES[experienceType];
-  if (!pool) return [];
-
-  const TRAVEL_SPEEDS_KMH: Record<string, number> = {
-    walking: 4.5, biking: 14, transit: 20, driving: 35,
-  };
-  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
-  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
-
-  // 1. Fetch places for ALL categories in parallel
-  const categoryPlaces: Record<string, any[]> = {};
-  await Promise.all(
-    pool.map(async (category) => {
-      const places = await fetchPlacesForCategory(category, lat, lng, clampedRadius);
-      categoryPlaces[category] = places;
-    })
-  );
-
-  for (const [cat, places] of Object.entries(categoryPlaces)) {
-    console.log(`[generateStandardCards] ${cat}: ${places.length} places`);
-  }
-
-  // 2. Generate category combos
-  const combos = generateCategoryCombos(pool, limit * 2);
-
-  // 3. Build cards
-  const cards: any[] = [];
-  const globalUsedPlaceIds = new Set<string>();
-  const perStopBudget = budgetMax / 3;
-
-  for (const combo of combos) {
-    if (cards.length >= limit) break;
-
-    const stops: any[] = [];
-    const comboUsedIds = new Set(globalUsedPlaceIds);
-    let valid = true;
-    let prevLat = lat;
-    let prevLng = lng;
-
-    for (let i = 0; i < combo.length; i++) {
-      const category = combo[i];
-      const available = (categoryPlaces[category] || []).filter(p => {
-        const id = p.id || p.name;
-        if (comboUsedIds.has(id)) return false;
-        const price = priceLevelToRange(p.priceLevel);
-        if (price.min > perStopBudget) return false;
-        return true;
-      });
-
-      if (available.length === 0) {
-        valid = false;
-        break;
-      }
-
-      const place = available[0]; // already sorted by score
-      const placeId = place.id || place.name;
-      comboUsedIds.add(placeId);
-
-      const stop = buildStopFromPlace(
-        place, i + 1, combo.length, category,
-        lat, lng,
-        i > 0 ? prevLat : null,
-        i > 0 ? prevLng : null,
-        travelMode,
-      );
-      stops.push(stop);
-
-      prevLat = stop.lat;
-      prevLng = stop.lng;
-    }
-
-    if (!valid || stops.length !== combo.length) continue;
-
-    // Validate total budget
-    const totalMin = stops.reduce((s, st) => s + st.priceMin, 0);
-    if (totalMin > budgetMax) continue;
-
-    // Validate travel constraint
-    if (stops[0].travelTimeFromUserMin > travelConstraintValue * 1.5) {
-      continue;
-    }
-
-    const card = buildCardFromStops(stops, experienceType, combo);
-
-    if (!skipDescriptions) {
-      try {
-        const descriptions = await generateStopDescriptions(stops);
-        for (let i = 0; i < stops.length && i < descriptions.length; i++) {
-          stops[i].aiDescription = descriptions[i];
-        }
-      } catch (err) {
-        console.warn('[generateStandardCards] Description generation failed:', err);
-      }
-    }
-
-    cards.push(card);
-
-    for (const s of stops) {
-      globalUsedPlaceIds.add(s.placeId);
-    }
-  }
-
-  return cards;
+  // All 7 intents have dedicated generators above — no fallback needed.
+  // If a new intent is added to CURATED_TYPE_CATEGORIES without a generator,
+  // the validation gate in serve() will still accept it, but it will return [].
+  return [];
 }
 
 /**

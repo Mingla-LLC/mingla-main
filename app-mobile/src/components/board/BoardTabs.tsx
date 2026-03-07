@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
 export type BoardTab = "swipe" | "saved" | "discussion";
 
 interface BoardTabsProps {
@@ -24,6 +25,16 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
   unreadMessages = 0,
   canGenerateCards = false,
 }) => {
+  const { ref: deckTabRef, onLayout: deckTabOnLayout } = useCoachMarkTarget('board-deck-tab');
+  const { ref: savedTabRef, onLayout: savedTabOnLayout } = useCoachMarkTarget('board-saved-tab');
+  const { ref: discussionTabRef, onLayout: discussionTabOnLayout } = useCoachMarkTarget('board-discussion-tab');
+
+  const coachMarkMap: Record<string, { ref: React.RefObject<View>; onLayout: () => void }> = {
+    swipe: { ref: deckTabRef, onLayout: deckTabOnLayout },
+    saved: { ref: savedTabRef, onLayout: savedTabOnLayout },
+    discussion: { ref: discussionTabRef, onLayout: discussionTabOnLayout },
+  };
+
   const tabs: Array<{
     id: BoardTab;
     label: string;
@@ -56,22 +67,30 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
 
+          const coachMark = coachMarkMap[tab.id];
+
           return (
-            <TouchableOpacity
+            <View
               key={tab.id}
+              ref={coachMark?.ref}
+              onLayout={coachMark?.onLayout}
               style={styles.tab}
-              onPress={() => onTabChange(tab.id)}
-              activeOpacity={0.7}
             >
-              <View style={styles.tabContent}>
-                <Text
-                  style={[styles.tabLabel, isActive && styles.tabLabelActive]}
-                >
-                  {tab.label} ({tab.count ?? 0})
-                </Text>
-              </View>
-              {isActive && <View style={styles.activeIndicator} />}
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.tabTouchable}
+                onPress={() => onTabChange(tab.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.tabContent}>
+                  <Text
+                    style={[styles.tabLabel, isActive && styles.tabLabelActive]}
+                  >
+                    {tab.label} ({tab.count ?? 0})
+                  </Text>
+                </View>
+                {isActive && <View style={styles.activeIndicator} />}
+              </TouchableOpacity>
+            </View>
           );
         })}
       </View>
@@ -91,11 +110,13 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    position: "relative",
+  },
+  tabTouchable: {
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
   },
   tabLabel: {
     fontSize: 14,

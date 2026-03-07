@@ -5,6 +5,7 @@ import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   getPlaceTypesForCategory,
+  getExcludedTypesForCategory,
   ALL_CATEGORY_NAMES,
   DISCOVER_EXCLUDED_PLACE_TYPES,
 } from '../_shared/categoryPlaceTypes.ts';
@@ -1056,10 +1057,12 @@ async function fetchCandidatesForCategory(
       return [];
     }
 
-    // Filter out excluded types
+    // Filter out excluded types (discovery-level + category-specific)
+    const categoryExcluded = getExcludedTypesForCategory(category);
+    const allExcluded = new Set([...DISCOVER_EXCLUDED_PLACE_TYPES, ...categoryExcluded]);
     const validPlaces = allPlaces.filter((place: any) => {
-      const placeTypeSet = new Set(place.types || []);
-      return !DISCOVER_EXCLUDED_PLACE_TYPES.some((excluded) => placeTypeSet.has(excluded));
+      const placeTypes = place.types || [];
+      return !placeTypes.some((t: string) => allExcluded.has(t));
     });
 
     if (validPlaces.length === 0) {

@@ -35,13 +35,14 @@ import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import ActionButtons from "./expandedCard/ActionButtons";
-import FeedbackModal from "./expandedCard/FeedbackModal";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { PicnicShoppingList } from './PicnicShoppingList';
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
 import { SCREEN_HEIGHT } from "../utils/responsive";
+import { useCoachMarkTarget } from "../hooks/useCoachMarkTarget";
+import { useCoachMarkActions } from "./education/CoachMarkProvider";
 
 const curatedStyles = StyleSheet.create({
   container: {
@@ -719,6 +720,8 @@ export default function ExpandedCardModal({
   hideTravelTime,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
+  const { fireElementVisible } = useCoachMarkActions();
+  const { ref: scrollRef, onLayout: scrollOnLayout } = useCoachMarkTarget('expanded-card-scroll');
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
@@ -733,13 +736,10 @@ export default function ExpandedCardModal({
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [feedbackCardId, setFeedbackCardId] = useState("");
-  const [feedbackTitle, setFeedbackTitle] = useState("");
-
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
+      fireElementVisible('expanded-card-modal');
       fetchAdditionalData();
       if ((card as any).cardType !== 'curated') {
         setStrollData(card.strollData);
@@ -957,18 +957,7 @@ export default function ExpandedCardModal({
   };
 
   if (!card) {
-    return (
-      <FeedbackModal
-        visible={showFeedback}
-        experienceTitle={feedbackTitle}
-        cardId={feedbackCardId}
-        onClose={() => {
-          setShowFeedback(false);
-          setFeedbackCardId("");
-          setFeedbackTitle("");
-        }}
-      />
-    );
+    return null;
   }
 
   const isCuratedCard = (card as any).cardType === 'curated';
@@ -1025,6 +1014,8 @@ export default function ExpandedCardModal({
 
           {/* Scrollable Content */}
           <ScrollView
+            ref={scrollRef}
+            onLayout={scrollOnLayout}
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={true}
@@ -1559,17 +1550,6 @@ export default function ExpandedCardModal({
       </View>
     </Modal>
 
-    {/* Feedback Modal - rendered outside the expanded card modal */}
-    <FeedbackModal
-      visible={showFeedback}
-      experienceTitle={feedbackTitle}
-      cardId={feedbackCardId}
-      onClose={() => {
-        setShowFeedback(false);
-        setFeedbackCardId("");
-        setFeedbackTitle("");
-      }}
-    />
   </>
   );
 }

@@ -24,6 +24,7 @@ import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 import { createPendingInvite } from "../../services/phoneLookupService";
 import { useAppStore } from "../../store/appStore";
 import { s, vs } from "../../utils/responsive";
+import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 interface AddFriendViewProps {
   currentUserId: string;
@@ -38,6 +39,7 @@ export function AddFriendView({
 }: AddFriendViewProps) {
   const sendLinkMutation = useSendFriendLink();
   const { user } = useAppStore();
+  const { fireAction } = useCoachMarkActions();
 
   // Phone input state
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -85,6 +87,7 @@ export function AddFriendView({
           });
           setActionStatus("sent");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          fireAction('friend_request_sent');
           onRequestSent();
           setTimeout(() => {
             setPhoneNumber("");

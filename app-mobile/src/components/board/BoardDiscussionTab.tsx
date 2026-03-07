@@ -23,6 +23,8 @@ import { BoardErrorHandler } from "../../services/boardErrorHandler";
 import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
+import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
+import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 interface BoardDiscussionTabProps {
   sessionId: string;
@@ -54,7 +56,14 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   const [mentionSearchText, setMentionSearchText] = useState("");
   const scrollViewRef = useRef<ScrollView>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { ref: discussionInputRef, onLayout: discussionInputOnLayout } = useCoachMarkTarget('board-discussion-input');
+  const { fireElementVisible } = useCoachMarkActions();
   const MESSAGES_PER_PAGE = 50;
+
+  // Fire element visibility trigger on mount
+  useEffect(() => {
+    fireElementVisible('board-discussion-input');
+  }, [fireElementVisible]);
 
   // Load messages with pagination
   const loadMessages = useCallback(
@@ -492,7 +501,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       </ScrollView>
 
       {/* Input */}
-      <View style={styles.inputContainer}>
+      <View ref={discussionInputRef} onLayout={discussionInputOnLayout} style={styles.inputContainer}>
         {editingMessage && (
           <View style={styles.editingIndicator}>
             <Text style={styles.editingText}>Editing message</Text>

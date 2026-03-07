@@ -38,9 +38,8 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
-import CoachMap from "../src/components/CoachMap";
-import CoachMarkWelcome from "../src/components/coachmark";
-import CoachMarkTour from "../src/components/coachmark/CoachMarkTour";
+import { CoachMarkProvider } from "../src/components/education/CoachMarkProvider";
+import { useCoachMarkTarget } from "../src/hooks/useCoachMarkTarget";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
@@ -49,12 +48,10 @@ import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
-import FeedbackModal from "../src/components/FeedbackModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 
-import GiveFeedbackModal from "../src/components/coachmark/GiveFeedbackModal";
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
@@ -77,20 +74,16 @@ function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();
-  const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<
-    string | null
-  >(null);
+
+  // Coach mark targets for tab bar
+  const { ref: tabBarLikesRef, onLayout: tabBarLikesOnLayout } = useCoachMarkTarget('tab-bar-likes');
+  const { ref: tabBarChatsRef, onLayout: tabBarChatsOnLayout } = useCoachMarkTarget('tab-bar-chats');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
-  const [showHelpButton, setShowHelpButton] = useState<boolean>(false);
-  const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
-  const [showGiveFeedbackModal, setShowGiveFeedbackModal] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
-  const helpButtonDismissedRef = useRef<boolean>(false);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -159,8 +152,6 @@ function AppContent() {
     setShowShareModal,
     shareData,
     setShareData,
-    showCoachMap,
-    setShowCoachMap,
     currentMode,
     setCurrentMode,
     preSelectedFriend,
@@ -954,27 +945,6 @@ function AppContent() {
     }
   };
 
-  // Helper to check if coach map is highlighting tabs
-  const isHighlightingTabs = Boolean(
-    showCoachMap &&
-      coachMapCurrentTarget &&
-      (coachMapCurrentTarget === "tabHome" ||
-        coachMapCurrentTarget === "tabConnections" ||
-        coachMapCurrentTarget === "tabActivity" ||
-        coachMapCurrentTarget === "tabSaved" ||
-        coachMapCurrentTarget === "tabProfile")
-  );
-
-  // Helper to check if coach map is highlighting header buttons
-  const isHighlightingHeader = Boolean(
-    showCoachMap &&
-      coachMapCurrentTarget &&
-      (coachMapCurrentTarget === "preferencesButton" ||
-        coachMapCurrentTarget === "collaborateButton" ||
-        coachMapCurrentTarget === "sessionPills" ||
-        coachMapCurrentTarget === "soloButton" ||
-        coachMapCurrentTarget === "createSessionButton")
-  );
 
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -1165,214 +1135,6 @@ function AppContent() {
     return () => clearInterval(interval);
   }, [isAuthenticated, user?.id]);
 
-  // Automatically show coach map when main app loads (only once per session)
-  // Use a ref to track if we've already shown it in this session
-  const coachMapShownRef = useRef(false);
-
-  // Function to update coach map tour status in profile
-  const updateCoachMapTourStatus = async (status: "completed" | "skipped") => {
-    if (!user?.id || !profile) return;
-
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ coach_map_tour_status: status })
-        .eq("id", user.id);
-
-      if (error) {
-        console.error("Error updating coach map tour status:", error);
-        return;
-      }
-
-      // Update profile in store
-      const { useAppStore } = await import("../src/store/appStore");
-      const updatedProfile = { ...profile, coach_map_tour_status: status };
-      useAppStore.getState().setProfile(updatedProfile);
-    } catch (error) {
-      console.error("Error updating coach map tour status:", error);
-    }
-  };
-
-  useEffect(() => {
-    if (
-      isAuthenticated &&
-      user &&
-      profile &&
-      profile.has_completed_onboarding === true &&
-      !coachMapShownRef.current &&
-      // Only show if tour hasn't been completed or skipped
-      (profile.coach_map_tour_status === null ||
-        profile.coach_map_tour_status === undefined)
-    ) {
-      // Show coach map after a brief delay to ensure UI is ready
-      const timer = setTimeout(() => {
-        setShowCoachMap(true);
-        coachMapShownRef.current = true; // Mark as shown for this session
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthenticated, user, profile, setShowCoachMap]);
-
-  // Show floating help button for new users (if not dismissed)
-  useEffect(() => {
-    const checkHelpButtonStatus = async () => {
-      if (
-        isAuthenticated &&
-        user &&
-        profile &&
-        profile.has_completed_onboarding === true &&
-        !helpButtonDismissedRef.current
-      ) {
-        try {
-          const dismissed = await AsyncStorage.getItem(
-            "mingla_help_button_dismissed"
-          );
-          if (dismissed !== "true") {
-            // Show help button after a delay (after coach map might appear)
-            const timer = setTimeout(() => {
-              setShowHelpButton(true);
-            }, 1500);
-            return () => clearTimeout(timer);
-          }
-        } catch (error) {
-          console.error("Error checking help button status:", error);
-        }
-      }
-    };
-
-    checkHelpButtonStatus();
-  }, [isAuthenticated, user, profile]);
-
-  // Function to dismiss the help button permanently
-  const dismissHelpButton = async () => {
-    logger.action('Help button dismissed');
-    try {
-      await AsyncStorage.setItem("mingla_help_button_dismissed", "true");
-      helpButtonDismissedRef.current = true;
-      setShowHelpButton(false);
-    } catch (error) {
-      console.error("Error dismissing help button:", error);
-    }
-  };
-
-  // Function to handle starting the tour
-  const handleStartTour = () => {
-    logger.action('Start coach mark tour');
-    setShowWelcomeDialog(false);
-    setShowCoachMap(true);
-    mixpanelService.trackCoachMarkTourStarted();
-  };
-
-  // Function to handle giving feedback from welcome dialog
-  const handleGiveFeedback = () => {
-    logger.action('Give feedback pressed');
-    setShowWelcomeDialog(false);
-    setTimeout(() => setShowGiveFeedbackModal(true), 100);
-  };
-
-  // ---- Feedback Modal Logic ----
-  const FEEDBACK_STORAGE_KEY = "mingla_feedback_state";
-  const FEEDBACK_PROMPT_DELAY_DAYS = 3; // Days after install to first prompt
-  const FEEDBACK_REPROMPT_DAYS = 30; // Days between re-prompts after dismissal
-
-  // Check if it's time to show the feedback modal
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
-
-    const checkFeedbackPrompt = async () => {
-      try {
-        const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
-        const feedbackState = raw ? JSON.parse(raw) : null;
-
-        // If user already submitted feedback, don't prompt again
-        if (feedbackState?.submitted) return;
-
-        const now = Date.now();
-        const firstLaunch = feedbackState?.firstLaunch || now;
-
-        // Save first launch time if not set
-        if (!feedbackState?.firstLaunch) {
-          await AsyncStorage.setItem(
-            FEEDBACK_STORAGE_KEY,
-            JSON.stringify({ firstLaunch: now })
-          );
-        }
-
-        const daysSinceInstall = (now - firstLaunch) / (1000 * 60 * 60 * 24);
-        const lastDismissed = feedbackState?.lastDismissed || 0;
-        const daysSinceDismissed =
-          (now - lastDismissed) / (1000 * 60 * 60 * 24);
-
-        // Show if enough days since install AND enough days since last dismissal
-        if (
-          daysSinceInstall >= FEEDBACK_PROMPT_DELAY_DAYS &&
-          daysSinceDismissed >= FEEDBACK_REPROMPT_DAYS
-        ) {
-          // Small delay so app settles before showing modal
-          setTimeout(() => setShowFeedbackModal(true), 2000);
-        }
-      } catch (error) {
-        console.error("Error checking feedback prompt:", error);
-      }
-    };
-
-    checkFeedbackPrompt();
-  }, [isAuthenticated, user?.id]);
-
-  const handleFeedbackSubmit = async (feedback: {
-    rating: number;
-    message: string;
-    category: string;
-  }) => {
-    logger.action('Feedback submitted', { rating: feedback.rating, category: feedback.category });
-    try {
-      // Store feedback in Supabase
-      const { error } = await supabase.from("app_feedback").insert({
-        user_id: user?.id,
-        rating: feedback.rating,
-        message: feedback.message,
-        category: feedback.category,
-        platform: "mobile",
-      });
-
-      if (error) {
-        // If table doesn't exist yet, just log and continue gracefully
-        console.warn("Could not save feedback to database:", error.message);
-      }
-
-      // Mark as submitted in AsyncStorage
-      const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
-      const feedbackState = raw ? JSON.parse(raw) : {};
-      await AsyncStorage.setItem(
-        FEEDBACK_STORAGE_KEY,
-        JSON.stringify({ ...feedbackState, submitted: true })
-      );
-
-      toastManager.success("Thanks for your feedback!");
-    } catch (error) {
-      console.error("Error submitting feedback:", error);
-      toastManager.error("Failed to submit feedback. Please try again.");
-      throw error;
-    }
-  };
-
-  const handleFeedbackClose = async () => {
-    logger.action('Feedback modal closed');
-    setShowFeedbackModal(false);
-    try {
-      const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
-      const feedbackState = raw ? JSON.parse(raw) : {};
-      // Only update dismissal time if not already submitted
-      if (!feedbackState.submitted) {
-        await AsyncStorage.setItem(
-          FEEDBACK_STORAGE_KEY,
-          JSON.stringify({ ...feedbackState, lastDismissed: Date.now() })
-        );
-      }
-    } catch (error) {
-      console.error("Error saving feedback dismissal:", error);
-    }
-  };
 
   // Get session ID when in collaboration mode
   useEffect(() => {
@@ -1517,7 +1279,7 @@ function AppContent() {
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
-            isHighlightingHeader={isHighlightingHeader}
+
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -1768,7 +1530,7 @@ function AppContent() {
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
-            isHighlightingHeader={isHighlightingHeader}
+
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -1832,6 +1594,10 @@ function AppContent() {
             <MobileFeaturesProvider>
               <NavigationProvider>
                 <ErrorBoundary>
+                  <CoachMarkProvider
+                    currentPage={currentPage}
+                    userId={user?.id}
+                  >
                   <View style={styles.safeArea}>
                     <StatusBar
                       barStyle="dark-content"
@@ -1904,10 +1670,6 @@ function AppContent() {
                         style={[
                           styles.bottomNavigation,
                           { paddingBottom: layout.bottomNavPadding },
-                          isHighlightingTabs && {
-                            zIndex: 1000,
-                            elevation: 1000,
-                          },
                         ]}
                       >
                         <View style={styles.navigationContainer}>
@@ -1968,6 +1730,8 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
+                            ref={tabBarChatsRef as any}
+                            onLayout={tabBarChatsOnLayout}
                             onPress={() => {
                               logger.action('Tab pressed: connections');
                               closeProfileOverlays();
@@ -2007,6 +1771,8 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
+                            ref={tabBarLikesRef as any}
+                            onLayout={tabBarLikesOnLayout}
                             onPress={() => {
                               logger.action('Tab pressed: likes');
                               closeProfileOverlays();
@@ -2106,51 +1872,6 @@ function AppContent() {
                       </View>
                     </View>
 
-                    {/* Coach Mark Tour Overlay (new design) */}
-                    <CoachMarkTour
-                      visible={showCoachMap}
-                      onComplete={async () => {
-                        setShowCoachMap(false);
-                        setCoachMapCurrentTarget(null);
-                        setCurrentPage("home");
-                        updateCoachMapTourStatus("completed");
-                        mixpanelService.trackCoachMarkTourFinished({ outcome: "completed" });
-                      }}
-                      onSkip={async () => {
-                        setShowCoachMap(false);
-                        setCoachMapCurrentTarget(null);
-                        setCurrentPage("home");
-                        updateCoachMapTourStatus("skipped");
-                        mixpanelService.trackCoachMarkTourFinished({ outcome: "skipped" });
-                      }}
-                      onStepChange={(stepIndex, target) => {
-                        if (stepIndex === -1) {
-                          setCoachMapCurrentTarget(null);
-                        } else {
-                          setCoachMapCurrentTarget(target);
-                          // Navigate to the correct page for each step
-                          if (target === "discoverForYou" || target === "discoverAddPerson" || target === "discoverNightOut") {
-                            setCurrentPage("discover");
-                          } else if (target === "connectFriendsTab" || target === "connectMessagesTab") {
-                            setCurrentPage("connections");
-                          } else if (target === "likesSavedTab" || target === "likesCalendarTab") {
-                            setCurrentPage("likes");
-                          } else if (target === "profileHub") {
-                            setCurrentPage("profile");
-                          } else if (
-                            target === "preferencesButton" ||
-                            target === "sessionPills" ||
-                            target === "soloButton" ||
-                            target === "createSessionButton" ||
-                            target === "swipeCard" ||
-                            target === "viewMoreButton"
-                          ) {
-                            setCurrentPage("home");
-                          }
-                        }
-                      }}
-                    />
-
                     {/* Share Modal */}
                     <ShareModal
                       isOpen={showShareModal}
@@ -2161,12 +1882,6 @@ function AppContent() {
                       accountPreferences={accountPreferences}
                     />
 
-                    {/* Feedback Modal */}
-                    <FeedbackModal
-                      visible={showFeedbackModal}
-                      onClose={handleFeedbackClose}
-                      onSubmitFeedback={handleFeedbackSubmit}
-                    />
 
 
                     {/* Post-Experience Review Modal — locked modal for voice reviews */}
@@ -2182,42 +1897,8 @@ function AppContent() {
                       />
                     )}
 
-                    {/* Give Feedback Modal (from coach mark welcome) */}
-                    <GiveFeedbackModal
-                      visible={showGiveFeedbackModal}
-                      onClose={() => setShowGiveFeedbackModal(false)}
-                      userId={user?.id}
-                    />
-
-
-                    {/* Floating Help Button */}
-                    {showHelpButton && !showCoachMap && (
-                      <View style={[styles.floatingButtonContainer, { bottom: layout.bottomNavTotalHeight + vs(24) }]}>
-                        {/* Dismiss X button */}
-                        <TouchableOpacity
-                          style={styles.dismissButton}
-                          onPress={dismissHelpButton}
-                        >
-                          <Ionicons name="close" size={12} color="white" />
-                        </TouchableOpacity>
-                        {/* Main help button */}
-                        <TouchableOpacity
-                          style={styles.floatingButton}
-                          onPress={() => { logger.action('Help button pressed'); setShowWelcomeDialog(true) }}
-                        >
-                          <Feather name="help-circle" size={24} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {/* Welcome Dialog */}
-                    <CoachMarkWelcome
-                      visible={showWelcomeDialog}
-                      onStartTour={handleStartTour}
-                      onGiveFeedback={handleGiveFeedback}
-                      onClose={() => setShowWelcomeDialog(false)}
-                    />
                   </View>
+                  </CoachMarkProvider>
                 </ErrorBoundary>
               </NavigationProvider>
             </MobileFeaturesProvider>

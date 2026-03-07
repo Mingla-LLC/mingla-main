@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ParticipantAvatars, Participant } from "./ParticipantAvatars";
 import { BoardSession } from "../../hooks/useBoardSession";
+import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
 
 interface BoardHeaderProps {
   session: BoardSession | null;
@@ -25,6 +26,8 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
   onBack,
   loading = false,
 }) => {
+  const { ref: settingsRef, onLayout: settingsOnLayout } = useCoachMarkTarget('board-settings-button');
+
   if (!session) {
     return (
       <View style={styles.container}>
@@ -66,13 +69,15 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
 
         {/* Right: Three-dot Menu */}
         {onSettingsPress && (
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={onSettingsPress}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={24} color="#6b7280" />
-          </TouchableOpacity>
+          <View ref={settingsRef} onLayout={settingsOnLayout}>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={onSettingsPress}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </View>

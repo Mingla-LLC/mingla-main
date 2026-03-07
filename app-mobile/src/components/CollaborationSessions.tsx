@@ -27,6 +27,7 @@ import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite } from '../services/phoneLookupService';
 import { useSendFriendLink } from '../hooks/useFriendLinks';
 import { useAppStore } from '../store/appStore';
+import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
@@ -102,6 +103,8 @@ export default function CollaborationSessions({
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
+  const { ref: soloRef, onLayout: soloOnLayout } = useCoachMarkTarget('explore-solo-button');
+  const { ref: createSessionRef, onLayout: createSessionOnLayout } = useCoachMarkTarget('explore-create-session');
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -442,26 +445,30 @@ export default function CollaborationSessions({
       )}
 
       {/* Fixed pills */}
-      <TouchableOpacity
-        style={[styles.pill, isSoloMode && styles.soloPill]}
-        onPress={() => {
-          onSoloSelect();
-          mixpanelService.trackSessionSwitched({ mode: 'solo' });
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
-          Solo
-        </Text>
-      </TouchableOpacity>
+      <View ref={soloRef} onLayout={soloOnLayout} collapsable={false}>
+        <TouchableOpacity
+          style={[styles.pill, isSoloMode && styles.soloPill]}
+          onPress={() => {
+            onSoloSelect();
+            mixpanelService.trackSessionSwitched({ mode: 'solo' });
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
+            Solo
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity
-        style={[styles.pill, styles.createPill]}
-        onPress={() => setShowCreateModal(true)}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="add" size={16} color="#FFFFFF" />
-      </TouchableOpacity>
+      <View ref={createSessionRef} onLayout={createSessionOnLayout} collapsable={false}>
+        <TouchableOpacity
+          style={[styles.pill, styles.createPill]}
+          onPress={() => setShowCreateModal(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
 
       {/* Scrollable session pills */}
       <View style={styles.scrollViewWrapper}>

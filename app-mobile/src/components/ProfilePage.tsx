@@ -31,6 +31,7 @@ import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
+import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -71,6 +72,14 @@ export default function ProfilePage({
   onNotificationsToggle,
   userIdentity,
 }: ProfilePageProps) {
+  // Coach mark targets
+  const { ref: heroSectionRef, onLayout: heroSectionOnLayout } = useCoachMarkTarget('profile-hero-section');
+  const { ref: statsRowRef, onLayout: statsRowOnLayout } = useCoachMarkTarget('profile-stats-row');
+  const { ref: interestsSectionRef, onLayout: interestsSectionOnLayout } = useCoachMarkTarget('profile-interests-section');
+  const { ref: settingsSectionRef, onLayout: settingsSectionOnLayout } = useCoachMarkTarget('profile-settings-section');
+  const { ref: notificationsToggleRef, onLayout: notificationsToggleOnLayout } = useCoachMarkTarget('profile-notifications-toggle');
+  const { ref: activityToggleRef, onLayout: activityToggleOnLayout } = useCoachMarkTarget('profile-activity-toggle');
+
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 
@@ -341,21 +350,23 @@ export default function ProfilePage({
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
         {/* 1. Hero Section */}
-        <ProfileHeroSection
-          isOwnProfile
-          firstName={userIdentity?.firstName || null}
-          lastName={userIdentity?.lastName || null}
-          username={userIdentity?.username || null}
-          avatarUrl={userIdentity?.profileImage || null}
-          bio={profile?.bio || null}
-          location={currentLocation}
-          isLoadingLocation={isLoadingLocation}
-          locationError={locationError}
-          onAvatarPress={handleAvatarChange}
-          onBioPress={() => setShowBioSheet(true)}
-          onLocationRefresh={updateLocation}
-          isUploading={isUploading}
-        />
+        <View ref={heroSectionRef} onLayout={heroSectionOnLayout}>
+          <ProfileHeroSection
+            isOwnProfile
+            firstName={userIdentity?.firstName || null}
+            lastName={userIdentity?.lastName || null}
+            username={userIdentity?.username || null}
+            avatarUrl={userIdentity?.profileImage || null}
+            bio={profile?.bio || null}
+            location={currentLocation}
+            isLoadingLocation={isLoadingLocation}
+            locationError={locationError}
+            onAvatarPress={handleAvatarChange}
+            onBioPress={() => setShowBioSheet(true)}
+            onLocationRefresh={updateLocation}
+            isUploading={isUploading}
+          />
+        </View>
 
         {/* 2. Photos Gallery */}
         <ProfilePhotosGallery
@@ -366,7 +377,7 @@ export default function ProfilePage({
         />
 
         {/* 3. Interests Section */}
-        <View style={styles.sectionSpacing}>
+        <View style={styles.sectionSpacing} ref={interestsSectionRef} onLayout={interestsSectionOnLayout}>
           <ProfileInterestsSection
             intents={interests?.intents || []}
             categories={interests?.categories || []}
@@ -376,6 +387,7 @@ export default function ProfilePage({
         </View>
 
         {/* 4. Stats Row */}
+        <View ref={statsRowRef} onLayout={statsRowOnLayout}>
         <ProfileStatsRow
           savedCount={savedExperiences}
           connectionsCount={actualConnectionsCount}
@@ -386,6 +398,7 @@ export default function ProfilePage({
             else if (stat === "connections") onNavigateToConnections?.();
           }}
         />
+        </View>
 
         {/* 5. Recent Activity */}
         <View style={styles.section}>
@@ -419,12 +432,12 @@ export default function ProfilePage({
         </View>
 
         {/* 6. Quick Settings */}
-        <View style={styles.section}>
+        <View style={styles.section} ref={settingsSectionRef} onLayout={settingsSectionOnLayout}>
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Settings</Text>
 
             {/* Notifications toggle */}
-            <View style={styles.settingRow}>
+            <View style={styles.settingRow} ref={notificationsToggleRef} onLayout={notificationsToggleOnLayout}>
               <View style={styles.settingLabelContainer}>
                 <Text style={styles.settingLabel}>Notifications</Text>
                 <Text style={styles.settingHint}>Invites, board updates, and messages</Text>
@@ -449,7 +462,7 @@ export default function ProfilePage({
             </TouchableOpacity>
 
             {/* Activity status toggle */}
-            <View style={styles.settingRow}>
+            <View style={styles.settingRow} ref={activityToggleRef} onLayout={activityToggleOnLayout}>
               <View style={styles.settingLabelContainer}>
                 <Text style={styles.settingLabel}>Show Activity</Text>
                 <Text style={styles.settingHint}>Let friends see when you're active</Text>

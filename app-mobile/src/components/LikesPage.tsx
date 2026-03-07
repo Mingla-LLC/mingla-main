@@ -10,6 +10,7 @@ import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
 import { mixpanelService } from "../services/mixpanelService";
+import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 
 // Tab types for Likes screen
 export type LikesTab = "saved" | "calendar";
@@ -17,12 +18,20 @@ export type LikesTab = "saved" | "calendar";
 interface LikesTabsProps {
   activeTab: LikesTab;
   onTabChange: (tab: LikesTab) => void;
+  savedTabRef?: React.Ref<View>;
+  savedTabOnLayout?: () => void;
+  calendarTabRef?: React.Ref<View>;
+  calendarTabOnLayout?: () => void;
 }
 
 // Reusable Tabs component
 const LikesTabs: React.FC<LikesTabsProps> = ({
   activeTab,
   onTabChange,
+  savedTabRef,
+  savedTabOnLayout,
+  calendarTabRef,
+  calendarTabOnLayout,
 }) => {
   const tabs: Array<{ id: LikesTab; label: string; icon: string }> = [
     { id: "saved", label: "Saved", icon: "bookmark" },
@@ -38,6 +47,8 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
           return (
             <TouchableOpacity
               key={tab.id}
+              ref={tab.id === "saved" ? savedTabRef as any : tab.id === "calendar" ? calendarTabRef as any : undefined}
+              onLayout={tab.id === "saved" ? savedTabOnLayout : tab.id === "calendar" ? calendarTabOnLayout : undefined}
               style={[styles.tab, isActive && styles.tabActive]}
               onPress={() => onTabChange(tab.id)}
               activeOpacity={0.7}
@@ -96,6 +107,11 @@ export default function LikesPage({
 }: LikesPageProps) {
   const [activeTab, setActiveTab] = useState<LikesTab>("saved");
 
+  // Coach mark targets
+  const { ref: savedGridRef, onLayout: savedGridOnLayout } = useCoachMarkTarget('likes-saved-grid');
+  const { ref: savedTabRef, onLayout: savedTabOnLayout } = useCoachMarkTarget('likes-saved-tab');
+  const { ref: calendarTabRef, onLayout: calendarTabOnLayout } = useCoachMarkTarget('likes-calendar-tab');
+
   // Handle navigation from external sources
   React.useEffect(() => {
     if (navigationData) {
@@ -117,10 +133,17 @@ export default function LikesPage({
   return (
     <View style={styles.container}>
       {/* Tabs */}
-      <LikesTabs activeTab={activeTab} onTabChange={handleTabChange} />
+      <LikesTabs
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        savedTabRef={savedTabRef}
+        savedTabOnLayout={savedTabOnLayout}
+        calendarTabRef={calendarTabRef}
+        calendarTabOnLayout={calendarTabOnLayout}
+      />
 
       {/* Content */}
-      <View style={styles.content}>
+      <View ref={savedGridRef} onLayout={savedGridOnLayout} style={styles.content}>
         {activeTab === "saved" && (
           <SavedTab
             isLoading={isLoadingSavedCards}
