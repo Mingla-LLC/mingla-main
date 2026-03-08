@@ -89,12 +89,36 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       )
+
+      // Defense-in-depth: reject if phone was claimed by another user between
+      // send-otp (which also checks) and this verification
+      const { data: existingProfile } = await serviceClient
+        .from('profiles')
+        .select('id')
+        .eq('phone', phone)
+        .neq('id', user.id)
+        .maybeSingle()
+
+      if (existingProfile) {
+        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
       const { error: updateError } = await serviceClient
         .from('profiles')
         .update({ phone })
         .eq('id', user.id)
 
       if (updateError) {
+        // Handle UNIQUE constraint violation (final safety net)
+        if (updateError.code === '23505') {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
         console.error('Profile update error:', updateError)
         return new Response(JSON.stringify({ error: 'Phone verified but save failed. Contact support.' }), {
           status: 500,

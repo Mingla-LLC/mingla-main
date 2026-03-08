@@ -799,7 +799,18 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         // to prevent bypassing gender_identity/details on resume
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
-        logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1 })
+        logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1, error: result.error })
+
+        // Phone already claimed by another user — show error on phone step, not OTP step
+        if (result.error?.includes('already associated')) {
+          setPhoneError(result.error)
+          setOtpCode('')
+          setOtpAttempts(0)
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+          goToSubStep('phone')
+          return
+        }
+
         setOtpError(true)
         setOtpAttempts((a) => a + 1)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
@@ -811,7 +822,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         }
       }
     },
-    [buildE164, goNext, otpAttempts, handleResendOtp]
+    [buildE164, goNext, otpAttempts, handleResendOtp, goToSubStep]
   )
 
   // ─── Location Capture ───

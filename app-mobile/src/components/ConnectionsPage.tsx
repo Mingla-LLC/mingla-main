@@ -41,6 +41,7 @@ import { FriendPickerSheet } from "./connections/FriendPickerSheet";
 import { AddFriendView } from "./connections/AddFriendView";
 import { RequestsView } from "./connections/RequestsView";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import MessageInterface from "./MessageInterface";
 
 type PanelId = "add" | "requests" | "blocked" | null;
@@ -1249,39 +1250,41 @@ export default function ConnectionsPageRefactored({
       >
         <Pressable style={styles.sheetOverlay} onPress={() => setActivePanel(null)}>
           <Pressable style={styles.sheetContainer} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>
-                {activePanel === "add" ? "Add Friend" : activePanel === "requests" ? "Friend Requests" : "Blocked Users"}
-              </Text>
-              <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.sheetBody}>
-              {activePanel === "add" && (
-                <AddFriendView
-                  currentUserId={user?.id || ""}
-                  existingFriendIds={existingFriendIds}
-                  onRequestSent={() => loadFriendRequests()}
-                />
-              )}
-              {activePanel === "requests" && (
-                <RequestsView
-                  requests={incomingRequests}
-                  loading={friendsLoading}
-                  onAccept={handleAcceptRequest}
-                  onDecline={handleDeclineRequest}
-                />
-              )}
-              {activePanel === "blocked" && (
-                <BlockedUsersView
-                  blockedUsers={blockedUsers}
-                  loading={friendsLoading}
-                  onUnblock={handleUnblock}
-                />
-              )}
-            </View>
+            <KeyboardAwareView dismissOnTap={false}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>
+                  {activePanel === "add" ? "Add Friend" : activePanel === "requests" ? "Friend Requests" : "Blocked Users"}
+                </Text>
+                <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sheetBody}>
+                {activePanel === "add" && (
+                  <AddFriendView
+                    currentUserId={user?.id || ""}
+                    existingFriendIds={existingFriendIds}
+                    onRequestSent={() => loadFriendRequests()}
+                  />
+                )}
+                {activePanel === "requests" && (
+                  <RequestsView
+                    requests={incomingRequests}
+                    loading={friendsLoading}
+                    onAccept={handleAcceptRequest}
+                    onDecline={handleDeclineRequest}
+                  />
+                )}
+                {activePanel === "blocked" && (
+                  <BlockedUsersView
+                    blockedUsers={blockedUsers}
+                    loading={friendsLoading}
+                    onUnblock={handleUnblock}
+                  />
+                )}
+              </View>
+            </KeyboardAwareView>
           </Pressable>
         </Pressable>
       </Modal>

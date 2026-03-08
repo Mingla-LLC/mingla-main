@@ -237,14 +237,16 @@ async function cleanupCollaborationSessions(
 }
 
 /**
- * Cleans up all user-related data from various tables
- * Each operation is wrapped in try-catch to handle missing tables gracefully
+ * Cleans up all user-related data from every table in the system.
+ * Each operation is wrapped in try-catch to handle missing tables gracefully.
+ * Explicit deletes are used even for tables with CASCADE as a safety net —
+ * if a FK constraint is ever removed or misconfigured, this still works.
  */
 async function cleanupUserData(
   adminClient: SupabaseClient,
-  userId: string
+  userId: string,
+  userPhone: string | null
 ): Promise<{ success: boolean; error?: string }> {
-  const errors: string[] = [];
 
   // Helper function to safely delete from a table
   const safeDelete = async (table: string, column: string, value: string) => {
@@ -252,7 +254,6 @@ async function cleanupUserData(
       await adminClient.from(table).delete().eq(column, value);
     } catch (err) {
       console.warn(`Warning: Could not delete from ${table}:`, err);
-      // Don't add to errors array - these are non-critical
     }
   };
 
@@ -266,21 +267,23 @@ async function cleanupUserData(
   };
 
   try {
-    // User interactions and learning data
+    // ── User interactions and learning data ──
     await safeDelete("user_interactions", "user_id", userId);
     await safeDelete("user_location_history", "user_id", userId);
     await safeDelete("user_preference_learning", "user_id", userId);
     await safeDelete("user_sessions", "user_id", userId);
     await safeDelete("user_activity", "user_id", userId);
 
-    // Friends and social data
+    // ── Friends and social data ──
     await safeDeleteOr("friends", `user_id.eq.${userId},friend_user_id.eq.${userId}`);
     await safeDeleteOr("friend_requests", `sender_id.eq.${userId},receiver_id.eq.${userId}`);
+    await safeDeleteOr("friend_links", `requester_id.eq.${userId},target_id.eq.${userId}`);
 
-    // Blocked users
+    // ── Blocked and muted users ──
     await safeDeleteOr("blocked_users", `blocker_id.eq.${userId},blocked_id.eq.${userId}`);
+    await safeDeleteOr("muted_users", `muter_id.eq.${userId},muted_id.eq.${userId}`);
 
-    // Messaging - soft delete messages to preserve conversation history
+    // ── Messaging — soft delete to preserve other users' conversation history ──
     try {
       await adminClient
         .from("messages")
@@ -290,29 +293,87 @@ async function cleanupUserData(
       console.warn("Warning: Could not soft-delete messages:", err);
     }
 
-    // Remove from conversation participants
+    // ── Conversation participants ──
     await safeDelete("conversation_participants", "user_id", userId);
 
-    // Calendar entries
+    // ── Calendar entries ──
     await safeDelete("calendar_entries", "user_id", userId);
 
-    // Board session preferences
+    // ── Board-related data ──
     await safeDelete("board_session_preferences", "user_id", userId);
+    await safeDelete("board_messages", "user_id", userId);
+    await safeDelete("board_card_messages", "user_id", userId);
+    await safeDelete("board_message_reads", "user_id", userId);
+    await safeDelete("board_card_message_reads", "user_id", userId);
+    await safeDelete("board_user_swipe_states", "user_id", userId);
+    await safeDelete("board_saved_cards", "saved_by", userId);
 
-    // Preference history (must be deleted before profiles due to trigger)
+    // ── Preference history (must be deleted before profiles due to trigger) ──
     await safeDelete("preference_history", "user_id", userId);
 
-    // Collaboration invites
+    // ── Collaboration invites ──
     await safeDelete("collaboration_invites", "inviter_id", userId);
     await safeDelete("collaboration_invites", "invitee_id", userId);
 
-    // Presence data
+    // ── Presence data ──
     await safeDelete("user_presence", "user_id", userId);
     await safeDelete("session_presence", "user_id", userId);
     await safeDelete("typing_indicators", "user_id", userId);
+    await safeDelete("board_participant_presence", "user_id", userId);
+    await safeDelete("board_typing_indicators", "user_id", userId);
 
-    // Session votes
+    // ── Session votes ──
     await safeDelete("session_votes", "user_id", userId);
+
+    // ── Saved people and person data ──
+    await safeDelete("person_audio_clips", "user_id", userId);
+    await safeDelete("person_experiences", "user_id", userId);
+    await safeDelete("saved_people", "user_id", userId);
+
+    // ── Push tokens ──
+    await safeDelete("user_push_tokens", "user_id", userId);
+
+    // ── Subscriptions and credits ──
+    await safeDelete("subscriptions", "user_id", userId);
+    await safeDeleteOr("referral_credits", `referrer_id.eq.${userId},referred_id.eq.${userId}`);
+
+    // ── Coach marks and undo actions ──
+    await safeDelete("coach_mark_progress", "user_id", userId);
+    await safeDelete("undo_actions", "user_id", userId);
+
+    // ── App feedback ──
+    await safeDelete("app_feedback", "user_id", userId);
+
+    // ── User reports (both directions) ──
+    await safeDeleteOr("user_reports", `reporter_id.eq.${userId},reported_user_id.eq.${userId}`);
+
+    // ── Pending invites: clean up by user's phone number ──
+    // Without this, a new user signing up with the same phone would
+    // auto-link to friends who invited the old (deleted) user's number.
+    if (userPhone) {
+      try {
+        await adminClient
+          .from("pending_invites")
+          .update({ status: "cancelled" })
+          .eq("phone_e164", userPhone)
+          .eq("status", "pending");
+      } catch (err) {
+        console.warn("Warning: Could not cancel pending_invites by phone:", err);
+      }
+      try {
+        await adminClient
+          .from("pending_session_invites")
+          .update({ status: "cancelled" })
+          .eq("phone_e164", userPhone)
+          .eq("status", "pending");
+      } catch (err) {
+        console.warn("Warning: Could not cancel pending_session_invites by phone:", err);
+      }
+    }
+
+    // ── Pending invites: clean up by inviter_id ──
+    await safeDelete("pending_invites", "inviter_id", userId);
+    await safeDelete("pending_session_invites", "inviter_id", userId);
 
     return { success: true };
   } catch (err) {
@@ -383,6 +444,20 @@ serve(async (req) => {
       },
     });
 
+    // Step 0: Fetch user's verified phone before any cleanup (needed for pending invite cancellation)
+    let userPhone: string | null = null;
+    try {
+      const { data: profileData } = await adminClient
+        .from("profiles")
+        .select("phone")
+        .eq("id", userId)
+        .maybeSingle();
+      userPhone = profileData?.phone ?? null;
+      console.log(`User phone: ${userPhone ? userPhone.slice(0, 4) + '****' : 'none'}`);
+    } catch (err) {
+      console.warn("Warning: Could not fetch user phone:", err);
+    }
+
     // Step 1: Handle collaboration sessions (reassign admins, remove memberships, delete under-populated boards)
     console.log("Step 1: Cleaning up collaboration sessions...");
     const collabResult = await cleanupCollaborationSessions(adminClient, userId);
@@ -393,7 +468,7 @@ serve(async (req) => {
 
     // Step 2: Clean up all user-related data from various tables
     console.log("Step 2: Cleaning up user data from all tables...");
-    const cleanupResult = await cleanupUserData(adminClient, userId);
+    const cleanupResult = await cleanupUserData(adminClient, userId, userPhone);
     if (!cleanupResult.success) {
       console.warn("Warning: Some data cleanup failed:", cleanupResult.error);
       // Continue with deletion - don't block on non-critical errors

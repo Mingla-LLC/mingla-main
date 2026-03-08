@@ -44,8 +44,14 @@ serve(async (req) => {
       })
     }
 
+    // Service role client for cross-user queries (RLS bypass)
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
     // Check if this phone is already verified for this user — skip SMS if so
-    const { data: profile } = await supabaseClient
+    const { data: profile } = await serviceClient
       .from('profiles')
       .select('phone')
       .eq('id', user.id)
@@ -54,6 +60,21 @@ serve(async (req) => {
     if (profile?.phone === phone) {
       return new Response(JSON.stringify({ success: true, status: 'already_verified' }), {
         status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Check if this phone is already claimed by a different user
+    const { data: existingProfile } = await serviceClient
+      .from('profiles')
+      .select('id')
+      .eq('phone', phone)
+      .neq('id', user.id)
+      .maybeSingle()
+
+    if (existingProfile) {
+      return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
