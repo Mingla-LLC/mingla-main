@@ -10,10 +10,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFriends } from "../../hooks/useFriends";
 
@@ -415,6 +414,7 @@ const InviteFriendsStep = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
         nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Title Section */}
         <View style={styles.titleSection}>
@@ -472,9 +472,9 @@ const InviteFriendsStep = ({
         animationType="slide"
         onRequestClose={closeEmailModal}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        <KeyboardAwareView
           style={{ flex: 1 }}
+          dismissOnTap={false}
         >
           <View style={styles.modalOverlay}>
             <TouchableOpacity
@@ -550,7 +550,7 @@ const InviteFriendsStep = ({
               </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardAwareView>
       </Modal>
     </View>
   );

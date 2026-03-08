@@ -10,7 +10,6 @@ import {
   StatusBar,
   Platform,
   Modal,
-  KeyboardAvoidingView,
   Switch,
 } from "react-native";
 import {
@@ -32,6 +31,7 @@ import {
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { TRAVEL_TIME_PRESETS } from '../types/onboarding';
 
 interface CollaborationPreferencesProps {
@@ -638,14 +638,10 @@ export default function CollaborationPreferences({
           Collaboration Preferences for "{sessionName}"
         </Text>
       </View>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+      <KeyboardAwareScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
           {/* Experience Type Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Curated Experiences</Text>
@@ -1140,8 +1136,7 @@ export default function CollaborationPreferences({
                 </ScrollView>
               )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
 
       {/* Apply Button */}
       <View

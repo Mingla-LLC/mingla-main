@@ -151,7 +151,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
           )}
 
           {/* User List */}
-          <ScrollView style={styles.userList} contentContainerStyle={styles.userListContent}>
+          <ScrollView style={styles.userList} contentContainerStyle={styles.userListContent} keyboardShouldPersistTaps="handled">
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#eb7825" />

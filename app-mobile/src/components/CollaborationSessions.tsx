@@ -519,7 +519,7 @@ export default function CollaborationSessions({
               <View style={styles.modalCloseButtonPlaceholder} />
             </View>
 
-            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Session Name Input */}
               <Text style={styles.modalLabel}>Session Name</Text>
               <TextInput

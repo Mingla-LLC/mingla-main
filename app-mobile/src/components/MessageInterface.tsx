@@ -8,7 +8,6 @@ import {
   ScrollView,
   Image,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Keyboard,
   Animated,

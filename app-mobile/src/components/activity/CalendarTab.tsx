@@ -1679,6 +1679,7 @@ const CalendarTab = ({
         style={styles.mainScrollView}
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Search & Filters */}
         <Animated.View

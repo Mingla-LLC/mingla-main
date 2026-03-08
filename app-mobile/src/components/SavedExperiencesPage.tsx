@@ -286,6 +286,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
       <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
           <View>

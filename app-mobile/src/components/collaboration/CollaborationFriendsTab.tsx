@@ -198,7 +198,7 @@ export default function CollaborationFriendsTab({
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {/* Pill Buttons */}
       <View style={styles.pillContainer}>
         <TouchableOpacity onPress={onShowAddFriendModal} style={styles.pill}>
@@ -477,9 +477,7 @@ export default function CollaborationFriendsTab({
                         />
                         {isBlockingUser ? (
                           <ActivityIndicator size="small" color="#EF4444" />
-                        ) : (
-                          ""
-                        )}
+                        ) : null}
                         <Text
                           style={[styles.dropdownItemText, styles.dangerText]}
                         >

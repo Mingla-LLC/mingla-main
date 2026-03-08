@@ -175,6 +175,7 @@ The Connect page manages friend relationships:
 - Card pool data pipeline: pool-first serving, falls back to Google Places API
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
 - AI summary generation for birthday hero cards via `generate-ai-summary` edge function
+- Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km → 5km → closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
 
 ### Card-Based Swipe Interface
 - Swipe right to save, left to skip, up to expand full details
@@ -457,11 +458,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **First-Launch Tutorial Mode** -- Full 58-step linear tutorial that auto-navigates users through every tab and screen on first launch. No skip, no exit — "Next" and "Back to start" only. Session limits and cooldowns disabled. Marks without targets show centered without spotlight.
-- **Auto-Navigation Orchestration** -- CoachMarkProvider watches `tutorialPendingPage` and `replayPendingPage` state, calling `onNavigate` to switch tabs, then waits for target registration before showing the next mark.
-- **Replay Tips Screen** -- Dedicated screen (accessible from Profile) with expandable groups showing individual tips. Tap a group's "Replay" button to replay the entire group, or tap a single tip to auto-navigate and replay just that one.
-- **Coach Mark System Overhaul** -- Deliberate dismissal only (backdrop tap does nothing), self-measuring tooltips, safe area awareness, scroll-safe queue, step progress indicators, reduced motion support, milestone celebrations skipped during tutorial.
-- **Tutorial-Aware Engine** -- useCoachMarkEngine skips normal queue logic during tutorial mode. Store's `dismiss()` advances tutorial without session count or cooldown. `resetSession()` is protected during tutorial.
+- **Proximity-Optimized Stop Pairing** -- Curated card generators now proximity-chain consecutive stops using a tiered 3km → 5km → closest fallback. Stop 2 is always the highest-rated place near stop 1, and stop 3 (adventure) near stop 2. Applies to adventurous, first-date, romantic, friendly, and group-fun intents. Picnic and stroll are untouched.
+- **One shared utility function** -- `selectClosestHighestRated` added to `generate-curated-experiences` edge function. Piggybacks on existing score-sorted place pools with zero new API calls or database changes.
+- **6 surgical line replacements** -- Stop 2+ selection changed from `available[0]` (highest score only) to proximity-aware selection across 5 generators (including both normal and fallback paths in first-date).
 
 ---
 

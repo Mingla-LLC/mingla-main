@@ -9,8 +9,6 @@ import {
   ScrollView,
   Alert,
   StatusBar,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
@@ -20,6 +18,7 @@ import ProfileAccountSection from "./ProfileAccountSection";
 import ProfilePrivacySection from "./ProfilePrivacySection";
 // Profile photo moved to hero on ProfilePage
 import ProfilePersonalInfoSection from "./ProfilePersonalInfoSection";
+import { KeyboardAwareScrollView } from "../ui/KeyboardAwareScrollView";
 import { colors } from "@/src/constants/colors";
 import { useAppState } from "../AppStateManager";
 // import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
@@ -50,22 +49,17 @@ export default function ProfileSettings({
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        {/* Content */}
-        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-          {/* Profile Photo is handled in the ProfilePage hero now. */}
+      {/* Content */}
+      <KeyboardAwareScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+        {/* Profile Photo is handled in the ProfilePage hero now. */}
 
-          {/* Personal Information */}
-          <ProfilePersonalInfoSection />
+        {/* Personal Information */}
+        <ProfilePersonalInfoSection />
 
-          {/* Account Information & Privacy Sections */}
-          <ProfileAccountSection />
-          <ProfilePrivacySection />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {/* Account Information & Privacy Sections */}
+        <ProfileAccountSection />
+        <ProfilePrivacySection />
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

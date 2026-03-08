@@ -1,14 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Text, View, TouchableOpacity, TextInput } from "react-native";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SwipeableBoardCards from "./SwipeableBoardCards";
 import BoardMemberManagementModal from "./BoardMemberManagementModal";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
 
 interface Message {
   id: string;
@@ -256,12 +266,12 @@ export default function BoardDiscussion({
   );
   const [boardNotifications, setBoardNotifications] = useState(true);
   const [showMemberManagement, setShowMemberManagement] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
 
   // Focus input when switching to discussion view
   useEffect(() => {
     if (activeView === "discussion" && inputRef.current) {
-      // Small delay to ensure the view has rendered
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -279,7 +289,6 @@ export default function BoardDiscussion({
 
   const handleSendMessage = () => {
     if (newMessage.trim()) {
-      // Handle sending message
       setNewMessage("");
     }
   };
@@ -287,13 +296,10 @@ export default function BoardDiscussion({
   const handleInputChange = (value: string) => {
     setNewMessage(value);
 
-    // Check for mentions (@)
     if (value.endsWith("@")) {
       setShowMentions(true);
       setShowCardTags(false);
-    }
-    // Check for card tags (#)
-    else if (value.endsWith("#")) {
+    } else if (value.endsWith("#")) {
       setShowCardTags(true);
       setShowMentions(false);
     } else {
@@ -302,12 +308,12 @@ export default function BoardDiscussion({
     }
   };
 
-  const insertMention = (user: any) => {
+  const insertMention = (user: { id: string; name: string }) => {
     setNewMessage((prev) => prev.slice(0, -1) + `@${user.name} `);
     setShowMentions(false);
   };
 
-  const insertCardTag = (card: any) => {
+  const insertCardTag = (card: { id: string; title: string }) => {
     setNewMessage((prev) => prev.slice(0, -1) + `#${card.title} `);
     setShowCardTags(false);
   };
@@ -354,150 +360,140 @@ export default function BoardDiscussion({
     }
   };
 
-  // Map icon names to components
-  const iconMap: { [key: string]: string } = {
-    Heart: "heart",
-    Dumbbell: "fitness",
-    Utensils: "restaurant",
-    Coffee: "cafe",
-    Palette: "color-palette",
-    Trophy: "trophy",
+  const renderMessageContent = (content: string) => {
+    return content.split(/(@\w+\s*\w*|#[\w\s]+)/g).map((part, index) => {
+      if (part.startsWith("@")) {
+        return (
+          <Text key={index} style={styles.mentionText}>
+            {part}
+          </Text>
+        );
+      } else if (part.startsWith("#")) {
+        return (
+          <Text key={index} style={styles.cardTagText}>
+            {part}
+          </Text>
+        );
+      }
+      return <Text key={index}>{part}</Text>;
+    });
   };
 
-  const BoardIcon = iconMap[board.icon] || "heart";
-
   return (
-    <View className="h-full bg-gray-50 flex flex-col">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 p-4 flex-shrink-0">
-        <View className="flex items-center gap-3 mb-3 pt-8">
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={onBack}
-            className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+            style={styles.backButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="arrow-back" size={16} color="#6b7280" />
+            <Ionicons name="arrow-back" size={16} color={colors.gray[500]} />
           </TouchableOpacity>
 
-          <View className="flex-1">
-            <Text className="font-bold text-gray-900">{board.name}</Text>
-            <Text className="text-sm text-gray-600">{board.description}</Text>
+          <View style={styles.headerInfo}>
+            <Text style={styles.boardName}>{board.name}</Text>
+            <Text style={styles.boardDescription}>{board.description}</Text>
           </View>
 
           {/* Board Menu */}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <TouchableOpacity
-                    className="w-8 h-8 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 flex items-center justify-center"
-                    title="Board options"
-                  >
-                    <Ionicons
-                      name="ellipsis-horizontal"
-                      size={16}
-                      color="#6b7280"
-                    />
-                  </TouchableOpacity>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onPress={() => {
-                      setShowMemberManagement(true);
-                    }}
-                  >
-                    <Ionicons
-                      name="people"
-                      size={16}
-                      color="#6b7280"
-                      style={{ marginRight: 8 }}
-                    />
-                    Manage Members
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onPress={() => {
-                      setShowMemberManagement(true);
-                    }}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Ionicons
-                      name="log-out"
-                      size={16}
-                      color="#6b7280"
-                      style={{ marginRight: 8 }}
-                    />
-                    Leave Board
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <DropdownMenuTrigger>
+              <TouchableOpacity style={styles.menuButton}>
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={16}
+                  color={colors.gray[500]}
+                />
+              </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent style={styles.menuContent}>
               <DropdownMenuItem
-                onPress={handleToggleNotifications}
-                className="flex items-center gap-2"
+                onPress={() => setShowMemberManagement(true)}
               >
-                {boardNotifications ? (
-                  <>
-                    <Ionicons
-                      name="notifications-off"
-                      size={16}
-                      color="#6b7280"
-                    />
-                    Turn off notifications
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="notifications" size={16} color="#6b7280" />
-                    Turn on notifications
-                  </>
-                )}
+                <Ionicons
+                  name="people"
+                  size={16}
+                  color={colors.gray[500]}
+                  style={styles.menuItemIcon}
+                />
+                <Text style={styles.menuItemText}>Manage Members</Text>
+              </DropdownMenuItem>
+              <DropdownMenuItem onPress={handleToggleNotifications}>
+                <Ionicons
+                  name={boardNotifications ? "notifications-off" : "notifications"}
+                  size={16}
+                  color={colors.gray[500]}
+                  style={styles.menuItemIcon}
+                />
+                <Text style={styles.menuItemText}>
+                  {boardNotifications ? "Turn off notifications" : "Turn on notifications"}
+                </Text>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onPress={handleExitBoard}
                 variant="destructive"
-                className="flex items-center gap-2"
               >
-                <Ionicons name="log-out" size={16} color="#6b7280" />
-                Exit board
+                <Ionicons
+                  name="log-out"
+                  size={16}
+                  color={colors.error[500]}
+                  style={styles.menuItemIcon}
+                />
+                <Text style={styles.menuItemTextDestructive}>Exit board</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </View>
 
         {/* Tab Navigation */}
-        <View className="flex bg-gray-100 rounded-xl p-1">
+        <View style={styles.tabBar}>
           <TouchableOpacity
             onPress={() => {
               setActiveView("cards");
               onTabChange?.("cards");
             }}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              activeView === "cards"
-                ? "bg-white text-[#eb7825] shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+            style={[
+              styles.tab,
+              activeView === "cards" && styles.tabActive,
+            ]}
           >
-            Cards ({mockBoardCards.length})
+            <Text
+              style={[
+                styles.tabText,
+                activeView === "cards" && styles.tabTextActive,
+              ]}
+            >
+              Cards ({mockBoardCards.length})
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               setActiveView("discussion");
               onTabChange?.("discussion");
             }}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              activeView === "discussion"
-                ? "bg-white text-[#eb7825] shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+            style={[
+              styles.tab,
+              activeView === "discussion" && styles.tabActive,
+            ]}
           >
-            Discussion ({messages.length})
+            <Text
+              style={[
+                styles.tabText,
+                activeView === "discussion" && styles.tabTextActive,
+              ]}
+            >
+              Discussion ({messages.length})
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Content */}
-      <View className="flex-1 overflow-hidden">
+      <View style={styles.content}>
         {activeView === "cards" ? (
-          <View className="h-full p-4 overflow-y-auto">
+          <View style={styles.cardsContainer}>
             <SwipeableBoardCards
               cards={mockBoardCards}
               onVote={handleVote}
@@ -505,215 +501,186 @@ export default function BoardDiscussion({
             />
           </View>
         ) : (
-          <View className="h-full flex flex-col">
+          <KeyboardAwareView style={styles.discussionContainer} dismissOnTap={false}>
             {/* Messages */}
-            <View className="flex-1 overflow-y-auto bg-white">
+            <ScrollView
+              style={styles.messagesScroll}
+              contentContainerStyle={styles.messagesContent}
+              keyboardShouldPersistTaps="handled"
+            >
               {messages.length > 0 ? (
-                <View className="space-y-4 p-4">
-                  {messages.map((message) => (
-                    <View key={message.id} className="group">
-                      <View className="flex gap-3">
-                        <View className="w-8 h-8 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                          {message.user.name[0]}
-                        </View>
+                messages.map((message) => (
+                  <View key={message.id} style={styles.messageRow}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>
+                        {message.user.name[0]}
+                      </Text>
+                    </View>
 
-                        <View className="flex-1 min-w-0">
-                          <View className="flex items-center gap-2 mb-1">
-                            <Text className="font-medium text-gray-900 text-sm">
-                              {message.user.name}
-                            </Text>
-                            <Text className="text-xs text-gray-500">
-                              {message.timestamp}
-                            </Text>
-                          </View>
+                    <View style={styles.messageBubble}>
+                      <View style={styles.messageHeader}>
+                        <Text style={styles.messageName}>
+                          {message.user.name}
+                        </Text>
+                        <Text style={styles.messageTime}>
+                          {message.timestamp}
+                        </Text>
+                      </View>
 
-                          <View className="text-sm text-gray-800 mb-2">
-                            {message.content
-                              .split(/(@\w+\s*\w*|#[\w\s]+)/g)
-                              .map((part, index) => {
-                                if (part.startsWith("@")) {
-                                  return (
-                                    <Text
-                                      key={index}
-                                      className="text-[#eb7825] font-medium"
-                                    >
-                                      {part}
-                                    </Text>
-                                  );
-                                } else if (part.startsWith("#")) {
-                                  return (
-                                    <Text
-                                      key={index}
-                                      className="text-blue-600 font-medium"
-                                    >
-                                      {part}
-                                    </Text>
-                                  );
-                                }
-                                return part;
-                              })}
-                          </View>
+                      <Text style={styles.messageText}>
+                        {renderMessageContent(message.content)}
+                      </Text>
 
-                          {/* Tags */}
-                          {(message.mentions || message.cardTags) && (
-                            <View className="flex flex-wrap gap-1 mb-2">
-                              {message.mentions?.map((mention) => (
-                                <Text
-                                  key={mention}
-                                  className="inline-flex items-center gap-1 bg-orange-50 text-[#eb7825] px-2 py-0.5 rounded-full text-xs"
-                                >
-                                  <Ionicons
-                                    name="at"
-                                    size={12}
-                                    color="#6b7280"
-                                  />
-                                  {mention}
-                                </Text>
-                              ))}
-                              {message.cardTags?.map((tag) => (
-                                <Text
-                                  key={tag}
-                                  className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-xs"
-                                >
-                                  <Ionicons
-                                    name="hash"
-                                    size={12}
-                                    color="#6b7280"
-                                  />
-                                  {tag}
-                                </Text>
-                              ))}
+                      {/* Tags */}
+                      {(message.mentions || message.cardTags) && (
+                        <View style={styles.tagsRow}>
+                          {message.mentions?.map((mention) => (
+                            <View key={mention} style={styles.mentionTag}>
+                              <Ionicons
+                                name="at"
+                                size={12}
+                                color="#eb7825"
+                              />
+                              <Text style={styles.mentionTagText}>
+                                {mention}
+                              </Text>
                             </View>
-                          )}
-
-                          {/* Actions */}
-                          <View className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <TouchableOpacity className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition-colors">
+                          ))}
+                          {message.cardTags?.map((tag) => (
+                            <View key={tag} style={styles.cardTag}>
                               <Ionicons
-                                name={
-                                  message.isLiked ? "heart" : "heart-outline"
-                                }
+                                name="hash"
                                 size={12}
-                                color={message.isLiked ? "#ef4444" : "#6b7280"}
+                                color={colors.primary[500]}
                               />
-                              {message.likes}
-                            </TouchableOpacity>
-                            <TouchableOpacity className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Ionicons
-                                name="arrow-undo"
-                                size={12}
-                                color="#6b7280"
-                              />
-                            </TouchableOpacity>
-                            <TouchableOpacity className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Ionicons
-                                name="ellipsis-horizontal"
-                                size={12}
-                                color="#6b7280"
-                              />
-                            </TouchableOpacity>
-                          </View>
+                              <Text style={styles.cardTagLabel}>
+                                {tag}
+                              </Text>
+                            </View>
+                          ))}
                         </View>
+                      )}
+
+                      {/* Actions */}
+                      <View style={styles.messageActions}>
+                        <TouchableOpacity style={styles.actionButton}>
+                          <Ionicons
+                            name={
+                              message.isLiked ? "heart" : "heart-outline"
+                            }
+                            size={14}
+                            color={
+                              message.isLiked
+                                ? colors.error[500]
+                                : colors.gray[400]
+                            }
+                          />
+                          <Text style={styles.actionCount}>
+                            {message.likes}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionButton}>
+                          <Ionicons
+                            name="arrow-undo"
+                            size={14}
+                            color={colors.gray[400]}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionButton}>
+                          <Ionicons
+                            name="ellipsis-horizontal"
+                            size={14}
+                            color={colors.gray[400]}
+                          />
+                        </TouchableOpacity>
                       </View>
                     </View>
-                  ))}
-                </View>
+                  </View>
+                ))
               ) : (
-                <View className="text-center py-8 text-gray-500">
+                <View style={styles.emptyState}>
                   <Ionicons
                     name="chatbubble-outline"
                     size={32}
-                    color="#d1d5db"
-                    style={{ alignSelf: "center", marginBottom: 8 }}
+                    color={colors.gray[300]}
                   />
-                  <Text className="text-sm">
+                  <Text style={styles.emptyText}>
                     No messages yet. Start the conversation!
                   </Text>
                 </View>
               )}
-            </View>
+            </ScrollView>
 
             {/* Input */}
-            <View
-              className="relative p-4 border-t border-gray-100 bg-white flex-shrink-0 z-10"
-              style={{ paddingBottom: "env(safe-area-inset-bottom, 16px)" }}
-            >
-              {/* Suggestions */}
+            <View style={[styles.inputArea, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              {/* Mention Suggestions */}
               {showMentions && (
-                <View className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-32 overflow-y-auto z-10">
+                <View style={styles.suggestionsPopup}>
                   {participants.map((user) => (
                     <TouchableOpacity
                       key={user.id}
                       onPress={() => insertMention(user)}
-                      className="w-full flex items-center gap-2 p-2 hover:bg-gray-50 text-left"
+                      style={styles.suggestionItem}
                     >
-                      <View className="w-6 h-6 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center text-white text-xs">
-                        {user.name[0]}
+                      <View style={styles.suggestionAvatar}>
+                        <Text style={styles.suggestionAvatarText}>
+                          {user.name[0]}
+                        </Text>
                       </View>
-                      <Text className="text-sm">{user.name}</Text>
+                      <Text style={styles.suggestionText}>{user.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
 
+              {/* Card Tag Suggestions */}
               {showCardTags && cards.length > 0 && (
-                <View className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-32 overflow-y-auto z-10">
+                <View style={styles.suggestionsPopup}>
                   {cards.map((card) => (
                     <TouchableOpacity
                       key={card.id}
                       onPress={() => insertCardTag(card)}
-                      className="w-full flex items-center gap-2 p-2 hover:bg-gray-50 text-left"
+                      style={styles.suggestionItem}
                     >
-                      <Ionicons name="hash" size={16} color="#2563eb" />
-                      <Text className="text-sm">{card.title}</Text>
+                      <Ionicons name="hash" size={16} color={colors.primary[500]} />
+                      <Text style={styles.suggestionText}>{card.title}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
 
-              <View className="flex gap-2 items-end">
-                <View
-                  className="flex-1"
-                  onPress={() => inputRef.current?.focus()}
-                >
-                  <TextInput
-                    ref={inputRef}
-                    value={newMessage}
-                    onChangeText={handleInputChange}
-                    placeholder="Type @ to mention someone or # to tag a card..."
-                    style={{
-                      width: "100%",
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                      borderWidth: 1,
-                      borderColor: "#e5e7eb",
-                      borderRadius: 12,
-                      backgroundColor: "white",
-                      fontSize: 16,
-                    }}
-                    multiline
-                    onSubmitEditing={handleSendMessage}
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoFocus={false}
-                    inputMode="text"
-                    enterKeyHint="send"
-                  />
-                </View>
+              <View style={styles.inputRow}>
+                <TextInput
+                  ref={inputRef}
+                  value={newMessage}
+                  onChangeText={handleInputChange}
+                  placeholder="Type @ to mention or # to tag a card..."
+                  placeholderTextColor={colors.gray[400]}
+                  style={styles.textInput}
+                  multiline
+                  onSubmitEditing={handleSendMessage}
+                />
                 <TouchableOpacity
                   onPress={handleSendMessage}
                   disabled={!newMessage.trim()}
-                  className="px-4 py-3 bg-[#eb7825] text-white rounded-xl hover:bg-[#d6691f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  style={[
+                    styles.sendButton,
+                    !newMessage.trim() && styles.sendButtonDisabled,
+                  ]}
                 >
-                  <Ionicons name="send" size={16} color="#6b7280" />
+                  <Ionicons
+                    name="send"
+                    size={16}
+                    color="#FFFFFF"
+                  />
                 </TouchableOpacity>
               </View>
 
-              <Text className="text-xs text-gray-500 mt-2">
+              <Text style={styles.inputHint}>
                 Use @ to mention participants • Use # to reference cards
               </Text>
             </View>
-          </View>
+          </KeyboardAwareView>
         )}
       </View>
 
@@ -730,3 +697,285 @@ export default function BoardDiscussion({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
+  },
+  header: {
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+    paddingTop: 32,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.gray[100],
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerInfo: {
+    flex: 1,
+  },
+  boardName: {
+    ...typography.md,
+    fontWeight: "700",
+    color: colors.gray[900],
+  },
+  boardDescription: {
+    ...typography.sm,
+    color: colors.gray[600],
+  },
+  menuButton: {
+    width: 32,
+    height: 32,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuContent: {
+    width: 192,
+  },
+  menuItemIcon: {
+    marginRight: 8,
+  },
+  menuItemText: {
+    ...typography.sm,
+    color: colors.gray[700],
+  },
+  menuItemTextDestructive: {
+    ...typography.sm,
+    color: colors.error[500],
+  },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  tabActive: {
+    backgroundColor: "#FFFFFF",
+    ...shadows.sm,
+  },
+  tabText: {
+    ...typography.sm,
+    fontWeight: "500",
+    color: colors.gray[600],
+  },
+  tabTextActive: {
+    color: "#eb7825",
+    fontWeight: "600",
+  },
+  content: {
+    flex: 1,
+  },
+  cardsContainer: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  discussionContainer: {
+    flex: 1,
+  },
+  messagesScroll: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  messagesContent: {
+    padding: spacing.md,
+    gap: 16,
+  },
+  messageRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  messageBubble: {
+    flex: 1,
+  },
+  messageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  messageName: {
+    ...typography.sm,
+    fontWeight: "600",
+    color: colors.gray[900],
+  },
+  messageTime: {
+    ...typography.xs,
+    color: colors.gray[500],
+  },
+  messageText: {
+    ...typography.sm,
+    color: colors.gray[800],
+    marginBottom: 8,
+  },
+  mentionText: {
+    color: "#eb7825",
+    fontWeight: "500",
+  },
+  cardTagText: {
+    color: colors.primary[500],
+    fontWeight: "500",
+  },
+  tagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginBottom: 8,
+  },
+  mentionTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.orange[50],
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  mentionTagText: {
+    ...typography.xs,
+    color: "#eb7825",
+  },
+  cardTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.primary[50],
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  cardTagLabel: {
+    ...typography.xs,
+    color: colors.primary[500],
+  },
+  messageActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  actionCount: {
+    ...typography.xs,
+    color: colors.gray[500],
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 32,
+  },
+  emptyText: {
+    ...typography.sm,
+    color: colors.gray[500],
+    marginTop: 8,
+  },
+  inputArea: {
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+    backgroundColor: "#FFFFFF",
+  },
+  suggestionsPopup: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: 12,
+    marginBottom: 8,
+    maxHeight: 128,
+    ...shadows.lg,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 8,
+  },
+  suggestionAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  suggestionAvatarText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  suggestionText: {
+    ...typography.sm,
+    color: colors.gray[800],
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-end",
+  },
+  textInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    ...typography.md,
+    color: colors.gray[800],
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  inputHint: {
+    ...typography.xs,
+    color: colors.gray[500],
+    marginTop: 8,
+  },
+});

@@ -7,10 +7,9 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 
 interface EditBioSheetProps {
   visible: boolean;
@@ -44,9 +43,9 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        <KeyboardAwareView
           style={styles.keyboardView}
+          dismissOnTap={false}
         >
           <Pressable style={styles.card} onPress={() => {}}>
             <View style={styles.header}>
@@ -84,7 +83,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
               </TouchableOpacity>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
+        </KeyboardAwareView>
       </Pressable>
     </Modal>
   );

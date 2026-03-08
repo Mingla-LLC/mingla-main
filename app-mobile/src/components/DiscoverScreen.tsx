@@ -3136,6 +3136,7 @@ export default function DiscoverScreen({
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {activeTab === "for-you" && (
             <>

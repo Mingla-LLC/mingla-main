@@ -1211,6 +1211,7 @@ export default function ConnectionsPageRefactored({
             <FlatList
               data={filteredConversations}
               keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item, index }) => {
                 const isMuted = item.participants?.some((p) =>
                   mutedUserIds.includes(p.id)

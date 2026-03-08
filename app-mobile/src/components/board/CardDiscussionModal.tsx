@@ -7,12 +7,11 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 import { BoardMessageService, CardMessage } from '../../services/boardMessageService';
 import { realtimeService } from '../../services/realtimeService';
 import { useAppStore } from '../../store/appStore';
@@ -365,9 +364,9 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
+      <KeyboardAwareView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        dismissOnTap={false}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -395,6 +394,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
             ref={scrollViewRef}
             style={styles.messagesContainer}
             contentContainerStyle={styles.messagesContent}
+            keyboardShouldPersistTaps="handled"
           >
             {messages.length === 0 ? (
               <View style={styles.emptyState}>
@@ -536,7 +536,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Modal>
   );
 };

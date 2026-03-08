@@ -1142,7 +1142,15 @@ async function generateAdventureCards(
         break;
       }
 
-      const place = available[0]; // already sorted by score
+      // Stop 1: highest quality score (no proximity ref yet)
+      // Stop 2+: proximity-chained — highest-rated within tiered radius of previous stop
+      const place = (i === 0)
+        ? available[0]
+        : selectClosestHighestRated(available, prevLat, prevLng);
+      if (!place) {
+        valid = false;
+        break;
+      }
       const placeId = place.id || place.name;
       comboUsedIds.add(placeId);
 
@@ -1302,7 +1310,10 @@ async function generateFirstDateCards(
 
       // Use fallback — still need a valid finish
       const startPlace = fallbackStarts[0];
-      const finishPlace = availableFinish[0];
+      const stop1Lat = startPlace.location?.latitude ?? 0;
+      const stop1Lng = startPlace.location?.longitude ?? 0;
+      const finishPlace = selectClosestHighestRated(availableFinish, stop1Lat, stop1Lng);
+      if (!finishPlace) break;
       const startId = startPlace.id || startPlace.name;
       const finishId = finishPlace.id || finishPlace.name;
 
@@ -1342,7 +1353,10 @@ async function generateFirstDateCards(
 
     // Normal path: use the alternating starting group
     const startPlace = availableStarts[0];
-    const finishPlace = availableFinish[0];
+    const stop1Lat = startPlace.location?.latitude ?? 0;
+    const stop1Lng = startPlace.location?.longitude ?? 0;
+    const finishPlace = selectClosestHighestRated(availableFinish, stop1Lat, stop1Lng);
+    if (!finishPlace) break; // should never happen — we checked availableFinish.length > 0
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
 
@@ -1495,7 +1509,10 @@ async function generateRomanticCards(
     }
 
     const startPlace = availableStarts[0]; // already sorted by score
-    const finishPlace = availableFinish[0];
+    const stop1Lat = startPlace.location?.latitude ?? 0;
+    const stop1Lng = startPlace.location?.longitude ?? 0;
+    const finishPlace = selectClosestHighestRated(availableFinish, stop1Lat, stop1Lng);
+    if (!finishPlace) break;
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
 
@@ -1715,7 +1732,10 @@ async function generateFriendlyCards(
     }
 
     const startPlace = availableStarts[0]; // already sorted by score
-    const finishPlace = availableFinish[0];
+    const stop1Lat = startPlace.location?.latitude ?? 0;
+    const stop1Lng = startPlace.location?.longitude ?? 0;
+    const finishPlace = selectClosestHighestRated(availableFinish, stop1Lat, stop1Lng);
+    if (!finishPlace) break;
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
 
@@ -1885,7 +1905,10 @@ async function generateGroupFunCards(
     }
 
     const startPlace = availableStarts[0]; // already sorted by score
-    const finishPlace = availableFinish[0];
+    const stop1Lat = startPlace.location?.latitude ?? 0;
+    const stop1Lng = startPlace.location?.longitude ?? 0;
+    const finishPlace = selectClosestHighestRated(availableFinish, stop1Lat, stop1Lng);
+    if (!finishPlace) break;
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
 
@@ -2507,6 +2530,60 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Tiered proximity selection: find the highest-rated place near a reference point.
+ * Tier 1: within 3km — pick highest-rated
+ * Tier 2: within 5km — pick highest-rated
+ * Tier 3: closest place regardless of distance — pick the single closest
+ *
+ * IMPORTANT: The input array `available` must already be filtered for budget and
+ * used-place exclusions. It must be sorted by scorePlace() descending (which it
+ * already is, since fetchPlacesForGroup returns sorted results and the generators
+ * filter without re-sorting).
+ *
+ * @param available  Pre-filtered, score-sorted candidate places
+ * @param refLat     Latitude of the reference point (previous stop)
+ * @param refLng     Longitude of the reference point (previous stop)
+ * @returns          The selected place, or null if `available` is empty
+ */
+function selectClosestHighestRated(
+  available: any[],
+  refLat: number,
+  refLng: number,
+): any | null {
+  if (available.length === 0) return null;
+
+  // Tier 1: within 3km, highest-rated
+  const within3km = available.filter(p => {
+    const pLat = p.location?.latitude ?? 0;
+    const pLng = p.location?.longitude ?? 0;
+    return haversineKm(refLat, refLng, pLat, pLng) <= 3;
+  });
+  if (within3km.length > 0) return within3km[0]; // already sorted by score
+
+  // Tier 2: within 5km, highest-rated
+  const within5km = available.filter(p => {
+    const pLat = p.location?.latitude ?? 0;
+    const pLng = p.location?.longitude ?? 0;
+    return haversineKm(refLat, refLng, pLat, pLng) <= 5;
+  });
+  if (within5km.length > 0) return within5km[0]; // already sorted by score
+
+  // Tier 3: closest place regardless of distance
+  let closest = available[0];
+  let closestDist = Infinity;
+  for (const p of available) {
+    const pLat = p.location?.latitude ?? 0;
+    const pLng = p.location?.longitude ?? 0;
+    const dist = haversineKm(refLat, refLng, pLat, pLng);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = p;
+    }
+  }
+  return closest;
 }
 
 function isPlaceOpenAt(place: any, target: Date): boolean {

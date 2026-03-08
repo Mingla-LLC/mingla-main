@@ -9,9 +9,9 @@ import {
   ScrollView,
   Animated,
   Dimensions,
-  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
@@ -571,9 +571,9 @@ export default function ProposeDateTimeModal({
         onRequestClose={animateClose}
         statusBarTranslucent
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <KeyboardAwareView
           style={{ flex: 1 }}
+          dismissOnTap={false}
         >
           {/* Backdrop */}
           <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]}>
@@ -815,7 +815,7 @@ export default function ProposeDateTimeModal({
               dark
             />
           </Animated.View>
-        </KeyboardAvoidingView>
+        </KeyboardAwareView>
       </Modal>
 
       {/* Date Picker */}

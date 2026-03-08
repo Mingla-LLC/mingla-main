@@ -7,11 +7,10 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
@@ -121,9 +120,9 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
       onRequestClose={onClose}
     >
       <Pressable style={styles.overlay} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <KeyboardAwareView
           style={styles.centeredView}
+          dismissOnTap={false}
         >
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <ScrollView
@@ -300,7 +299,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
-        </KeyboardAvoidingView>
+        </KeyboardAwareView>
       </Pressable>
     </Modal>
   );

@@ -126,7 +126,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
           </View>
 
         {/* Content */}
-        <ScrollView style={styles.content}>
+        <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.descriptionContainer}>
             <Text style={styles.description}>
               We take reports seriously. Please select the reason that best describes why you're reporting <Text style={styles.boldText}>{user.name}</Text>.

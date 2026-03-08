@@ -339,6 +339,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
           <ScrollView
             style={styles.friendsList}
             contentContainerStyle={styles.friendsListContent}
+            keyboardShouldPersistTaps="handled"
           >
             {loadingFriends ? (
               <View style={styles.loadingContainer}>

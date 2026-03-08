@@ -1978,10 +1978,11 @@ const SavedTab = ({
         }
       />
 
-      <ScrollView 
+      <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Search & Filters */}
         <Animated.View

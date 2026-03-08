@@ -8,11 +8,10 @@ import {
   StatusBar,
   TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 import { locationService } from "../../services/locationService";
 import {
   geocodingService,
@@ -463,17 +462,12 @@ const LocationSetupStep = ({
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <KeyboardAwareScrollView
         style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
       >
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={true}
-          nestedScrollEnabled={true}
-          keyboardShouldPersistTaps="handled"
-        >
           {/* Title Section */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Where are you?</Text>
@@ -613,7 +607,7 @@ const LocationSetupStep = ({
               ))}
             </View>
           </View>
-        </ScrollView>
+      </KeyboardAwareScrollView>
 
         {/* Navigation Buttons */}
         <View style={styles.navigationContainer}>
@@ -685,7 +679,6 @@ const LocationSetupStep = ({
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
     </View>
   );
 };

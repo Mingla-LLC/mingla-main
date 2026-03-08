@@ -4,8 +4,6 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Animated,
   Easing,
@@ -16,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SegmentedProgressBar } from './SegmentedProgressBar';
+import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 import { logger } from '../../utils/logger';
 import {
   colors,
@@ -259,9 +258,9 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
+      <KeyboardAwareView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        dismissOnTap={false}
       >
         {/* Progress bar */}
         <View style={styles.progressContainer}>
@@ -293,7 +292,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             {renderBottomBarContent()}
           </View>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </SafeAreaView>
   );
 };

@@ -72,7 +72,7 @@ export default function FriendSelectionModal({
         </View>
 
         {/* Friends List */}
-        <ScrollView style={styles.friendsList}>
+        <ScrollView style={styles.friendsList} keyboardShouldPersistTaps="handled">
           {filteredFriends.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="people" size={48} color="#d1d5db" />

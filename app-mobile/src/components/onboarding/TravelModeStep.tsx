@@ -7,7 +7,6 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
-  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -233,7 +232,6 @@ const TravelModeStep = ({
           </View>
         </View>
       </View>
-      <KeyboardAvoidingView></KeyboardAvoidingView>
       {/* Scrollable Content */}
       <ScrollView
         style={{ flex: 1 }}

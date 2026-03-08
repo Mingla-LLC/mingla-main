@@ -9,8 +9,6 @@ import {
   ActivityIndicator,
   Image,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Share,
   Alert,
 } from "react-native";
@@ -25,6 +23,7 @@ import {
 } from "../constants/countries";
 import { CountryData } from "../types/onboarding";
 import { useSendFriendLink } from "../hooks/useFriendLinks";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import { usePhoneLookup, useDebouncedValue } from "../hooks/usePhoneLookup";
 import { createPendingInvite } from "../services/phoneLookupService";
 import { useFriends, Friend } from "../hooks/useFriends";
@@ -608,9 +607,9 @@ export default function LinkFriendSheet({
       animationType="slide"
       onRequestClose={handleClose}
     >
-      <KeyboardAvoidingView
+      <KeyboardAwareView
         style={styles.overlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        dismissOnTap={false}
       >
         <TouchableOpacity
           style={styles.backdrop}
@@ -665,7 +664,7 @@ export default function LinkFriendSheet({
             </View>
           </BlurView>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
 
       {/* Country picker modal */}
       {renderCountryPicker()}

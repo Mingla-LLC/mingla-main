@@ -774,6 +774,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         return
       }
       setResendCountdown(30)
+    } else {
+      // Phone claimed by another user — navigate back to phone step with error
+      if (result.error?.includes('already associated')) {
+        setPhoneError(result.error)
+        setOtpCode('')
+        setOtpAttempts(0)
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        goToSubStep('phone')
+        return
+      }
+      // Generic resend failure
+      setPhoneError(result.error || "Couldn't resend code. Try again.")
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      goToSubStep('phone')
     }
   }, [buildE164, goToSubStep])
 

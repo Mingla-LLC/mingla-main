@@ -174,6 +174,7 @@ export function FriendPickerSheet({
             <FlatList
               data={filteredFriends}
               keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
               renderItem={renderFriendRow}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
