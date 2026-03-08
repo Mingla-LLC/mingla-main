@@ -10,8 +10,8 @@ import {
   TextInput,
   Clipboard,
   Modal,
-  Dimensions,
-  Pressable,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,7 +41,6 @@ import { FriendPickerSheet } from "./connections/FriendPickerSheet";
 import { AddFriendView } from "./connections/AddFriendView";
 import { RequestsView } from "./connections/RequestsView";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
-import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import MessageInterface from "./MessageInterface";
 
 type PanelId = "add" | "requests" | "blocked" | null;
@@ -98,6 +97,7 @@ export default function ConnectionsPageRefactored({
   onNavigateToFriendProfile,
 }: ConnectionsPageProps) {
   const { user } = useAuthSimple();
+  const { height: screenHeight } = useWindowDimensions();
 
   // Coach mark targets
   const { ref: friendsListRef, onLayout: friendsListOnLayout } = useCoachMarkTarget('chats-friends-list');
@@ -1014,27 +1014,96 @@ export default function ConnectionsPageRefactored({
   // ── Error state ──────────────────────────────────────────
   if (error && conversations.length === 0) {
     return (
-      <View style={styles.container}>
-        <View style={styles.headerRow}>
-          <Text style={styles.title}>Chats</Text>
+      <>
+        <View style={styles.container}>
+          <View style={styles.headerRow}>
+            <Text style={styles.title}>Chats</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => handleActionPress("add")}
+                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleActionPress("requests")}
+                style={[styles.headerIconBtn, activePanel === "requests" && styles.headerIconBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="people-outline" size={18} color={activePanel === "requests" ? "#ffffff" : "#eb7825"} />
+                {incomingRequests.length > 0 && (
+                  <View style={styles.headerBadge}>
+                    <Text style={styles.headerBadgeText}>
+                      {incomingRequests.length > 9 ? "9+" : incomingRequests.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                setConversationsLoading(true);
+                if (user?.id) {
+                  fetchConversations(user.id);
+                }
+                fetchFriends();
+                loadFriendRequests();
+              }}
+            >
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => {
-              setConversationsLoading(true);
-              if (user?.id) {
-                fetchConversations(user.id);
-              }
-              fetchFriends();
-              loadFriendRequests();
-            }}
-          >
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+
+        {/* Action Panel Bottom Sheet (accessible even in error state) */}
+        <Modal
+          visible={activePanel !== null}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setActivePanel(null)}
+        >
+          <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
+            <View style={styles.sheetOverlay}>
+              <View
+                style={[styles.sheetContainer, { maxHeight: screenHeight * 0.6 }]}
+                onStartShouldSetResponder={() => true}
+              >
+                <View style={styles.sheetHandle} />
+                <View style={styles.sheetHeader}>
+                  <Text style={styles.sheetTitle}>
+                    {activePanel === "add" ? "Add Friend" : "Friend Requests"}
+                  </Text>
+                  <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
+                    <Ionicons name="close" size={24} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.sheetBody}>
+                  {activePanel === "add" && (
+                    <AddFriendView
+                      currentUserId={user?.id || ""}
+                      existingFriendIds={existingFriendIds}
+                      onRequestSent={() => loadFriendRequests()}
+                    />
+                  )}
+                  {activePanel === "requests" && (
+                    <RequestsView
+                      requests={incomingRequests}
+                      loading={friendsLoading}
+                      onAccept={handleAcceptRequest}
+                      onDecline={handleDeclineRequest}
+                    />
+                  )}
+                </View>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      </>
     );
   }
 
@@ -1249,9 +1318,12 @@ export default function ConnectionsPageRefactored({
         transparent
         onRequestClose={() => setActivePanel(null)}
       >
-        <Pressable style={styles.sheetOverlay} onPress={() => setActivePanel(null)}>
-          <Pressable style={styles.sheetContainer} onPress={(e) => e.stopPropagation()}>
-            <KeyboardAwareView dismissOnTap={false}>
+        <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
+          <View style={styles.sheetOverlay}>
+            <View
+              style={[styles.sheetContainer, { maxHeight: screenHeight * 0.6 }]}
+              onStartShouldSetResponder={() => true}
+            >
               <View style={styles.sheetHandle} />
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>
@@ -1285,9 +1357,9 @@ export default function ConnectionsPageRefactored({
                   />
                 )}
               </View>
-            </KeyboardAwareView>
-          </Pressable>
-        </Pressable>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Friend Picker Sheet */}
@@ -1301,8 +1373,6 @@ export default function ConnectionsPageRefactored({
     </>
   );
 }
-
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
   container: {
@@ -1478,7 +1548,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: SCREEN_HEIGHT * 0.6,
     paddingBottom: 32,
   },
   sheetHandle: {
