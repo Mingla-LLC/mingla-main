@@ -10,7 +10,6 @@ import {
   Easing,
   PanResponder,
   StatusBar,
-  ScrollView,
   Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1233,42 +1232,6 @@ export default function SwipeableCards({
     );
   }
 
-  // Helper: format travel mode for display
-  const formatTravelMode = (mode: string): string => {
-    const modeMap: Record<string, string> = {
-      walking: "Walk",
-      biking: "Bike",
-      transit: "Transit",
-      driving: "Drive",
-    };
-    return modeMap[mode] ?? mode;
-  };
-
-  // Helper: format date/time for display
-  const formatDateTimeDisplay = (
-    dateOption: string | null,
-    timeSlot: string | null,
-    datetimePref: string | null
-  ): string => {
-    const parts: string[] = [];
-    if (dateOption) parts.push(dateOption);
-    if (timeSlot) {
-      const slotMap: Record<string, string> = {
-        brunch: "Morning",
-        afternoon: "Afternoon",
-        dinner: "Evening",
-        lateNight: "Late Night",
-      };
-      parts.push(slotMap[timeSlot] ?? timeSlot);
-    }
-    if (datetimePref && parts.length === 0) {
-      const d = new Date(datetimePref);
-      parts.push(d.toLocaleDateString());
-      parts.push(d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    }
-    return parts.join(" · ") || "Anytime";
-  };
-
   // Unified empty state — no matches OR all decks exhausted
   // Fuses the old "We looked everywhere" + "All decks explored" into one compact card-sized view
   if (
@@ -2098,17 +2061,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: "rgba(255, 255, 255, 0.55)",
   },
-  noCardsScrollView: {
-    flex: 1,
-  },
-  noCardsScrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 40,
-  },
   noCardsContainer: {
     flex: 1,
     justifyContent: "center",
@@ -2198,23 +2150,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  noMatchesIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#fef3e2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  sparklesContainer: {
-    width: 56,
-    height: 56,
-    backgroundColor: "#fef3e2",
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   noCardsTitle: {
     fontSize: 18,
     fontWeight: "600",
@@ -2228,86 +2163,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginBottom: 8,
     paddingHorizontal: 8,
-  },
-  noMatchesEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  filterSummary: {
-    width: "100%",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  filterSummaryTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 10,
-  },
-  filterTags: {
-    gap: 8,
-  },
-  filterRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
-    gap: 8,
-  },
-  filterLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#9CA3AF",
-    minWidth: 75,
-    marginTop: 4,
-  },
-  filterPillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    flex: 1,
-  },
-  filterPill: {
-    backgroundColor: "rgba(99, 102, 241, 0.15)",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  filterPillText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#6366F1",
-  },
-  filterTag: {
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  filterTagText: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  suggestionsTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 6,
-  },
-  suggestionsText: {
-    fontSize: 13,
-    color: "#9ca3af",
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  actionButtonText: {
-    color: "#eb7825",
-    fontSize: 16,
-    fontWeight: "600",
-    textDecorationLine: "underline",
   },
   startOverButton: {
     backgroundColor: "#eb7825",
@@ -2426,36 +2281,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     fontSize: 13,
     textDecorationLine: "underline",
-  },
-  reviewDismissedButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eb7825",
-    marginBottom: 12,
-  },
-  reviewDismissedText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  changePreferencesButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: "#eb7825",
-  },
-  changePreferencesText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFFFFF",
   },
   batchHistorySection: {
     marginTop: 16,
