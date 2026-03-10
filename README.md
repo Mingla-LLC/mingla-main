@@ -430,10 +430,8 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Collaboration Invite Crash Fixed** -- Removed all references to non-existent `boards.session_id` column across 3 files (7 queries). Board creation now correctly reads `collaboration_sessions.board_id`. This unblocks all invite acceptance flows including pre-signup invites.
-- **Friend Names Display Fixed** -- Added `display_name` to 10+ Supabase profile queries across `useFriends`, `useMessages`, and `useSessionManagement`. Friend picker, chat list, and collaboration invites now show real names instead of usernames.
-- **Onboarding Invite Display Fixed** -- Fixed `invite.session_name` (snake_case) → `invite.sessionName` (camelCase) property mismatch. Added inviter name rendering ("From Seth") to onboarding collaboration invite cards.
-- **Pre-signup Invite Flow Unblocked** -- The phone invite → signup → friend accept → collaboration invite pipeline now works end-to-end (was blocked by the boards.session_id crash).
+- **Account Deletion Now Fully Wipes Friend Traces** -- Fixed ghost linked friends remaining in other users' Discover tabs after account deletion. The `delete-user` edge function and the DB cleanup trigger now delete `saved_people` entries where other users had the deleted user as a `linked_user_id`. CASCADE automatically cleans up associated `person_experiences` and `person_audio_clips`.
+- **DB Trigger Safety Net Expanded** -- The `handle_user_deletion_cleanup` trigger now also cleans `friend_links` and `muted_users`, matching the edge function's coverage for direct DB deletions.
 
 ---
 

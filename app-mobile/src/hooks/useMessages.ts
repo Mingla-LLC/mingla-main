@@ -212,8 +212,9 @@ export const useMessages = () => {
           file_name: msg.file_name,
           file_size: msg.file_size,
           created_at: msg.created_at,
-          sender_name: (senderProfile?.first_name && senderProfile?.last_name 
-            ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+          sender_name: senderProfile?.display_name ||
+            (senderProfile?.first_name && senderProfile?.last_name
+            ? `${senderProfile.first_name} ${senderProfile.last_name}`
             : senderProfile?.username) || 'Unknown',
           is_read: !!readStatus,
         });
@@ -289,8 +290,9 @@ export const useMessages = () => {
         file_name: messageData.file_name,
         file_size: messageData.file_size,
         created_at: messageData.created_at,
-        sender_name: (senderProfile?.first_name && senderProfile?.last_name 
-          ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+        sender_name: senderProfile?.display_name ||
+          (senderProfile?.first_name && senderProfile?.last_name
+          ? `${senderProfile.first_name} ${senderProfile.last_name}`
           : senderProfile?.username) || 'Unknown',
         is_read: true, // Messages sent by the current user are considered read
       };

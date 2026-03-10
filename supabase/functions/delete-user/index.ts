@@ -330,6 +330,10 @@ async function cleanupUserData(
     await safeDelete("person_experiences", "user_id", userId);
     await safeDelete("saved_people", "user_id", userId);
 
+    // Delete saved_people entries where OTHER users had the deleted user as a linked friend.
+    // CASCADE from saved_people automatically cleans up their person_experiences and person_audio_clips.
+    await safeDelete("saved_people", "linked_user_id", userId);
+
     // ── Push tokens ──
     await safeDelete("user_push_tokens", "user_id", userId);
 
