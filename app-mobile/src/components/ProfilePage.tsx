@@ -31,7 +31,6 @@ import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 import * as Haptics from 'expo-haptics';
 
 interface ProfilePageProps {
@@ -75,15 +74,6 @@ export default function ProfilePage({
   onNavigateToReplayTips,
   userIdentity,
 }: ProfilePageProps) {
-  // Coach mark targets
-  const { ref: heroSectionRef, onLayout: heroSectionOnLayout } = useCoachMarkTarget('profile-hero-section');
-  const { ref: statsRowRef, onLayout: statsRowOnLayout } = useCoachMarkTarget('profile-stats-row');
-  const { ref: interestsSectionRef, onLayout: interestsSectionOnLayout } = useCoachMarkTarget('profile-interests-section');
-  const { ref: settingsSectionRef, onLayout: settingsSectionOnLayout } = useCoachMarkTarget('profile-settings-section');
-  const { ref: notificationsToggleRef, onLayout: notificationsToggleOnLayout } = useCoachMarkTarget('profile-notifications-toggle');
-  const { ref: activityToggleRef, onLayout: activityToggleOnLayout } = useCoachMarkTarget('profile-activity-toggle');
-  const { ref: replayTipsRef, onLayout: replayTipsOnLayout } = useCoachMarkTarget('profile-replay-tips');
-
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 
@@ -362,7 +352,7 @@ export default function ProfilePage({
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
         {/* 1. Hero Section */}
-        <View ref={heroSectionRef} onLayout={heroSectionOnLayout}>
+        <View>
           <ProfileHeroSection
             isOwnProfile
             firstName={userIdentity?.firstName || null}
@@ -389,7 +379,7 @@ export default function ProfilePage({
         />
 
         {/* 3. Interests Section */}
-        <View style={styles.sectionSpacing} ref={interestsSectionRef} onLayout={interestsSectionOnLayout}>
+        <View style={styles.sectionSpacing}>
           <ProfileInterestsSection
             intents={interests?.intents || []}
             categories={interests?.categories || []}
@@ -399,7 +389,7 @@ export default function ProfilePage({
         </View>
 
         {/* 4. Stats Row */}
-        <View ref={statsRowRef} onLayout={statsRowOnLayout}>
+        <View>
         <ProfileStatsRow
           savedCount={savedExperiences}
           connectionsCount={actualConnectionsCount}
@@ -444,12 +434,12 @@ export default function ProfilePage({
         </View>
 
         {/* 6. Quick Settings */}
-        <View style={styles.section} ref={settingsSectionRef} onLayout={settingsSectionOnLayout}>
+        <View style={styles.section}>
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Settings</Text>
 
             {/* Notifications toggle */}
-            <View style={styles.settingRow} ref={notificationsToggleRef} onLayout={notificationsToggleOnLayout}>
+            <View style={styles.settingRow}>
               <View style={styles.settingLabelContainer}>
                 <Text style={styles.settingLabel}>Notifications</Text>
                 <Text style={styles.settingHint}>Invites, board updates, and messages</Text>
@@ -474,7 +464,7 @@ export default function ProfilePage({
             </TouchableOpacity>
 
             {/* Activity status toggle */}
-            <View style={styles.settingRow} ref={activityToggleRef} onLayout={activityToggleOnLayout}>
+            <View style={styles.settingRow}>
               <View style={styles.settingLabelContainer}>
                 <Text style={styles.settingLabel}>Show Activity</Text>
                 <Text style={styles.settingHint}>Let friends see when you're active</Text>
@@ -491,8 +481,6 @@ export default function ProfilePage({
 
             {/* Replay Tips */}
             <TouchableOpacity
-              ref={replayTipsRef as any}
-              onLayout={replayTipsOnLayout}
               style={styles.settingRow}
               onPress={handleReplayTips}
               accessibilityRole="button"

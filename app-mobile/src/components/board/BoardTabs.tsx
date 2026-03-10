@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
 export type BoardTab = "swipe" | "saved" | "discussion";
 
 interface BoardTabsProps {
@@ -25,16 +24,6 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
   unreadMessages = 0,
   canGenerateCards = false,
 }) => {
-  const { ref: deckTabRef, onLayout: deckTabOnLayout } = useCoachMarkTarget('board-deck-tab');
-  const { ref: savedTabRef, onLayout: savedTabOnLayout } = useCoachMarkTarget('board-saved-tab');
-  const { ref: discussionTabRef, onLayout: discussionTabOnLayout } = useCoachMarkTarget('board-discussion-tab');
-
-  const coachMarkMap: Record<string, { ref: React.RefObject<View>; onLayout: () => void }> = {
-    swipe: { ref: deckTabRef, onLayout: deckTabOnLayout },
-    saved: { ref: savedTabRef, onLayout: savedTabOnLayout },
-    discussion: { ref: discussionTabRef, onLayout: discussionTabOnLayout },
-  };
-
   const tabs: Array<{
     id: BoardTab;
     label: string;
@@ -67,13 +56,9 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
 
-          const coachMark = coachMarkMap[tab.id];
-
           return (
             <View
               key={tab.id}
-              ref={coachMark?.ref}
-              onLayout={coachMark?.onLayout}
               style={styles.tab}
             >
               <TouchableOpacity

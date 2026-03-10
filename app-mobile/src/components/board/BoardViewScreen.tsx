@@ -36,7 +36,6 @@ import { SwipeableSessionCards } from "./SwipeableSessionCards";
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 import { useSessionStatus } from "../../hooks/useSessionStatus";
 import { useCollaborationCalendar } from "../../hooks/useCollaborationCalendar";
-import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -278,9 +277,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     markCompleted,
     isCreator,
   } = useSessionStatus(sessionId, session?.created_by, user?.id);
-
-  // Coach mark targets
-  const { ref: deckAreaRef, onLayout: deckAreaOnLayout } = useCoachMarkTarget('board-deck-area');
 
   // Phase 2: Calendar hook for lock-in detection
   const {
@@ -647,7 +643,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
       <View style={styles.content}>
         {activeTab === "saved" && (
-          <View ref={deckAreaRef} onLayout={deckAreaOnLayout} style={styles.savedContainer}>
+          <View style={styles.savedContainer}>
             <SwipeableSessionCards
               cards={savedCards}
               sessionId={sessionId}

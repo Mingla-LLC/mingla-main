@@ -7,7 +7,7 @@ import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrenc
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../constants/priceTiers';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
+
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -28,7 +28,6 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const { ref: shareContentRef, onLayout: shareContentOnLayout } = useCoachMarkTarget('share-modal-content');
   // const { accountPreferences } = useAppState();
   
   if (!isOpen) return null;
@@ -195,7 +194,7 @@ export default function ShareModal({
           activeOpacity={1}
           onPress={onClose}
         />
-        <View ref={shareContentRef} onLayout={shareContentOnLayout} style={styles.modalContainer}>
+        <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerSidePlaceholder} />

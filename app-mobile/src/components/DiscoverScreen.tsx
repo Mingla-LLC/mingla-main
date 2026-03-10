@@ -44,8 +44,6 @@ import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
-import { useCoachMarkActions } from './education/CoachMarkProvider';
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -735,13 +733,6 @@ export default function DiscoverScreen({
 }: DiscoverScreenProps) {
   const insets = useSafeAreaInsets();
 
-  // Coach mark targets
-  const { ref: forYouGridRef, onLayout: forYouGridOnLayout } = useCoachMarkTarget('discover-for-you-grid');
-  const { ref: heroCardRef, onLayout: heroCardOnLayout } = useCoachMarkTarget('discover-hero-card');
-  const { ref: categoryGridRef, onLayout: categoryGridOnLayout } = useCoachMarkTarget('discover-category-grid');
-  const { ref: peopleSectionRef, onLayout: peopleSectionOnLayout } = useCoachMarkTarget('discover-people-section');
-  const { ref: addPersonButtonRef, onLayout: addPersonButtonOnLayout } = useCoachMarkTarget('discover-add-person-button');
-  const { fireElementVisible } = useCoachMarkActions();
 
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
@@ -956,13 +947,6 @@ export default function DiscoverScreen({
     }
   }, [selectedPerson, birthdayHeroOpacity, birthdayHeroSlide]);
 
-  // Fire coach mark element-visible signals when person detail / holiday list renders
-  useEffect(() => {
-    if (selectedPerson) {
-      fireElementVisible('person-detail-view');
-      fireElementVisible('person-holiday-list');
-    }
-  }, [selectedPerson, fireElementVisible]);
 
   // Holiday detection helper - checks for upcoming holidays relevant to person
   const getUpcomingHolidays = useCallback((person: SavedPerson | null): string[] => {
@@ -3131,8 +3115,6 @@ export default function DiscoverScreen({
 
         {/* Content */}
         <ScrollView
-          ref={forYouGridRef as any}
-          onLayout={forYouGridOnLayout}
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
@@ -3150,7 +3132,7 @@ export default function DiscoverScreen({
               )}
 
               {/* For You Tab Header with People Pills */}
-              <View ref={peopleSectionRef} onLayout={peopleSectionOnLayout} style={styles.tabHeaderRow}>
+              <View style={styles.tabHeaderRow}>
                 {/* Fixed pills */}
                 <TouchableOpacity
                   style={[
@@ -3171,8 +3153,6 @@ export default function DiscoverScreen({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  ref={addPersonButtonRef as any}
-                  onLayout={addPersonButtonOnLayout}
                   style={styles.addUserButtonPill}
                   onPress={handleOpenAddPersonModal}
                   activeOpacity={0.7}
@@ -3321,7 +3301,7 @@ export default function DiscoverScreen({
                             transform: [{ translateY: featuredCardSlide }],
                           }}
                         >
-                          <View ref={heroCardRef} onLayout={heroCardOnLayout} style={styles.heroCardsRow}>
+                          <View style={styles.heroCardsRow}>
                             {selectedHeroCards.slice(0, 2).map((heroCard) => (
                               <HeroCard
                                 key={heroCard.id}
@@ -3350,7 +3330,7 @@ export default function DiscoverScreen({
                       ) : null}
 
                       {/* Grid Cards Section */}
-                      <View ref={categoryGridRef} onLayout={categoryGridOnLayout} style={styles.gridCardsContainer}>
+                      <View style={styles.gridCardsContainer}>
                         {gridCards.map((card, index) => {
                           // Right column (odd indices) lag slightly behind left column
                           const isRightColumn = index % 2 === 1;

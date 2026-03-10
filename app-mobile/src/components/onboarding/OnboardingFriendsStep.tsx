@@ -328,14 +328,18 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
           // Accept via the respond-friend-link edge function
           await respondToLink.mutateAsync({ linkId: requestId, action: 'accept' })
         } else {
-          // Accept via the legacy useFriends hook
+          // Accept via the legacy useFriends hook (primary — creates friends rows)
           await acceptFriendRequest(requestId)
-          // Mirror to friend_links — prevent ghost request resurfacing after dedup
+          // Mirror to friend_links — non-fatal, the primary accept already succeeded
           const matchingLink = pendingLinkRequests.find(
             (l) => l.requesterId === request.sender_id
           )
           if (matchingLink) {
-            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+            try {
+              await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+            } catch (mirrorErr) {
+              console.warn('Mirror accept to friend_links failed (non-fatal):', mirrorErr)
+            }
           }
         }
 
@@ -378,12 +382,16 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
           await respondToLink.mutateAsync({ linkId: requestId, action: 'decline' })
         } else {
           await declineFriendRequest(requestId)
-          // Mirror to friend_links — prevent ghost request resurfacing after dedup
+          // Mirror to friend_links — non-fatal, the primary decline already succeeded
           const matchingLink = pendingLinkRequests.find(
             (l) => l.requesterId === request.sender_id
           )
           if (matchingLink) {
-            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+            try {
+              await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+            } catch (mirrorErr) {
+              console.warn('Mirror decline to friend_links failed (non-fatal):', mirrorErr)
+            }
           }
         }
 
@@ -407,12 +415,16 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
             return respondToLink.mutateAsync({ linkId: request.id, action: 'accept' })
           }
           await acceptFriendRequest(request.id)
-          // Mirror to friend_links — prevent ghost request
+          // Mirror to friend_links — non-fatal, the primary accept already succeeded
           const matchingLink = pendingLinkRequests.find(
             (l) => l.requesterId === request.sender_id
           )
           if (matchingLink) {
-            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+            try {
+              await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+            } catch (mirrorErr) {
+              console.warn('Mirror accept to friend_links failed (non-fatal):', mirrorErr)
+            }
           }
         })
       )
@@ -455,12 +467,16 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
             return respondToLink.mutateAsync({ linkId: request.id, action: 'decline' })
           }
           await declineFriendRequest(request.id)
-          // Mirror to friend_links — prevent ghost request
+          // Mirror to friend_links — non-fatal, the primary decline already succeeded
           const matchingLink = pendingLinkRequests.find(
             (l) => l.requesterId === request.sender_id
           )
           if (matchingLink) {
-            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+            try {
+              await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+            } catch (mirrorErr) {
+              console.warn('Mirror decline to friend_links failed (non-fatal):', mirrorErr)
+            }
           }
         })
       )

@@ -38,9 +38,6 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
-import { CoachMarkProvider } from "../src/components/education/CoachMarkProvider";
-import { ReplayTipsScreen } from "../src/components/education/ReplayTipsScreen";
-import { useCoachMarkTarget } from "../src/hooks/useCoachMarkTarget";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
@@ -76,9 +73,6 @@ function AppContent() {
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();
 
-  // Coach mark targets for tab bar
-  const { ref: tabBarLikesRef, onLayout: tabBarLikesOnLayout } = useCoachMarkTarget('tab-bar-likes');
-  const { ref: tabBarChatsRef, onLayout: tabBarChatsOnLayout } = useCoachMarkTarget('tab-bar-chats');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
@@ -1525,12 +1519,6 @@ function AppContent() {
             }}
           />
         );
-      case "replay-tips":
-        return (
-          <ReplayTipsScreen
-            onBack={() => setCurrentPage("profile")}
-          />
-        );
       default:
         return (
           <HomePage
@@ -1605,21 +1593,6 @@ function AppContent() {
             <MobileFeaturesProvider>
               <NavigationProvider>
                 <ErrorBoundary>
-                  <CoachMarkProvider
-                    currentPage={currentPage}
-                    userId={user?.id}
-                    onNavigate={(page) => {
-                      closeProfileOverlays();
-                      if (page === 'board-view') {
-                        // For board view, select the first board if available
-                        if (boardsSessions && boardsSessions.length > 0) {
-                          const firstBoard = boardsSessions[0] as any;
-                          setBoardViewSessionId(firstBoard.id || firstBoard.session_id);
-                        }
-                      }
-                      setCurrentPage(page as any);
-                    }}
-                  >
                   <View style={styles.safeArea}>
                     <StatusBar
                       barStyle="dark-content"
@@ -1752,8 +1725,6 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            ref={tabBarChatsRef as any}
-                            onLayout={tabBarChatsOnLayout}
                             onPress={() => {
                               logger.action('Tab pressed: connections');
                               closeProfileOverlays();
@@ -1793,8 +1764,6 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            ref={tabBarLikesRef as any}
-                            onLayout={tabBarLikesOnLayout}
                             onPress={() => {
                               logger.action('Tab pressed: likes');
                               closeProfileOverlays();
@@ -1920,7 +1889,6 @@ function AppContent() {
                     )}
 
                   </View>
-                  </CoachMarkProvider>
                 </ErrorBoundary>
               </NavigationProvider>
             </MobileFeaturesProvider>

@@ -13,7 +13,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
-import { useCoachMarkActions } from './education/CoachMarkProvider';
+
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
@@ -31,7 +31,6 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
   refreshHeight = 60,
 }) => {
   const haptic = useHapticFeedback();
-  const { fireAction } = useCoachMarkActions();
   const scrollY = useSharedValue(0);
   const isRefreshing = useSharedValue(false);
   const hasTriggeredHaptic = useRef(false);
@@ -41,14 +40,13 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
 
     isRefreshing.value = true;
     haptic.pullToRefresh();
-    fireAction('pull_refresh');
 
     try {
       await onRefresh();
     } finally {
       isRefreshing.value = false;
     }
-  }, [onRefresh, haptic, fireAction]);
+  }, [onRefresh, haptic]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {

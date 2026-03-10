@@ -15,7 +15,6 @@ import {
 } from "../types/holidayTypes";
 import { STANDARD_HOLIDAYS } from "../constants/holidays";
 import { s } from "../utils/responsive";
-import { useCoachMarkTarget } from "../hooks/useCoachMarkTarget";
 import BirthdayHero from "./BirthdayHero";
 import PersonRecommendationCards from "./PersonRecommendationCards";
 import HolidayRow from "./HolidayRow";
@@ -111,10 +110,6 @@ export default function PersonHolidayView({
   location,
   userId,
 }: PersonHolidayViewProps) {
-  // ── Coach mark targets ──
-  const { ref: holidayListRef, onLayout: holidayListOnLayout } = useCoachMarkTarget('discover-holiday-list');
-  const { ref: customHolidayBtnRef, onLayout: customHolidayBtnOnLayout } = useCoachMarkTarget('discover-custom-holiday-button');
-
   // ── State ──
   const [expandedHolidayId, setExpandedHolidayId] = useState<string | null>(null);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
@@ -235,12 +230,10 @@ export default function PersonHolidayView({
       <PersonRecommendationCards person={person} location={location} />
 
       {/* Upcoming Holidays Section */}
-      <View ref={holidayListRef} onLayout={holidayListOnLayout} style={styles.holidaysContainer}>
+      <View style={styles.holidaysContainer}>
         <View style={styles.holidaysHeader}>
           <Text style={styles.holidaysTitle}>Upcoming Holidays</Text>
           <TouchableOpacity
-            ref={customHolidayBtnRef}
-            onLayout={customHolidayBtnOnLayout}
             style={styles.addHolidayButton}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

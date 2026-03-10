@@ -19,10 +19,10 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
 | Payments | Stripe Connect |
 | Push Notifications | Expo Push Notifications |
-| Analytics | Mixpanel (event tracking, user identification, coach mark analytics) |
+| Analytics | Mixpanel (event tracking, user identification) |
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
-| SVG | react-native-svg (spotlight masks, illustrations) |
+| SVG | react-native-svg |
 
 ---
 
@@ -38,16 +38,15 @@ Mingla/
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
 │   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
-│   │   │   ├── education/             # Coach mark system (CoachMarkProvider, Overlay, Tooltip, SpotlightMask, Milestone, ReplayTipsScreen, Illustrations)
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~39 React Query hooks (incl. useCoachMarkTarget, useCoachMarkEngine)
-│   │   ├── services/                   # ~62 service files (incl. coachMarkService)
+│   │   ├── hooks/                      # ~37 React Query hooks
+│   │   ├── services/                   # ~61 service files
 │   │   ├── contexts/                   # 3 React contexts
-│   │   ├── store/                      # Zustand stores (appStore, coachMarkStore)
-│   │   ├── types/                      # TypeScript types (incl. coachMark.ts)
-│   │   ├── constants/                  # Design tokens, config, categories, holidays, coachMarks
+│   │   ├── store/                      # Zustand store (appStore)
+│   │   ├── types/                      # TypeScript types
+│   │   ├── constants/                  # Design tokens, config, categories, holidays
 │   │   └── utils/                      # 12 utility files
 │   ├── app.json
 │   ├── eas.json
@@ -67,29 +66,6 @@ Mingla/
 ---
 
 ## Features
-
-### Contextual Education System (Coach Marks v2)
-
-A progressive disclosure engine that teaches users features in context. Key aspects:
-
-- **58 coach marks** across 7 groups (Explore, Discover, Chats, Likes, Profile, Board, Action) plus a tutorial finale
-- **First-launch tutorial**: On first app launch after onboarding, a full linear tutorial auto-navigates the user through every tab and screen, showing all 58 marks in sequence. No skip, no exit — only "Next" and "Back to start". Session limits and cooldowns are disabled during the tutorial. Marks without available targets display centered without a spotlight
-- **Auto-navigation**: The tutorial provider orchestrates tab/page navigation via `onNavigate` callback, waiting for target registration before showing each mark
-- **Context-triggered (normal mode)**: After tutorial completion, marks fire when users naturally encounter features (tab visits, actions, element visibility)
-- **Rate-limited (normal mode)**: Max 5 marks per session, 3-second cooldown between marks (cooldown clears on tab navigation)
-- **Self-measuring tooltips**: Two-phase render (invisible measure → position) with safe area awareness via `useSafeAreaInsets()` — zero hardcoded coordinates or height guesses
-- **Deliberate dismissal only**: Backdrop taps do nothing — users must press "Got it"/"Next" or "Skip all" to proceed. Buttons are locked during the entrance animation to prevent accidental dismissal
-- **Scroll-safe queue**: Off-screen targets stay in queue instead of being permanently dropped
-- **Step indicator**: Global "3 of 58" progress during tutorial, group-level "3 of 9" during normal mode
-- **Replay Tips screen**: Profile settings navigates to a dedicated screen with expandable groups. Tap a group's "Replay" button to replay all tips in that group, or tap an individual tip to auto-navigate and replay just that one
-- **Reduced motion support**: Instant show/hide when system accessibility reduce-motion is enabled
-- **SVG spotlight mask**: Semi-transparent overlay with a cutout hole highlighting the target element
-- **Animated illustrations**: Gesture demos (swipe, tap, long-press), feature icons with sparkles, welcome scenes
-- **Milestone celebrations**: Full-screen confetti celebrations when users complete mark groups (7 milestones, skipped during tutorial)
-- **Cross-device persistence**: Progress synced via Supabase `coach_mark_progress` table with AsyncStorage fallback
-- **Prerequisite chains**: Marks only appear after their prerequisites are completed (normal mode)
-- **Group skip**: "Skip all [group]" dismisses remaining marks in a category (normal mode only)
-- **Mixpanel analytics**: Every shown/completed/skipped mark and milestone is tracked
 
 ### Onboarding Flow
 
@@ -124,7 +100,7 @@ The profile page is a decomposed orchestrator (~340 lines) composing 7 sub-compo
 - **EditBioSheet** -- Bottom sheet modal with multiline text input, 160-character limit with counter
 - **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories. Uses onboarding intent definitions with per-intent colors. Saves to the preferences table
 
-The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, "Replay Tips" (navigates to a dedicated screen with expandable group lists and per-tip replay), settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
+The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
 
 ### View Friend Profile
 
@@ -247,12 +223,6 @@ The Connect page manages friend relationships:
 | `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, photos (TEXT[]), visibility_mode |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
-
-### Education & Coach Marks
-
-| Table | Purpose |
-|-------|---------|
-| `coach_mark_progress` | Tracks completed coach marks per user (user_id, coach_mark_id, completed_at). UNIQUE constraint on (user_id, coach_mark_id). Users can read, write, and delete their own rows (DELETE enabled for "Replay Tips" reset). |
 
 ### Push Notifications
 
@@ -426,7 +396,7 @@ npm install
 # 3. Copy environment file and fill in keys
 cp .env.example .env
 
-# 4. Run Supabase migrations (includes coach_mark_progress table)
+# 4. Run Supabase migrations
 supabase db push
 
 # 5. Deploy edge functions
@@ -460,11 +430,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Fix Friend Accept Visibility** -- Simplified DB trigger to create pending (not auto-accepted) friend requests/links on phone signup, so new users see them at onboarding Step 5. Added `friends` table upsert to `respond-friend-link` so accepted friends appear in chat.
-- **Unified Friend Request Visibility** -- Onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions for instant visibility, correct accept/decline routing per source system, and sender deduplication.
+- **Coach Mark System Removed** -- Entire coach mark education system deleted (13 core files, 26 consumer files cleaned, DB table dropped). Will be redesigned from scratch.
+- **Fix Friend Accept Visibility** -- Simplified DB trigger to create pending (not auto-accepted) friend requests/links on phone signup. Added `friends` table upsert with block guard to `respond-friend-link`. Made mirror calls non-fatal in onboarding accept flow.
+- **Unified Friend Request Visibility** -- Onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions and correct routing per source system.
 - **Mirror Row Fix** -- Fixed `send-friend-link` edge function creating broken mirror rows. Now uses upsert to handle re-sends gracefully.
-- **Lookup Phone Fix** -- `lookup-phone` edge function now checks `friend_links` for pending/accepted status, preventing duplicate requests from onboarding.
-- **Profile Batch Fetching** -- Replaced N+1 profile queries in `useFriends.loadFriendRequests` with batch `.in()` queries.
+- **Diagnostic Error Messages** -- All 5 error paths in `respond-friend-link` now return distinct diagnostic messages instead of generic "Failed to process link response".
 
 ---
 

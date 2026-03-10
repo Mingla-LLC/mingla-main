@@ -31,7 +31,7 @@ import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 import { createPendingInvite } from "../../services/phoneLookupService";
 import { useAppStore } from "../../store/appStore";
 import { s, vs } from "../../utils/responsive";
-import { useCoachMarkActions } from "../education/CoachMarkProvider";
+
 
 type Tab = "add" | "sent";
 
@@ -53,8 +53,6 @@ export function AddFriendView({
   const cancelMutation = useCancelLinkRequest();
   const cancelInviteMutation = useCancelPhoneInvite();
   const { user } = useAppStore();
-  const { fireAction } = useCoachMarkActions();
-
   const [activeTab, setActiveTab] = useState<Tab>("add");
 
   // Sent requests data (Mingla users)
@@ -131,7 +129,6 @@ export function AddFriendView({
           });
           setActionStatus("sent");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          fireAction('friend_request_sent');
           onRequestSent();
           setTimeout(() => {
             setPhoneNumber("");
@@ -163,7 +160,7 @@ export function AddFriendView({
       setActionError(err instanceof Error ? err.message : "Something went wrong");
       setActionStatus("error");
     }
-  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, onRequestSent, fireAction]);
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, onRequestSent]);
 
   const getActionLabel = (): string => {
     if (phoneLookupLoading) return "Looking up...";

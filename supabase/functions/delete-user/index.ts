@@ -337,8 +337,7 @@ async function cleanupUserData(
     await safeDelete("subscriptions", "user_id", userId);
     await safeDeleteOr("referral_credits", `referrer_id.eq.${userId},referred_id.eq.${userId}`);
 
-    // ── Coach marks and undo actions ──
-    await safeDelete("coach_mark_progress", "user_id", userId);
+    // ── Undo actions ──
     await safeDelete("undo_actions", "user_id", userId);
 
     // ── App feedback ──

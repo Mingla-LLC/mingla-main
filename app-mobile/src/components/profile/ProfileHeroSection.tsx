@@ -9,7 +9,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { useCoachMarkTarget } from '../../hooks/useCoachMarkTarget';
+
 
 interface ProfileHeroSectionProps {
   isOwnProfile: boolean;
@@ -49,10 +49,6 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   onLocationRefresh,
   isUploading,
 }) => {
-  // Coach mark targets
-  const { ref: photoRef, onLayout: photoOnLayout } = useCoachMarkTarget('profile-photo');
-  const { ref: bioRef, onLayout: bioOnLayout } = useCoachMarkTarget('profile-bio');
-
   const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
   const missingBio = !bio || bio.trim().length === 0;
   const missingAvatar = !avatarUrl;
@@ -66,7 +62,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
     <View style={styles.container}>
       <LinearGradient colors={['#fef3e2', '#ffffff']} style={styles.gradient} />
 
-      <View ref={photoRef} onLayout={photoOnLayout}>
+      <View>
         <TouchableOpacity
           style={styles.avatarWrap}
           onPress={onAvatarPress}
@@ -116,7 +112,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
         </View>
       )}
 
-      <View ref={bioRef} onLayout={bioOnLayout}>
+      <View>
         {missingBio && isOwnProfile ? (
           <TouchableOpacity onPress={onBioPress}>
             <Text style={styles.addBio}>Add a bio</Text>

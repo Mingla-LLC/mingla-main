@@ -167,7 +167,7 @@ serve(async (req: Request) => {
     if (reqProfileError || !requesterProfile) {
       console.error("Requester profile fetch error:", reqProfileError);
       return new Response(
-        JSON.stringify({ error: "Failed to process link response" }),
+        JSON.stringify({ error: "Accept failed: requester profile not found", detail: reqProfileError?.message }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -185,7 +185,7 @@ serve(async (req: Request) => {
     if (tgtProfileError || !targetProfile) {
       console.error("Target profile fetch error:", tgtProfileError);
       return new Response(
-        JSON.stringify({ error: "Failed to process link response" }),
+        JSON.stringify({ error: "Accept failed: target profile not found", detail: tgtProfileError?.message }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -241,7 +241,7 @@ serve(async (req: Request) => {
       if (targetPersonError || !targetPersonEntry) {
         console.error("Target saved_people insert error:", targetPersonError);
         return new Response(
-          JSON.stringify({ error: "Failed to process link response" }),
+          JSON.stringify({ error: "Accept failed: target saved_people insert", detail: targetPersonError?.message }),
           {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -294,7 +294,7 @@ serve(async (req: Request) => {
       if (requesterPersonError || !requesterPersonEntry) {
         console.error("Requester saved_people insert error:", requesterPersonError);
         return new Response(
-          JSON.stringify({ error: "Failed to process link response" }),
+          JSON.stringify({ error: "Accept failed: requester saved_people insert", detail: requesterPersonError?.message }),
           {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -319,7 +319,7 @@ serve(async (req: Request) => {
     if (acceptError) {
       console.error("Accept update error:", acceptError);
       return new Response(
-        JSON.stringify({ error: "Failed to process link response" }),
+        JSON.stringify({ error: "Accept failed: friend_links status update", detail: acceptError?.message }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

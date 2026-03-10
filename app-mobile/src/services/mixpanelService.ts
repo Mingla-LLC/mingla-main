@@ -518,23 +518,6 @@ class MixpanelService {
     });
   }
 
-  // ─── Coach mark education system ──────────────────────────────────
-
-  trackCoachMarkShown(coachMarkId: string, group: string): void {
-    this.track('Coach Mark Shown', { coach_mark_id: coachMarkId, group });
-  }
-
-  trackCoachMarkCompleted(coachMarkId: string, group: string): void {
-    this.track('Coach Mark Completed', { coach_mark_id: coachMarkId, group });
-  }
-
-  trackCoachMarkGroupSkipped(group: string): void {
-    this.track('Coach Mark Group Skipped', { group });
-  }
-
-  trackMilestoneReached(milestoneId: string): void {
-    this.track('Education Milestone Reached', { milestone_id: milestoneId });
-  }
 }
 
 export const mixpanelService = MixpanelService.getInstance();

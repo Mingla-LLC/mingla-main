@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import React, { useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -15,8 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
-import { useCoachMarkTarget } from "../../hooks/useCoachMarkTarget";
-import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH * 0.75;
@@ -89,13 +87,6 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 }) => {
   const scrollRef = useRef<ScrollView | null>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
-  const { ref: voteIndicatorRef, onLayout: voteIndicatorOnLayout } = useCoachMarkTarget('board-vote-indicator');
-  const { fireElementVisible } = useCoachMarkActions();
-
-  // Fire element visibility trigger on mount
-  useEffect(() => {
-    fireElementVisible('board-vote-indicator');
-  }, [fireElementVisible]);
 
   const {
     voteCounts,
@@ -288,7 +279,6 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   {/* Vote/RSVP Buttons */}
                   <View
                     style={styles.actionButtonsRow}
-                    {...(index === 0 ? { ref: voteIndicatorRef, onLayout: voteIndicatorOnLayout } : {})}
                   >
                     {/* Thumbs Up */}
                     <TouchableOpacity

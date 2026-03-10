@@ -52,8 +52,6 @@ type PanelId = "add" | "requests" | "blocked" | null;
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
-
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
   onAddToBoard?: (
@@ -102,10 +100,6 @@ export default function ConnectionsPageRefactored({
   const { user } = useAuthSimple();
   const { height: screenHeight } = useWindowDimensions();
 
-  // Coach mark targets
-  const { ref: friendsListRef, onLayout: friendsListOnLayout } = useCoachMarkTarget('chats-friends-list');
-  const { ref: requestsBtnRef, onLayout: requestsBtnOnLayout } = useCoachMarkTarget('chats-requests-button');
-  const { ref: firstFriendCardRef, onLayout: firstFriendCardOnLayout } = useCoachMarkTarget('chats-first-friend-card');
 
   // ── UI state ─────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState<PanelId>(null);
@@ -1291,7 +1285,7 @@ export default function ConnectionsPageRefactored({
   return (
     <>
       <View style={styles.container}>
-        <View ref={friendsListRef} onLayout={friendsListOnLayout} style={styles.content}>
+        <View style={styles.content}>
           {/* Compact header: title + action icons */}
           <View style={styles.headerRow}>
             <Text style={styles.title}>Chats</Text>
@@ -1305,8 +1299,6 @@ export default function ConnectionsPageRefactored({
               </TouchableOpacity>
 
               <TouchableOpacity
-                ref={requestsBtnRef}
-                onLayout={requestsBtnOnLayout}
                 onPress={() => handleActionPress("requests")}
                 style={[styles.headerIconBtn, activePanel === "requests" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
@@ -1410,7 +1402,7 @@ export default function ConnectionsPageRefactored({
                 );
                 if (index === 0) {
                   return (
-                    <View ref={firstFriendCardRef} onLayout={firstFriendCardOnLayout}>
+                    <View>
                       {chatItem}
                     </View>
                   );

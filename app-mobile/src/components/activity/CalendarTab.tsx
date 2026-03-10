@@ -24,7 +24,6 @@ import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
 import { formatCurrency } from "../utils/formatters";
-import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 interface CalendarEntry {
   id: string;
@@ -108,15 +107,6 @@ const CalendarTab = ({
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
-  const { fireElementVisible } = useCoachMarkActions();
-
-  // Fire element visibility trigger when calendar entries exist
-  useEffect(() => {
-    if (calendarEntries.length > 0) {
-      fireElementVisible('calendar-entry-actions');
-    }
-  }, [calendarEntries.length, fireElementVisible]);
-
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const searchBarSlide = useRef(new Animated.Value(-30)).current;

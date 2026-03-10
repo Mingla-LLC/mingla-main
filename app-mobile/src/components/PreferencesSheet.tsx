@@ -40,7 +40,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { detectLocaleFromCoordinates } from "../utils/localeDetection";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
-import { useCoachMarkActions } from './education/CoachMarkProvider';
+
 import {
   ExperienceTypesSection,
   CategoriesSection,
@@ -146,8 +146,6 @@ export default function PreferencesSheet({
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const appLayout = useAppLayout();
-  const { fireAction } = useCoachMarkActions();
-
   // Only load preferences data if modal is visible
   const {
     preferences: loadedPreferences,
@@ -782,7 +780,6 @@ export default function PreferencesSheet({
       }
 
       // === CLOSE SHEET FIRST — user sees instant response ===
-      fireAction('preferences_saved');
       onClose?.();
 
       // === Invalidate caches immediately — ensures fresh data on next render ===
@@ -832,7 +829,6 @@ export default function PreferencesSheet({
     queryClient,
     onSave,
     onClose,
-    fireAction,
   ]);
 
   const sheetContent = (

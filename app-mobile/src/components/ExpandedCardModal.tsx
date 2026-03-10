@@ -41,8 +41,7 @@ import { PicnicShoppingList } from './PicnicShoppingList';
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
 import { SCREEN_HEIGHT } from "../utils/responsive";
-import { useCoachMarkTarget } from "../hooks/useCoachMarkTarget";
-import { useCoachMarkActions } from "./education/CoachMarkProvider";
+
 
 const curatedStyles = StyleSheet.create({
   container: {
@@ -720,8 +719,6 @@ export default function ExpandedCardModal({
   hideTravelTime,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
-  const { fireElementVisible } = useCoachMarkActions();
-  const { ref: scrollRef, onLayout: scrollOnLayout } = useCoachMarkTarget('expanded-card-scroll');
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
@@ -739,7 +736,6 @@ export default function ExpandedCardModal({
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
-      fireElementVisible('expanded-card-modal');
       fetchAdditionalData();
       if ((card as any).cardType !== 'curated') {
         setStrollData(card.strollData);
@@ -1014,8 +1010,6 @@ export default function ExpandedCardModal({
 
           {/* Scrollable Content */}
           <ScrollView
-            ref={scrollRef}
-            onLayout={scrollOnLayout}
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={true}

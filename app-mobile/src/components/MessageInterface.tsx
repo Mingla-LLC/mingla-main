@@ -24,8 +24,7 @@ import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import CollaborationModule from "./CollaborationModule";
 import { supabase } from "../services/supabase";
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
-import { useCoachMarkActions } from './education/CoachMarkProvider';
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -126,17 +125,6 @@ export default function MessageInterface({
   const messagesEndRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const keyboardHeight = useRef(new Animated.Value(0)).current;
-
-  // Coach mark targets
-  const { ref: messageInputRef, onLayout: messageInputOnLayout } = useCoachMarkTarget('chats-message-input');
-  const { ref: addToBoardRef, onLayout: addToBoardOnLayout } = useCoachMarkTarget('chats-add-to-board-action');
-  const { fireElementVisible } = useCoachMarkActions();
-
-  // Fire element visibility triggers on mount
-  useEffect(() => {
-    fireElementVisible('message-interface');
-    fireElementVisible('friend-swipe-actions');
-  }, [fireElementVisible]);
 
   // Handle keyboard show/hide
   useEffect(() => {
@@ -735,8 +723,6 @@ export default function MessageInterface({
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  ref={addToBoardRef}
-                  onLayout={addToBoardOnLayout}
                   onPress={handleAddToBoard}
                   style={styles.menuItem}
                 >
@@ -972,8 +958,6 @@ export default function MessageInterface({
 
           {/* Message Input */}
           <TouchableOpacity
-            ref={messageInputRef}
-            onLayout={messageInputOnLayout}
             style={styles.messageInputContainer}
             activeOpacity={1}
             onPress={() => inputRef.current?.focus()}

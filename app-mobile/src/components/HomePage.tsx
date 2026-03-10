@@ -19,7 +19,6 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
-import { useCoachMarkTarget } from '../hooks/useCoachMarkTarget';
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -90,12 +89,6 @@ export default function HomePage({
   isCreatingSession = false,
   onNotificationNavigate,
 }: HomePageProps) {
-  // Coach mark targets
-  const { ref: cardStackRef, onLayout: cardStackOnLayout } = useCoachMarkTarget('explore-card-stack');
-  const { ref: sessionPillsRef, onLayout: sessionPillsOnLayout } = useCoachMarkTarget('explore-session-pills');
-  const { ref: notificationsRef, onLayout: notificationsOnLayout } = useCoachMarkTarget('explore-notifications-bell');
-  const { ref: preferencesRef, onLayout: preferencesOnLayout } = useCoachMarkTarget('explore-preferences-gear');
-
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
@@ -219,7 +212,7 @@ export default function HomePage({
           ]}
         >
           <View style={styles.headerLeft}>
-            <View ref={preferencesRef} onLayout={preferencesOnLayout}>
+            <View>
               <TouchableOpacity
                 onPress={() => {
                   if (currentMode === "solo") {
@@ -255,7 +248,7 @@ export default function HomePage({
           </View>
 
           <View style={styles.headerRight}>
-            <View ref={notificationsRef} onLayout={notificationsOnLayout}>
+            <View>
               <TouchableOpacity
                 onPress={handleOpenNotifications}
                 style={styles.notificationButton}
@@ -283,8 +276,6 @@ export default function HomePage({
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
           {onSessionSelect && onSoloSelect && onCreateSession && (
             <Animated.View
-              ref={sessionPillsRef}
-              onLayout={sessionPillsOnLayout}
               style={[
                 styles.sessionsAnimatedWrapper,
                 { opacity: sessionsOpacity },
@@ -308,7 +299,7 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <View ref={cardStackRef} onLayout={cardStackOnLayout} style={{ flex: 1, width: '100%' }}>
+          <View style={{ flex: 1, width: '100%' }}>
             <SwipeableCards
               userPreferences={userPreferences}
               accountPreferences={accountPreferences}
