@@ -62,7 +62,7 @@ BEGIN
 
   -- Step 2: Transfer creator ownership for any remaining sessions
   UPDATE collaboration_sessions cs
-  SET creator_id = (
+  SET created_by = (
     SELECT sp.user_id
     FROM session_participants sp
     WHERE sp.session_id = cs.id
@@ -70,7 +70,7 @@ BEGIN
     ORDER BY sp.created_at ASC
     LIMIT 1
   )
-  WHERE cs.creator_id = OLD.id
+  WHERE cs.created_by = OLD.id
     AND EXISTS (
       SELECT 1 FROM session_participants sp
       WHERE sp.session_id = cs.id
@@ -92,7 +92,7 @@ BEGIN
   DELETE FROM friend_links WHERE requester_id = OLD.id OR target_id = OLD.id;
   DELETE FROM blocked_users WHERE blocker_id = OLD.id OR blocked_id = OLD.id;
   DELETE FROM muted_users WHERE muter_id = OLD.id OR muted_id = OLD.id;
-  DELETE FROM collaboration_invites WHERE inviter_id = OLD.id OR invited_user_id = OLD.id OR invited_by = OLD.id;
+  DELETE FROM collaboration_invites WHERE inviter_id = OLD.id OR invitee_id = OLD.id OR invited_by = OLD.id;
   DELETE FROM user_presence WHERE user_id = OLD.id;
   DELETE FROM session_presence WHERE user_id = OLD.id;
   DELETE FROM typing_indicators WHERE user_id = OLD.id;

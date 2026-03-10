@@ -251,7 +251,10 @@ async function cleanupUserData(
   // Helper function to safely delete from a table
   const safeDelete = async (table: string, column: string, value: string) => {
     try {
-      await adminClient.from(table).delete().eq(column, value);
+      const { error } = await adminClient.from(table).delete().eq(column, value);
+      if (error) {
+        console.warn(`Warning: Could not delete from ${table}:`, error.message);
+      }
     } catch (err) {
       console.warn(`Warning: Could not delete from ${table}:`, err);
     }
@@ -260,7 +263,10 @@ async function cleanupUserData(
   // Helper function to safely delete with OR condition
   const safeDeleteOr = async (table: string, conditions: string) => {
     try {
-      await adminClient.from(table).delete().or(conditions);
+      const { error } = await adminClient.from(table).delete().or(conditions);
+      if (error) {
+        console.warn(`Warning: Could not delete from ${table}:`, error.message);
+      }
     } catch (err) {
       console.warn(`Warning: Could not delete from ${table}:`, err);
     }
