@@ -1269,138 +1269,82 @@ export default function SwipeableCards({
     return parts.join(" · ") || "Anytime";
   };
 
-  // Error state - No matches found
-  // Only show error if we're NOT transitioning modes (to prevent showing error during transitions)
+  // Unified empty state — no matches OR all decks exhausted
+  // Fuses the old "We looked everywhere" + "All decks explored" into one compact card-sized view
   if (
     !isModeTransitioning &&
     !isWaitingForSessionResolution &&
-    (error === "no_matches" || (error && availableRecommendations.length === 0))
+    (
+      (error === "no_matches" || (error && availableRecommendations.length === 0)) ||
+      (isExhausted && hasCompletedInitialFetch && availableRecommendations.length === 0 && !loading)
+    )
   ) {
-    const currentPrefs = cachedPreferences ?? {};
-    const displayBudgetMin = currentPrefs.budget_min ?? 0;
-    const displayBudgetMax = currentPrefs.budget_max ?? 100;
-    const displayCategories: string[] = currentPrefs.categories ?? [];
-    const displayIntents: string[] = currentPrefs.intents ?? [];
-    const displayTravelMode = currentPrefs.travel_mode ?? "walking";
-    const displayTravelConstraintValue = currentPrefs.travel_constraint_value ?? 30;
-
-    const displayDateOption = currentPrefs.date_option ?? null;
-    const displayTimeSlot = currentPrefs.time_slot ?? null;
-    const displayDatetimePref = currentPrefs.datetime_pref ?? null;
-    const displayUseGps = currentPrefs.use_gps_location ?? false;
+    const hasMultipleBatches = deckBatches.length > 1;
 
     return (
-      <ScrollView
-        style={styles.noCardsScrollView}
-        contentContainerStyle={styles.noCardsScrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.noCardsContent}>
-          <View style={styles.noMatchesIconCircle}>
-            <Ionicons name="search-outline" size={28} color="#eb7825" />
+      <View style={styles.emptyDeckContainer}>
+        <View style={styles.emptyDeckContent}>
+          <View style={styles.emptyDeckIconCircle}>
+            <Ionicons name="earth-outline" size={24} color="#eb7825" />
           </View>
-          <Text style={styles.noCardsTitle}>We looked everywhere. Seriously.</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Nothing quite fits your current filters — but a small tweak could change that.
+          <Text style={styles.emptyDeckTitle}>
+            {hasMultipleBatches
+              ? `All ${deckBatches.length} decks explored`
+              : "That's everything nearby"}
+          </Text>
+          <Text style={styles.emptyDeckSubtitle}>
+            Tweak your preferences, revisit a deck, or review dismissed cards.
           </Text>
 
-          {/* Filter Summary */}
-          <View style={styles.filterSummary}>
-            <Text style={styles.filterSummaryTitle}>Your current filters</Text>
-
-            {/* Intent pills */}
-            {displayIntents.length > 0 && (
-              <View style={styles.filterRow}>
-                <Text style={styles.filterLabel}>Intents:</Text>
-                <View style={styles.filterPillRow}>
-                  {displayIntents.map((intent: string) => (
-                    <View key={intent} style={styles.filterPill}>
-                      <Text style={styles.filterPillText}>{intent}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Category pills */}
-            {displayCategories.length > 0 && (
-              <View style={styles.filterRow}>
-                <Text style={styles.filterLabel}>Categories:</Text>
-                <View style={styles.filterPillRow}>
-                  {displayCategories.map((cat: string) => (
-                    <View key={cat} style={styles.filterPill}>
-                      <Text style={styles.filterPillText}>{getReadableCategoryName(cat)}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Budget */}
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Budget:</Text>
-              <View style={styles.filterTag}>
-                <Text style={styles.filterTagText}>
-                  Up to {getCurrencySymbol(accountPreferences?.currency || 'USD')}{Number(displayBudgetMax).toLocaleString('en-US')}
+          <View style={styles.emptyDeckActions}>
+            {/* Deck navigation buttons (if multiple batches) */}
+            {hasMultipleBatches && deckBatches.map((batch, idx) => (
+              <TouchableOpacity
+                key={batch.batchSeed}
+                style={[
+                  styles.emptyDeckButton,
+                  idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
+                ]}
+                onPress={() => navigateToDeckBatch(idx)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="albums-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>
+                  Deck {idx + 1} — {batch.cards.length} places
                 </Text>
-              </View>
-            </View>
+              </TouchableOpacity>
+            ))}
 
-            {/* Date/Time */}
-            {(displayDateOption || displayTimeSlot || displayDatetimePref) && (
-              <View style={styles.filterRow}>
-                <Text style={styles.filterLabel}>When:</Text>
-                <View style={styles.filterTag}>
-                  <Text style={styles.filterTagText}>
-                    {formatDateTimeDisplay(displayDateOption, displayTimeSlot, displayDatetimePref)}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Travel mode */}
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Travel:</Text>
-              <View style={styles.filterTag}>
-                <Text style={styles.filterTagText}>
-                  {formatTravelMode(displayTravelMode)} · {displayTravelConstraintValue} min
+            {/* Review dismissed cards */}
+            {dismissedCards.length > 0 && (
+              <TouchableOpacity
+                style={styles.emptyDeckOutlineButton}
+                onPress={() => setDismissedSheetVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="refresh-outline" size={16} color="#eb7825" />
+                <Text style={styles.emptyDeckOutlineButtonText}>
+                  Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
                 </Text>
-              </View>
-            </View>
-
-            {/* GPS location */}
-            {displayUseGps && userLocation && (
-              <View style={styles.filterRow}>
-                <Text style={styles.filterLabel}>Near:</Text>
-                <View style={styles.filterTag}>
-                  <Text style={styles.filterTagText}>
-                    {reverseGeocodedAddress ?? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`}
-                  </Text>
-                </View>
-              </View>
+              </TouchableOpacity>
             )}
+
+            {/* Change Preferences — always available */}
+            <TouchableOpacity
+              style={styles.emptyDeckButton}
+              onPress={handleOpenPreferences}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="options-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.emptyDeckButtonText}>Change Preferences</Text>
+            </TouchableOpacity>
           </View>
-
-          <Text style={styles.suggestionsTitle}>Worth a try</Text>
-          <Text style={styles.suggestionsText}>
-            • Expand your budget range{"\n"}• Add more categories{"\n"}• Increase travel time{"\n"}• Check back later for new spots
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => {
-              refreshRecommendations(refreshKey);
-            }}
-            style={styles.startOverButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.startOverButtonText}>Try Again</Text>
-          </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
     );
   }
 
-  // General error state
+  // General error state (non-"no_matches" errors)
   if (error && error !== "no_matches") {
     return (
       <View style={styles.noCardsContainer}>
@@ -1412,7 +1356,6 @@ export default function SwipeableCards({
           <Text style={styles.noCardsSubtitle}>{error}</Text>
           <TouchableOpacity
             onPress={() => {
-              // Retry by refreshing recommendations
               refreshRecommendations(refreshKey);
             }}
             style={styles.startOverButton}
@@ -1438,100 +1381,6 @@ export default function SwipeableCards({
             </Text>
           </View>
           <IndeterminateBar />
-        </View>
-      </View>
-    );
-  }
-
-  // End of deck — exhausted (no more Google results)
-  if (
-    isExhausted &&
-    hasCompletedInitialFetch &&
-    availableRecommendations.length === 0 &&
-    !loading &&
-    !isModeTransitioning &&
-    !isWaitingForSessionResolution
-  ) {
-    // If batches exist, rotate back instead of showing "everything explored"
-    if (deckBatches.length > 1) {
-      return (
-        <View style={styles.noCardsContainer}>
-          <View style={styles.noCardsContent}>
-            <View style={styles.sparklesContainer}>
-              <Ionicons name="layers-outline" size={28} color="#eb7825" />
-            </View>
-            <Text style={styles.noCardsTitle}>All {deckBatches.length} decks explored</Text>
-            <Text style={styles.noCardsSubtitle}>
-              Revisit your favorites or save the ones that stood out.
-            </Text>
-
-            {deckBatches.map((batch, idx) => (
-              <TouchableOpacity
-                key={batch.batchSeed}
-                style={[
-                  styles.changePreferencesButton,
-                  idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
-                  idx !== 0 && { marginTop: 8 },
-                ]}
-                onPress={() => navigateToDeckBatch(idx)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="albums-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.changePreferencesText}>
-                  Deck {idx + 1} — {batch.cards.length} places
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            {dismissedCards.length > 0 && (
-              <TouchableOpacity
-                style={[styles.reviewDismissedButton, { marginTop: 16 }]}
-                onPress={() => setDismissedSheetVisible(true)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="refresh-outline" size={18} color="#eb7825" />
-                <Text style={styles.reviewDismissedText}>
-                  Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.noCardsContainer}>
-        <View style={styles.noCardsContent}>
-          <View style={styles.sparklesContainer}>
-            <Ionicons name="earth-outline" size={28} color="#eb7825" />
-          </View>
-          <Text style={styles.noCardsTitle}>You've seen it all</Text>
-          <Text style={styles.noCardsSubtitle}>
-            No more places match your filters here. Tweak your preferences to unlock new spots.
-          </Text>
-
-          {dismissedCards.length > 0 && (
-            <TouchableOpacity
-              style={styles.reviewDismissedButton}
-              onPress={() => setDismissedSheetVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="refresh-outline" size={18} color="#eb7825" />
-              <Text style={styles.reviewDismissedText}>
-                Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.changePreferencesButton}
-            onPress={handleOpenPreferences}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="options-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.changePreferencesText}>Change Preferences</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -2271,6 +2120,75 @@ const styles = StyleSheet.create({
   noCardsContent: {
     alignItems: "center",
     gap: 12,
+  },
+  emptyDeckContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  emptyDeckContent: {
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 320,
+    gap: 6,
+  },
+  emptyDeckIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#fef3e2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  emptyDeckTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+  },
+  emptyDeckSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  emptyDeckActions: {
+    width: "100%",
+    gap: 8,
+  },
+  emptyDeckButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#eb7825",
+  },
+  emptyDeckButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  emptyDeckOutlineButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#eb7825",
+  },
+  emptyDeckOutlineButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
   },
   noCardsIcon: {
     width: 64,

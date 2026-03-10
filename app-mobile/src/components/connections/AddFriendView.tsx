@@ -163,7 +163,7 @@ export function AddFriendView({
       setActionError(err instanceof Error ? err.message : "Something went wrong");
       setActionStatus("error");
     }
-  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, onRequestSent]);
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, onRequestSent, fireAction]);
 
   const getActionLabel = (): string => {
     if (phoneLookupLoading) return "Looking up...";

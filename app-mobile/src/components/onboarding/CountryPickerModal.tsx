@@ -132,7 +132,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by name or dial code"
+            placeholder="Search by name, code, or dial code"
             placeholderTextColor={colors.gray[400]}
             value={search}
             onChangeText={setSearch}
