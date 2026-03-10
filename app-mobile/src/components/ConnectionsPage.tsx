@@ -125,12 +125,14 @@ export default function ConnectionsPageRefactored({
     unblockFriend,
     blockedUsers = [],
     loading: friendsLoading,
+    requestsLoading,
     fetchBlockedUsers,
   } = useFriends();
 
   // Friend links (new system) — pending incoming requests
   const {
     data: pendingLinkRequests = [],
+    isLoading: linksLoading,
     refetch: refetchLinkRequests,
   } = usePendingLinkRequests(user?.id || "");
 
@@ -185,14 +187,18 @@ export default function ConnectionsPageRefactored({
     if (linkIds.length === 0) return;
 
     const fetchProfiles = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, display_name, username, first_name, last_name, avatar_url")
-        .in("id", linkIds);
-      if (data) {
-        const map: Record<string, any> = {};
-        data.forEach((p: any) => { map[p.id] = p; });
-        setLinkRequestProfiles(map);
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("id, display_name, username, first_name, last_name, avatar_url")
+          .in("id", linkIds);
+        if (data) {
+          const map: Record<string, { display_name?: string; username?: string; avatar_url?: string; first_name?: string; last_name?: string }> = {};
+          data.forEach((p) => { map[p.id] = p; });
+          setLinkRequestProfiles(map);
+        }
+      } catch (err) {
+        console.error("Error fetching link request profiles:", err);
       }
     };
     fetchProfiles();
@@ -398,6 +404,15 @@ export default function ConnectionsPageRefactored({
         await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "accept" });
       } else {
         await acceptFriendRequest(requestId);
+        // Mirror to friend_links — prevent ghost request resurfacing after dedup
+        if (request) {
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          );
+          if (matchingLink) {
+            await respondToLinkMutation.mutateAsync({ linkId: matchingLink.id, action: "accept" });
+          }
+        }
       }
       await loadFriendRequests();
       refetchLinkRequests();
@@ -415,6 +430,15 @@ export default function ConnectionsPageRefactored({
         await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "decline" });
       } else {
         await declineFriendRequest(requestId);
+        // Mirror to friend_links — prevent ghost request resurfacing after dedup
+        if (request) {
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          );
+          if (matchingLink) {
+            await respondToLinkMutation.mutateAsync({ linkId: matchingLink.id, action: "decline" });
+          }
+        }
       }
       await loadFriendRequests();
       refetchLinkRequests();
@@ -1183,7 +1207,7 @@ export default function ConnectionsPageRefactored({
           {activePanel === "requests" && (
             <RequestsView
               requests={incomingRequests}
-              loading={friendsLoading}
+              loading={friendsLoading || requestsLoading || linksLoading}
               onAccept={handleAcceptRequest}
               onDecline={handleDeclineRequest}
             />
@@ -1452,7 +1476,7 @@ export default function ConnectionsPageRefactored({
           {activePanel === "requests" && (
             <RequestsView
               requests={incomingRequests}
-              loading={friendsLoading}
+              loading={friendsLoading || requestsLoading || linksLoading}
               onAccept={handleAcceptRequest}
               onDecline={handleDeclineRequest}
             />

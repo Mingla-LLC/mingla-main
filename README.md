@@ -164,7 +164,7 @@ The Connect page manages friend relationships:
 - Friend link requests sent via `send-friend-link` edge function with push notifications
 - Phone invites via `send-phone-invite` edge function with Twilio SMS and auto-linking on signup
 - Mirror writes to legacy `friend_requests` table preserve referral credit triggers (upsert handles re-sends)
-- Auto-convert trigger creates `friend_links` + `saved_people` when invited users sign up
+- Auto-convert trigger creates `friend_links` + `friend_requests` as pending when invited users sign up (saved_people deferred to explicit accept)
 - Duplicate-prevention on `saved_people` entries during link acceptance (`.maybeSingle()` check)
 - Saved people entries created for every synced friend during onboarding (not gated on audio recording)
 - Cross-invalidation of React Query caches on link accept (friend links + saved people + personalized cards)
@@ -268,7 +268,7 @@ The Connect page manages friend relationships:
 | `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
 | `friend_links` | Friend link requests (pending/accepted) for synced friends |
 | `blocked_users` | User blocks |
-| `pending_invites` | Phone invites for non-app users (auto-converts to friend_links + saved_people on signup) |
+| `pending_invites` | Phone invites for non-app users (auto-converts to pending friend_links + friend_requests on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `referral_credits` | Referral credit audit log |
 
@@ -334,7 +334,7 @@ The Connect page manages friend relationships:
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
 | `send-friend-link` | Send friend link invitations (with referral mirror write) |
-| `respond-friend-link` | Process friend link responses (with duplicate prevention) |
+| `respond-friend-link` | Process friend link responses (with duplicate prevention + friends table upsert) |
 | `unlink-friend` | Remove friend connections |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
 | `send-friend-request-email` | Email notifications for friend requests |
@@ -460,11 +460,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Unified Friend Request Visibility** -- Fixed invisible friend requests caused by dual friend request systems. Onboarding Step 5 and ConnectionsPage now read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions for instant visibility, correct accept/decline routing per source system, and sender deduplication.
-- **Mirror Row Fix** -- Fixed `send-friend-link` edge function creating broken mirror rows (referencing non-existent `friend_link_id` column). Now uses upsert to handle re-sends gracefully.
+- **Fix Friend Accept Visibility** -- Simplified DB trigger to create pending (not auto-accepted) friend requests/links on phone signup, so new users see them at onboarding Step 5. Added `friends` table upsert to `respond-friend-link` so accepted friends appear in chat.
+- **Unified Friend Request Visibility** -- Onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions for instant visibility, correct accept/decline routing per source system, and sender deduplication.
+- **Mirror Row Fix** -- Fixed `send-friend-link` edge function creating broken mirror rows. Now uses upsert to handle re-sends gracefully.
 - **Lookup Phone Fix** -- `lookup-phone` edge function now checks `friend_links` for pending/accepted status, preventing duplicate requests from onboarding.
-- **Profile Batch Fetching** -- Replaced N+1 profile queries in `useFriends.loadFriendRequests` with batch `.in()` queries. Removed dangerous profile INSERT on RLS block.
-- **FriendRequestsModal Duplicate Avatar** -- Removed copy-paste duplicated avatar rendering block.
+- **Profile Batch Fetching** -- Replaced N+1 profile queries in `useFriends.loadFriendRequests` with batch `.in()` queries.
 
 ---
 

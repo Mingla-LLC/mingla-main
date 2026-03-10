@@ -190,25 +190,29 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     const requesterIds = pendingLinkRequests.map((l) => l.requesterId)
 
     const fetchProfiles = async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, first_name, last_name, avatar_url')
-        .in('id', requesterIds)
-      if (data) {
-        const map: Record<string, any> = {}
-        data.forEach((p: any) => {
-          map[p.id] = {
-            username: p.username || `user_${p.id.substring(0, 8)}`,
-            display_name:
-              p.first_name && p.last_name
-                ? `${p.first_name} ${p.last_name}`
-                : p.display_name || p.username,
-            first_name: p.first_name,
-            last_name: p.last_name,
-            avatar_url: p.avatar_url,
-          }
-        })
-        setLinkProfiles(map)
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
+          .in('id', requesterIds)
+        if (data) {
+          const map: Record<string, { username: string; display_name?: string; first_name?: string; last_name?: string; avatar_url?: string }> = {}
+          data.forEach((p) => {
+            map[p.id] = {
+              username: p.username || `user_${p.id.substring(0, 8)}`,
+              display_name:
+                p.first_name && p.last_name
+                  ? `${p.first_name} ${p.last_name}`
+                  : p.display_name || p.username,
+              first_name: p.first_name,
+              last_name: p.last_name,
+              avatar_url: p.avatar_url,
+            }
+          })
+          setLinkProfiles(map)
+        }
+      } catch (err) {
+        console.error('Error fetching link request profiles:', err)
       }
     }
     fetchProfiles()
@@ -326,6 +330,13 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
         } else {
           // Accept via the legacy useFriends hook
           await acceptFriendRequest(requestId)
+          // Mirror to friend_links — prevent ghost request resurfacing after dedup
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          )
+          if (matchingLink) {
+            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+          }
         }
 
         // Add accepted user to addedFriends
@@ -353,7 +364,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
         console.error('Error accepting friend request:', err)
       }
     },
-    [acceptFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks]
+    [acceptFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks, pendingLinkRequests]
   )
 
   // Handle decline request
@@ -367,6 +378,13 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
           await respondToLink.mutateAsync({ linkId: requestId, action: 'decline' })
         } else {
           await declineFriendRequest(requestId)
+          // Mirror to friend_links — prevent ghost request resurfacing after dedup
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          )
+          if (matchingLink) {
+            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+          }
         }
 
         await loadFriendRequests()
@@ -377,36 +395,47 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
         console.error('Error declining friend request:', err)
       }
     },
-    [declineFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks]
+    [declineFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks, pendingLinkRequests]
   )
 
   // Handle accept all
   const handleAcceptAll = useCallback(async () => {
     try {
-      await Promise.all(
-        incomingRequests.map((request) => {
+      const results = await Promise.allSettled(
+        incomingRequests.map(async (request) => {
           if (request._source === 'link') {
             return respondToLink.mutateAsync({ linkId: request.id, action: 'accept' })
           }
-          return acceptFriendRequest(request.id)
+          await acceptFriendRequest(request.id)
+          // Mirror to friend_links — prevent ghost request
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          )
+          if (matchingLink) {
+            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'accept' })
+          }
         })
       )
 
-      // Add all accepted users to addedFriends
-      const acceptedFriends: AddedFriend[] = incomingRequests.map((request) => ({
-        type: 'existing' as const,
-        userId: request.sender_id,
-        username: request.sender.username,
-        phoneE164: '',
-        displayName:
-          request.sender.display_name ||
-          (request.sender.first_name && request.sender.last_name
-            ? `${request.sender.first_name} ${request.sender.last_name}`
-            : request.sender.username),
-        avatarUrl: request.sender.avatar_url ?? null,
-        friendshipStatus: 'friends' as const,
-      }))
-      setAddedFriends((prev) => [...prev, ...acceptedFriends])
+      // Add only successfully accepted users to addedFriends
+      const acceptedFriends: AddedFriend[] = incomingRequests
+        .filter((_, i) => results[i].status === 'fulfilled')
+        .map((request) => ({
+          type: 'existing' as const,
+          userId: request.sender_id,
+          username: request.sender.username,
+          phoneE164: '',
+          displayName:
+            request.sender.display_name ||
+            (request.sender.first_name && request.sender.last_name
+              ? `${request.sender.first_name} ${request.sender.last_name}`
+              : request.sender.username),
+          avatarUrl: request.sender.avatar_url ?? null,
+          friendshipStatus: 'friends' as const,
+        }))
+      if (acceptedFriends.length > 0) {
+        setAddedFriends((prev) => [...prev, ...acceptedFriends])
+      }
 
       await loadFriendRequests()
       refetchLinks()
@@ -415,17 +444,24 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     } catch (err) {
       console.error('Error accepting all requests:', err)
     }
-  }, [incomingRequests, acceptFriendRequest, respondToLink, loadFriendRequests, refetchLinks])
+  }, [incomingRequests, acceptFriendRequest, respondToLink, loadFriendRequests, refetchLinks, pendingLinkRequests])
 
   // Handle decline all
   const handleDeclineAll = useCallback(async () => {
     try {
-      await Promise.all(
-        incomingRequests.map((request) => {
+      await Promise.allSettled(
+        incomingRequests.map(async (request) => {
           if (request._source === 'link') {
             return respondToLink.mutateAsync({ linkId: request.id, action: 'decline' })
           }
-          return declineFriendRequest(request.id)
+          await declineFriendRequest(request.id)
+          // Mirror to friend_links — prevent ghost request
+          const matchingLink = pendingLinkRequests.find(
+            (l) => l.requesterId === request.sender_id
+          )
+          if (matchingLink) {
+            await respondToLink.mutateAsync({ linkId: matchingLink.id, action: 'decline' })
+          }
         })
       )
 
@@ -436,7 +472,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     } catch (err) {
       console.error('Error declining all requests:', err)
     }
-  }, [incomingRequests, declineFriendRequest, respondToLink, loadFriendRequests, refetchLinks])
+  }, [incomingRequests, declineFriendRequest, respondToLink, loadFriendRequests, refetchLinks, pendingLinkRequests])
 
   // Determine action button state
   const renderActionButton = () => {

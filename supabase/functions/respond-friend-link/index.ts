@@ -327,14 +327,64 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── Create friends table rows (so accepted user appears in chat section) ──
+    // Guard: skip if either user has blocked the other (prevents resurfacing blocked users)
+    const { count: blockCount } = await supabaseAdmin
+      .from("blocked_users")
+      .select("id", { count: "exact", head: true })
+      .or(
+        `and(blocker_id.eq.${requesterId},blocked_id.eq.${targetId}),and(blocker_id.eq.${targetId},blocked_id.eq.${requesterId})`
+      );
+
+    if (!blockCount || blockCount === 0) {
+      // Insert row: requester → target
+      const { error: friend1Error } = await supabaseAdmin
+        .from("friends")
+        .upsert(
+          {
+            user_id: requesterId,
+            friend_user_id: targetId,
+            status: "accepted",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,friend_user_id" }
+        );
+
+      if (friend1Error) {
+        console.warn("Failed to create friends row (requester→target):", friend1Error.message);
+      }
+
+      // Insert row: target → requester
+      const { error: friend2Error } = await supabaseAdmin
+        .from("friends")
+        .upsert(
+          {
+            user_id: targetId,
+            friend_user_id: requesterId,
+            status: "accepted",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,friend_user_id" }
+        );
+
+      if (friend2Error) {
+        console.warn("Failed to create friends row (target→requester):", friend2Error.message);
+      }
+    } else {
+      console.warn("Skipping friends creation — block exists between", requesterId, "and", targetId);
+    }
+
     // ── Mirror accept to legacy friend_requests for referral credit triggers ──
     try {
-      await supabaseAdmin
+      const { error: mirrorError } = await supabaseAdmin
         .from("friend_requests")
         .update({ status: "accepted" })
         .eq("sender_id", requesterId)
         .eq("receiver_id", targetId)
         .eq("status", "pending");
+      if (mirrorError) {
+        console.warn("Mirror friend_requests accept failed:", mirrorError.message);
+      }
     } catch (e) {
       console.warn("Failed to mirror accept to friend_requests:", e);
     }

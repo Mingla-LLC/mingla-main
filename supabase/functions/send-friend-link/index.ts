@@ -167,7 +167,7 @@ serve(async (req: Request) => {
     // The referral credit triggers fire on friend_requests status changes.
     // Use upsert to handle re-sends (previous declined/cancelled request resets to pending).
     try {
-      await supabaseAdmin
+      const { error: mirrorError } = await supabaseAdmin
         .from("friend_requests")
         .upsert(
           {
@@ -177,6 +177,9 @@ serve(async (req: Request) => {
           },
           { onConflict: "sender_id,receiver_id" }
         );
+      if (mirrorError) {
+        console.warn("Mirror friend_request upsert failed:", mirrorError.message);
+      }
     } catch (e) {
       // Non-fatal: referral tracking is nice-to-have, not critical
       console.warn("Failed to create mirror friend_request:", e);
