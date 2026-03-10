@@ -326,6 +326,8 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   ],
   'Casual Eats': [
     'fine_dining_restaurant', 'bar', 'night_club', 'spa',
+    'grocery_store', 'supermarket', 'food_store', 'market',
+    'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
   ],
   'Fine Dining': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
