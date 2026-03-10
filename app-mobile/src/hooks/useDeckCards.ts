@@ -53,11 +53,17 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     ? useAppStore.getState().deckBatches.find(b => b.batchSeed === params.batchSeed)
     : undefined;
 
+  // Round coordinates to 3 decimal places (~110m) in the query key to prevent
+  // trivial GPS drift from invalidating the deck cache. Full-precision coords
+  // are still passed to queryFn for accurate API results.
+  const roundedLat = location ? Math.round(location.lat * 1000) / 1000 : null;
+  const roundedLng = location ? Math.round(location.lng * 1000) / 1000 : null;
+
   const query = useQuery<DeckResponse>({
     queryKey: [
       'deck-cards',
-      location?.lat,
-      location?.lng,
+      roundedLat,
+      roundedLng,
       params.categories.sort().join(','),
       (params.intents ?? []).sort().join(','),
       (params.priceTiers ?? []).sort().join(','),

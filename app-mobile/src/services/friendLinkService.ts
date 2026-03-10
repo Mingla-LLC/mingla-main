@@ -1,6 +1,7 @@
 import { supabase, supabaseUrl } from "./supabase";
 import {
   FriendLink,
+  SentFriendLink,
   UserSearchResult,
   SendLinkResponse,
   RespondLinkResponse,
@@ -159,15 +160,42 @@ export async function getPendingLinkRequests(
 
 export async function getSentLinkRequests(
   userId: string
-): Promise<FriendLink[]> {
+): Promise<SentFriendLink[]> {
   const { data, error } = await supabase
     .from("friend_links")
     .select("*")
     .eq("requester_id", userId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data ?? []).map(mapFriendLink);
+  const links = (data ?? []).map(mapFriendLink);
+  if (links.length === 0) return [];
+
+  // Batch-fetch target profiles
+  const targetIds = links.map((l) => l.targetId);
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, display_name, username, avatar_url")
+    .in("id", targetIds);
+
+  const profileMap = new Map(
+    (profiles ?? []).map((p: any) => [p.id, p])
+  );
+
+  return links.map((link) => {
+    const p = profileMap.get(link.targetId);
+    return {
+      ...link,
+      targetProfile: p
+        ? {
+            display_name: p.display_name ?? null,
+            username: p.username ?? null,
+            avatar_url: p.avatar_url ?? null,
+          }
+        : null,
+    };
+  });
 }
 
 export async function cancelLinkRequest(linkId: string): Promise<void> {

@@ -21,6 +21,14 @@ export interface UserSearchResult {
   avatar_url: string | null
 }
 
+export interface SentFriendLink extends FriendLink {
+  targetProfile: {
+    display_name: string | null
+    username: string | null
+    avatar_url: string | null
+  } | null
+}
+
 export interface SendLinkResponse {
   linkId: string
   status: 'pending'

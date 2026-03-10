@@ -173,11 +173,6 @@ export default function ConnectionsPageRefactored({
     [friendRequests]
   );
 
-  const existingFriendIds = useMemo(
-    () => dbFriends.map((f) => f.friend_user_id || f.id),
-    [dbFriends]
-  );
-
   // Sort conversations by most recent message
   const sortedConversations = useMemo(() => {
     const sorted = [...conversations].sort((a, b) => {
@@ -1103,7 +1098,7 @@ export default function ConnectionsPageRefactored({
           {activePanel === "add" && (
             <AddFriendView
               currentUserId={user?.id || ""}
-              existingFriendIds={existingFriendIds}
+
               onRequestSent={() => loadFriendRequests()}
             />
           )}
@@ -1372,7 +1367,7 @@ export default function ConnectionsPageRefactored({
           {activePanel === "add" && (
             <AddFriendView
               currentUserId={user?.id || ""}
-              existingFriendIds={existingFriendIds}
+
               onRequestSent={() => loadFriendRequests()}
             />
           )}

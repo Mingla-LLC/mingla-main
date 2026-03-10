@@ -2082,18 +2082,27 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
-  // Gate: clear corrupted/oversized React Query persisted cache BEFORE provider mounts
-  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow
+  // Gate: clear oversized React Query persisted cache BEFORE provider mounts.
+  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow.
+  // Only clear if the cache actually exceeds the safety threshold (1.5MB).
+  // The shouldDehydrateQuery filter already excludes heavy queries, so the cache
+  // should stay small. Preserving it enables instant startup with cached prefs/location.
   const [cacheReady, setCacheReady] = React.useState(false);
 
   React.useEffect(() => {
-    AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+    const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
+    AsyncStorage.getItem('REACT_QUERY_OFFLINE_CACHE')
+      .then((cached) => {
+        if (cached && cached.length > MAX_CACHE_BYTES) {
+          return AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
+        }
+      })
       .catch(() => {})
       .finally(() => setCacheReady(true));
   }, []);
 
   if (!cacheReady) {
-    return null; // Brief blank frame while clearing corrupted cache
+    return null;
   }
 
   return (

@@ -152,7 +152,7 @@ The "Link a Friend" flow supports two methods:
 
 The Connect page manages friend relationships:
 
-- **Add Friends** -- Username search with debounced queries via `search-users` edge function. Send friend link requests with haptic feedback.
+- **Add Friends** -- Phone number entry with country picker (reuses full-screen CountryPickerModal with ISO code search), debounced phone lookup, send friend link requests or invite non-users via Share. "Sent" tab shows pending requests with cancel option.
 - **Requests** -- View and respond to pending friend link requests with accept/decline actions.
 - **Blocked** -- Manage blocked users.
 - **Invite** -- Share invite link via system share sheet.
@@ -458,11 +458,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Bulletproof Sign-Out Cleanup** -- Replaced fragile key-by-key AsyncStorage cleanup with a prefix-sweep approach (`mingla_*`, `@mingla*`, plus known non-prefixed user keys). Any future `mingla_`-prefixed key is automatically cleared on sign-out without code changes.
-- **Defense-in-Depth Phone Verification** -- OnboardingFlow resume logic now unconditionally overrides `phoneVerified` from `profiles.phone` in the database, so stale AsyncStorage data from a previous account can never skip OTP.
-- **React Query Cache Clear on Sign-Out** -- `queryClient.clear()` added to `handleSignOut()` to prevent stale server data from leaking across accounts.
-- **Account Deletion Error Handling** -- Removed misleading `async` from `setTimeout` callback, added explicit `.catch()` to prevent unhandled promise rejections.
-- **Cleanup Centralization** -- Removed duplicate AsyncStorage cleanup from `authService.signOut()`, establishing `handleSignOut()` in AppStateManager as the single source of truth for all sign-out cleanup.
+- **Country Picker Keyboard Fix** -- Replaced the broken inline country picker in AddFriendView (transparent bottom-sheet modal with no keyboard avoidance) with the reusable full-screen CountryPickerModal. Keyboard no longer covers search results. Added ISO code search to CountryPickerModal for feature parity across all pickers.
+- **Dead Code Cleanup** -- Removed unused `existingFriendIds` prop from AddFriendView and its call sites. Eliminated ~130 lines of duplicate modal code and 11 unused styles.
+- **Onboarding Data Cleanup** -- Fixed stale onboarding data surviving sign-out and account deletion.
+- **Add Friend Modal** -- Fixed add-friend modal not appearing on connections page.
 
 ---
 

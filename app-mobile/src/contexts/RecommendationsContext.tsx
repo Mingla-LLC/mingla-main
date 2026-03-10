@@ -596,10 +596,12 @@ export const RecommendationsProvider: React.FC<
       const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
       const prefetchDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
 
+      const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
+      const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
       queryClient.prefetchQuery({
         queryKey: [
           'deck-cards',
-          activeDeckLocation.lat, activeDeckLocation.lng,
+          prefetchLat, prefetchLng,
           prefetchCategories.sort().join(','),
           prefetchIntents.sort().join(','),
           prefetchPriceTiers.sort().join(','),
@@ -796,11 +798,14 @@ export const RecommendationsProvider: React.FC<
       ? "Failed to load location"
       : null;
 
+  // Once the initial fetch completed for the current mode, background refetches
+  // (location re-resolution, coordinate drift) must NOT re-show the loader.
+  // hasCompletedFetchForCurrentMode is the sole authority — it is reset only on
+  // explicit mode transitions (line 688), not on background query key changes.
   const hasCompletedInitialFetch =
     !isModeTransitioning &&
     !isWaitingForSessionResolution &&
-    hasCompletedFetchForCurrentMode &&
-    !isDeckLoading;
+    hasCompletedFetchForCurrentMode;
 
   const refreshRecommendations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["deck-cards"] });

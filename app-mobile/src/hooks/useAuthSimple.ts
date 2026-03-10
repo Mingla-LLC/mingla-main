@@ -68,7 +68,7 @@ export const useAuthSimple = () => {
 
         if (session?.user) {
           logger.auth('Session found', { userId: session.user.id, email: session.user.email });
-          setAuth(session.user as User);
+          if (mounted) setAuth(session.user as User);
 
           // Load profile
           try {
@@ -102,9 +102,11 @@ export const useAuthSimple = () => {
                   logger.auth('User deleted or session invalid — signing out');
                   // User was deleted or session is invalid - sign out and clear
                   await supabase.auth.signOut();
-                  setAuth(null);
-                  clearUserData();
-                  if (mounted) setLoading(false);
+                  if (mounted) {
+                    setAuth(null);
+                    clearUserData();
+                    setLoading(false);
+                  }
                   return;
                 }
 
@@ -132,7 +134,7 @@ export const useAuthSimple = () => {
                   if (createError) {
                     console.error("Error creating profile:", createError);
                   } else {
-                    setProfile(newProfile);
+                    if (mounted) setProfile(newProfile);
                   }
                 } catch (createError) {
                   console.error("Error creating profile:", createError);
@@ -140,7 +142,7 @@ export const useAuthSimple = () => {
               }
             } else if (profile) {
               logger.auth('Profile loaded', { displayName: profile.display_name, onboarding: profile.has_completed_onboarding });
-              setProfile(profile);
+              if (mounted) setProfile(profile);
             }
           } catch (profileError) {
             logger.error('Profile load exception', { error: String(profileError) });
@@ -148,7 +150,7 @@ export const useAuthSimple = () => {
           }
         } else {
           logger.auth('No session — user not authenticated');
-          setAuth(null);
+          if (mounted) setAuth(null);
         }
 
         if (mounted) {
@@ -170,9 +172,8 @@ export const useAuthSimple = () => {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
       if (session?.user) {
-        setAuth(session.user as User);
+        if (mounted) setAuth(session.user as User);
 
-        // Load profile
         try {
           const { data: profile, error: profileError } = await supabase
             .from("profiles")
@@ -183,7 +184,6 @@ export const useAuthSimple = () => {
           if (profileError) {
             console.error("Error loading profile:", profileError);
 
-            // If profile not found, validate user still exists
             if (profileError.code === "PGRST116") {
               const {
                 data: { user: authUser },
@@ -192,19 +192,23 @@ export const useAuthSimple = () => {
 
               if (userError || !authUser || authUser.id !== session.user.id) {
                 await supabase.auth.signOut();
-                setAuth(null);
-                clearUserData();
+                if (mounted) {
+                  setAuth(null);
+                  clearUserData();
+                }
               }
             }
           } else if (profile) {
-            setProfile(profile);
+            if (mounted) setProfile(profile);
           }
         } catch (profileError) {
           console.error("Error loading profile:", profileError);
         }
       } else {
-        setAuth(null);
-        clearUserData();
+        if (mounted) {
+          setAuth(null);
+          clearUserData();
+        }
       }
 
       if (mounted) {

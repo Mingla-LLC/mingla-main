@@ -797,21 +797,28 @@ export function useAppState() {
       // Uses prefix sweep instead of explicit key list — future-proof against new keys.
       // Preserves: device-level keys (selected_language, translation_cache, REACT_QUERY_OFFLINE_CACHE)
       // and the Zustand persist key (mingla-mobile-storage) which is reset by clearUserData() above.
-      const allKeys = await AsyncStorage.getAllKeys();
-      const userScopedKeys = allKeys.filter((key) => {
-        if (key.startsWith("mingla_")) return true;
-        if (key.startsWith("@mingla")) return true;
-        if (key.startsWith("board_cache_")) return true;
-        if (key.startsWith("dismissed_cards_")) return true;
-        if (key.startsWith("debug_logs_")) return true;
-        if (key === "offline_data") return true;
-        if (key === "pending_actions") return true;
-        if (key === "realtime_offline_queue") return true;
-        if (key === "recommendation_cache") return true;
-        return false;
-      });
-      if (userScopedKeys.length > 0) {
-        await AsyncStorage.multiRemove(userScopedKeys);
+      // Wrapped in its own try/catch so queryClient.clear() and signOut() always execute
+      // even if AsyncStorage is corrupted or throws.
+      try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const userScopedKeys = allKeys.filter((key) => {
+          if (key.startsWith("mingla_")) return true;
+          if (key.startsWith("mingla:")) return true;
+          if (key.startsWith("@mingla")) return true;
+          if (key.startsWith("board_cache_")) return true;
+          if (key.startsWith("dismissed_cards_")) return true;
+          if (key.startsWith("debug_logs_")) return true;
+          if (key === "offline_data") return true;
+          if (key === "pending_actions") return true;
+          if (key === "realtime_offline_queue") return true;
+          if (key === "recommendation_cache") return true;
+          return false;
+        });
+        if (userScopedKeys.length > 0) {
+          await AsyncStorage.multiRemove(userScopedKeys);
+        }
+      } catch (storageError) {
+        console.error("AsyncStorage cleanup failed:", storageError);
       }
 
       // Clear React Query cache — prevents stale server data from leaking across accounts

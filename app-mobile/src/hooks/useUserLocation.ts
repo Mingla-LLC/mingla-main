@@ -95,19 +95,23 @@ export const useUserLocation = (
   currentMode: string,
   refreshKey: number | string | undefined
 ) => {
-  // Read current preferences from React Query cache to get location fields
+  // Read current preferences from React Query cache to get location fields.
+  // CRITICAL: Normalize undefined → stable defaults so the query key does NOT change
+  // when preferences load. Before prefs load, cachedPrefs is undefined, so both values
+  // are undefined. After prefs load, they become null/true. Normalizing prevents this
+  // transition from changing the query key and triggering a redundant location refetch.
   const cachedPrefs = useQueryClient().getQueryData<UserPreferences>(
     ['userPreferences', userId]
   );
-  const customLocation = cachedPrefs?.custom_location;
-  const useGpsFlag = cachedPrefs?.use_gps_location;
+  const customLocation = cachedPrefs?.custom_location ?? null;
+  const useGpsFlag = cachedPrefs?.use_gps_location ?? true;
 
   const query = useQuery({
     queryKey: ['userLocation', userId, currentMode, refreshKey, customLocation, useGpsFlag],
     queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLocation, useGpsFlag),
-    enabled: true, // Always enabled, handles userId check internally
-    staleTime: Infinity, // Location doesn't go stale unless mode/refreshKey/location prefs change
-    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
+    enabled: true,
+    staleTime: Infinity,
+    gcTime: 24 * 60 * 60 * 1000,
     placeholderData: (previousData) => previousData,
     initialData: cachedLocationSync ?? undefined,
   });

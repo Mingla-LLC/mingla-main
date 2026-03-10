@@ -69,24 +69,30 @@ export class EnhancedLocationService {
 
   async getCurrentLocation(): Promise<LocationData | null> {
     try {
-      // First check if location services are enabled
       const isEnabled = await Location.hasServicesEnabledAsync();
       if (!isEnabled) {
-        // Location services disabled - try last known location silently
         return await this.getLastKnownLocation();
       }
 
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
-        // Try to get last known location if permission denied
         return await this.getLastKnownLocation();
       }
 
-      // Now safe to get current location
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 5000,
+      // Wrap GPS fetch in a 10-second timeout. getCurrentPositionAsync has no
+      // built-in timeout — timeInterval is for subscriptions only. Without this,
+      // the call can hang indefinitely indoors or on flaky simulators.
+      const GPS_TIMEOUT_MS = 10_000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('GPS_TIMEOUT')), GPS_TIMEOUT_MS);
       });
+
+      const location = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }),
+        timeoutPromise,
+      ]);
 
       const locationData: LocationData = {
         latitude: location.coords.latitude,
@@ -101,29 +107,28 @@ export class EnhancedLocationService {
       this.lastLocation = locationData;
       return locationData;
     } catch (error: any) {
-      // Check if location services are disabled or unavailable
       const errorMessage = error?.message || String(error) || "";
-      const isLocationServiceError =
+
+      // GPS timeout or location service error — fall back silently
+      const isExpectedError =
+        errorMessage === 'GPS_TIMEOUT' ||
         errorMessage.includes("location services") ||
         errorMessage.includes("unavailable") ||
         errorMessage.includes("Location services are not enabled") ||
         errorMessage.includes("Current location is unavailable");
 
-      if (isLocationServiceError) {
-        // Try to get last known location as fallback (silently)
+      if (isExpectedError) {
         try {
           const lastKnown = await this.getLastKnownLocation();
           if (lastKnown) {
             return lastKnown;
           }
         } catch {
-          // Ignore errors when getting last known location
+          // Ignore
         }
-        // Return null silently - don't log expected errors
         return null;
       }
 
-      // Only log unexpected errors
       console.error("Error getting current location:", error);
       return null;
     }

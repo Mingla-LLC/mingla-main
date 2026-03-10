@@ -46,7 +46,8 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
     return COUNTRIES.filter(
       (c) =>
         c.name.toLowerCase().includes(query) ||
-        c.dialCode.includes(query),
+        c.dialCode.includes(query) ||
+        c.code.toLowerCase().includes(query),
     );
   }, [search]);
 
