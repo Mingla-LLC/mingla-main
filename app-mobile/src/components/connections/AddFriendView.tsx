@@ -19,10 +19,13 @@ import {
 import { CountryData } from "../../types/onboarding";
 import { CountryPickerModal } from "../onboarding/CountryPickerModal";
 import { SentFriendLink } from "../../types/friendLink";
+import { PendingInvite } from "../../services/phoneLookupService";
 import {
   useSendFriendLink,
   useSentLinkRequests,
   useCancelLinkRequest,
+  usePendingPhoneInvites,
+  useCancelPhoneInvite,
 } from "../../hooks/useFriendLinks";
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 import { createPendingInvite } from "../../services/phoneLookupService";
@@ -31,6 +34,11 @@ import { s, vs } from "../../utils/responsive";
 import { useCoachMarkActions } from "../education/CoachMarkProvider";
 
 type Tab = "add" | "sent";
+
+// Unified item type for the sent list
+type SentItem =
+  | { kind: "request"; data: SentFriendLink }
+  | { kind: "invite"; data: PendingInvite };
 
 interface AddFriendViewProps {
   currentUserId: string;
@@ -43,16 +51,40 @@ export function AddFriendView({
 }: AddFriendViewProps) {
   const sendLinkMutation = useSendFriendLink();
   const cancelMutation = useCancelLinkRequest();
+  const cancelInviteMutation = useCancelPhoneInvite();
   const { user } = useAppStore();
   const { fireAction } = useCoachMarkActions();
 
   const [activeTab, setActiveTab] = useState<Tab>("add");
 
-  // Sent requests data
+  // Sent requests data (Mingla users)
   const {
     data: sentRequests = [],
     isLoading: sentLoading,
   } = useSentLinkRequests(currentUserId);
+
+  // Pending phone invites (non-Mingla users)
+  const {
+    data: pendingInvites = [],
+    isLoading: invitesLoading,
+  } = usePendingPhoneInvites(currentUserId);
+
+  // Merge into a single sorted list
+  const sentItems = useMemo<SentItem[]>(() => {
+    const items: SentItem[] = [
+      ...sentRequests.map((r) => ({ kind: "request" as const, data: r })),
+      ...pendingInvites.map((i) => ({ kind: "invite" as const, data: i })),
+    ];
+    items.sort(
+      (a, b) =>
+        new Date(b.data.createdAt).getTime() -
+        new Date(a.data.createdAt).getTime()
+    );
+    return items;
+  }, [sentRequests, pendingInvites]);
+
+  const sentTabLoading = sentLoading || invitesLoading;
+  const sentTabCount = sentItems.length;
 
   // Phone input state
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -180,6 +212,28 @@ export function AddFriendView({
     );
   }, [cancelMutation]);
 
+  const handleCancelInvite = useCallback((inviteId: string, phone: string) => {
+    Alert.alert(
+      "Cancel Invite",
+      `Cancel your invite to ${phone}?`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel Invite",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await cancelInviteMutation.mutateAsync(inviteId);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err) {
+              Alert.alert("Error", "Failed to cancel invite. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  }, [cancelInviteMutation]);
+
   const getDisplayName = (link: SentFriendLink): string => {
     if (!link.targetProfile) return "Unknown";
     return link.targetProfile.display_name || link.targetProfile.username || "Unknown";
@@ -206,22 +260,47 @@ export function AddFriendView({
     return `${days}d ago`;
   };
 
-  const renderSentRequest = ({ item }: { item: SentFriendLink }) => {
-    const displayName = getDisplayName(item);
+  const renderSentItem = ({ item }: { item: SentItem }) => {
+    if (item.kind === "request") {
+      const link = item.data;
+      const displayName = getDisplayName(link);
+      return (
+        <View style={styles.sentRow}>
+          <View style={styles.sentAvatar}>
+            <Text style={styles.sentAvatarText}>{getInitials(displayName)}</Text>
+          </View>
+          <View style={styles.sentInfo}>
+            <Text style={styles.sentName} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.sentTime}>{formatTimeAgo(link.createdAt)}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleCancelRequest(link.id, displayName)}
+            style={styles.cancelButton}
+            activeOpacity={0.7}
+            disabled={cancelMutation.isPending}
+          >
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Phone invite
+    const invite = item.data;
     return (
       <View style={styles.sentRow}>
-        <View style={styles.sentAvatar}>
-          <Text style={styles.sentAvatarText}>{getInitials(displayName)}</Text>
+        <View style={styles.inviteAvatar}>
+          <Ionicons name="call-outline" size={16} color="#ffffff" />
         </View>
         <View style={styles.sentInfo}>
-          <Text style={styles.sentName} numberOfLines={1}>{displayName}</Text>
-          <Text style={styles.sentTime}>{formatTimeAgo(item.createdAt)}</Text>
+          <Text style={styles.sentName} numberOfLines={1}>{invite.phoneE164}</Text>
+          <Text style={styles.sentTime}>Invited {formatTimeAgo(invite.createdAt)}</Text>
         </View>
         <TouchableOpacity
-          onPress={() => handleCancelRequest(item.id, displayName)}
+          onPress={() => handleCancelInvite(invite.id, invite.phoneE164)}
           style={styles.cancelButton}
           activeOpacity={0.7}
-          disabled={cancelMutation.isPending}
+          disabled={cancelInviteMutation.isPending}
         >
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
@@ -248,7 +327,7 @@ export function AddFriendView({
           activeOpacity={0.7}
         >
           <Text style={[styles.tabText, activeTab === "sent" && styles.tabTextActive]}>
-            Sent{sentRequests.length > 0 ? ` (${sentRequests.length})` : ""}
+            Sent{sentTabCount > 0 ? ` (${sentTabCount})` : ""}
           </Text>
         </TouchableOpacity>
       </View>
@@ -354,30 +433,32 @@ export function AddFriendView({
         </>
       )}
 
-      {/* Sent Requests tab */}
+      {/* Sent Requests + Invites tab */}
       {activeTab === "sent" && (
         <>
-          {sentLoading ? (
+          {sentTabLoading ? (
             <View style={styles.sentLoadingState}>
               <ActivityIndicator size="small" color="#eb7825" />
             </View>
-          ) : sentRequests.length === 0 ? (
+          ) : sentItems.length === 0 ? (
             <View style={styles.sentEmptyState}>
               <Ionicons name="paper-plane-outline" size={32} color="#d1d5db" />
-              <Text style={styles.sentEmptyText}>No pending sent requests</Text>
+              <Text style={styles.sentEmptyText}>No pending requests or invites</Text>
             </View>
           ) : (
             <FlatList
-              data={sentRequests}
-              keyExtractor={(item) => item.id}
-              renderItem={renderSentRequest}
+              data={sentItems}
+              keyExtractor={(item) =>
+                item.kind === "request" ? `req-${item.data.id}` : `inv-${item.data.id}`
+              }
+              renderItem={renderSentItem}
               scrollEnabled={false}
             />
           )}
         </>
       )}
 
-      {/* Country picker modal — reuses the battle-tested full-screen component */}
+      {/* Country picker modal */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={selectedCountry.code}
@@ -542,6 +623,15 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  inviteAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#8b5cf6",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,

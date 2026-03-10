@@ -2123,11 +2123,13 @@ export default function App() {
               // Never persist these heavy/transient queries:
               // - savedCards, calendarEntries: refetched on mount
               // - curated-experiences: very large payload (20 cards × 3 stops)
+              // - deck-cards: 20 Recommendation[] with strollData/stops — too large
               // - recommendations: large + stale quickly
               if (
                 firstKey === "savedCards" ||
                 firstKey === "calendarEntries" ||
                 firstKey === "curated-experiences" ||
+                firstKey === "deck-cards" ||
                 firstKey === "recommendations" ||
                 firstKey === "phone-lookup"
               ) {

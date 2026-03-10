@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as friendLinkService from "../services/friendLinkService";
+import { getPendingInvites, cancelPendingInvite } from "../services/phoneLookupService";
 import { savedPeopleKeys } from "./useSavedPeople";
 import { personalizedCardKeys } from "./usePersonalizedCards";
 
@@ -85,6 +86,25 @@ export function useCancelLinkRequest() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: friendLinkService.cancelLinkRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+    },
+  });
+}
+
+export function usePendingPhoneInvites(userId: string) {
+  return useQuery({
+    queryKey: friendLinkKeys.phoneInvites(userId),
+    queryFn: () => getPendingInvites(userId),
+    enabled: !!userId,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useCancelPhoneInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: cancelPendingInvite,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
     },
