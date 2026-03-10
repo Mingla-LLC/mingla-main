@@ -102,9 +102,9 @@ serve(async (req: Request) => {
     }
 
     // Check for existing active link between both users (check both directions)
-    const { data: existingLinks, error: linkCheckError } = await supabase
+    const { data: existingLinks, error: linkCheckError } = await supabaseAdmin
       .from("friend_links")
-      .select("id, status")
+      .select("id, status, link_status")
       .or(
         `and(requester_id.eq.${requesterId},target_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},target_id.eq.${requesterId})`
       )
@@ -122,6 +122,118 @@ serve(async (req: Request) => {
     }
 
     if (existingLinks && existingLinks.length > 0) {
+      // Check if this is a re-initiation after link consent was declined
+      const declinedLink = existingLinks.find(
+        (l: any) => l.status === "accepted" && l.link_status === "declined"
+      );
+
+      if (declinedLink) {
+        // Re-initiate: reset consent flow on the existing link
+        const { error: resetError } = await supabaseAdmin
+          .from("friend_links")
+          .update({
+            link_status: "pending_consent",
+            requester_link_consent: false,
+            target_link_consent: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", declinedLink.id);
+
+        if (resetError) {
+          console.error("Re-initiation reset error:", resetError);
+          return new Response(
+            JSON.stringify({ error: "Failed to re-initiate link consent" }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        // Send consent notifications to both users
+        try {
+          const requesterDisplayName = (await supabaseAdmin
+            .from("profiles")
+            .select("display_name, username")
+            .eq("id", requesterId)
+            .single()).data;
+
+          const requesterName = requesterDisplayName?.display_name || requesterDisplayName?.username || "Your friend";
+          const targetName = targetProfile.display_name || "Your friend";
+
+          const { data: requesterToken } = await supabaseAdmin
+            .from("user_push_tokens")
+            .select("push_token")
+            .eq("user_id", requesterId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (requesterToken?.push_token) {
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: requesterToken.push_token,
+                sound: "default",
+                title: "Link profiles?",
+                body: `Want to link profiles and share details with ${targetName}?`,
+                data: {
+                  type: "link_consent_request",
+                  linkId: declinedLink.id,
+                  friendName: targetName,
+                  friendUserId: targetUserId,
+                },
+              }),
+            }).catch(() => {});
+          }
+
+          const { data: targetToken } = await supabaseAdmin
+            .from("user_push_tokens")
+            .select("push_token")
+            .eq("user_id", targetUserId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (targetToken?.push_token) {
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: targetToken.push_token,
+                sound: "default",
+                title: "Link profiles?",
+                body: `${requesterName} wants to link profiles and share details with you.`,
+                data: {
+                  type: "link_consent_request",
+                  linkId: declinedLink.id,
+                  friendName: requesterName,
+                  friendUserId: requesterId,
+                },
+              }),
+            }).catch(() => {});
+          }
+        } catch (pushErr) {
+          console.error("Re-initiation push error:", pushErr);
+          // Non-fatal
+        }
+
+        return new Response(
+          JSON.stringify({
+            linkId: declinedLink.id,
+            status: "accepted",
+            linkStatus: "pending_consent",
+            reInitiated: true,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Not a re-initiation — link already exists
       return new Response(
         JSON.stringify({ error: "A link already exists between these users" }),
         {

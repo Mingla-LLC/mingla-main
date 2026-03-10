@@ -76,7 +76,7 @@ serve(async (req: Request) => {
     // Fetch the link — must be accepted
     const { data: link, error: linkError } = await supabaseAdmin
       .from("friend_links")
-      .select("id, requester_id, target_id, status, requester_person_id, target_person_id")
+      .select("id, requester_id, target_id, status, link_status, requester_person_id, target_person_id")
       .eq("id", linkId)
       .maybeSingle();
 
@@ -93,6 +93,17 @@ serve(async (req: Request) => {
     if (link.status !== "accepted") {
       return new Response(
         JSON.stringify({ error: "Link is not currently active" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Profiles must be linked (both consented) before they can be unlinked
+    if (link.link_status !== "consented") {
+      return new Response(
+        JSON.stringify({ error: "Profiles are not linked — nothing to unlink" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -65,6 +65,7 @@ import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
+import { usePendingLinkConsents } from "../src/hooks/useLinkConsent";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -198,6 +199,12 @@ function AppContent() {
     onboardingData,
     setOnboardingData,
   } = state;
+
+  // Pending link consent count for badge on Connections tab
+  const { data: pendingLinkConsents } = usePendingLinkConsents(
+    isAuthenticated && hasCompletedOnboarding ? user?.id : undefined
+  );
+  const pendingConsentCount = pendingLinkConsents?.length ?? 0;
 
   // Transform boardsSessions to CollaborationSession format for the sessions bar
   const collaborationSessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => {
@@ -1751,6 +1758,9 @@ function AppContent() {
                                   </Text>
                                 </View>
                               )}
+                              {totalUnreadMessages === 0 && pendingConsentCount > 0 && (
+                                <View style={styles.tabBadgeDot} />
+                              )}
                             </View>
                             <Text
                               style={[
@@ -2003,6 +2013,17 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "700",
   },
+  tabBadgeDot: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    width: ms(8),
+    height: ms(8),
+    backgroundColor: "#eb7825",
+    borderRadius: ms(4),
+    borderWidth: 1.5,
+    borderColor: "white",
+  },
   navText: {
     fontSize: ms(10),
     marginTop: vs(2),
@@ -2099,11 +2120,19 @@ export default function App() {
                 firstKey === "curated-experiences" ||
                 firstKey === "deck-cards" ||
                 firstKey === "recommendations" ||
-                firstKey === "phone-lookup"
+                firstKey === "phone-lookup" ||
+                firstKey === "link-consent"
               ) {
                 return false;
               }
             }
+            // Never persist queries that are still fetching — their promises
+            // can't be serialized and cause "promise.then is not a function"
+            // crash during hydration on next app launch
+            if (query.state.fetchStatus === 'fetching') {
+              return false;
+            }
+
             // Persist lightweight queries (preferences, location, etc.)
             return true;
           },

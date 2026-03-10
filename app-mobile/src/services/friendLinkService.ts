@@ -20,6 +20,10 @@ function mapFriendLink(row: any): FriendLink {
     acceptedAt: row.accepted_at ?? null,
     unlinkedAt: row.unlinked_at ?? null,
     unlinkedBy: row.unlinked_by ?? null,
+    linkStatus: row.link_status ?? "none",
+    requesterLinkConsent: row.requester_link_consent ?? false,
+    targetLinkConsent: row.target_link_consent ?? false,
+    linkedAt: row.linked_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

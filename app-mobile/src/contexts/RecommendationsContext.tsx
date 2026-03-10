@@ -642,7 +642,7 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     if (isSoloMode || isCollaborationMode) {
       if (deckCards.length > 0) {
-        const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
+        const deckIdsKey = `${batchSeed}:${deckCards.map(c => c.id).sort().join(',')}`;
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
           // ALWAYS replace — never append. Each batch is a fresh set of cards.

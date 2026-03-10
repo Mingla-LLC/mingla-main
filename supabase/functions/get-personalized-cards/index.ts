@@ -186,6 +186,7 @@ serve(async (req: Request) => {
         `and(requester_id.eq.${currentUserId},target_id.eq.${linkedUserId}),and(requester_id.eq.${linkedUserId},target_id.eq.${currentUserId})`
       )
       .eq("status", "accepted")
+      .eq("link_status", "consented")
       .maybeSingle();
 
     if (linkError || !acceptedLink) {

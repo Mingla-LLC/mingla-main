@@ -108,22 +108,12 @@ export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
 ];
 
 /**
- * Grocery/market place types excluded from all experience intents.
- * These are utility errands, not date/outing destinations.
- */
-const GROCERY_EXCLUDED_PLACE_TYPES: string[] = [
-  'grocery_store', 'supermarket', 'food_store', 'market',
-  'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
-];
-
-/**
  * Additional place types excluded specifically for the Romantic intent.
  * These are kid/family-oriented venues inappropriate for intimate dates.
  * Applied on top of GLOBAL_EXCLUDED_PLACE_TYPES.
  */
 export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
   ...GLOBAL_EXCLUDED_PLACE_TYPES,
-  ...GROCERY_EXCLUDED_PLACE_TYPES,
   'indoor_playground',
   'amusement_park',
   'water_park',
@@ -132,19 +122,109 @@ export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
   'children_store',
   'child_care_agency',
   'preschool',
+  // Retail / store exclusions
+  'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+  'building_materials_store', 'butcher_shop', 'cell_phone_store',
+  'clothing_store', 'convenience_store', 'cosmetics_store',
+  'department_store', 'discount_store', 'discount_supermarket',
+  'electronics_store', 'farmers_market', 'flea_market',
+  'food_store', 'furniture_store', 'garden_center',
+  'general_store', 'gift_shop', 'hardware_store',
+  'health_food_store', 'home_goods_store', 'home_improvement_store',
+  'hypermarket', 'jewelry_store', 'liquor_store',
+  'market', 'pet_store', 'shoe_store',
+  'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+  'tea_store', 'thrift_store', 'toy_store',
+  'warehouse_store', 'wholesaler', 'womens_clothing_store',
 ];
 
 /**
- * Per-intent exclusion lists. Each intent excludes grocery/market types
- * (utility errands) on top of the global exclusions.
+ * Per-intent exclusion lists. Each intent excludes retail/store types
+ * on top of the global exclusions. picnic-dates is intentionally excluded
+ * from this list (no retail filtering).
  */
 export const INTENT_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
-  'adventurous':    [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
-  'first-date':     [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
-  'romantic':       ROMANTIC_EXCLUDED_PLACE_TYPES,
-  'friendly':       [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
-  'group-fun':      [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
-  'take-a-stroll':  [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+  'adventurous': [
+    ...GLOBAL_EXCLUDED_PLACE_TYPES,
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+  ],
+  'first-date': [
+    ...GLOBAL_EXCLUDED_PLACE_TYPES,
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+  ],
+  'romantic': ROMANTIC_EXCLUDED_PLACE_TYPES,
+  'friendly': [
+    ...GLOBAL_EXCLUDED_PLACE_TYPES,
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+  ],
+  'group-fun': [
+    ...GLOBAL_EXCLUDED_PLACE_TYPES,
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+  ],
+  'take-a-stroll': [
+    ...GLOBAL_EXCLUDED_PLACE_TYPES,
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+  ],
 };
 
 /**
@@ -337,29 +417,97 @@ export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
  */
 export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   'Nature': [
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'store', 'warehouse_store',
     'movie_theater', 'video_arcade', 'bowling_alley', 'casino',
     'night_club', 'karaoke', 'amusement_center', 'amusement_park',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    'store',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'First Meet': [
     'night_club', 'bar', 'cocktail_bar', 'lounge_bar', 'brewery', 'brewpub',
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'indoor_playground', 'water_park',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Picnic': [
     'dog_park', 'amusement_park', 'water_park',
     'bar', 'night_club', 'casino', 'movie_theater', 'video_arcade',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Drink': [
     'fine_dining_restaurant', 'spa', 'sauna', 'amusement_park', 'water_park',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Casual Eats': [
     'fine_dining_restaurant', 'bar', 'night_club', 'spa',
-    'grocery_store', 'supermarket', 'food_store', 'market',
-    'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
+    'grocery_store', 'supermarket',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Fine Dining': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
@@ -367,36 +515,72 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Romantic exclusions (fine dining is often romantic context)
     'indoor_playground', 'amusement_center', 'playground',
     'children_store', 'child_care_agency', 'preschool',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Creative & Arts': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
     'amusement_park', 'water_park', 'spa', 'sauna', 'night_club',
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'warehouse_store', 'store',
+    'store',
     'sports_complex', 'sports_club',
     'stadium', 'race_course', 'tennis_court', 'swimming_pool',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Watch': [
-    // Retail / commercial — irrelevant to entertainment venues
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'store', 'warehouse_store',
+    'store',
     // Sports / active — wrong context for seated entertainment
     'sports_complex', 'sports_club', 'stadium', 'race_course',
     'tennis_court', 'swimming_pool', 'skateboard_park',
     // Grocery / utility
-    'grocery_store', 'supermarket', 'convenience_store',
+    'grocery_store', 'supermarket',
     'gas_station', 'car_repair', 'car_wash',
     // Transit / infrastructure
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Play': [
-    // Retail
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'warehouse_store', 'store', 'market',
-    'food_store', 'supermarket',
+    'store',
     // Culture venues (belong in Creative & Arts)
     'art_gallery', 'museum', 'cultural_center', 'art_museum', 'history_museum',
     // Low-end food
@@ -405,6 +589,20 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Wellness': [
     // Sports/fitness
@@ -415,16 +613,27 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
     // Nightlife
     'night_club', 'karaoke',
-    // Retail
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'warehouse_store', 'store', 'market',
-    'food_store', 'supermarket', 'grocery_store',
+    'store', 'grocery_store', 'supermarket',
     // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
     // Medical
     'doctor', 'dentist', 'medical_clinic', 'medical_center',
     'medical_lab', 'hospital', 'general_hospital',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
   'Groceries & Flowers': [
     // Low-end food / restaurants
@@ -458,13 +667,24 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'stadium', 'tennis_court', 'swimming_pool', 'race_course',
     // Kids/water
     'indoor_playground', 'childrens_camp', 'water_park',
-    // Retail
-    'shopping_mall', 'department_store', 'electronics_store',
-    'furniture_store', 'warehouse_store', 'store', 'market',
-    'food_store', 'supermarket', 'grocery_store',
+    'store', 'grocery_store', 'supermarket',
     // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // Retail / store exclusions
+    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+    'building_materials_store', 'butcher_shop', 'cell_phone_store',
+    'clothing_store', 'convenience_store', 'cosmetics_store',
+    'department_store', 'discount_store', 'discount_supermarket',
+    'electronics_store', 'farmers_market', 'flea_market',
+    'food_store', 'furniture_store', 'garden_center',
+    'general_store', 'gift_shop', 'hardware_store',
+    'health_food_store', 'home_goods_store', 'home_improvement_store',
+    'hypermarket', 'jewelry_store', 'liquor_store',
+    'market', 'pet_store', 'shoe_store',
+    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+    'tea_store', 'thrift_store', 'toy_store',
+    'warehouse_store', 'wholesaler', 'womens_clothing_store',
   ],
 };
 

@@ -1,4 +1,5 @@
 export type FriendLinkStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'unlinked'
+export type LinkConsentStatus = 'none' | 'pending_consent' | 'consented' | 'declined'
 
 export interface FriendLink {
   id: string
@@ -10,6 +11,10 @@ export interface FriendLink {
   acceptedAt: string | null
   unlinkedAt: string | null
   unlinkedBy: string | null
+  linkStatus: LinkConsentStatus
+  requesterLinkConsent: boolean
+  targetLinkConsent: boolean
+  linkedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -36,6 +41,8 @@ export interface SendLinkResponse {
 
 export interface RespondLinkResponse {
   status: 'accepted' | 'declined'
+  linkId?: string
+  linkStatus?: string
   personId?: string
   linkedPersonId?: string
 }

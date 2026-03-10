@@ -11,16 +11,6 @@ const corsHeaders = {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ── Generate initials from display name ──────────────────────────────────────
-function generateInitials(displayName: string): string {
-  if (!displayName) return "??";
-  const words = displayName.trim().split(/\s+/);
-  if (words.length === 1) {
-    return words[0].substring(0, 2).toUpperCase();
-  }
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
 serve(async (req: Request) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -88,7 +78,7 @@ serve(async (req: Request) => {
 
     const currentUserId = user.id;
 
-    // Service-role client for all DB operations (cross-user inserts into saved_people)
+    // Service-role client for all DB operations
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -157,10 +147,10 @@ serve(async (req: Request) => {
     const requesterId = link.requester_id;
     const targetId = link.target_id;
 
-    // Fetch requester profile
+    // Fetch both profiles (needed for consent notifications)
     const { data: requesterProfile, error: reqProfileError } = await supabaseAdmin
       .from("profiles")
-      .select("display_name, username, birthday, gender, avatar_url")
+      .select("display_name, username")
       .eq("id", requesterId)
       .single();
 
@@ -175,10 +165,9 @@ serve(async (req: Request) => {
       );
     }
 
-    // Fetch target profile
     const { data: targetProfile, error: tgtProfileError } = await supabaseAdmin
       .from("profiles")
-      .select("display_name, username, birthday, gender, avatar_url")
+      .select("display_name, username")
       .eq("id", targetId)
       .single();
 
@@ -193,125 +182,18 @@ serve(async (req: Request) => {
       );
     }
 
-    // Generate initials
-    const requesterInitials = generateInitials(requesterProfile.display_name || requesterProfile.username || "");
-    const targetInitials = generateInitials(targetProfile.display_name || targetProfile.username || "");
+    const requesterDisplayName = requesterProfile.display_name || requesterProfile.username || "Your friend";
+    const targetDisplayName = targetProfile.display_name || targetProfile.username || "Your friend";
 
-    // ── Create/update saved_people entry for requester on TARGET's side ──
-    // Check if target already has a saved_people entry for this linked_user
-    const { data: existingTargetPerson } = await supabaseAdmin
-      .from("saved_people")
-      .select("id")
-      .eq("user_id", targetId)
-      .eq("linked_user_id", requesterId)
-      .maybeSingle();
-
-    let targetPersonId: string;
-    if (existingTargetPerson) {
-      // Update existing entry to mark as linked
-      await supabaseAdmin
-        .from("saved_people")
-        .update({
-          is_linked: true,
-          link_id: linkId,
-          name: requesterProfile.display_name || requesterProfile.username || "Linked Friend",
-          initials: requesterInitials,
-          birthday: requesterProfile.birthday || null,
-          gender: requesterProfile.gender || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingTargetPerson.id);
-      targetPersonId = existingTargetPerson.id;
-    } else {
-      const { data: targetPersonEntry, error: targetPersonError } = await supabaseAdmin
-        .from("saved_people")
-        .insert({
-          user_id: targetId,
-          name: requesterProfile.display_name || requesterProfile.username || "Linked Friend",
-          initials: requesterInitials,
-          birthday: requesterProfile.birthday || null,
-          gender: requesterProfile.gender || null,
-          is_linked: true,
-          linked_user_id: requesterId,
-          link_id: linkId,
-        })
-        .select("id")
-        .single();
-
-      if (targetPersonError || !targetPersonEntry) {
-        console.error("Target saved_people insert error:", targetPersonError);
-        return new Response(
-          JSON.stringify({ error: "Accept failed: target saved_people insert", detail: targetPersonError?.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-      targetPersonId = targetPersonEntry.id;
-    }
-
-    // ── Create/update saved_people entry for target on REQUESTER's side ──
-    const { data: existingRequesterPerson } = await supabaseAdmin
-      .from("saved_people")
-      .select("id")
-      .eq("user_id", requesterId)
-      .eq("linked_user_id", targetId)
-      .maybeSingle();
-
-    let requesterPersonId: string;
-    if (existingRequesterPerson) {
-      // Update existing entry to mark as linked
-      await supabaseAdmin
-        .from("saved_people")
-        .update({
-          is_linked: true,
-          link_id: linkId,
-          name: targetProfile.display_name || targetProfile.username || "Linked Friend",
-          initials: targetInitials,
-          birthday: targetProfile.birthday || null,
-          gender: targetProfile.gender || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingRequesterPerson.id);
-      requesterPersonId = existingRequesterPerson.id;
-    } else {
-      const { data: requesterPersonEntry, error: requesterPersonError } = await supabaseAdmin
-        .from("saved_people")
-        .insert({
-          user_id: requesterId,
-          name: targetProfile.display_name || targetProfile.username || "Linked Friend",
-          initials: targetInitials,
-          birthday: targetProfile.birthday || null,
-          gender: targetProfile.gender || null,
-          is_linked: true,
-          linked_user_id: targetId,
-          link_id: linkId,
-        })
-        .select("id")
-        .single();
-
-      if (requesterPersonError || !requesterPersonEntry) {
-        console.error("Requester saved_people insert error:", requesterPersonError);
-        return new Response(
-          JSON.stringify({ error: "Accept failed: requester saved_people insert", detail: requesterPersonError?.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-      requesterPersonId = requesterPersonEntry.id;
-    }
-
-    // Update friend_links with accepted status and person IDs
+    // Update friend_links: accepted status + pending consent
     const { error: acceptError } = await supabaseAdmin
       .from("friend_links")
       .update({
         status: "accepted",
         accepted_at: new Date().toISOString(),
-        requester_person_id: requesterPersonId,
-        target_person_id: targetPersonId,
+        link_status: "pending_consent",
+        requester_link_consent: false,
+        target_link_consent: false,
         updated_at: new Date().toISOString(),
       })
       .eq("id", linkId);
@@ -328,7 +210,7 @@ serve(async (req: Request) => {
     }
 
     // ── Create friends table rows (so accepted user appears in chat section) ──
-    // Guard: skip if either user has blocked the other (prevents resurfacing blocked users)
+    // Guard: skip if either user has blocked the other
     const { count: blockCount } = await supabaseAdmin
       .from("blocked_users")
       .select("id", { count: "exact", head: true })
@@ -389,8 +271,9 @@ serve(async (req: Request) => {
       console.warn("Failed to mirror accept to friend_requests:", e);
     }
 
-    // Send push notification to requester (fire-and-forget)
+    // ── Send consent notification to BOTH users (replaces old acceptance notification) ──
     try {
+      // Notification to requester
       const { data: requesterTokenData } = await supabaseAdmin
         .from("user_push_tokens")
         .select("push_token")
@@ -400,24 +283,52 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (requesterTokenData?.push_token) {
-        const targetDisplayName = targetProfile.display_name || targetProfile.username || "Your friend";
-        await fetch("https://exp.host/--/api/v2/push/send", {
+        fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: requesterTokenData.push_token,
             sound: "default",
-            title: `You're connected with ${targetDisplayName}!`,
-            body: "Check out their picks in For You.",
+            title: `You and ${targetDisplayName} are now friends!`,
+            body: "Want to link profiles and share your details with each other?",
             data: {
-              type: "friend_link_accepted",
-              linkId,
+              type: "link_consent_request",
+              linkId: linkId,
+              friendName: targetDisplayName,
+              friendUserId: targetId,
             },
           }),
-        });
-        console.log("Push notification sent to requester:", requesterId);
-      } else {
-        console.log("No push token for requester:", requesterId);
+        }).catch(() => {});
+        console.log("Consent push sent to requester:", requesterId);
+      }
+
+      // Notification to target (the one who just accepted)
+      const { data: targetTokenData } = await supabaseAdmin
+        .from("user_push_tokens")
+        .select("push_token")
+        .eq("user_id", targetId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (targetTokenData?.push_token) {
+        fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: targetTokenData.push_token,
+            sound: "default",
+            title: `You and ${requesterDisplayName} are now friends!`,
+            body: "Want to link profiles and share your details with each other?",
+            data: {
+              type: "link_consent_request",
+              linkId: linkId,
+              friendName: requesterDisplayName,
+              friendUserId: requesterId,
+            },
+          }),
+        }).catch(() => {});
+        console.log("Consent push sent to target:", targetId);
       }
     } catch (pushError) {
       console.error("Push notification error:", pushError);
@@ -427,8 +338,8 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         status: "accepted",
-        personId: targetPersonId,
-        linkedPersonId: requesterPersonId,
+        linkId: linkId,
+        linkStatus: "pending_consent",
       }),
       {
         status: 200,

@@ -37,6 +37,8 @@ import {
   useCancelLinkRequest,
   useUserSearch,
 } from "../hooks/useFriendLinks";
+import { usePendingLinkConsents, useRespondLinkConsent } from "../hooks/useLinkConsent";
+import { LinkConsentCard } from "./LinkConsentCard";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -131,6 +133,30 @@ export default function ConnectionsPageRefactored({
   } = usePendingLinkRequests(user?.id || "");
 
   const respondToLinkMutation = useRespondToLink();
+
+  // Link consent (new system) — pending link consent prompts
+  const {
+    data: pendingLinkConsents = [],
+    isLoading: consentsLoading,
+  } = usePendingLinkConsents(user?.id);
+
+  const respondConsentMutation = useRespondLinkConsent();
+  const [respondingConsentId, setRespondingConsentId] = useState<string | null>(null);
+
+  const handleRespondConsent = useCallback(
+    async (linkId: string, action: "accept" | "decline") => {
+      setRespondingConsentId(linkId);
+      try {
+        await respondConsentMutation.mutateAsync({ linkId, action });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (err) {
+        console.error("Error responding to link consent:", err);
+      } finally {
+        setRespondingConsentId(null);
+      }
+    },
+    [respondConsentMutation]
+  );
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -1199,12 +1225,27 @@ export default function ConnectionsPageRefactored({
             />
           )}
           {activePanel === "requests" && (
-            <RequestsView
-              requests={incomingRequests}
-              loading={friendsLoading || requestsLoading || linksLoading}
-              onAccept={handleAcceptRequest}
-              onDecline={handleDeclineRequest}
-            />
+            <>
+              <RequestsView
+                requests={incomingRequests}
+                loading={friendsLoading || requestsLoading || linksLoading}
+                onAccept={handleAcceptRequest}
+                onDecline={handleDeclineRequest}
+              />
+              {pendingLinkConsents.length > 0 && (
+                <View style={styles.linkConsentSection}>
+                  <Text style={styles.linkConsentSectionTitle}>Link Requests</Text>
+                  {pendingLinkConsents.map((consent) => (
+                    <LinkConsentCard
+                      key={consent.linkId}
+                      consent={consent}
+                      onRespond={handleRespondConsent}
+                      isResponding={respondingConsentId === consent.linkId}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </ScrollView>
       </View>
@@ -1466,12 +1507,27 @@ export default function ConnectionsPageRefactored({
             />
           )}
           {activePanel === "requests" && (
-            <RequestsView
-              requests={incomingRequests}
-              loading={friendsLoading || requestsLoading || linksLoading}
-              onAccept={handleAcceptRequest}
-              onDecline={handleDeclineRequest}
-            />
+            <>
+              <RequestsView
+                requests={incomingRequests}
+                loading={friendsLoading || requestsLoading || linksLoading}
+                onAccept={handleAcceptRequest}
+                onDecline={handleDeclineRequest}
+              />
+              {pendingLinkConsents.length > 0 && (
+                <View style={styles.linkConsentSection}>
+                  <Text style={styles.linkConsentSectionTitle}>Link Requests</Text>
+                  {pendingLinkConsents.map((consent) => (
+                    <LinkConsentCard
+                      key={consent.linkId}
+                      consent={consent}
+                      onRespond={handleRespondConsent}
+                      isResponding={respondingConsentId === consent.linkId}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           )}
           {activePanel === "blocked" && (
             <BlockedUsersView
@@ -1499,7 +1555,18 @@ export default function ConnectionsPageRefactored({
 }
 
 const styles = StyleSheet.create({
-  
+  linkConsentSection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+  linkConsentSectionTitle: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: "#6b7280",
+    marginBottom: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: "#ffffff",

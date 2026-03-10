@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 48 Deno serverless functions |
+| Edge Functions | 49 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -41,8 +41,8 @@ Mingla/
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~37 React Query hooks
-│   │   ├── services/                   # ~61 service files
+│   │   ├── hooks/                      # ~38 React Query hooks
+│   │   ├── services/                   # ~62 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
@@ -53,7 +53,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 48 Deno edge functions
+│   ├── functions/                      # 49 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
@@ -122,7 +122,7 @@ The person-centric "For You" view provides personalized recommendations for each
 The "Link a Friend" flow supports two methods:
 
 - **Search Mingla** -- Search existing Mingla users by username and send friend link requests.
-- **Invite by Phone** -- Enter a phone number with country picker (defaults to device locale), send an SMS invite via Twilio. When the invited person signs up and verifies their phone, both users are automatically linked as friends with `saved_people` entries created on both sides. Rate limited to 10 invites per 24 hours.
+- **Invite by Phone** -- Enter a phone number with country picker (defaults to device locale), send an SMS invite via Twilio. When the invited person signs up and verifies their phone, both users become basic friends. Profile linkage requires separate consent from both users. Rate limited to 10 invites per 24 hours.
 
 ### Connect Page
 
@@ -138,12 +138,15 @@ The Connect page manages friend relationships:
 ### Friend Links System
 
 - Friend link requests sent via `send-friend-link` edge function with push notifications
-- Phone invites via `send-phone-invite` edge function with Twilio SMS and auto-linking on signup
+- Phone invites via `send-phone-invite` edge function with Twilio SMS and basic friendship on signup
 - Mirror writes to legacy `friend_requests` table preserve referral credit triggers (upsert handles re-sends)
-- Auto-convert trigger creates `friend_links` + `friend_requests` as pending when invited users sign up (saved_people deferred to explicit accept)
-- Duplicate-prevention on `saved_people` entries during link acceptance (`.maybeSingle()` check)
+- Auto-convert trigger creates `friend_links` + `friends` rows as basic friendship when invited users sign up (no auto-linking)
+- Two-phase consent: accepting a friend request creates basic friendship only. Profile linkage (sharing name, birthday, gender, avatar) requires explicit consent from both users via `respond-link-consent`
+- Link consent prompts appear in the Connections page "Requests" panel with accept/decline buttons
+- Post-onboarding badge dot on Connections tab when pending link consents exist
+- Re-initiation: users can re-initiate declined link consent via the add person flow, resetting the consent state
+- Cross-invalidation of React Query caches on consent response (link consent + saved people + friend links)
 - Saved people entries created for every synced friend during onboarding (not gated on audio recording)
-- Cross-invalidation of React Query caches on link accept (friend links + saved people + personalized cards)
 - Unified visibility: onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links`, with Realtime subscriptions for instant updates and correct routing per source system
 - `lookup-phone` checks both `friends` and `friend_links` tables for friendship/pending status
 
@@ -236,7 +239,7 @@ The Connect page manages friend relationships:
 |-------|---------|
 | `friend_requests` | Legacy friend request lifecycle (used for referral credit triggers) |
 | `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
-| `friend_links` | Friend link requests (pending/accepted) for synced friends |
+| `friend_links` | Friend link requests with two-phase consent (pending/accepted + link_status: none/pending_consent/consented/declined) |
 | `blocked_users` | User blocks |
 | `pending_invites` | Phone invites for non-app users (auto-converts to pending friend_links + friend_requests on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
@@ -303,9 +306,10 @@ The Connect page manages friend relationships:
 |----------|---------|
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
-| `send-friend-link` | Send friend link invitations (with referral mirror write) |
-| `respond-friend-link` | Process friend link responses (with duplicate prevention + friends table upsert) |
-| `unlink-friend` | Remove friend connections |
+| `send-friend-link` | Send friend link invitations (with referral mirror write + re-initiation after declined consent) |
+| `respond-friend-link` | Process friend link responses (creates basic friendship + initiates consent flow) |
+| `respond-link-consent` | Process link consent responses (creates linked saved_people when both consent) |
+| `unlink-friend` | Remove friend connections (requires consented link_status) |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
 | `send-friend-request-email` | Email notifications for friend requests |
 | `send-collaboration-invite` | Push notifications for session invites |
@@ -430,8 +434,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Account Deletion Now Fully Wipes Friend Traces** -- Fixed ghost linked friends remaining in other users' Discover tabs after account deletion. The `delete-user` edge function and the DB cleanup trigger now delete `saved_people` entries where other users had the deleted user as a `linked_user_id`. CASCADE automatically cleans up associated `person_experiences` and `person_audio_clips`.
-- **DB Trigger Safety Net Expanded** -- The `handle_user_deletion_cleanup` trigger now also cleans `friend_links` and `muted_users`, matching the edge function's coverage for direct DB deletions.
+- **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request now creates basic friendship only (chat access). Profile linkage (sharing name, birthday, gender, avatar via `saved_people`) requires explicit consent from both users. A new `respond-link-consent` edge function handles consent responses, and the Connections page shows consent prompts with Link/Not Now buttons.
+- **Re-initiation After Decline** -- Users can re-initiate link consent after a previous decline via the add person flow. The `send-friend-link` edge function detects declined consent and resets the flow.
+- **Post-Onboarding Consent Badge** -- A badge dot appears on the Connections tab when pending link consents exist after completing onboarding.
+- **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger now creates basic friendship only, not automatic profile linkage.
+- **Personalized Cards Require Consent** -- The `get-personalized-cards` edge function now requires `link_status = 'consented'` to generate cards for a linked user.
 
 ---
 
