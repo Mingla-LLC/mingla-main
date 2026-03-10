@@ -579,6 +579,13 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           setData((prev) => ({ ...prev, ...persisted }))
         }
 
+        // Defense-in-depth: always sync phoneVerified with the database source of truth.
+        // AsyncStorage may contain stale phoneVerified: true from a previous account
+        // (if cleanup failed, app crashed, or device was restored from backup).
+        // profiles.phone is the ONLY authority on whether phone is actually verified.
+        const dbPhoneVerified = !!profile.phone
+        setData((prev) => ({ ...prev, phoneVerified: dbPhoneVerified }))
+
         const savedStep = profile.onboarding_step
 
         // If the user already has a verified phone number from a previous session,

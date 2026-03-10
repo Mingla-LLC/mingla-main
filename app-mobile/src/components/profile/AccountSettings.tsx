@@ -68,11 +68,15 @@ export default function AccountSettings() {
       // Show success state briefly before signing out
       setDeleteStep('success');
 
-      // Wait a moment to show success message, then sign out
-      setTimeout(async () => {
+      // Show success message for 2 seconds, then sign out and clean up.
+      // handleSignOut() performs comprehensive AsyncStorage + React Query cleanup.
+      // .catch() prevents unhandled promise rejection if sign-out fails.
+      setTimeout(() => {
         setShowDeleteConfirmModal(false);
         setShowAccountSettings(false);
-        await handleSignOut();
+        handleSignOut().catch((err) =>
+          console.error("Sign-out after account deletion failed:", err)
+        );
       }, 2000);
     } catch (e: unknown) {
       console.error("Delete account error:", e);

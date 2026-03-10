@@ -11,6 +11,9 @@ import {
   Clipboard,
   Modal,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1062,47 +1065,61 @@ export default function ConnectionsPageRefactored({
 
         {/* Action Panel Bottom Sheet (accessible even in error state) */}
         <Modal
-          visible={activePanel !== null}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setActivePanel(null)}
+  visible={activePanel !== null}
+  animationType="slide"
+  transparent
+  onRequestClose={() => setActivePanel(null)}
+>
+  <KeyboardAvoidingView
+    style={styles.modalRoot}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={0}
+  >
+    <View style={styles.sheetOverlay}>
+      <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
+        <View style={styles.backdropFill} />
+      </TouchableWithoutFeedback>
+
+      <View
+        style={[styles.sheetContainer, { maxHeight: screenHeight * 0.75 }]}
+        onStartShouldSetResponder={() => true}
+      >
+        <View style={styles.sheetHandle} />
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>
+            {activePanel === "add" ? "Add Friend" : "Friend Requests"}
+          </Text>
+          <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
+            <Ionicons name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.sheetBody}
+          contentContainerStyle={styles.sheetBodyContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
-            <View style={styles.sheetOverlay}>
-              <View
-                style={[styles.sheetContainer, { maxHeight: screenHeight * 0.6 }]}
-                onStartShouldSetResponder={() => true}
-              >
-                <View style={styles.sheetHandle} />
-                <View style={styles.sheetHeader}>
-                  <Text style={styles.sheetTitle}>
-                    {activePanel === "add" ? "Add Friend" : "Friend Requests"}
-                  </Text>
-                  <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
-                    <Ionicons name="close" size={24} color="#6b7280" />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.sheetBody}>
-                  {activePanel === "add" && (
-                    <AddFriendView
-                      currentUserId={user?.id || ""}
-                      existingFriendIds={existingFriendIds}
-                      onRequestSent={() => loadFriendRequests()}
-                    />
-                  )}
-                  {activePanel === "requests" && (
-                    <RequestsView
-                      requests={incomingRequests}
-                      loading={friendsLoading}
-                      onAccept={handleAcceptRequest}
-                      onDecline={handleDeclineRequest}
-                    />
-                  )}
-                </View>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+          {activePanel === "add" && (
+            <AddFriendView
+              currentUserId={user?.id || ""}
+              existingFriendIds={existingFriendIds}
+              onRequestSent={() => loadFriendRequests()}
+            />
+          )}
+          {activePanel === "requests" && (
+            <RequestsView
+              requests={incomingRequests}
+              loading={friendsLoading}
+              onAccept={handleAcceptRequest}
+              onDecline={handleDeclineRequest}
+            />
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  </KeyboardAvoidingView>
+</Modal>
       </>
     );
   }
@@ -1313,54 +1330,72 @@ export default function ConnectionsPageRefactored({
 
       {/* Action Panel Bottom Sheet */}
       <Modal
-        visible={activePanel !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setActivePanel(null)}
+  visible={activePanel !== null}
+  animationType="slide"
+  transparent
+  onRequestClose={() => setActivePanel(null)}
+>
+  <KeyboardAvoidingView
+    style={styles.modalRoot}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={0}
+  >
+    <View style={styles.sheetOverlay}>
+      <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
+        <View style={styles.backdropFill} />
+      </TouchableWithoutFeedback>
+
+      <View
+        style={[styles.sheetContainer, { maxHeight: screenHeight * 0.75 }]}
+        onStartShouldSetResponder={() => true}
       >
-        <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
-          <View style={styles.sheetOverlay}>
-            <View
-              style={[styles.sheetContainer, { maxHeight: screenHeight * 0.6 }]}
-              onStartShouldSetResponder={() => true}
-            >
-              <View style={styles.sheetHandle} />
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>
-                  {activePanel === "add" ? "Add Friend" : activePanel === "requests" ? "Friend Requests" : "Blocked Users"}
-                </Text>
-                <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
-                  <Ionicons name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sheetBody}>
-                {activePanel === "add" && (
-                  <AddFriendView
-                    currentUserId={user?.id || ""}
-                    existingFriendIds={existingFriendIds}
-                    onRequestSent={() => loadFriendRequests()}
-                  />
-                )}
-                {activePanel === "requests" && (
-                  <RequestsView
-                    requests={incomingRequests}
-                    loading={friendsLoading}
-                    onAccept={handleAcceptRequest}
-                    onDecline={handleDeclineRequest}
-                  />
-                )}
-                {activePanel === "blocked" && (
-                  <BlockedUsersView
-                    blockedUsers={blockedUsers}
-                    loading={friendsLoading}
-                    onUnblock={handleUnblock}
-                  />
-                )}
-              </View>
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        <View style={styles.sheetHandle} />
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>
+            {activePanel === "add"
+              ? "Add Friend"
+              : activePanel === "requests"
+              ? "Friend Requests"
+              : "Blocked Users"}
+          </Text>
+          <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
+            <Ionicons name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.sheetBody}
+          contentContainerStyle={styles.sheetBodyContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {activePanel === "add" && (
+            <AddFriendView
+              currentUserId={user?.id || ""}
+              existingFriendIds={existingFriendIds}
+              onRequestSent={() => loadFriendRequests()}
+            />
+          )}
+          {activePanel === "requests" && (
+            <RequestsView
+              requests={incomingRequests}
+              loading={friendsLoading}
+              onAccept={handleAcceptRequest}
+              onDecline={handleDeclineRequest}
+            />
+          )}
+          {activePanel === "blocked" && (
+            <BlockedUsersView
+              blockedUsers={blockedUsers}
+              loading={friendsLoading}
+              onUnblock={handleUnblock}
+            />
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  </KeyboardAvoidingView>
+</Modal>
 
       {/* Friend Picker Sheet */}
       <FriendPickerSheet
@@ -1375,6 +1410,7 @@ export default function ConnectionsPageRefactored({
 }
 
 const styles = StyleSheet.create({
+  
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
@@ -1382,6 +1418,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  modalRoot: {
+  flex: 1,
+},
+backdropFill: {
+  ...StyleSheet.absoluteFillObject,
+},
   // ── Header ────────────────────────────────
   headerRow: {
     flexDirection: "row",
@@ -1573,7 +1615,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
   },
-  sheetBody: {
-    paddingTop: 8,
-  },
+sheetBody: {
+  flexGrow: 0,
+},
+sheetBodyContent: {
+  paddingTop: 8,
+  paddingBottom: 24,
+},
 });

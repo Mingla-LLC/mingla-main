@@ -793,19 +793,29 @@ export function useAppState() {
       const store = useAppStore.getState();
       store.clearUserData();
 
-      // Clear card state (removedCards and currentCardIndex) from AsyncStorage
+      // Clear ALL user-scoped data from AsyncStorage.
+      // Uses prefix sweep instead of explicit key list — future-proof against new keys.
+      // Preserves: device-level keys (selected_language, translation_cache, REACT_QUERY_OFFLINE_CACHE)
+      // and the Zustand persist key (mingla-mobile-storage) which is reset by clearUserData() above.
       const allKeys = await AsyncStorage.getAllKeys();
-      const cardStateKeys = allKeys.filter((key) =>
-        key.startsWith("mingla_card_state_")
-      );
-      if (cardStateKeys.length > 0) {
-        await AsyncStorage.multiRemove(cardStateKeys);
-        console.log(
-          "✅ Cleared card state from AsyncStorage:",
-          cardStateKeys.length,
-          "keys"
-        );
+      const userScopedKeys = allKeys.filter((key) => {
+        if (key.startsWith("mingla_")) return true;
+        if (key.startsWith("@mingla")) return true;
+        if (key.startsWith("board_cache_")) return true;
+        if (key.startsWith("dismissed_cards_")) return true;
+        if (key.startsWith("debug_logs_")) return true;
+        if (key === "offline_data") return true;
+        if (key === "pending_actions") return true;
+        if (key === "realtime_offline_queue") return true;
+        if (key === "recommendation_cache") return true;
+        return false;
+      });
+      if (userScopedKeys.length > 0) {
+        await AsyncStorage.multiRemove(userScopedKeys);
       }
+
+      // Clear React Query cache — prevents stale server data from leaking across accounts
+      queryClient.clear();
 
       // Clear local state
       setUserIdentity({

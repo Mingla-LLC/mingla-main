@@ -458,9 +458,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Proximity-Optimized Stop Pairing** -- Curated card generators now proximity-chain consecutive stops using a tiered 3km → 5km → closest fallback. Stop 2 is always the highest-rated place near stop 1, and stop 3 (adventure) near stop 2. Applies to adventurous, first-date, romantic, friendly, and group-fun intents. Picnic and stroll are untouched.
-- **One shared utility function** -- `selectClosestHighestRated` added to `generate-curated-experiences` edge function. Piggybacks on existing score-sorted place pools with zero new API calls or database changes.
-- **6 surgical line replacements** -- Stop 2+ selection changed from `available[0]` (highest score only) to proximity-aware selection across 5 generators (including both normal and fallback paths in first-date).
+- **Bulletproof Sign-Out Cleanup** -- Replaced fragile key-by-key AsyncStorage cleanup with a prefix-sweep approach (`mingla_*`, `@mingla*`, plus known non-prefixed user keys). Any future `mingla_`-prefixed key is automatically cleared on sign-out without code changes.
+- **Defense-in-Depth Phone Verification** -- OnboardingFlow resume logic now unconditionally overrides `phoneVerified` from `profiles.phone` in the database, so stale AsyncStorage data from a previous account can never skip OTP.
+- **React Query Cache Clear on Sign-Out** -- `queryClient.clear()` added to `handleSignOut()` to prevent stale server data from leaking across accounts.
+- **Account Deletion Error Handling** -- Removed misleading `async` from `setTimeout` callback, added explicit `.catch()` to prevent unhandled promise rejections.
+- **Cleanup Centralization** -- Removed duplicate AsyncStorage cleanup from `authService.signOut()`, establishing `handleSignOut()` in AppStateManager as the single source of truth for all sign-out cleanup.
 
 ---
 
