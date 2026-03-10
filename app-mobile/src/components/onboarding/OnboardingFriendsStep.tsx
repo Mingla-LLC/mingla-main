@@ -11,9 +11,11 @@ import {
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
+import { RealtimeChannel } from '@supabase/supabase-js'
 
 import { PhoneInput } from './PhoneInput'
 import { useFriends } from '../../hooks/useFriends'
+import { usePendingLinkRequests, useRespondToFriendLink } from '../../hooks/useFriendLinks'
 import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
 import { createPendingInvite } from '../../services/phoneLookupService'
 import { supabase } from '../../services/supabase'
@@ -60,10 +62,25 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   const {
     friendRequests,
     loading: friendsLoading,
+    requestsLoading,
     loadFriendRequests,
     acceptFriendRequest,
     declineFriendRequest,
   } = useFriends({ autoFetchBlockedUsers: false })
+
+  // Friend links hook (new system — where AddFriendView sends requests)
+  const {
+    data: pendingLinkRequests = [],
+    isLoading: linksLoading,
+    refetch: refetchLinks,
+  } = usePendingLinkRequests(userId)
+
+  const respondToLink = useRespondToFriendLink()
+
+  // Link requester profiles
+  const [linkProfiles, setLinkProfiles] = useState<
+    Record<string, { username: string; display_name?: string; first_name?: string; last_name?: string; avatar_url?: string }>
+  >({})
 
   // Build E.164 phone
   const country = getCountryByCode(phoneCountry)
@@ -84,13 +101,43 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     isError: lookupError,
   } = usePhoneLookup(debouncedPhone, debouncedDigitCount >= 7 && !isSelfLookup)
 
-  // Pending incoming requests
-  const incomingRequests = friendRequests.filter((r) => r.type === 'incoming')
+  // Legacy incoming requests
+  const legacyIncoming = friendRequests.filter((r) => r.type === 'incoming')
 
-  // All pending resolved check
+  // Convert friend_links to the same shape for unified rendering
+  const linkIncoming = pendingLinkRequests.map((link) => {
+    const profile = linkProfiles[link.requesterId]
+    return {
+      id: link.id,
+      sender_id: link.requesterId,
+      receiver_id: link.targetId,
+      sender: {
+        username: profile?.username || `user_${link.requesterId.substring(0, 8)}`,
+        display_name: profile?.display_name,
+        first_name: profile?.first_name,
+        last_name: profile?.last_name,
+        avatar_url: profile?.avatar_url,
+      },
+      status: 'pending' as const,
+      created_at: link.createdAt,
+      type: 'incoming' as const,
+      _source: 'link' as const,
+    }
+  })
+
+  // Deduplicate: if the same sender exists in both systems (mirror row succeeded),
+  // prefer legacy (it has the profile data already embedded from useFriends)
+  const legacySenderIds = new Set(legacyIncoming.map((r) => r.sender_id))
+  const uniqueLinkIncoming = linkIncoming.filter(
+    (r) => !legacySenderIds.has(r.sender_id)
+  )
+
+  const incomingRequests = [
+    ...legacyIncoming.map((r) => ({ ...r, _source: 'legacy' as const })),
+    ...uniqueLinkIncoming,
+  ]
+
   const allPendingResolved = incomingRequests.length === 0
-
-  // Can continue
   const canContinue = addedFriends.length > 0 && allPendingResolved
 
   // Check if phone is already added
@@ -100,6 +147,72 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   useEffect(() => {
     loadFriendRequests()
   }, [loadFriendRequests])
+
+  // Realtime subscription: listen for new/changed friend_links and friend_requests targeting this user
+  useEffect(() => {
+    const channel: RealtimeChannel = supabase
+      .channel(`onboarding-friend-links:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friend_links',
+          filter: `target_id=eq.${userId}`,
+        },
+        () => {
+          refetchLinks()
+          loadFriendRequests()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friend_requests',
+          filter: `receiver_id=eq.${userId}`,
+        },
+        () => {
+          loadFriendRequests()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId, refetchLinks, loadFriendRequests])
+
+  // Fetch profiles for friend_links requesters
+  useEffect(() => {
+    if (pendingLinkRequests.length === 0) return
+    const requesterIds = pendingLinkRequests.map((l) => l.requesterId)
+
+    const fetchProfiles = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .in('id', requesterIds)
+      if (data) {
+        const map: Record<string, any> = {}
+        data.forEach((p: any) => {
+          map[p.id] = {
+            username: p.username || `user_${p.id.substring(0, 8)}`,
+            display_name:
+              p.first_name && p.last_name
+                ? `${p.first_name} ${p.last_name}`
+                : p.display_name || p.username,
+            first_name: p.first_name,
+            last_name: p.last_name,
+            avatar_url: p.avatar_url,
+          }
+        })
+        setLinkProfiles(map)
+      }
+    }
+    fetchProfiles()
+  }, [pendingLinkRequests])
 
   // Load referral code
   useEffect(() => {
@@ -205,51 +318,79 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     async (requestId: string) => {
       try {
         const request = incomingRequests.find((r) => r.id === requestId)
-        await acceptFriendRequest(requestId)
+        if (!request) return
+
+        if (request._source === 'link') {
+          // Accept via the respond-friend-link edge function
+          await respondToLink.mutateAsync({ linkId: requestId, action: 'accept' })
+        } else {
+          // Accept via the legacy useFriends hook
+          await acceptFriendRequest(requestId)
+        }
 
         // Add accepted user to addedFriends
-        if (request) {
-          const acceptedFriend: AddedFriend = {
-            type: 'existing',
-            userId: request.sender_id,
-            username: request.sender.username,
-            phoneE164: '',
-            displayName:
-              request.sender.display_name ||
-              (request.sender.first_name && request.sender.last_name
-                ? `${request.sender.first_name} ${request.sender.last_name}`
-                : request.sender.username),
-            avatarUrl: request.sender.avatar_url ?? null,
-            friendshipStatus: 'friends',
-          }
-          setAddedFriends((prev) => [...prev, acceptedFriend])
+        const acceptedFriend: AddedFriend = {
+          type: 'existing',
+          userId: request.sender_id,
+          username: request.sender.username,
+          phoneE164: '',
+          displayName:
+            request.sender.display_name ||
+            (request.sender.first_name && request.sender.last_name
+              ? `${request.sender.first_name} ${request.sender.last_name}`
+              : request.sender.username),
+          avatarUrl: request.sender.avatar_url ?? null,
+          friendshipStatus: 'friends',
         }
+        setAddedFriends((prev) => [...prev, acceptedFriend])
+
+        // Reload both systems
+        await loadFriendRequests()
+        refetchLinks()
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
       } catch (err) {
         console.error('Error accepting friend request:', err)
       }
     },
-    [acceptFriendRequest, incomingRequests]
+    [acceptFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks]
   )
 
   // Handle decline request
   const handleDeclineRequest = useCallback(
     async (requestId: string) => {
       try {
-        await declineFriendRequest(requestId)
+        const request = incomingRequests.find((r) => r.id === requestId)
+        if (!request) return
+
+        if (request._source === 'link') {
+          await respondToLink.mutateAsync({ linkId: requestId, action: 'decline' })
+        } else {
+          await declineFriendRequest(requestId)
+        }
+
+        await loadFriendRequests()
+        refetchLinks()
+
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
       } catch (err) {
         console.error('Error declining friend request:', err)
       }
     },
-    [declineFriendRequest]
+    [declineFriendRequest, incomingRequests, respondToLink, loadFriendRequests, refetchLinks]
   )
 
   // Handle accept all
   const handleAcceptAll = useCallback(async () => {
     try {
-      await Promise.all(incomingRequests.map((r) => acceptFriendRequest(r.id)))
+      await Promise.all(
+        incomingRequests.map((request) => {
+          if (request._source === 'link') {
+            return respondToLink.mutateAsync({ linkId: request.id, action: 'accept' })
+          }
+          return acceptFriendRequest(request.id)
+        })
+      )
 
       // Add all accepted users to addedFriends
       const acceptedFriends: AddedFriend[] = incomingRequests.map((request) => ({
@@ -267,21 +408,35 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
       }))
       setAddedFriends((prev) => [...prev, ...acceptedFriends])
 
+      await loadFriendRequests()
+      refetchLinks()
+
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     } catch (err) {
       console.error('Error accepting all requests:', err)
     }
-  }, [incomingRequests, acceptFriendRequest])
+  }, [incomingRequests, acceptFriendRequest, respondToLink, loadFriendRequests, refetchLinks])
 
   // Handle decline all
   const handleDeclineAll = useCallback(async () => {
     try {
-      await Promise.all(incomingRequests.map((r) => declineFriendRequest(r.id)))
+      await Promise.all(
+        incomingRequests.map((request) => {
+          if (request._source === 'link') {
+            return respondToLink.mutateAsync({ linkId: request.id, action: 'decline' })
+          }
+          return declineFriendRequest(request.id)
+        })
+      )
+
+      await loadFriendRequests()
+      refetchLinks()
+
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     } catch (err) {
       console.error('Error declining all requests:', err)
     }
-  }, [incomingRequests, declineFriendRequest])
+  }, [incomingRequests, declineFriendRequest, respondToLink, loadFriendRequests, refetchLinks])
 
   // Determine action button state
   const renderActionButton = () => {
@@ -442,7 +597,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
       )}
 
       {/* Pending friend requests */}
-      {friendsLoading && incomingRequests.length === 0 && (
+      {(friendsLoading || linksLoading || requestsLoading) && incomingRequests.length === 0 && (
         <View style={styles.loadingSection}>
           <ActivityIndicator size="small" color={colors.primary[500]} />
           <Text style={styles.loadingText}>Loading friend requests...</Text>
@@ -509,7 +664,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
       )}
 
       {/* Empty state */}
-      {!friendsLoading &&
+      {!friendsLoading && !linksLoading && !requestsLoading &&
         incomingRequests.length === 0 &&
         addedFriends.length === 0 &&
         rawDigits.length === 0 && (

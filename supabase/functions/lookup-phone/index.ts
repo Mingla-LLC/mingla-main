@@ -129,7 +129,7 @@ serve(async (req) => {
     // Check friendship status
     let friendshipStatus: string = "none";
 
-    // Check if already friends
+    // Check if already friends (legacy friends table)
     const { data: friendCheck, error: friendError } = await adminClient
       .from("friends")
       .select("id")
@@ -141,13 +141,28 @@ serve(async (req) => {
 
     if (friendError) {
       console.error("[lookup-phone] Error checking friends:", friendError.message);
-      // Non-fatal: default to "none"
     }
 
     if (friendCheck && friendCheck.length > 0) {
       friendshipStatus = "friends";
     } else {
-      // Check pending friend requests
+      // Check accepted friend_links (new system)
+      const { data: acceptedLink } = await adminClient
+        .from("friend_links")
+        .select("id")
+        .or(
+          `and(requester_id.eq.${user.id},target_id.eq.${foundProfile.id}),and(requester_id.eq.${foundProfile.id},target_id.eq.${user.id})`
+        )
+        .eq("status", "accepted")
+        .limit(1);
+
+      if (acceptedLink && acceptedLink.length > 0) {
+        friendshipStatus = "friends";
+      }
+    }
+
+    if (friendshipStatus === "none") {
+      // Check pending friend_requests (legacy)
       const { data: sentRequest, error: sentError } = await adminClient
         .from("friend_requests")
         .select("id")
@@ -176,6 +191,33 @@ serve(async (req) => {
         }
 
         if (receivedRequest && receivedRequest.length > 0) {
+          friendshipStatus = "pending_received";
+        }
+      }
+    }
+
+    if (friendshipStatus === "none") {
+      // Check pending friend_links (new system)
+      const { data: sentLink } = await adminClient
+        .from("friend_links")
+        .select("id")
+        .eq("requester_id", user.id)
+        .eq("target_id", foundProfile.id)
+        .eq("status", "pending")
+        .limit(1);
+
+      if (sentLink && sentLink.length > 0) {
+        friendshipStatus = "pending_sent";
+      } else {
+        const { data: receivedLink } = await adminClient
+          .from("friend_links")
+          .select("id")
+          .eq("requester_id", foundProfile.id)
+          .eq("target_id", user.id)
+          .eq("status", "pending")
+          .limit(1);
+
+        if (receivedLink && receivedLink.length > 0) {
           friendshipStatus = "pending_received";
         }
       }

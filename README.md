@@ -163,11 +163,13 @@ The Connect page manages friend relationships:
 
 - Friend link requests sent via `send-friend-link` edge function with push notifications
 - Phone invites via `send-phone-invite` edge function with Twilio SMS and auto-linking on signup
-- Mirror writes to legacy `friend_requests` table preserve referral credit triggers
+- Mirror writes to legacy `friend_requests` table preserve referral credit triggers (upsert handles re-sends)
 - Auto-convert trigger creates `friend_links` + `saved_people` when invited users sign up
 - Duplicate-prevention on `saved_people` entries during link acceptance (`.maybeSingle()` check)
 - Saved people entries created for every synced friend during onboarding (not gated on audio recording)
 - Cross-invalidation of React Query caches on link accept (friend links + saved people + personalized cards)
+- Unified visibility: onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links`, with Realtime subscriptions for instant updates and correct routing per source system
+- `lookup-phone` checks both `friends` and `friend_links` tables for friendship/pending status
 
 ### AI-Powered Recommendations
 - Experience cards built from real Google Places data, enriched by GPT-4o-mini
@@ -458,10 +460,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Country Picker Keyboard Fix** -- Replaced the broken inline country picker in AddFriendView (transparent bottom-sheet modal with no keyboard avoidance) with the reusable full-screen CountryPickerModal. Keyboard no longer covers search results. Added ISO code search to CountryPickerModal for feature parity across all pickers.
-- **Dead Code Cleanup** -- Removed unused `existingFriendIds` prop from AddFriendView and its call sites. Eliminated ~130 lines of duplicate modal code and 11 unused styles.
-- **Onboarding Data Cleanup** -- Fixed stale onboarding data surviving sign-out and account deletion.
-- **Add Friend Modal** -- Fixed add-friend modal not appearing on connections page.
+- **Unified Friend Request Visibility** -- Fixed invisible friend requests caused by dual friend request systems. Onboarding Step 5 and ConnectionsPage now read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions for instant visibility, correct accept/decline routing per source system, and sender deduplication.
+- **Mirror Row Fix** -- Fixed `send-friend-link` edge function creating broken mirror rows (referencing non-existent `friend_link_id` column). Now uses upsert to handle re-sends gracefully.
+- **Lookup Phone Fix** -- `lookup-phone` edge function now checks `friend_links` for pending/accepted status, preventing duplicate requests from onboarding.
+- **Profile Batch Fetching** -- Replaced N+1 profile queries in `useFriends.loadFriendRequests` with batch `.in()` queries. Removed dangerous profile INSERT on RLS block.
+- **FriendRequestsModal Duplicate Avatar** -- Removed copy-paste duplicated avatar rendering block.
 
 ---
 

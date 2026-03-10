@@ -280,16 +280,6 @@ export default function FriendRequestsModal({
                                       {initials}
                                     </Text>
                                   )}
-                                  {request.sender.avatar_url ? (
-                                    <Image
-                                      source={{ uri: request.sender.avatar_url }}
-                                      style={styles.avatarImage}
-                                    />
-                                  ) : (
-                                    <Text style={styles.avatarText}>
-                                      {initials}
-                                    </Text>
-                                  )}
                                 </View>
                               </View>
 

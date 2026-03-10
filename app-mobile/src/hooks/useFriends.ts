@@ -47,6 +47,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Track previous values via refs to avoid stale closure issues in useCallback
@@ -205,6 +206,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
   // Load friend requests
   const loadFriendRequests = useCallback(async () => {
+    setRequestsLoading(true);
     try {
       const {
         data: { user },
@@ -232,134 +234,82 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       // Transform the data
       const transformedRequests: FriendRequest[] = [];
 
-      // Process incoming requests
-      for (const request of incomingRequests || []) {
-        const { data: senderProfile, error: senderError } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url, email")
-          .eq("id", request.sender_id)
-          .single();
-
-        // If profile doesn't exist, create a basic one
-        if (senderError && senderError.code === "PGRST116") {
-          const { data: newProfile } = await supabase
+      // Batch-fetch all sender profiles in one query
+      const incomingSenderIds = (incomingRequests || []).map((r: any) => r.sender_id);
+      const { data: senderProfiles } = incomingSenderIds.length > 0
+        ? await supabase
             .from("profiles")
-            .insert({
-              id: request.sender_id,
-              username: `user_${request.sender_id.substring(0, 8)}`,
-            })
             .select("id, username, first_name, last_name, avatar_url, email")
-            .single();
+            .in("id", incomingSenderIds)
+        : { data: [] };
 
-          transformedRequests.push({
-            id: request.id,
-            sender_id: request.sender_id,
-            receiver_id: request.receiver_id,
-            sender: {
-              username:
-                newProfile?.username ||
-                `user_${request.sender_id.substring(0, 8)}`,
-              display_name:
-                newProfile?.first_name && newProfile?.last_name
-                  ? `${newProfile.first_name} ${newProfile.last_name}`
-                  : newProfile?.username,
-              first_name: newProfile?.first_name,
-              last_name: newProfile?.last_name,
-              avatar_url: newProfile?.avatar_url,
-              email: newProfile?.email,
-            },
-            status: request.status,
-            created_at: request.created_at,
-            type: "incoming" as const,
-          });
-        } else {
-          transformedRequests.push({
-            id: request.id,
-            sender_id: request.sender_id,
-            receiver_id: request.receiver_id,
-            sender: {
-              username:
-                senderProfile?.username ||
-                `user_${request.sender_id.substring(0, 8)}`,
-              display_name:
-                senderProfile?.first_name && senderProfile?.last_name
-                  ? `${senderProfile.first_name} ${senderProfile.last_name}`
-                  : senderProfile?.username,
-              first_name: senderProfile?.first_name,
-              last_name: senderProfile?.last_name,
-              avatar_url: senderProfile?.avatar_url,
-              email: senderProfile?.email,
-            },
-            status: request.status,
-            created_at: request.created_at,
-            type: "incoming" as const,
-          });
-        }
+      const senderProfileMap = new Map(
+        (senderProfiles || []).map((p: any) => [p.id, p])
+      );
+
+      // Process incoming requests using the pre-fetched profiles
+      for (const request of incomingRequests || []) {
+        const senderProfile = senderProfileMap.get(request.sender_id);
+        transformedRequests.push({
+          id: request.id,
+          sender_id: request.sender_id,
+          receiver_id: request.receiver_id,
+          sender: {
+            username:
+              senderProfile?.username ||
+              `user_${request.sender_id.substring(0, 8)}`,
+            display_name:
+              senderProfile?.first_name && senderProfile?.last_name
+                ? `${senderProfile.first_name} ${senderProfile.last_name}`
+                : senderProfile?.username,
+            first_name: senderProfile?.first_name,
+            last_name: senderProfile?.last_name,
+            avatar_url: senderProfile?.avatar_url,
+            email: senderProfile?.email,
+          },
+          status: request.status,
+          created_at: request.created_at,
+          type: "incoming" as const,
+        });
       }
 
-      // Process outgoing requests
-      for (const request of outgoingRequests || []) {
-        const { data: receiverProfile, error: receiverError } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url, email")
-          .eq("id", request.receiver_id)
-          .single();
-
-        // If profile doesn't exist, create a basic one
-        if (receiverError && receiverError.code === "PGRST116") {
-          const { data: newProfile } = await supabase
+      // Batch-fetch all receiver profiles in one query
+      const outgoingReceiverIds = (outgoingRequests || []).map((r: any) => r.receiver_id);
+      const { data: receiverProfiles } = outgoingReceiverIds.length > 0
+        ? await supabase
             .from("profiles")
-            .insert({
-              id: request.receiver_id,
-              username: `user_${request.receiver_id.substring(0, 8)}`,
-            })
             .select("id, username, first_name, last_name, avatar_url, email")
-            .single();
+            .in("id", outgoingReceiverIds)
+        : { data: [] };
 
-          transformedRequests.push({
-            id: request.id,
-            sender_id: request.sender_id,
-            receiver_id: request.receiver_id,
-            sender: {
-              username:
-                newProfile?.username ||
-                `user_${request.receiver_id.substring(0, 8)}`,
-              display_name:
-                newProfile?.first_name && newProfile?.last_name
-                  ? `${newProfile.first_name} ${newProfile.last_name}`
-                  : newProfile?.username,
-              first_name: newProfile?.first_name,
-              last_name: newProfile?.last_name,
-              avatar_url: newProfile?.avatar_url,
-              email: newProfile?.email,
-            },
-            status: request.status,
-            created_at: request.created_at,
-            type: "outgoing" as const,
-          });
-        } else {
-          transformedRequests.push({
-            id: request.id,
-            sender_id: request.sender_id,
-            receiver_id: request.receiver_id,
-            sender: {
-              username:
-                receiverProfile?.username ||
-                `user_${request.receiver_id.substring(0, 8)}`,
-              display_name:
-                receiverProfile?.first_name && receiverProfile?.last_name
-                  ? `${receiverProfile.first_name} ${receiverProfile.last_name}`
-                  : receiverProfile?.username,
-              first_name: receiverProfile?.first_name,
-              last_name: receiverProfile?.last_name,
-              avatar_url: receiverProfile?.avatar_url,
-              email: receiverProfile?.email,
-            },
-            status: request.status,
-            created_at: request.created_at,
-            type: "outgoing" as const,
-          });
-        }
+      const receiverProfileMap = new Map(
+        (receiverProfiles || []).map((p: any) => [p.id, p])
+      );
+
+      // Process outgoing requests using the pre-fetched profiles
+      for (const request of outgoingRequests || []) {
+        const receiverProfile = receiverProfileMap.get(request.receiver_id);
+        transformedRequests.push({
+          id: request.id,
+          sender_id: request.sender_id,
+          receiver_id: request.receiver_id,
+          sender: {
+            username:
+              receiverProfile?.username ||
+              `user_${request.receiver_id.substring(0, 8)}`,
+            display_name:
+              receiverProfile?.first_name && receiverProfile?.last_name
+                ? `${receiverProfile.first_name} ${receiverProfile.last_name}`
+                : receiverProfile?.username,
+            first_name: receiverProfile?.first_name,
+            last_name: receiverProfile?.last_name,
+            avatar_url: receiverProfile?.avatar_url,
+            email: receiverProfile?.email,
+          },
+          status: request.status,
+          created_at: request.created_at,
+          type: "outgoing" as const,
+        });
       }
 
       const requestsJson = JSON.stringify(transformedRequests);
@@ -369,6 +319,8 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       }
     } catch (error) {
       console.error("Error loading friend requests:", error);
+    } finally {
+      setRequestsLoading(false);
     }
   }, []);
 
@@ -783,6 +735,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
     friendRequests,
     blockedUsers,
     loading,
+    requestsLoading,
     error,
     fetchFriends,
     fetchBlockedUsers,
