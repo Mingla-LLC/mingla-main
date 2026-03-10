@@ -96,16 +96,17 @@ export const useMessages = () => {
         for (const p of conv.participants || []) {
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('id, username, first_name, last_name, avatar_url')
+            .select('id, username, display_name, first_name, last_name, avatar_url')
             .eq('id', p.user_id)
             .single();
 
           participants.push({
             id: p.user_id,
             username: profileData?.username || 'Unknown',
-            display_name: profileData?.first_name && profileData?.last_name 
-              ? `${profileData.first_name} ${profileData.last_name}` 
-              : profileData?.username,
+            display_name: profileData?.display_name ||
+              (profileData?.first_name && profileData?.last_name
+              ? `${profileData.first_name} ${profileData.last_name}`
+              : profileData?.username),
             first_name: profileData?.first_name,
             last_name: profileData?.last_name,
             avatar_url: profileData?.avatar_url,
@@ -118,7 +119,7 @@ export const useMessages = () => {
         for (const msg of conv.messages || []) {
           const { data: senderProfile } = await supabase
             .from('profiles')
-            .select('username, first_name, last_name')
+            .select('username, display_name, first_name, last_name')
             .eq('id', msg.sender_id)
             .single();
 
@@ -140,8 +141,9 @@ export const useMessages = () => {
             file_name: msg.file_name,
             file_size: msg.file_size,
             created_at: msg.created_at,
-            sender_name: (senderProfile?.first_name && senderProfile?.last_name 
-              ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+            sender_name: senderProfile?.display_name ||
+              (senderProfile?.first_name && senderProfile?.last_name
+              ? `${senderProfile.first_name} ${senderProfile.last_name}`
               : senderProfile?.username) || 'Unknown',
             is_read: !!readStatus,
           });
@@ -188,7 +190,7 @@ export const useMessages = () => {
       for (const msg of messagesData || []) {
         const { data: senderProfile } = await supabase
           .from('profiles')
-          .select('username, first_name, last_name')
+          .select('username, display_name, first_name, last_name')
           .eq('id', msg.sender_id)
           .single();
 
@@ -273,7 +275,7 @@ export const useMessages = () => {
       // Get sender profile for the new message
       const { data: senderProfile } = await supabase
         .from('profiles')
-        .select('username, first_name, last_name')
+        .select('username, display_name, first_name, last_name')
         .eq('id', messageData.sender_id)
         .single();
 

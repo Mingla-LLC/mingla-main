@@ -154,7 +154,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       const { data: allProfiles, error: profilesError } = friendUserIds.length > 0
         ? await supabase
             .from("profiles")
-            .select("id, username, first_name, last_name, avatar_url")
+            .select("id, username, display_name, first_name, last_name, avatar_url")
             .in("id", friendUserIds)
         : { data: [], error: null };
 
@@ -177,9 +177,10 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           friend_user_id: friend.friend_user_id,
           username: profileData?.username || `user_${friend.friend_user_id.substring(0, 8)}`,
           display_name:
-            profileData?.first_name && profileData?.last_name
+            profileData?.display_name ||
+            (profileData?.first_name && profileData?.last_name
               ? `${profileData.first_name} ${profileData.last_name}`
-              : profileData?.username,
+              : undefined),
           first_name: profileData?.first_name,
           last_name: profileData?.last_name,
           avatar_url: profileData?.avatar_url,
@@ -239,7 +240,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       const { data: senderProfiles } = incomingSenderIds.length > 0
         ? await supabase
             .from("profiles")
-            .select("id, username, first_name, last_name, avatar_url, email")
+            .select("id, username, display_name, first_name, last_name, avatar_url, email")
             .in("id", incomingSenderIds)
         : { data: [] };
 
@@ -259,9 +260,10 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
               senderProfile?.username ||
               `user_${request.sender_id.substring(0, 8)}`,
             display_name:
-              senderProfile?.first_name && senderProfile?.last_name
+              senderProfile?.display_name ||
+              (senderProfile?.first_name && senderProfile?.last_name
                 ? `${senderProfile.first_name} ${senderProfile.last_name}`
-                : senderProfile?.username,
+                : undefined),
             first_name: senderProfile?.first_name,
             last_name: senderProfile?.last_name,
             avatar_url: senderProfile?.avatar_url,
@@ -278,7 +280,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       const { data: receiverProfiles } = outgoingReceiverIds.length > 0
         ? await supabase
             .from("profiles")
-            .select("id, username, first_name, last_name, avatar_url, email")
+            .select("id, username, display_name, first_name, last_name, avatar_url, email")
             .in("id", outgoingReceiverIds)
         : { data: [] };
 
@@ -298,9 +300,10 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
               receiverProfile?.username ||
               `user_${request.receiver_id.substring(0, 8)}`,
             display_name:
-              receiverProfile?.first_name && receiverProfile?.last_name
+              receiverProfile?.display_name ||
+              (receiverProfile?.first_name && receiverProfile?.last_name
                 ? `${receiverProfile.first_name} ${receiverProfile.last_name}`
-                : receiverProfile?.username,
+                : undefined),
             first_name: receiverProfile?.first_name,
             last_name: receiverProfile?.last_name,
             avatar_url: receiverProfile?.avatar_url,

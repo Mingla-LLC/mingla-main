@@ -430,11 +430,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Coach Mark System Removed** -- Entire coach mark education system deleted (13 core files, 26 consumer files cleaned, DB table dropped). Will be redesigned from scratch.
-- **Fix Friend Accept Visibility** -- Simplified DB trigger to create pending (not auto-accepted) friend requests/links on phone signup. Added `friends` table upsert with block guard to `respond-friend-link`. Made mirror calls non-fatal in onboarding accept flow.
-- **Unified Friend Request Visibility** -- Onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links` tables, with Realtime subscriptions and correct routing per source system.
-- **Mirror Row Fix** -- Fixed `send-friend-link` edge function creating broken mirror rows. Now uses upsert to handle re-sends gracefully.
-- **Diagnostic Error Messages** -- All 5 error paths in `respond-friend-link` now return distinct diagnostic messages instead of generic "Failed to process link response".
+- **Collaboration Invite Crash Fixed** -- Removed all references to non-existent `boards.session_id` column across 3 files (7 queries). Board creation now correctly reads `collaboration_sessions.board_id`. This unblocks all invite acceptance flows including pre-signup invites.
+- **Friend Names Display Fixed** -- Added `display_name` to 10+ Supabase profile queries across `useFriends`, `useMessages`, and `useSessionManagement`. Friend picker, chat list, and collaboration invites now show real names instead of usernames.
+- **Onboarding Invite Display Fixed** -- Fixed `invite.session_name` (snake_case) → `invite.sessionName` (camelCase) property mismatch. Added inviter name rendering ("From Seth") to onboarding collaboration invite cards.
+- **Pre-signup Invite Flow Unblocked** -- The phone invite → signup → friend accept → collaboration invite pipeline now works end-to-end (was blocked by the boards.session_id crash).
 
 ---
 

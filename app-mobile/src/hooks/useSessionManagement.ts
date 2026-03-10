@@ -40,6 +40,7 @@ interface ParticipantRow {
 interface ProfileRow {
   id: string
   username: string
+  display_name: string | null
   first_name: string | null
   last_name: string | null
   avatar_url: string | null
@@ -156,7 +157,7 @@ export const useSessionManagement = () => {
       if (participantUserIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, username, first_name, last_name, avatar_url')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
           .in('id', participantUserIds);
 
         if (profilesError) {
@@ -172,7 +173,7 @@ export const useSessionManagement = () => {
       if (inviterIds.length > 0) {
         const { data: invitersData, error: invitersError } = await supabase
           .from('profiles')
-          .select('id, username, first_name, last_name, avatar_url')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
           .in('id', inviterIds);
 
         if (invitersError) {
@@ -190,6 +191,7 @@ export const useSessionManagement = () => {
       // Helper function to format profile name
       const formatProfileName = (profile: ProfileRow | undefined) => {
         if (!profile) return 'Unknown User';
+        if (profile.display_name) return profile.display_name;
         if (profile.first_name && profile.last_name) {
           return `${profile.first_name} ${profile.last_name}`;
         }
@@ -582,7 +584,7 @@ export const useSessionManagement = () => {
         // Get inviter profile separately  
         const { data: inviterProfile, error: profileError } = await supabase
           .from('profiles')
-          .select('id, username, first_name, last_name, avatar_url')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
           .eq('id', dbInvite.inviter_id)
           .single();
 
@@ -593,9 +595,10 @@ export const useSessionManagement = () => {
           sessionName: sessionData?.name || 'Collaboration Session',
           invitedBy: {
             id: dbInvite.inviter_id,
-            name: inviterProfile?.first_name && inviterProfile?.last_name 
-              ? `${inviterProfile.first_name} ${inviterProfile.last_name}` 
-              : inviterProfile?.username || 'Unknown',
+            name: inviterProfile?.display_name ||
+              (inviterProfile?.first_name && inviterProfile?.last_name
+              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
+              : inviterProfile?.username) || 'Unknown',
             username: inviterProfile?.username || 'unknown',
             avatar: inviterProfile?.avatar_url
           },
@@ -722,21 +725,11 @@ export const useSessionManagement = () => {
         if (sessionError || !sessionData) {
           console.error('❌ Error fetching session:', sessionError);
         } else {
-          // IDEMPOTENT BOARD CREATION: Check if board already exists for this session
-          // This prevents duplicate boards if multiple join events arrive simultaneously
-          const { data: existingBoard, error: existingBoardError } = await supabase
-            .from('boards')
-            .select('id')
-            .eq('session_id', invite.sessionId)
-            .maybeSingle();
+          // IDEMPOTENT BOARD CREATION: Use session's board_id (the actual relationship)
+          // collaboration_sessions.board_id points to boards.id — NOT boards.session_id
+          let boardId: string | null = sessionData.board_id || null;
 
-          if (existingBoardError) {
-            console.error('❌ Error checking for existing board:', existingBoardError);
-          }
-
-          let boardId: string | null = existingBoard?.id || null;
-
-          // Only create board if one doesn't already exist
+          // Only create board if session doesn't already have one
           if (!boardId) {
             const { data: boardData, error: boardError } = await supabase
               .from('boards')
@@ -745,24 +738,12 @@ export const useSessionManagement = () => {
                 description: `Collaborative board for ${sessionData.name}`,
                 created_by: sessionData.created_by,
                 is_public: false,
-                session_id: invite.sessionId
               })
               .select()
               .single();
 
             if (boardError) {
-              // Check if error is due to unique constraint (another concurrent request created the board)
-              if (boardError.code === '23505') {
-                console.log('Board already created by another request, fetching existing board...');
-                const { data: refetchedBoard } = await supabase
-                  .from('boards')
-                  .select('id')
-                  .eq('session_id', invite.sessionId)
-                  .single();
-                boardId = refetchedBoard?.id || null;
-              } else {
-                console.error('❌ Error creating board:', boardError);
-              }
+              console.error('❌ Error creating board:', boardError);
             } else {
               boardId = boardData.id;
               console.log('✅ Board created successfully:', boardId);

@@ -615,19 +615,12 @@ export default function CollaborationModule({
             .single();
 
           if (!sessionFetchError && sessionDetails) {
-            // IDEMPOTENT BOARD CREATION: Check if board already exists
-            const { data: existingBoard } = await supabase
-              .from("boards")
-              .select("id")
-              .eq("session_id", invite.session_id)
-              .maybeSingle();
+            // IDEMPOTENT BOARD CREATION: Use session's board_id (the actual relationship)
+            // collaboration_sessions.board_id points to boards.id — NOT boards.session_id
+            let boardId: string | null = sessionDetails.board_id || null;
 
-            let boardId: string | null = existingBoard?.id || null;
-
-            // Only create board if one doesn't already exist
+            // Only create board if session doesn't already have one
             if (!boardId) {
-              // Use current user's ID as created_by since RLS requires auth.uid() = created_by
-              // The board is tied to the session, so ownership is determined by session admins
               const { data: boardData, error: boardError } = await supabase
                 .from("boards")
                 .insert({
@@ -635,23 +628,12 @@ export default function CollaborationModule({
                   description: `Collaborative board for ${sessionDetails.name}`,
                   created_by: user.id,
                   is_public: false,
-                  session_id: invite.session_id
                 })
                 .select()
                 .single();
 
               if (boardError) {
-                // Handle unique constraint error (concurrent board creation)
-                if (boardError.code === '23505') {
-                  const { data: refetchedBoard } = await supabase
-                    .from("boards")
-                    .select("id")
-                    .eq("session_id", invite.session_id)
-                    .single();
-                  boardId = refetchedBoard?.id || null;
-                } else {
-                  console.error("Error creating board:", boardError);
-                }
+                console.error("Error creating board:", boardError);
               } else {
                 boardId = boardData.id;
                 console.log("✅ Board created successfully:", boardId);

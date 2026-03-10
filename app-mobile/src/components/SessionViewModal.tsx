@@ -277,16 +277,19 @@ export default function SessionViewModal({
                 throw participantDeleteError;
               }
 
-              const { data: boardRows, error: boardLookupError } = await supabase
-                .from("boards")
-                .select("id")
-                .eq("session_id", sessionId);
+              // Look up board_id from the session (the actual relationship)
+              // collaboration_sessions.board_id points to boards.id
+              const { data: sessionRow, error: sessionLookupError } = await supabase
+                .from("collaboration_sessions")
+                .select("board_id")
+                .eq("id", sessionId)
+                .single();
 
-              if (boardLookupError) {
-                console.warn("Error looking up session boards on exit:", boardLookupError);
+              if (sessionLookupError) {
+                console.warn("Error looking up session board on exit:", sessionLookupError);
               }
 
-              const boardIds = (boardRows || []).map((board: any) => board.id);
+              const boardIds = sessionRow?.board_id ? [sessionRow.board_id] : [];
               if (boardIds.length > 0) {
                 const { error: collaboratorDeleteError } = await supabase
                   .from("board_collaborators")

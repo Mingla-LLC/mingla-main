@@ -429,7 +429,10 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             <View key={invite.id} style={styles.inviteRow}>
               <View style={styles.inviteInfo}>
                 <Text style={styles.inviteName} numberOfLines={1}>
-                  {invite.session_name || 'Session'}
+                  {invite.sessionName || 'Session'}
+                </Text>
+                <Text style={styles.inviteFrom} numberOfLines={1}>
+                  From {invite.invitedBy?.name || 'Unknown'}
                 </Text>
               </View>
               <View style={styles.inviteActions}>
@@ -702,6 +705,11 @@ const styles = StyleSheet.create({
     ...typography.sm,
     fontWeight: fontWeights.semibold,
     color: colors.text.primary,
+  },
+  inviteFrom: {
+    fontSize: 13,
+    color: colors.gray[400],
+    marginTop: 2,
   },
   inviteActions: {
     flexDirection: 'row',
