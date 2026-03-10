@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchByCategory } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES, ROMANTIC_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForIntent } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
@@ -62,13 +62,11 @@ serve(async (req) => {
 
     const { preferences, location } = request;
 
-    // Determine if romantic intent is active for exclusion rules
-    const isRomantic = (preferences?.categories ?? []).some(
-      (t: string) => t.toLowerCase() === 'romantic'
+    // Determine intent-specific exclusion rules (grocery types excluded from all intents)
+    const activeIntent = (preferences?.categories ?? []).find(
+      (t: string) => ['adventurous', 'first-date', 'romantic', 'friendly', 'group-fun', 'take-a-stroll'].includes(t.toLowerCase())
     );
-    const excludedTypes = isRomantic
-      ? ROMANTIC_EXCLUDED_PLACE_TYPES
-      : GLOBAL_EXCLUDED_PLACE_TYPES;
+    const excludedTypes = getExcludedTypesForIntent(activeIntent);
 
     if (!preferences) {
       console.error("Preferences are required");

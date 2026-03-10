@@ -108,12 +108,22 @@ export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
 ];
 
 /**
+ * Grocery/market place types excluded from all experience intents.
+ * These are utility errands, not date/outing destinations.
+ */
+const GROCERY_EXCLUDED_PLACE_TYPES: string[] = [
+  'grocery_store', 'supermarket', 'food_store', 'market',
+  'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
+];
+
+/**
  * Additional place types excluded specifically for the Romantic intent.
  * These are kid/family-oriented venues inappropriate for intimate dates.
  * Applied on top of GLOBAL_EXCLUDED_PLACE_TYPES.
  */
 export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
   ...GLOBAL_EXCLUDED_PLACE_TYPES,
+  ...GROCERY_EXCLUDED_PLACE_TYPES,
   'indoor_playground',
   'amusement_park',
   'water_park',
@@ -123,6 +133,28 @@ export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
   'child_care_agency',
   'preschool',
 ];
+
+/**
+ * Per-intent exclusion lists. Each intent excludes grocery/market types
+ * (utility errands) on top of the global exclusions.
+ */
+export const INTENT_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
+  'adventurous':    [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+  'first-date':     [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+  'romantic':       ROMANTIC_EXCLUDED_PLACE_TYPES,
+  'friendly':       [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+  'group-fun':      [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+  'take-a-stroll':  [...GLOBAL_EXCLUDED_PLACE_TYPES, ...GROCERY_EXCLUDED_PLACE_TYPES],
+};
+
+/**
+ * Get the exclusion list for an intent string. Falls back to GLOBAL_EXCLUDED_PLACE_TYPES
+ * if the intent is unrecognized.
+ */
+export function getExcludedTypesForIntent(intent: string | undefined): string[] {
+  if (!intent) return GLOBAL_EXCLUDED_PLACE_TYPES;
+  return INTENT_EXCLUDED_PLACE_TYPES[intent.toLowerCase()] ?? GLOBAL_EXCLUDED_PLACE_TYPES;
+}
 
 /**
  * Filters out places whose `types` array contains any globally or

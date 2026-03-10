@@ -13,9 +13,8 @@ import {
   getPlaceTypesForCategory,
   getCategoryTypeMap,
   resolveCategories,
-  GLOBAL_EXCLUDED_PLACE_TYPES,
-  ROMANTIC_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
+  getExcludedTypesForIntent,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 
@@ -625,9 +624,7 @@ export async function serveCardsFromPipeline(
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
 
   // Filter excluded place types from pool results
-  const excludedTypes = experienceType === 'romantic'
-    ? ROMANTIC_EXCLUDED_PLACE_TYPES
-    : GLOBAL_EXCLUDED_PLACE_TYPES;
+  const excludedTypes = getExcludedTypesForIntent(experienceType);
   const excludedSet = new Set(excludedTypes);
 
   poolCards = poolCards.filter((card: any) => {
