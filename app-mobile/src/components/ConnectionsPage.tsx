@@ -20,7 +20,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage } from "../services/messagingService";
 import { blockService, BlockReason } from "../services/blockService";
 import { muteService } from "../services/muteService";
@@ -31,10 +31,7 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import {
-  usePendingLinkRequests,
-  useSentLinkRequests,
   useSendFriendLink,
-  useRespondToFriendLink as useRespondToLink,
   useCancelLinkRequest,
   useUserSearch,
 } from "../hooks/useFriendLinks";
@@ -106,7 +103,7 @@ export default function ConnectionsPageRefactored({
   onNavigateToFriendProfile,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 
 
@@ -133,15 +130,6 @@ export default function ConnectionsPageRefactored({
     requestsLoading,
     fetchBlockedUsers,
   } = useFriends();
-
-  // Friend links (new system) — pending incoming requests
-  const {
-    data: pendingLinkRequests = [],
-    isLoading: linksLoading,
-    refetch: refetchLinkRequests,
-  } = usePendingLinkRequests(user?.id || "");
-
-  const respondToLinkMutation = useRespondToLink();
 
   // Realtime: instantly refresh friend links, requests, and consents on DB changes
   useSocialRealtime(user?.id, {
@@ -226,73 +214,14 @@ export default function ConnectionsPageRefactored({
   const [blockLoading, setBlockLoading] = useState(false);
   const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
 
-  // ── Link request profile enrichment ─────────────────────
-  const [linkRequestProfiles, setLinkRequestProfiles] = useState<
-    Record<string, { display_name?: string; username?: string; avatar_url?: string; first_name?: string; last_name?: string }>
-  >({});
-
-  useEffect(() => {
-    const linkIds = pendingLinkRequests.map((l) => l.requesterId);
-    if (linkIds.length === 0) return;
-
-    const fetchProfiles = async () => {
-      try {
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, display_name, username, first_name, last_name, avatar_url")
-          .in("id", linkIds);
-        if (data) {
-          const map: Record<string, { display_name?: string; username?: string; avatar_url?: string; first_name?: string; last_name?: string }> = {};
-          data.forEach((p) => { map[p.id] = p; });
-          setLinkRequestProfiles(map);
-        }
-      } catch (err) {
-        console.error("Error fetching link request profiles:", err);
-      }
-    };
-    fetchProfiles();
-  }, [pendingLinkRequests]);
-
   // ── Derived data ─────────────────────────────────────────
+  // Link requests (friend_links) are now handled in DiscoverScreen.
+  // ConnectionsPage only shows legacy friend requests.
   const incomingRequests = useMemo(() => {
-    const legacy = friendRequests.filter(
-      (r) => r.type === "incoming" && r.status === "pending"
-    );
-
-    // Build a Set of sender IDs from legacy requests for deduplication
-    const legacySenderIds = new Set(legacy.map((r) => r.sender_id));
-
-    // Convert pending friend_links to FriendRequest shape, excluding duplicates
-    const linkRequests = pendingLinkRequests
-      .filter((link) => !legacySenderIds.has(link.requesterId))
-      .map((link) => {
-        const profile = linkRequestProfiles[link.requesterId];
-        return {
-          id: link.id,
-          sender_id: link.requesterId,
-          receiver_id: link.targetId,
-          sender: {
-            username: profile?.username || `user_${link.requesterId.substring(0, 8)}`,
-            display_name: profile?.display_name ||
-              (profile?.first_name && profile?.last_name
-                ? `${profile.first_name} ${profile.last_name}`
-                : profile?.username),
-            first_name: profile?.first_name,
-            last_name: profile?.last_name,
-            avatar_url: profile?.avatar_url,
-          },
-          status: "pending" as const,
-          created_at: link.createdAt,
-          type: "incoming" as const,
-          _source: "link" as const,
-        };
-      });
-
-    return [
-      ...legacy.map((r) => ({ ...r, _source: "legacy" as const })),
-      ...linkRequests,
-    ];
-  }, [friendRequests, pendingLinkRequests, linkRequestProfiles]);
+    return friendRequests
+      .filter((r) => r.type === "incoming" && r.status === "pending")
+      .map((r) => ({ ...r, _source: "legacy" as const }));
+  }, [friendRequests]);
 
   // Sort conversations by most recent message
   const sortedConversations = useMemo(() => {
@@ -474,17 +403,10 @@ export default function ConnectionsPageRefactored({
 
   // ── Friend request actions ───────────────────────────────
   const handleAcceptRequest = async (requestId: string) => {
-    if (respondToLinkMutation.isPending) return;
     HapticFeedback.medium();
     try {
-      const request = incomingRequests.find((r) => r.id === requestId);
-      if (request && request._source === "link") {
-        await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "accept" });
-      } else {
-        await acceptFriendRequest(requestId);
-      }
+      await acceptFriendRequest(requestId);
       await loadFriendRequests();
-      refetchLinkRequests();
       await fetchFriends();
     } catch (e) {
       console.error("Error accepting request:", e);
@@ -493,17 +415,10 @@ export default function ConnectionsPageRefactored({
   };
 
   const handleDeclineRequest = async (requestId: string) => {
-    if (respondToLinkMutation.isPending) return;
     HapticFeedback.warning();
     try {
-      const request = incomingRequests.find((r) => r.id === requestId);
-      if (request && request._source === "link") {
-        await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "decline" });
-      } else {
-        await declineFriendRequest(requestId);
-      }
+      await declineFriendRequest(requestId);
       await loadFriendRequests();
-      refetchLinkRequests();
     } catch (e) {
       console.error("Error declining request:", e);
       Alert.alert("Error", "Failed to decline friend request.");
@@ -1270,7 +1185,7 @@ export default function ConnectionsPageRefactored({
             <>
               <RequestsView
                 requests={incomingRequests}
-                loading={friendsLoading || requestsLoading || linksLoading}
+                loading={friendsLoading || requestsLoading}
                 onAccept={handleAcceptRequest}
                 onDecline={handleDeclineRequest}
               />
@@ -1553,7 +1468,7 @@ export default function ConnectionsPageRefactored({
             <>
               <RequestsView
                 requests={incomingRequests}
-                loading={friendsLoading || requestsLoading || linksLoading}
+                loading={friendsLoading || requestsLoading}
                 onAccept={handleAcceptRequest}
                 onDecline={handleDeclineRequest}
               />

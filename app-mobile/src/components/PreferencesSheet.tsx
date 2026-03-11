@@ -21,7 +21,6 @@ import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
 import { offlineService } from "../services/offlineService";
@@ -141,7 +140,7 @@ export default function PreferencesSheet({
   sessionId,
   sessionName,
 }: PreferencesSheetProps) {
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const { profile, setProfile } = useAppStore();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();

@@ -135,23 +135,27 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
         // 5. Restore preferences from Supabase
         const prefs = await PreferencesService.getUserPreferences(userId)
         if (prefs) {
-          const prefsAny = prefs as Record<string, unknown>
-          const restoredUseGps = prefsAny.use_gps_location === true
+          const restoredUseGps = prefs.use_gps_location === true
 
           base.selectedCategories = prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES
-          base.selectedPriceTiers = (prefsAny.price_tiers as string[])?.length ? (prefsAny.price_tiers as string[]) : DEFAULT_PRICE_TIERS
+          base.selectedPriceTiers = prefs.price_tiers?.length ? prefs.price_tiers : DEFAULT_PRICE_TIERS
           base.travelMode = (prefs.travel_mode as typeof DEFAULT_TRANSPORT) || DEFAULT_TRANSPORT
           base.travelTimeMinutes = prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME
-          base.selectedIntents = (prefsAny.intents as string[]) || []
+          base.selectedIntents = prefs.intents ?? []
           base.locationGranted = restoredUseGps
           base.useGpsLocation = restoredUseGps
-          base.manualLocation = (prefsAny.custom_location as string) || null
+          base.manualLocation = prefs.custom_location ?? null
 
           // 6. Verify GPS permission is still granted on device (OS can revoke it)
           if (restoredUseGps) {
-            const { status } = await Location.getForegroundPermissionsAsync()
-            if (status === 'granted') {
-              setHasGpsPermission(true)
+            try {
+              const { status } = await Location.getForegroundPermissionsAsync()
+              if (status === 'granted') {
+                setHasGpsPermission(true)
+              }
+            } catch (gpsErr) {
+              // Non-fatal: some Android versions throw here. GPS defaults to false.
+              logger.warn('useOnboardingResume: getForegroundPermissionsAsync failed', { error: String(gpsErr) })
             }
           }
         }

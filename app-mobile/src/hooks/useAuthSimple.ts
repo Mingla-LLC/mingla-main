@@ -1,3 +1,7 @@
+// Module-level flag — shared across ALL instances of useAuthSimple.
+// Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
+let _isHandlingSignOut = false;
+
 import { useState, useEffect } from "react";
 import { Alert, Platform } from "react-native";
 import Constants from "expo-constants";
@@ -205,10 +209,15 @@ export const useAuthSimple = () => {
           console.error("Error loading profile:", profileError);
         }
       } else {
+        // SIGNED_OUT — guard against multiple instances firing simultaneously
+        if (_isHandlingSignOut) return;
+        _isHandlingSignOut = true;
         if (mounted) {
           setAuth(null);
           clearUserData();
         }
+        // Reset after a tick so re-login within the same session works correctly
+        setTimeout(() => { _isHandlingSignOut = false; }, 1000);
       }
 
       if (mounted) {

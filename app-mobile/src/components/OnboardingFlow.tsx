@@ -2435,26 +2435,11 @@ const OnboardingFlow = ({
                         { onConflict: 'sender_id,receiver_id' }
                       )
 
+                    // sendFriendLink already sends the push notification internally.
+                    // Do NOT also call send-friend-request-email — that would duplicate the push.
                     sendFriendLink(friend.userId).catch((err) => {
                       console.warn('[Onboarding] sendFriendLink failed (non-fatal):', friend.userId, err)
                     })
-
-                    supabase.functions
-                      .invoke('send-friend-request-email', {
-                        body: {
-                          senderId: user.id,
-                          receiverId: friend.userId,
-                          receiverEmail: '',
-                          receiverUsername: friend.username || '',
-                          senderUsername: profile?.username || '',
-                          senderDisplayName: profile?.display_name || profile?.username || '',
-                          requestId: null,
-                          userExists: true,
-                        },
-                      })
-                      .catch((err) => {
-                        console.warn('[Onboarding] send-friend-request-email failed (non-fatal):', friend.userId, err)
-                      })
                   } catch (err) {
                     console.warn('[Onboarding] Failed to persist friend:', friend.userId, err)
                   }

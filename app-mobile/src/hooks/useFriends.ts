@@ -513,14 +513,14 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
         }
 
-        let notificationSent = false;
+        // Notifications are side effects — DB write already succeeded.
+        // Never re-throw notification errors; they must not roll back the UI.
         try {
-          const { data: notifyData, error: notifyError } =
+          const { error: notifyError } =
             await supabase.functions.invoke("send-friend-request-email", {
               body: {
                 senderId: user.id,
                 receiverId: receiverId,
-                receiverEmail: receiverEmail,
                 receiverUsername: receiverUsernameFinal,
                 senderUsername: senderUsername,
                 senderDisplayName: senderDisplayName,
@@ -530,20 +530,11 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             });
 
           if (notifyError) {
-            console.error("Error calling notification function:", notifyError);
-            throw new Error(
-              `Failed to send notification: ${notifyError.message || "Unknown error"}`
-            );
-          } else {
-            notificationSent = true;
+            console.warn("[useFriends] Notification failed (non-critical):", notifyError);
           }
         } catch (notifyErr: any) {
-          console.error("Notification function call failed:", notifyErr);
-          throw new Error(
-            `Notification failed: ${
-              notifyErr.message || "Could not send notification. Please try again."
-            }`
-          );
+          console.warn("[useFriends] Notification failed (non-critical):", notifyErr);
+          // Do NOT re-throw — notification is a side effect, not the primary operation
         }
 
         // Reload friend requests if user exists

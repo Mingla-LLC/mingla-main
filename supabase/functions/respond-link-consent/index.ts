@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -313,35 +314,27 @@ serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const sendPush = (
-      token: string,
-      title: string,
-      body: string,
-      data: Record<string, unknown>
-    ) => {
-      fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: token, sound: "default", title, body, data }),
-      }).catch((err) => console.warn("Push notification send failed:", err));
-    };
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     if (requesterToken?.push_token) {
-      sendPush(
-        requesterToken.push_token,
-        `You and ${targetName} are now linked!`,
-        "You can now see each other's details in For You.",
-        { type: "link_consent_completed", linkId }
-      );
+      sendPush(supabaseUrl, supabaseServiceKey, {
+        to: requesterToken.push_token,
+        sound: "default",
+        title: `You and ${targetName} are now linked!`,
+        body: "You can now see each other's details in For You.",
+        data: { type: "link_consent_completed", linkId },
+      }).catch((err) => console.warn("Push notification send failed:", err));
     }
 
     if (targetToken?.push_token) {
-      sendPush(
-        targetToken.push_token,
-        `You and ${requesterName} are now linked!`,
-        "You can now see each other's details in For You.",
-        { type: "link_consent_completed", linkId }
-      );
+      sendPush(supabaseUrl, supabaseServiceKey, {
+        to: targetToken.push_token,
+        sound: "default",
+        title: `You and ${requesterName} are now linked!`,
+        body: "You can now see each other's details in For You.",
+        data: { type: "link_consent_completed", linkId },
+      }).catch((err) => console.warn("Push notification send failed:", err));
     }
 
     // 14. Return success

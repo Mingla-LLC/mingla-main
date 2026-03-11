@@ -757,25 +757,12 @@ export class BoardMessageService {
     sessionName: string
   ): Promise<void> {
     try {
-      // Get recipient email
-      const { data: recipientProfile } = await supabase
-        .from('profiles')
-        .select('email, first_name')
-        .eq('id', recipientId)
-        .single();
-
-      if (!recipientProfile?.email) {
-        return;
-      }
-
-      // Call Supabase Edge Function to send push notification
+      // Call Supabase Edge Function to send push notification.
+      // The edge function looks up the push token internally — no email lookup needed here.
       const { error } = await supabase.functions.invoke('send-message-email', {
         body: {
           recipientId,
-          recipientEmail: recipientProfile.email,
-          recipientName: recipientProfile.first_name || 'User',
           senderName,
-          senderEmail: 'noreply@mingla.app',
           messagePreview: `${senderName} mentioned you: ${messagePreview}`,
           conversationId: sessionId,
           isMention: true,

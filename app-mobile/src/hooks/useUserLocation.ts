@@ -23,7 +23,7 @@ AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
   }
 }).catch(() => {});
 
-const fetchUserLocation = async (
+const fetchLocationCore = async (
   userId: string | undefined,
   currentMode: string,
   refreshKey: number | string | undefined,
@@ -88,6 +88,27 @@ const fetchUserLocation = async (
   // Callers must handle null gracefully (show prompt, use last cached, etc.)
   // Do NOT return a hardcoded default — it corrupts location-based results
   return null;
+};
+
+// Wraps fetchLocationCore in a 13-second total timeout (10s GPS + 3s buffer for
+// last-known fallback). Without a cap, the total operation has no bound.
+const fetchUserLocation = async (
+  userId: string | undefined,
+  currentMode: string,
+  refreshKey: number | string | undefined,
+  customLocation: string | null | undefined,
+  useGpsFlag: boolean | undefined
+): Promise<LocationData | null> => {
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error("useUserLocation timed out after 13s")),
+      13000
+    )
+  );
+  return Promise.race([
+    fetchLocationCore(userId, currentMode, refreshKey, customLocation, useGpsFlag),
+    timeoutPromise,
+  ]);
 };
 
 export const useUserLocation = (

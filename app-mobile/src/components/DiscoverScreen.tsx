@@ -27,22 +27,24 @@ import { useRecommendations, Recommendation } from "../contexts/RecommendationsC
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
+import { supabase } from "../services/supabase";
 import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences, savedPeopleKeys } from "../hooks/useSavedPeople";
 import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
 import AddPersonModal from "./AddPersonModal";
 import LinkFriendSheet from "./LinkFriendSheet";
-import LinkRequestBanner from "./LinkRequestBanner";
+import IncomingLinkRequestCard, { EnrichedLinkRequest } from "./IncomingLinkRequestCard";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { upsertSavedPersonByLink } from "../services/savedPeopleService";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
@@ -835,6 +837,8 @@ export default function DiscoverScreen({
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
+  const [selectedIncomingRequestId, setSelectedIncomingRequestId] = useState<string | null>(null);
+  const [enrichedLinkRequests, setEnrichedLinkRequests] = useState<EnrichedLinkRequest[]>([]);
   const { data: personExperiences = [] } = usePersonExperiences(
     selectedPersonId !== "for-you" ? selectedPersonId : undefined
   );
@@ -910,7 +914,7 @@ export default function DiscoverScreen({
   };
 
   // Get auth for Discover features
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const { preferences: discoverUserPrefs } = useUserPreferences();
   const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
   const savedPeople: SavedPerson[] = savedPeopleData;
@@ -921,6 +925,39 @@ export default function DiscoverScreen({
   const respondToLinkMutation = useRespondToFriendLink();
   useSocialRealtime(user?.id);
   const effectiveTier = useEffectiveTier(user?.id);
+
+  // Batch-fetch requester profiles to build enriched link request objects
+  useEffect(() => {
+    if (!pendingLinkRequests || pendingLinkRequests.length === 0) {
+      setEnrichedLinkRequests([]);
+      return;
+    }
+    const requesterIds = pendingLinkRequests.map((r: any) => r.requesterId);
+    supabase
+      .from("profiles")
+      .select("id, display_name, first_name, avatar_url")
+      .in("id", requesterIds)
+      .then(({ data }) => {
+        const profileMap: Record<string, { display_name?: string; first_name?: string; avatar_url?: string }> = {};
+        (data ?? []).forEach((p) => { profileMap[p.id] = p; });
+        const enriched: EnrichedLinkRequest[] = pendingLinkRequests.map((r: any) => {
+          const profile = profileMap[r.requesterId] ?? {};
+          const rawName = profile.display_name || profile.first_name || "Someone";
+          const initials = rawName.substring(0, 2).toUpperCase();
+          return {
+            id: r.id,
+            requesterId: r.requesterId,
+            name: rawName,
+            avatarUrl: profile.avatar_url ?? null,
+            initials,
+          };
+        });
+        setEnrichedLinkRequests(enriched);
+      })
+      .catch((err) => {
+        console.warn("[DiscoverScreen] Failed to enrich link requests:", err);
+      });
+  }, [pendingLinkRequests]);
 
   // Track which person IDs have pending outbound links (for greyed pills)
   const pendingOutboundLinkedUserIds = useMemo(() => {
@@ -2632,12 +2669,59 @@ export default function DiscoverScreen({
   const handlePersonSelect = (personId: string) => {
     HapticFeedback.buttonPress();
     setSelectedPersonId(personId);
+    setSelectedIncomingRequestId(null);
   };
 
   // Handle "For You" selection
   const handleForYouSelect = () => {
     HapticFeedback.buttonPress();
     setSelectedPersonId("for-you");
+    setSelectedIncomingRequestId(null);
+  };
+
+  // Handle incoming link request pill tap → show IncomingLinkRequestCard
+  const handleIncomingRequestSelect = (requestId: string) => {
+    HapticFeedback.buttonPress();
+    setSelectedPersonId("for-you");
+    setSelectedIncomingRequestId((prev) => (prev === requestId ? null : requestId));
+  };
+
+  // Accept a link request, upsert the person, then open PersonHolidayView
+  const handleAcceptLinkRequest = async (linkId: string) => {
+    const request = enrichedLinkRequests.find((r) => r.id === linkId);
+    if (!request || !user) return;
+    try {
+      await respondToLinkMutation.mutateAsync({ linkId, action: "accept" });
+      // mutateAsync onSuccess already invalidates friendLinkKeys + savedPeopleKeys
+      const savedPerson = await upsertSavedPersonByLink({
+        currentUserId: user.id,
+        linkedUserId: request.requesterId,
+        linkId,
+        name: request.name,
+        initials: request.initials,
+      });
+      // Invalidate again after upsert to ensure the new saved_people row is reflected
+      await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+      setSelectedIncomingRequestId(null);
+      if (savedPerson) {
+        setSelectedPersonId(savedPerson.id);
+      }
+    } catch (err) {
+      console.error("[DiscoverScreen] Accept link request failed:", err);
+      Alert.alert("Error", "Failed to accept link request. Please try again.");
+    }
+  };
+
+  // Decline a link request, clear the card
+  const handleDeclineLinkRequest = (linkId: string) => {
+    if (respondToLinkMutation.isPending) return;
+    respondToLinkMutation.mutate(
+      { linkId, action: "decline" },
+      {
+        onSuccess: () => setSelectedIncomingRequestId(null),
+        onError: () => Alert.alert("Error", "Failed to decline. Please try again."),
+      }
+    );
   };
 
   // Handle removing a person — mutation first, animation only on success
@@ -3148,27 +3232,6 @@ export default function DiscoverScreen({
         >
           {activeTab === "for-you" && (
             <>
-              {/* Link Request Banner */}
-              {pendingLinkRequests.length > 0 && (
-                <LinkRequestBanner
-                  requests={pendingLinkRequests}
-                  onAccept={(linkId) => {
-                    if (respondToLinkMutation.isPending) return;
-                    respondToLinkMutation.mutate(
-                      { linkId, action: 'accept' },
-                      { onError: () => Alert.alert("Error", "Failed to accept. Please try again.") }
-                    );
-                  }}
-                  onDecline={(linkId) => {
-                    if (respondToLinkMutation.isPending) return;
-                    respondToLinkMutation.mutate(
-                      { linkId, action: 'decline' },
-                      { onError: () => Alert.alert("Error", "Failed to decline. Please try again.") }
-                    );
-                  }}
-                />
-              )}
-
               {/* For You Tab Header with People Pills */}
               <View style={styles.tabHeaderRow}>
                 {/* Fixed pills */}
@@ -3198,13 +3261,46 @@ export default function DiscoverScreen({
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Scrollable Saved People Pills */}
+                {/* Scrollable Saved People Pills + Incoming Link Request Pills */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.tabHeaderScrollContent}
                   style={styles.tabHeaderScrollView}
                 >
+                  {/* Incoming link request pills (grey, left of saved people) */}
+                  {enrichedLinkRequests.map((req) => {
+                    const isSelected = selectedIncomingRequestId === req.id;
+                    return (
+                      <TouchableOpacity
+                        key={`incoming-${req.id}`}
+                        style={[
+                          styles.personPill,
+                          isSelected && { borderColor: "#6b7280", borderWidth: 1.5 },
+                        ]}
+                        onPress={() => handleIncomingRequestSelect(req.id)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Link request from ${req.name}`}
+                      >
+                        <View
+                          style={[
+                            styles.personPillAvatar,
+                            { backgroundColor: "#4b5563" },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.personPillInitials,
+                              { color: "#d1d5db" },
+                            ]}
+                          >
+                            {req.initials}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
                   {savedPeople.map((person) => {
                     const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
                     const isSelected = selectedPersonId === person.id;
@@ -3281,6 +3377,21 @@ export default function DiscoverScreen({
                   })}
                 </ScrollView>
               </View>
+
+              {/* Incoming link request card when a request pill is tapped */}
+              {selectedIncomingRequestId && (() => {
+                const req = enrichedLinkRequests.find((r) => r.id === selectedIncomingRequestId);
+                if (!req) return null;
+                return (
+                  <IncomingLinkRequestCard
+                    request={req}
+                    isAccepting={respondToLinkMutation.isPending && respondToLinkMutation.variables?.linkId === selectedIncomingRequestId && respondToLinkMutation.variables?.action === "accept"}
+                    isDeclining={respondToLinkMutation.isPending && respondToLinkMutation.variables?.linkId === selectedIncomingRequestId && respondToLinkMutation.variables?.action === "decline"}
+                    onAccept={handleAcceptLinkRequest}
+                    onDecline={handleDeclineLinkRequest}
+                  />
+                );
+              })()}
 
               {/* Person-specific view when a person is selected */}
               {selectedPerson ? (

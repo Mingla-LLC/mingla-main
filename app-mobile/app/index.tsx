@@ -204,7 +204,7 @@ function AppContent() {
               data.requesterId,
               data.requesterAvatarUrl
             );
-            setCurrentPage("connections");
+            setCurrentPage("discover");
             break;
           case "link_consent_request":
             inAppNotificationService.notifyLinkConsentRequest(
@@ -1520,17 +1520,20 @@ function AppContent() {
   }
   // Show onboarding loader if active OR if user needs onboarding.
   // OnboardingLoader owns the async resume/loading state — AppContent never renders
-  // OnboardingFlow directly. Both user and profile are guaranteed non-null here:
-  // needsOnboarding requires profile non-null, and showOnboardingFlow is only set
-  // after profile loads (see AppStateManager useEffect).
+  // OnboardingFlow directly.
+  // Guard: onAuthStateChange (JWT expiry, force sign-out) can null out `user` in the
+  // same render frame before the cleanup effect in AppStateManager runs. Without this
+  // guard, user!.id would throw a TypeError that crashes the whole React tree.
   if (showOnboardingFlow || needsOnboarding) {
+    if (!user || !profile) return null;
+
     logger.nav('Render: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
 
     return (
       <ErrorBoundary>
         <OnboardingLoader
-          userId={user!.id}
-          profile={profile!}
+          userId={user.id}
+          profile={profile}
           onComplete={() => {
             logger.nav('OnboardingFlow completed — transitioning to home');
             setHasCompletedOnboarding(true);
@@ -1563,13 +1566,13 @@ function AppContent() {
   if (user && !profile) {
     logger.nav('Render: ProfileLoading (user exists, waiting for profile)', { userId: user.id });
     return (
-      <View style={{ flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.profileLoadingContainer}>
         <StatusBar barStyle="dark-content" translucent={true} backgroundColor="transparent" />
-        <View style={{ alignItems: 'center' }}>
-          <View style={{ width: 64, height: 64, backgroundColor: '#eb7825', borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-            <Text style={{ color: 'white', fontSize: 24 }}>✨</Text>
+        <View style={styles.profileLoadingInner}>
+          <View style={styles.profileLoadingIcon}>
+            <Text style={styles.profileLoadingEmoji}>✨</Text>
           </View>
-          <Text style={{ color: '#6b7280', fontSize: 16 }}>Loading your profile...</Text>
+          <Text style={styles.profileLoadingText}>Loading your profile...</Text>
         </View>
       </View>
     );
@@ -2267,6 +2270,32 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "white",
+  },
+  profileLoadingContainer: {
+    flex: 1,
+    backgroundColor: colors.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileLoadingInner: {
+    alignItems: 'center',
+  },
+  profileLoadingIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: colors.primary,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileLoadingEmoji: {
+    color: colors.white,
+    fontSize: 24,
+  },
+  profileLoadingText: {
+    color: colors.gray500,
+    fontSize: 16,
   },
   container: {
     flex: 1,

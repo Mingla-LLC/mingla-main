@@ -858,6 +858,7 @@ export const useSessionManagement = () => {
                 description: `Collaborative board for ${sessionData.name}`,
                 created_by: user.id,
                 is_public: false,
+                session_id: invite.sessionId,  // Required so board_collaborators RLS can verify session membership
               })
               .select()
               .single();

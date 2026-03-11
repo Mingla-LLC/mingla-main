@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as phoneInviteService from "../services/phoneInviteService";
 import { friendLinkKeys } from "./useFriendLinks";
-import { useAuthSimple } from "./useAuthSimple";
+import { useAppStore } from "../store/appStore";
 
 export function useSendPhoneInvite() {
   const queryClient = useQueryClient();
@@ -20,7 +20,7 @@ export function useSendPhoneInvite() {
 }
 
 export function usePendingPhoneInvites() {
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   return useQuery({
     queryKey: [...friendLinkKeys.all, "phone-invites", user?.id ?? ""],
     queryFn: () => phoneInviteService.getPendingPhoneInvites(user!.id),
