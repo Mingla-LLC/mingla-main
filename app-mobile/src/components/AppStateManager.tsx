@@ -299,23 +299,20 @@ export function useAppState() {
 
   // Load onboarding data from profile (authentication handled by Supabase)
   useEffect(() => {
-    // Check onboarding status from profile instead of AsyncStorage
     if (profile) {
       const hasCompleted = profile.has_completed_onboarding === true;
       setHasCompletedOnboarding(hasCompleted);
-      // If onboarding is not completed, show onboarding flow for authenticated users
-      if (!hasCompleted && user && !showOnboardingFlow) {
-        setShowOnboardingFlow(true);
+      // Functional updater reads current showOnboardingFlow without adding it to deps,
+      // preventing the effect from re-running every time showOnboardingFlow is set to true.
+      if (!hasCompleted && user) {
+        setShowOnboardingFlow((current) => current ? current : true);
       }
-    } else if (user && !profile) {
-      // User is authenticated but profile not loaded yet - wait
     } else if (!user) {
-      // No user - onboarding status doesn't matter
       setHasCompletedOnboarding(false);
     }
 
     setIsLoadingOnboarding(false);
-  }, [profile, user, showOnboardingFlow]);
+  }, [profile, user]);
 
   // Update userIdentity when Supabase authentication changes
   useEffect(() => {
