@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { logger } from '../utils/logger';
+import { breadcrumbs } from '../utils/breadcrumbs';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -26,6 +27,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     logger.error('ErrorBoundary caught', { message: error.message, name: error.name });
     logger.error('Component stack', { stack: errorInfo.componentStack?.slice(0, 500) });
     console.error('Error Boundary caught an error:', error, errorInfo);
+
+    // Add component stack context to breadcrumbs (logger.error above already dumps the trail)
+    breadcrumbs.add('error', `ErrorBoundary: ${error.message}`, {
+      componentStack: errorInfo.componentStack?.slice(0, 200),
+    });
   }
 
   handleRetry = () => {

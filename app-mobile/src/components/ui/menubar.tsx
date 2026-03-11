@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Text, View, StyleSheet, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface MenubarProps {
@@ -75,14 +76,14 @@ interface MenubarTriggerProps {
 
 function MenubarTrigger({ children, onPress, style, ...props }: MenubarTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Menubar"
       style={[styles.trigger, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -118,7 +119,7 @@ function MenubarItem({
   ...props
 }: MenubarItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Menubar"
       style={[
         styles.item,
         inset && styles.inset,
@@ -132,7 +133,7 @@ function MenubarItem({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -153,7 +154,7 @@ function MenubarCheckboxItem({
   ...props
 }: MenubarCheckboxItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Menubar"
       style={[
         styles.checkboxItem,
         disabled && styles.disabled,
@@ -170,7 +171,7 @@ function MenubarCheckboxItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -191,7 +192,7 @@ function MenubarRadioItem({
   ...props
 }: MenubarRadioItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Menubar"
       style={[
         styles.radioItem,
         disabled && styles.disabled,
@@ -208,7 +209,7 @@ function MenubarRadioItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -289,7 +290,7 @@ function MenubarSubTrigger({
   ...props
 }: MenubarSubTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Menubar"
       style={[
         styles.subTrigger,
         inset && styles.inset,
@@ -301,7 +302,7 @@ function MenubarSubTrigger({
     >
       {children}
       <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

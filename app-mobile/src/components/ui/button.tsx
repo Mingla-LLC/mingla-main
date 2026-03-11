@@ -1,7 +1,8 @@
 import * as React from "react";
-import { TouchableOpacity } from "react-native";
+import { TouchableOpacity, GestureResponderEvent } from "react-native";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { breadcrumbs } from "../../utils/breadcrumbs";
 
 import { cn } from "./utils";
 
@@ -47,11 +48,28 @@ function Button({
   }) {
   const Comp = asChild ? Slot : TouchableOpacity;
 
+  const originalOnPress = props.onPress;
+  const trackedOnPress = React.useCallback(
+    (e: GestureResponderEvent) => {
+      if (__DEV__) {
+        const label =
+          (typeof props.accessibilityLabel === 'string' ? props.accessibilityLabel : null)
+          ?? props.testID
+          ?? '(Button)';
+        breadcrumbs.add('tap', label, { component: 'Button', variant: variant ?? 'default' });
+        console.log(`[TAP] ${label} | component=Button | variant=${variant ?? 'default'}`);
+      }
+      originalOnPress?.(e);
+    },
+    [originalOnPress, variant, props.accessibilityLabel, props.testID]
+  );
+
   return (
     <Comp
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
+      onPress={trackedOnPress}
     />
   );
 }

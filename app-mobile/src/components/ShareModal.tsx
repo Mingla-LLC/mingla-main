@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
+import { Text, View, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
@@ -42,7 +43,7 @@ export default function ShareModal({
         onRequestClose={onClose}
       >
         <View style={styles.overlay}>
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="ShareModal"
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={onClose}
@@ -51,9 +52,9 @@ export default function ShareModal({
             <View style={styles.header}>
               <View style={styles.headerSidePlaceholder} />
               <Text style={styles.headerTitle}>Share Experience</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <TrackedTouchableOpacity logComponent="ShareModal" onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={20} color="#111827" />
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             </View>
             <View style={{ padding: 20, alignItems: 'center' }}>
               <Text style={{ color: '#6b7280' }}>No experience data available</Text>
@@ -189,7 +190,7 @@ export default function ShareModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="ShareModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -199,12 +200,12 @@ export default function ShareModal({
           <View style={styles.header}>
             <View style={styles.headerSidePlaceholder} />
             <Text style={styles.headerTitle}>Share Experience</Text>
-            <TouchableOpacity 
+            <TrackedTouchableOpacity logComponent="ShareModal" 
               onPress={onClose}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={20} color="#111827" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
 
           <ScrollView 
@@ -281,7 +282,7 @@ export default function ShareModal({
               {/* Personalized Message Box */}
               <View style={styles.messageBox}>
                 <Text style={styles.messageText}>{personalizedMessage}</Text>
-                <TouchableOpacity 
+                <TrackedTouchableOpacity logComponent="ShareModal" 
                   onPress={handleCopyMessage}
                   style={styles.copyMessageButton}
                 >
@@ -290,7 +291,7 @@ export default function ShareModal({
                     size={18} 
                     color={messageCopied ? "#eb7825" : "#6b7280"} 
                   />
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               </View>
             </View>
 
@@ -300,7 +301,7 @@ export default function ShareModal({
               
               {/* Social Media Buttons */}
               <View style={styles.socialButtons}>
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="ShareModal"
                   onPress={() => handleSocialShare('messages')}
                   style={[styles.socialButton, {backgroundColor: '#dfeeff'}]}
                   disabled={isSharing}
@@ -309,9 +310,9 @@ export default function ShareModal({
                     <Ionicons name="chatbubble" size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Messages</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
 
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="ShareModal"
                   onPress={() => handleSocialShare('whatsapp')}
                   style={[styles.socialButton, {backgroundColor: '#cdf8dd'}]}
                   disabled={isSharing}
@@ -320,9 +321,9 @@ export default function ShareModal({
                     <Ionicons name="logo-whatsapp" size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>WhatsApp</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
 
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="ShareModal"
                   onPress={() => handleSocialShare('instagram')}
                   style={[styles.socialButton, {backgroundColor: '#fcd5ce'}]}
                   disabled={isSharing}
@@ -331,9 +332,9 @@ export default function ShareModal({
                     <Ionicons name="logo-instagram" size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Instagram</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
 
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="ShareModal"
                   onPress={() => handleSocialShare('twitter')}
                   style={[styles.socialButton, {backgroundColor: '#d0e7ff'}]}
                   disabled={isSharing}
@@ -342,19 +343,19 @@ export default function ShareModal({
                     <Ionicons name="logo-twitter" size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Twitter</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               </View>
 
               <View style={styles.bottomButtonsContainer}>
-                <TouchableOpacity style={[styles.bottomButtons, {borderWidth: 0, backgroundColor: '#f9f4f1', marginBottom: 10}]}
+                <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons, {borderWidth: 0, backgroundColor: '#f9f4f1', marginBottom: 10}]}
                   onPress={() => {
                     handleSocialShare('more');
                   }}
                 >
                   <Feather name='share-2' size={24} color="black"/>
                   <Text>More sharing options</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.bottomButtons]}
+                </TrackedTouchableOpacity>
+                <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons]}
                   onPress={() => {
                     Clipboard.setString(`Check out ${title} on Mingla!`);
                     mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
@@ -362,13 +363,13 @@ export default function ShareModal({
                 >
                   <Feather name='copy' size={24} color="black"/>
                   <Text>Copy link</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </TrackedTouchableOpacity>
+                <TrackedTouchableOpacity logComponent="ShareModal"
                 onPress={handleCopyMessage}
                 style={[styles.bottomButtons]}>
                   <Feather name='copy' size={24} color="black"/>
                   <Text>Copy Message</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               </View>
             </View>
           </ScrollView>

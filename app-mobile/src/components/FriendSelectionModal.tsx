@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Text, View, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
@@ -42,7 +43,7 @@ export default function FriendSelectionModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="FriendSelectionModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -86,7 +87,7 @@ export default function FriendSelectionModal({
           ) : (
             <View style={styles.friendsContainer}>
               {filteredFriends.map((friend) => (
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="FriendSelectionModal"
                   key={friend.id}
                   onPress={() => onSelectFriend(friend)}
                   style={styles.friendItem}
@@ -118,7 +119,7 @@ export default function FriendSelectionModal({
                   <View style={styles.messageButton}>
                     <Ionicons name="chatbubble" size={16} color="#eb7825" />
                   </View>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               ))}
             </View>
           )}

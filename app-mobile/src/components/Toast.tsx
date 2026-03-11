@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
   useSharedValue, 
@@ -153,7 +154,7 @@ export const Toast: React.FC<ToastProps> = ({
         animatedStyle,
       ]}
     >
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="Toast"
         style={[styles.toast, { backgroundColor: config.backgroundColor }]}
         onPress={hideToast}
         activeOpacity={0.8}
@@ -180,7 +181,7 @@ export const Toast: React.FC<ToastProps> = ({
             ]}
           />
         </View>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     </Animated.View>
   );
 };

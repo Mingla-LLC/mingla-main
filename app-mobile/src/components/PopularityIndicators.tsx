@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -146,7 +147,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
 
     return (
       <Animated.View style={animatedStyle}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PopularityIndicators"
           style={[styles.actionButton, isLiked && styles.actionButtonActive]}
           onPress={handleLike}
           activeOpacity={0.8}
@@ -157,7 +158,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
             color={isLiked ? colors.error[500] : colors.text.secondary}
           />
           <AnimatedCounter value={animatedValues.likes} />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </Animated.View>
     );
   };
@@ -171,7 +172,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
 
     return (
       <Animated.View style={animatedStyle}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PopularityIndicators"
           style={[styles.actionButton, isSaved && styles.actionButtonActive]}
           onPress={handleSave}
           activeOpacity={0.8}
@@ -182,7 +183,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
             color={isSaved ? colors.primary[500] : colors.text.secondary}
           />
           <AnimatedCounter value={animatedValues.saves} />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </Animated.View>
     );
   };
@@ -196,7 +197,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
 
     return (
       <Animated.View style={animatedStyle}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PopularityIndicators"
           style={styles.actionButton}
           onPress={handleShare}
           activeOpacity={0.8}
@@ -207,7 +208,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
             color={colors.text.secondary}
           />
           <AnimatedCounter value={animatedValues.shares} />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </Animated.View>
     );
   };

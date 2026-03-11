@@ -36,6 +36,7 @@ import { SwipeableSessionCards } from "./SwipeableSessionCards";
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 import { useSessionStatus } from "../../hooks/useSessionStatus";
 import { useCollaborationCalendar } from "../../hooks/useCollaborationCalendar";
+import { useScreenLogger } from "../../hooks/useScreenLogger";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -106,6 +107,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   onNavigateToSession,
   onExitBoard,
 }) => {
+  useScreenLogger('board-view');
   const {
     session,
     preferences,

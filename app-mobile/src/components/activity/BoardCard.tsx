@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Board {
@@ -307,26 +308,26 @@ const BoardCard = ({
         {/* Actions Section */}
         <View style={styles.actionsContainer}>
           {/* Primary Action */}
-          <TouchableOpacity 
+          <TrackedTouchableOpacity logComponent="BoardCard" 
             onPress={() => onOpenBoard(board.id)}
             style={styles.primaryButton}
           >
             <Text style={styles.primaryButtonText}>Open Board</Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
           
           {/* Admin Actions */}
           {isUserAdmin && (
-            <TouchableOpacity 
+            <TrackedTouchableOpacity logComponent="BoardCard" 
               onPress={() => onInviteToSession(board.id, board.name)}
               style={[styles.secondaryButton, styles.adminButton]}
             >
               <Ionicons name="person-add" size={16} color="#eb7825" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           )}
           
           {/* Board Menu */}
           {showMenu && (
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="BoardCard"
               onPress={() => onToggleNotifications(board.id)}
               style={[styles.secondaryButton, styles.menuButton]}
             >
@@ -335,17 +336,17 @@ const BoardCard = ({
                 size={16} 
                 color="#6b7280" 
               />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           )}
           
           {/* Leave Board */}
           {!isUserAdmin && (
-            <TouchableOpacity 
+            <TrackedTouchableOpacity logComponent="BoardCard" 
               onPress={() => onLeaveBoard(board.id, board.name)}
               style={[styles.secondaryButton, styles.leaveButton]}
             >
               <Ionicons name="log-out" size={16} color="#ef4444" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           )}
         </View>
       </View>

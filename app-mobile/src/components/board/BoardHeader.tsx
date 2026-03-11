@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from "@expo/vector-icons";
 import { ParticipantAvatars, Participant } from "./ParticipantAvatars";
 import { BoardSession } from "../../hooks/useBoardSession";
@@ -43,13 +44,13 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
       <View style={styles.header}>
         {/* Left: Back Button */}
         {onBack && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="BoardHeader"
             onPress={onBack}
             style={styles.backButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
 
         {/* Center: Session Info */}
@@ -66,13 +67,13 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
 
         {/* Right: Three-dot Menu */}
         {onSettingsPress && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="BoardHeader"
               style={styles.menuButton}
               onPress={onSettingsPress}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="ellipsis-horizontal" size={24} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
         )}
       </View>
     </View>

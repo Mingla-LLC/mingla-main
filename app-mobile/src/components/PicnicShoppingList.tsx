@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -36,7 +37,7 @@ export function PicnicShoppingList({ items }: PicnicShoppingListProps) {
       {items.map((item, index) => {
         const isChecked = checkedItems.has(index);
         return (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="PicnicShoppingList"
             key={`${index}-${item}`}
             style={styles.itemRow}
             onPress={() => toggleItem(index)}
@@ -50,7 +51,7 @@ export function PicnicShoppingList({ items }: PicnicShoppingListProps) {
             <Text style={[styles.itemText, isChecked && styles.itemTextChecked]}>
               {item}
             </Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         );
       })}
     </View>

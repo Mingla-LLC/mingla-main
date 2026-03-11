@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Text, View, StyleSheet, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
@@ -74,7 +75,7 @@ function NavigationMenuTrigger({
   ...props
 }: NavigationMenuTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="NavigationMenu"
       style={[
         styles.navigationMenuTrigger,
         isOpen && styles.navigationMenuTriggerOpen,
@@ -94,7 +95,7 @@ function NavigationMenuTrigger({
           isOpen && styles.navigationMenuTriggerIconOpen
         ]}
       />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -121,7 +122,7 @@ function NavigationMenuContent({
       {...props}
     >
       <View style={styles.navigationMenuContentOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="NavigationMenu"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -165,7 +166,7 @@ function NavigationMenuLink({
   ...props
 }: NavigationMenuLinkProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="NavigationMenu"
       style={[
         styles.navigationMenuLink,
         isActive && styles.navigationMenuLinkActive,
@@ -176,7 +177,7 @@ function NavigationMenuLink({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

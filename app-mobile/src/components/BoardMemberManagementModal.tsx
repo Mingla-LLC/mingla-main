@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Participant {
@@ -97,7 +98,7 @@ export default function BoardMemberManagementModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -111,12 +112,12 @@ export default function BoardMemberManagementModal({
               <Text style={styles.headerTitle}>Manage Board</Text>
               <Text style={styles.headerSubtitle}>{board.name}</Text>
             </View>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
               onPress={onClose}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={16} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
 
@@ -163,30 +164,30 @@ export default function BoardMemberManagementModal({
                   {isCurrentUserAdmin && !isCurrentUser && (
                     <View style={styles.actionButtons}>
                       {!isAdmin && (
-                        <TouchableOpacity
+                        <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                           onPress={() => handlePromoteToAdmin(participant.id)}
                           style={styles.promoteButton}
                         >
                           <Ionicons name="shield-checkmark" size={16} color="#eb7825" />
-                        </TouchableOpacity>
+                        </TrackedTouchableOpacity>
                       )}
                       
                       {isAdmin && !isCreator && (
-                        <TouchableOpacity
+                        <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                           onPress={() => handleDemoteFromAdmin(participant.id)}
                           style={styles.demoteButton}
                         >
                           <Ionicons name="shield" size={16} color="#6b7280" />
-                        </TouchableOpacity>
+                        </TrackedTouchableOpacity>
                       )}
                       
                       {!isCreator && (
-                        <TouchableOpacity
+                        <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                           onPress={() => handleRemoveMember(participant.id)}
                           style={styles.removeButton}
                         >
                           <Ionicons name="person-remove" size={16} color="#eb7825" />
-                        </TouchableOpacity>
+                        </TrackedTouchableOpacity>
                       )}
                     </View>
                   )}
@@ -226,18 +227,18 @@ export default function BoardMemberManagementModal({
                     Remove <Text style={styles.confirmBold}>{confirmAction.participantName}</Text> from this board?
                   </Text>
                   <View style={styles.confirmButtons}>
-                    <TouchableOpacity
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => handleRemoveMember(confirmAction.participantId!)}
                       style={styles.confirmButton}
                     >
                       <Text style={styles.confirmButtonText}>Remove Member</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
                       <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                   </View>
                 </View>
               )}
@@ -248,18 +249,18 @@ export default function BoardMemberManagementModal({
                     Remove admin privileges from <Text style={styles.confirmBold}>{confirmAction.participantName}</Text>?
                   </Text>
                   <View style={styles.confirmButtons}>
-                    <TouchableOpacity
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => handleDemoteFromAdmin(confirmAction.participantId!)}
                       style={styles.demoteConfirmButton}
                     >
                       <Text style={styles.demoteButtonText}>Remove Admin</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
                       <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                   </View>
                 </View>
               )}
@@ -279,30 +280,30 @@ export default function BoardMemberManagementModal({
                     <Text style={styles.leaveConfirmDetail}>• This action cannot be undone</Text>
                   </View>
                   <View style={styles.confirmButtons}>
-                    <TouchableOpacity
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={handleLeaveBoard}
                       style={styles.leaveButton}
                     >
                       <Text style={styles.leaveButtonText}>Leave Board</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
                       <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                   </View>
                 </View>
               )}
             </View>
           ) : (
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
               onPress={handleLeaveBoard}
               style={styles.leaveBoardButton}
             >
               <Ionicons name="person-remove" size={16} color="#dc2626" />
               <Text style={styles.leaveBoardButtonText}>Leave Board</Text>
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           )}
         </View>
         </View>

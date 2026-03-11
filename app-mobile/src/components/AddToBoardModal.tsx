@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
@@ -156,7 +157,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="AddToBoardModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -172,12 +173,12 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                 Add <Text style={styles.friendName}>{friend.name}</Text> to existing collaboration boards
               </Text>
             </View>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="AddToBoardModal"
               onPress={onClose}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={20} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
 
@@ -205,7 +206,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                     </View>
                   )}
                   {availableSessions.length > 1 && (
-                    <TouchableOpacity
+                    <TrackedTouchableOpacity logComponent="AddToBoardModal"
                       onPress={handleSelectAll}
                       style={styles.selectAllButton}
                     >
@@ -215,14 +216,14 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                         <Ionicons name="checkmark" size={12} color="#eb7825" />
                       )}
                       <Text style={styles.selectAllText}>All</Text>
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                   )}
                 </View>
               </View>
               
               <View style={styles.sessionsList}>
                 {availableSessions.map((session) => (
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="AddToBoardModal"
                     key={session.id}
                     style={[
                       styles.sessionCard,
@@ -295,7 +296,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                         Current members
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 ))}
               </View>
             </>
@@ -305,13 +306,13 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
         {/* Footer */}
         {availableSessions.length > 0 && (
           <View style={styles.footer}>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="AddToBoardModal"
               onPress={onClose}
               style={styles.cancelButton}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </TrackedTouchableOpacity>
+            <TrackedTouchableOpacity logComponent="AddToBoardModal"
               onPress={handleAddToBoard}
               disabled={selectedSessions.length === 0 || isAdding}
               style={[
@@ -333,7 +334,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                       : `Add to ${selectedSessions.length} Boards`}
                 </Text>
               )}
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         )}
         </View>

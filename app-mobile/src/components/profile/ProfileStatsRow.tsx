@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 
 interface ProfileStatsRowProps {
   savedCount: number;
@@ -27,9 +28,9 @@ const StatItem: React.FC<StatItemProps> = ({ count, label, statKey, onPress }) =
 
   if (onPress) {
     return (
-      <TouchableOpacity style={styles.statFlex} onPress={() => onPress(statKey)} activeOpacity={0.7}>
+      <TrackedTouchableOpacity logComponent="ProfileStatsRow" style={styles.statFlex} onPress={() => onPress(statKey)} activeOpacity={0.7}>
         {content}
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     );
   }
 

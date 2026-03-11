@@ -23,6 +23,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
 | SVG | react-native-svg |
+| Dev Telemetry | Breadcrumb ring buffer + TrackedTouchableOpacity (`__DEV__` only) |
 
 ---
 
@@ -41,13 +42,13 @@ Mingla/
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~38 React Query hooks
+│   │   ├── hooks/                      # ~40 React Query hooks + useScreenLogger, useLifecycleLogger
 │   │   ├── services/                   # ~62 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
-│   │   └── utils/                      # 12 utility files
+│   │   └── utils/                      # 13 utility files (includes breadcrumbs.ts)
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
@@ -204,6 +205,19 @@ The Connect page manages friend relationships:
 - Free, Pro, and Elite tiers with 1-week trial
 - Referral bonus months for inviting friends
 - Stripe Connect payment processing
+
+### Console Telemetry & Breadcrumb Trail (Dev Only)
+
+A `__DEV__`-only telemetry system that auto-logs every user interaction into a 30-entry ring buffer. When any error fires, the full breadcrumb trail dumps to the Metro console with timestamps and elapsed deltas.
+
+- **TrackedTouchableOpacity** — Drop-in replacement for TouchableOpacity that auto-logs taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
+- **Breadcrumb ring buffer** — Stores last 30 user actions (taps, navigations, mutations, lifecycle events) with `breadcrumbs.add()` / `breadcrumbs.dump()`
+- **Auto-dump on errors** — `logger.error()`, query/mutation failures, and ErrorBoundary catches all trigger breadcrumb dumps
+- **Screen transition logging** — `useScreenLogger()` hook logs `[NAV] home -> discover` on every screen change
+- **Lifecycle logging** — `useLifecycleLogger()` logs app foreground/background transitions and network connectivity changes
+- **Button tracking** — The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
+- **Zero production overhead** — All breadcrumb operations are gated behind `__DEV__`
+- **logger.render() excluded** — Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
 
 ### Additional Features
 - GPS and manual location with travel time preferences
@@ -434,7 +448,8 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions. Phone invite trigger now creates everything as PENDING (user must explicitly accept). RLS enabled on `friend_requests` (with WITH CHECK). Friend accept is idempotent (upsert) and mirrors to friend_links. Collaboration step always shown during onboarding. Friends added during onboarding persisted to DB immediately. Decline cascades to friend_links. Collaboration sessions created during onboarding now visible in the main app (pending/dormant status included). Added realtime subscriptions to ConnectionsPage and DiscoverScreen for instant social updates.
+- **Console Telemetry & Breadcrumb Trail** -- Added a `__DEV__`-only breadcrumb ring buffer that records the last 30 user actions. Every error auto-dumps the trail to Metro console. Replaced TouchableOpacity with TrackedTouchableOpacity across 54 component files for automatic tap logging. Added useScreenLogger (7 screens), useLifecycleLogger (app root), and Button tap tracking.
+- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions.
 - **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request creates basic friendship only. Profile linkage requires explicit consent from both users.
 - **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger creates pending relationships only, not automatic acceptance.
 

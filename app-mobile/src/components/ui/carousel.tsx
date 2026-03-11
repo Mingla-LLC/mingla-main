@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { Text, View, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CarouselProps {
@@ -126,7 +127,7 @@ function Carousel({
         {showDots && totalSlides > 1 && (
           <View style={styles.dotsContainer}>
             {Array.from({ length: totalSlides }).map((_, index) => (
-              <TouchableOpacity
+              <TrackedTouchableOpacity logComponent="Carousel"
                 key={index}
                 style={[
                   styles.dot,
@@ -213,7 +214,7 @@ function CarouselPrevious({ style, onPress, ...props }: CarouselPreviousProps) {
   const { orientation, scrollPrev, canScrollPrev } = useCarousel();
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Carousel"
       style={[
         styles.navButton,
         styles.previousButton,
@@ -232,7 +233,7 @@ function CarouselPrevious({ style, onPress, ...props }: CarouselPreviousProps) {
         size={16} 
         color={canScrollPrev ? "#6b7280" : "#d1d5db"} 
       />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -245,7 +246,7 @@ function CarouselNext({ style, onPress, ...props }: CarouselNextProps) {
   const { orientation, scrollNext, canScrollNext } = useCarousel();
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Carousel"
       style={[
         styles.navButton,
         styles.nextButton,
@@ -264,7 +265,7 @@ function CarouselNext({ style, onPress, ...props }: CarouselNextProps) {
         size={16} 
         color={canScrollNext ? "#6b7280" : "#d1d5db"} 
       />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

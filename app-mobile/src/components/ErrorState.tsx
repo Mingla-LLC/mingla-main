@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, radius, colors, typography, fontWeights, commonStyles } from '../constants/designSystem';
 
@@ -61,7 +62,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         <Text style={styles.message}>{message}</Text>
         
         {onRetry && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="ErrorState"
             style={[styles.retryButton, { borderColor: getIconColor() }]}
             onPress={onRetry}
             activeOpacity={0.8}
@@ -75,7 +76,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
             <Text style={[styles.retryText, { color: getIconColor() }]}>
               {retryText}
             </Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
       </View>
     </View>
@@ -147,13 +148,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <Text style={styles.emptyMessage}>{message}</Text>
         
         {actionText && onAction && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="ErrorState"
             style={styles.emptyActionButton}
             onPress={onAction}
             activeOpacity={0.8}
           >
             <Text style={styles.emptyActionText}>{actionText}</Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
       </View>
     </View>

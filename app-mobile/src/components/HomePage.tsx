@@ -19,6 +19,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
+import { useScreenLogger } from "../hooks/useScreenLogger";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -89,6 +90,7 @@ export default function HomePage({
   isCreatingSession = false,
   onNotificationNavigate,
 }: HomePageProps) {
+  useScreenLogger('home');
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Text, View, TextInput, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
+import { Text, View, TextInput, StyleSheet, Dimensions } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 
 interface InputOTPProps {

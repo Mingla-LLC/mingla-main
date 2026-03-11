@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+import { Text, View, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
@@ -70,7 +71,7 @@ function PaginationLink({
   ...props
 }: PaginationLinkProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Pagination"
       style={[
         styles.paginationLink,
         isActive ? styles.paginationLinkActive : styles.paginationLinkInactive,
@@ -84,7 +85,7 @@ function PaginationLink({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

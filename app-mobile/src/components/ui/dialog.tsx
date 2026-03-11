@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Text, View, StyleSheet, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface DialogProps {
@@ -23,14 +24,14 @@ interface DialogTriggerProps {
 
 function DialogTrigger({ children, onPress, style, ...props }: DialogTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Dialog"
       style={[styles.trigger, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -54,14 +55,14 @@ interface DialogCloseProps {
 
 function DialogClose({ onPress, style, ...props }: DialogCloseProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Dialog"
       style={[styles.close, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       <Ionicons name="close" size={16} color="#6b7280" />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -72,7 +73,7 @@ interface DialogOverlayProps {
 
 function DialogOverlay({ style, onPress, ...props }: DialogOverlayProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Dialog"
       style={[styles.overlay, style]}
       activeOpacity={1}
       onPress={onPress}

@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { Text, View, StyleSheet, ScrollView } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CalendarProps {
@@ -80,23 +81,23 @@ function Calendar({
     <View style={[styles.calendar, style]} {...props}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="Calendar"
           style={styles.navButton}
           onPress={() => navigateMonth('prev')}
         >
           <Ionicons name="chevron-back" size={16} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
         
         <Text style={styles.monthYear}>
           {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </Text>
         
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="Calendar"
           style={styles.navButton}
           onPress={() => navigateMonth('next')}
         >
           <Ionicons name="chevron-forward" size={16} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {/* Day names */}
@@ -119,7 +120,7 @@ function Calendar({
           const isSelectedDate = isSelected(day);
 
           return (
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="Calendar"
               key={day.toISOString()}
               style={[
                 styles.dayCell,
@@ -137,7 +138,7 @@ function Calendar({
               >
                 {day.getDate()}
               </Text>
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           );
         })}
       </View>

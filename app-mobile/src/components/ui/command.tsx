@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Modal } from "react-native";
+import { Text, View, TextInput, StyleSheet, ScrollView, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CommandProps {
@@ -45,7 +46,7 @@ function CommandDialog({
       {...props}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="Command"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -167,7 +168,7 @@ function CommandItem({
   ...props
 }: CommandItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Command"
       style={[
         styles.item,
         selected && styles.selectedItem,
@@ -180,7 +181,7 @@ function CommandItem({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

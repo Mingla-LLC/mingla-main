@@ -45,6 +45,7 @@ import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } f
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
+import { useScreenLogger } from "../hooks/useScreenLogger";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -732,6 +733,7 @@ export default function DiscoverScreen({
   accountPreferences,
   preferencesRefreshKey,
 }: DiscoverScreenProps) {
+  useScreenLogger('discover');
   const insets = useSafeAreaInsets();
 
 

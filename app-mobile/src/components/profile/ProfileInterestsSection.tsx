@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories as allCategories } from '../../constants/categories';
@@ -29,16 +30,16 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
       <View style={styles.header}>
         <Text style={styles.title}>Interests</Text>
         {isOwnProfile && (
-          <TouchableOpacity onPress={onEditPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TrackedTouchableOpacity logComponent="ProfileInterestsSection" onPress={onEditPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="pencil" size={18} color="#6b7280" />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
       </View>
 
       {!hasInterests && isOwnProfile ? (
-        <TouchableOpacity onPress={onEditPress}>
+        <TrackedTouchableOpacity logComponent="ProfileInterestsSection" onPress={onEditPress}>
           <Text style={styles.placeholder}>Add your interests</Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       ) : (
         <View style={styles.pillsWrap}>
           {intentData.map((intent) => (

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
@@ -446,7 +447,7 @@ const ExperienceCard = ({
               </View>
               
               {onToggleExpand && (
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="ExperienceCard"
                   onPress={onToggleExpand}
                   style={styles.expandButton}
                 >
@@ -455,7 +456,7 @@ const ExperienceCard = ({
                     size={16} 
                     color="#6b7280" 
                   />
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               )}
             </View>
 
@@ -490,39 +491,39 @@ const ExperienceCard = ({
           <View style={styles.actionsRow}>
             {/* Conditional Buy Now/Schedule button */}
             {experience.purchaseOptions && experience.purchaseOptions.length > 0 ? (
-              <TouchableOpacity 
+              <TrackedTouchableOpacity logComponent="ExperienceCard" 
                 onPress={() => onPurchase?.(experience, experience.purchaseOptions?.[0])}
                 style={styles.primaryButton}
               >
                 <Ionicons name="bag" size={16} color="white" />
                 <Text style={styles.primaryButtonText}>Buy Now</Text>
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             ) : (
-              <TouchableOpacity 
+              <TrackedTouchableOpacity logComponent="ExperienceCard" 
                 onPress={() => onSchedule?.(experience)}
                 style={styles.primaryButton}
               >
                 <Ionicons name="calendar" size={16} color="white" />
                 <Text style={styles.primaryButtonText}>Schedule</Text>
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             )}
             
             {onShare && (
-              <TouchableOpacity 
+              <TrackedTouchableOpacity logComponent="ExperienceCard" 
                 onPress={() => onShare(experience)}
                 style={styles.secondaryButton}
               >
                 <Ionicons name="share" size={16} color="#6b7280" />
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             )}
             
             {onRemove && (
-              <TouchableOpacity 
+              <TrackedTouchableOpacity logComponent="ExperienceCard" 
                 onPress={() => onRemove(experience)}
                 style={styles.secondaryButton}
               >
                 <Ionicons name="close" size={16} color="#6b7280" />
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             )}
           </View>
         </View>
@@ -543,18 +544,18 @@ const ExperienceCard = ({
                 
                 {experience.images.length > 1 && (
                   <>
-                    <TouchableOpacity
+                    <TrackedTouchableOpacity logComponent="ExperienceCard"
                       onPress={() => prevImage(experience.images.length)}
                       style={[styles.imageNavigation, styles.leftNav]}
                     >
                       <Ionicons name="chevron-back" size={16} color="white" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="ExperienceCard"
                       onPress={() => nextImage(experience.images.length)}
                       style={[styles.imageNavigation, styles.rightNav]}
                     >
                       <Ionicons name="chevron-forward" size={16} color="white" />
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                     
                     {/* Image indicators */}
                     <View style={styles.imageIndicators}>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, Image, StyleSheet, Alert, Clipboard } from 'react-native';
+import { Text, View, Image, StyleSheet, Alert, Clipboard } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from './utils/formatters';
 
@@ -92,7 +93,7 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
                 {purchaseData.purchaseId}
               </Text>
             </View>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="PurchaseQRCode"
               onPress={handleCopyPurchaseID}
               style={styles.copyButton}
             >
@@ -101,20 +102,20 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
               ) : (
                 <Ionicons name="copy" size={16} color="#6b7280" />
               )}
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
       </View>
 
       {/* Actions */}
       <View style={styles.actionsContainer}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PurchaseQRCode"
           onPress={handleDownloadQR}
           style={styles.downloadButton}
         >
           <Ionicons name="download" size={16} color="white" />
           <Text style={styles.downloadButtonText}>Download QR Code</Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </View>
   );

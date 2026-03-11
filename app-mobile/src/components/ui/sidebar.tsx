@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 
 // Simple Slot component for React Native
 const Slot = React.forwardRef<any, any>(({ children, ...props }, ref) => {
@@ -239,7 +240,7 @@ function SidebarRail({ style, ...props }: { style?: any }) {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Sidebar"
       style={[styles.sidebarRail, style]}
       onPress={toggleSidebar}
       {...props}

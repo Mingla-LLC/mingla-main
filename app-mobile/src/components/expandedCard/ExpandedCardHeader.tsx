@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ExpandedCardHeaderProps {
@@ -11,13 +12,13 @@ export default function ExpandedCardHeader({
 }: ExpandedCardHeaderProps) {
   return (
     <View style={styles.header}>
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="ExpandedCardHeader"
         onPress={onClose}
         style={styles.closeButton}
         activeOpacity={0.7}
       >
         <Ionicons name="close" size={16} color="#6b7280" />
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
       <View style={styles.headerSpacer} />
     </View>
   );

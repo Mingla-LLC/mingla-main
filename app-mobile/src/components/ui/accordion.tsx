@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Animated } from "react-native";
+import { Text, View, StyleSheet, Animated } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AccordionProps {
@@ -116,7 +117,7 @@ function AccordionTrigger({
   });
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Accordion"
       style={[styles.accordionTrigger, style]}
       onPress={onToggle}
       {...props}
@@ -127,7 +128,7 @@ function AccordionTrigger({
           <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
         </Animated.View>
       </View>
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

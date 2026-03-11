@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+import { Text, View, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 function Breadcrumb({ ...props }: React.ComponentProps<typeof View>) {
@@ -51,13 +52,13 @@ function BreadcrumbLink({
   ...props
 }: BreadcrumbLinkProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Breadcrumb"
       style={[styles.breadcrumbLink, style]}
       onPress={onPress}
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

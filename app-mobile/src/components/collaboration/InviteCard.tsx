@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
@@ -125,18 +126,18 @@ export const ReceivedInviteCard = ({ invite, onAccept, onDecline }: ReceivedInvi
       </View>
 
       <View style={styles.receivedInviteActions}>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="InviteCard" 
           onPress={() => onAccept(invite.id)}
           style={styles.acceptInviteButton}
         >
           <Text style={styles.acceptInviteButtonText}>Accept</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="InviteCard" 
           onPress={() => onDecline(invite.id)}
           style={styles.declineInviteButton}
         >
           <Text style={styles.declineInviteButtonText}>Decline</Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </View>
   );
@@ -233,12 +234,12 @@ export const SentInviteCard = ({ invite, onCancel }: SentInviteCardProps) => {
         </View>
       </View>
 
-      <TouchableOpacity 
+      <TrackedTouchableOpacity logComponent="InviteCard" 
         onPress={() => onCancel(invite.id)}
         style={styles.cancelInviteButton}
       >
         <Text style={styles.cancelInviteButtonText}>Cancel Invite</Text>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     </View>
   );
 };
@@ -327,15 +328,15 @@ export const PendingSessionCard = ({ session, onLeaveSession }: PendingSessionCa
       </View>
 
       <View style={styles.pendingSessionActions}>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="InviteCard" 
           onPress={() => onLeaveSession(session.id)}
           style={styles.cancelSessionButton}
         >
           <Text style={styles.cancelSessionButtonText}>Cancel Session</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.pendingSessionViewButton}>
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="InviteCard" style={styles.pendingSessionViewButton}>
           <Ionicons name="people" size={16} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </View>
   );

@@ -1,5 +1,6 @@
 import * as React from "react";
-import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CheckboxProps {
@@ -38,7 +39,7 @@ function Checkbox({
   const sizeStyles = getSizeStyles();
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Checkbox"
       style={[
         styles.checkbox,
         {
@@ -61,7 +62,7 @@ function Checkbox({
           color={checked ? 'white' : '#6b7280'}
         />
       )}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
@@ -526,7 +527,7 @@ const SessionsTab = ({
   return (
     <View style={styles.sessionsContainer}>
       {/* Solo Explorer Section */}
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="SessionsTab"
         style={[
           styles.soloExplorerCard,
           isSoloMode && styles.soloExplorerCardActive
@@ -549,11 +550,11 @@ const SessionsTab = ({
             <Ionicons name="checkmark" size={16} color="#FFFFFF" />
           </View>
         )}
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
 
       {/* Session Tabs */}
       <View style={styles.tabsContainer}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="SessionsTab"
           style={[styles.tab, activeTab === 'active' ? styles.tabActive : styles.tabInactive]}
           onPress={() => setActiveTab('active')}
           activeOpacity={0.7}
@@ -561,8 +562,8 @@ const SessionsTab = ({
           <Text style={[styles.tabText, activeTab === 'active' ? styles.tabTextActive : styles.tabTextInactive]}>
             Active ({filteredActiveSessions.length})
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="SessionsTab"
           style={[styles.tab, activeTab === 'pending' ? styles.tabActive : styles.tabInactive]}
           onPress={() => setActiveTab('pending')}
           activeOpacity={0.7}
@@ -575,7 +576,7 @@ const SessionsTab = ({
               <Text style={styles.tabBadgeText}>{filteredPendingSessions.length}</Text>
             </View>
           )}
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {/* Active Sessions Section */}
@@ -655,7 +656,7 @@ const SessionsTab = ({
                 )}
 
                 <View style={styles.sessionActions}>
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="SessionsTab"
                     style={[
                       styles.switchButton,
                       isActive && styles.switchButtonActive
@@ -689,8 +690,8 @@ const SessionsTab = ({
                         </Text>
                       </>
                     )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </TrackedTouchableOpacity>
+                  <TrackedTouchableOpacity logComponent="SessionsTab"
                     style={styles.actionButton}
                     onPress={() => {
                       if (onNavigateToBoard) {
@@ -699,8 +700,8 @@ const SessionsTab = ({
                     }}
                   >
                     <Ionicons name="chatbubble-outline" size={18} color="#6B7280" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </TrackedTouchableOpacity>
+                  <TrackedTouchableOpacity logComponent="SessionsTab"
                     style={styles.actionButton}
                     onPress={() => {
                       if (onNavigateToBoard) {
@@ -709,7 +710,7 @@ const SessionsTab = ({
                     }}
                   >
                     <Ionicons name="settings-outline" size={18} color="#6B7280" />
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 </View>
               </View>
             );
@@ -727,7 +728,7 @@ const SessionsTab = ({
           <Text style={styles.emptyStateSubtitle}>
             You don't have any active sessions yet. Create one to start collaborating with friends!
           </Text>
-          <TouchableOpacity 
+          <TrackedTouchableOpacity logComponent="SessionsTab" 
             onPress={() => {
               if (onCreateSession) {
                 onCreateSession();
@@ -739,7 +740,7 @@ const SessionsTab = ({
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
             <Text style={styles.startCollaborationButtonText}>Create Session</Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </View>
       )}
 

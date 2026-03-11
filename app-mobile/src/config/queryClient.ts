@@ -1,12 +1,16 @@
 import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { breadcrumbs } from '../utils/breadcrumbs';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       const key = Array.isArray(query.queryKey) ? query.queryKey.join('.') : String(query.queryKey);
-      console.error(`[QUERY_ERROR] key="${key}" | ${error.name}: ${error.message}`, error);
+      const msg = `key="${key}" | ${error.name}: ${error.message}`;
+      console.error(`[QUERY_ERROR] ${msg}`, error);
+      breadcrumbs.add('error', `Query failed: ${key} — ${error.message}`, { queryKey: key });
+      breadcrumbs.dump(`QUERY_ERROR: ${key}`);
     },
   }),
   mutationCache: new MutationCache({
@@ -14,13 +18,24 @@ export const queryClient = new QueryClient({
       const key = mutation.options.mutationKey
         ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
         : '(unnamed)';
-      console.error(`[MUTATION_ERROR] key="${key}" | ${error.name}: ${error.message}`, error);
+      const msg = `key="${key}" | ${error.name}: ${error.message}`;
+      console.error(`[MUTATION_ERROR] ${msg}`, error);
+      breadcrumbs.add('error', `Mutation failed: ${key} — ${error.message}`, { mutationKey: key });
+      breadcrumbs.dump(`MUTATION_ERROR: ${key}`);
+    },
+    onSuccess: (_data, _variables, _context, mutation) => {
+      if (!__DEV__) return;
+      const key = mutation.options.mutationKey
+        ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
+        : '(unnamed)';
+      breadcrumbs.add('mutation', `Mutation succeeded: ${key}`, { mutationKey: key });
+      console.log(`[MUTATION_OK] key="${key}"`);
     },
   }),
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes - data is fresh for 5 minutes
-      gcTime: 24 * 60 * 60 * 1000, // 24 hours - cache time (formerly cacheTime)
+      staleTime: 5 * 60 * 1000,
+      gcTime: 24 * 60 * 60 * 1000,
       retry: 1,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
@@ -31,4 +46,3 @@ export const queryClient = new QueryClient({
 export const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
 });
-

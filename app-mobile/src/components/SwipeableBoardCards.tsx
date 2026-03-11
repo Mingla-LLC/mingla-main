@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image, PanResponder, Animated } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, Image, PanResponder, Animated } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { parseAndFormatDistance } from './utils/formatters';
@@ -155,7 +156,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
             {currentIndex + 1} of {cards.length}
           </Text>
           <View style={styles.navigationButtons}>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
               onPress={() => navigateCard('prev')}
               disabled={currentIndex === 0}
               style={[
@@ -164,8 +165,8 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
               ]}
             >
               <Ionicons name="chevron-back" size={16} color={currentIndex === 0 ? "#9ca3af" : "#6b7280"} />
-            </TouchableOpacity>
-            <TouchableOpacity
+            </TrackedTouchableOpacity>
+            <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
               onPress={() => navigateCard('next')}
               disabled={currentIndex === cards.length - 1}
               style={[
@@ -174,7 +175,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
               ]}
             >
               <Ionicons name="chevron-forward" size={16} color={currentIndex === cards.length - 1 ? "#9ca3af" : "#6b7280"} />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
       </View>
@@ -242,12 +243,12 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               </View>
                             </View>
                             
-                            <TouchableOpacity
+                            <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                               onPress={() => toggleExpanded(card.id)}
                               style={styles.expandButton}
                             >
                               <Ionicons name="eye" size={16} color="white" />
-                            </TouchableOpacity>
+                            </TrackedTouchableOpacity>
                           </View>
                         </View>
                       </View>
@@ -277,7 +278,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         {!card.isLocked ? (
                           <View style={styles.votingSection}>
                             <View style={styles.voteButtons}>
-                              <TouchableOpacity
+                              <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                 onPress={() => onVote(card.id, 'yes')}
                                 style={[
                                   styles.voteButton,
@@ -289,8 +290,8 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   styles.voteButtonText,
                                   card.votes.userVote === 'yes' ? styles.voteButtonTextActive : styles.voteButtonTextInactive
                                 ]}>{card.votes.yes}</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
+                              </TrackedTouchableOpacity>
+                              <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                 onPress={() => onVote(card.id, 'no')}
                                 style={[
                                   styles.voteButton,
@@ -302,10 +303,10 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   styles.voteButtonText,
                                   card.votes.userVote === 'no' ? styles.voteButtonTextActive : styles.voteButtonTextInactive
                                 ]}>{card.votes.no}</Text>
-                              </TouchableOpacity>
+                              </TrackedTouchableOpacity>
                             </View>
                             
-                            <TouchableOpacity
+                            <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                               onPress={() => onRSVP(card.id, 'yes')}
                               style={[
                                 styles.rsvpButton,
@@ -318,7 +319,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               ]}>
                                 {card.rsvps.userRSVP === 'yes' ? 'RSVP\'d Yes' : 'RSVP Yes'}
                               </Text>
-                            </TouchableOpacity>
+                            </TrackedTouchableOpacity>
                           </View>
                         ) : (
                           <View style={styles.lockedSection}>
@@ -340,12 +341,12 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         
                         {/* Header with close button */}
                         <View style={styles.expandedHeader}>
-                          <TouchableOpacity
+                          <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                             onPress={() => toggleExpanded(card.id)}
                             style={styles.closeButton}
                           >
                             <Ionicons name="close" size={16} color="#6b7280" />
-                          </TouchableOpacity>
+                          </TrackedTouchableOpacity>
                           
                           <View style={styles.expandedHeaderCenter}>
                             {card.isLocked && (
@@ -464,7 +465,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   <Text style={styles.votingStatValue}>{card.votes.no}</Text>
                                   <Text style={styles.votingStatLabel}>No</Text>
                                 </View>
-                                <TouchableOpacity
+                                <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   style={styles.votingStat}
                                   onPress={() => onOpenDiscussion?.(card.id)}
                                   activeOpacity={0.7}
@@ -474,7 +475,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.messages}</Text>
                                   <Text style={styles.votingStatLabel}>Messages</Text>
-                                </TouchableOpacity>
+                                </TrackedTouchableOpacity>
                               </View>
                               <Text style={styles.votingStatusSubtext}>
                                 {card.rsvps.responded}/{card.rsvps.total} responses
@@ -488,7 +489,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           {!card.isLocked ? (
                             <View style={styles.expandedVotingSection}>
                               <View style={styles.expandedVoteButtons}>
-                                <TouchableOpacity
+                                <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   onPress={() => onVote(card.id, 'yes')}
                                   style={[
                                     styles.expandedVoteButton,
@@ -500,8 +501,8 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'yes' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
                                   ]}>Vote Yes</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
+                                </TrackedTouchableOpacity>
+                                <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   onPress={() => onVote(card.id, 'no')}
                                   style={[
                                     styles.expandedVoteButton,
@@ -513,9 +514,9 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'no' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
                                   ]}>Vote No</Text>
-                                </TouchableOpacity>
+                                </TrackedTouchableOpacity>
                               </View>
-                              <TouchableOpacity
+                              <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                 onPress={() => onRSVP(card.id, 'yes')}
                                 style={[
                                   styles.expandedRSVPButton,
@@ -528,9 +529,9 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                 ]}>
                                   {card.rsvps.userRSVP === 'yes' ? 'RSVP\'d Yes' : 'RSVP Yes'}
                                 </Text>
-                              </TouchableOpacity>
+                              </TrackedTouchableOpacity>
                               {onOpenDiscussion && (
-                                <TouchableOpacity
+                                <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   onPress={() => onOpenDiscussion(card.id)}
                                   style={styles.discussionButton}
                                 >
@@ -538,7 +539,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   <Text style={styles.discussionButtonText}>
                                     Discuss ({card.messages})
                                   </Text>
-                                </TouchableOpacity>
+                                </TrackedTouchableOpacity>
                               )}
                             </View>
                           ) : (
@@ -564,7 +565,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
       {/* Swipe Indicators */}
       <View style={styles.swipeIndicators}>
         {cards.map((_, index) => (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
             key={index}
             onPress={() => setCurrentIndex(index)}
             style={[

@@ -32,6 +32,7 @@ import ProfileStatsRow from "./profile/ProfileStatsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
 import * as Haptics from 'expo-haptics';
+import { useScreenLogger } from "../hooks/useScreenLogger";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -74,6 +75,7 @@ export default function ProfilePage({
   onNavigateToReplayTips,
   userIdentity,
 }: ProfilePageProps) {
+  useScreenLogger('profile');
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image } from 'react-native';
+import { Text, View, TextInput, StyleSheet, ActivityIndicator, Alert, Image } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
@@ -644,14 +645,14 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
               </Text>
             </View>
             <Text style={styles.preSelectedFriendName}>{preSelectedFriend.name}</Text>
-            <TouchableOpacity 
+            <TrackedTouchableOpacity logComponent="CreateTab" 
               onPress={() => {
                 setSelectedFriends(prev => prev.filter(f => f.id !== preSelectedFriend.id));
               }}
               style={styles.removeButton}
             >
               <Ionicons name="close" size={16} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
           <Text style={styles.preSelectedFriendNote}>
             You can remove this friend or add more friends in the next step
@@ -659,7 +660,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         </View>
       )}
 
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="CreateTab"
         onPress={() => setCreateStep('friends')}
         disabled={!newSessionName.trim()}
         style={[
@@ -669,7 +670,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       >
         <Text style={styles.continueButtonText}>Continue</Text>
         <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     </View>
   );
 
@@ -685,12 +686,12 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
     return (
       <View style={styles.stepContainer}>
         <View style={styles.backButton}>
-          <TouchableOpacity 
+          <TrackedTouchableOpacity logComponent="CreateTab" 
             onPress={() => setCreateStep('details')}
             style={styles.backButtonIcon}
           >
             <Ionicons name="chevron-back" size={20} color="#6b7280" />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
           <View>
             <Text style={styles.backButtonText}>Select Friends</Text>
             <Text style={styles.backButtonSubtext}>
@@ -721,12 +722,12 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                     )}
                   </View>
                   <Text style={styles.selectedFriendName}>{friend.name}</Text>
-                  <TouchableOpacity 
+                  <TrackedTouchableOpacity logComponent="CreateTab" 
                     onPress={() => toggleFriendSelection(friend)}
                     style={styles.removeFriendButton}
                   >
                     <Ionicons name="close" size={12} color="#6b7280" />
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 </View>
               ))}
             </View>
@@ -741,12 +742,12 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
               Add friends to start collaborating on sessions together
             </Text>
             {onNavigateToInvites && (
-              <TouchableOpacity
+              <TrackedTouchableOpacity logComponent="CreateTab"
                 onPress={onNavigateToInvites}
                 style={styles.emptyStateButton}
               >
                 <Text style={styles.emptyStateButtonText}>Go to Invites</Text>
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             )}
           </View>
         ) : (
@@ -757,7 +758,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                 const isSelected = selectedFriends.some(f => f.id === friend.id);
                 const isPreSelected = preSelectedFriend?.id === friend.id;
                 return (
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="CreateTab"
                     key={friend.id}
                     onPress={() => toggleFriendSelection(friend)}
                     style={[
@@ -788,7 +789,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                     {isSelected && (
                       <Ionicons name="checkmark" size={20} color="#eb7825" />
                     )}
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 );
               })}
             </View>
@@ -796,7 +797,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         )}
 
         {allFriends.length > 0 && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="CreateTab"
             onPress={() => setCreateStep('confirm')}
             disabled={selectedFriends.length === 0}
             style={[
@@ -807,7 +808,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
             <Text style={styles.continueButtonText}>
               Continue ({selectedFriends.length} selected)
             </Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
       </View>
     );
@@ -816,12 +817,12 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
   const renderConfirmStep = () => (
     <View style={styles.stepContainer}>
       <View style={styles.backButton}>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="CreateTab" 
           onPress={() => setCreateStep('friends')}
           style={styles.backButtonIcon}
         >
           <Ionicons name="chevron-back" size={20} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
         <View>
           <Text style={styles.backButtonText}>Confirm & Send</Text>
           <Text style={styles.backButtonSubtext}>
@@ -878,7 +879,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         </View>
       </View>
 
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="CreateTab"
         onPress={handleCreateSession}
         style={[styles.sendInvitesButton, isCreating && styles.sendInvitesButtonDisabled]}
         disabled={isCreating}
@@ -888,7 +889,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         ) : (
           <Text style={styles.sendInvitesButtonText}>Send Invites</Text>
         )}
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     </View>
   );
 

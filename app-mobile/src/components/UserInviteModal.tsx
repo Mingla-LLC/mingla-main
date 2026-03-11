@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ActivityIndicator, ScrollView } from 'react-native';
+import { Text, View, TextInput, StyleSheet, Modal, ActivityIndicator, ScrollView } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { useFriends } from '../hooks/useFriends';
 
@@ -91,7 +92,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="UserInviteModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -104,12 +105,12 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               <Text style={styles.title}>Invite to Session</Text>
               <Text style={styles.sessionName}>"{sessionName}"</Text>
             </View>
-            <TouchableOpacity 
+            <TrackedTouchableOpacity logComponent="UserInviteModal" 
               onPress={onClose}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={20} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
 
           {/* Search */}
@@ -138,12 +139,12 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                       <Text style={styles.selectedUserInitial}>{user.name[0]}</Text>
                     </View>
                     <Text style={styles.selectedUserName}>{user.name}</Text>
-                    <TouchableOpacity 
+                    <TrackedTouchableOpacity logComponent="UserInviteModal" 
                       onPress={() => toggleUser(user)}
                       style={styles.removeUserButton}
                     >
                       <Ionicons name="close" size={12} color="#9ca3af" />
-                    </TouchableOpacity>
+                    </TrackedTouchableOpacity>
                   </View>
                 ))}
               </View>
@@ -164,13 +165,13 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                 </View>
                 <Text style={styles.errorTitle}>Connection Error</Text>
                 <Text style={styles.errorSubtitle}>{error}</Text>
-                <TouchableOpacity 
+                <TrackedTouchableOpacity logComponent="UserInviteModal" 
                   style={styles.retryButton}
                   onPress={() => fetchFriends()}
                 >
                   <Ionicons name="refresh" size={16} color="white" />
                   <Text style={styles.retryButtonText}>Try Again</Text>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
               </View>
             ) : transformedFriends.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -192,7 +193,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               filteredUsers.map(user => {
                 const isSelected = selectedUsers.find(u => u.id === user.id);
                 return (
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="UserInviteModal"
                     key={user.id}
                     onPress={() => toggleUser(user)}
                     style={[
@@ -221,7 +222,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                     {isSelected && (
                       <Ionicons name="checkmark" size={20} color="#eb7825" />
                     )}
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 );
               })
             )}
@@ -229,7 +230,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
 
           {/* Footer */}
           <View style={styles.footer}>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="UserInviteModal"
               onPress={handleInvite}
               disabled={selectedUsers.length === 0}
               style={[
@@ -241,7 +242,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               <Text style={styles.inviteButtonText}>
                 Send Invite{selectedUsers.length > 1 ? 's' : ''} ({selectedUsers.length})
               </Text>
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
       </View>

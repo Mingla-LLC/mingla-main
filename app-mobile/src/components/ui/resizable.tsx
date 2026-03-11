@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, PanResponder, Animated } from "react-native";
+import { Text, View, StyleSheet, PanResponder, Animated } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";

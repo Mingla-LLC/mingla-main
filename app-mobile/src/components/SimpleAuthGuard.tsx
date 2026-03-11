@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { useAppStore } from '../store/appStore';
 import { authService } from '../services/authService';
 import AuthScreen from '../screens/AuthScreen';
@@ -82,12 +83,12 @@ const LoadingScreen: React.FC<{ onBypass?: () => void }> = ({ onBypass }) => (
     <ActivityIndicator size="large" color="#007AFF" />
     <Text style={styles.loadingText}>Loading...</Text>
     {onBypass && (
-      <TouchableOpacity 
+      <TrackedTouchableOpacity logComponent="SimpleAuthGuard" 
         style={styles.bypassButton} 
         onPress={onBypass}
       >
         <Text style={styles.bypassButtonText}>Skip Auth (Debug)</Text>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     )}
   </View>
 );

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 
 interface WeekendDaySelectionProps {
   selectedWeekendDay: "saturday" | "sunday" | null;
@@ -25,7 +26,7 @@ export default function WeekendDaySelection({
 
   return (
     <View style={styles.weekendDaySelection}>
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="WeekendDaySelection"
         style={[
           btnStyle,
           selectedWeekendDay === "saturday" && btnSelectedStyle,
@@ -40,8 +41,8 @@ export default function WeekendDaySelection({
         >
           Saturday
         </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
+      </TrackedTouchableOpacity>
+      <TrackedTouchableOpacity logComponent="WeekendDaySelection"
         style={[
           btnStyle,
           selectedWeekendDay === "sunday" && btnSelectedStyle,
@@ -56,7 +57,7 @@ export default function WeekendDaySelection({
         >
           Sunday
         </Text>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
     </View>
   );
 }

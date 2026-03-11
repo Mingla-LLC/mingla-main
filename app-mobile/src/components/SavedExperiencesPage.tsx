@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
+import { useScreenLogger } from "../hooks/useScreenLogger";
 
 interface SavedExperiencesPageProps {
   savedCards: any[];
@@ -173,6 +174,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   onPurchaseFromSaved,
   onShareCard,
 }) => {
+  useScreenLogger('saved');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [matchScoreFilter, setMatchScoreFilter] = useState<number | null>(null);

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
@@ -121,10 +122,10 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
         </View>
 
         {/* CTA */}
-        <TouchableOpacity style={styles.ctaButton} onPress={onSeePlan} activeOpacity={0.85}>
+        <TrackedTouchableOpacity logComponent="CuratedExperienceSwipeCard" style={styles.ctaButton} onPress={onSeePlan} activeOpacity={0.85}>
           <Text style={styles.ctaText}>{ctaText}</Text>
           <Ionicons name="arrow-forward" size={16} color="#fff" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </View>
   );

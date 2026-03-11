@@ -38,6 +38,7 @@ import {
   useUserSearch,
 } from "../hooks/useFriendLinks";
 import { usePendingLinkConsents, useRespondLinkConsent } from "../hooks/useLinkConsent";
+import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { LinkConsentCard } from "./LinkConsentCard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
@@ -101,6 +102,7 @@ export default function ConnectionsPageRefactored({
   onUnreadCountChange,
   onNavigateToFriendProfile,
 }: ConnectionsPageProps) {
+  useScreenLogger('connections');
   const { user } = useAuthSimple();
   const { height: screenHeight } = useWindowDimensions();
 

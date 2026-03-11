@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 
@@ -88,7 +89,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
         const variantStyles = getVariantStyles(action.variant);
         
         return (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="QuickActions"
             key={action.id}
             style={[
               styles.actionButton,
@@ -112,7 +113,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
               size={sizeConfig.iconSize}
               color={action.disabled ? colors.gray[400] : variantStyles.iconColor}
             />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         );
       })}
     </View>

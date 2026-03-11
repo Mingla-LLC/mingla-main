@@ -225,7 +225,7 @@ export const useSessionManagement = () => {
       // 4. Load all participants for these sessions (including invite sessions)
       let allParticipants: ParticipantRow[] = [];
       const allSessionIds = [...new Set([...sessionIds, ...(receivedInvites?.map(i => i.session_id) || [])])];
-      
+
       if (allSessionIds.length > 0) {
         const { data: participants, error: participantsError } = await supabase
           .from('session_participants')
@@ -236,6 +236,24 @@ export const useSessionManagement = () => {
           console.error('❌ Error loading participants:', participantsError);
         } else {
           allParticipants = participants || [];
+        }
+      }
+
+      // 4.5. Load pending phone invites (non-Mingla users) so they count toward
+      // the participant threshold. Without this, sessions with 1 real user +
+      // phone-invited contacts appear empty and get filtered out.
+      let pendingPhoneInvites: { session_id: string; phone_e164: string }[] = [];
+      if (allSessionIds.length > 0) {
+        const { data: phoneInvites, error: phoneInvitesError } = await supabase
+          .from('pending_session_invites')
+          .select('session_id, phone_e164')
+          .in('session_id', allSessionIds)
+          .eq('status', 'pending');
+
+        if (phoneInvitesError) {
+          console.error('❌ Error loading pending phone invites:', phoneInvitesError);
+        } else {
+          pendingPhoneInvites = phoneInvites || [];
         }
       }
 
@@ -290,8 +308,12 @@ export const useSessionManagement = () => {
       const formattedSessions: CollaborationSession[] = allSessions
         .filter(session => {
           const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+          const sessionPhoneInvites = pendingPhoneInvites.filter(pi => pi.session_id === session.id);
 
-          if (sessionParticipants.length < 2) {
+          // Total "members" = real participants + pending phone invites (non-Mingla users)
+          const totalMembers = sessionParticipants.length + sessionPhoneInvites.length;
+
+          if (totalMembers < 2) {
             return false;
           }
 
@@ -408,16 +430,35 @@ export const useSessionManagement = () => {
         .eq('user_id', user.id)
         .eq('has_accepted', true);
 
-      const hasDuplicate = (participations || []).some((p: ParticipationRow) => {
+      const matchingParticipations = (participations || []).filter((p: ParticipationRow) => {
         const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
         return s?.name?.toLowerCase() === resolvedName.toLowerCase();
       });
 
-      if (hasDuplicate) {
-        throw new Error('A collaboration session already exists with that name.');
+      // For each matching session, check if it's a real session (2+ real participants)
+      // or a limbo session (only the creator). Limbo sessions get cleaned up, not blocked.
+      for (const match of matchingParticipations) {
+        const { data: sessionMembers } = await supabase
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', match.session_id);
+
+        const realMemberCount = sessionMembers?.length || 0;
+
+        if (realMemberCount >= 2) {
+          // Real session with 2+ participants — block as duplicate
+          throw new Error('A collaboration session already exists with that name.');
+        } else {
+          // Limbo session (creator only, phone invites don't count as real participants yet)
+          // Clean it up so the user can recreate it properly
+          await supabase
+            .from('collaboration_sessions')
+            .delete()
+            .eq('id', match.session_id);
+        }
       }
 
-      // Clean up any ghost sessions with this name (created by user but no participant record)
+      // Clean up any ghost sessions with this name (created by user but no participant record at all)
       const { data: ghostSessions } = await supabase
         .from('collaboration_sessions')
         .select('id')

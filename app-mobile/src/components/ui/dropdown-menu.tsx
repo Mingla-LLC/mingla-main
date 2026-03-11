@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Text, View, StyleSheet, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface DropdownMenuProps {
@@ -36,14 +37,14 @@ interface DropdownMenuTriggerProps {
 
 function DropdownMenuTrigger({ children, onPress, style, ...props }: DropdownMenuTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="DropdownMenu"
       style={[styles.trigger, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -92,7 +93,7 @@ function DropdownMenuItem({
   ...props
 }: DropdownMenuItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="DropdownMenu"
       style={[
         styles.item,
         inset && styles.inset,
@@ -106,7 +107,7 @@ function DropdownMenuItem({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -127,7 +128,7 @@ function DropdownMenuCheckboxItem({
   ...props
 }: DropdownMenuCheckboxItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="DropdownMenu"
       style={[
         styles.checkboxItem,
         disabled && styles.disabled,
@@ -144,7 +145,7 @@ function DropdownMenuCheckboxItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -178,7 +179,7 @@ function DropdownMenuRadioItem({
   ...props
 }: DropdownMenuRadioItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="DropdownMenu"
       style={[
         styles.radioItem,
         disabled && styles.disabled,
@@ -195,7 +196,7 @@ function DropdownMenuRadioItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -276,7 +277,7 @@ function DropdownMenuSubTrigger({
   ...props
 }: DropdownMenuSubTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="DropdownMenu"
       style={[
         styles.subTrigger,
         inset && styles.inset,
@@ -288,7 +289,7 @@ function DropdownMenuSubTrigger({
     >
       {children}
       <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

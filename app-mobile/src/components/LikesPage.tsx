@@ -10,6 +10,7 @@ import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
 import { mixpanelService } from "../services/mixpanelService";
+import { useScreenLogger } from "../hooks/useScreenLogger";
 // Tab types for Likes screen
 export type LikesTab = "saved" | "calendar";
 
@@ -93,6 +94,7 @@ export default function LikesPage({
   navigationData,
   onNavigationComplete,
 }: LikesPageProps) {
+  useScreenLogger('likes');
   const [activeTab, setActiveTab] = useState<LikesTab>("saved");
 
 

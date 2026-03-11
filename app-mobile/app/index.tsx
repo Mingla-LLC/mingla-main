@@ -66,10 +66,12 @@ import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { usePendingLinkConsents } from "../src/hooks/useLinkConsent";
+import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
 function AppContent() {
+  useLifecycleLogger();
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
+import { Text, View, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { blockUser, BlockReason } from '../services/blockService';
 
@@ -102,7 +103,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
       onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="ReportUserModal"
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={handleClose}
@@ -117,12 +118,12 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               </View>
               <Text style={styles.headerTitle}>Report User</Text>
             </View>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="ReportUserModal"
               onPress={handleClose}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={20} color="#9ca3af" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
 
         {/* Content */}
@@ -140,7 +141,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
           <View style={styles.optionsContainer}>
             <Text style={styles.optionsTitle}>Reason for reporting:</Text>
             {reportOptions.map((option) => (
-              <TouchableOpacity
+              <TrackedTouchableOpacity logComponent="ReportUserModal"
                 key={option.id}
                 onPress={() => setSelectedReason(option.id)}
                 style={[
@@ -167,7 +168,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
                     </Text>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             ))}
           </View>
 
@@ -196,13 +197,13 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
 
         {/* Footer */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="ReportUserModal"
             onPress={handleClose}
             style={styles.cancelButton}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </TrackedTouchableOpacity>
+          <TrackedTouchableOpacity logComponent="ReportUserModal"
             onPress={handleSubmit}
             disabled={!selectedReason || isSubmitting}
             style={[
@@ -216,7 +217,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
             ]}>
               {isSubmitting ? 'Submitting...' : 'Submit Report'}
             </Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </View>
 
         {/* Disclaimer */}

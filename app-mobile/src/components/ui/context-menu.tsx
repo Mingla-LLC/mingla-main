@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Text, View, StyleSheet, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ContextMenuProps {
@@ -23,14 +24,14 @@ interface ContextMenuTriggerProps {
 
 function ContextMenuTrigger({ children, onPress, style, ...props }: ContextMenuTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ContextMenu"
       style={[styles.trigger, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -101,7 +102,7 @@ function ContextMenuSubTrigger({
   ...props
 }: ContextMenuSubTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ContextMenu"
       style={[
         styles.subTrigger,
         inset && styles.inset,
@@ -113,7 +114,7 @@ function ContextMenuSubTrigger({
     >
       {children}
       <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -162,7 +163,7 @@ function ContextMenuItem({
   ...props
 }: ContextMenuItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ContextMenu"
       style={[
         styles.item,
         inset && styles.inset,
@@ -176,7 +177,7 @@ function ContextMenuItem({
       {...props}
     >
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -197,7 +198,7 @@ function ContextMenuCheckboxItem({
   ...props
 }: ContextMenuCheckboxItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ContextMenu"
       style={[
         styles.checkboxItem,
         disabled && styles.disabled,
@@ -214,7 +215,7 @@ function ContextMenuCheckboxItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -235,7 +236,7 @@ function ContextMenuRadioItem({
   ...props
 }: ContextMenuRadioItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ContextMenu"
       style={[
         styles.radioItem,
         disabled && styles.disabled,
@@ -252,7 +253,7 @@ function ContextMenuRadioItem({
         )}
       </View>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

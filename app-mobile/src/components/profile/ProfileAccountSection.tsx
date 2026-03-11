@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from "react-native";
+import { View, Text, StyleSheet, TextInput } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import { useAppState } from "../AppStateManager";
@@ -64,29 +65,29 @@ export default function ProfileAccountSection() {
               placeholder="Enter email"
             />
             <View style={styles.emailActionButtons}>
-              <TouchableOpacity
+              <TrackedTouchableOpacity logComponent="ProfileAccountSection"
                 onPress={handleSaveEmail}
                 style={styles.iconButton}
               >
                 <Ionicons name="checkmark" size={16} color="#10b981" />
-              </TouchableOpacity>
-              <TouchableOpacity
+              </TrackedTouchableOpacity>
+              <TrackedTouchableOpacity logComponent="ProfileAccountSection"
                 onPress={handleCancelEditEmail}
                 style={styles.iconButton}
               >
                 <Ionicons name="close" size={16} color="#ef4444" />
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
             </View>
           </View>
         ) : (
           <View style={styles.emailValueRow}>
             <Text style={styles.rowValue}>{userIdentity?.email}</Text>
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="ProfileAccountSection"
               onPress={handleStartEditEmail}
               style={styles.iconButton}
             >
               <Feather name="edit-3" size={16} color="#6b7280" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         )}
       </View>

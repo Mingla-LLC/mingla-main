@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../../store/appStore";
 import { useEnhancedProfile } from "../../hooks/useEnhancedProfile";
@@ -70,7 +71,7 @@ export default function ProfilePrivacySection() {
       </Text>
 
       {/* Profile Visibility */}
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="ProfilePrivacySection"
         style={styles.row}
         activeOpacity={0.7}
         onPress={handleCycleVisibility}
@@ -80,10 +81,10 @@ export default function ProfilePrivacySection() {
           <Text style={styles.rowHint}>Who can see your profile</Text>
         </View>
         <Text style={styles.rowValueHighlight}>{profileVisibility}</Text>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
 
       {/* Activity Status */}
-      <TouchableOpacity
+      <TrackedTouchableOpacity logComponent="ProfilePrivacySection"
         style={styles.row}
         activeOpacity={0.7}
         onPress={handleToggleActivityStatus}
@@ -109,7 +110,7 @@ export default function ProfilePrivacySection() {
             ]}
           />
         </View>
-      </TouchableOpacity>
+      </TrackedTouchableOpacity>
 
     </View>
   );

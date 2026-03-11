@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { Conversation } from '../../data/mockConnections';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
@@ -34,7 +35,7 @@ export default function ConversationCard({
   };
 
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="ConversationCard"
       onPress={handlePress}
       style={styles.conversationCard}
     >
@@ -87,7 +88,7 @@ export default function ConversationCard({
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

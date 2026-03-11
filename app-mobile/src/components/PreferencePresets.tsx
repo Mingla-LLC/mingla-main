@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
@@ -153,7 +154,7 @@ export const PreferencePresets: React.FC<PreferencePresetsProps> = ({
           const isSelected = currentPresetId === preset.id;
           
           return (
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="PreferencePresets"
               key={preset.id}
               style={[
                 styles.presetCard,
@@ -183,7 +184,7 @@ export const PreferencePresets: React.FC<PreferencePresetsProps> = ({
                   />
                 </View>
               )}
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           );
         })}
       </View>

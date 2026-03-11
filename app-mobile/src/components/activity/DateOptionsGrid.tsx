@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 
 interface DateOptionsGridProps {
   selectedDateOption: "now" | "today" | "weekend" | "custom" | null;
@@ -24,7 +25,7 @@ export default function DateOptionsGrid({
   return (
     <View style={styles.dateOptionsGrid}>
       <View style={styles.dateOptionsRow}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="DateOptionsGrid"
           style={[
             optionStyle,
             selectedDateOption === "now" && optionSelectedStyle,
@@ -39,8 +40,8 @@ export default function DateOptionsGrid({
           >
             Now
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="DateOptionsGrid"
           style={[
             optionStyle,
             selectedDateOption === "today" && optionSelectedStyle,
@@ -55,10 +56,10 @@ export default function DateOptionsGrid({
           >
             Today
           </Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
       <View style={styles.dateOptionsRow}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="DateOptionsGrid"
           style={[
             optionStyle,
             selectedDateOption === "weekend" && optionSelectedStyle,
@@ -73,8 +74,8 @@ export default function DateOptionsGrid({
           >
             This Weekend
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="DateOptionsGrid"
           style={[
             optionStyle,
             selectedDateOption === "custom" && optionSelectedStyle,
@@ -89,7 +90,7 @@ export default function DateOptionsGrid({
           >
             Pick a Date
           </Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </View>
   );

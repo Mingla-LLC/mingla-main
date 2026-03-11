@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, Modal, StyleSheet, Animated, Dimensions } from "react-native";
+import { Text, View, Modal, StyleSheet, Animated, Dimensions } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
@@ -31,9 +32,9 @@ interface SheetTriggerProps {
 
 function SheetTrigger({ onPress, children, ...props }: SheetTriggerProps) {
   return (
-    <TouchableOpacity onPress={onPress} {...props}>
+    <TrackedTouchableOpacity logComponent="Sheet" onPress={onPress} {...props}>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -44,9 +45,9 @@ interface SheetCloseProps {
 
 function SheetClose({ onPress, children, ...props }: SheetCloseProps) {
   return (
-    <TouchableOpacity onPress={onPress} {...props}>
+    <TrackedTouchableOpacity logComponent="Sheet" onPress={onPress} {...props}>
       {children}
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -61,7 +62,7 @@ interface SheetOverlayProps {
 
 function SheetOverlay({ style, onPress, ...props }: SheetOverlayProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Sheet"
       style={[styles.sheetOverlay, style]}
       onPress={onPress}
       activeOpacity={1}
@@ -139,13 +140,13 @@ function SheetContent({
       <SheetOverlay onPress={onClose} />
       <View style={[getContentStyle(), style]} {...props}>
         {children}
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="Sheet" 
           style={styles.sheetClose}
           onPress={onClose}
         >
           <Ionicons name="close" size={16} color="#6b7280" />
           <Text style={styles.srOnly}>Close</Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </SheetPortal>
   );

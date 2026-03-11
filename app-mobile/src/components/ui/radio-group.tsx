@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+import { Text, View, StyleSheet } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
@@ -45,7 +46,7 @@ function RadioGroupItem({
   ...props
 }: RadioGroupItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="RadioGroup"
       style={[
         styles.radioGroupItem,
         selected && styles.radioGroupItemSelected,
@@ -77,7 +78,7 @@ function RadioGroupItem({
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

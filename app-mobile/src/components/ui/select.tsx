@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Modal } from "react-native";
+import { Text, View, StyleSheet, ScrollView, Modal } from "react-native";
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
@@ -60,7 +61,7 @@ function SelectTrigger({
   ...props
 }: SelectTriggerProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Select"
       style={[
         styles.selectTrigger,
         size === "sm" ? styles.selectTriggerSm : styles.selectTriggerDefault,
@@ -81,7 +82,7 @@ function SelectTrigger({
           style={styles.selectTriggerIcon}
         />
       </View>
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -110,7 +111,7 @@ function SelectContent({
       {...props}
     >
       <View style={styles.selectOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="Select"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
@@ -160,7 +161,7 @@ function SelectItem({
   ...props
 }: SelectItemProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Select"
       style={[
         styles.selectItem,
         selected && styles.selectItemSelected,
@@ -183,7 +184,7 @@ function SelectItem({
           />
         )}
       </View>
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -207,14 +208,14 @@ interface SelectScrollUpButtonProps {
 
 function SelectScrollUpButton({ style, onPress, ...props }: SelectScrollUpButtonProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Select"
       style={[styles.selectScrollButton, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       <Ionicons name="chevron-up" size={16} color="#6b7280" />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 
@@ -225,14 +226,14 @@ interface SelectScrollDownButtonProps {
 
 function SelectScrollDownButton({ style, onPress, ...props }: SelectScrollDownButtonProps) {
   return (
-    <TouchableOpacity
+    <TrackedTouchableOpacity logComponent="Select"
       style={[styles.selectScrollButton, style]}
       onPress={onPress}
       activeOpacity={0.7}
       {...props}
     >
       <Ionicons name="chevron-down" size={16} color="#6b7280" />
-    </TouchableOpacity>
+    </TrackedTouchableOpacity>
   );
 }
 

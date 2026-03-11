@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { Text, View, StyleSheet, Animated } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Notification {
@@ -206,7 +207,7 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
             {notification.actions && notification.actions.length > 0 && (
               <View style={styles.actionsContainer}>
                 {notification.actions.map((action, index) => (
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="NotificationSystem"
                     key={index}
                     onPress={action.action}
                     style={[
@@ -232,13 +233,13 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
                     ]}>
                       {action.label}
                     </Text>
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 ))}
               </View>
             )}
           </View>
 
-          <TouchableOpacity 
+          <TrackedTouchableOpacity logComponent="NotificationSystem" 
             onPress={handleDismiss}
             style={[
               styles.dismissButton,
@@ -252,7 +253,7 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
               size={16} 
               color={(notification.type === 'success' || notification.type === 'invite' || notification.type === 'join') ? 'rgba(255, 255, 255, 0.8)' : '#9ca3af'} 
             />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </View>
       </View>
     </Animated.View>

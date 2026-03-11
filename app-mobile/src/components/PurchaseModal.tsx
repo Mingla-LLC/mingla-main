@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, View, StyleSheet, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from './utils/formatters';
 
@@ -80,12 +81,12 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
             <Text style={styles.headerTitle}>Choose Your Experience</Text>
             <Text style={styles.headerSubtitle}>{recommendation.title}</Text>
           </View>
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="PurchaseModal"
             onPress={onClose}
             style={styles.closeButton}
           >
             <Ionicons name="close" size={20} color="#6b7280" />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </View>
       </View>
 
@@ -93,7 +94,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
       <ScrollView style={styles.content}>
         <View style={styles.optionsContainer}>
           {recommendation.purchaseOptions.map((option: PurchaseOption) => (
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="PurchaseModal"
               key={option.id}
               onPress={() => handleSelectOption(option)}
               style={[
@@ -146,14 +147,14 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
                   )}
                 </View>
               </View>
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
       {/* Fixed Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PurchaseModal"
           onPress={handleProceedToPayment}
           disabled={!selectedOption}
           style={[
@@ -167,7 +168,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
           ]}>
             Continue to Payment
           </Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </>
   );
@@ -182,12 +183,12 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
             <Text style={styles.headerTitle}>Complete Purchase</Text>
             <Text style={styles.headerSubtitle}>{selectedOption?.title}</Text>
           </View>
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="PurchaseModal"
             onPress={() => setPaymentStep('selection')}
             style={styles.closeButton}
           >
             <Ionicons name="close" size={20} color="#6b7280" />
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </View>
       </View>
 
@@ -212,7 +213,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
           <View style={styles.paymentMethodsContainer}>
             <Text style={styles.paymentMethodsTitle}>Payment Method</Text>
             
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="PurchaseModal"
               onPress={() => setPaymentMethod('apple')}
               style={[
                 styles.paymentMethodCard,
@@ -231,9 +232,9 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
                   <Ionicons name="checkmark" size={12} color="white" />
                 </View>
               )}
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
 
-            <TouchableOpacity
+            <TrackedTouchableOpacity logComponent="PurchaseModal"
               onPress={() => setPaymentMethod('card')}
               style={[
                 styles.paymentMethodCard,
@@ -252,14 +253,14 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
                   <Ionicons name="checkmark" size={12} color="white" />
                 </View>
               )}
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           </View>
         </View>
       </ScrollView>
 
       {/* Fixed Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PurchaseModal"
           onPress={handleProcessPayment}
           style={styles.payButton}
         >
@@ -274,7 +275,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
               <Text style={styles.payButtonText}>Complete Purchase</Text>
             </>
           )}
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
     </>
   );
@@ -314,7 +315,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <TouchableOpacity
+        <TrackedTouchableOpacity logComponent="PurchaseModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}

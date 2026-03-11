@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { Text, View, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend } from '../../data/mockConnections';
 import FriendCard from './FriendCard';
@@ -87,14 +88,14 @@ export default function FriendsTab({
 
       {/* Action Buttons */}
       <View style={styles.actionButtons}>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={onShowAddFriendModal}
           style={styles.actionButton}
         >
           <Ionicons name="person-add" size={20} color="#eb7825" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
 
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={onShowFriendRequests}
           style={styles.actionButton}
         >
@@ -104,9 +105,9 @@ export default function FriendsTab({
               <Text style={styles.badgeText}>{friendRequestsCount}</Text>
             </View>
           )}
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
 
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={onShowQRCode}
           style={[
             styles.actionButton,
@@ -118,9 +119,9 @@ export default function FriendsTab({
             size={20} 
             color={showQRCode ? 'white' : '#eb7825'} 
           />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
 
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={onCopyInvite}
           style={styles.actionButton}
         >
@@ -128,7 +129,7 @@ export default function FriendsTab({
             <Ionicons name="checkmark" size={20} color="white" /> : 
             <Ionicons name="link" size={20} color="#eb7825" />
           }
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {/* QR Code Display */}
@@ -157,7 +158,7 @@ export default function FriendsTab({
       {/* Friends List Header */}
       <View style={styles.friendsHeader}>
         <Text style={styles.friendsTitle}>Friends ({filteredFriends.length})</Text>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={() => setFriendsListExpanded(!friendsListExpanded)}
           style={styles.expandButton}
         >
@@ -166,7 +167,7 @@ export default function FriendsTab({
             size={20} 
             color="#6b7280" 
           />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {/* Enhanced online friends showcase */}
@@ -223,14 +224,14 @@ export default function FriendsTab({
         ))}
         
         {!friendsListExpanded && filteredFriends.length > 3 && (
-          <TouchableOpacity
+          <TrackedTouchableOpacity logComponent="FriendsTab"
             onPress={() => setFriendsListExpanded(true)}
             style={styles.showMoreButton}
           >
             <Text style={styles.showMoreText}>
               Show {filteredFriends.length - 3} more friends
             </Text>
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         )}
       </View>
     </ScrollView>

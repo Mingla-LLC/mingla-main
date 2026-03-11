@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { Text, View, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend } from '../../data/mockConnections';
 
@@ -86,18 +87,18 @@ export default function FriendCard({
               </Text>
               
               {/* Message button */}
-              <TouchableOpacity
+              <TrackedTouchableOpacity logComponent="FriendCard"
                 onPress={() => onSelectFriend(friend)}
                 style={styles.messageButton}
               >
                 <View style={styles.iconContainer}>
                   <Ionicons name="chatbubble" size={16} color="#6b7280" />
                 </View>
-              </TouchableOpacity>
+              </TrackedTouchableOpacity>
               
               {/* Friend dropdown menu */}
               <View style={styles.dropdownContainer}>
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="FriendCard"
                   onPress={(e) => {
                     e.stopPropagation();
                     onToggleDropdown(friend.id);
@@ -107,12 +108,12 @@ export default function FriendCard({
                   <View style={styles.iconContainer}>
                     <Ionicons name="ellipsis-horizontal" size={16} color="#9ca3af" />
                   </View>
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
                 
                 {openDropdownId === friend.id && (
                   <View style={styles.dropdown}>
                     <View style={styles.dropdownContent}>
-                      <TouchableOpacity
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => onSendCollabInvite(friend)}
                         style={styles.dropdownItem}
                       >
@@ -120,8 +121,8 @@ export default function FriendCard({
                           <Ionicons name="add" size={16} color="#eb7825" />
                           <Text style={styles.dropdownItemText}>Send Collaboration Invite</Text>
                         </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </TrackedTouchableOpacity>
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => onAddToBoard(friend)}
                         style={styles.dropdownItem}
                       >
@@ -129,8 +130,8 @@ export default function FriendCard({
                           <Ionicons name="people" size={16} color="#2563eb" />
                           <Text style={styles.dropdownItemText}>Add to Board</Text>
                         </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </TrackedTouchableOpacity>
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => onShareSavedCard(friend)}
                         style={styles.dropdownItem}
                       >
@@ -138,9 +139,9 @@ export default function FriendCard({
                           <Ionicons name="bookmark" size={16} color="#9333ea" />
                           <Text style={styles.dropdownItemText}>Share Saved Card</Text>
                         </View>
-                      </TouchableOpacity>
+                      </TrackedTouchableOpacity>
                       <View style={styles.divider} />
-                      <TouchableOpacity
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => !isMuteLoading && onMuteUser(friend)}
                         style={[styles.dropdownItem, isMuteLoading && styles.dropdownItemDisabled]}
                         disabled={isMuteLoading}
@@ -164,9 +165,9 @@ export default function FriendCard({
                             </View>
                           )}
                         </View>
-                      </TouchableOpacity>
+                      </TrackedTouchableOpacity>
                       <View style={styles.divider} />
-                      <TouchableOpacity
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => onBlockUser(friend)}
                         style={styles.dropdownItem}
                       >
@@ -174,8 +175,8 @@ export default function FriendCard({
                           <Ionicons name="shield" size={16} color="#ef4444" />
                           <Text style={[styles.dropdownItemText, styles.dangerText]}>Block User</Text>
                         </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </TrackedTouchableOpacity>
+                      <TrackedTouchableOpacity logComponent="FriendCard"
                         onPress={() => onReportUser(friend)}
                         style={styles.dropdownItem}
                       >
@@ -183,7 +184,7 @@ export default function FriendCard({
                           <Ionicons name="flag" size={16} color="#ef4444" />
                           <Text style={[styles.dropdownItemText, styles.dangerText]}>Report User</Text>
                         </View>
-                      </TouchableOpacity>
+                      </TrackedTouchableOpacity>
                     </View>
                   </View>
                 )}

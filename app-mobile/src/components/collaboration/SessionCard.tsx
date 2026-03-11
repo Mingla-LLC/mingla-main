@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
@@ -311,7 +312,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
             const isCurrentUser = participant.id === 'you';
             return (
               <View key={participant.id} style={styles.participantContainer}>
-                <TouchableOpacity
+                <TrackedTouchableOpacity logComponent="SessionCard"
                   onPress={() => {}}
                   style={styles.participantAvatar}
                 >
@@ -323,7 +324,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
                       <Text style={styles.adminBadgeText}>👑</Text>
                     </View>
                   )}
-                </TouchableOpacity>
+                </TrackedTouchableOpacity>
                 
                 <View style={styles.participantTooltip}>
                   <Text style={styles.participantTooltipText}>
@@ -334,14 +335,14 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
                 </View>
 
                 {session.adminId === 'current-user' && !isCurrentUser && (
-                  <TouchableOpacity
+                  <TrackedTouchableOpacity logComponent="SessionCard"
                     onPress={(e) => {
                       e.stopPropagation();
                     }}
                     style={styles.kickButton}
                   >
                     <Ionicons name="close" size={12} color="white" />
-                  </TouchableOpacity>
+                  </TrackedTouchableOpacity>
                 )}
               </View>
             );
@@ -373,7 +374,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
       </View>
 
       <View style={styles.sessionActions}>
-        <TouchableOpacity 
+        <TrackedTouchableOpacity logComponent="SessionCard" 
           onPress={() => onJoinSession(session.id, session.name)}
           style={[
             styles.joinSessionButton,
@@ -386,8 +387,8 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
           ]}>
             {currentMode === session.name ? 'Current Session' : 'Join Session'}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="SessionCard" 
           onPress={() => {
             if (onNavigateToBoard) {
               onNavigateToBoard(session, 'discussion');
@@ -396,7 +397,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
           style={styles.viewBoardButton}
         >
           <Ionicons name="chatbubble" size={16} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {!session.hasCollabPreferences && (
