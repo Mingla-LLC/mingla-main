@@ -83,16 +83,14 @@ export function useOnboardingStateMachine({
   const getStep5Sequence = useCallback((): SubStep[] => {
     const base: SubStep[] = ['friends']
 
-    if (!skippedFriends) {
-      base.push('collaboration')
-    }
+    base.push('collaboration')
 
     base.push('pitch')
     if (chosenPath === 'invite') base.push(...STEP5_PATH_A)
     if (chosenPath === 'add') base.push(...STEP5_PATH_B)
 
     return base
-  }, [chosenPath, skippedFriends])
+  }, [chosenPath])
 
   // Get full sequence for a given step
   const getSequence = useCallback((step: OnboardingStep): SubStep[] => {

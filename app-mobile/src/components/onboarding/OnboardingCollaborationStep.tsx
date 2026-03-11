@@ -100,7 +100,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   const allPendingResolved = pendingCollabInvites.length === 0
 
   // Can continue
-  const canContinue = createdSessions.length > 0 && allPendingResolved
+  const canContinue = allPendingResolved
 
   // Unique key for a friend — userId for existing, phoneE164 for invited
   const getFriendKey = useCallback((friend: AddedFriend): string => {

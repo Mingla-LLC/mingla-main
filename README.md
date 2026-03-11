@@ -84,7 +84,7 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
-**Step 5 -- Social** -- add friends by phone, create collaboration sessions, then choose a path:
+**Step 5 -- Social** -- add friends by phone (persisted to DB immediately), collaboration session management (always shown, even if friends step is skipped), then choose a path:
 - **Path A (Sync):** Select friends to sync with, record audio descriptions, friend link requests sent automatically. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
 - **Path B (Add person):** Name, birthday, gender, then audio recording. Creates a saved person with AI-generated experience recommendations.
 - **Skip:** Goes straight to the app.
@@ -237,11 +237,11 @@ The Connect page manages friend relationships:
 
 | Table | Purpose |
 |-------|---------|
-| `friend_requests` | Legacy friend request lifecycle (used for referral credit triggers) |
+| `friend_requests` | Legacy friend request lifecycle with RLS (used for referral credit triggers) |
 | `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
 | `friend_links` | Friend link requests with two-phase consent (pending/accepted + link_status: none/pending_consent/consented/declined) |
 | `blocked_users` | User blocks |
-| `pending_invites` | Phone invites for non-app users (auto-converts to pending friend_links + friend_requests on signup) |
+| `pending_invites` | Phone invites for non-app users (auto-converts to pending friend_links + friend_requests on signup; user must explicitly accept) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `referral_credits` | Referral credit audit log |
 
@@ -434,11 +434,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request now creates basic friendship only (chat access). Profile linkage (sharing name, birthday, gender, avatar via `saved_people`) requires explicit consent from both users. A new `respond-link-consent` edge function handles consent responses, and the Connections page shows consent prompts with Link/Not Now buttons.
-- **Re-initiation After Decline** -- Users can re-initiate link consent after a previous decline via the add person flow. The `send-friend-link` edge function detects declined consent and resets the flow.
-- **Post-Onboarding Consent Badge** -- A badge dot appears on the Connections tab when pending link consents exist after completing onboarding.
-- **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger now creates basic friendship only, not automatic profile linkage.
-- **Personalized Cards Require Consent** -- The `get-personalized-cards` edge function now requires `link_status = 'consented'` to generate cards for a linked user.
+- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions. Phone invite trigger now creates everything as PENDING (user must explicitly accept). RLS enabled on `friend_requests`. Friend accept is idempotent (upsert). Collaboration step always shown during onboarding. Friends added during onboarding persisted to DB immediately. Decline cascades to friend_links.
+- **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request creates basic friendship only. Profile linkage requires explicit consent from both users.
+- **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger creates pending relationships only, not automatic acceptance.
 
 ---
 

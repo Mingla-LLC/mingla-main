@@ -516,7 +516,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         let notificationSent = false;
         try {
           const { data: notifyData, error: notifyError } =
-            await supabase.functions.invoke("smart-task", {
+            await supabase.functions.invoke("send-friend-request-email", {
               body: {
                 senderId: user.id,
                 receiverId: receiverId,
@@ -584,20 +584,31 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (updateError) throw updateError;
 
-        // Create friendship records for both users
-        const { error: friend1Error } = await supabase.from("friends").insert({
-          user_id: request.sender_id,
-          friend_user_id: request.receiver_id,
-          status: "accepted",
-        });
+        // Create friendship records for both users (idempotent — upsert handles
+        // duplicates from phone invite trigger, link accept, or race conditions)
+        const { error: friend1Error } = await supabase
+          .from("friends")
+          .upsert(
+            {
+              user_id: request.sender_id,
+              friend_user_id: request.receiver_id,
+              status: "accepted",
+            },
+            { onConflict: "user_id,friend_user_id" }
+          );
 
         if (friend1Error) throw friend1Error;
 
-        const { error: friend2Error } = await supabase.from("friends").insert({
-          user_id: request.receiver_id,
-          friend_user_id: request.sender_id,
-          status: "accepted",
-        });
+        const { error: friend2Error } = await supabase
+          .from("friends")
+          .upsert(
+            {
+              user_id: request.receiver_id,
+              friend_user_id: request.sender_id,
+              status: "accepted",
+            },
+            { onConflict: "user_id,friend_user_id" }
+          );
 
         if (friend2Error) throw friend2Error;
 

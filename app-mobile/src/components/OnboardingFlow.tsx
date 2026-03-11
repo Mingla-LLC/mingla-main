@@ -2467,7 +2467,46 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           userId={user!.id}
           userPhoneE164={buildE164()}
           initialFriends={data.addedFriends}
-          onContinue={(addedFriends) => {
+          onContinue={async (addedFriends) => {
+            // Persist each "existing" friend to the database as a pending friend request
+            // so the relationship survives regardless of which path the user picks next.
+            if (user?.id) {
+              for (const friend of addedFriends) {
+                if (friend.type === 'existing' && friend.userId && friend.friendshipStatus === 'none') {
+                  try {
+                    await supabase
+                      .from('friend_requests')
+                      .upsert(
+                        {
+                          sender_id: user.id,
+                          receiver_id: friend.userId,
+                          status: 'pending',
+                        },
+                        { onConflict: 'sender_id,receiver_id' }
+                      )
+
+                    sendFriendLink(friend.userId).catch(() => {})
+
+                    supabase.functions
+                      .invoke('send-friend-request-email', {
+                        body: {
+                          senderId: user.id,
+                          receiverId: friend.userId,
+                          receiverEmail: '',
+                          receiverUsername: friend.username || '',
+                          senderUsername: profile?.username || '',
+                          senderDisplayName: profile?.display_name || profile?.username || '',
+                          requestId: null,
+                          userExists: true,
+                        },
+                      })
+                      .catch(() => {})
+                  } catch (err) {
+                    console.warn('[Onboarding] Failed to persist friend:', friend.userId, err)
+                  }
+                }
+              }
+            }
             setData(prev => ({ ...prev, addedFriends, skippedFriends: false }))
             setSkippedFriends(false)
             goNext()
@@ -2475,7 +2514,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           onSkip={() => {
             setData(prev => ({ ...prev, addedFriends: [], skippedFriends: true }))
             setSkippedFriends(true)
-            goToSubStep('pitch')
+            goNext()
           }}
         />
       )
