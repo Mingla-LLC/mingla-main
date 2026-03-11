@@ -4,10 +4,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   User,
   Preferences,
-  Save,
   CollaborationSession,
   CollaborationInvite,
-  Board,
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
 
@@ -28,8 +26,6 @@ interface AppState {
   // User data
   profile: User | null;
   preferences: Preferences | null;
-  saves: Save[];
-  boards: Board[];
 
   // Session state
   currentSession: CollaborationSession | null;
@@ -53,15 +49,6 @@ interface AppState {
   setAuth: (user: User | null) => void;
   setProfile: (profile: User | null) => void;
   setPreferences: (preferences: Preferences | null) => void;
-  setSaves: (saves: Save[]) => void;
-  addSave: (save: Save) => void;
-  removeSave: (experienceId: string) => void;
-  updateSave: (experienceId: string, updates: Partial<Save>) => void;
-  setBoards: (boards: Board[]) => void;
-  addBoard: (board: Board) => void;
-  removeBoard: (boardId: string) => void;
-  updateBoard: (boardId: string, updates: Partial<Board>) => void;
-
   // Session actions
   setCurrentSession: (session: CollaborationSession | null) => void;
   setAvailableSessions: (sessions: CollaborationSession[]) => void;
@@ -89,8 +76,6 @@ export const useAppStore = create<AppState>()(
       isAuthenticated: false,
       profile: null,
       preferences: null,
-      saves: [],
-      boards: [],
       currentSession: null,
       availableSessions: [],
       pendingInvites: [],
@@ -118,45 +103,6 @@ export const useAppStore = create<AppState>()(
       // User data actions
       setProfile: (profile) => set({ profile }),
       setPreferences: (preferences) => set({ preferences }),
-      setSaves: (saves) => set({ saves }),
-
-      addSave: (save) =>
-        set((state) => ({
-          saves: [...state.saves, save],
-        })),
-
-      removeSave: (experienceId) =>
-        set((state) => ({
-          saves: state.saves.filter(
-            (save) => save.experience_id !== experienceId
-          ),
-        })),
-
-      updateSave: (experienceId, updates) =>
-        set((state) => ({
-          saves: state.saves.map((save) =>
-            save.experience_id === experienceId ? { ...save, ...updates } : save
-          ),
-        })),
-
-      setBoards: (boards) => set({ boards }),
-
-      addBoard: (board) =>
-        set((state) => ({
-          boards: [...state.boards, board],
-        })),
-
-      removeBoard: (boardId) =>
-        set((state) => ({
-          boards: state.boards.filter((board) => board.id !== boardId),
-        })),
-
-      updateBoard: (boardId, updates) =>
-        set((state) => ({
-          boards: state.boards.map((board) =>
-            board.id === boardId ? { ...board, ...updates } : board
-          ),
-        })),
 
       // Session actions
       setCurrentSession: (currentSession) => set({ currentSession }),
@@ -196,8 +142,6 @@ export const useAppStore = create<AppState>()(
           isAuthenticated: false,
           profile: null,
           preferences: null,
-          saves: [],
-          boards: [],
           currentSession: null,
           availableSessions: [],
           pendingInvites: [],
@@ -217,8 +161,6 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         profile: state.profile,
         preferences: state.preferences,
-        saves: state.saves,
-        boards: state.boards,
         // Don't persist currentSession and isInSolo - always fetch from database
         currentCardIndex: state.currentCardIndex,
         // Deck card history — persisted across sessions

@@ -20,6 +20,8 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
+import { useBoardRealtimeSync } from "../hooks/useBoardQueries";
+import { useSavesRealtimeSync } from "../hooks/useSaveQueries";
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -275,6 +277,13 @@ export function useAppState() {
   const { data: calendarEntriesRawData, isLoading: isLoadingCalendarEntries } =
     useCalendarEntries(user?.id);
   const { unblockFriend } = useFriends();
+
+  // Set up global Realtime subscriptions for boards and saves.
+  // These replace the per-hook subscriptions that used to live inside
+  // useBoards, useEnhancedBoards, and useSaves. One subscription per table,
+  // at the app level — no component-level subscriptions that race.
+  useBoardRealtimeSync();
+  useSavesRealtimeSync();
 
   // Use stable empty array constants to prevent infinite loops
   const savedCards = savedCardsData ?? EMPTY_SAVED_CARDS;

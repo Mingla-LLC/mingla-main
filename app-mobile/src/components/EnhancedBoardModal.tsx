@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { Ionicons } from '@expo/vector-icons';
-import { useEnhancedBoards } from '../hooks/useEnhancedBoards';
+import { useCreateBoard, useAddCollaboratorByEmail } from '../hooks/useBoardQueries';
 import { useAppStore } from '../store/appStore';
 import { useMobileFeatures } from './MobileFeaturesProvider';
 
@@ -38,11 +38,13 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
   const [collaborators, setCollaborators] = useState<string[]>(initialData?.collaborators || []);
   const [newCollaborator, setNewCollaborator] = useState('');
   const [isPublic, setIsPublic] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  
+
   const { user, currentSession } = useAppStore();
-  const { createBoard } = useEnhancedBoards();
+  const createBoardMutation = useCreateBoard();
+  const addCollaboratorByEmailMutation = useAddCollaboratorByEmail();
   const { getCurrentLocation } = useMobileFeatures();
+
+  const isCreating = createBoardMutation.isPending || addCollaboratorByEmailMutation.isPending;
 
   useEffect(() => {
     if (visible) {
@@ -83,50 +85,61 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
       return;
     }
 
-    setIsCreating(true);
-
     try {
       // Get current location for context
       const location = await getCurrentLocation();
-      
+
+      // Create the board WITHOUT collaborators — emails need email→userId lookup
       const boardData = {
         name: name.trim(),
         description: description.trim() || undefined,
-        collaborators: collaborators.length > 0 ? collaborators : undefined,
         sessionId: currentSession?.id,
         isPublic,
       };
 
-      const { data: board, error } = await createBoard(boardData);
+      const board = await createBoardMutation.mutateAsync(boardData);
 
-      if (error) {
-        Alert.alert('Error', error.message);
-        return;
-      }
-
-      if (board) {
-        Alert.alert(
-          'Success',
-          `Board "${board.name}" created successfully!${
-            collaborators.length > 0 
-              ? ` Invitations sent to ${collaborators.length} collaborator${collaborators.length > 1 ? 's' : ''}.`
-              : ''
-          }`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                onBoardCreated?.(board);
-                onClose();
-              }
-            }
-          ]
+      // Add collaborators by email (each does email→userId lookup in the service)
+      const failedEmails: string[] = [];
+      if (collaborators.length > 0) {
+        const results = await Promise.allSettled(
+          collaborators.map(email =>
+            addCollaboratorByEmailMutation.mutateAsync({
+              boardId: board.id,
+              email,
+              role: 'collaborator',
+            })
+          )
         );
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            failedEmails.push(collaborators[idx]);
+            console.warn(`Failed to add collaborator ${collaborators[idx]}:`, result.reason);
+          }
+        });
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create board');
-    } finally {
-      setIsCreating(false);
+
+      const collabCount = collaborators.length - failedEmails.length;
+      let successMessage = `Board "${board.name}" created successfully!`;
+      if (collabCount > 0) {
+        successMessage += ` ${collabCount} collaborator${collabCount > 1 ? 's' : ''} added.`;
+      }
+      if (failedEmails.length > 0) {
+        successMessage += ` Could not add: ${failedEmails.join(', ')} (user not found).`;
+      }
+
+      Alert.alert('Success', successMessage, [
+        {
+          text: 'OK',
+          onPress: () => {
+            onBoardCreated?.(board);
+            onClose();
+          }
+        }
+      ]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to create board';
+      Alert.alert('Error', message);
     }
   };
 

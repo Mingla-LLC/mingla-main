@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useBoards } from '../hooks/useBoards';
+import { useAddExperienceToBoard, useRemoveExperienceFromBoard } from '../hooks/useBoardQueries';
 import { realtimeService } from '../services/realtimeService';
 import { useAppStore } from '../store/appStore';
 import { ExperienceCard } from './ExperienceCard';
@@ -29,7 +29,8 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
   const [loading, setLoading] = useState(true);
   
   const { user } = useAppStore();
-  const { addExperienceToBoard, removeExperienceFromBoard } = useBoards();
+  const addExperienceMutation = useAddExperienceToBoard();
+  const removeExperienceMutation = useRemoveExperienceFromBoard();
 
   useEffect(() => {
     loadBoardData();
@@ -108,35 +109,19 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
 
   const handleAddExperience = async (experienceId: string) => {
     try {
-      const { error } = await addExperienceToBoard(boardId, experienceId);
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        // Notify other collaborators
-        realtimeService.sendBoardUpdate(boardId, 'experience_added', {
-          experienceId,
-          addedBy: user?.display_name || user?.email,
-        });
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add experience to board');
+      await addExperienceMutation.mutateAsync({ boardId, experienceId });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to add experience to board';
+      Alert.alert('Error', message);
     }
   };
 
   const handleRemoveExperience = async (experienceId: string) => {
     try {
-      const { error } = await removeExperienceFromBoard(boardId, experienceId);
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        // Notify other collaborators
-        realtimeService.sendBoardUpdate(boardId, 'experience_removed', {
-          experienceId,
-          removedBy: user?.display_name || user?.email,
-        });
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to remove experience from board');
+      await removeExperienceMutation.mutateAsync({ boardId, experienceId });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to remove experience from board';
+      Alert.alert('Error', message);
     }
   };
 
@@ -148,7 +133,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Invite',
-          onPress: async (email) => {
+          onPress: async (email?: string) => {
             if (email && email.trim()) {
               try {
                 // Find user by email
