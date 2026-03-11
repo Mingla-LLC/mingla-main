@@ -38,6 +38,7 @@ import {
   useUserSearch,
 } from "../hooks/useFriendLinks";
 import { usePendingLinkConsents, useRespondLinkConsent } from "../hooks/useLinkConsent";
+import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { LinkConsentCard } from "./LinkConsentCard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 
@@ -134,6 +135,12 @@ export default function ConnectionsPageRefactored({
   } = usePendingLinkRequests(user?.id || "");
 
   const respondToLinkMutation = useRespondToLink();
+
+  // Realtime: instantly refresh friend links, requests, and consents on DB changes
+  useSocialRealtime(user?.id, {
+    onFriendRequestChange: loadFriendRequests,
+    onFriendLinkChange: () => { fetchFriends(); },
+  });
 
   // Link consent (new system) — pending link consent prompts
   const {
