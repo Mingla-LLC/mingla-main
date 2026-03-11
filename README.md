@@ -448,10 +448,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Console Telemetry & Breadcrumb Trail** -- Added a `__DEV__`-only breadcrumb ring buffer that records the last 30 user actions. Every error auto-dumps the trail to Metro console. Replaced TouchableOpacity with TrackedTouchableOpacity across 54 component files for automatic tap logging. Added useScreenLogger (7 screens), useLifecycleLogger (app root), and Button tap tracking.
+- **Loading State Stability Sprint** -- Eliminated all stuck loading states across the app. Replaced shared loading booleans in `useBoards`/`useEnhancedBoards` with `inflightRef` counter pattern + optimistic local updates + 300ms debounced Realtime. Fixed collaboration invite spinner to stay for entire 15-step chain. Removed `setTimeout(100ms)` hack in session switching. Reversed person pill deletion to mutation-first with error recovery. Added `onError` logging to all 21 mutation hooks and user-facing Alerts to fire-and-forget callers. Enabled `refetchOnReconnect: 'always'` for auto-recovery after network loss. Added cancelled flag to AppStateManager to prevent mode oscillation. Parallelized 3 sequential reload pairs with `Promise.all`.
+- **Console Telemetry & Breadcrumb Trail** -- Added a `__DEV__`-only breadcrumb ring buffer that records the last 30 user actions. Every error auto-dumps the trail to Metro console.
 - **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions.
 - **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request creates basic friendship only. Profile linkage requires explicit consent from both users.
-- **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger creates pending relationships only, not automatic acceptance.
 
 ---
 

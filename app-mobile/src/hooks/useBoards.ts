@@ -1,21 +1,40 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { Board, BoardCollaborator } from '../types';
 
 export const useBoards = () => {
   const [boards, setBoards] = useState<Board[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBoards = useCallback(async () => {
+  // Track in-flight operations by count, not boolean.
+  // loading = true when ANY operation is in flight.
+  const inflightRef = useRef(0);
+  const [loading, setLoading] = useState(false);
+
+  const startLoading = useCallback(() => {
+    inflightRef.current += 1;
     setLoading(true);
+  }, []);
+
+  const stopLoading = useCallback(() => {
+    inflightRef.current = Math.max(0, inflightRef.current - 1);
+    if (inflightRef.current === 0) {
+      setLoading(false);
+    }
+  }, []);
+
+  // Stable user ID ref to avoid re-subscribing on every render
+  const userIdRef = useRef<string | null>(null);
+
+  const fetchBoards = useCallback(async () => {
+    startLoading();
     setError(null);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
+      userIdRef.current = user.id;
 
-      // Fetch boards where user is owner
       const { data, error } = await supabase
         .from('boards')
         .select('*')
@@ -23,15 +42,14 @@ export const useBoards = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-
       setBoards(data || []);
     } catch (err: any) {
       setError(err.message);
       console.error('Error fetching boards:', err);
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, []);
+  }, [startLoading, stopLoading]);
 
   const createBoard = useCallback(async (boardData: {
     name: string;
@@ -39,14 +57,13 @@ export const useBoards = () => {
     collaborators?: string[];
     sessionId?: string;
   }) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Create the board
       const { data: board, error: boardError } = await supabase
         .from('boards')
         .insert({
@@ -61,7 +78,6 @@ export const useBoards = () => {
 
       if (boardError) throw boardError;
 
-      // Add collaborators if provided
       if (boardData.collaborators && boardData.collaborators.length > 0) {
         const collaboratorPromises = boardData.collaborators.map(async (collaboratorId) => {
           const { error: collaboratorError } = await supabase
@@ -71,29 +87,29 @@ export const useBoards = () => {
               user_id: collaboratorId,
               role: 'collaborator',
             });
-
           if (collaboratorError) {
             console.error('Error adding collaborator:', collaboratorError);
           }
         });
-
         await Promise.all(collaboratorPromises);
       }
 
-      // Reload boards
-      await fetchBoards();
+      // Don't call fetchBoards() here — the Realtime subscription will handle it.
+      // This prevents the double-fetch race condition.
+      // Instead, optimistically add the board to local state.
+      setBoards(prev => [board, ...prev]);
 
       return { data: board, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fetchBoards]);
+  }, [startLoading, stopLoading]);
 
   const updateBoard = useCallback(async (boardId: string, updates: Partial<Board>) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -106,20 +122,20 @@ export const useBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await fetchBoards();
+      // Optimistic local update instead of full refetch
+      setBoards(prev => prev.map(b => b.id === boardId ? { ...b, ...data } : b));
 
       return { data, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fetchBoards]);
+  }, [startLoading, stopLoading]);
 
   const deleteBoard = useCallback(async (boardId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -130,47 +146,40 @@ export const useBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await fetchBoards();
+      // Optimistic local removal instead of full refetch
+      setBoards(prev => prev.filter(b => b.id !== boardId));
 
       return { error: null };
     } catch (err: any) {
       setError(err.message);
       return { error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fetchBoards]);
+  }, [startLoading, stopLoading]);
 
   const addCollaborator = useCallback(async (boardId: string, userId: string, role: 'owner' | 'collaborator' = 'collaborator') => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
       const { error } = await supabase
         .from('board_collaborators')
-        .insert({
-          board_id: boardId,
-          user_id: userId,
-          role,
-        });
+        .insert({ board_id: boardId, user_id: userId, role });
 
       if (error) throw error;
-
-      // Reload boards
-      await fetchBoards();
 
       return { error: null };
     } catch (err: any) {
       setError(err.message);
       return { error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fetchBoards]);
+  }, [startLoading, stopLoading]);
 
   const removeCollaborator = useCallback(async (boardId: string, userId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -182,68 +191,69 @@ export const useBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await fetchBoards();
-
       return { error: null };
     } catch (err: any) {
       setError(err.message);
       return { error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fetchBoards]);
+  }, [startLoading, stopLoading]);
 
   const getBoardCollaborators = useCallback(async (boardId: string) => {
     try {
       const { data, error } = await supabase
         .from('board_collaborators')
-        .select(`
-          *,
-          profiles (*)
-        `)
+        .select(`*, profiles (*)`)
         .eq('board_id', boardId);
 
       if (error) throw error;
-
       return { data: data || [], error: null };
     } catch (err: any) {
       return { data: [], error: err };
     }
   }, []);
 
-  // Set up real-time subscriptions
+  // Debounced refetch for Realtime events.
+  // Multiple rapid Realtime events (e.g., during account deletion) only trigger ONE refetch.
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedFetchBoards = useCallback(() => {
+    if (realtimeDebounceRef.current) {
+      clearTimeout(realtimeDebounceRef.current);
+    }
+    realtimeDebounceRef.current = setTimeout(() => {
+      // Only refetch if no mutation is in flight.
+      // This prevents the Realtime → fetchBoards race during mutations.
+      if (inflightRef.current === 0) {
+        fetchBoards();
+      }
+    }, 300);
+  }, [fetchBoards]);
+
+  // Set up Realtime subscriptions — filtered to current user
   useEffect(() => {
     const boardChannel = supabase
       .channel('board_changes')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'boards',
-        },
-        () => {
-          fetchBoards();
-        }
+        { event: '*', schema: 'public', table: 'boards' },
+        () => { debouncedFetchBoards(); }
       )
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'board_collaborators',
-        },
-        () => {
-          fetchBoards();
-        }
+        { event: '*', schema: 'public', table: 'board_collaborators' },
+        () => { debouncedFetchBoards(); }
       )
       .subscribe();
 
     return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+      }
       supabase.removeChannel(boardChannel);
     };
-  }, [fetchBoards]);
+  }, [debouncedFetchBoards]);
 
   // Load boards on mount
   useEffect(() => {

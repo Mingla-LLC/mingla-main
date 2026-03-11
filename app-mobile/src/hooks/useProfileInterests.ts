@@ -53,5 +53,8 @@ export function useUpdateProfileInterests() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileInterestsKeys.user(user!.id) });
     },
+    onError: (error: Error) => {
+      console.error('[UpdateProfileInterests] Error:', error.message);
+    },
   });
 }

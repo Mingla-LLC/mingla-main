@@ -26,6 +26,9 @@ export function useUploadProfilePhoto() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profilePhotoKeys.user(user!.id) });
     },
+    onError: (error: Error) => {
+      console.error('[UploadProfilePhoto] Error:', error.message);
+    },
   });
 }
 
@@ -36,6 +39,9 @@ export function useDeleteProfilePhoto() {
     mutationFn: (position: number) => deleteProfilePhoto(user!.id, position),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profilePhotoKeys.user(user!.id) });
+    },
+    onError: (error: Error) => {
+      console.error('[DeleteProfilePhoto] Error:', error.message);
     },
   });
 }

@@ -24,6 +24,9 @@ export function useCreatePerson() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.list(variables.user_id) });
     },
+    onError: (error: Error) => {
+      console.error('[CreatePerson] Error:', error.message);
+    },
   });
 }
 
@@ -34,6 +37,9 @@ export function useUpdatePerson() {
       savedPeopleService.updateSavedPerson(personId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+    },
+    onError: (error: Error) => {
+      console.error('[UpdatePerson] Error:', error.message);
     },
   });
 }
@@ -57,6 +63,9 @@ export function useDeletePerson() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
     },
+    onError: (error: Error) => {
+      console.error('[DeletePerson] Error:', error.message);
+    },
   });
 }
 
@@ -66,6 +75,9 @@ export function useRefreshLinkedProfile() {
     mutationFn: savedPeopleService.refreshLinkedPersonProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+    },
+    onError: (error: Error) => {
+      console.error('[RefreshLinkedProfile] Error:', error.message);
     },
   });
 }
@@ -87,6 +99,9 @@ export function useGeneratePersonExperiences() {
       queryClient.invalidateQueries({
         queryKey: savedPeopleKeys.experiences(variables.personId),
       });
+    },
+    onError: (error: Error) => {
+      console.error('[GeneratePersonExperiences] Error:', error.message);
     },
   });
 }

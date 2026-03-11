@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -187,13 +188,17 @@ export default function PersonHolidayView({
 
   const handleArchive = useCallback((holidayKey: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    archiveHolidayMutation.mutate(holidayKey);
+    archiveHolidayMutation.mutate(holidayKey, {
+      onError: () => Alert.alert("Error", "Failed to archive holiday."),
+    });
     if (expandedHolidayId === holidayKey) setExpandedHolidayId(null);
   }, [archiveHolidayMutation, expandedHolidayId]);
 
   const handleUnarchive = useCallback((archivedId: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    unarchiveHolidayMutation.mutate(archivedId);
+    unarchiveHolidayMutation.mutate(archivedId, {
+      onError: () => Alert.alert("Error", "Failed to unarchive holiday."),
+    });
   }, [unarchiveHolidayMutation]);
 
   const handleSaveCustomHoliday = useCallback(
@@ -206,6 +211,8 @@ export default function PersonHolidayView({
         day: holiday.day,
         description: holiday.description,
         categories: holiday.categories,
+      }, {
+        onError: () => Alert.alert("Error", "Failed to create holiday."),
       });
       setIsCustomModalVisible(false);
     },

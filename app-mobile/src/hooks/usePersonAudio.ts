@@ -47,6 +47,9 @@ export function useUploadAudioClip() {
         queryKey: personAudioKeys.clips(variables.personId),
       });
     },
+    onError: (error: Error) => {
+      console.error('[UploadAudioClip] Error:', error.message);
+    },
   });
 }
 
@@ -65,6 +68,9 @@ export function useDeleteAudioClip() {
       queryClient.invalidateQueries({
         queryKey: personAudioKeys.clips(variables.personId),
       });
+    },
+    onError: (error: Error) => {
+      console.error('[DeleteAudioClip] Error:', error.message);
     },
   });
 }

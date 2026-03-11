@@ -428,14 +428,14 @@ const SessionsTab = ({
     if (isSessionActive(session)) {
       return; // Already active, don't switch
     }
-    
-    // No need to clear anything - setCurrentMode will update mingla_last_mode automatically
+
     setSwitchingSessionId(session.id);
     try {
       if (onJoinSession) {
-        // Optimistically update mode immediately so button shows "Active" right away
+        // Optimistically update mode immediately
         onModeChange(session.name);
         await onJoinSession(session.id, session.name);
+        // Success — spinner cleared in finally
       } else {
         // Fallback to mode change if handler not provided
         onModeChange(session.name);
@@ -444,13 +444,12 @@ const SessionsTab = ({
         }
       }
     } catch (error) {
-      // If error, revert mode change
       console.error("Error switching session:", error);
+      // Revert optimistic update on error
+      onModeChange('solo');
     } finally {
-      // Clear loading state after a brief delay to show "Active" state
-      setTimeout(() => {
-        setSwitchingSessionId(null);
-      }, 100);
+      // Clear spinner AFTER the async operation completes — not on a timer
+      setSwitchingSessionId(null);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { realtimeService } from '../services/realtimeService';
 import { useAppStore } from '../store/appStore';
@@ -22,15 +22,31 @@ export interface CreateBoardData {
 export const useEnhancedBoards = () => {
   const { user, currentSession } = useAppStore();
   const [boards, setBoards] = useState<BoardWithDetails[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeBoard, setActiveBoard] = useState<BoardWithDetails | null>(null);
+
+  // Track in-flight operations by count, not boolean.
+  // loading = true when ANY operation is in flight.
+  const inflightRef = useRef(0);
+  const [loading, setLoading] = useState(false);
+
+  const startLoading = useCallback(() => {
+    inflightRef.current += 1;
+    setLoading(true);
+  }, []);
+
+  const stopLoading = useCallback(() => {
+    inflightRef.current = Math.max(0, inflightRef.current - 1);
+    if (inflightRef.current === 0) {
+      setLoading(false);
+    }
+  }, []);
 
   // Load user boards
   const loadUserBoards = useCallback(async () => {
     if (!user) return;
 
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -56,15 +72,15 @@ export const useEnhancedBoards = () => {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [user]);
+  }, [user, startLoading, stopLoading]);
 
   // Create new board
   const createBoard = useCallback(async (boardData: CreateBoardData) => {
     if (!user) return { data: null, error: new Error('No user logged in') };
 
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -100,21 +116,28 @@ export const useEnhancedBoards = () => {
         }
       }
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update instead of full refetch
+      const transformedBoard: BoardWithDetails = {
+        ...board,
+        collaborators: [],
+        experiences: [],
+        experience_count: 0,
+        last_activity: board.updated_at,
+      };
+      setBoards(prev => [transformedBoard, ...prev]);
 
       return { data: board, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [user, currentSession, loadUserBoards]);
+  }, [user, currentSession, startLoading, stopLoading]);
 
   // Update board
   const updateBoard = useCallback(async (boardId: string, updates: Partial<Board>) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -130,21 +153,21 @@ export const useEnhancedBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update instead of full refetch
+      setBoards(prev => prev.map(b => b.id === boardId ? { ...b, ...data, last_activity: data.updated_at } : b));
 
       return { data, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [loadUserBoards]);
+  }, [startLoading, stopLoading]);
 
   // Delete board
   const deleteBoard = useCallback(async (boardId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -155,21 +178,21 @@ export const useEnhancedBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local removal instead of full refetch
+      setBoards(prev => prev.filter(b => b.id !== boardId));
 
       return { data: null, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [loadUserBoards]);
+  }, [startLoading, stopLoading]);
 
   // Add experience to board
   const addExperienceToBoard = useCallback(async (boardId: string, experienceId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -192,21 +215,25 @@ export const useEnhancedBoards = () => {
         experience: data,
       });
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update instead of full refetch
+      setBoards(prev => prev.map(b =>
+        b.id === boardId
+          ? { ...b, experiences: [...b.experiences, data], experience_count: b.experience_count + 1 }
+          : b
+      ));
 
       return { data, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [user, loadUserBoards]);
+  }, [user, startLoading, stopLoading]);
 
   // Remove experience from board
   const removeExperienceFromBoard = useCallback(async (boardId: string, experienceId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -224,21 +251,29 @@ export const useEnhancedBoards = () => {
         removedBy: user?.display_name || user?.email,
       });
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update instead of full refetch
+      setBoards(prev => prev.map(b =>
+        b.id === boardId
+          ? {
+              ...b,
+              experiences: b.experiences.filter(e => e.experience_id !== experienceId),
+              experience_count: Math.max(0, b.experience_count - 1),
+            }
+          : b
+      ));
 
       return { data: null, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [user, loadUserBoards]);
+  }, [user, startLoading, stopLoading]);
 
   // Add collaborator to board
   const addCollaborator = useCallback(async (boardId: string, userEmail: string, role: string = 'member') => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -266,21 +301,25 @@ export const useEnhancedBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update — add collaborator to the board's list
+      setBoards(prev => prev.map(b =>
+        b.id === boardId
+          ? { ...b, collaborators: [...b.collaborators, data] }
+          : b
+      ));
 
       return { data, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [loadUserBoards]);
+  }, [startLoading, stopLoading]);
 
   // Remove collaborator from board
   const removeCollaborator = useCallback(async (boardId: string, userId: string) => {
-    setLoading(true);
+    startLoading();
     setError(null);
 
     try {
@@ -292,16 +331,35 @@ export const useEnhancedBoards = () => {
 
       if (error) throw error;
 
-      // Reload boards
-      await loadUserBoards();
+      // Optimistic local update — remove collaborator from the board's list
+      setBoards(prev => prev.map(b =>
+        b.id === boardId
+          ? { ...b, collaborators: b.collaborators.filter(c => c.user_id !== userId) }
+          : b
+      ));
 
       return { data: null, error: null };
     } catch (err: any) {
       setError(err.message);
       return { data: null, error: err };
     } finally {
-      setLoading(false);
+      stopLoading();
     }
+  }, [startLoading, stopLoading]);
+
+  // Debounce ref for Realtime callbacks from subscribeToBoard
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedLoadUserBoards = useCallback(() => {
+    if (realtimeDebounceRef.current) {
+      clearTimeout(realtimeDebounceRef.current);
+    }
+    realtimeDebounceRef.current = setTimeout(() => {
+      // Only refetch if no mutation is in flight
+      if (inflightRef.current === 0) {
+        loadUserBoards();
+      }
+    }, 300);
   }, [loadUserBoards]);
 
   // Set active board for real-time collaboration
@@ -314,38 +372,41 @@ export const useEnhancedBoards = () => {
     setActiveBoard(board);
 
     if (board) {
-      // Subscribe to real-time updates
+      // Subscribe to real-time updates with debounce protection
       realtimeService.subscribeToBoard(board.id, {
         onBoardUpdated: (updatedBoard) => {
-          setBoards(prev => prev.map(b => 
-            b.id === board.id ? { ...b, ...updatedBoard } : b
-          ));
-          setActiveBoard(prev => prev?.id === board.id ? { ...prev, ...updatedBoard } : prev);
+          // Only apply if no mutation is in flight to prevent race conditions
+          if (inflightRef.current === 0) {
+            setBoards(prev => prev.map(b =>
+              b.id === board.id ? { ...b, ...updatedBoard } : b
+            ));
+            setActiveBoard(prev => prev?.id === board.id ? { ...prev, ...updatedBoard } : prev);
+          }
         },
         onExperienceAdded: (experience) => {
-          setBoards(prev => prev.map(b => 
-            b.id === board.id 
+          setBoards(prev => prev.map(b =>
+            b.id === board.id
               ? { ...b, experiences: [...b.experiences, experience], experience_count: b.experience_count + 1 }
               : b
           ));
-          setActiveBoard(prev => prev?.id === board.id 
+          setActiveBoard(prev => prev?.id === board.id
             ? { ...prev, experiences: [...prev.experiences, experience], experience_count: prev.experience_count + 1 }
             : prev
           );
         },
         onExperienceRemoved: (experienceId) => {
-          setBoards(prev => prev.map(b => 
-            b.id === board.id 
-              ? { 
-                  ...b, 
+          setBoards(prev => prev.map(b =>
+            b.id === board.id
+              ? {
+                  ...b,
                   experiences: b.experiences.filter(e => e.experience_id !== experienceId),
                   experience_count: Math.max(0, b.experience_count - 1)
                 }
               : b
           ));
-          setActiveBoard(prev => prev?.id === board.id 
-            ? { 
-                ...prev, 
+          setActiveBoard(prev => prev?.id === board.id
+            ? {
+                ...prev,
                 experiences: prev.experiences.filter(e => e.experience_id !== experienceId),
                 experience_count: Math.max(0, prev.experience_count - 1)
               }
@@ -353,23 +414,23 @@ export const useEnhancedBoards = () => {
           );
         },
         onCollaboratorJoined: (collaborator) => {
-          setBoards(prev => prev.map(b => 
-            b.id === board.id 
+          setBoards(prev => prev.map(b =>
+            b.id === board.id
               ? { ...b, collaborators: [...b.collaborators, collaborator] }
               : b
           ));
-          setActiveBoard(prev => prev?.id === board.id 
+          setActiveBoard(prev => prev?.id === board.id
             ? { ...prev, collaborators: [...prev.collaborators, collaborator] }
             : prev
           );
         },
         onCollaboratorLeft: (collaborator) => {
-          setBoards(prev => prev.map(b => 
-            b.id === board.id 
+          setBoards(prev => prev.map(b =>
+            b.id === board.id
               ? { ...b, collaborators: b.collaborators.filter(c => c.id !== collaborator.id) }
               : b
           ));
-          setActiveBoard(prev => prev?.id === board.id 
+          setActiveBoard(prev => prev?.id === board.id
             ? { ...prev, collaborators: prev.collaborators.filter(c => c.id !== collaborator.id) }
             : prev
           );
@@ -389,6 +450,9 @@ export const useEnhancedBoards = () => {
       if (activeBoard) {
         realtimeService.unsubscribe(`board:${activeBoard.id}`);
       }
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+      }
     };
   }, [activeBoard]);
 
@@ -398,7 +462,7 @@ export const useEnhancedBoards = () => {
     activeBoard,
     loading,
     error,
-    
+
     // Actions
     loadUserBoards,
     createBoard,

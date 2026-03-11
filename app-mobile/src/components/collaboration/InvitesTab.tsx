@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Text,
   View,
@@ -36,6 +36,7 @@ interface InvitesTabProps {
   onCreateSession?: () => void;
   hasActiveSessions?: boolean;
   initialTab?: "sent" | "received";
+  processingInviteId?: string | null;
 }
 
 // Move styles outside the component
@@ -423,6 +424,7 @@ const InvitesTab = ({
   onCreateSession,
   hasActiveSessions = false,
   initialTab = "received",
+  processingInviteId = null,
 }: InvitesTabProps) => {
   const [showInviteType, setShowInviteType] = useState<"sent" | "received">(
     initialTab
@@ -493,6 +495,7 @@ const InvitesTab = ({
                   invite={invite}
                   onAccept={onAcceptInvite}
                   onDecline={onDeclineInvite}
+                  processingInviteId={processingInviteId}
                 />
               );
             })
@@ -548,35 +551,26 @@ const InvitesTab = ({
 };
 
 // ReceivedInviteCard component
-const ReceivedInviteCard = ({ invite, onAccept, onDecline }: any) => {
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isDeclining, setIsDeclining] = useState(false);
+const ReceivedInviteCard = ({ invite, onAccept, onDecline, processingInviteId }: any) => {
+  // Track which button was tapped so we show the spinner on the correct one
+  const lastActionRef = useRef<'accept' | 'decline' | null>(null);
+
+  // Parent-driven loading state — stays true for the entire accept/decline chain
+  const isProcessing = processingInviteId === invite.id;
 
   const senderInitial = invite.fromUser?.name?.[0]?.toUpperCase() || "U";
   const timeAgo = formatShortTimestamp(invite.createdAt);
 
-  const handleAccept = async () => {
-    if (isAccepting || isDeclining) return;
-    setIsAccepting(true);
-    try {
-      await onAccept(invite.id);
-    } catch (error) {
-      console.error("Error accepting invite:", error);
-    } finally {
-      setIsAccepting(false);
-    }
+  const handleAccept = () => {
+    if (isProcessing) return;
+    lastActionRef.current = 'accept';
+    onAccept(invite.id);
   };
 
-  const handleDecline = async () => {
-    if (isAccepting || isDeclining) return;
-    setIsDeclining(true);
-    try {
-      await onDecline(invite.id);
-    } catch (error) {
-      console.error("Error declining invite:", error);
-    } finally {
-      setIsDeclining(false);
-    }
+  const handleDecline = () => {
+    if (isProcessing) return;
+    lastActionRef.current = 'decline';
+    onDecline(invite.id);
   };
 
   return (
@@ -619,12 +613,12 @@ const ReceivedInviteCard = ({ invite, onAccept, onDecline }: any) => {
         <TouchableOpacity
           style={[
             styles.receivedDeclineButton,
-            (isAccepting || isDeclining) && styles.receivedButtonDisabled,
+            isProcessing && styles.receivedButtonDisabled,
           ]}
           onPress={handleDecline}
-          disabled={isAccepting || isDeclining}
+          disabled={isProcessing}
         >
-          {isDeclining ? (
+          {isProcessing && lastActionRef.current === 'decline' ? (
             <ActivityIndicator size="small" color="#6B7280" />
           ) : (
             <>
@@ -636,12 +630,12 @@ const ReceivedInviteCard = ({ invite, onAccept, onDecline }: any) => {
         <TouchableOpacity
           style={[
             styles.receivedAcceptButton,
-            (isAccepting || isDeclining) && styles.receivedButtonDisabled,
+            isProcessing && styles.receivedButtonDisabled,
           ]}
           onPress={handleAccept}
-          disabled={isAccepting || isDeclining}
+          disabled={isProcessing}
         >
-          {isAccepting ? (
+          {isProcessing && lastActionRef.current === 'accept' ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
             <>

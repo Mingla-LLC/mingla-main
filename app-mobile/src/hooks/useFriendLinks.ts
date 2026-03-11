@@ -50,6 +50,9 @@ export function useSendFriendLink() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
     },
+    onError: (error: Error) => {
+      console.error('[SendFriendLink] Error:', error.message);
+    },
   });
 }
 
@@ -68,6 +71,9 @@ export function useRespondToFriendLink() {
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
       queryClient.invalidateQueries({ queryKey: personalizedCardKeys.all });
     },
+    onError: (error: Error) => {
+      console.error('[RespondToFriendLink] Error:', error.message);
+    },
   });
 }
 
@@ -79,6 +85,9 @@ export function useUnlinkFriend() {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
       queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
     },
+    onError: (error: Error) => {
+      console.error('[UnlinkFriend] Error:', error.message);
+    },
   });
 }
 
@@ -88,6 +97,9 @@ export function useCancelLinkRequest() {
     mutationFn: friendLinkService.cancelLinkRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+    },
+    onError: (error: Error) => {
+      console.error('[CancelLinkRequest] Error:', error.message);
     },
   });
 }
@@ -107,6 +119,9 @@ export function useCancelPhoneInvite() {
     mutationFn: cancelPendingInvite,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+    },
+    onError: (error: Error) => {
+      console.error('[CancelPhoneInvite] Error:', error.message);
     },
   });
 }

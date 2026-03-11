@@ -13,6 +13,9 @@ export function useSendPhoneInvite() {
         queryKey: friendLinkKeys.all,
       });
     },
+    onError: (error: Error) => {
+      console.error('[SendPhoneInvite] Error:', error.message);
+    },
   });
 }
 

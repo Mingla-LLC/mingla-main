@@ -295,7 +295,9 @@ export default function ProfilePage({
 
   // Interests save
   const handleSaveInterests = (intents: string[], categories: string[]) => {
-    updateInterestsMutation.mutate({ intents, categories });
+    updateInterestsMutation.mutate({ intents, categories }, {
+      onError: () => console.error('[ProfilePage] Failed to update interests'),
+    });
   };
 
   // Notifications toggle

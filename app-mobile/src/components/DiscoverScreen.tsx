@@ -2624,36 +2624,41 @@ export default function DiscoverScreen({
     setSelectedPersonId("for-you");
   };
 
-  // Handle removing a person with fade-out animation
+  // Handle removing a person — mutation first, animation only on success
   const handleRemovePerson = async (person: SavedPerson) => {
-    // Start fade-out animation
     setDeletingPersonId(person.id);
-    deletingAnimRef.setValue(1);
 
-    Animated.timing(deletingAnimRef, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(async () => {
-      // Animate the list reflow
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setDeletingPersonId(null);
+    try {
+      // Run the mutation FIRST — only animate out on success
+      await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
 
-      if (selectedPersonId === person.id) {
-        setSelectedPersonId("for-you");
-      }
+      // Mutation succeeded — now animate out
+      Animated.timing(deletingAnimRef, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setDeletingPersonId(null);
+        deletingAnimRef.setValue(1); // Reset for next deletion
 
-      try {
-        await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
-      } catch (error) {
-        console.error("[Discover] Failed to delete person:", error);
-      }
+        // Reset selection if deleted person was selected
+        if (selectedPersonId === person.id) {
+          setSelectedPersonId("for-you");
+        }
+      });
 
-      // Also remove custom holidays associated with this person
+      // Clean up custom holidays associated with this person
       const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
       setCustomHolidays(updatedHolidays);
       await saveCustomHolidaysToStorage(updatedHolidays);
-    });
+    } catch (error) {
+      console.error("[Discover] Failed to delete person:", error);
+      // Reset animation state and show error
+      setDeletingPersonId(null);
+      deletingAnimRef.setValue(1);
+      Alert.alert("Error", "Failed to delete person. Please try again.");
+    }
   };
 
   // Handle long-press to edit a person
@@ -3130,8 +3135,14 @@ export default function DiscoverScreen({
               {pendingLinkRequests.length > 0 && (
                 <LinkRequestBanner
                   requests={pendingLinkRequests}
-                  onAccept={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'accept' })}
-                  onDecline={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'decline' })}
+                  onAccept={(linkId) => respondToLinkMutation.mutate(
+                    { linkId, action: 'accept' },
+                    { onError: () => Alert.alert("Error", "Failed to accept. Please try again.") }
+                  )}
+                  onDecline={(linkId) => respondToLinkMutation.mutate(
+                    { linkId, action: 'decline' },
+                    { onError: () => Alert.alert("Error", "Failed to decline. Please try again.") }
+                  )}
                 />
               )}
 
@@ -3192,6 +3203,7 @@ export default function DiscoverScreen({
                         <TouchableOpacity
                           style={styles.personPillTouchable}
                           onPress={() => {
+                            if (deletingPersonId) return; // Don't allow selection changes during deletion
                             if (isPending) {
                               // Show tooltip for pending pills
                               Alert.alert("", `Waiting for ${person.name} to accept`);

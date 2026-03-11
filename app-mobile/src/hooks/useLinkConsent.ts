@@ -41,5 +41,8 @@ export function useRespondLinkConsent() {
       // Invalidate friend links (link_status changed)
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
     },
+    onError: (error: Error) => {
+      console.error('[RespondLinkConsent] Error:', error.message);
+    },
   });
 }

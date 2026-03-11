@@ -36,6 +36,9 @@ export function useCreateCustomHoliday() {
         queryKey: customHolidayKeys.list(variables.user_id, variables.person_id),
       });
     },
+    onError: (error: Error) => {
+      console.error('[CreateCustomHoliday] Error:', error.message);
+    },
   });
 }
 
@@ -47,6 +50,9 @@ export function useDeleteCustomHoliday(userId: string, personId: string) {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.list(userId, personId),
       });
+    },
+    onError: (error: Error) => {
+      console.error('[DeleteCustomHoliday] Error:', error.message);
     },
   });
 }
@@ -61,6 +67,9 @@ export function useArchiveHoliday(userId: string, personId: string) {
         queryKey: customHolidayKeys.archived(userId, personId),
       });
     },
+    onError: (error: Error) => {
+      console.error('[ArchiveHoliday] Error:', error.message);
+    },
   });
 }
 
@@ -72,6 +81,9 @@ export function useUnarchiveHoliday(userId: string, personId: string) {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.archived(userId, personId),
       });
+    },
+    onError: (error: Error) => {
+      console.error('[UnarchiveHoliday] Error:', error.message);
     },
   });
 }

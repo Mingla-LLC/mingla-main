@@ -424,7 +424,11 @@ export function useAppState() {
   }, []); // Run once on mount
 
   // Load active session from database on user login
+  // The `cancelled` flag prevents mode oscillation when a slow DB query overlaps
+  // with a user-initiated mode switch (the stale result is discarded).
   useEffect(() => {
+    let cancelled = false;
+
     const loadActiveSession = async () => {
       // Wait for initial mode to be loaded
       if (currentMode === null) return;
@@ -447,12 +451,19 @@ export function useAppState() {
         // For collaboration modes, verify against database
         const activeSession = await SessionService.getActiveSession(user.id);
 
+        // If mode changed while we were fetching, discard this result
+        if (cancelled) return;
+
         if (activeSession) {
           // Get stored mode data to check session ID
           const storedModeData = await safeAsyncStorageGet(
             "mingla_last_mode",
             null
           );
+
+          // Check again after async operation
+          if (cancelled) return;
+
           const storedSessionId = storedModeData?.sessionId;
 
           // Only update if:
@@ -476,7 +487,7 @@ export function useAppState() {
       } catch (error) {
         console.error("Error loading active session:", error);
         // On error, default to solo mode
-        if (currentMode !== "solo") {
+        if (!cancelled && currentMode !== "solo") {
           setCurrentMode("solo");
         }
       }
@@ -485,6 +496,8 @@ export function useAppState() {
     if (user && currentMode !== null) {
       loadActiveSession();
     }
+
+    return () => { cancelled = true; };
   }, [user?.id, currentMode]);
 
   // Load other data from AsyncStorage

@@ -7,6 +7,7 @@ import {
   ScrollView,
   Modal,
   Dimensions,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -150,6 +151,7 @@ export default function CollaborationModule({
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [userSessions, setUserSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
 
   // Reset create flow when tab changes
   React.useEffect(() => {
@@ -536,6 +538,7 @@ export default function CollaborationModule({
   const handleAcceptInvite = async (inviteId: string) => {
     if (!user) return;
 
+    setProcessingInviteId(inviteId);
     try {
       // First, fetch the invite details to get session info and inviter ID
       const { data: invite, error: fetchError } = await supabase
@@ -554,8 +557,7 @@ export default function CollaborationModule({
         .single();
 
       if (fetchError || !invite) {
-        console.error("Error fetching invite details:", fetchError);
-        return;
+        throw new Error(fetchError?.message ?? "Invite not found");
       }
 
       // Get session name from the join
@@ -572,8 +574,7 @@ export default function CollaborationModule({
         .eq("invited_user_id", user.id);
 
       if (error) {
-        console.error("Error accepting invite:", error);
-        return;
+        throw new Error(error.message);
       }
 
       // Add user as participant if not already added
@@ -723,9 +724,8 @@ export default function CollaborationModule({
         // Don't fail the whole operation if notification fails
       }
 
-      // Reload invites and sessions
-      await loadInvites();
-      await loadUserSessions();
+      // Reload invites and sessions in parallel
+      await Promise.all([loadInvites(), loadUserSessions(false)]);
 
       // Immediately refresh boards list so the new board appears in Activity Page
       if (onRefreshBoards) {
@@ -733,12 +733,16 @@ export default function CollaborationModule({
       }
     } catch (error) {
       console.error("Error accepting invite:", error);
+      Alert.alert("Error", "Failed to accept invite. Please try again.");
+    } finally {
+      setProcessingInviteId(null);
     }
   };
 
   const handleDeclineInvite = async (inviteId: string) => {
     if (!user) return;
 
+    setProcessingInviteId(inviteId);
     try {
       // First, fetch the invite details to get session info and inviter ID
       const { data: invite, error: fetchError } = await supabase
@@ -757,8 +761,7 @@ export default function CollaborationModule({
         .single();
 
       if (fetchError || !invite) {
-        console.error("Error fetching invite details:", fetchError);
-        return;
+        throw new Error(fetchError?.message ?? "Invite not found");
       }
 
       // Get session name from the join
@@ -775,8 +778,7 @@ export default function CollaborationModule({
         .eq("invited_user_id", user.id);
 
       if (error) {
-        console.error("Error declining invite:", error);
-        return;
+        throw new Error(error.message);
       }
 
       // Remove user from session_participants if they were added (even if not accepted)
@@ -814,11 +816,13 @@ export default function CollaborationModule({
         // Don't fail the whole operation if notification fails
       }
 
-      // Reload invites and sessions to update UI
-      await loadInvites();
-      await loadUserSessions();
+      // Reload invites and sessions to update UI in parallel
+      await Promise.all([loadInvites(), loadUserSessions(false)]);
     } catch (error) {
       console.error("Error declining invite:", error);
+      Alert.alert("Error", "Failed to decline invite. Please try again.");
+    } finally {
+      setProcessingInviteId(null);
     }
   };
 
@@ -867,7 +871,6 @@ export default function CollaborationModule({
         // Revert mode change on error
         onModeChange("solo");
         // Show error to user
-        const { Alert } = await import("react-native");
         Alert.alert(
           "Failed to Switch Session",
           result.error || "Unable to switch to this session. Please try again."
@@ -877,7 +880,6 @@ export default function CollaborationModule({
       console.error("Error joining session:", error);
       // Revert mode change on error
       onModeChange("solo");
-      const { Alert } = await import("react-native");
       Alert.alert(
         "Error",
         error.message || "Failed to switch session. Please try again."
@@ -898,7 +900,6 @@ export default function CollaborationModule({
         // Reload sessions to reflect the change
         await loadUserSessions();
       } else {
-        const { Alert } = await import("react-native");
         Alert.alert(
           "Failed to Leave Session",
           result.error || "Unable to leave session. Please try again."
@@ -906,7 +907,6 @@ export default function CollaborationModule({
       }
     } catch (error: any) {
       console.error("Error leaving session:", error);
-      const { Alert } = await import("react-native");
       Alert.alert(
         "Error",
         error.message || "Failed to leave session. Please try again."
@@ -924,10 +924,8 @@ export default function CollaborationModule({
       await onCreateSession(sessionData);
     }
 
-    // Reload sessions to show the newly created one
-    await loadUserSessions();
-    // Also reload invites to show sent invites
-    await loadInvites();
+    // Reload sessions and invites in parallel
+    await Promise.all([loadUserSessions(false), loadInvites()]);
 
     // Don't close the modal - let user continue working
     // Switch to invites tab and show the "Sent" tab
@@ -1177,6 +1175,7 @@ export default function CollaborationModule({
                 onCreateSession={() => setActiveTab("create")}
                 hasActiveSessions={activeSessions.length > 0}
                 initialTab={invitesTabType}
+                processingInviteId={processingInviteId}
               />
             )}
             {activeTab === "create" && (
