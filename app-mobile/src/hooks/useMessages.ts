@@ -1,3 +1,17 @@
+/**
+ * @deprecated This hook is NOT used by any active component in the app.
+ * ConnectionsPage uses messagingService directly for conversation loading.
+ *
+ * WARNING — DO NOT CALL THIS HOOK FROM ANY COMPONENT:
+ * fetchMessages() runs 2 sequential Supabase queries per message (profile + read status)
+ * inside a for loop — 60+ serial round-trips for a user with 3 conversations × 10 messages.
+ * It has no timeout. Importing this hook will cause an unrecoverable performance regression
+ * and an infinite spinner under any network latency.
+ *
+ * The Conversation and Message types exported here are used by ConnectionsPage.tsx and
+ * ChatListItem.tsx — do NOT delete this file until those imports are migrated to a shared
+ * types/messaging.ts file. See §S2 in FEATURE_CHAT_SPINNER_AND_POOL_STABILITY_SPEC.md.
+ */
 import { useState, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 

@@ -175,7 +175,10 @@ class BoardSessionService {
             boardStatus = "active";
           }
 
-          // Map session_type to board type
+          // Map session_type to board type.
+          // The database stores session_type with underscores (e.g. "group_hangout"),
+          // but legacy code and some paths may use hyphens (e.g. "group-hangout").
+          // Both formats are mapped here so lookups are always direct, never a fallback.
           const typeMap: {
             [key: string]:
               | "date-night"
@@ -185,12 +188,21 @@ class BoardSessionService {
               | "food-tour"
               | "cultural";
           } = {
+            // Hyphen-format keys (legacy display values — kept for backwards compatibility)
             "date-night": "date-night",
             "group-hangout": "group-hangout",
+            "food-tour": "food-tour",
+            // Underscore-format keys (actual database column values for session_type)
+            date_night: "date-night",
+            group_hangout: "group-hangout",
+            food_tour: "food-tour",
+            // Single-word types are identical in both formats
             adventure: "adventure",
             wellness: "wellness",
-            "food-tour": "food-tour",
             cultural: "cultural",
+            // Extended session types from 20250127000012_extend_collaboration_sessions.sql
+            squad_outing: "group-hangout",
+            business_meeting: "cultural",
           };
 
           const boardType = typeMap[session.session_type] || "group-hangout";

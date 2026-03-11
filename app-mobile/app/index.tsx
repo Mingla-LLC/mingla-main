@@ -3,6 +3,8 @@ import Feather from "@expo/vector-icons/Feather";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
+  AppStateStatus,
   StatusBar,
   StyleSheet,
   Text,
@@ -90,6 +92,10 @@ function AppContent() {
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
+  // Generation counter for refreshAllSessions() concurrency protection.
+  // Declared here (top of component) so it persists stably across renders and is
+  // visible to any future developer extracting refreshAllSessions to a custom hook.
+  const refreshGenerationRef = useRef(0);
 
   // Initialize debug service on mount
   useEffect(() => {
@@ -382,6 +388,122 @@ function AppContent() {
     }
   }, [user?.id]);
 
+  // Debounce ref for Realtime-triggered refreshes.
+  // Collapses rapid database events into a single refreshAllSessions() call.
+  const realtimeRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tracks previous AppState to detect background → active transitions.
+  const appStateRef = useRef<string>(AppState.currentState);
+
+  // Realtime subscription: keep the collaboration pill bar live.
+  // Subscribes to three tables that cover all pill state changes:
+  //   1. collaboration_sessions (created_by=userId) — user's own sessions: status change, name, archive
+  //   2. session_participants (user_id=userId) — user added/removed/accepted in any session
+  //   3. collaboration_invites (invited_user_id=userId) — invites received, accepted, declined
+  //
+  // On any event: debounce 500ms → refreshAllSessions() with generation protection.
+  // Channel: collaboration_pill_changes_${userId} — no conflict with existing channels.
+  //
+  // STALE CLOSURE CONTRACT — READ BEFORE MODIFYING:
+  // refreshAllSessions is intentionally NOT in the dep array. It creates a new function
+  // reference every render; adding it would tear down and rebuild the subscription on every
+  // render, hammering the Supabase Realtime server. The closed-over version is safe ONLY as
+  // long as refreshAllSessions reads user.id exclusively (not user.email, user.user_metadata,
+  // or any other field that can change without user.id changing). If refreshAllSessions ever
+  // needs other volatile user fields, either wrap it in useCallback (with user.id as its dep)
+  // or migrate boardsSessions to React Query and call queryClient.invalidateQueries() instead.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const userId = user.id;
+
+    const triggerDebouncedRefresh = () => {
+      if (realtimeRefreshDebounceRef.current) {
+        clearTimeout(realtimeRefreshDebounceRef.current);
+      }
+      realtimeRefreshDebounceRef.current = setTimeout(() => {
+        realtimeRefreshDebounceRef.current = null;
+        // refreshAllSessions is captured from the closure at subscription setup.
+        // It is safe to call because user.id hasn't changed (effect dep hasn't changed).
+        refreshAllSessions();
+      }, 500);
+    };
+
+    const channel = supabase
+      .channel(`collaboration_pill_changes_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_sessions',
+          filter: `created_by=eq.${userId}`,
+        },
+        triggerDebouncedRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_participants',
+          filter: `user_id=eq.${userId}`,
+        },
+        triggerDebouncedRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invited_user_id=eq.${userId}`,
+        },
+        triggerDebouncedRefresh,
+      )
+      .subscribe();
+
+    return () => {
+      // Cancel any pending debounced refresh before tearing down the channel.
+      // Without this, a lingering timeout could call refreshAllSessions()
+      // after the subscription is gone (e.g., after user signs out).
+      if (realtimeRefreshDebounceRef.current) {
+        clearTimeout(realtimeRefreshDebounceRef.current);
+        realtimeRefreshDebounceRef.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
+
+  // AppState foreground listener: safety net for Realtime reconnection gaps.
+  // Supabase Realtime does NOT replay events missed during a connection drop.
+  // When the app returns from background, if the Realtime connection was interrupted,
+  // events from that window are lost. This listener ensures a fresh fetch on foreground,
+  // catching any state that Realtime may have missed.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        const wasBackground =
+          appStateRef.current === 'background' ||
+          appStateRef.current === 'inactive';
+        const isNowActive = nextState === 'active';
+
+        if (wasBackground && isNowActive) {
+          refreshAllSessions();
+        }
+
+        appStateRef.current = nextState;
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [user?.id]);
+
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
@@ -597,108 +719,139 @@ function AppContent() {
       return;
     }
 
-    setIsLoadingBoards(true);
-    // Fetch all session types in parallel for better performance
-    const [activeBoards, createdResult, invitedResult] = await Promise.all([
-      BoardSessionService.fetchUserBoardSessions(user.id),
-      supabase
-        .from('collaboration_sessions')
-        .select('*, session_participants(user_id, has_accepted)')
-        .eq('created_by', user.id)
-        .eq('status', 'pending'),
-      supabase
-        .from('collaboration_invites')
-        .select(`
-          session_id,
-          inviter_id,
-          invited_by,
-          status,
-          collaboration_sessions!inner(id, name, status, created_by, created_at)
-        `)
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending'),
-    ]);
+    // Increment generation. If two calls race, only the latest-starting one
+    // will find its generation still current when it finishes.
+    const generation = ++refreshGenerationRef.current;
 
-    const createdPendingSessions = createdResult.data;
-    const invitedSessions = invitedResult.data;
-    
-    // Transform pending created sessions
-    // Only include sessions where the user is actually a participant (prevents ghost sessions
-    // from failed creation attempts from appearing as duplicate pills)
-    const pendingCreatedSessions = (createdPendingSessions || [])
-      .filter((s: any) =>
-        (s.session_participants || []).some((p: any) => p.user_id === user.id)
-      )
-      .map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        status: s.status,
-        creatorId: s.created_by,
-        created_by: s.created_by,
-        participants: s.session_participants || [],
-        createdAt: s.created_at,
-      }));
-    
-    // Fetch inviter profiles for invited sessions
-    const invitedSessionsList = (invitedSessions || []).filter((inv: any) => inv.status === 'pending');
-    const inviterIds = [...new Set(invitedSessionsList.map((inv: any) => inv.inviter_id || inv.invited_by))];
-    
-    let inviterProfiles: any[] = [];
-    if (inviterIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, username, first_name, last_name, avatar_url')
-        .in('id', inviterIds);
-      inviterProfiles = profiles || [];
+    setIsLoadingBoards(true);
+    try {
+      // Fetch all session types in parallel for better performance
+      const [activeBoards, createdResult, invitedResult] = await Promise.all([
+        BoardSessionService.fetchUserBoardSessions(user.id),
+        supabase
+          .from('collaboration_sessions')
+          .select('*, session_participants(user_id, has_accepted)')
+          .eq('created_by', user.id)
+          .eq('status', 'pending'),
+        supabase
+          .from('collaboration_invites')
+          .select(`
+            session_id,
+            inviter_id,
+            invited_by,
+            status,
+            collaboration_sessions!inner(id, name, status, created_by, created_at)
+          `)
+          .eq('invited_user_id', user.id)
+          .eq('status', 'pending'),
+      ]);
+
+      // Discard this result if a newer call has already started.
+      // This prevents a slow network from causing stale data to overwrite fresh data.
+      if (generation !== refreshGenerationRef.current) {
+        return;
+      }
+
+      const createdPendingSessions = createdResult.data;
+      const invitedSessions = invitedResult.data;
+
+      // Transform pending created sessions
+      // Only include sessions where the user is actually a participant (prevents ghost sessions
+      // from failed creation attempts from appearing as duplicate pills)
+      const pendingCreatedSessions = (createdPendingSessions || [])
+        .filter((s: any) =>
+          (s.session_participants || []).some((p: any) => p.user_id === user.id)
+        )
+        .map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          creatorId: s.created_by,
+          created_by: s.created_by,
+          participants: s.session_participants || [],
+          createdAt: s.created_at,
+        }));
+
+      // Fetch inviter profiles for invited sessions.
+      // Note: the Supabase query above already filters by status='pending', so the
+      // null-guard (|| []) is the only defence needed here — no redundant .filter().
+      const invitedSessionsList = invitedSessions || [];
+      // filter(Boolean) guards against corrupt rows where both inviter_id and invited_by
+      // are null — prevents SQL `WHERE id IN (null)` which silently matches nothing.
+      const inviterIds = [...new Set(
+        invitedSessionsList
+          .map((inv: any) => inv.inviter_id || inv.invited_by)
+          .filter(Boolean)
+      )];
+
+      let inviterProfiles: any[] = [];
+      if (inviterIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, avatar_url')
+          .in('id', inviterIds);
+        inviterProfiles = profiles || [];
+      }
+
+      // Check generation again after the second round of async work.
+      // A Realtime event could have fired during the inviter profile fetch.
+      if (generation !== refreshGenerationRef.current) {
+        return;
+      }
+
+      // Helper to get inviter profile name
+      const getInviterName = (inviterId: string | undefined) => {
+        const profile = inviterProfiles.find((p: any) => p.id === inviterId);
+        if (!profile) return 'Someone';
+        if (profile.first_name && profile.last_name) {
+          return `${profile.first_name} ${profile.last_name}`;
+        }
+        return profile.first_name || profile.username || 'Someone';
+      };
+
+      // Transform pending/accepted invited sessions with inviter profile
+      // Show as grey pills only if the user hasn't accepted yet (status = 'pending')
+      // Once accepted, they will appear in activeBoards instead
+      const pendingInvitedSessions = invitedSessionsList
+        .map((inv: any) => {
+          const inviterId = inv.inviter_id || inv.invited_by;
+          const inviterProfile = inviterProfiles.find((p: any) => p.id === inviterId);
+          const inviterName = getInviterName(inviterId);
+
+          return {
+            id: inv.collaboration_sessions.id,
+            name: inv.collaboration_sessions.name,
+            status: 'pending',
+            creatorId: inv.collaboration_sessions.created_by,
+            created_by: inv.collaboration_sessions.created_by,
+            invitedBy: inviterId,
+            inviterProfile: {
+              id: inviterId,
+              name: inviterName,
+              username: inviterProfile?.username,
+              avatar: inviterProfile?.avatar_url,
+            },
+            createdAt: inv.collaboration_sessions.created_at,
+          };
+        });
+
+      // Combine and deduplicate by id
+      const allSessions = [...activeBoards, ...pendingCreatedSessions, ...pendingInvitedSessions];
+      const uniqueSessions = allSessions.reduce((acc: any[], session: any) => {
+        if (!acc.find((s: any) => s.id === session.id)) {
+          acc.push(session);
+        }
+        return acc;
+      }, []);
+
+      updateBoardsSessions(uniqueSessions);
+    } finally {
+      // Only clear loading if this is still the current generation.
+      // If a newer call took over, it will clear loading when it finishes.
+      if (generation === refreshGenerationRef.current) {
+        setIsLoadingBoards(false);
+      }
     }
-    
-    // Helper to get inviter profile name
-    const getInviterName = (inviterId: string | undefined) => {
-      const profile = inviterProfiles.find((p: any) => p.id === inviterId);
-      if (!profile) return 'Someone';
-      if (profile.first_name && profile.last_name) {
-        return `${profile.first_name} ${profile.last_name}`;
-      }
-      return profile.first_name || profile.username || 'Someone';
-    };
-    
-    // Transform pending/accepted invited sessions with inviter profile
-    // Show as grey pills only if the user hasn't accepted yet (status = 'pending')
-    // Once accepted, they will appear in activeBoards instead
-    const pendingInvitedSessions = invitedSessionsList
-      .map((inv: any) => {
-        const inviterId = inv.inviter_id || inv.invited_by;
-        const inviterProfile = inviterProfiles.find((p: any) => p.id === inviterId);
-        const inviterName = getInviterName(inviterId);
-        
-        return {
-          id: inv.collaboration_sessions.id,
-          name: inv.collaboration_sessions.name,
-          status: 'pending',
-          creatorId: inv.collaboration_sessions.created_by,
-          created_by: inv.collaboration_sessions.created_by,
-          invitedBy: inviterId,
-          inviterProfile: {
-            id: inviterId,
-            name: inviterName,
-            username: inviterProfile?.username,
-            avatar: inviterProfile?.avatar_url,
-          },
-          createdAt: inv.collaboration_sessions.created_at,
-        };
-      });
-    
-    // Combine and deduplicate by id
-    const allSessions = [...activeBoards, ...pendingCreatedSessions, ...pendingInvitedSessions];
-    const uniqueSessions = allSessions.reduce((acc: any[], session: any) => {
-      if (!acc.find((s: any) => s.id === session.id)) {
-        acc.push(session);
-      }
-      return acc;
-    }, []);
-    
-    updateBoardsSessions(uniqueSessions);
-    setIsLoadingBoards(false);
   };
 
   const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
@@ -1384,6 +1537,10 @@ function AppContent() {
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
             setCurrentPage("home");
+            // Explicitly refresh sessions. user?.id does NOT change during onboarding
+            // (user was authenticated the whole time), so the useEffect([user?.id])
+            // trigger will NOT fire on its own. This call is mandatory.
+            refreshAllSessions();
           }}
         />
       </ErrorBoundary>

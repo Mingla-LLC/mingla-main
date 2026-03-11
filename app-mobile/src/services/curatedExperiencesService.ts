@@ -47,20 +47,34 @@ class CuratedExperiencesService {
     travelConstraintValue: number;
   }): Promise<void> {
     try {
-      await supabase.functions.invoke('generate-curated-experiences', {
-        body: {
-          experienceType: params.experienceType,
-          location: params.location,
-          budgetMax: params.budgetMax,
-          travelMode: params.travelMode,
-          travelConstraintType: params.travelConstraintType,
-          travelConstraintValue: params.travelConstraintValue,
-          warmPool: true,
-          limit: 40,
-        },
-      });
+      // supabase.functions.invoke() has no built-in timeout. Under bad network the promise
+      // never settles, causing Promise.all(warmPromises) in deckService to hang indefinitely.
+      // Match the identical pattern used in deckService.ts for the category branch.
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          const err = new Error('generate-curated-experiences warmPool timed out after 15s');
+          err.name = 'AbortError';
+          reject(err);
+        }, 15000)
+      );
+
+      await Promise.race([
+        supabase.functions.invoke('generate-curated-experiences', {
+          body: {
+            experienceType: params.experienceType,
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            warmPool: true,
+            limit: 40,
+          },
+        }),
+        timeoutPromise,
+      ]);
     } catch (err) {
-      // Fire and forget — don't throw
+      // Fire and forget — don't throw. AbortError from timeout is expected under slow network.
       console.warn('[warmPool] Failed:', err);
     }
   }

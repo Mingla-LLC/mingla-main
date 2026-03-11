@@ -328,8 +328,24 @@ export default function ConnectionsPageRefactored({
   const fetchConversations = useCallback(async (userId: string) => {
     try {
       setError(null);
+
+      // Hard 10-second timeout: messagingService.getConversations runs 4N sequential
+      // Supabase queries with no built-in timeout. When the app returns from background,
+      // the OS suspends inflight connections and Supabase hangs silently — the finally
+      // block would never fire, leaving conversationsLoading stuck at true forever.
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          const err = new Error('getConversations timed out after 10s');
+          err.name = 'TimeoutError';
+          reject(err);
+        }, 10000)
+      );
+
       const { conversations: rawConversations, error: convError } =
-        await messagingService.getConversations(userId);
+        await Promise.race([
+          messagingService.getConversations(userId),
+          timeoutPromise,
+        ]);
 
       if (convError) throw new Error(convError);
 
@@ -381,9 +397,17 @@ export default function ConnectionsPageRefactored({
         getConversationsCacheKey(userId),
         JSON.stringify(transformed)
       ).catch((e) => console.warn("[ConnectionsPage] Cache persist failed:", e));
-    } catch (err) {
-      console.error("Error fetching conversations:", err);
-      setError("Failed to load conversations");
+    } catch (err: any) {
+      if (err.name === 'TimeoutError') {
+        // Graceful degradation — network hung after background. User already sees cached
+        // state (empty or populated). Do NOT set error: the timeout is expected recovery
+        // behavior, not a failure. Setting error here would wipe the cache-hydrated empty
+        // state and replace it with an error screen (regression).
+        console.warn("[ConnectionsPage] fetchConversations timed out — network may be recovering after background");
+      } else {
+        console.error("Error fetching conversations:", err);
+        setError("Failed to load conversations");
+      }
     } finally {
       setConversationsLoading(false);
     }
@@ -399,7 +423,10 @@ export default function ConnectionsPageRefactored({
         const cached = await AsyncStorage.getItem(getConversationsCacheKey(user.id));
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
+            // Empty array [] is a valid cached state: user has no conversations yet.
+            // Previously this guard excluded zero-conversation users, forcing them to
+            // always wait for the network fetch — causing infinite spinner on hang.
             setConversations(parsed);
             setConversationsLoading(false);
           }

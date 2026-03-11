@@ -94,6 +94,28 @@ function formatBirthdayDisplay(date: Date): string {
   return `${day}/${month}/${year}`
 }
 
+// ─── Stable Date Boundaries (module-level — never re-created on render) ───
+// Recalculated once per app launch. Accuracy within one day is sufficient for age validation.
+const MAX_BIRTHDAY_DATE = new Date()  // today — user cannot be born in the future
+const MIN_BIRTHDAY_DATE = new Date(1906, 0, 1)  // 120 years ago ceiling
+const BIRTHDAY_PICKER_DEFAULT = new Date(2000, 0, 1)  // fallback starting position for Step 1 picker
+
+const DEFAULT_PERSON_DATE = (() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 25)
+  return d
+})()
+const MIN_PERSON_DATE = (() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 100)
+  return d
+})()
+const MAX_PERSON_DATE = (() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 13)
+  return d
+})()
+
 // Returns the Nth occurrence of a given weekday in a month (1-indexed)
 // weekday: 0=Sunday, 1=Monday, ... 6=Saturday
 function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
@@ -213,13 +235,14 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
   }, [navState.subStep, isLoadingConsents, pendingConsents, goNext]);
 
-  // isFirstScreen: computed locally based on whether the user's phone was
-  // already verified from a previous session. This is separate from the
-  // "resume step" concept — a user may resume at Step 4 but the "first screen"
-  // (where "Back to sign in" appears) is Step 2/value_prop if phone was pre-verified,
-  // or Step 1/welcome if it wasn't.
+  // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
+  // should appear. For phone-pre-verified users, this is Step 2/value_prop (their starting
+  // point) OR Step 1/welcome (where they end up if they navigate backwards past Step 2).
+  // The OR condition ensures pre-verified users who navigate backwards are never trapped
+  // without a sign-out path.
   const isFirstScreen = phonePreVerified
-    ? (navState.step === 2 && navState.subStep === 'value_prop')
+    ? (navState.step === 2 && navState.subStep === 'value_prop') ||
+      (navState.step === 1 && navState.subStep === 'welcome')
     : (navState.step === 1 && navState.subStep === 'welcome')
 
   // ─── Stable Refs (prevent stale closures in timeouts) ───
@@ -284,6 +307,15 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
+  // Pending date for the Step 1 birthday picker.
+  // Holds the in-progress date while the user is scrolling.
+  // Only committed to `data` when the "Done" button is pressed.
+  const pendingBirthdayRef = useRef<Date | null>(null)
+
+  // Pending date for the Step 5 person birthday picker.
+  // Committed to `data` only when the Next CTA is tapped.
+  const pendingPersonBirthdayRef = useRef<Date | null>(null)
+
   // ─── Persist Onboarding Data to AsyncStorage ───
   // Debounced: saves 500ms after the last data change to avoid excessive writes
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -303,6 +335,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       setShowCountryPicker(false)
       setShowLanguagePicker(false)
       setShowDatePicker(false)
+    }
+  }, [navState.subStep])
+
+  // ─── Seed pendingPersonBirthdayRef when arriving at pathB_birthday ───
+  // Ensures pressing Next without scrolling commits the visible default date.
+  // data.personBirthday is intentionally omitted from the dep array: we only
+  // want to seed the ref when the user navigates TO this screen, not on every
+  // data change. data.personBirthday only changes via the CTA (which also calls
+  // handleGoNext, navigating away), so there is no scenario where it changes
+  // while the user is on this screen and the ref needs re-seeding.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (navState.subStep === 'pathB_birthday') {
+      pendingPersonBirthdayRef.current = data.personBirthday || DEFAULT_PERSON_DATE
     }
   }, [navState.subStep])
 
@@ -1347,6 +1393,16 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
   }, [user?.id, data, audioClipsByFriend, goNext])
 
+  // ─── Reveal Animation (declared before handleLaunch — handleLaunch depends on it) ───
+  const playRevealAnimation = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    Animated.parallel([
+      Animated.spring(revealScale, { toValue: 1, tension: 80, friction: 10, useNativeDriver: true }),
+      Animated.timing(revealOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start()
+    setTimeout(() => onComplete(), 1500)
+  }, [onComplete, revealScale, revealOpacity])
+
   // ─── Launch Handler ───
   const handleLaunch = useCallback(async () => {
     if (!user?.id) return
@@ -1395,15 +1451,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       playRevealAnimation()
     }
   }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, playRevealAnimation])
-
-  const playRevealAnimation = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    Animated.parallel([
-      Animated.spring(revealScale, { toValue: 1, tension: 80, friction: 10, useNativeDriver: true }),
-      Animated.timing(revealOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start()
-    setTimeout(() => onComplete(), 1500)
-  }, [onComplete, revealScale, revealOpacity])
 
   const handleLaunchRetry = useCallback(() => {
     logger.action('Launch retry pressed', { attempt: launchRetries + 1 })
@@ -1506,6 +1553,11 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    // Clear persisted onboarding data BEFORE signing out.
+    // AppStateManager.handleSignOut does this via a prefix sweep, but
+    // handleBackToWelcome bypasses handleSignOut — so we do it explicitly here
+    // to prevent the next user from inheriting this session's onboarding data.
+    await clearOnboardingData()
     await supabase.auth.signOut()
   }, [])
 
@@ -1604,7 +1656,26 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         }
       }
       case 'pathB_birthday':
-        return { label: 'Next', disabled: !data.personBirthday, loading: false, onPress: handleGoNext, hide: false }
+        return {
+          label: 'Next',
+          disabled: false,
+          loading: false,
+          onPress: () => {
+            if (pendingPersonBirthdayRef.current) {
+              setData((p) => ({ ...p, personBirthday: pendingPersonBirthdayRef.current! }))
+              pendingPersonBirthdayRef.current = null
+            } else if (!data.personBirthday) {
+              // Safety fallback: normally unreachable because the seeding useEffect
+              // (above) always initializes pendingPersonBirthdayRef.current before the
+              // user can tap Next. DO NOT remove that effect assuming this branch covers it —
+              // this branch only fires if the effect somehow did not run (e.g., future
+              // refactor changes the dependency array). The ref seeding is the real guard.
+              setData((p) => ({ ...p, personBirthday: DEFAULT_PERSON_DATE }))
+            }
+            handleGoNext()
+          },
+          hide: false,
+        }
       case 'pathB_gender':
         return { label: 'Next', disabled: !data.personGender, loading: false, onPress: handleGoNext, hide: false }
       case 'pathB_audio':
@@ -1805,7 +1876,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Date of birth</Text>
           <Pressable
             style={styles.detailsPickerButton}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              pendingBirthdayRef.current = data.userBirthday || BIRTHDAY_PICKER_DEFAULT
+              setShowDatePicker(true)
+            }}
           >
             <Text style={[
               styles.detailsPickerText,
@@ -1821,20 +1895,26 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           {showDatePicker && (
             <View style={styles.detailsDatePickerContainer}>
               <DateTimePicker
-                value={data.userBirthday || new Date(2000, 0, 1)}
+                value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
                 display="spinner"
-                maximumDate={new Date()}
-                minimumDate={new Date(1906, 0, 1)}
-                onChange={(event, selectedDate) => {
+                maximumDate={MAX_BIRTHDAY_DATE}
+                minimumDate={MIN_BIRTHDAY_DATE}
+                onChange={(_, selectedDate) => {
                   if (selectedDate) {
-                    setData((p) => ({ ...p, userBirthday: selectedDate }))
+                    pendingBirthdayRef.current = selectedDate
                   }
                 }}
               />
               <Pressable
                 style={styles.detailsDatePickerDone}
-                onPress={() => setShowDatePicker(false)}
+                onPress={() => {
+                  if (pendingBirthdayRef.current) {
+                    setData((p) => ({ ...p, userBirthday: pendingBirthdayRef.current! }))
+                    pendingBirthdayRef.current = null
+                  }
+                  setShowDatePicker(false)
+                }}
               >
                 <Text style={styles.detailsDatePickerDoneText}>Done</Text>
               </Pressable>
@@ -2729,28 +2809,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
 
     if (subStep === 'pathB_birthday') {
-      const defaultDate = new Date()
-      defaultDate.setFullYear(defaultDate.getFullYear() - 25)
-      const minDate = new Date()
-      minDate.setFullYear(minDate.getFullYear() - 100)
-      const maxDate = new Date()
-      maxDate.setFullYear(maxDate.getFullYear() - 13)
-
       return (
         <View>
           <Text style={styles.headline}>When's their birthday?</Text>
           <Text style={styles.body}>So we can get the vibe right.</Text>
           <View style={styles.datePickerContainer}>
             <DateTimePicker
-              value={data.personBirthday || defaultDate}
+              value={data.personBirthday || DEFAULT_PERSON_DATE}
               mode="date"
               display="spinner"
-              minimumDate={minDate}
-              maximumDate={maxDate}
+              minimumDate={MIN_PERSON_DATE}
+              maximumDate={MAX_PERSON_DATE}
               onChange={(_, date) => {
                 if (date) {
-                  logger.action('Birthday date changed', { date: date.toISOString().split('T')[0] })
-                  setData((p) => ({ ...p, personBirthday: date }))
+                  pendingPersonBirthdayRef.current = date
                 }
               }}
             />

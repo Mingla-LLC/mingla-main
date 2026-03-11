@@ -22,6 +22,29 @@ import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
 import { useBoardRealtimeSync } from "../hooks/useBoardQueries";
 import { useSavesRealtimeSync } from "../hooks/useSaveQueries";
+import { BoardSessionData } from "../services/boardSessionService";
+
+// Shape of pending sessions (created or invited) returned by refreshAllSessions().
+// Stored alongside active BoardSessionData in the boardsSessions state array.
+export interface PendingSessionEntry {
+  id: string;
+  name: string;
+  status: string;
+  creatorId?: string;
+  created_by?: string;
+  participants?: { user_id: string; has_accepted: boolean }[];
+  createdAt?: string;
+  invitedBy?: string;
+  inviterProfile?: {
+    id: string;
+    name: string;
+    username?: string;
+    avatar?: string;
+  };
+}
+
+// Union of all shapes that can live in boardsSessions state.
+export type BoardSessionEntry = BoardSessionData | PendingSessionEntry;
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -69,73 +92,7 @@ const DEFAULT_FRIENDS = [
   },
 ];
 
-const DEFAULT_BOARDS_SESSIONS = [
-  {
-    id: "board1",
-    name: "Weekend Date Night",
-    type: "date-night",
-    description: "Romantic weekend experiences for couples",
-    participants: [
-      { id: "you", name: "You", status: "online" },
-      { id: "sarah", name: "Sarah", status: "online" },
-    ],
-    status: "voting",
-    voteDeadline: "Tomorrow",
-    cardsCount: 3,
-    createdAt: "2 days ago",
-    unreadMessages: 3,
-    lastActivity: "2 hours ago",
-    icon: "Heart",
-    gradient: "from-pink-500 to-rose-500",
-    creatorId: "you",
-    admins: ["you"],
-    currentUserId: "you",
-  },
-  {
-    id: "board2",
-    name: "Fitness Squad Goals",
-    type: "wellness",
-    description: "Weekly workout adventures with the crew",
-    participants: [
-      { id: "you", name: "You", status: "online" },
-      { id: "alex", name: "Alex", status: "online" },
-      { id: "jamie", name: "Jamie", status: "offline", lastActive: "1h ago" },
-      { id: "casey", name: "Casey", status: "online" },
-    ],
-    status: "active",
-    cardsCount: 4,
-    createdAt: "1 week ago",
-    unreadMessages: 1,
-    lastActivity: "30 minutes ago",
-    icon: "Dumbbell",
-    gradient: "from-green-500 to-emerald-500",
-    creatorId: "alex",
-    admins: ["alex", "you"],
-    currentUserId: "you",
-  },
-  {
-    id: "board3",
-    name: "Foodie Adventures",
-    type: "food-tour",
-    description: "Discovering the best eats in the city",
-    participants: [
-      { id: "you", name: "You", status: "online" },
-      { id: "morgan", name: "Morgan", status: "online" },
-      { id: "riley", name: "Riley", status: "offline", lastActive: "2h ago" },
-    ],
-    status: "locked",
-    finalizedDate: "This Saturday",
-    cardsCount: 6,
-    createdAt: "3 days ago",
-    unreadMessages: 0,
-    lastActivity: "1 day ago",
-    icon: "Utensils",
-    gradient: "from-orange-500 to-red-500",
-    creatorId: "you",
-    admins: ["you"],
-    currentUserId: "you",
-  },
-];
+const DEFAULT_BOARDS_SESSIONS: BoardSessionEntry[] = [];
 
 // Safe AsyncStorage operations
 const safeAsyncStorageGet = async (key: string, defaultValue: any) => {
@@ -407,7 +364,10 @@ export function useAppState() {
     }
   }, [user, profile]);
 
-  // Reset navigation/UI auth state when signed out to avoid stale page carryover
+  // Reset navigation/UI auth state when signed out to avoid stale page carryover.
+  // boardsSessions and friendsList MUST be cleared here — without this, a second
+  // user signing in on the same device session would briefly see the previous
+  // user's real session names/friend data until refreshAllSessions() completes.
   useEffect(() => {
     if (!user) {
       setCurrentPage("home");
@@ -423,6 +383,11 @@ export function useAppState() {
       setHasCompletedOnboarding(false);
       setOnboardingData(null);
       setViewingFriendProfileId(null);
+      // Clear session and friend data so the next authenticated user never sees
+      // the previous user's real data during the brief window before fresh data loads.
+      setBoardsSessions(DEFAULT_BOARDS_SESSIONS);
+      setIsLoadingBoards(false);
+      setFriendsList(DEFAULT_FRIENDS);
     }
   }, [user]);
 
