@@ -445,9 +445,9 @@ export default function CollaborationModule({
         return;
       }
 
-      // Filter out archived sessions only (matching BoardSessionService)
+      // Filter out archived/completed sessions (matching BoardSessionService)
       const sessions = (allSessions || []).filter(
-        (s) => s.archived_at === null
+        (s) => s.archived_at === null && s.status !== "completed" && s.status !== "archived"
       );
 
       // Load participants separately for better reliability

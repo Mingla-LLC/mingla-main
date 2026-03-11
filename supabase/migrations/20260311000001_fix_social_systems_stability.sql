@@ -82,9 +82,12 @@ FOR INSERT WITH CHECK (
 );
 
 -- Users can update requests they are part of (accept, decline)
+-- WITH CHECK prevents mutation of sender_id/receiver_id fields
 DROP POLICY IF EXISTS "fr_update" ON public.friend_requests;
 CREATE POLICY "fr_update" ON public.friend_requests
 FOR UPDATE USING (
+  auth.uid() = sender_id OR auth.uid() = receiver_id
+) WITH CHECK (
   auth.uid() = sender_id OR auth.uid() = receiver_id
 );
 

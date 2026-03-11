@@ -612,6 +612,15 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (friend2Error) throw friend2Error;
 
+        // Mirror accept to friend_links — prevents orphan pending links from
+        // resurfacing in UI when accepted from the main app (not onboarding)
+        await supabase
+          .from("friend_links")
+          .update({ status: "accepted", accepted_at: new Date().toISOString() })
+          .eq("requester_id", request.sender_id)
+          .eq("target_id", request.receiver_id)
+          .eq("status", "pending");
+
         // Reload data
         await Promise.all([fetchFriends(), loadFriendRequests()]);
       } catch (error) {

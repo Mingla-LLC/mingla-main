@@ -71,14 +71,13 @@ class BoardSessionService {
         console.error("❌ Error fetching all sessions:", allSessionsError);
       }
 
-      // 3. Filter for active board sessions only
-      // A session becomes "active" when at least one user accepts the invite
-      // Only show sessions that are not archived AND have status 'active'
+      // 3. Filter for non-archived, non-completed sessions
+      // Include pending/dormant (created during onboarding) alongside active/voting/locked
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
-        const isActive = s.status === "active";
+        const notCompleted = s.status !== "completed" && s.status !== "archived";
 
-        return notArchived && isActive;
+        return notArchived && notCompleted;
       });
 
       if (!sessions || sessions.length === 0) {
