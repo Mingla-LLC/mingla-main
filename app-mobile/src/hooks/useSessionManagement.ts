@@ -4,6 +4,8 @@ import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
 import { notificationService } from '../services/notificationService';
+import { PreferencesService } from '../services/preferencesService';
+import { normalizePreferencesForSave } from '../utils/preferencesConverter';
 
 export interface SessionParticipantInput {
   type: 'existing_user' | 'phone_invite'
@@ -51,6 +53,92 @@ interface ParticipationRow {
   has_accepted: boolean
   joined_at: string | null
   collaboration_sessions?: SessionRow | SessionRow[]
+}
+
+/**
+ * Fetch the user's solo preferences and map them to the board_session_preferences
+ * column shape. Used once at onboarding (session creation / invite acceptance) so
+ * collaboration preferences start with at least one value per field.
+ * Returns a safe default payload if solo prefs cannot be loaded.
+ */
+async function buildSeedFromSoloPrefs(
+  userId: string,
+  sessionId: string
+): Promise<Record<string, unknown>> {
+  const solo = await PreferencesService.getUserPreferences(userId);
+
+  // Safe defaults if solo prefs are missing (new user edge case)
+  const defaults = {
+    session_id: sessionId,
+    user_id: userId,
+    categories: ['nature', 'casual_eats', 'drink'],
+    intents: [] as string[],
+    price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
+    budget_min: 0,
+    budget_max: 1000,
+    travel_mode: 'walking',
+    travel_constraint_type: 'time' as const,
+    travel_constraint_value: 30,
+    date_option: null as string | null,
+    time_slot: null as string | null,
+    exact_time: null as string | null,
+    datetime_pref: null as string | null,
+    use_gps_location: true,
+    custom_location: null as string | null,
+    location: null as string | null,
+    custom_lat: null as number | null,
+    custom_lng: null as number | null,
+  };
+
+  if (!solo) return defaults;
+
+  // Map solo → board columns and normalize
+  const raw = {
+    ...defaults,
+    categories: solo.categories?.length ? solo.categories : defaults.categories,
+    intents: solo.intents ?? defaults.intents,
+    budget_min: solo.budget_min ?? defaults.budget_min,
+    budget_max: solo.budget_max ?? defaults.budget_max,
+    travel_mode: solo.travel_mode ?? defaults.travel_mode,
+    travel_constraint_type: 'time' as const,
+    travel_constraint_value: solo.travel_constraint_value ?? defaults.travel_constraint_value,
+    date_option: solo.date_option ?? defaults.date_option,
+    time_slot: solo.time_slot ?? defaults.time_slot,
+    exact_time: solo.exact_time ?? defaults.exact_time,
+    datetime_pref: solo.datetime_pref ?? defaults.datetime_pref,
+  };
+
+  // Read price_tiers from solo if it exists (field was added later, may be absent on type)
+  const soloAny = solo as Record<string, unknown>;
+  if (Array.isArray(soloAny.price_tiers) && soloAny.price_tiers.length > 0) {
+    raw.price_tiers = soloAny.price_tiers as string[];
+  }
+  if (typeof soloAny.use_gps_location === 'boolean') {
+    raw.use_gps_location = soloAny.use_gps_location;
+  }
+  if (typeof soloAny.custom_location === 'string') {
+    raw.custom_location = soloAny.custom_location;
+  }
+
+  // Apply normalization to eliminate conflicting date/time/location combos
+  const normalized = normalizePreferencesForSave({
+    date_option: raw.date_option,
+    time_slot: raw.time_slot,
+    exact_time: raw.exact_time,
+    datetime_pref: raw.datetime_pref,
+    use_gps_location: raw.use_gps_location,
+    custom_location: raw.custom_location,
+  });
+
+  return {
+    ...raw,
+    date_option: normalized.date_option,
+    time_slot: normalized.time_slot,
+    exact_time: normalized.exact_time,
+    datetime_pref: normalized.datetime_pref,
+    use_gps_location: normalized.use_gps_location,
+    custom_location: normalized.custom_location,
+  };
 }
 
 export const useSessionManagement = () => {
@@ -376,19 +464,12 @@ export const useSessionManagement = () => {
         throw creatorParticipantError;
       }
 
-      // Create preference record for the creator
+      // Seed collaboration preferences from the creator's solo preferences
+      // so there is at least one value per field from the start.
+      const seedPayload = await buildSeedFromSoloPrefs(user.id, sessionData.id);
       const { error: preferencesError } = await supabase
         .from('board_session_preferences')
-        .insert({
-          session_id: sessionData.id,
-          user_id: user.id,
-          budget_min: 0,
-          budget_max: 1000,
-          categories: [],
-          travel_mode: 'walking',
-          travel_constraint_type: 'time',
-          travel_constraint_value: 30,
-        });
+        .insert(seedPayload);
 
       if (preferencesError) {
         console.error('Error creating preferences for creator:', preferencesError);
@@ -520,7 +601,9 @@ export const useSessionManagement = () => {
         }
       }
 
-      // Copy preferences if provided
+      // Overwrite the seeded preferences with the explicit values passed in.
+      // createCollaborativeSession already seeded from solo prefs; this upsert
+      // applies any overrides the caller specified (e.g. from onboarding flow).
       if (preferences) {
         const { error: prefError } = await supabase
           .from('board_session_preferences')
@@ -668,19 +751,12 @@ export const useSessionManagement = () => {
         }
       }
 
-      // Create preference record for the accepting user
+      // Seed collaboration preferences from the accepting user's solo preferences
+      // so there is at least one value per field from the start.
+      const seedPayload = await buildSeedFromSoloPrefs(user.id, invite.sessionId);
       const { error: preferencesError } = await supabase
         .from('board_session_preferences')
-        .insert({
-          session_id: invite.sessionId,
-          user_id: user.id,
-          budget_min: 0,
-          budget_max: 1000,
-          categories: [],
-          travel_mode: 'walking',
-          travel_constraint_type: 'time',
-          travel_constraint_value: 30,
-        });
+        .insert(seedPayload);
 
       if (preferencesError && preferencesError.code !== '23505') {
         // 23505 is unique violation - preferences might already exist, which is fine

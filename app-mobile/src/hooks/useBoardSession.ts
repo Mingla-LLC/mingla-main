@@ -3,6 +3,7 @@ import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { realtimeService } from "../services/realtimeService";
 import { BoardInviteService } from "../services/boardInviteService";
+import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 
 export interface BoardSession {
   id: string;
@@ -33,9 +34,13 @@ export interface BoardSessionPreferences {
   time_of_day?: string | null;
   datetime_pref?: string | null;
   date_option?: string | null;
+  time_slot?: string | null;
+  exact_time?: string | null;
   location?: string | null;
+  custom_location?: string | null;
   custom_lat?: number | null;
   custom_lng?: number | null;
+  use_gps_location?: boolean;
   travel_mode?: string;
   travel_constraint_type?: 'time';
   travel_constraint_value?: number;
@@ -134,20 +139,40 @@ export const useBoardSession = (sessionId?: string) => {
     [user]
   );
 
-  // Update preferences
+  // Update preferences (with normalization matching solo preferences rules)
   const updatePreferences = useCallback(
     async (newPreferences: Partial<BoardSessionPreferences>) => {
       if (!sessionId || !user) return;
-      console.log("newPreferences", newPreferences);
-      console.log("sessionId", sessionId);
       try {
+        // Apply the same normalization rules as solo preferences to prevent
+        // conflicting date/time/location combinations from being persisted.
+        const normalized = normalizePreferencesForSave({
+          date_option: newPreferences.date_option,
+          time_slot: newPreferences.time_slot,
+          exact_time: newPreferences.exact_time,
+          datetime_pref: newPreferences.datetime_pref,
+          use_gps_location: newPreferences.use_gps_location,
+          custom_location: newPreferences.custom_location,
+        });
+
+        const payload = {
+          ...newPreferences,
+          // Overwrite with normalized values (only the fields normalization touches)
+          date_option: normalized.date_option,
+          time_slot: normalized.time_slot,
+          exact_time: normalized.exact_time,
+          datetime_pref: normalized.datetime_pref,
+          use_gps_location: normalized.use_gps_location,
+          custom_location: normalized.custom_location,
+        };
+
         const { error } = await supabase
           .from("board_session_preferences")
           .upsert(
             {
               session_id: sessionId,
               user_id: user.id,
-              ...newPreferences,
+              ...payload,
             },
             {
               onConflict: "session_id,user_id",
@@ -160,7 +185,7 @@ export const useBoardSession = (sessionId?: string) => {
           (prev) =>
             ({
               ...prev,
-              ...newPreferences,
+              ...payload,
               session_id: sessionId,
             } as BoardSessionPreferences)
         );

@@ -42,6 +42,7 @@ import LinkRequestBanner from "./LinkRequestBanner";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
 
@@ -903,6 +904,7 @@ export default function DiscoverScreen({
   const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
   const { data: sentLinkRequests = [] } = useSentLinkRequests(user?.id ?? "");
   const respondToLinkMutation = useRespondToFriendLink();
+  useSocialRealtime(user?.id);
   const effectiveTier = useEffectiveTier(user?.id);
 
   // Track which person IDs have pending outbound links (for greyed pills)

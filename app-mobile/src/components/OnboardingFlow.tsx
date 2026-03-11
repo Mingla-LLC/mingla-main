@@ -2485,7 +2485,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                         { onConflict: 'sender_id,receiver_id' }
                       )
 
-                    sendFriendLink(friend.userId).catch(() => {})
+                    sendFriendLink(friend.userId).catch((err) => {
+                      console.warn('[Onboarding] sendFriendLink failed (non-fatal):', friend.userId, err)
+                    })
 
                     supabase.functions
                       .invoke('send-friend-request-email', {
@@ -2500,7 +2502,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                           userExists: true,
                         },
                       })
-                      .catch(() => {})
+                      .catch((err) => {
+                        console.warn('[Onboarding] send-friend-request-email failed (non-fatal):', friend.userId, err)
+                      })
                   } catch (err) {
                     console.warn('[Onboarding] Failed to persist friend:', friend.userId, err)
                   }

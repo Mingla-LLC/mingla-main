@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
@@ -22,6 +22,10 @@ export function useSocialRealtime(
 ) {
   const queryClient = useQueryClient();
 
+  // Use refs for callbacks to avoid re-subscribing on every render
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+
   useEffect(() => {
     if (!userId) return;
 
@@ -38,7 +42,7 @@ export function useSocialRealtime(
         () => {
           queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
           queryClient.invalidateQueries({ queryKey: linkConsentKeys.all });
-          callbacks?.onFriendLinkChange?.();
+          callbacksRef.current?.onFriendLinkChange?.();
         }
       )
       .on(
@@ -50,7 +54,7 @@ export function useSocialRealtime(
           filter: `receiver_id=eq.${userId}`,
         },
         () => {
-          callbacks?.onFriendRequestChange?.();
+          callbacksRef.current?.onFriendRequestChange?.();
         }
       )
       .subscribe();
@@ -58,5 +62,5 @@ export function useSocialRealtime(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, queryClient, callbacks]);
+  }, [userId, queryClient]);
 }

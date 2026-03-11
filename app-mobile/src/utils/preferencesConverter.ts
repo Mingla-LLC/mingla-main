@@ -140,7 +140,7 @@ export function normalizePreferencesForSave(prefs: {
     normalized.datetime_pref = null;
   } else if (dateOpt === 'today') {
     normalized.datetime_pref = null;
-  } else if (dateOpt === 'weekend' || dateOpt === 'this weekend') {
+  } else if (dateOpt === 'weekend' || dateOpt === 'this weekend' || dateOpt === 'this-weekend') {
     // Weekend can have a time slot but not an exact datetime
     normalized.datetime_pref = null;
   }

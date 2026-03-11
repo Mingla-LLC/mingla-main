@@ -434,7 +434,7 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions. Phone invite trigger now creates everything as PENDING (user must explicitly accept). RLS enabled on `friend_requests`. Friend accept is idempotent (upsert). Collaboration step always shown during onboarding. Friends added during onboarding persisted to DB immediately. Decline cascades to friend_links.
+- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions. Phone invite trigger now creates everything as PENDING (user must explicitly accept). RLS enabled on `friend_requests` (with WITH CHECK). Friend accept is idempotent (upsert) and mirrors to friend_links. Collaboration step always shown during onboarding. Friends added during onboarding persisted to DB immediately. Decline cascades to friend_links. Collaboration sessions created during onboarding now visible in the main app (pending/dormant status included). Added realtime subscriptions to ConnectionsPage and DiscoverScreen for instant social updates.
 - **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request creates basic friendship only. Profile linkage requires explicit consent from both users.
 - **Phone Invite No Auto-Link** -- The phone invite auto-convert trigger creates pending relationships only, not automatic acceptance.
 

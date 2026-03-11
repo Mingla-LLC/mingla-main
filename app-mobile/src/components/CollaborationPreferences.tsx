@@ -276,29 +276,38 @@ export default function CollaborationPreferences({
         };
         setSelectedDateOption(optionMap[dbPreferences.date_option] || 'Now');
       }
-      if (dbPreferences.time_of_day) {
-        setSelectedTimeSlot(dbPreferences.time_of_day as TimeSlot);
+      // Prefer time_slot (parity with solo), fall back to time_of_day (legacy board column)
+      const loadedTimeSlot = dbPreferences.time_slot || dbPreferences.time_of_day;
+      if (loadedTimeSlot) {
+        setSelectedTimeSlot(loadedTimeSlot as TimeSlot);
+      }
+      if (dbPreferences.exact_time) {
+        setExactTime(dbPreferences.exact_time);
       }
       if (dbPreferences.datetime_pref) {
         // Parse and set date/time preferences
         const date = new Date(dbPreferences.datetime_pref);
         setSelectedDate(date);
       }
-      // Load location preferences from location column
-      if (dbPreferences.location) {
+      // Load location: prefer structured use_gps_location flag, fall back to heuristic
+      if (typeof dbPreferences.use_gps_location === 'boolean') {
+        setUseLocation(dbPreferences.use_gps_location ? "gps" : "search");
+        if (!dbPreferences.use_gps_location && dbPreferences.custom_location) {
+          setSearchLocation(dbPreferences.custom_location);
+        } else if (dbPreferences.location) {
+          setSearchLocation(dbPreferences.location);
+        }
+      } else if (dbPreferences.location) {
+        // Legacy fallback: guess from location format
         const savedLocation = dbPreferences.location;
         setSearchLocation(savedLocation);
 
-        // Determine if it's GPS (coordinates format) or search (city name)
-        // GPS coordinates typically look like "37.7749, -122.4194"
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(
           savedLocation
         );
         if (isCoordinates) {
-          // It's coordinates, likely from GPS
           setUseLocation("gps");
         } else {
-          // It's a city name or address, likely from search
           setUseLocation("search");
         }
       }
@@ -538,26 +547,30 @@ export default function CollaborationPreferences({
       const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
       const backCompatBudgetMax = highestTier?.max ?? 1000;
 
+      const isGps = useLocation === "gps";
       const dbPreferences: any = {
         categories: selectedCategories,
         intents: selectedIntents,
         price_tiers: selectedPriceTiers,
         budget_min: 0,
         budget_max: backCompatBudgetMax,
-        // Note: group_size column doesn't exist in board_session_preferences table
-        // Group size is determined by the number of participants in the session
         travel_mode: travelMode,
         travel_constraint_type: 'time' as const,
         travel_constraint_value:
           typeof constraintValue === "number" ? constraintValue : 30,
+        // Write both time_of_day (legacy) and time_slot (parity with solo)
         time_of_day: selectedTimeSlot || null,
+        time_slot: selectedTimeSlot || null,
+        exact_time: exactTime || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
         date_option: selectedDateOption
           ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[selectedDateOption] ?? selectedDateOption)
           : null,
+        use_gps_location: isGps,
+        custom_location: !isGps && searchLocation ? searchLocation : null,
       };
 
-      // Add location if searchLocation is provided (for both GPS and search)
+      // Add location if searchLocation is provided (backward compat for legacy readers)
       if (searchLocation) {
         dbPreferences.location = searchLocation;
       }

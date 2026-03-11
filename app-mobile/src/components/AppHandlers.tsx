@@ -145,6 +145,7 @@ export function useAppHandlers(state: any) {
       const collabHighest = PRICE_TIERS.slice().reverse().find(t => collabTiers.includes(t.slug));
       const collabBudgetMax = collabHighest?.max ?? 150;
 
+      const isGps = preferences.useLocation === "gps" || !preferences.searchLocation;
       const dbPreferences: any = {
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
@@ -158,10 +159,17 @@ export function useAppHandlers(state: any) {
             ? preferences.constraintValue
             : 20,
         time_of_day: preferences.selectedTimeSlot || null,
+        time_slot: preferences.selectedTimeSlot || null,
+        exact_time: preferences.exactTime || null,
         datetime_pref: preferences.selectedDate || null,
+        date_option: preferences.selectedDateOption
+          ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[preferences.selectedDateOption as string] ?? preferences.selectedDateOption)
+          : null,
+        use_gps_location: isGps,
+        custom_location: !isGps && preferences.searchLocation ? preferences.searchLocation : null,
       };
 
-      // Add location if searchLocation is provided (for both GPS and search)
+      // Add location if searchLocation is provided (backward compat for legacy readers)
       if (preferences.searchLocation) {
         dbPreferences.location = preferences.searchLocation;
       }
