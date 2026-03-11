@@ -276,8 +276,8 @@ export const useAuthSimple = () => {
       }
 
       return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
+    } catch (err: unknown) {
+      return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
     }
   };
 

@@ -51,6 +51,9 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
+import PaywallScreen from "../src/components/PaywallScreen";
+import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
+import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
 
@@ -87,6 +90,7 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
+  const [showPaywall, setShowPaywall] = useState<boolean>(false);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -106,6 +110,30 @@ function AppContent() {
   useEffect(() => {
     mixpanelService.initialize();
   }, []);
+
+  // ── RevenueCat ─────────────────────────────────────────────────────────────
+  // Configure the SDK once at mount. Pass the Supabase user ID if already known
+  // (persisted session on cold start) — avoids an anonymous → identified merge.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    configureRevenueCat(user?.id ?? null);
+  }, []); // intentionally once
+
+  // Log in / out of RevenueCat whenever the Supabase auth state changes.
+  useEffect(() => {
+    if (isLoadingAuth) return;
+    if (user?.id) {
+      loginRevenueCat(user.id).catch((err) =>
+        console.warn("[RevenueCat] loginRevenueCat failed:", err)
+      );
+    } else {
+      logoutRevenueCat().catch(() => {});
+    }
+  }, [user?.id, isLoadingAuth]);
+
+  // Keep React Query's CustomerInfo cache in sync with RC's real-time updates.
+  useCustomerInfoListener();
+  // ───────────────────────────────────────────────────────────────────────────
 
   // Initialize in-app notification service on mount
   useEffect(() => {
@@ -1635,6 +1663,7 @@ function AppContent() {
               // Navigate to connections or show add friend modal
               setCurrentPage("connections");
             }}
+            onUpgradePress={() => setShowPaywall(true)}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
               measurementSystem:
@@ -1931,6 +1960,11 @@ function AppContent() {
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
                             onBack={() => setViewingFriendProfileId(null)}
+                          />
+                        ) : showPaywall && user?.id ? (
+                          <PaywallScreen
+                            userId={user.id}
+                            onClose={() => setShowPaywall(false)}
                           />
                         ) : showTermsOfService ? (
                           <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />

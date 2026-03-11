@@ -3421,9 +3421,9 @@ export default function DiscoverScreen({
                   {savedPeople.length > 0 && (
                     <ElitePeopleSummary
                       people={savedPeople}
-                      isElite={effectiveTier === "elite"}
+                      isElite={hasElevatedAccess(effectiveTier)}
                       onPersonPress={(id) => setSelectedPersonId(id)}
-                      onUpgradePress={() => { /* navigate to subscription */ }}
+                      onUpgradePress={() => onUpgradePress?.()}
                     />
                   )}
 
