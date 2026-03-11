@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -293,10 +294,10 @@ serve(async (req: Request) => {
             .maybeSingle();
 
           if (requesterToken?.push_token) {
-            fetch("https://exp.host/--/api/v2/push/send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+            sendPush(
+              Deno.env.get("SUPABASE_URL")!,
+              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+              {
                 to: requesterToken.push_token,
                 sound: "default",
                 title: "Link profiles?",
@@ -307,8 +308,8 @@ serve(async (req: Request) => {
                   friendName: targetName,
                   friendUserId: targetUserId,
                 },
-              }),
-            }).catch(() => {});
+              }
+            ).catch(() => {});
           }
 
           const { data: targetToken } = await supabaseAdmin
@@ -320,10 +321,10 @@ serve(async (req: Request) => {
             .maybeSingle();
 
           if (targetToken?.push_token) {
-            fetch("https://exp.host/--/api/v2/push/send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+            sendPush(
+              Deno.env.get("SUPABASE_URL")!,
+              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+              {
                 to: targetToken.push_token,
                 sound: "default",
                 title: "Link profiles?",
@@ -334,8 +335,8 @@ serve(async (req: Request) => {
                   friendName: requesterName,
                   friendUserId: requesterId,
                 },
-              }),
-            }).catch(() => {});
+              }
+            ).catch(() => {});
           }
         } catch (pushErr) {
           console.error("Re-initiation push error:", pushErr);
@@ -441,10 +442,10 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (tokenRow?.push_token) {
-        await fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await sendPush(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          {
             to: tokenRow.push_token,
             sound: "default",
             title: `${requesterDisplayName} wants to connect`,
@@ -456,8 +457,8 @@ serve(async (req: Request) => {
               requesterName: requesterDisplayName,
               requesterAvatarUrl: requesterProfile?.avatar_url || null,
             },
-          }),
-        });
+          }
+        );
         console.log("Push notification sent to target:", targetUserId);
       } else {
         console.log("No push token for target:", targetUserId);

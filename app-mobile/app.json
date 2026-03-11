@@ -94,7 +94,8 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-purchases"
     ],
     "updates": {
       "enabled": true,

@@ -136,10 +136,18 @@ export class EnhancedLocationService {
 
   async getLastKnownLocation(): Promise<LocationData | null> {
     try {
-      const location = await Location.getLastKnownPositionAsync({
-        maxAge: 300000, // 5 minutes
-        requiredAccuracy: 100,
-      });
+      // Wrap in a 3-second timeout — this call blocks indefinitely on some Android
+      // devices and simulators when location services are unavailable.
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 3000)
+      );
+      const location = await Promise.race([
+        Location.getLastKnownPositionAsync({
+          maxAge: 300000, // 5 minutes
+          requiredAccuracy: 100,
+        }),
+        timeoutPromise,
+      ]);
 
       if (!location) return this.lastLocation;
 

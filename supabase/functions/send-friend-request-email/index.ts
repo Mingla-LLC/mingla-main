@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,10 +102,10 @@ serve(async (req) => {
     }
 
     // Send push notification via Expo
-    await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    await sendPush(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      {
         to: pushToken,
         title: `${senderName} wants to connect`,
         body: "Tap to accept or pass.",
@@ -116,8 +117,8 @@ serve(async (req) => {
           senderUsername: senderUsername,
         },
         channelId: "friend-requests",
-      }),
-    });
+      }
+    );
 
     console.log("Push notification sent for friend request");
 

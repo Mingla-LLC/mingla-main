@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,18 +132,18 @@ serve(async (req) => {
       const pushToken = referrerTokenData?.push_token;
 
       if (pushToken) {
-        await fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await sendPush(
+          supabaseUrl,
+          supabaseServiceKey,
+          {
             to: pushToken,
             sound: "default",
             title: "You earned Elite time!",
             body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
             data: { type: "referral_credited", referred_id },
             channelId: "referral-rewards",
-          }),
-        });
+          }
+        );
       }
     } catch (pushError) {
       console.error("Push notification failed:", pushError);

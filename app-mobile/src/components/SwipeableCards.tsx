@@ -28,7 +28,7 @@ import {
   ExperienceGenerationService,
   GeneratedExperience,
 } from "../services/experienceGenerationService";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
@@ -411,7 +411,7 @@ export default function SwipeableCards({
     availableSessions,
     loading: sessionsLoading,
   } = useSessionManagement();
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
   const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 

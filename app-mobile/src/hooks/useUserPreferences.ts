@@ -9,30 +9,41 @@ const fetchUserPreferences = async (
     return null;
   }
 
-  // Try database first — authoritative source of truth
-  try {
-    const prefs = await ExperiencesService.getUserPreferences(userId);
-    if (prefs) {
-      // Update offline cache with fresh data (fire-and-forget)
-      offlineService.cacheUserPreferences(prefs).catch(() => {});
-      return prefs;
-    }
-  } catch (error) {
-    console.log('DB fetch failed, falling back to offline cache:', error);
-  }
+  // Wrap the entire fetch chain in an 8-second timeout.
+  // The Supabase client has a 30-second default; the offline fallback has none.
+  // Without a cap, this chain can hang indefinitely and block the loader.
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("useUserPreferences timed out after 8s")), 8000)
+  );
 
-  // Fallback: offline cache (only when DB is unreachable)
-  try {
-    const cachedPrefs = await offlineService.getOfflineUserPreferences();
-    if (cachedPrefs) {
-      console.log('Using cached preferences (offline fallback)');
-      return cachedPrefs as UserPreferences;
+  const fetchLogic = async (): Promise<UserPreferences | null> => {
+    // Try database first — authoritative source of truth
+    try {
+      const prefs = await ExperiencesService.getUserPreferences(userId);
+      if (prefs) {
+        // Update offline cache with fresh data (fire-and-forget)
+        offlineService.cacheUserPreferences(prefs).catch(() => {});
+        return prefs;
+      }
+    } catch (error) {
+      console.log('DB fetch failed, falling back to offline cache:', error);
     }
-  } catch (error) {
-    console.error('Offline cache also failed:', error);
-  }
 
-  return null;
+    // Fallback: offline cache (only when DB is unreachable)
+    try {
+      const cachedPrefs = await offlineService.getOfflineUserPreferences();
+      if (cachedPrefs) {
+        console.log('Using cached preferences (offline fallback)');
+        return cachedPrefs as UserPreferences;
+      }
+    } catch (error) {
+      console.error('Offline cache also failed:', error);
+    }
+
+    return null;
+  };
+
+  return Promise.race([fetchLogic(), timeoutPromise]);
 };
 
 export const useUserPreferences = (userId: string | undefined) => {

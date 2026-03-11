@@ -858,6 +858,7 @@ export const useSessionManagement = () => {
                 description: `Collaborative board for ${sessionData.name}`,
                 created_by: user.id,
                 is_public: false,
+                session_id: invite.sessionId,  // Required so board_collaborators RLS can verify session membership
               })
               .select()
               .single();
@@ -893,22 +894,23 @@ export const useSessionManagement = () => {
               }
             }
 
-            // Add all accepted participants as board collaborators (idempotent with ON CONFLICT)
-            for (const participant of acceptedMembers) {
-              const { error: collaboratorError } = await supabase
-                .from('board_collaborators')
-                .upsert({
-                  board_id: boardId,
-                  user_id: participant.user_id,
-                  role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator'
-                }, {
-                  onConflict: 'board_id,user_id',
-                  ignoreDuplicates: true
-                });
+            // Add all accepted participants as board collaborators in a single batch upsert.
+            // One round-trip regardless of participant count — avoids the N+1 serial-await pattern.
+            const collaboratorRows = acceptedMembers.map((participant) => ({
+              board_id: boardId,
+              user_id: participant.user_id,
+              role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator',
+            }));
 
-              if (collaboratorError && collaboratorError.code !== '23505') {
-                console.error('❌ Error adding collaborator:', collaboratorError);
-              }
+            const { error: collaboratorError } = await supabase
+              .from('board_collaborators')
+              .upsert(collaboratorRows, {
+                onConflict: 'board_id,user_id',
+                ignoreDuplicates: true,
+              });
+
+            if (collaboratorError && collaboratorError.code !== '23505') {
+              console.error('❌ Error adding collaborators:', collaboratorError);
             }
           }
         }

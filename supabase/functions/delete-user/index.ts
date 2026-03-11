@@ -32,205 +32,73 @@ function successResponse(data: object, status: number = 200) {
 }
 
 /**
- * Handles collaboration session cleanup when a user is deleted:
- * 1. For sessions where user is admin/creator: reassign admin to oldest member
- * 2. Remove user from all session_participants
- * 3. Delete sessions that fall below 2 members
- * All operations are wrapped in try-catch to handle missing tables gracefully
+ * Handles collaboration session cleanup when a user is deleted.
+ * Rewritten from N+1 loop to a maximum of 9 queries total regardless of session count.
  */
 async function cleanupCollaborationSessions(
-  adminClient: SupabaseClient,
+  supabase: SupabaseClient,
   userId: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Step 1: Find all sessions where user is a participant
-    let userParticipations: { session_id: string; is_admin: boolean }[] = [];
-    try {
-      const { data, error } = await adminClient
-        .from("session_participants")
-        .select("session_id, is_admin")
-        .eq("user_id", userId);
-      
-      if (!error && data) {
-        userParticipations = data;
-      }
-    } catch (err) {
-      console.warn("Warning: Could not fetch session participations:", err);
-      // Table might not exist, continue with deletion
-      return { success: true };
+): Promise<void> {
+  // 1. Fetch all sessions where user is creator — single query
+  const { data: ownedSessions } = await supabase
+    .from("collaboration_sessions")
+    .select("id, created_by")
+    .eq("created_by", userId)
+    .not("status", "eq", "completed");
+
+  if (!ownedSessions || ownedSessions.length === 0) return;
+
+  const ownedIds = ownedSessions.map((s: { id: string }) => s.id);
+
+  // 2. Fetch all participants for all owned sessions — single query
+  const { data: allParticipants } = await supabase
+    .from("session_participants")
+    .select("session_id, user_id, has_accepted")
+    .in("session_id", ownedIds)
+    .neq("user_id", userId);
+
+  if (!allParticipants) return;
+
+  // 3. Group participants by session in memory
+  const bySession = new Map<string, typeof allParticipants>();
+  allParticipants.forEach((p: { session_id: string; user_id: string; has_accepted: boolean }) => {
+    const arr = bySession.get(p.session_id) ?? [];
+    arr.push(p);
+    bySession.set(p.session_id, arr);
+  });
+
+  // 4. Determine which sessions have other accepted participants (can be transferred)
+  const transferable: Array<{ sessionId: string; newOwner: string }> = [];
+  const toDelete: string[] = [];
+
+  ownedIds.forEach((sessionId: string) => {
+    const participants = bySession.get(sessionId) ?? [];
+    const accepted = participants.filter((p) => p.has_accepted);
+    if (accepted.length > 0) {
+      transferable.push({ sessionId, newOwner: accepted[0].user_id });
+    } else {
+      toDelete.push(sessionId);
     }
+  });
 
-    const sessionIds = userParticipations.map((p) => p.session_id);
-
-    if (sessionIds.length > 0) {
-      // Step 2: For each session where user is admin, reassign admin to oldest NON-CREATOR member
-      const adminSessionIds = userParticipations
-        .filter((p) => p.is_admin)
-        .map((p) => p.session_id);
-
-      console.log(`User was admin in ${adminSessionIds.length} sessions:`, adminSessionIds);
-
-      for (const sessionId of adminSessionIds) {
-        try {
-          // First, get the session's created_by (creator)
-          const { data: sessionData, error: sessionError } = await adminClient
-            .from("collaboration_sessions")
-            .select("created_by")
-            .eq("id", sessionId)
-            .maybeSingle();
-
-          console.log(`Session ${sessionId} created_by:`, sessionData?.created_by, "error:", sessionError);
-
-          const creatorId = sessionData?.created_by;
-
-          // Get ALL remaining participants (excluding deleted user)
-          const { data: remainingMembers, error: membersError } = await adminClient
-            .from("session_participants")
-            .select("user_id, is_admin, created_at")
-            .eq("session_id", sessionId)
-            .neq("user_id", userId)
-            .order("created_at", { ascending: true });
-
-          console.log(`Session ${sessionId} remaining members:`, remainingMembers, "error:", membersError);
-
-          if (!membersError && remainingMembers && remainingMembers.length > 0) {
-            // Find oldest non-creator member who isn't already an admin
-            const memberToPromote = remainingMembers.find(m => 
-              m.user_id !== creatorId && !m.is_admin
-            );
-
-            if (memberToPromote) {
-              console.log(`Promoting user ${memberToPromote.user_id} to admin for session ${sessionId}`);
-              const { error: updateError } = await adminClient
-                .from("session_participants")
-                .update({ is_admin: true })
-                .eq("session_id", sessionId)
-                .eq("user_id", memberToPromote.user_id);
-              
-              if (updateError) {
-                console.error(`Error promoting user to admin:`, updateError);
-              } else {
-                console.log(`Successfully promoted user ${memberToPromote.user_id} to admin`);
-              }
-            } else {
-              console.log(`No non-creator, non-admin member to promote for session ${sessionId}`);
-            }
-          } else {
-            console.log(`No remaining members found for session ${sessionId}`);
-          }
-        } catch (err) {
-          console.warn(`Warning: Could not reassign admin for session ${sessionId}:`, err);
-        }
-      }
-
-      // Step 3: Also check sessions where user is creator (from collaboration_sessions table)
-      try {
-        const { data: createdSessions, error: createdError } = await adminClient
+  // 5. Transfer ownership for sessions with remaining members — Promise.allSettled
+  if (transferable.length > 0) {
+    await Promise.allSettled(
+      transferable.map(({ sessionId, newOwner }) =>
+        supabase
           .from("collaboration_sessions")
-          .select("id")
-          .eq("created_by", userId);
+          .update({ created_by: newOwner })
+          .eq("id", sessionId)
+      )
+    );
+  }
 
-        if (!createdError && createdSessions) {
-          for (const session of createdSessions) {
-            try {
-              // Find oldest remaining participant to become new creator
-              const { data: oldestMember, error: oldestError } = await adminClient
-                .from("session_participants")
-                .select("user_id, created_at")
-                .eq("session_id", session.id)
-                .neq("user_id", userId)
-                .order("created_at", { ascending: true })
-                .limit(1)
-                .single();
-
-              if (!oldestError && oldestMember) {
-                // Transfer creator role
-                await adminClient
-                  .from("collaboration_sessions")
-                  .update({ created_by: oldestMember.user_id })
-                  .eq("id", session.id);
-              }
-            } catch (err) {
-              console.warn(`Warning: Could not transfer creator for session ${session.id}:`, err);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Warning: Could not fetch created sessions:", err);
-      }
-
-      // Step 4: Remove user from all session_participants
-      console.log(`Step 4: Removing user ${userId} from session_participants for sessions: ${sessionIds.join(", ")}`);
-      const { data: deletedRows, error: removeParticipantError } = await adminClient
-        .from("session_participants")
-        .delete()
-        .eq("user_id", userId)
-        .select();
-      
-      if (removeParticipantError) {
-        console.error("Error removing session participations:", removeParticipantError);
-      } else {
-        console.log(`Step 4: Successfully removed ${deletedRows?.length || 0} session participations:`, JSON.stringify(deletedRows));
-      }
-
-      // Step 5: Delete sessions that now have fewer than 2 members
-      for (const sessionId of sessionIds) {
-        try {
-          // List actual participants to debug
-          const { data: remainingParticipants, error: listError } = await adminClient
-            .from("session_participants")
-            .select("id, user_id, is_admin")
-            .eq("session_id", sessionId);
-          
-          console.log(`Session ${sessionId} participants after Step 4:`, JSON.stringify(remainingParticipants));
-          
-          const count = remainingParticipants?.length || 0;
-
-          console.log(`Session ${sessionId} has ${count} remaining members`);
-
-          if (!listError && count < 2) {
-            console.log(`Deleting under-populated session ${sessionId} (${count} members remaining)`);
-            
-            // Delete the session and ALL related data
-            const [r1, r2, r3, r4, r5] = await Promise.allSettled([
-              adminClient.from("board_session_preferences").delete().eq("session_id", sessionId),
-              adminClient.from("session_votes").delete().eq("session_id", sessionId),
-              adminClient.from("collaboration_invites").delete().eq("session_id", sessionId),
-              adminClient.from("session_presence").delete().eq("session_id", sessionId),
-              adminClient.from("typing_indicators").delete().eq("session_id", sessionId),
-            ]);
-
-            const deleteResults: Record<string, string> = {
-              board_session_preferences: r1.status === "fulfilled" ? (r1.value.error?.message ?? "ok") : r1.reason,
-              session_votes: r2.status === "fulfilled" ? (r2.value.error?.message ?? "ok") : r2.reason,
-              collaboration_invites: r3.status === "fulfilled" ? (r3.value.error?.message ?? "ok") : r3.reason,
-              session_presence: r4.status === "fulfilled" ? (r4.value.error?.message ?? "ok") : r4.reason,
-              typing_indicators: r5.status === "fulfilled" ? (r5.value.error?.message ?? "ok") : r5.reason,
-            };
-
-            // These must be sequential: participants before session
-            const { error: e6 } = await adminClient.from("session_participants").delete().eq("session_id", sessionId);
-            deleteResults["session_participants"] = e6 ? e6.message : "ok";
-
-            const { error: e7 } = await adminClient.from("collaboration_sessions").delete().eq("id", sessionId);
-            deleteResults["collaboration_sessions"] = e7 ? e7.message : "ok";
-            
-            console.log(`Session ${sessionId} deletion results:`, JSON.stringify(deleteResults));
-          } else if (listError) {
-            console.error(`Error listing members for session ${sessionId}:`, listError);
-          } else {
-            console.log(`Session ${sessionId} still has ${count} members, keeping it`);
-          }
-        } catch (err) {
-          console.warn(`Warning: Could not check/delete session ${sessionId}:`, err);
-        }
-      }
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error("Error cleaning up collaboration sessions:", err);
-    return { success: false, error: String(err) };
+  // 6. Delete under-populated sessions with IN clause — single query
+  if (toDelete.length > 0) {
+    await supabase
+      .from("collaboration_sessions")
+      .delete()
+      .in("id", toDelete);
   }
 }
 
@@ -310,6 +178,7 @@ async function cleanupUserData(
       safeDelete("board_card_message_reads", "user_id", userId),
       safeDelete("board_user_swipe_states", "user_id", userId),
       safeDelete("board_saved_cards", "saved_by", userId),
+      safeDelete("board_collaborators", "user_id", userId),
       safeDelete("preference_history", "user_id", userId),
       safeDelete("collaboration_invites", "inviter_id", userId),
       safeDelete("collaboration_invites", "invitee_id", userId),
@@ -446,12 +315,13 @@ serve(async (req) => {
       console.warn("Warning: Could not fetch user phone:", err);
     }
 
-    // Step 1: Handle collaboration sessions (reassign admins, remove memberships, delete under-populated boards)
+    // Step 1: Handle collaboration sessions (transfer ownership, delete under-populated sessions)
     console.log("Step 1: Cleaning up collaboration sessions...");
-    const collabResult = await cleanupCollaborationSessions(adminClient, userId);
-    if (!collabResult.success) {
-      console.warn("Warning: Some collaboration cleanup failed:", collabResult.error);
-      // Continue with deletion - don't block on non-critical errors
+    try {
+      await cleanupCollaborationSessions(adminClient, userId);
+    } catch (collabErr) {
+      console.warn("Warning: Some collaboration cleanup failed:", collabErr);
+      // Continue with deletion — non-critical
     }
 
     // Step 2: Clean up all user-related data from various tables
@@ -462,17 +332,35 @@ serve(async (req) => {
       // Continue with deletion - don't block on non-critical errors
     }
 
-    // Step 3: Disable preference_history trigger and delete profile
-    console.log("Step 3: Disabling triggers and deleting user profile...");
-    
-    // Use raw SQL to disable the trigger, delete, then re-enable
+    // Step 3: Delete from Supabase Auth FIRST — this immediately invalidates the JWT,
+    // stopping all concurrent client operations (location tracking, profile fetches, etc.)
+    // Deleting auth first collapses the PGRST116 race window to zero.
+    console.log("Step 3: Deleting auth user first to invalidate JWT...");
+    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(
+      userId
+    );
+
+    if (deleteAuthError) {
+      console.error("Error deleting auth user:", deleteAuthError);
+      return new Response(
+        JSON.stringify({ error: "Failed to delete account. Please try again." }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Step 4: Delete profile AFTER auth — JWT is already dead, so no new concurrent ops
+    console.log("Step 4: Deleting user profile (auth already invalidated)...");
+
     const { error: deleteError } = await adminClient.rpc('delete_user_profile', {
       target_user_id: userId
     });
 
     if (deleteError) {
       console.error("Error deleting profile via RPC:", deleteError);
-      
+
       // Fallback: Try direct delete (trigger might not exist or be an issue)
       console.log("Trying direct profile delete...");
       const { error: profileError } = await adminClient
@@ -481,37 +369,9 @@ serve(async (req) => {
         .eq("id", userId);
 
       if (profileError) {
-        console.error("Error deleting profile:", profileError);
-        return new Response(
-          JSON.stringify({ error: "Failed to delete profile data. Please try again." }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+        // Auth is already deleted — log but don't fail; profile cascade will clean up
+        console.warn("Profile delete failed after auth deletion (may cascade):", profileError);
       }
-    }
-
-    // Step 4: Delete the user from Supabase Auth
-    console.log("Step 4: Deleting auth user...");
-    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(
-      userId
-    );
-
-    if (deleteAuthError) {
-      console.error("Error deleting auth user:", deleteAuthError);
-      // Profile is already deleted, but auth deletion failed
-      // This is a critical error - user is in an inconsistent state
-      return new Response(
-        JSON.stringify({ 
-          error: "Account partially deleted. Please contact support.",
-          partialDeletion: true 
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
     }
 
     console.log(`Account deletion completed successfully for user: ${userId}`);

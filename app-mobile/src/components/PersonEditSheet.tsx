@@ -22,7 +22,7 @@ import { SavedPerson } from "../services/savedPeopleService";
 import { useUpdatePerson, useDeletePerson } from "../hooks/useSavedPeople";
 import { usePersonAudioClips } from "../hooks/usePersonAudio";
 import { useUnlinkFriend } from "../hooks/useFriendLinks";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { generateInitials } from "../utils/stringUtils";
 import { s } from "../utils/responsive";
 import AudioDescriptionManager from "./AudioDescriptionManager";
@@ -59,7 +59,7 @@ export default function PersonEditSheet({
   onUnlinked,
 }: PersonEditSheetProps) {
   const insets = useSafeAreaInsets();
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const updatePersonMutation = useUpdatePerson();
   const deletePersonMutation = useDeletePerson();
   const unlinkFriendMutation = useUnlinkFriend();

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -152,10 +153,10 @@ serve(async (req: Request) => {
           .maybeSingle();
 
         if (requesterTokenRow?.push_token) {
-          fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          sendPush(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+            {
               to: requesterTokenRow.push_token,
               sound: "default",
               title: "Connection update",
@@ -166,8 +167,8 @@ serve(async (req: Request) => {
                 declinedByName: targetName,
                 declinedByUserId: currentUserId,
               },
-            }),
-          }).catch(() => {});
+            }
+          ).catch(() => {});
           console.log("Decline push sent to requester:", link.requester_id);
         }
       } catch (pushErr) {
@@ -325,10 +326,10 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (requesterTokenData?.push_token) {
-        fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        sendPush(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          {
             to: requesterTokenData.push_token,
             sound: "default",
             title: `You and ${targetDisplayName} are now friends!`,
@@ -340,8 +341,8 @@ serve(async (req: Request) => {
               friendUserId: targetId,
               friendAvatarUrl: targetProfile?.avatar_url || null,
             },
-          }),
-        }).catch(() => {});
+          }
+        ).catch(() => {});
         console.log("Consent push sent to requester:", requesterId);
       }
 
@@ -355,10 +356,10 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (targetTokenData?.push_token) {
-        fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        sendPush(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          {
             to: targetTokenData.push_token,
             sound: "default",
             title: `You and ${requesterDisplayName} are now friends!`,
@@ -370,8 +371,8 @@ serve(async (req: Request) => {
               friendUserId: requesterId,
               friendAvatarUrl: requesterProfile?.avatar_url || null,
             },
-          }),
-        }).catch(() => {});
+          }
+        ).catch(() => {});
         console.log("Consent push sent to target:", targetId);
       }
     } catch (pushError) {

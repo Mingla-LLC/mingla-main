@@ -1,7 +1,12 @@
 import { supabase } from './supabase'
 import { Subscription, ReferralCredit } from '../types/subscription'
+import type { CustomerInfo } from 'react-native-purchases'
+import { hasProEntitlement, getProExpirationDate } from './revenueCatService'
 
-// DB row shapes (snake_case, matching Supabase column names)
+// ─────────────────────────────────────────────────────────────────────────────
+// DB row shapes (snake_case → camelCase mapping)
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface SubscriptionRow {
   id: string
   user_id: string
@@ -32,7 +37,7 @@ function mapSubscription(row: SubscriptionRow): Subscription {
   return {
     id: row.id,
     userId: row.user_id,
-    tier: row.tier,
+    tier: row.tier as Subscription['tier'],
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     currentPeriodStart: row.current_period_start,
@@ -52,11 +57,15 @@ function mapReferralCredit(row: ReferralCreditRow): ReferralCredit {
     id: row.id,
     referrerId: row.referrer_id,
     referredId: row.referred_id,
-    status: row.status,
+    status: row.status as ReferralCredit['status'],
     creditedAt: row.credited_at,
     createdAt: row.created_at,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Queries
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function getSubscription(userId: string): Promise<Subscription | null> {
   const { data, error } = await supabase
@@ -104,5 +113,50 @@ export async function getReferralStats(userId: string): Promise<{ total: number;
     total: rows.length,
     credited: rows.filter(r => r.status === 'credited').length,
     pending: rows.filter(r => r.status === 'pending').length,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RevenueCat → Supabase sync
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sync the Supabase `subscriptions` table from the latest RevenueCat CustomerInfo.
+ *
+ * Call this after every successful purchase or restore so server-side checks
+ * (edge functions, RLS) stay consistent with what RevenueCat reports.
+ *
+ * Maps:
+ *   - Active "Mingla Pro" entitlement → tier='pro', is_active=true, current_period_end=expirationDate
+ *   - No active entitlement          → tier='free', is_active=false (trial/referral logic unchanged)
+ *
+ * This is a best-effort sync — it does not block the UI. Errors are logged but
+ * not surfaced to the user; RC remains the authoritative source.
+ */
+export async function syncSubscriptionFromRC(
+  userId: string,
+  customerInfo: CustomerInfo,
+): Promise<void> {
+  try {
+    const isPro = hasProEntitlement(customerInfo)
+    const expirationDate = getProExpirationDate(customerInfo)
+
+    const updates: Partial<SubscriptionRow> = {
+      tier: isPro ? 'pro' : 'free',
+      is_active: isPro,
+      current_period_end: expirationDate ? expirationDate.toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error } = await supabase
+      .from('subscriptions')
+      .update(updates)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[subscriptionService] syncSubscriptionFromRC error:', error)
+    }
+  } catch (err) {
+    console.error('[subscriptionService] syncSubscriptionFromRC unexpected error:', err)
   }
 }

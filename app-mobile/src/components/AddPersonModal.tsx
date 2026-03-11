@@ -22,7 +22,7 @@ import { savedPeopleKeys } from "../hooks/useSavedPeople";
 import { createSavedPerson } from "../services/savedPeopleService";
 import { uploadAudioClip } from "../services/personAudioService";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { generateInitials } from "../utils/stringUtils";
 import { s } from "../utils/responsive";
 import AudioDescriptionManager from "./AudioDescriptionManager";
@@ -55,7 +55,7 @@ export default function AddPersonModal({
   onStartLinkFlow,
 }: AddPersonModalProps) {
   const insets = useSafeAreaInsets();
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>(1);

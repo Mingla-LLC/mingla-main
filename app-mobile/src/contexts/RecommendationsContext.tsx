@@ -11,7 +11,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   UserPreferences,
 } from "../services/experiencesService";
-import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { useCardsCache } from "./CardsCacheContext";
@@ -115,6 +114,8 @@ export const RecommendationsProvider: React.FC<
   const [rotationOrder, setRotationOrder] = useState<string[]>([]);
   const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
+  // hasStartedRef: used by the 15-second nuclear safety timeout (mount-only, never resets)
+  const hasStartedRef = useRef(false);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
   const previousRefreshKeyRef = useRef(propRefreshKey);
@@ -132,7 +133,7 @@ export const RecommendationsProvider: React.FC<
     navigateToDeckBatch,
   } = useAppStore();
 
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const cardsCache = useCardsCache();
   const {
     currentSession,
@@ -293,13 +294,20 @@ export const RecommendationsProvider: React.FC<
     }
   }, [userLocation, userPrefs]);
 
-  // ── Stabilize deck params — only compute once categories OR intents are available
+  // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
-    const cats = userPrefs?.categories ?? [];
-    const ints = userPrefs?.intents ?? [];
-    if (cats.length === 0 && ints.length === 0) return null; // not ready
+    // Use actual prefs if available, otherwise apply a sensible fallback deck so the
+    // spinner doesn't block forever when preferences fail to load (e.g. network timeout).
+    const effectivePrefs = userPrefs ?? {
+      categories: ["Nature", "Casual Eats", "Drink"],
+    };
+    const cats = effectivePrefs.categories ?? [];
+    const ints = (userPrefs as UserPreferences | undefined)?.intents ?? [];
+    // If still loading (not yet settled), return null to wait.
+    // Once preferences query has settled (data or error), always return a valid deck.
+    if (cats.length === 0 && ints.length === 0 && isLoadingPreferences) return null;
     return {
-      categories: cats,
+      categories: cats.length > 0 ? cats : ["Nature", "Casual Eats", "Drink"],
       intents: ints,
     };
   }, [
@@ -308,6 +316,7 @@ export const RecommendationsProvider: React.FC<
     JSON.stringify(userPrefs?.categories ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(userPrefs?.intents ?? []),
+    isLoadingPreferences,
   ]);
 
   // ── Collaboration deck params (rotation-aware) ────────────────────────
@@ -513,7 +522,7 @@ export const RecommendationsProvider: React.FC<
       // from updated categories/intents handles refetching automatically
     }
     previousRefreshKeyRef.current = refreshKey;
-  }, [refreshKey]);
+  }, [refreshKey, user?.id]);
 
   // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
   useEffect(() => {
@@ -533,6 +542,22 @@ export const RecommendationsProvider: React.FC<
     }, 8_000);
     return () => clearTimeout(timeout);
   }, [isRefreshingAfterPrefChange]);
+
+  // Nuclear safety timeout: mount-only 15-second guarantee that the fetch completes.
+  // Fires once when the component mounts, regardless of any state change.
+  // Handles edge cases where GPS, prefs, and deck all silently hang simultaneously.
+  // setHasCompletedFetchForCurrentMode is a useState setter — React guarantees stability.
+  useEffect(() => {
+    if (hasStartedRef.current) return; // Only run on first mount
+    hasStartedRef.current = true;
+
+    const safetyTimer = setTimeout(() => {
+      setHasCompletedFetchForCurrentMode(true);
+      console.warn('[RecommendationsContext] 15s safety timeout fired — forcing complete');
+    }, 15000);
+
+    return () => clearTimeout(safetyTimer);
+  }, []); // Empty deps — mount only
 
   // ── Deck batch history: detect pref changes → reset ──────────────────
   useEffect(() => {
@@ -732,7 +757,11 @@ export const RecommendationsProvider: React.FC<
       const shouldMarkComplete =
         (queryEnabled && queryFinished && hasQueryResult) ||
         (hasRecommendationsInState && !isModeTransitioning && !loading) ||
-        (locationError && queryFinished);
+        (locationError && queryFinished) ||
+        // Settled state: all three loading flags are false regardless of data/null.
+        // This fires when location resolves to null (no error, no data) — without it
+        // the spinner runs forever in that case.
+        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -749,6 +778,7 @@ export const RecommendationsProvider: React.FC<
     isModeTransitioning,
     hasCompletedFetchForCurrentMode,
     isDeckBatchLoaded,
+    isDeckLoading,
     deckCards.length,
     recommendations.length,
     userLocation,
@@ -756,6 +786,8 @@ export const RecommendationsProvider: React.FC<
     currentMode,
     loading,
     locationError,
+    isLoadingLocation,
+    isLoadingPreferences,
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────

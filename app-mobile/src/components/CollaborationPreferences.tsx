@@ -21,7 +21,7 @@ import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { offlineService } from "../services/offlineService";
 import { PreferencesService } from "../services/preferencesService";
 import {
@@ -160,7 +160,7 @@ export default function CollaborationPreferences({
   accountPreferences,
 }: CollaborationPreferencesProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuthSimple();
+  const user = useAppStore((state) => state.user);
   const insets = useSafeAreaInsets();
 
   // Currency symbol for Budget section

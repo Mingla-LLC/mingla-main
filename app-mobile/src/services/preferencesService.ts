@@ -14,6 +14,10 @@ export interface UserPreferences {
   date_option?: string | null;
   time_slot?: string | null;
   exact_time?: string | null;
+  // Onboarding-restored fields — present in the DB but previously untyped
+  price_tiers?: string[] | null;
+  use_gps_location?: boolean | null;
+  custom_location?: string | null;
 }
 
 export interface ProfileData {

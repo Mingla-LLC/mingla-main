@@ -11,6 +11,11 @@ import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 import { logger } from "../utils/logger";
 
+// Module-level flag — shared across ALL instances of useAuthSimple.
+// Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
+// Placed after imports so ESLint import/first rule is satisfied.
+let _isHandlingSignOut = false;
+
 // Configure Google Sign-In
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -205,10 +210,15 @@ export const useAuthSimple = () => {
           console.error("Error loading profile:", profileError);
         }
       } else {
+        // SIGNED_OUT — guard against multiple instances firing simultaneously
+        if (_isHandlingSignOut) return;
+        _isHandlingSignOut = true;
         if (mounted) {
           setAuth(null);
           clearUserData();
         }
+        // Reset after a tick so re-login within the same session works correctly
+        setTimeout(() => { _isHandlingSignOut = false; }, 1000);
       }
 
       if (mounted) {
@@ -234,8 +244,8 @@ export const useAuthSimple = () => {
         throw error;
       }
       return { error: null };
-    } catch (error: any) {
-      return { error };
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err : new Error(String(err)) };
     }
   };
 
@@ -443,19 +453,21 @@ export const useAuthSimple = () => {
 
       logger.auth('Google sign-in completed successfully');
       return { data: data.session, error: null };
-    } catch (error: any) {
-      logger.error('Google sign-in failed', { code: error.code, message: error.message });
-      console.error("Google sign-in error:", error.code, error.message, error);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const code = (err as { code?: unknown })?.code;
+      logger.error('Google sign-in failed', { code, message: error.message });
+      console.error("Google sign-in error:", code, error.message, err);
 
       // Handle specific error cases
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+      if (code === statusCodes.SIGN_IN_CANCELLED) {
         return { data: null, error: { message: "Sign-in cancelled" } };
-      } else if (error.code === statusCodes.IN_PROGRESS) {
+      } else if (code === statusCodes.IN_PROGRESS) {
         return {
           data: null,
           error: { message: "Sign-in already in progress" },
         };
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      } else if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert(
           "Google Play Services Required",
           "Google Play Services is not available. Please install it from the Play Store."
@@ -558,12 +570,14 @@ export const useAuthSimple = () => {
 
       logger.auth('Apple sign-in completed successfully');
       return { data: data.session, error: null };
-    } catch (error: any) {
-      logger.error('Apple sign-in failed', { code: error.code, message: error.message });
-      console.error("Apple sign-in error:", error);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const code = (err as { code?: unknown })?.code;
+      logger.error('Apple sign-in failed', { code, message: error.message });
+      console.error("Apple sign-in error:", err);
 
       // Handle specific error cases
-      if (error.code === "ERR_REQUEST_CANCELED") {
+      if (code === "ERR_REQUEST_CANCELED") {
         return { data: null, error: { message: "Sign-in cancelled" } };
       }
 

@@ -127,6 +127,40 @@ export async function generatePersonExperiences(params: {
   return response.json();
 }
 
+// ── Link-based Upsert ────────────────────────────────────────────────────────
+
+/**
+ * Upsert a saved_people row from an accepted link request.
+ * Uses (user_id, linked_user_id) as the conflict key so re-accepting a link
+ * after unlinking simply refreshes the row rather than creating a duplicate.
+ */
+export async function upsertSavedPersonByLink(params: {
+  currentUserId: string;
+  linkedUserId: string;
+  linkId: string;
+  name: string;
+  initials: string;
+}): Promise<SavedPerson | null> {
+  const { data, error } = await supabase
+    .from("saved_people")
+    .upsert(
+      {
+        user_id: params.currentUserId,
+        name: params.name,
+        initials: params.initials,
+        linked_user_id: params.linkedUserId,
+        link_id: params.linkId,
+        is_linked: true,
+      },
+      { onConflict: "user_id,linked_user_id" }
+    )
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 // ── Linking Support ─────────────────────────────────────────────────────────
 
 function mapFriendLink(row: any): FriendLink {
