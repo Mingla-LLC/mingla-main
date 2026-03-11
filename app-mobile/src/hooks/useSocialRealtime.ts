@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
@@ -28,8 +28,27 @@ export function useSocialRealtime(
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
+  // Cache of conversation IDs this user participates in.
+  // Used to filter realtime message events — only trigger callback for
+  // conversations the user is actually in, instead of every message globally.
+  const conversationIdsRef = useRef<Set<string>>(new Set());
+
+  const refreshConversationIds = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", userId);
+    if (!error && data) {
+      conversationIdsRef.current = new Set(data.map((r) => r.conversation_id));
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
+
+    // Seed the conversation cache before subscribing
+    refreshConversationIds();
 
     const channel: RealtimeChannel = supabase
       .channel(`social-realtime:${userId}`)
@@ -105,12 +124,28 @@ export function useSocialRealtime(
           event: "INSERT",
           schema: "public",
           table: "messages",
-          // No filter — we need to know about messages sent TO us across all conversations.
-          // The volume is acceptable because this only fires on INSERT (new messages), not updates.
+        },
+        (payload) => {
+          // Only fire callback if this message belongs to a conversation
+          // the current user participates in. This prevents every user from
+          // refetching on every message sent anywhere in the app.
+          const conversationId = (payload.new as any)?.conversation_id;
+          if (conversationId && conversationIdsRef.current.has(conversationId)) {
+            callbacksRef.current?.onNewMessage?.();
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${userId}`,
         },
         () => {
-          // Trigger conversation list refresh so unread counts update in real-time
-          callbacksRef.current?.onNewMessage?.();
+          // User joined or left a conversation — refresh the local cache
+          refreshConversationIds();
         }
       )
       .on(
