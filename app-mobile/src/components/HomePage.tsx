@@ -258,6 +258,21 @@ export default function HomePage({
     notificationId: string
   ) => {
     try {
+      // Fetch invite details BEFORE mutating so we have clean data for notification
+      const { data: invite } = await supabase
+        .from("collaboration_invites")
+        .select("invited_by, session_id")
+        .eq("id", inviteId)
+        .single();
+
+      const { data: session } = invite
+        ? await supabase
+            .from("collaboration_sessions")
+            .select("name")
+            .eq("id", invite.session_id)
+            .single()
+        : { data: null };
+
       await supabase
         .from("collaboration_invites")
         .update({ status: "declined" })
@@ -271,19 +286,7 @@ export default function HomePage({
           .eq("user_id", userId);
       }
 
-      const { data: invite } = await supabase
-        .from("collaboration_invites")
-        .select("invited_by, session_id")
-        .eq("id", inviteId)
-        .single();
-
       if (invite && userId) {
-        const { data: session } = await supabase
-          .from("collaboration_sessions")
-          .select("name")
-          .eq("id", invite.session_id)
-          .single();
-
         await supabase.functions.invoke("notify-invite-response", {
           body: {
             inviteId,

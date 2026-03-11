@@ -114,30 +114,57 @@ serve(async (req: Request) => {
       } else {
         // Not on Mingla yet — create a deferred intent
 
-        // Upsert pending_friend_link_intents (partial unique index on pending)
-        const { data: intent, error: intentError } = await supabaseAdmin
+        // Check for existing pending intent before inserting
+        // (partial unique index WHERE status='pending' can't be targeted by upsert)
+        const { data: existingIntent } = await supabaseAdmin
           .from("pending_friend_link_intents")
-          .upsert(
-            {
+          .select("id")
+          .eq("inviter_id", requesterId)
+          .eq("phone_e164", phone_e164)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        let intentId: string;
+
+        if (existingIntent) {
+          // Already have a pending intent for this inviter+phone — reuse it
+          intentId = existingIntent.id;
+
+          // Update person_id if provided and different
+          if (personId && UUID_REGEX.test(personId)) {
+            await supabaseAdmin
+              .from("pending_friend_link_intents")
+              .update({
+                person_id: personId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", intentId);
+          }
+        } else {
+          // No pending intent exists — insert a new one
+          const { data: newIntent, error: intentError } = await supabaseAdmin
+            .from("pending_friend_link_intents")
+            .insert({
               inviter_id: requesterId,
               phone_e164,
               person_id: personId && UUID_REGEX.test(personId) ? personId : null,
               status: "pending",
-            },
-            { onConflict: "inviter_id,phone_e164" }
-          )
-          .select("id")
-          .single();
+            })
+            .select("id")
+            .single();
 
-        if (intentError || !intent) {
-          console.error("Pending friend link intent upsert error:", intentError);
-          return new Response(
-            JSON.stringify({ error: "Failed to create deferred link intent" }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
+          if (intentError || !newIntent) {
+            console.error("Pending friend link intent insert error:", intentError);
+            return new Response(
+              JSON.stringify({ error: "Failed to create deferred link intent" }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          intentId = newIntent.id;
         }
 
         // Ensure a pending_invites row exists for this phone
@@ -158,7 +185,7 @@ serve(async (req: Request) => {
         return new Response(
           JSON.stringify({
             status: "deferred",
-            intentId: intent.id,
+            intentId,
             message: "This person isn't on Mingla yet. They'll receive the link request when they join.",
           }),
           {

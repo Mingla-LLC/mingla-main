@@ -4,19 +4,11 @@ import { getPendingInvites, cancelPendingInvite } from "../services/phoneLookupS
 import { savedPeopleKeys } from "./useSavedPeople";
 import { personalizedCardKeys } from "./usePersonalizedCards";
 import { linkConsentKeys } from "./useLinkConsent";
-import { friendLinkIntentKeys } from "./usePendingFriendLinkIntents";
+import { friendLinkKeys, friendLinkIntentKeys } from "./socialQueryKeys";
 import { supabase } from "../services/supabase";
 
-export const friendLinkKeys = {
-  all: ["friend-links"] as const,
-  pending: (userId: string) =>
-    [...friendLinkKeys.all, "pending", userId] as const,
-  sent: (userId: string) => [...friendLinkKeys.all, "sent", userId] as const,
-  search: (query: string) =>
-    [...friendLinkKeys.all, "search", query] as const,
-  phoneInvites: (userId: string) =>
-    [...friendLinkKeys.all, "phone-invites", userId] as const,
-};
+// Re-export from shared module so existing imports don't break
+export { friendLinkKeys } from "./socialQueryKeys";
 
 export function usePendingLinkRequests(userId: string) {
   return useQuery({

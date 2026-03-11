@@ -67,7 +67,7 @@ serve(async (req) => {
     // Get inviter's profile
     const { data: inviterProfile } = await supabase
       .from("profiles")
-      .select("display_name, first_name, last_name, username")
+      .select("display_name, first_name, last_name, username, avatar_url")
       .eq("id", inviterId)
       .single();
 
@@ -144,7 +144,9 @@ serve(async (req) => {
               sessionName: sessionName,
               inviteId: inviteId,
               inviterId: inviterId,
+              inviterName: inviterName,
               inviterUsername: inviterUsername,
+              inviterAvatarUrl: inviterProfile?.avatar_url || null,
             },
             channelId: "collaboration-invites",
           }),

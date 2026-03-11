@@ -2,10 +2,9 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
-import { friendLinkKeys } from "./useFriendLinks";
+import { friendLinkKeys, friendLinkIntentKeys } from "./socialQueryKeys";
 import { linkConsentKeys } from "./useLinkConsent";
 import { savedPeopleKeys } from "./useSavedPeople";
-import { friendLinkIntentKeys } from "./usePendingFriendLinkIntents";
 
 /**
  * Subscribes to realtime changes on friend_links and friend_requests

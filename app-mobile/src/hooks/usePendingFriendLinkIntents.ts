@@ -3,13 +3,10 @@ import {
   getPendingFriendLinkIntents,
   cancelFriendLinkIntent,
 } from "../services/pendingFriendLinkIntentService";
-import { friendLinkKeys } from "./useFriendLinks";
+import { friendLinkKeys, friendLinkIntentKeys } from "./socialQueryKeys";
 
-export const friendLinkIntentKeys = {
-  all: ["friend-link-intents"] as const,
-  pending: (userId: string) =>
-    [...friendLinkIntentKeys.all, "pending", userId] as const,
-};
+// Re-export from shared module so existing imports don't break
+export { friendLinkIntentKeys } from "./socialQueryKeys";
 
 export function usePendingFriendLinkIntents(userId: string | undefined) {
   return useQuery({

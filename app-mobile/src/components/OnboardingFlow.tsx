@@ -2553,7 +2553,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       // Auto-skip is handled by useEffect above — show loading while it fires
       if (isLoadingConsents || !pendingConsents || pendingConsents.length === 0) {
         return (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={styles.consentLoading}>
             <ActivityIndicator size="small" color={colors.primary[500]} />
           </View>
         );
@@ -2910,6 +2910,11 @@ function getCategoryIcon(slug: string): string {
 
 // ─── Styles ───
 const styles = StyleSheet.create({
+  consentLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   selectionCapMessage: {
     color: '#EF4444',
     fontSize: 13,

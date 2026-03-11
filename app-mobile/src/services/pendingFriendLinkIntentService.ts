@@ -23,15 +23,15 @@ export async function getPendingFriendLinkIntents(
 
   if (error) throw new Error(error.message);
 
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    inviterId: row.inviter_id,
-    phoneE164: row.phone_e164,
-    personId: row.person_id,
-    status: row.status,
-    convertedLinkId: row.converted_link_id,
-    convertedAt: row.converted_at,
-    createdAt: row.created_at,
+  return (data || []).map((row) => ({
+    id: row.id as string,
+    inviterId: row.inviter_id as string,
+    phoneE164: row.phone_e164 as string,
+    personId: (row.person_id as string | null),
+    status: row.status as PendingFriendLinkIntent["status"],
+    convertedLinkId: (row.converted_link_id as string | null),
+    convertedAt: (row.converted_at as string | null),
+    createdAt: row.created_at as string,
   }));
 }
 
