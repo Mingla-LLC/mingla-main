@@ -31,7 +31,7 @@ GRANT EXECUTE ON FUNCTION public.cleanup_stale_push_tokens TO service_role;
 -- ── 2. Schedule weekly cleanup via pg_cron (if extension is available) ──────
 -- Runs every Sunday at 3 AM UTC. If pg_cron is not enabled, this block
 -- silently does nothing — the function can still be called manually.
-DO $$
+DO $outer$
 BEGIN
   -- Check if pg_cron extension exists
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
@@ -50,7 +50,7 @@ EXCEPTION WHEN OTHERS THEN
   -- or via an edge function on a timer.
   RAISE NOTICE 'pg_cron not available — push token cleanup must be triggered manually';
 END;
-$$;
+$outer$;
 
 -- ── 3. Add conversation_participants to realtime publication ────────────────
 -- Needed so the client can detect when the user joins/leaves conversations,
