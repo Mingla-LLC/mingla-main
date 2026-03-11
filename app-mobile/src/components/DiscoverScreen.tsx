@@ -14,6 +14,7 @@ import {
   LayoutAnimation,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -32,7 +33,7 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
-import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences } from "../hooks/useSavedPeople";
+import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences, savedPeopleKeys } from "../hooks/useSavedPeople";
 import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
@@ -46,6 +47,9 @@ import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import { HapticFeedback } from "../utils/hapticFeedback";
+import { useQueryClient } from "@tanstack/react-query";
+import { friendLinkKeys } from "../hooks/socialQueryKeys";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -740,7 +744,16 @@ export default function DiscoverScreen({
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
-  
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+    await queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+    setIsRefreshing(false);
+  }, [queryClient]);
+
   // Entrance animation values
   const featuredCardOpacity = useRef(new Animated.Value(0)).current;
   const featuredCardSlide = useRef(new Animated.Value(40)).current;
@@ -2572,6 +2585,7 @@ export default function DiscoverScreen({
 
   // Add Person Modal handlers
   const handleOpenAddPersonModal = () => {
+    HapticFeedback.buttonPress();
     setIsAddPersonModalVisible(true);
   };
 
@@ -2616,11 +2630,13 @@ export default function DiscoverScreen({
 
   // Handle person pill selection ("for-you" or person.id)
   const handlePersonSelect = (personId: string) => {
+    HapticFeedback.buttonPress();
     setSelectedPersonId(personId);
   };
 
   // Handle "For You" selection
   const handleForYouSelect = () => {
+    HapticFeedback.buttonPress();
     setSelectedPersonId("for-you");
   };
 
@@ -3128,6 +3144,7 @@ export default function DiscoverScreen({
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
         >
           {activeTab === "for-you" && (
             <>
@@ -3135,14 +3152,20 @@ export default function DiscoverScreen({
               {pendingLinkRequests.length > 0 && (
                 <LinkRequestBanner
                   requests={pendingLinkRequests}
-                  onAccept={(linkId) => respondToLinkMutation.mutate(
-                    { linkId, action: 'accept' },
-                    { onError: () => Alert.alert("Error", "Failed to accept. Please try again.") }
-                  )}
-                  onDecline={(linkId) => respondToLinkMutation.mutate(
-                    { linkId, action: 'decline' },
-                    { onError: () => Alert.alert("Error", "Failed to decline. Please try again.") }
-                  )}
+                  onAccept={(linkId) => {
+                    if (respondToLinkMutation.isPending) return;
+                    respondToLinkMutation.mutate(
+                      { linkId, action: 'accept' },
+                      { onError: () => Alert.alert("Error", "Failed to accept. Please try again.") }
+                    );
+                  }}
+                  onDecline={(linkId) => {
+                    if (respondToLinkMutation.isPending) return;
+                    respondToLinkMutation.mutate(
+                      { linkId, action: 'decline' },
+                      { onError: () => Alert.alert("Error", "Failed to decline. Please try again.") }
+                    );
+                  }}
                 />
               )}
 

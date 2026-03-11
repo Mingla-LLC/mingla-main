@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   Animated,
+  RefreshControl,
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
@@ -23,6 +24,7 @@ import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
+import { HapticFeedback } from "../../utils/hapticFeedback";
 import { formatCurrency } from "../utils/formatters";
 
 interface CalendarEntry {
@@ -105,8 +107,16 @@ const CalendarTab = ({
   >("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
+    setIsRefreshing(false);
+  }, [queryClient]);
+
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const searchBarSlide = useRef(new Animated.Value(-30)).current;
@@ -1076,6 +1086,7 @@ const CalendarTab = ({
   };
 
   const handleRemoveFromCalendar = async (entry: CalendarEntry) => {
+    HapticFeedback.error();
     if (removingEntryId) return; // Prevent multiple simultaneous removals
 
     setRemovingEntryId(entry.id);
@@ -1089,6 +1100,7 @@ const CalendarTab = ({
   };
 
   const handleCardExpand = (entry: CalendarEntry) => {
+    HapticFeedback.buttonPress();
     // Transform CalendarEntry to ExpandedCardData format
     const experience = entry.experience || entry;
     const ExperienceIcon = getIconComponent(
@@ -1386,6 +1398,7 @@ const CalendarTab = ({
             {/* Propose Date Button - Large orange button */}
             <TouchableOpacity
               onPress={(e) => {
+                HapticFeedback.buttonPress();
                 e.stopPropagation(); // Prevent card expansion
                 setEntryToReschedule(entry);
                 setShowProposeDateTimeModal(true);
@@ -1670,6 +1683,7 @@ const CalendarTab = ({
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
       >
         {/* Search & Filters */}
         <Animated.View

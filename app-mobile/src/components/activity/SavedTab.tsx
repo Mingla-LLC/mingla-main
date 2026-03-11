@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Text,
   View,
@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   Animated,
+  RefreshControl,
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
@@ -30,6 +31,7 @@ import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
 import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 
 interface SavedCard {
@@ -125,8 +127,15 @@ const SavedTab = ({
   >("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ["saved-cards"] });
+    setIsRefreshing(false);
+  }, [queryClient]);
 
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
@@ -998,6 +1007,7 @@ const SavedTab = ({
   };
 
   const handleSchedule = (card: SavedCard) => {
+    HapticFeedback.success();
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) {
       return;
     }
@@ -1139,6 +1149,7 @@ const SavedTab = ({
   };
 
   const handleScheduleCurated = (card: SavedCard) => {
+    HapticFeedback.success();
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) return;
 
     // Close expanded card modal if open (prevents Modal stacking conflicts)
@@ -1388,6 +1399,7 @@ const SavedTab = ({
   };
 
   const handleCardPress = (card: SavedCard) => {
+    HapticFeedback.buttonPress();
     const matchScore = getMatchScore(card);
 
     // Detect if this is a curated multi-stop card
@@ -1556,6 +1568,7 @@ const SavedTab = ({
   };
 
   const handleRemoveSaved = async (card: SavedCard) => {
+    HapticFeedback.error();
     if (!user?.id) return;
 
     setRemovingCardIds((prev) => new Set(prev).add(card.id));
@@ -1974,6 +1987,7 @@ const SavedTab = ({
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
       >
         {/* Search & Filters */}
         <Animated.View

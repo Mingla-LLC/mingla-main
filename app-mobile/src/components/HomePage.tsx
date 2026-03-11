@@ -23,6 +23,7 @@ import { useRespondToFriendLink } from "../hooks/useFriendLinks";
 import { useRespondLinkConsent } from "../hooks/useLinkConsent";
 import { supabase } from "../services/supabase";
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import { HapticFeedback } from "../utils/hapticFeedback";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -117,6 +118,7 @@ export default function HomePage({
   const noop = useMemo(() => () => {}, []);
 
   const handleOpenNotifications = useCallback(() => {
+    HapticFeedback.buttonPress();
     setShowNotificationsModal(true);
   }, []);
 
@@ -347,6 +349,7 @@ export default function HomePage({
             <View>
               <TouchableOpacity
                 onPress={() => {
+                  HapticFeedback.buttonPress();
                   if (currentMode === "solo") {
                     onOpenPreferences();
                   } else {

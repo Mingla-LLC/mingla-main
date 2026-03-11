@@ -42,7 +42,7 @@ Mingla/
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~40 React Query hooks + useScreenLogger, useLifecycleLogger
+│   │   ├── hooks/                      # ~41 React Query hooks + useMessagingRealtime, useScreenLogger, useLifecycleLogger
 │   │   ├── services/                   # ~62 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
@@ -143,16 +143,16 @@ The Connect page manages friend relationships:
 - Mirror writes to legacy `friend_requests` table preserve referral credit triggers (upsert handles re-sends)
 - Auto-convert trigger creates `friend_links` + `friends` rows as basic friendship when invited users sign up (no auto-linking)
 - **Deferred friend link intents:** sending a friend link to a non-Mingla phone number stores a `pending_friend_link_intents` row. When the person signs up and accepts the friend request, the trigger auto-converts the intent into a real friend link request
-- Two-phase consent: accepting a friend request creates basic friendship only. Profile linkage (sharing name, birthday, gender, avatar) requires explicit consent from both users via `respond-link-consent`
+- Two-phase consent: accepting a friend request creates basic friendship only. Profile linkage (sharing name, birthday, gender, avatar) requires explicit consent from both users via `respond-link-consent`. Consent uses atomic `SELECT FOR UPDATE` locking to prevent race conditions when both users tap Accept simultaneously
 - **Onboarding consent sub-step:** after the friends step in onboarding, if any accepted friend links have pending consent, a consent sub-step auto-appears. If no pending consents exist, the step auto-skips silently
 - Link consent prompts appear in the Connections page "Requests" panel and in the notification sheet with accept/decline buttons
 - Post-onboarding badge dot on Connections tab when pending link consents exist
 - Re-initiation: users can re-initiate declined link consent via the add person flow, resetting the consent state
 - **Decline notifications:** declining a friend link sends a tactful push notification to the requester ("{name} isn't available to connect right now")
 - **Notification sheet action buttons:** friend link requests, link consent prompts, and collaboration invites all show accept/decline buttons in the notification sheet
-- **Push-to-in-app notification pipeline:** push notifications received in foreground or tapped from background are converted to in-app notifications with action buttons
+- **Push-to-in-app notification pipeline:** push notifications received in foreground or tapped from background are converted to in-app notifications with action buttons. Handles 7 notification types: friend_link_request, link_consent_request, collaboration_invite_received, friend_link_declined, link_consent_completed, collaboration_invite_response, collaboration_invite_sent
 - Cross-invalidation of React Query caches on consent response (link consent + saved people + friend links + friend link intents)
-- Realtime subscriptions for `pending_invites`, `saved_people`, and `pending_friend_link_intents` tables
+- Realtime subscriptions for `pending_invites`, `saved_people`, `pending_friend_link_intents`, `messages`, `friends`, and `calendar_entries` tables
 - Saved people entries created for every synced friend during onboarding (not gated on audio recording)
 - Unified visibility: onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links`, with Realtime subscriptions for instant updates and correct routing per source system
 - `lookup-phone` checks both `friends` and `friend_links` tables for friendship/pending status
@@ -224,6 +224,12 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 - **Button tracking** — The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
 - **Zero production overhead** — All breadcrumb operations are gated behind `__DEV__`
 - **logger.render() excluded** — Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
+
+### Native UX
+- **Pull-to-refresh** on SavedTab, CalendarTab, DiscoverScreen, and ConnectionsPage
+- **Haptic feedback** on all interactive buttons (buttonPress, success, warning, error, selection patterns)
+- **Duplicate mutation guards** — isPending checks prevent double-tap on accept/decline/send buttons
+- **Push token lifecycle** — tokens deleted on logout, re-registered on every app launch (survives reinstalls and iOS updates)
 
 ### Additional Features
 - GPS and manual location with travel time preferences
@@ -329,7 +335,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `search-users` | Username-based user search |
 | `send-friend-link` | Send friend link invitations (with referral mirror write + re-initiation after declined consent + phone-based deferred intent for non-Mingla users) |
 | `respond-friend-link` | Process friend link responses (creates basic friendship + initiates consent flow + decline push notification) |
-| `respond-link-consent` | Process link consent responses (creates linked saved_people when both consent) |
+| `respond-link-consent` | Process link consent responses (atomic RPC with row-level locking, creates linked saved_people when both consent) |
 | `unlink-friend` | Remove friend connections (requires consented link_status) |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
 | `send-friend-request-email` | Email notifications for friend requests |
@@ -455,10 +461,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Mobile-Native Overhaul** -- 11 fixes across 4 domains: realtime subscriptions for messaging, friends, and calendar; 3 new push notification types handled; push token lifecycle (cleanup on logout, refresh on launch); pull-to-refresh on all list screens; haptic feedback on all interactive elements; link consent race condition fixed with atomic PostgreSQL locking; duplicate mutation guards; targeted board invalidation; removed browser-only refetchOnWindowFocus.
 - **Social System Integration** -- Closed 7 gaps across the social system: deferred friend link intents for non-Mingla users, push-to-in-app notification pipeline, notification sheet action buttons for all social notification types, onboarding consent sub-step, decline push notifications, 3 new realtime subscriptions, and React Query invalidation gap fixes.
 - **Full React Query Migration (Boards & Saves)** -- Replaced `useBoards`, `useEnhancedBoards`, and `useSaves` hooks with a clean two-layer architecture.
 - **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions.
-- **Link Consent — Two-Phase Profile Sharing** -- Accepting a friend request creates basic friendship only. Profile linkage requires explicit consent from both users.
 
 ---
 

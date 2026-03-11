@@ -22,11 +22,10 @@ export const useCalendarEntries = (userId: string | undefined) => {
     queryKey: ["calendarEntries", userId],
     queryFn: async () => await fetchCalendarEntries(userId),
     enabled: !!userId,
-    staleTime: 0, // Always fetch fresh data
-    gcTime: 0, // Don't keep in memory cache
+    staleTime: 5 * 60 * 1000,  // 5 minutes — realtime subscription handles freshness
+    gcTime: 10 * 60 * 1000,     // 10 minutes
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
   });
 };
 

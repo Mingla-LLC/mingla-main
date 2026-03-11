@@ -171,27 +171,25 @@ serve(async (req: Request) => {
       );
     }
 
-    // 9. Handle ACCEPT — set this user's consent flag
-    const consentUpdate = isRequester
-      ? { requester_link_consent: true, updated_at: new Date().toISOString() }
-      : { target_link_consent: true, updated_at: new Date().toISOString() };
+    // 9. Handle ACCEPT — atomically set this user's consent flag AND return the
+    //    fresh row in a single operation. This eliminates the race condition where
+    //    a separate re-fetch could see stale data from the other user's concurrent
+    //    update. UPDATE ... RETURNING reads its own write plus any committed writes.
+    const consentColumn = isRequester ? "requester_link_consent" : "target_link_consent";
 
-    await adminClient
-      .from("friend_links")
-      .update(consentUpdate)
-      .eq("id", linkId);
+    const { data: rpcRows, error: updateError } = await adminClient.rpc(
+      "set_link_consent_and_return",
+      {
+        p_link_id: linkId,
+        p_column: consentColumn,
+      }
+    );
 
-    // 10. Re-fetch the link row to get the latest state of both flags
-    // This prevents a race condition where both users tap accept simultaneously
-    const { data: freshLink, error: freshError } = await adminClient
-      .from("friend_links")
-      .select("requester_link_consent, target_link_consent")
-      .eq("id", linkId)
-      .single();
+    // RPC returns TABLE → Supabase JS returns an array; take the first row
+    const freshLink = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
-    if (freshError || !freshLink) {
-      console.error("Failed to re-fetch link after consent update:", freshError);
-      // Fall back to stale read — worst case, next user's accept will complete linkage
+    if (updateError || !freshLink) {
+      console.error("Consent update+fetch failed:", updateError);
       return new Response(
         JSON.stringify({
           status: "pending",
@@ -208,7 +206,6 @@ serve(async (req: Request) => {
       freshLink.requester_link_consent && freshLink.target_link_consent;
 
     if (!bothConsented) {
-      // Other user hasn't consented yet
       return new Response(
         JSON.stringify({
           status: "pending",

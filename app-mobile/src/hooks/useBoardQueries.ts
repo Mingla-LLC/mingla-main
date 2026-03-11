@@ -341,10 +341,15 @@ export function useBoardRealtimeSync() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'board_experiences' },
-        () => {
-          // board_experiences can't be filtered by user — invalidate all board-related keys
-          // so any mounted board experience queries get fresh data
-          queryClient.invalidateQueries({ queryKey: boardKeys.all });
+        (payload: any) => {
+          // Only invalidate the specific board affected, not all boards
+          const boardId = payload.new?.board_id || payload.old?.board_id;
+          if (boardId) {
+            queryClient.invalidateQueries({ queryKey: boardKeys.experiences(boardId) });
+          } else {
+            // Fallback: if we can't determine board_id, invalidate all
+            queryClient.invalidateQueries({ queryKey: boardKeys.all });
+          }
         },
       )
       .subscribe();

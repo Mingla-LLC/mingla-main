@@ -92,14 +92,13 @@ class EnhancedNotificationService {
 
   async registerForPushNotifications(userId: string): Promise<boolean> {
     try {
-      if (this.pushTokenStored) return true;
-
-      const initialized = await this.initialize();
-      if (!initialized) return false;
-
-      // If no push token (e.g., running on simulator), return true to allow app to continue
+      // Always re-register. Tokens can expire after app reinstall, iOS update,
+      // or Expo SDK upgrade. The DB upsert is idempotent (UNIQUE on user_id+push_token).
+      // We still skip if we have no token to store.
       if (!this.expoPushToken) {
-        return true;
+        // Re-initialize to get fresh token (handles reinstall/update scenarios)
+        await this.initialize();
+        if (!this.expoPushToken) return false;
       }
 
       // Store push token in user_push_tokens table
@@ -127,6 +126,14 @@ class EnhancedNotificationService {
       console.error('Error registering for push notifications:', error);
       return false;
     }
+  }
+
+  /**
+   * Resets internal token state. Called on logout so the next login
+   * triggers a fresh token registration.
+   */
+  resetTokenState(): void {
+    this.pushTokenStored = false;
   }
 
   async sendLocalNotification(notification: NotificationData): Promise<void> {

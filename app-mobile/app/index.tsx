@@ -152,6 +152,33 @@ function AppContent() {
               data.declinedByName || "Someone"
             );
             break;
+          case "link_consent_completed":
+            inAppNotificationService.add(
+              "system",
+              data.title || `You and ${data.friendName || "your friend"} are now linked!`,
+              data.body || "You can now see each other's details in For You.",
+              { page: "discover" },
+              { linkId: data.linkId }
+            );
+            break;
+          case "collaboration_invite_response":
+            inAppNotificationService.add(
+              "collaboration_invite",
+              data.title || "Collaboration update",
+              data.body || "Someone responded to your invite.",
+              { page: "home" },
+              { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
+            );
+            break;
+          case "collaboration_invite_sent":
+            inAppNotificationService.add(
+              "system",
+              data.title || "Invite sent",
+              data.body || "Your collaboration invite was sent.",
+              { page: "home" },
+              { sessionId: data.sessionId }
+            );
+            break;
         }
       });
 
@@ -189,6 +216,35 @@ function AppContent() {
               data.inviterAvatarUrl
             );
             setCurrentPage("home");
+            break;
+          case "link_consent_completed":
+            inAppNotificationService.add(
+              "system",
+              data.title || `You and ${data.friendName || "your friend"} are now linked!`,
+              data.body || "You can now see each other's details in For You.",
+              { page: "discover" },
+              { linkId: data.linkId }
+            );
+            setCurrentPage("discover");
+            break;
+          case "collaboration_invite_response":
+            inAppNotificationService.add(
+              "collaboration_invite",
+              data.title || "Collaboration update",
+              data.body || "Someone responded to your invite.",
+              { page: "home" },
+              { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
+            );
+            setCurrentPage("home");
+            break;
+          case "collaboration_invite_sent":
+            inAppNotificationService.add(
+              "system",
+              data.title || "Invite sent",
+              data.body || "Your collaboration invite was sent.",
+              { page: "home" },
+              { sessionId: data.sessionId }
+            );
             break;
         }
       });

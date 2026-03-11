@@ -238,6 +238,7 @@ export default function LinkFriendSheet({
     phoneLookupLoading ||
     actionStatus === "sending" ||
     actionStatus === "sent" ||
+    sendLinkMutation.isPending ||
     (phoneLookupResult?.found && phoneLookupResult.friendship_status !== "none");
 
   // Country picker filtering

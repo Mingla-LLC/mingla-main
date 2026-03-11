@@ -31,6 +31,7 @@ import {
   NavigationTarget,
 } from "../services/inAppNotificationService";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors, shadows } from "../constants/designSystem";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -180,6 +181,7 @@ export default function NotificationsModal({
 }: NotificationsModalProps) {
   const insets = useSafeAreaInsets();
   const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
+  const [pendingActionId, setPendingActionId] = React.useState<string | null>(null);
 
   const sections = useMemo(
     () => groupNotificationsByDate(notifications),
@@ -330,9 +332,13 @@ export default function NotificationsModal({
         {isActionable && (
           <View style={styles.friendActions}>
             <TouchableOpacity
-              style={styles.acceptButton}
+              style={[styles.acceptButton, pendingActionId === item.id && { opacity: 0.5 }]}
+              disabled={pendingActionId === item.id}
               onPress={(e: any) => {
+                HapticFeedback.success();
                 e.stopPropagation();
+                if (pendingActionId) return;
+                setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onAcceptFriendRequest?.(item.data?.requestId, item.id);
                 } else if (item.type === "friend_link_request") {
@@ -355,9 +361,13 @@ export default function NotificationsModal({
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.declineButton}
+              style={[styles.declineButton, pendingActionId === item.id && { opacity: 0.5 }]}
+              disabled={pendingActionId === item.id}
               onPress={(e: any) => {
+                HapticFeedback.warning();
                 e.stopPropagation();
+                if (pendingActionId) return;
+                setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onRejectFriendRequest?.(item.data?.requestId, item.id);
                 } else if (item.type === "friend_link_request") {

@@ -105,7 +105,6 @@ export const useDiscoverQuery = (params: UseDiscoverQueryParams) => {
     staleTime: 60 * 60 * 1000, // 1 hour - data stays fresh for 1 hour
     gcTime: 24 * 60 * 60 * 1000, // 24 hours - keep in cache for 24 hours
     refetchOnMount: false, // Don't refetch when component mounts if data exists
-    refetchOnWindowFocus: false, // Don't refetch on window focus
     placeholderData: (previousData) => previousData,
     retry: 2, // Retry twice on failure
   });

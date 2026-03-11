@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { HapticFeedback } from '../utils/hapticFeedback';
 import { mixpanelService } from '../services/mixpanelService';
 import SessionViewModal from './SessionViewModal';
 import { supabase } from '../services/supabase';
@@ -214,6 +215,7 @@ export default function CollaborationSessions({
   };
 
   const handlePillClick = (session: CollaborationSession) => {
+    HapticFeedback.buttonPress();
     if (session.type === 'sent-invite' || session.type === 'received-invite') {
       setInviteModalSession(session);
       setShowInviteModal(true);
@@ -459,7 +461,10 @@ export default function CollaborationSessions({
       <View collapsable={false}>
         <TouchableOpacity
           style={[styles.pill, styles.createPill]}
-          onPress={() => setShowCreateModal(true)}
+          onPress={() => {
+            HapticFeedback.buttonPress();
+            setShowCreateModal(true);
+          }}
           activeOpacity={0.7}
         >
           <Ionicons name="add" size={16} color="#FFFFFF" />

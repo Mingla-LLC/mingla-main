@@ -18,6 +18,8 @@ export function useSocialRealtime(
   callbacks?: {
     onFriendRequestChange?: () => void;
     onFriendLinkChange?: () => void;
+    onNewMessage?: () => void;
+    onFriendListChange?: () => void;
   }
 ) {
   const queryClient = useQueryClient();
@@ -95,6 +97,44 @@ export function useSocialRealtime(
           queryClient.invalidateQueries({
             queryKey: friendLinkIntentKeys.all,
           });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          // No filter — we need to know about messages sent TO us across all conversations.
+          // The volume is acceptable because this only fires on INSERT (new messages), not updates.
+        },
+        () => {
+          // Trigger conversation list refresh so unread counts update in real-time
+          callbacksRef.current?.onNewMessage?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friends",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          callbacksRef.current?.onFriendListChange?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "calendar_entries",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["calendarEntries", userId] });
         }
       )
       .subscribe();

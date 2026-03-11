@@ -15,6 +15,7 @@ import {
   Platform,
   ScrollView,
   useWindowDimensions,
+  RefreshControl,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -42,6 +43,8 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { LinkConsentCard } from "./LinkConsentCard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
+import { useQueryClient } from "@tanstack/react-query";
+import { friendLinkKeys, linkConsentKeys } from "../hooks/socialQueryKeys";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -111,6 +114,8 @@ export default function ConnectionsPageRefactored({
   const [activePanel, setActivePanel] = useState<PanelId>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const queryClient = useQueryClient();
 
   // ── Friends data via useFriends hook ─────────────────────
   const {
@@ -142,6 +147,7 @@ export default function ConnectionsPageRefactored({
   useSocialRealtime(user?.id, {
     onFriendRequestChange: loadFriendRequests,
     onFriendLinkChange: () => { fetchFriends(); },
+    onFriendListChange: () => { fetchFriends(); },
   });
 
   // Link consent (new system) — pending link consent prompts
@@ -155,6 +161,7 @@ export default function ConnectionsPageRefactored({
 
   const handleRespondConsent = useCallback(
     async (linkId: string, action: "accept" | "decline") => {
+      if (respondConsentMutation.isPending) return;
       setRespondingConsentId(linkId);
       try {
         await respondConsentMutation.mutateAsync({ linkId, action });
@@ -171,6 +178,14 @@ export default function ConnectionsPageRefactored({
     },
     [respondConsentMutation]
   );
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+    await queryClient.invalidateQueries({ queryKey: linkConsentKeys.all });
+    await fetchFriends();
+    setIsRefreshing(false);
+  }, [queryClient, fetchFriends]);
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -432,6 +447,8 @@ export default function ConnectionsPageRefactored({
 
   // ── Friend request actions ───────────────────────────────
   const handleAcceptRequest = async (requestId: string) => {
+    if (respondToLinkMutation.isPending) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const request = incomingRequests.find((r) => r.id === requestId);
       if (request && request._source === "link") {
@@ -449,6 +466,8 @@ export default function ConnectionsPageRefactored({
   };
 
   const handleDeclineRequest = async (requestId: string) => {
+    if (respondToLinkMutation.isPending) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     try {
       const request = incomingRequests.find((r) => r.id === requestId);
       if (request && request._source === "link") {
@@ -1449,6 +1468,7 @@ export default function ConnectionsPageRefactored({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.chatListContent}
               ItemSeparatorComponent={() => <View style={styles.chatSeparator} />}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
             />
           )}
         </View>
