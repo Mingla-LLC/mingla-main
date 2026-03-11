@@ -192,11 +192,11 @@ serve(async (req: Request) => {
       console.error("Consent update+fetch failed:", updateError);
       return new Response(
         JSON.stringify({
-          status: "pending",
-          linkStatus: "pending_consent",
+          error: "Consent update failed",
+          details: updateError?.message || "Unknown error",
         }),
         {
-          status: 200,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
@@ -323,7 +323,7 @@ serve(async (req: Request) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to: token, sound: "default", title, body, data }),
-      }).catch(() => {});
+      }).catch((err) => console.warn("Push notification send failed:", err));
     };
 
     if (requesterToken?.push_token) {

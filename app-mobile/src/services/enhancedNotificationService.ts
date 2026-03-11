@@ -117,10 +117,10 @@ class EnhancedNotificationService {
 
       if (error) {
         console.error('Error storing push token in user_push_tokens:', error);
-      } else {
-        this.pushTokenStored = true;
+        return false;
       }
 
+      this.pushTokenStored = true;
       return true;
     } catch (error) {
       console.error('Error registering for push notifications:', error);
@@ -134,6 +134,8 @@ class EnhancedNotificationService {
    */
   resetTokenState(): void {
     this.pushTokenStored = false;
+    this.isInitialized = false;
+    this.expoPushToken = null;
   }
 
   async sendLocalNotification(notification: NotificationData): Promise<void> {

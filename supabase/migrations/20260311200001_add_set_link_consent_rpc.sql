@@ -17,6 +17,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   -- Lock the row first — prevents concurrent read-before-write race

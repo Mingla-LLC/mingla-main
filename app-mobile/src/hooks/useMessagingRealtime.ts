@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { messagingService } from "../services/messagingService";
+import { messagingService, DirectMessage } from "../services/messagingService";
 
 /**
  * Subscribes to realtime message events for an active conversation.
@@ -12,8 +12,8 @@ export function useMessagingRealtime(
   conversationId: string | null | undefined,
   userId: string | null | undefined,
   callbacks?: {
-    onMessage?: (message: any) => void;
-    onMessageUpdated?: (message: any) => void;
+    onMessage?: (message: DirectMessage) => void;
+    onMessageUpdated?: (message: DirectMessage) => void;
     onMessageDeleted?: (messageId: string) => void;
   }
 ) {

@@ -335,9 +335,9 @@ export default function NotificationsModal({
               style={[styles.acceptButton, pendingActionId === item.id && { opacity: 0.5 }]}
               disabled={pendingActionId === item.id}
               onPress={(e: any) => {
-                HapticFeedback.success();
                 e.stopPropagation();
                 if (pendingActionId) return;
+                HapticFeedback.success();
                 setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onAcceptFriendRequest?.(item.data?.requestId, item.id);
@@ -364,9 +364,9 @@ export default function NotificationsModal({
               style={[styles.declineButton, pendingActionId === item.id && { opacity: 0.5 }]}
               disabled={pendingActionId === item.id}
               onPress={(e: any) => {
-                HapticFeedback.warning();
                 e.stopPropagation();
                 if (pendingActionId) return;
+                HapticFeedback.warning();
                 setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onRejectFriendRequest?.(item.data?.requestId, item.id);

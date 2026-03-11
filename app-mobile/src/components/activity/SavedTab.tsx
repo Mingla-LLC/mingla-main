@@ -133,7 +133,7 @@ const SavedTab = ({
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ["saved-cards"] });
+    await queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
     setIsRefreshing(false);
   }, [queryClient]);
 
@@ -1568,8 +1568,8 @@ const SavedTab = ({
   };
 
   const handleRemoveSaved = async (card: SavedCard) => {
-    HapticFeedback.error();
     if (!user?.id) return;
+    HapticFeedback.error();
 
     setRemovingCardIds((prev) => new Set(prev).add(card.id));
     try {

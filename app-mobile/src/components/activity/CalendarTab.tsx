@@ -113,7 +113,7 @@ const CalendarTab = ({
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
+    await queryClient.invalidateQueries({ queryKey: ["calendarEntries", user?.id] });
     setIsRefreshing(false);
   }, [queryClient]);
 
@@ -1086,8 +1086,8 @@ const CalendarTab = ({
   };
 
   const handleRemoveFromCalendar = async (entry: CalendarEntry) => {
-    HapticFeedback.error();
     if (removingEntryId) return; // Prevent multiple simultaneous removals
+    HapticFeedback.error();
 
     setRemovingEntryId(entry.id);
     try {

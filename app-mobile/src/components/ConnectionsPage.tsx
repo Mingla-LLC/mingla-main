@@ -27,7 +27,7 @@ import { muteService } from "../services/muteService";
 import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
-import * as Haptics from "expo-haptics";
+import { HapticFeedback } from "../utils/hapticFeedback";
 import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import {
@@ -165,7 +165,7 @@ export default function ConnectionsPageRefactored({
       setRespondingConsentId(linkId);
       try {
         await respondConsentMutation.mutateAsync({ linkId, action });
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        HapticFeedback.medium();
       } catch (err: unknown) {
         console.error("Error responding to link consent:", err);
         Alert.alert(
@@ -431,7 +431,7 @@ export default function ConnectionsPageRefactored({
 
   // ── Panel handler ────────────────────────────────────────
   const handleActionPress = (id: PanelId | "invite") => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    HapticFeedback.light();
     if (id === "invite") {
       try {
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
@@ -448,7 +448,7 @@ export default function ConnectionsPageRefactored({
   // ── Friend request actions ───────────────────────────────
   const handleAcceptRequest = async (requestId: string) => {
     if (respondToLinkMutation.isPending) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    HapticFeedback.medium();
     try {
       const request = incomingRequests.find((r) => r.id === requestId);
       if (request && request._source === "link") {
@@ -467,7 +467,7 @@ export default function ConnectionsPageRefactored({
 
   const handleDeclineRequest = async (requestId: string) => {
     if (respondToLinkMutation.isPending) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    HapticFeedback.warning();
     try {
       const request = incomingRequests.find((r) => r.id === requestId);
       if (request && request._source === "link") {

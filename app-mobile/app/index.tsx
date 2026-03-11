@@ -245,6 +245,7 @@ function AppContent() {
               { page: "home" },
               { sessionId: data.sessionId }
             );
+            setCurrentPage("home");
             break;
         }
       });
