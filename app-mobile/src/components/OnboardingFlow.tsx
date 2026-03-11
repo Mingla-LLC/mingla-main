@@ -45,6 +45,8 @@ import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
 import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
+import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { usePendingLinkConsents, useRespondLinkConsent } from '../hooks/useLinkConsent'
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
@@ -189,6 +191,27 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     progress,
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, initialChosenPath: data.invitePath, hasGpsPermission })
+
+  const { data: pendingConsents, isLoading: isLoadingConsents } = usePendingLinkConsents(user?.id);
+  const respondConsentMutation = useRespondLinkConsent();
+
+  // Auto-skip consent sub-step if no pending consents exist
+  const consentAutoSkipRef = useRef(false);
+  useEffect(() => {
+    if (
+      subStep === 'consent' &&
+      !isLoadingConsents &&
+      (!pendingConsents || pendingConsents.length === 0) &&
+      !consentAutoSkipRef.current
+    ) {
+      consentAutoSkipRef.current = true;
+      goNext();
+    }
+    // Reset the ref when leaving the consent step
+    if (subStep !== 'consent') {
+      consentAutoSkipRef.current = false;
+    }
+  }, [subStep, isLoadingConsents, pendingConsents, goNext]);
 
   // isFirstScreen: computed locally based on whether the user's phone was
   // already verified from a previous session. This is separate from the
@@ -1553,6 +1576,8 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'consent':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'collaboration':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'pitch':
@@ -2522,6 +2547,32 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           }}
         />
       )
+    }
+
+    if (subStep === 'consent') {
+      // Auto-skip is handled by useEffect above — show loading while it fires
+      if (isLoadingConsents || !pendingConsents || pendingConsents.length === 0) {
+        return (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+          </View>
+        );
+      }
+
+      return (
+        <OnboardingConsentStep
+          pendingConsents={pendingConsents}
+          onRespond={async (linkId: string, action: "accept" | "decline") => {
+            try {
+              await respondConsentMutation.mutateAsync({ linkId, action });
+            } catch (err) {
+              console.warn('[Onboarding] Consent response failed:', err);
+            }
+          }}
+          isResponding={respondConsentMutation.isPending}
+          onContinue={() => goNext()}
+        />
+      );
     }
 
     if (subStep === 'collaboration') {

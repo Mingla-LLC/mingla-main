@@ -3,6 +3,9 @@ import * as friendLinkService from "../services/friendLinkService";
 import { getPendingInvites, cancelPendingInvite } from "../services/phoneLookupService";
 import { savedPeopleKeys } from "./useSavedPeople";
 import { personalizedCardKeys } from "./usePersonalizedCards";
+import { linkConsentKeys } from "./useLinkConsent";
+import { friendLinkIntentKeys } from "./usePendingFriendLinkIntents";
+import { supabase } from "../services/supabase";
 
 export const friendLinkKeys = {
   all: ["friend-links"] as const,
@@ -49,6 +52,9 @@ export function useSendFriendLink() {
       friendLinkService.sendFriendLink(targetUserId, personId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+      queryClient.invalidateQueries({ queryKey: linkConsentKeys.all });
+      queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+      queryClient.invalidateQueries({ queryKey: friendLinkIntentKeys.all });
     },
     onError: (error: Error) => {
       console.error('[SendFriendLink] Error:', error.message);
@@ -122,6 +128,32 @@ export function useCancelPhoneInvite() {
     },
     onError: (error: Error) => {
       console.error('[CancelPhoneInvite] Error:', error.message);
+    },
+  });
+}
+
+export function useSendFriendLinkToPhone() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      phone_e164,
+      personId,
+    }: {
+      phone_e164: string;
+      personId?: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke(
+        "send-friend-link",
+        {
+          body: { phone_e164, personId },
+        }
+      );
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+      queryClient.invalidateQueries({ queryKey: friendLinkIntentKeys.all });
     },
   });
 }

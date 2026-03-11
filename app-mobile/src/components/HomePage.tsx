@@ -19,6 +19,9 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
+import { useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { useRespondLinkConsent } from "../hooks/useLinkConsent";
+import { supabase } from "../services/supabase";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
@@ -58,6 +61,7 @@ interface HomePageProps {
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
   onNotificationNavigate?: (notification: InAppNotification) => void;
+  userId?: string;
 }
 
 export default function HomePage({
@@ -89,6 +93,7 @@ export default function HomePage({
   availableFriends = [],
   isCreatingSession = false,
   onNotificationNavigate,
+  userId,
 }: HomePageProps) {
   useScreenLogger('home');
   // Notifications modal state
@@ -136,9 +141,14 @@ export default function HomePage({
       return;
     }
 
-    // For friend requests, don't close or navigate - just mark as read
-    // The modal will be opened via callback
-    if (notification.type !== "friend_request") {
+    // For actionable types (with accept/decline buttons), don't close or navigate
+    const actionableTypes = [
+      "friend_request",
+      "friend_link_request",
+      "link_consent_request",
+      "collaboration_invite",
+    ];
+    if (!actionableTypes.includes(notification.type)) {
       // Close modal
       setShowNotificationsModal(false);
       // Navigate to the relevant page
@@ -173,6 +183,123 @@ export default function HomePage({
       console.error("Error rejecting friend request:", error);
     } finally {
       await inAppNotificationService.remove(notificationId);
+    }
+  };
+
+  const respondToFriendLink = useRespondToFriendLink();
+  const respondToLinkConsent = useRespondLinkConsent();
+
+  const handleAcceptFriendLink = async (linkId: string, notificationId: string) => {
+    try {
+      await respondToFriendLink.mutateAsync({ linkId, action: "accept" });
+      await inAppNotificationService.remove(notificationId);
+    } catch (error) {
+      console.error("Failed to accept friend link:", error);
+    }
+  };
+
+  const handleDeclineFriendLink = async (linkId: string, notificationId: string) => {
+    try {
+      await respondToFriendLink.mutateAsync({ linkId, action: "decline" });
+      await inAppNotificationService.remove(notificationId);
+    } catch (error) {
+      console.error("Failed to decline friend link:", error);
+    }
+  };
+
+  const handleAcceptLinkConsent = async (linkId: string, notificationId: string) => {
+    try {
+      await respondToLinkConsent.mutateAsync({ linkId, action: "accept" });
+      await inAppNotificationService.remove(notificationId);
+    } catch (error) {
+      console.error("Failed to accept link consent:", error);
+    }
+  };
+
+  const handleDeclineLinkConsent = async (linkId: string, notificationId: string) => {
+    try {
+      await respondToLinkConsent.mutateAsync({ linkId, action: "decline" });
+      await inAppNotificationService.remove(notificationId);
+    } catch (error) {
+      console.error("Failed to decline link consent:", error);
+    }
+  };
+
+  const handleAcceptCollabInvite = async (
+    sessionId: string,
+    inviteId: string,
+    notificationId: string
+  ) => {
+    try {
+      await supabase
+        .from("collaboration_invites")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", inviteId);
+
+      if (userId) {
+        await supabase.from("session_participants").upsert({
+          session_id: sessionId,
+          user_id: userId,
+          has_accepted: true,
+          role: "member",
+        });
+      }
+
+      await inAppNotificationService.remove(notificationId);
+      onSessionStateChanged?.();
+    } catch (error) {
+      console.error("Failed to accept collab invite:", error);
+    }
+  };
+
+  const handleDeclineCollabInvite = async (
+    sessionId: string,
+    inviteId: string,
+    notificationId: string
+  ) => {
+    try {
+      await supabase
+        .from("collaboration_invites")
+        .update({ status: "declined" })
+        .eq("id", inviteId);
+
+      if (userId) {
+        await supabase
+          .from("session_participants")
+          .delete()
+          .eq("session_id", sessionId)
+          .eq("user_id", userId);
+      }
+
+      const { data: invite } = await supabase
+        .from("collaboration_invites")
+        .select("invited_by, session_id")
+        .eq("id", inviteId)
+        .single();
+
+      if (invite && userId) {
+        const { data: session } = await supabase
+          .from("collaboration_sessions")
+          .select("name")
+          .eq("id", invite.session_id)
+          .single();
+
+        await supabase.functions.invoke("notify-invite-response", {
+          body: {
+            inviteId,
+            response: "declined",
+            inviterId: invite.invited_by,
+            invitedUserId: userId,
+            sessionId: invite.session_id,
+            sessionName: session?.name || "a session",
+          },
+        });
+      }
+
+      await inAppNotificationService.remove(notificationId);
+      onSessionStateChanged?.();
+    } catch (error) {
+      console.error("Failed to decline collab invite:", error);
     }
   };
 
@@ -334,6 +461,12 @@ export default function HomePage({
           onOpenRequestsModal={handleOpenFriendRequestsModal}
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onRejectFriendRequest={handleRejectFriendRequest}
+          onAcceptFriendLink={handleAcceptFriendLink}
+          onDeclineFriendLink={handleDeclineFriendLink}
+          onAcceptLinkConsent={handleAcceptLinkConsent}
+          onDeclineLinkConsent={handleDeclineLinkConsent}
+          onAcceptCollabInvite={handleAcceptCollabInvite}
+          onDeclineCollabInvite={handleDeclineCollabInvite}
         />
 
         {/* Friend Requests Modal - Opens on top of Notifications Modal */}

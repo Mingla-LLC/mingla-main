@@ -83,6 +83,7 @@ export function useOnboardingStateMachine({
   const getStep5Sequence = useCallback((): SubStep[] => {
     const base: SubStep[] = ['friends']
 
+    base.push('consent')
     base.push('collaboration')
 
     base.push('pitch')

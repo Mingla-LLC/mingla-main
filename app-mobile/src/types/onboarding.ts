@@ -14,6 +14,7 @@ export type Step4SubStep =
   | 'travel_time'
 export type Step5SubStep =
   | 'friends'
+  | 'consent'
   | 'collaboration'
   | 'pitch'
   | 'pathA_sync'

@@ -55,6 +55,10 @@ export type NotificationType =
   | "purchase_complete"
   | "profile_updated"
   | "welcome"
+  | "friend_link_request"
+  | "link_consent_request"
+  | "collaboration_invite"
+  | "friend_link_declined"
   | "system";
 
 interface NotificationsModalProps {
@@ -68,6 +72,12 @@ interface NotificationsModalProps {
   onOpenRequestsModal?: () => void;
   onAcceptFriendRequest?: (userId: string, notificationId: string) => void;
   onRejectFriendRequest?: (userId: string, notificationId: string) => void;
+  onAcceptFriendLink?: (linkId: string, notificationId: string) => void;
+  onDeclineFriendLink?: (linkId: string, notificationId: string) => void;
+  onAcceptLinkConsent?: (linkId: string, notificationId: string) => void;
+  onDeclineLinkConsent?: (linkId: string, notificationId: string) => void;
+  onAcceptCollabInvite?: (sessionId: string, inviteId: string, notificationId: string) => void;
+  onDeclineCollabInvite?: (sessionId: string, inviteId: string, notificationId: string) => void;
 }
 
 // ── Section grouping helpers ──
@@ -161,6 +171,12 @@ export default function NotificationsModal({
   onOpenRequestsModal,
   onAcceptFriendRequest,
   onRejectFriendRequest,
+  onAcceptFriendLink,
+  onDeclineFriendLink,
+  onAcceptLinkConsent,
+  onDeclineLinkConsent,
+  onAcceptCollabInvite,
+  onDeclineCollabInvite,
 }: NotificationsModalProps) {
   const insets = useSafeAreaInsets();
   const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
@@ -183,9 +199,16 @@ export default function NotificationsModal({
     const showAvatar =
       item.type === "friend_request" ||
       item.type === "friend_accepted" ||
-      item.type === "board_invite";
+      item.type === "board_invite" ||
+      item.type === "friend_link_request" ||
+      item.type === "link_consent_request" ||
+      item.type === "collaboration_invite";
 
-    const isFriendRequest = item.type === "friend_request";
+    const isActionable =
+      item.type === "friend_request" ||
+      item.type === "friend_link_request" ||
+      item.type === "link_consent_request" ||
+      item.type === "collaboration_invite";
     const iconGradient = getIconGradient(item.iconColor);
 
     const initials = item.data?.userName
@@ -197,21 +220,14 @@ export default function NotificationsModal({
       : "?";
 
     const handleCardPress = () => {
-      if (isFriendRequest) {
+      if (item.type === "friend_request") {
         onOpenRequestsModal?.();
-      } else {
+      } else if (!isActionable) {
         onNotificationPress(item);
       }
-    };
-
-    const handleAccept = (e: any) => {
-      e.stopPropagation();
-      onAcceptFriendRequest?.(item.data?.requestId, item.id);
-    };
-
-    const handleReject = (e: any) => {
-      e.stopPropagation();
-      onRejectFriendRequest?.(item.data?.requestId, item.id);
+      // For other actionable types (friend_link_request, link_consent_request,
+      // collaboration_invite), the card tap is a no-op — users interact via
+      // the accept/decline buttons instead.
     };
 
     const cardContent = (
@@ -294,7 +310,7 @@ export default function NotificationsModal({
             {item.description}
           </Text>
 
-          {!isFriendRequest && (
+          {!isActionable && (
             <View style={styles.metaRow}>
               <View style={styles.timeChip}>
                 <Ionicons name="time-outline" size={10} color={colors.gray[400]} />
@@ -310,12 +326,23 @@ export default function NotificationsModal({
           )}
         </View>
 
-        {/* Friend Request Action Buttons */}
-        {isFriendRequest && (
+        {/* Action Buttons for all actionable types */}
+        {isActionable && (
           <View style={styles.friendActions}>
             <TouchableOpacity
               style={styles.acceptButton}
-              onPress={handleAccept}
+              onPress={(e: any) => {
+                e.stopPropagation();
+                if (item.type === "friend_request") {
+                  onAcceptFriendRequest?.(item.data?.requestId, item.id);
+                } else if (item.type === "friend_link_request") {
+                  onAcceptFriendLink?.(item.data?.linkId, item.id);
+                } else if (item.type === "link_consent_request") {
+                  onAcceptLinkConsent?.(item.data?.linkId, item.id);
+                } else if (item.type === "collaboration_invite") {
+                  onAcceptCollabInvite?.(item.data?.sessionId, item.data?.inviteId, item.id);
+                }
+              }}
               activeOpacity={0.8}
             >
               <LinearGradient
@@ -329,7 +356,18 @@ export default function NotificationsModal({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.declineButton}
-              onPress={handleReject}
+              onPress={(e: any) => {
+                e.stopPropagation();
+                if (item.type === "friend_request") {
+                  onRejectFriendRequest?.(item.data?.requestId, item.id);
+                } else if (item.type === "friend_link_request") {
+                  onDeclineFriendLink?.(item.data?.linkId, item.id);
+                } else if (item.type === "link_consent_request") {
+                  onDeclineLinkConsent?.(item.data?.linkId, item.id);
+                } else if (item.type === "collaboration_invite") {
+                  onDeclineCollabInvite?.(item.data?.sessionId, item.data?.inviteId, item.id);
+                }
+              }}
               activeOpacity={0.8}
             >
               <Ionicons name="close" size={16} color={colors.gray[400]} />

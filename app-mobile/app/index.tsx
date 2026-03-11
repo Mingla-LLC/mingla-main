@@ -63,6 +63,7 @@ import { debugService } from "../src/services/debugService";
 import { logger } from "../src/utils/logger";
 import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
+import * as Notifications from "expo-notifications";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { usePendingLinkConsents } from "../src/hooks/useLinkConsent";
@@ -110,6 +111,92 @@ function AppContent() {
         }
       }
     });
+  }, []);
+
+  // Push notification listeners — convert pushes to in-app notifications
+  useEffect(() => {
+    // Foreground: push arrives while app is open
+    const notificationReceivedSub =
+      Notifications.addNotificationReceivedListener((notification) => {
+        const data = notification.request.content.data;
+        if (!data?.type) return;
+
+        switch (data.type) {
+          case "friend_link_request":
+            inAppNotificationService.notifyFriendLinkRequest(
+              data.requesterName || "Someone",
+              data.linkId,
+              data.requesterId,
+              data.requesterAvatarUrl
+            );
+            break;
+          case "link_consent_request":
+            inAppNotificationService.notifyLinkConsentRequest(
+              data.friendName || "Someone",
+              data.linkId,
+              data.friendUserId,
+              data.friendAvatarUrl
+            );
+            break;
+          case "collaboration_invite_received":
+            inAppNotificationService.notifyCollaborationInvite(
+              data.sessionName || "a session",
+              data.inviterName || "Someone",
+              data.sessionId,
+              data.inviteId,
+              data.inviterAvatarUrl
+            );
+            break;
+          case "friend_link_declined":
+            inAppNotificationService.notifyFriendLinkDeclined(
+              data.declinedByName || "Someone"
+            );
+            break;
+        }
+      });
+
+    // Background: user taps a push notification
+    const notificationResponseSub =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data;
+        if (!data?.type) return;
+
+        switch (data.type) {
+          case "friend_link_request":
+            inAppNotificationService.notifyFriendLinkRequest(
+              data.requesterName || "Someone",
+              data.linkId,
+              data.requesterId,
+              data.requesterAvatarUrl
+            );
+            setCurrentPage("connections");
+            break;
+          case "link_consent_request":
+            inAppNotificationService.notifyLinkConsentRequest(
+              data.friendName || "Someone",
+              data.linkId,
+              data.friendUserId,
+              data.friendAvatarUrl
+            );
+            setCurrentPage("connections");
+            break;
+          case "collaboration_invite_received":
+            inAppNotificationService.notifyCollaborationInvite(
+              data.sessionName || "a session",
+              data.inviterName || "Someone",
+              data.sessionId,
+              data.inviteId,
+              data.inviterAvatarUrl
+            );
+            setCurrentPage("home");
+            break;
+        }
+      });
+
+    return () => {
+      notificationReceivedSub.remove();
+      notificationResponseSub.remove();
+    };
   }, []);
 
   // Setup 5-tap gesture to open debug modal
@@ -1317,6 +1404,7 @@ function AppContent() {
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
+            userId={user?.id}
           />
         );
       case "discover":
@@ -1571,6 +1659,7 @@ function AppContent() {
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
+            userId={user?.id}
           />
         );
     }

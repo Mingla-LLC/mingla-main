@@ -19,12 +19,15 @@ serve(async (req: Request) => {
 
   try {
     // Parse body
-    const { targetUserId, personId } = await req.json();
+    let { targetUserId, phone_e164, personId } = await req.json();
 
-    // Validate targetUserId
-    if (!targetUserId || typeof targetUserId !== "string" || !UUID_REGEX.test(targetUserId)) {
+    // At least one of targetUserId or phone_e164 must be provided
+    const hasTarget = targetUserId && typeof targetUserId === "string" && UUID_REGEX.test(targetUserId);
+    const hasPhone = phone_e164 && typeof phone_e164 === "string";
+
+    if (!hasTarget && !hasPhone) {
       return new Response(
-        JSON.stringify({ error: "Invalid target user ID" }),
+        JSON.stringify({ error: "Either targetUserId or phone_e164 must be provided" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -67,6 +70,105 @@ serve(async (req: Request) => {
 
     const requesterId = user.id;
 
+    // Service-role client for privileged operations (push notifications, cross-user reads)
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    // ── Phone-based resolution: resolve phone to existing user or defer ──────
+    if (hasPhone && !hasTarget) {
+      // Validate E.164 format
+      const E164_REGEX = /^\+[1-9]\d{6,14}$/;
+      if (!E164_REGEX.test(phone_e164)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid phone number format. Must be E.164 (e.g. +14155551234)" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Check if this phone belongs to an existing Mingla user
+      const { data: existingUser, error: phoneCheckError } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("phone", phone_e164)
+        .maybeSingle();
+
+      if (phoneCheckError) {
+        console.error("Phone lookup error:", phoneCheckError);
+        return new Response(
+          JSON.stringify({ error: "Failed to look up phone number" }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      if (existingUser) {
+        // Phone belongs to existing user — set targetUserId and fall through
+        targetUserId = existingUser.id;
+      } else {
+        // Not on Mingla yet — create a deferred intent
+
+        // Upsert pending_friend_link_intents (partial unique index on pending)
+        const { data: intent, error: intentError } = await supabaseAdmin
+          .from("pending_friend_link_intents")
+          .upsert(
+            {
+              inviter_id: requesterId,
+              phone_e164,
+              person_id: personId && UUID_REGEX.test(personId) ? personId : null,
+              status: "pending",
+            },
+            { onConflict: "inviter_id,phone_e164" }
+          )
+          .select("id")
+          .single();
+
+        if (intentError || !intent) {
+          console.error("Pending friend link intent upsert error:", intentError);
+          return new Response(
+            JSON.stringify({ error: "Failed to create deferred link intent" }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        // Ensure a pending_invites row exists for this phone
+        const { error: pendingInviteError } = await supabaseAdmin
+          .from("pending_invites")
+          .upsert(
+            {
+              inviter_id: requesterId,
+              phone_e164,
+            },
+            { onConflict: "inviter_id,phone_e164" }
+          );
+
+        if (pendingInviteError) {
+          console.warn("pending_invites upsert warning:", pendingInviteError.message);
+        }
+
+        return new Response(
+          JSON.stringify({
+            status: "deferred",
+            intentId: intent.id,
+            message: "This person isn't on Mingla yet. They'll receive the link request when they join.",
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
     // Cannot link with yourself
     if (targetUserId === requesterId) {
       return new Response(
@@ -77,12 +179,6 @@ serve(async (req: Request) => {
         }
       );
     }
-
-    // Service-role client for privileged operations (push notifications, cross-user reads)
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Check target user exists
     const { data: targetProfile, error: targetError } = await supabaseAdmin
@@ -297,10 +393,10 @@ serve(async (req: Request) => {
       console.warn("Failed to create mirror friend_request:", e);
     }
 
-    // Look up requester's display_name
+    // Look up requester's display_name and avatar
     const { data: requesterProfile } = await supabaseAdmin
       .from("profiles")
-      .select("display_name")
+      .select("display_name, avatar_url")
       .eq("id", requesterId)
       .single();
 
@@ -330,6 +426,8 @@ serve(async (req: Request) => {
               type: "friend_link_request",
               linkId,
               requesterId,
+              requesterName: requesterDisplayName,
+              requesterAvatarUrl: requesterProfile?.avatar_url || null,
             },
           }),
         });
