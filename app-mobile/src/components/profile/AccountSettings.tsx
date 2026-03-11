@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Text,
   View,
@@ -9,7 +9,9 @@ import {
   StatusBar,
   ActivityIndicator,
   Modal,
+  AppState,
 } from "react-native";
+import type { AppStateStatus } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
@@ -29,6 +31,8 @@ export default function AccountSettings() {
   const [deleteStep, setDeleteStep] = useState<'confirm' | 'deleting' | 'success' | 'error'>('confirm');
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInProgressRef = useRef(false);
+  const deleteStartTimeRef = useRef<number | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const handleDeleteAccount = () => {
     setDeleteStep('confirm');
@@ -47,14 +51,31 @@ export default function AccountSettings() {
     }
 
     deleteInProgressRef.current = true;
+    deleteStartTimeRef.current = Date.now();
     setDeleteStep('deleting');
     setIsDeleting(true);
 
+    let timeoutIntervalId: ReturnType<typeof setInterval> | null = null;
+
     try {
-      const { data, error } = await supabase.functions.invoke("delete-user", {
+      const WALL_CLOCK_TIMEOUT_MS = 45000; // 45 seconds wall clock
+
+      const invokePromise = supabase.functions.invoke("delete-user", {
         method: "POST",
         body: { userId: user.id },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutIntervalId = setInterval(() => {
+          if (deleteStartTimeRef.current && Date.now() - deleteStartTimeRef.current > WALL_CLOCK_TIMEOUT_MS) {
+            if (timeoutIntervalId) clearInterval(timeoutIntervalId);
+            reject(new Error("TIMEOUT"));
+          }
+        }, 1000); // Check every second using wall clock, not setTimeout
+      });
+
+      const result = await Promise.race([invokePromise, timeoutPromise]);
+      const { data, error } = result as { data: { success?: boolean; error?: string } | null; error: Error | null };
 
       if (error) {
         const errorMessage = await extractFunctionError(
@@ -65,12 +86,18 @@ export default function AccountSettings() {
       }
       if (data?.error) throw new Error(data.error);
 
-      // Show success state briefly before signing out
+      // Immediately invalidate the local session so auth listeners
+      // don't try to load a deleted profile or register push tokens.
+      // This MUST happen before the 2-second success display.
+      await supabase.auth.signOut().catch(() => {});
+
+      // Show success state briefly before full cleanup
       setDeleteStep('success');
 
-      // Show success message for 2 seconds, then sign out and clean up.
-      // handleSignOut() performs comprehensive AsyncStorage + React Query cleanup.
-      // .catch() prevents unhandled promise rejection if sign-out fails.
+      // Show success message for 2 seconds, then perform full cleanup.
+      // handleSignOut() clears AsyncStorage, React Query, Zustand, etc.
+      // The supabase.auth.signOut() above already cleared the session,
+      // so handleSignOut()'s signOut call will be a harmless no-op.
       setTimeout(() => {
         setShowDeleteConfirmModal(false);
         setShowAccountSettings(false);
@@ -80,20 +107,89 @@ export default function AccountSettings() {
       }, 2000);
     } catch (e: unknown) {
       console.error("Delete account error:", e);
-      const errorMsg = e instanceof Error ? e.message : "Could not delete account. Please try again.";
-      setDeleteError(errorMsg);
-      setDeleteStep('error');
+
+      if (e instanceof Error && e.message === "TIMEOUT") {
+        // The edge function may have completed server-side — check if session is still valid
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            // Auth user was deleted — the operation succeeded server-side
+            // Invalidate local session immediately to prevent stale auth listener errors
+            await supabase.auth.signOut().catch(() => {});
+            setDeleteStep('success');
+            setTimeout(() => {
+              setShowDeleteConfirmModal(false);
+              setShowAccountSettings(false);
+              handleSignOut().catch(console.error);
+            }, 2000);
+            return;
+          }
+        } catch {
+          // Session check failed — fall through to error
+        }
+        setDeleteError("This is taking longer than expected. Your account may already be deleted — try closing and reopening the app.");
+        setDeleteStep('error');
+      } else {
+        const errorMsg = e instanceof Error ? e.message : "Could not delete account. Please try again.";
+        setDeleteError(errorMsg);
+        setDeleteStep('error');
+      }
     } finally {
+      if (timeoutIntervalId) clearInterval(timeoutIntervalId);
       setIsDeleting(false);
       deleteInProgressRef.current = false;
+      deleteStartTimeRef.current = null;
     }
   };
 
+  // Detect app returning from background while delete is in-flight
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      const wasBackground = appStateRef.current === 'background' || appStateRef.current === 'inactive';
+      appStateRef.current = nextAppState;
+
+      if (nextAppState === 'active' && wasBackground && deleteInProgressRef.current) {
+        // App returned from background while delete was in-flight
+        // Check if the operation completed server-side
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            // Deletion succeeded server-side while we were in background
+            // Invalidate local session immediately to prevent stale auth listener errors
+            await supabase.auth.signOut().catch(() => {});
+            setDeleteStep('success');
+            setIsDeleting(false);
+            deleteInProgressRef.current = false;
+            deleteStartTimeRef.current = null;
+            setTimeout(() => {
+              setShowDeleteConfirmModal(false);
+              setShowAccountSettings(false);
+              handleSignOut().catch(console.error);
+            }, 2000);
+          }
+        } catch {
+          // Session check failed — let the existing timeout handle it
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [handleSignOut, setShowAccountSettings]);
+
   const closeDeleteModal = () => {
-    if (deleteStep === 'deleting') return; // Don't allow closing while deleting
+    if (deleteStep === 'deleting') {
+      // Allow closing after 10 seconds (escape hatch for stuck state)
+      if (!deleteStartTimeRef.current || Date.now() - deleteStartTimeRef.current < 10000) return;
+    }
     setShowDeleteConfirmModal(false);
     setDeleteStep('confirm');
     setDeleteError(null);
+    // If we're closing during an in-flight delete, reset the state
+    if (deleteInProgressRef.current) {
+      setIsDeleting(false);
+      deleteInProgressRef.current = false;
+      deleteStartTimeRef.current = null;
+    }
   };
 
   return (
@@ -202,7 +298,7 @@ export default function AccountSettings() {
                     style={styles.modalCancelButton}
                     onPress={closeDeleteModal}
                   >
-                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                    <Text style={styles.modalCancelButtonText}>Keep My Account</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.modalDeleteButton}
@@ -217,12 +313,12 @@ export default function AccountSettings() {
             {deleteStep === 'deleting' && (
               <>
                 <ActivityIndicator size="large" color="#ef4444" style={styles.modalLoader} />
-                <Text style={styles.modalTitle}>Deleting Account...</Text>
+                <Text style={styles.modalTitle}>We're sad to see you go</Text>
                 <Text style={styles.modalDescription}>
-                  Please wait while we remove your account and all associated data.
+                  Packing up your things and sweeping the floors.
                 </Text>
                 <Text style={styles.modalSubDescription}>
-                  This may take a moment. Do not close the app.
+                  This takes a moment. Hang tight.
                 </Text>
               </>
             )}
@@ -234,10 +330,10 @@ export default function AccountSettings() {
                 </View>
                 <Text style={styles.modalTitle}>Account Deleted</Text>
                 <Text style={styles.modalDescription}>
-                  Your account has been permanently deleted.
+                  You're always welcome back. We'll leave the light on.
                 </Text>
                 <Text style={styles.modalSubDescription}>
-                  You will be signed out momentarily. Thank you for using Mingla.
+                  Signing you out now. Until next time.
                 </Text>
               </>
             )}
@@ -247,7 +343,7 @@ export default function AccountSettings() {
                 <View style={styles.modalIconContainer}>
                   <Ionicons name="close-circle" size={48} color="#ef4444" />
                 </View>
-                <Text style={styles.modalTitle}>Deletion Failed</Text>
+                <Text style={styles.modalTitle}>That Didn't Work</Text>
                 <Text style={styles.modalDescription}>
                   {deleteError || "Something went wrong. Please try again."}
                 </Text>

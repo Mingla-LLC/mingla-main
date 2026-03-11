@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
@@ -169,6 +169,12 @@ export function useAppState() {
     signInWithGoogle,
     signInWithApple,
   } = useAuthSimple();
+
+  // Stable ref for signOut so useCallback-wrapped handleSignOut doesn't
+  // re-create on every render (signOut is not memoized in useAuthSimple).
+  const signOutRef = useRef(signOut);
+  signOutRef.current = signOut;
+
   const {
     profile,
     showAccountSettings,
@@ -797,7 +803,7 @@ export function useAppState() {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     try {
       // Reset navigation/UI state immediately so next sign-in starts on Explore
       setCurrentPage("home");
@@ -879,7 +885,7 @@ export function useAppState() {
       });
 
       // Try Supabase sign out (non-blocking - continue even if it fails)
-      await signOut();
+      await signOutRef.current();
     } catch (error) {
       console.error("Error during sign out:", error);
       // Continue with local state clearing even if other operations fail
@@ -893,7 +899,7 @@ export function useAppState() {
         createdAt: "",
       });
     }
-  };
+  }, [queryClient]);
 
   return {
     // Authentication State (now using Supabase)

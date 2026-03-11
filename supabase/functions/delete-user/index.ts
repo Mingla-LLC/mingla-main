@@ -192,28 +192,26 @@ async function cleanupCollaborationSessions(
             console.log(`Deleting under-populated session ${sessionId} (${count} members remaining)`);
             
             // Delete the session and ALL related data
-            const deleteResults: Record<string, string> = {};
-            
-            const { error: e1 } = await adminClient.from("board_session_preferences").delete().eq("session_id", sessionId);
-            deleteResults["board_session_preferences"] = e1 ? e1.message : "ok";
-            
-            const { error: e2 } = await adminClient.from("session_votes").delete().eq("session_id", sessionId);
-            deleteResults["session_votes"] = e2 ? e2.message : "ok";
-            
-            const { error: e3 } = await adminClient.from("collaboration_invites").delete().eq("session_id", sessionId);
-            deleteResults["collaboration_invites"] = e3 ? e3.message : "ok";
-            
-            const { error: e4 } = await adminClient.from("session_presence").delete().eq("session_id", sessionId);
-            deleteResults["session_presence"] = e4 ? e4.message : "ok";
-            
-            const { error: e5 } = await adminClient.from("typing_indicators").delete().eq("session_id", sessionId);
-            deleteResults["typing_indicators"] = e5 ? e5.message : "ok";
-            
-            // Delete remaining participants (the last one)
+            const [r1, r2, r3, r4, r5] = await Promise.allSettled([
+              adminClient.from("board_session_preferences").delete().eq("session_id", sessionId),
+              adminClient.from("session_votes").delete().eq("session_id", sessionId),
+              adminClient.from("collaboration_invites").delete().eq("session_id", sessionId),
+              adminClient.from("session_presence").delete().eq("session_id", sessionId),
+              adminClient.from("typing_indicators").delete().eq("session_id", sessionId),
+            ]);
+
+            const deleteResults: Record<string, string> = {
+              board_session_preferences: r1.status === "fulfilled" ? (r1.value.error?.message ?? "ok") : r1.reason,
+              session_votes: r2.status === "fulfilled" ? (r2.value.error?.message ?? "ok") : r2.reason,
+              collaboration_invites: r3.status === "fulfilled" ? (r3.value.error?.message ?? "ok") : r3.reason,
+              session_presence: r4.status === "fulfilled" ? (r4.value.error?.message ?? "ok") : r4.reason,
+              typing_indicators: r5.status === "fulfilled" ? (r5.value.error?.message ?? "ok") : r5.reason,
+            };
+
+            // These must be sequential: participants before session
             const { error: e6 } = await adminClient.from("session_participants").delete().eq("session_id", sessionId);
             deleteResults["session_participants"] = e6 ? e6.message : "ok";
-            
-            // Finally delete the session itself
+
             const { error: e7 } = await adminClient.from("collaboration_sessions").delete().eq("id", sessionId);
             deleteResults["collaboration_sessions"] = e7 ? e7.message : "ok";
             
@@ -273,23 +271,25 @@ async function cleanupUserData(
   };
 
   try {
-    // ── User interactions and learning data ──
-    await safeDelete("user_interactions", "user_id", userId);
-    await safeDelete("user_location_history", "user_id", userId);
-    await safeDelete("user_preference_learning", "user_id", userId);
-    await safeDelete("user_sessions", "user_id", userId);
-    await safeDelete("user_activity", "user_id", userId);
+    // ── Batch 1: User interactions and learning data (all independent) ──
+    await Promise.allSettled([
+      safeDelete("user_interactions", "user_id", userId),
+      safeDelete("user_location_history", "user_id", userId),
+      safeDelete("user_preference_learning", "user_id", userId),
+      safeDelete("user_sessions", "user_id", userId),
+      safeDelete("user_activity", "user_id", userId),
+    ]);
 
-    // ── Friends and social data ──
-    await safeDeleteOr("friends", `user_id.eq.${userId},friend_user_id.eq.${userId}`);
-    await safeDeleteOr("friend_requests", `sender_id.eq.${userId},receiver_id.eq.${userId}`);
-    await safeDeleteOr("friend_links", `requester_id.eq.${userId},target_id.eq.${userId}`);
+    // ── Batch 2: Social data (all independent) ──
+    await Promise.allSettled([
+      safeDeleteOr("friends", `user_id.eq.${userId},friend_user_id.eq.${userId}`),
+      safeDeleteOr("friend_requests", `sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      safeDeleteOr("friend_links", `requester_id.eq.${userId},target_id.eq.${userId}`),
+      safeDeleteOr("blocked_users", `blocker_id.eq.${userId},blocked_id.eq.${userId}`),
+      safeDeleteOr("muted_users", `muter_id.eq.${userId},muted_id.eq.${userId}`),
+    ]);
 
-    // ── Blocked and muted users ──
-    await safeDeleteOr("blocked_users", `blocker_id.eq.${userId},blocked_id.eq.${userId}`);
-    await safeDeleteOr("muted_users", `muter_id.eq.${userId},muted_id.eq.${userId}`);
-
-    // ── Messaging — soft delete to preserve other users' conversation history ──
+    // ── Batch 3: Messaging — soft delete to preserve other users' conversation history ──
     try {
       await adminClient
         .from("messages")
@@ -299,62 +299,39 @@ async function cleanupUserData(
       console.warn("Warning: Could not soft-delete messages:", err);
     }
 
-    // ── Conversation participants ──
-    await safeDelete("conversation_participants", "user_id", userId);
+    // ── Batch 4: Board, calendar, presence, and misc data (all independent) ──
+    await Promise.allSettled([
+      safeDelete("conversation_participants", "user_id", userId),
+      safeDelete("calendar_entries", "user_id", userId),
+      safeDelete("board_session_preferences", "user_id", userId),
+      safeDelete("board_messages", "user_id", userId),
+      safeDelete("board_card_messages", "user_id", userId),
+      safeDelete("board_message_reads", "user_id", userId),
+      safeDelete("board_card_message_reads", "user_id", userId),
+      safeDelete("board_user_swipe_states", "user_id", userId),
+      safeDelete("board_saved_cards", "saved_by", userId),
+      safeDelete("preference_history", "user_id", userId),
+      safeDelete("collaboration_invites", "inviter_id", userId),
+      safeDelete("collaboration_invites", "invitee_id", userId),
+      safeDelete("user_presence", "user_id", userId),
+      safeDelete("session_presence", "user_id", userId),
+      safeDelete("typing_indicators", "user_id", userId),
+      safeDelete("board_participant_presence", "user_id", userId),
+      safeDelete("board_typing_indicators", "user_id", userId),
+      safeDelete("session_votes", "user_id", userId),
+      safeDelete("person_audio_clips", "user_id", userId),
+      safeDelete("person_experiences", "user_id", userId),
+      safeDelete("saved_people", "user_id", userId),
+      safeDelete("user_push_tokens", "user_id", userId),
+      safeDelete("subscriptions", "user_id", userId),
+      safeDeleteOr("referral_credits", `referrer_id.eq.${userId},referred_id.eq.${userId}`),
+      safeDelete("undo_actions", "user_id", userId),
+      safeDelete("app_feedback", "user_id", userId),
+      safeDeleteOr("user_reports", `reporter_id.eq.${userId},reported_user_id.eq.${userId}`),
+    ]);
 
-    // ── Calendar entries ──
-    await safeDelete("calendar_entries", "user_id", userId);
-
-    // ── Board-related data ──
-    await safeDelete("board_session_preferences", "user_id", userId);
-    await safeDelete("board_messages", "user_id", userId);
-    await safeDelete("board_card_messages", "user_id", userId);
-    await safeDelete("board_message_reads", "user_id", userId);
-    await safeDelete("board_card_message_reads", "user_id", userId);
-    await safeDelete("board_user_swipe_states", "user_id", userId);
-    await safeDelete("board_saved_cards", "saved_by", userId);
-
-    // ── Preference history (must be deleted before profiles due to trigger) ──
-    await safeDelete("preference_history", "user_id", userId);
-
-    // ── Collaboration invites ──
-    await safeDelete("collaboration_invites", "inviter_id", userId);
-    await safeDelete("collaboration_invites", "invitee_id", userId);
-
-    // ── Presence data ──
-    await safeDelete("user_presence", "user_id", userId);
-    await safeDelete("session_presence", "user_id", userId);
-    await safeDelete("typing_indicators", "user_id", userId);
-    await safeDelete("board_participant_presence", "user_id", userId);
-    await safeDelete("board_typing_indicators", "user_id", userId);
-
-    // ── Session votes ──
-    await safeDelete("session_votes", "user_id", userId);
-
-    // ── Saved people and person data ──
-    await safeDelete("person_audio_clips", "user_id", userId);
-    await safeDelete("person_experiences", "user_id", userId);
-    await safeDelete("saved_people", "user_id", userId);
-
-    // Delete saved_people entries where OTHER users had the deleted user as a linked friend.
-    // CASCADE from saved_people automatically cleans up their person_experiences and person_audio_clips.
+    // Must run after saved_people for this user are deleted
     await safeDelete("saved_people", "linked_user_id", userId);
-
-    // ── Push tokens ──
-    await safeDelete("user_push_tokens", "user_id", userId);
-
-    // ── Subscriptions and credits ──
-    await safeDelete("subscriptions", "user_id", userId);
-    await safeDeleteOr("referral_credits", `referrer_id.eq.${userId},referred_id.eq.${userId}`);
-
-    // ── Undo actions ──
-    await safeDelete("undo_actions", "user_id", userId);
-
-    // ── App feedback ──
-    await safeDelete("app_feedback", "user_id", userId);
-
-    // ── User reports (both directions) ──
-    await safeDeleteOr("user_reports", `reporter_id.eq.${userId},reported_user_id.eq.${userId}`);
 
     // ── Pending invites: clean up by user's phone number ──
     // Without this, a new user signing up with the same phone would
@@ -381,8 +358,10 @@ async function cleanupUserData(
     }
 
     // ── Pending invites: clean up by inviter_id ──
-    await safeDelete("pending_invites", "inviter_id", userId);
-    await safeDelete("pending_session_invites", "inviter_id", userId);
+    await Promise.allSettled([
+      safeDelete("pending_invites", "inviter_id", userId),
+      safeDelete("pending_session_invites", "inviter_id", userId),
+    ]);
 
     return { success: true };
   } catch (err) {

@@ -49,6 +49,8 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
+import * as SplashScreen from 'expo-splash-screen';
+import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
 
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
@@ -2225,6 +2227,7 @@ export default function App() {
   // The shouldDehydrateQuery filter already excludes heavy queries, so the cache
   // should stay small. Preserving it enables instant startup with cached prefs/location.
   const [cacheReady, setCacheReady] = React.useState(false);
+  const [splashDone, setSplashDone] = React.useState(false);
 
   React.useEffect(() => {
     const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
@@ -2238,56 +2241,63 @@ export default function App() {
       .finally(() => setCacheReady(true));
   }, []);
 
-  if (!cacheReady) {
-    return null;
-  }
-
+  // AnimatedSplashScreen renders immediately (before cacheReady) so that
+  // its own useEffect fires as soon as it's painted — that's when it calls
+  // SplashScreen.hideAsync(). This guarantees the native splash is never
+  // dismissed before the React replacement is committed to screen.
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{
-        persister: asyncStoragePersister,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    <>
+      {cacheReady && (
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
-        dehydrateOptions: {
-          // Exclude large/transient queries from persistence to prevent
-          // Android CursorWindow overflow (2MB SQLite row limit)
-          shouldDehydrateQuery: (query) => {
-            const queryKey = query.queryKey;
+            dehydrateOptions: {
+              // Exclude large/transient queries from persistence to prevent
+              // Android CursorWindow overflow (2MB SQLite row limit)
+              shouldDehydrateQuery: (query) => {
+                const queryKey = query.queryKey;
 
-            if (Array.isArray(queryKey)) {
-              const firstKey = queryKey[0];
-              // Never persist these heavy/transient queries:
-              // - savedCards, calendarEntries: refetched on mount
-              // - curated-experiences: very large payload (20 cards × 3 stops)
-              // - deck-cards: 20 Recommendation[] with strollData/stops — too large
-              // - recommendations: large + stale quickly
-              if (
-                firstKey === "savedCards" ||
-                firstKey === "calendarEntries" ||
-                firstKey === "curated-experiences" ||
-                firstKey === "deck-cards" ||
-                firstKey === "recommendations" ||
-                firstKey === "phone-lookup" ||
-                firstKey === "link-consent"
-              ) {
-                return false;
-              }
-            }
-            // Never persist queries that are still fetching — their promises
-            // can't be serialized and cause "promise.then is not a function"
-            // crash during hydration on next app launch
-            if (query.state.fetchStatus === 'fetching') {
-              return false;
-            }
+                if (Array.isArray(queryKey)) {
+                  const firstKey = queryKey[0];
+                  // Never persist these heavy/transient queries:
+                  // - savedCards, calendarEntries: refetched on mount
+                  // - curated-experiences: very large payload (20 cards × 3 stops)
+                  // - deck-cards: 20 Recommendation[] with strollData/stops — too large
+                  // - recommendations: large + stale quickly
+                  if (
+                    firstKey === "savedCards" ||
+                    firstKey === "calendarEntries" ||
+                    firstKey === "curated-experiences" ||
+                    firstKey === "deck-cards" ||
+                    firstKey === "recommendations" ||
+                    firstKey === "phone-lookup" ||
+                    firstKey === "link-consent"
+                  ) {
+                    return false;
+                  }
+                }
+                // Never persist queries that are still fetching — their promises
+                // can't be serialized and cause "promise.then is not a function"
+                // crash during hydration on next app launch
+                if (query.state.fetchStatus === 'fetching') {
+                  return false;
+                }
 
-            // Persist lightweight queries (preferences, location, etc.)
-            return true;
-          },
-        },
-      }}
-    >
-      <AppContent />
-    </PersistQueryClientProvider>
+                // Persist lightweight queries (preferences, location, etc.)
+                return true;
+              },
+            },
+          }}
+        >
+          <AppContent />
+        </PersistQueryClientProvider>
+      )}
+      {!splashDone && (
+        <AnimatedSplashScreen onDone={() => setSplashDone(true)} />
+      )}
+    </>
   );
 }

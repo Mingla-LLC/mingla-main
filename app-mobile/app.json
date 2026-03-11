@@ -9,9 +9,9 @@
     "newArchEnabled": true,
     "scheme": "com.mingla.app.v2",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f8f9fa"
+      "backgroundColor": "#FAFAFA"
     },
     "ios": {
       "supportsTablet": true,
@@ -31,8 +31,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#f8f9fa"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FAFAFA"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -68,6 +68,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-splash-screen",
       "expo-location",
       "expo-notifications",
       "expo-camera",

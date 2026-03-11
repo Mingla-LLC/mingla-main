@@ -1819,42 +1819,26 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           </Pressable>
 
           {showDatePicker && (
-            Platform.OS === 'ios' ? (
-              <View style={styles.detailsDatePickerContainer}>
-                <DateTimePicker
-                  value={data.userBirthday || new Date(2000, 0, 1)}
-                  mode="date"
-                  display="spinner"
-                  maximumDate={new Date()}
-                  minimumDate={new Date(1906, 0, 1)}
-                  onChange={(event, selectedDate) => {
-                    if (selectedDate) {
-                      setData((p) => ({ ...p, userBirthday: selectedDate }))
-                    }
-                  }}
-                />
-                <Pressable
-                  style={styles.detailsDatePickerDone}
-                  onPress={() => setShowDatePicker(false)}
-                >
-                  <Text style={styles.detailsDatePickerDoneText}>Done</Text>
-                </Pressable>
-              </View>
-            ) : (
+            <View style={styles.detailsDatePickerContainer}>
               <DateTimePicker
                 value={data.userBirthday || new Date(2000, 0, 1)}
                 mode="date"
-                display="default"
+                display="spinner"
                 maximumDate={new Date()}
                 minimumDate={new Date(1906, 0, 1)}
                 onChange={(event, selectedDate) => {
-                  setShowDatePicker(false)
-                  if (event.type === 'set' && selectedDate) {
+                  if (selectedDate) {
                     setData((p) => ({ ...p, userBirthday: selectedDate }))
                   }
                 }}
               />
-            )
+              <Pressable
+                style={styles.detailsDatePickerDone}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={styles.detailsDatePickerDoneText}>Done</Text>
+              </Pressable>
+            </View>
           )}
 
           {/* Preferred Language */}
@@ -2760,7 +2744,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
             <DateTimePicker
               value={data.personBirthday || defaultDate}
               mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display="spinner"
               minimumDate={minDate}
               maximumDate={maxDate}
               onChange={(_, date) => {
