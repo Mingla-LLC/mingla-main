@@ -32,7 +32,7 @@ import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
 import ProfileSettings from "../src/components/profile/ProfileSettings";
 import ViewFriendProfileScreen from "../src/components/profile/ViewFriendProfileScreen";
-import OnboardingFlow from "../src/components/OnboardingFlow";
+import OnboardingLoader from "../src/components/onboarding/OnboardingLoader";
 import LikesPage from "../src/components/LikesPage";
 import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import ConnectionsPage from "../src/components/ConnectionsPage";
@@ -1518,28 +1518,24 @@ function AppContent() {
       </View>
     );
   }
-  // Show onboarding flow if it's active OR if user needs onboarding
+  // Show onboarding loader if active OR if user needs onboarding.
+  // OnboardingLoader owns the async resume/loading state — AppContent never renders
+  // OnboardingFlow directly. Both user and profile are guaranteed non-null here:
+  // needsOnboarding requires profile non-null, and showOnboardingFlow is only set
+  // after profile loads (see AppStateManager useEffect).
   if (showOnboardingFlow || needsOnboarding) {
     logger.nav('Render: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
 
-    // Ensure onboarding flow is shown (only if not navigating to sign-up)
-    if (!showOnboardingFlow && needsOnboarding) {
-      setShowOnboardingFlow(true);
-    }
-
     return (
       <ErrorBoundary>
-        <OnboardingFlow
+        <OnboardingLoader
+          userId={user!.id}
+          profile={profile!}
           onComplete={() => {
             logger.nav('OnboardingFlow completed — transitioning to home');
-            // has_completed_onboarding is already set in database by OnboardingFlow
-            // Just update local state
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
             setCurrentPage("home");
-            // Explicitly refresh sessions. user?.id does NOT change during onboarding
-            // (user was authenticated the whole time), so the useEffect([user?.id])
-            // trigger will NOT fire on its own. This call is mandatory.
             refreshAllSessions();
           }}
         />
@@ -1567,8 +1563,14 @@ function AppContent() {
   if (user && !profile) {
     logger.nav('Render: ProfileLoading (user exists, waiting for profile)', { userId: user.id });
     return (
-      <View style={{ flex: 1, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', alignItems: 'center' }}>
         <StatusBar barStyle="dark-content" translucent={true} backgroundColor="transparent" />
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ width: 64, height: 64, backgroundColor: '#eb7825', borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+            <Text style={{ color: 'white', fontSize: 24 }}>✨</Text>
+          </View>
+          <Text style={{ color: '#6b7280', fontSize: 16 }}>Loading your profile...</Text>
+        </View>
       </View>
     );
   }

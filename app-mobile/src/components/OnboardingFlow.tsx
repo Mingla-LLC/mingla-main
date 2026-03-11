@@ -21,7 +21,6 @@ import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useAuthSimple } from '../hooks/useAuthSimple'
 import { useAppStore } from '../store/appStore'
 import { useOnboardingStateMachine } from '../hooks/useOnboardingStateMachine'
 import { supabase } from '../services/supabase'
@@ -31,7 +30,7 @@ import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGe
 import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
-import { saveOnboardingData, loadOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
+import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { createSavedPerson, SavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { uploadOnboardingAudio, deleteFromStorage, createAudioClipRecord } from '../services/personAudioService'
@@ -69,7 +68,7 @@ import {
 } from '../types/onboarding'
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers'
 import { categories } from '../constants/categories'
-import { getDefaultCountryCode, getCountryByCode } from '../constants/countries'
+import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
 import { LanguagePickerModal } from './onboarding/LanguagePickerModal'
 import { CountryPickerModal } from './onboarding/CountryPickerModal'
@@ -94,9 +93,7 @@ function formatBirthdayDisplay(date: Date): string {
   return `${day}/${month}/${year}`
 }
 
-// ─── Stable Date Boundaries (module-level — never re-created on render) ───
-// Recalculated once per app launch. Accuracy within one day is sufficient for age validation.
-const MAX_BIRTHDAY_DATE = new Date()  // today — user cannot be born in the future
+// ─── Stable Date Boundaries ───
 const MIN_BIRTHDAY_DATE = new Date(1906, 0, 1)  // 120 years ago ceiling
 const BIRTHDAY_PICKER_DEFAULT = new Date(2000, 0, 1)  // fallback starting position for Step 1 picker
 
@@ -151,56 +148,29 @@ function buildOccasions(birthday: Date | null): Array<{ name: string; date: stri
 
 interface OnboardingFlowProps {
   onComplete: () => void
+  initialStep: OnboardingStep
+  initialData: OnboardingData
+  phonePreVerified: boolean
+  initialHasGpsPermission: boolean
+  resumeSubStep: SubStep | null
 }
 
-const INITIAL_DATA: OnboardingData = {
-  phoneNumber: '',
-  phoneCountryCode: 'US',
-  phoneVerified: false,
-  userGender: null,
-  userBirthday: null,
-  userCountry: 'US',  // overridden by phoneCountryCode after OTP
-  userPreferredLanguage: 'en',  // overridden by device locale detection
-  selectedIntents: [],
-  locationGranted: false,
-  coordinates: null,
-  cityName: null,
-  useGpsLocation: false,
-  manualLocation: null,
-  selectedCategories: [...DEFAULT_CATEGORIES],
-  selectedPriceTiers: DEFAULT_PRICE_TIERS,
-  travelMode: DEFAULT_TRANSPORT,
-  travelTimeMinutes: DEFAULT_TRAVEL_TIME,
-  invitePath: null,
-  personName: null,
-  personBirthday: null,
-  personGender: null,
-  audioClipUri: null,
-  audioClipDuration: null,
-  audioClipStoragePath: null,
-  addedFriends: [],
-  createdSessions: [],
-  skippedFriends: false,
-  selectedSyncFriends: [],
-  audioClipsByFriend: {},
-  currentAudioFriendIndex: 0,
-}
 
-const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
-  const { user } = useAuthSimple()
-  const { profile, setProfile } = useAppStore()
+const OnboardingFlow = ({
+  onComplete,
+  initialStep,
+  initialData,
+  phonePreVerified,
+  initialHasGpsPermission,
+  resumeSubStep,
+}: OnboardingFlowProps) => {
+  const { user, profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
 
   // ─── State ───
-  const [data, setData] = useState<OnboardingData>({
-    ...INITIAL_DATA,
-    phoneCountryCode: getDefaultCountryCode(),
-  })
-  const [hasGpsPermission, setHasGpsPermission] = useState(false)
+  const [data, setData] = useState<OnboardingData>(initialData)
+  const [hasGpsPermission, setHasGpsPermission] = useState(initialHasGpsPermission)
   const [categoryCapMessage, setCategoryCapMessage] = useState(false)
-  const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
-  const [phonePreVerified, setPhonePreVerified] = useState(false)
-  const [isReady, setIsReady] = useState(false)
 
   // ─── State Machine ───
   const {
@@ -212,7 +182,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     setSkippedFriends,
     progress,
     isLaunch,
-  } = useOnboardingStateMachine({ initialStep, initialChosenPath: data.invitePath, hasGpsPermission })
+  } = useOnboardingStateMachine({ initialStep, initialChosenPath: initialData.invitePath, hasGpsPermission })
 
   const { data: pendingConsents, isLoading: isLoadingConsents } = usePendingLinkConsents(user?.id);
   const respondConsentMutation = useRespondLinkConsent();
@@ -249,7 +219,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const goNextRef = useRef(goNext)
   goNextRef.current = goNext
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hasResumedRef = useRef(false)
+  const resumeJumpedRef = useRef(false)
 
   // Cleanup auto-advance timeout on unmount
   useEffect(() => {
@@ -259,6 +229,17 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       }
     }
   }, [])
+
+  // ─── One-Shot Resume Sub-Step Jump ───
+  // Jumps to the resume sub-step once on mount if the loader determined one.
+  // The ref guard prevents a double-fire in development Strict Mode.
+  useEffect(() => {
+    if (resumeSubStep && !resumeJumpedRef.current) {
+      resumeJumpedRef.current = true
+      goToSubStep(resumeSubStep)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // intentionally empty — run once on mount only
 
   // ─── UI State ───
   const [otpCode, setOtpCode] = useState('')
@@ -270,9 +251,13 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [otpAttempts, setOtpAttempts] = useState(0)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
-  const [manualLocationText, setManualLocationText] = useState('')
+  const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
   const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
-  const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(null)
+  const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(
+    initialData.manualLocation
+      ? { displayName: initialData.manualLocation, fullAddress: initialData.manualLocation }
+      : null
+  )
   const [locationSearchLoading, setLocationSearchLoading] = useState(false)
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
   const [locationHasSearched, setLocationHasSearched] = useState(false)
@@ -285,7 +270,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [launchRetries, setLaunchRetries] = useState(0)
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
-  const [resumeSubStep, setResumeSubStep] = useState<SubStep | null>(null)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
   // Audio state now lives in `data` for persistence (data.currentAudioFriendIndex, data.audioClipsByFriend)
@@ -626,131 +610,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       vpGlowRef.current = null
     }
   }, [navState.subStep, valuePropBeat])
-
-  // ─── Resume Logic ───
-  // Fix D: Depend on both user?.id AND profile?.id so this runs only after
-  // BOTH are loaded. The hasResumedRef guard still prevents re-runs — once
-  // resume completes, subsequent profile/user changes are ignored.
-  // Previous bug: depended only on [user?.id], so if profile loaded after user,
-  // the effect captured stale null profile and marked itself done forever.
-  useEffect(() => {
-    if (hasResumedRef.current) return
-
-    async function loadResume() {
-      // Wait for both user and profile to be available
-      if (!user?.id || !profile?.id) return
-      hasResumedRef.current = true
-
-      try {
-        // Restore persisted onboarding data from AsyncStorage (survives app close)
-        const persisted = await loadOnboardingData()
-        if (persisted) {
-          setData((prev) => ({ ...prev, ...persisted }))
-        }
-
-        // Defense-in-depth: always sync phoneVerified with the database source of truth.
-        // AsyncStorage may contain stale phoneVerified: true from a previous account
-        // (if cleanup failed, app crashed, or device was restored from backup).
-        // profiles.phone is the ONLY authority on whether phone is actually verified.
-        const dbPhoneVerified = !!profile.phone
-        setData((prev) => ({ ...prev, phoneVerified: dbPhoneVerified }))
-
-        const savedStep = profile.onboarding_step
-
-        // If the user already has a verified phone number from a previous session,
-        // skip Step 1 (phone verification) entirely — reduces friction and SMS cost.
-        const phoneAlreadyVerified = !!profile.phone
-
-        if (savedStep && savedStep >= 1 && savedStep <= 5) {
-          if (phoneAlreadyVerified && savedStep === 1) {
-            // Phone verified but still on Step 1 — check if identity/details are complete
-            const hasIdentityData = !!profile.gender && !!profile.birthday && !!profile.country
-            if (hasIdentityData) {
-              // All Step 1 data complete — advance to Step 2
-              setInitialStep(2)
-            } else {
-              // Phone verified but identity/details incomplete — resume at gender_identity
-              setInitialStep(1)
-              setResumeSubStep('gender_identity')
-            }
-          } else {
-            setInitialStep(savedStep as OnboardingStep)
-          }
-        } else if (phoneAlreadyVerified) {
-          const hasIdentityData = !!profile.gender && !!profile.birthday && !!profile.country
-          if (hasIdentityData) {
-            setInitialStep(2)
-          } else {
-            setInitialStep(1)
-            setResumeSubStep('gender_identity')
-          }
-        }
-
-        // Mark phone as verified in onboarding data if already in DB
-        if (phoneAlreadyVerified) {
-          setPhonePreVerified(true)
-          setData((prev) => ({
-            ...prev,
-            phoneVerified: true,
-            // Load existing identity data from profile if available
-            userGender: profile.gender || null,
-            userBirthday: profile.birthday ? new Date(profile.birthday) : null,
-            userCountry: profile.country || prev.phoneCountryCode || 'US',
-            userPreferredLanguage: profile.preferred_language || getDefaultLanguageCode(),
-          }))
-        }
-
-        const prefs = await PreferencesService.getUserPreferences(user.id)
-        if (prefs) {
-          const prefsAny = prefs as any
-          const restoredUseGps = prefsAny.use_gps_location === true
-
-          setData((prev) => ({
-            ...prev,
-            selectedCategories: prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES,
-            selectedPriceTiers: prefsAny.price_tiers?.length ? prefsAny.price_tiers : DEFAULT_PRICE_TIERS,
-            travelMode: (prefs.travel_mode as any) || DEFAULT_TRANSPORT,
-            travelTimeMinutes: prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME,
-            selectedIntents: prefsAny.intents || [],
-            // Restore location state from persisted preferences
-            locationGranted: restoredUseGps,
-            useGpsLocation: restoredUseGps,
-            manualLocation: prefsAny.custom_location || null,
-          }))
-
-          // Restore manual location selection if user had previously set one
-          if (prefsAny.custom_location && !restoredUseGps) {
-            setManualLocationText(prefsAny.custom_location)
-            setSelectedLocation({
-              displayName: prefsAny.custom_location,
-              fullAddress: prefsAny.custom_location,
-            })
-          }
-
-          // Restore GPS permission flag — verify actual device permission still granted
-          if (restoredUseGps) {
-            const { status } = await Location.getForegroundPermissionsAsync()
-            if (status === 'granted') {
-              setHasGpsPermission(true)
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Resume load error:', e)
-      }
-      setIsReady(true)
-    }
-    loadResume()
-  }, [user?.id, profile?.id])
-
-  // ─── Resume Sub-Step Jump ───
-  // When resume logic sets a sub-step target, jump there once the state machine is ready
-  useEffect(() => {
-    if (resumeSubStep) {
-      goToSubStep(resumeSubStep)
-      setResumeSubStep(null)
-    }
-  }, [resumeSubStep, goToSubStep])
 
   // ─── Resend Countdown Timer ───
   useEffect(() => {
@@ -1661,8 +1520,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           disabled: false,
           loading: false,
           onPress: () => {
-            if (pendingPersonBirthdayRef.current) {
-              setData((p) => ({ ...p, personBirthday: pendingPersonBirthdayRef.current! }))
+            const personDateToCommit = pendingPersonBirthdayRef.current
+            if (personDateToCommit) {
+              setData((p) => ({ ...p, personBirthday: personDateToCommit }))
               pendingPersonBirthdayRef.current = null
             } else if (!data.personBirthday) {
               // Safety fallback: normally unreachable because the seeding useEffect
@@ -1898,7 +1758,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                 value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
                 display="spinner"
-                maximumDate={MAX_BIRTHDAY_DATE}
+                maximumDate={new Date()}
                 minimumDate={MIN_BIRTHDAY_DATE}
                 onChange={(_, selectedDate) => {
                   if (selectedDate) {
@@ -1909,8 +1769,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
               <Pressable
                 style={styles.detailsDatePickerDone}
                 onPress={() => {
-                  if (pendingBirthdayRef.current) {
-                    setData((p) => ({ ...p, userBirthday: pendingBirthdayRef.current! }))
+                  const dateToCommit = pendingBirthdayRef.current
+                  if (dateToCommit) {
+                    setData((p) => ({ ...p, userBirthday: dateToCommit }))
                     pendingBirthdayRef.current = null
                   }
                   setShowDatePicker(false)
@@ -2920,8 +2781,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       </View>
     )
   }
-
-  if (!isReady) return null
 
   const ctaConfig = getCtaConfig()
 
