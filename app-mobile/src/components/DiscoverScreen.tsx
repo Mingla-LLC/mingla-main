@@ -40,17 +40,19 @@ import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
 import AddPersonModal from "./AddPersonModal";
 import LinkFriendSheet from "./LinkFriendSheet";
-import IncomingLinkRequestCard, { EnrichedLinkRequest } from "./IncomingLinkRequestCard";
+import { IncomingLinkRequestCard, EnrichedLinkRequest } from "./IncomingLinkRequestCard";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
+import { FriendLink, SentFriendLink } from "../types/friendLink";
 import { upsertSavedPersonByLink } from "../services/savedPeopleService";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
+import { hasElevatedAccess } from "../types/subscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { friendLinkKeys } from "../hooks/socialQueryKeys";
 
 // Storage key for saved people
@@ -455,6 +457,7 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 
 interface DiscoverScreenProps {
   onAddFriend?: () => void;
+  onUpgradePress?: () => void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -736,6 +739,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 
 export default function DiscoverScreen({
   onAddFriend,
+  onUpgradePress,
   accountPreferences,
   preferencesRefreshKey,
 }: DiscoverScreenProps) {
@@ -838,7 +842,6 @@ export default function DiscoverScreen({
   const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
   const [selectedIncomingRequestId, setSelectedIncomingRequestId] = useState<string | null>(null);
-  const [enrichedLinkRequests, setEnrichedLinkRequests] = useState<EnrichedLinkRequest[]>([]);
   const { data: personExperiences = [] } = usePersonExperiences(
     selectedPersonId !== "for-you" ? selectedPersonId : undefined
   );
@@ -926,43 +929,41 @@ export default function DiscoverScreen({
   useSocialRealtime(user?.id);
   const effectiveTier = useEffectiveTier(user?.id);
 
-  // Batch-fetch requester profiles to build enriched link request objects
-  useEffect(() => {
-    if (!pendingLinkRequests || pendingLinkRequests.length === 0) {
-      setEnrichedLinkRequests([]);
-      return;
-    }
-    const requesterIds = pendingLinkRequests.map((r: any) => r.requesterId);
-    supabase
-      .from("profiles")
-      .select("id, display_name, first_name, avatar_url")
-      .in("id", requesterIds)
-      .then(({ data }) => {
-        const profileMap: Record<string, { display_name?: string; first_name?: string; avatar_url?: string }> = {};
-        (data ?? []).forEach((p) => { profileMap[p.id] = p; });
-        const enriched: EnrichedLinkRequest[] = pendingLinkRequests.map((r: any) => {
-          const profile = profileMap[r.requesterId] ?? {};
-          const rawName = profile.display_name || profile.first_name || "Someone";
-          const initials = rawName.substring(0, 2).toUpperCase();
-          return {
-            id: r.id,
-            requesterId: r.requesterId,
-            name: rawName,
-            avatarUrl: profile.avatar_url ?? null,
-            initials,
-          };
-        });
-        setEnrichedLinkRequests(enriched);
-      })
-      .catch((err) => {
-        console.warn("[DiscoverScreen] Failed to enrich link requests:", err);
+  // Batch-fetch requester profiles to build enriched link request objects.
+  // React Query handles cancellation, caching, and retries — no raw useEffect needed.
+  const enrichedRequesterIds = (pendingLinkRequests ?? []).map((r: FriendLink) => r.requesterId);
+  const { data: enrichedLinkRequests = [] } = useQuery<EnrichedLinkRequest[]>({
+    queryKey: ["enrichedLinkRequests", enrichedRequesterIds],
+    queryFn: async (): Promise<EnrichedLinkRequest[]> => {
+      if (enrichedRequesterIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, first_name, avatar_url")
+        .in("id", enrichedRequesterIds);
+      if (error) throw error;
+      const profileMap: Record<string, { display_name?: string; first_name?: string; avatar_url?: string }> = {};
+      (data ?? []).forEach((p: { id: string; display_name?: string; first_name?: string; avatar_url?: string }) => {
+        profileMap[p.id] = p;
       });
-  }, [pendingLinkRequests]);
+      return (pendingLinkRequests ?? []).map((r: FriendLink) => {
+        const profile = profileMap[r.requesterId] ?? {};
+        const rawName = profile.display_name || profile.first_name || "Someone";
+        return {
+          id: r.id,
+          requesterId: r.requesterId,
+          name: rawName,
+          initials: rawName.substring(0, 2).toUpperCase(),
+        };
+      });
+    },
+    enabled: (pendingLinkRequests ?? []).length > 0,
+    staleTime: 60 * 1000,
+  });
 
   // Track which person IDs have pending outbound links (for greyed pills)
   const pendingOutboundLinkedUserIds = useMemo(() => {
     const ids = new Set<string>();
-    sentLinkRequests.forEach((req: any) => {
+    sentLinkRequests.forEach((req: SentFriendLink) => {
       if (req.status === "pending" && req.targetId) {
         ids.add(req.targetId);
       }
@@ -2686,13 +2687,26 @@ export default function DiscoverScreen({
     setSelectedIncomingRequestId((prev) => (prev === requestId ? null : requestId));
   };
 
-  // Accept a link request, upsert the person, then open PersonHolidayView
+  // Accept a link request, upsert the person, then open PersonHolidayView.
+  // Split into two sequential try/catch blocks:
+  //   Block 1 — accept the link. If this fails, the link is NOT yet accepted — bail with an error.
+  //   Block 2 — upsert saved_people. The link IS already accepted at this point. Never show
+  //             an error to the user if upsert fails — just refresh the list and navigate away.
+  //             Showing "try again" here would confuse users into re-accepting an already-accepted link.
   const handleAcceptLinkRequest = async (linkId: string) => {
     const request = enrichedLinkRequests.find((r) => r.id === linkId);
     if (!request || !user) return;
+
     try {
       await respondToLinkMutation.mutateAsync({ linkId, action: "accept" });
-      // mutateAsync onSuccess already invalidates friendLinkKeys + savedPeopleKeys
+    } catch (err) {
+      console.error("[DiscoverScreen] Accept link request failed:", err);
+      Alert.alert("Error", "Failed to accept link request. Please try again.");
+      return;
+    }
+
+    // Link is accepted on the backend. Upsert is best-effort.
+    try {
       const savedPerson = await upsertSavedPersonByLink({
         currentUserId: user.id,
         linkedUserId: request.requesterId,
@@ -2700,15 +2714,16 @@ export default function DiscoverScreen({
         name: request.name,
         initials: request.initials,
       });
-      // Invalidate again after upsert to ensure the new saved_people row is reflected
       await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
       setSelectedIncomingRequestId(null);
       if (savedPerson) {
         setSelectedPersonId(savedPerson.id);
       }
     } catch (err) {
-      console.error("[DiscoverScreen] Accept link request failed:", err);
-      Alert.alert("Error", "Failed to accept link request. Please try again.");
+      // Upsert failed but link IS accepted — refresh and navigate away gracefully.
+      console.warn("[DiscoverScreen] Person upsert failed after link accept:", err);
+      await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+      setSelectedIncomingRequestId(null);
     }
   };
 

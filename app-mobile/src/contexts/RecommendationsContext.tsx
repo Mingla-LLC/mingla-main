@@ -522,7 +522,7 @@ export const RecommendationsProvider: React.FC<
       // from updated categories/intents handles refetching automatically
     }
     previousRefreshKeyRef.current = refreshKey;
-  }, [refreshKey]);
+  }, [refreshKey, user?.id]);
 
   // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
   useEffect(() => {

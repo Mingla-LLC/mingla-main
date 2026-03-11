@@ -35,15 +35,25 @@ export async function sendPush(
   let response: Response;
 
   try {
-    response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify(payload),
-    });
+    // 5-second hard cap — Supabase edge functions default timeout is 2s on the
+    // Starter plan and 400ms on the free plan. An unresponsive Expo server
+    // would otherwise stall all 8 notification edge functions indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (networkErr) {
     console.warn("[push-utils] Network error sending push:", networkErr);
     return false;

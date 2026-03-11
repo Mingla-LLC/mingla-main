@@ -12,7 +12,6 @@ export interface EnrichedLinkRequest {
   id: string;           // FriendLink.id
   requesterId: string;
   name: string;         // requester's display_name, falling back to first_name, then "Someone"
-  avatarUrl: string | null;
   initials: string;     // First 2 characters of name, uppercased
 }
 
@@ -24,7 +23,7 @@ interface Props {
   onDecline: (linkId: string) => void;
 }
 
-export default function IncomingLinkRequestCard({
+export function IncomingLinkRequestCard({
   request,
   isAccepting,
   isDeclining,
