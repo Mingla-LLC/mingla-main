@@ -848,12 +848,15 @@ export const useSessionManagement = () => {
 
           // Only create board if session doesn't already have one
           if (!boardId) {
+            // Use current user as created_by — RLS requires auth.uid() = created_by.
+            // The accepting user triggers board creation; session ownership is tracked
+            // separately in collaboration_sessions.created_by.
             const { data: boardData, error: boardError } = await supabase
               .from('boards')
               .insert({
                 name: sessionData.name,
                 description: `Collaborative board for ${sessionData.name}`,
-                created_by: sessionData.created_by,
+                created_by: user.id,
                 is_public: false,
               })
               .select()

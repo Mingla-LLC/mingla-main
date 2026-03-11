@@ -438,15 +438,6 @@ export default function ConnectionsPageRefactored({
         await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "accept" });
       } else {
         await acceptFriendRequest(requestId);
-        // Mirror to friend_links — prevent ghost request resurfacing after dedup
-        if (request) {
-          const matchingLink = pendingLinkRequests.find(
-            (l) => l.requesterId === request.sender_id
-          );
-          if (matchingLink) {
-            await respondToLinkMutation.mutateAsync({ linkId: matchingLink.id, action: "accept" });
-          }
-        }
       }
       await loadFriendRequests();
       refetchLinkRequests();
@@ -464,15 +455,6 @@ export default function ConnectionsPageRefactored({
         await respondToLinkMutation.mutateAsync({ linkId: requestId, action: "decline" });
       } else {
         await declineFriendRequest(requestId);
-        // Mirror to friend_links — prevent ghost request resurfacing after dedup
-        if (request) {
-          const matchingLink = pendingLinkRequests.find(
-            (l) => l.requesterId === request.sender_id
-          );
-          if (matchingLink) {
-            await respondToLinkMutation.mutateAsync({ linkId: matchingLink.id, action: "decline" });
-          }
-        }
       }
       await loadFriendRequests();
       refetchLinkRequests();

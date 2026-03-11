@@ -613,13 +613,25 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         if (friend2Error) throw friend2Error;
 
         // Mirror accept to friend_links — prevents orphan pending links from
-        // resurfacing in UI when accepted from the main app (not onboarding)
-        await supabase
+        // resurfacing in UI when accepted from the main app (not onboarding).
+        // Must set consent fields so the link consent flow works correctly.
+        const { error: mirrorError } = await supabase
           .from("friend_links")
-          .update({ status: "accepted", accepted_at: new Date().toISOString() })
+          .update({
+            status: "accepted",
+            accepted_at: new Date().toISOString(),
+            link_status: "pending_consent",
+            requester_link_consent: false,
+            target_link_consent: false,
+            updated_at: new Date().toISOString(),
+          })
           .eq("requester_id", request.sender_id)
           .eq("target_id", request.receiver_id)
           .eq("status", "pending");
+
+        if (mirrorError) {
+          console.warn("Mirror accept to friend_links failed:", mirrorError.message);
+        }
 
         // Reload data
         await Promise.all([fetchFriends(), loadFriendRequests()]);
@@ -635,12 +647,36 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const declineFriendRequest = useCallback(
     async (requestId: string) => {
       try {
+        // Fetch the request first — need sender/receiver IDs for friend_links mirror
+        const { data: request, error: fetchError } = await supabase
+          .from("friend_requests")
+          .select("sender_id, receiver_id")
+          .eq("id", requestId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
         const { error } = await supabase
           .from("friend_requests")
           .update({ status: "declined" })
           .eq("id", requestId);
 
         if (error) throw error;
+
+        // Mirror decline to friend_links — prevents orphan pending links
+        // from resurfacing in UI after the legacy request is declined
+        if (request) {
+          const { error: mirrorError } = await supabase
+            .from("friend_links")
+            .update({ status: "declined", updated_at: new Date().toISOString() })
+            .eq("requester_id", request.sender_id)
+            .eq("target_id", request.receiver_id)
+            .eq("status", "pending");
+
+          if (mirrorError) {
+            console.warn("Mirror decline to friend_links failed:", mirrorError.message);
+          }
+        }
 
         // Reload friend requests
         await loadFriendRequests();
