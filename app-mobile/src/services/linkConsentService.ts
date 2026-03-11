@@ -55,8 +55,8 @@ export async function getPendingLinkConsents(
 
   // Collect friend user IDs
   const friendIds: string[] = [
-    ...(asRequester || []).map((l: any) => l.target_id),
-    ...(asTarget || []).map((l: any) => l.requester_id),
+    ...(asRequester || []).map((l: { target_id: string }) => l.target_id),
+    ...(asTarget || []).map((l: { requester_id: string }) => l.requester_id),
   ];
 
   if (friendIds.length === 0) return [];
@@ -70,7 +70,7 @@ export async function getPendingLinkConsents(
   if (profileErr) throw new Error(profileErr.message);
 
   const profileMap = new Map(
-    (profiles || []).map((p: any) => [p.id, p])
+    (profiles || []).map((p: { id: string; display_name: string | null; username: string | null; avatar_url: string | null }) => [p.id, p])
   );
 
   // Build result

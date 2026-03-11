@@ -38,5 +38,5 @@ CREATE POLICY "Users can respond to link consent"
     AND link_status = 'pending_consent'
   )
   WITH CHECK (
-    link_status IN ('pending_consent', 'consented', 'declined')
+    link_status IN ('pending_consent', 'declined')
   );

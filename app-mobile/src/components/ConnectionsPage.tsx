@@ -39,6 +39,7 @@ import {
 } from "../hooks/useFriendLinks";
 import { usePendingLinkConsents, useRespondLinkConsent } from "../hooks/useLinkConsent";
 import { LinkConsentCard } from "./LinkConsentCard";
+import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -149,8 +150,12 @@ export default function ConnectionsPageRefactored({
       try {
         await respondConsentMutation.mutateAsync({ linkId, action });
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Error responding to link consent:", err);
+        Alert.alert(
+          "Something went wrong",
+          err instanceof Error ? err.message : "Could not process your response. Please try again."
+        );
       } finally {
         setRespondingConsentId(null);
       }
@@ -1556,16 +1561,16 @@ export default function ConnectionsPageRefactored({
 
 const styles = StyleSheet.create({
   linkConsentSection: {
-    marginTop: 16,
-    paddingTop: 12,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
+    borderTopColor: colors.gray[200],
   },
   linkConsentSectionTitle: {
-    fontSize: 14,
-    fontWeight: "600" as const,
-    color: "#6b7280",
-    marginBottom: 8,
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.gray[500],
+    marginBottom: spacing.xs,
   },
   container: {
     flex: 1,
