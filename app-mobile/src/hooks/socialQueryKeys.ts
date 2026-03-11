@@ -16,6 +16,12 @@ export const friendLinkKeys = {
     [...friendLinkKeys.all, "phone-invites", userId] as const,
 };
 
+export const linkConsentKeys = {
+  all: ["link-consent"] as const,
+  pending: (userId: string) =>
+    [...linkConsentKeys.all, "pending", userId] as const,
+};
+
 export const friendLinkIntentKeys = {
   all: ["friend-link-intents"] as const,
   pending: (userId: string) =>

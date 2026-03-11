@@ -199,7 +199,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const consentAutoSkipRef = useRef(false);
   useEffect(() => {
     if (
-      subStep === 'consent' &&
+      navState.subStep === 'consent' &&
       !isLoadingConsents &&
       (!pendingConsents || pendingConsents.length === 0) &&
       !consentAutoSkipRef.current
@@ -208,10 +208,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       goNext();
     }
     // Reset the ref when leaving the consent step
-    if (subStep !== 'consent') {
+    if (navState.subStep !== 'consent') {
       consentAutoSkipRef.current = false;
     }
-  }, [subStep, isLoadingConsents, pendingConsents, goNext]);
+  }, [navState.subStep, isLoadingConsents, pendingConsents, goNext]);
 
   // isFirstScreen: computed locally based on whether the user's phone was
   // already verified from a previous session. This is separate from the

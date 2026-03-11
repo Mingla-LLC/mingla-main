@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   headline: {
-    fontSize: typography.sizes.xl,
+    fontSize: typography.xl.fontSize,
     fontWeight: fontWeights.bold as any,
     color: colors.text.primary,
     textAlign: 'center',
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   subtext: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sm.fontSize,
     color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: 20,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   resolvedText: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sm.fontSize,
     fontWeight: fontWeights.semibold as any,
     color: colors.success?.[500] || '#10B981',
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[200],
   },
   continueButtonText: {
-    fontSize: typography.sizes.md,
+    fontSize: typography.md.fontSize,
     fontWeight: fontWeights.semibold as any,
     color: '#FFFFFF',
   },

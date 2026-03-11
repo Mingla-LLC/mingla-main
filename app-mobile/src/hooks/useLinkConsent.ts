@@ -4,13 +4,10 @@ import {
   respondToLinkConsent,
 } from "../services/linkConsentService";
 import { savedPeopleKeys } from "./useSavedPeople";
-import { friendLinkKeys } from "./useFriendLinks";
+import { friendLinkKeys, linkConsentKeys } from "./socialQueryKeys";
 
-export const linkConsentKeys = {
-  all: ["link-consent"] as const,
-  pending: (userId: string) =>
-    [...linkConsentKeys.all, "pending", userId] as const,
-};
+// Re-export so existing imports from this module don't break
+export { linkConsentKeys } from "./socialQueryKeys";
 
 export function usePendingLinkConsents(userId: string | undefined) {
   return useQuery({

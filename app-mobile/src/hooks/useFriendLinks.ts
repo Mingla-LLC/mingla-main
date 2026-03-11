@@ -3,8 +3,7 @@ import * as friendLinkService from "../services/friendLinkService";
 import { getPendingInvites, cancelPendingInvite } from "../services/phoneLookupService";
 import { savedPeopleKeys } from "./useSavedPeople";
 import { personalizedCardKeys } from "./usePersonalizedCards";
-import { linkConsentKeys } from "./useLinkConsent";
-import { friendLinkKeys, friendLinkIntentKeys } from "./socialQueryKeys";
+import { friendLinkKeys, friendLinkIntentKeys, linkConsentKeys } from "./socialQueryKeys";
 import { supabase } from "../services/supabase";
 
 // Re-export from shared module so existing imports don't break

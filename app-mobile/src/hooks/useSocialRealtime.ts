@@ -2,8 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
-import { friendLinkKeys, friendLinkIntentKeys } from "./socialQueryKeys";
-import { linkConsentKeys } from "./useLinkConsent";
+import { friendLinkKeys, friendLinkIntentKeys, linkConsentKeys } from "./socialQueryKeys";
 import { savedPeopleKeys } from "./useSavedPeople";
 
 /**
