@@ -71,6 +71,22 @@ export function useSocialRealtime(
         {
           event: "*",
           schema: "public",
+          table: "friend_links",
+          filter: `requester_id=eq.${userId}`,
+        },
+        () => {
+          // Covers: target deletes account → sent request row is deleted,
+          // or target accepts/declines → status changes.
+          queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+          queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
+          callbacksRef.current?.onFriendLinkChange?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "friend_requests",
           filter: `receiver_id=eq.${userId}`,
         },

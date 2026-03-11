@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSessionManagement, SessionParticipantInput } from '../../hooks/useSessionManagement'
 import { AddedFriend, CreatedSession } from '../../types/onboarding'
 import { SessionInvite } from '../../types'
+import { supabase } from '../../services/supabase'
 import {
   colors,
   typography,
@@ -88,6 +89,34 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
     }
     loadPendingInvites()
   }, [loadUserSessions])
+
+  // Listen for late-arriving collaboration invites in real-time.
+  // The invite may be created by a DB trigger AFTER this component mounts
+  // (e.g. user accepted a friend request in the previous substep, and the
+  // trigger converted pending_session_invites into collaboration_invites).
+  useEffect(() => {
+    if (!userId) return
+
+    const channel = supabase
+      .channel(`onboarding-collab-invites:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invited_user_id=eq.${userId}`,
+        },
+        () => {
+          loadUserSessions()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId, loadUserSessions])
 
   // Sync pending invites from hook into local state
   useEffect(() => {

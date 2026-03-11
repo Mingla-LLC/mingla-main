@@ -91,7 +91,11 @@ export default function LinkRequestBanner({
     [onDecline]
   );
 
-  if (requests.length === 0) return null;
+  // Filter out ghost requests whose requester profile no longer exists
+  // (e.g. the requester deleted their account but cached data is stale)
+  const validRequests = requests.filter((r) => profiles[r.requesterId]);
+
+  if (validRequests.length === 0) return null;
 
   const getRequesterName = (requesterId: string): string => {
     const profile = profiles[requesterId];
@@ -173,8 +177,8 @@ export default function LinkRequestBanner({
   }
 
   // Single request
-  if (requests.length === 1) {
-    return <View style={styles.container}>{renderRequest(requests[0])}</View>;
+  if (validRequests.length === 1) {
+    return <View style={styles.container}>{renderRequest(validRequests[0])}</View>;
   }
 
   // Multiple requests
@@ -183,7 +187,7 @@ export default function LinkRequestBanner({
       <View style={styles.counterBadge}>
         <Ionicons name="link-outline" size={s(14)} color="#eb7825" />
         <Text style={styles.counterBadgeText}>
-          {requests.length} link requests
+          {validRequests.length} link requests
         </Text>
       </View>
       <ScrollView
@@ -191,7 +195,7 @@ export default function LinkRequestBanner({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.horizontalScroll}
       >
-        {requests.map((request) => renderRequest(request))}
+        {validRequests.map((request) => renderRequest(request))}
       </ScrollView>
     </View>
   );

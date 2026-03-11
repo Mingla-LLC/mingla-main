@@ -71,13 +71,17 @@ class BoardSessionService {
         console.error("❌ Error fetching all sessions:", allSessionsError);
       }
 
-      // 3. Filter for non-archived, non-completed sessions
-      // Include pending/dormant (created during onboarding) alongside active/voting/locked
+      // 3. Filter for non-archived, non-completed, non-pending sessions.
+      // Pending sessions are handled separately by refreshAllSessions():
+      // Query 2 surfaces user-created pending sessions, Query 3 surfaces
+      // received invites. Including them here would override those with
+      // a false 'active' status.
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
         const notCompleted = s.status !== "completed" && s.status !== "archived";
+        const notPending = s.status !== "pending";
 
-        return notArchived && notCompleted;
+        return notArchived && notCompleted && notPending;
       });
 
       if (!sessions || sessions.length === 0) {
@@ -163,11 +167,8 @@ class BoardSessionService {
             boardStatus = "voting";
           } else if (session.status === "active") {
             boardStatus = "active";
-          } else if (
-            session.status === "pending" ||
-            session.status === "dormant"
-          ) {
-            // Map pending/dormant sessions to 'active' so they show up
+          } else if (session.status === "dormant") {
+            // Map dormant sessions to 'active' so they show up
             boardStatus = "active";
           } else {
             // Default to active for any other status

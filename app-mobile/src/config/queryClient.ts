@@ -1,7 +1,21 @@
-import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, focusManager } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, Platform } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
+
+// Refetch stale queries when the app returns to the foreground.
+// React Query's focusManager doesn't work in React Native out of the box —
+// this wires it up to AppState so stale caches refresh on resume.
+focusManager.setEventListener((handleFocus) => {
+  const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
+    if (Platform.OS !== 'web') {
+      handleFocus(state === 'active');
+    }
+  });
+  return () => subscription.remove();
+});
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
