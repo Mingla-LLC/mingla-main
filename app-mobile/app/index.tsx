@@ -57,6 +57,7 @@ import {
   initializeOneSignal,
   loginOneSignal,
   logoutOneSignal,
+  requestPushPermission,
   onForegroundNotification,
   onNotificationClicked,
 } from "../src/services/oneSignalService";
@@ -143,17 +144,19 @@ function AppContent() {
   // ───────────────────────────────────────────────────────────────────────────
 
   // ── OneSignal ──────────────────────────────────────────────────────────────
-  // Initialize once at mount — requests notification permission from the user.
+  // Initialize SDK once at mount (does NOT request permission yet).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     initializeOneSignal();
   }, []); // intentionally once
 
   // Link / unlink the OneSignal player to the Supabase user ID on auth changes.
+  // Request push permission only after login so the user has context.
   useEffect(() => {
     if (isLoadingAuth) return;
     if (user?.id) {
       loginOneSignal(user.id);
+      requestPushPermission();
     } else {
       logoutOneSignal();
     }

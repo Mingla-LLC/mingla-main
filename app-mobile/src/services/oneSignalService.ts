@@ -15,6 +15,11 @@ let _initialized = false
 /**
  * Initialize the OneSignal SDK. Call once at app startup before any other
  * OneSignal methods. Safe to call again — subsequent calls are no-ops.
+ *
+ * NOTE: This does NOT request notification permission. On Android 13+,
+ * POST_NOTIFICATIONS is a runtime permission that should only be requested
+ * after the user has context (i.e. after login). Call `requestPushPermission()`
+ * separately after authentication succeeds.
  */
 export function initializeOneSignal(): void {
   if (_initialized) return
@@ -22,11 +27,30 @@ export function initializeOneSignal(): void {
   try {
     OneSignal.Debug.setLogLevel(LogLevel.Verbose)
     OneSignal.initialize(ONESIGNAL_APP_ID)
-    OneSignal.Notifications.requestPermission(true)
     _initialized = true
     console.log('[OneSignal] initialized')
   } catch (e) {
     console.warn('[OneSignal] Initialization failed:', e)
+  }
+}
+
+/**
+ * Request push notification permission from the OS and opt in to OneSignal's
+ * push subscription. In SDK v5 these are two separate concepts:
+ *   1. OS permission (Android POST_NOTIFICATIONS runtime permission)
+ *   2. OneSignal subscription opt-in (SDK-level flag that enables delivery)
+ * Both must be active for pushes to arrive.
+ *
+ * Call AFTER login so the user has context for the permission prompt.
+ */
+export function requestPushPermission(): void {
+  if (!_initialized) return
+  try {
+    OneSignal.Notifications.requestPermission(true)
+    OneSignal.User.pushSubscription.optIn()
+    console.log('[OneSignal] permission requested + subscription opted in')
+  } catch (e) {
+    console.warn('[OneSignal] permission/opt-in failed:', e)
   }
 }
 
