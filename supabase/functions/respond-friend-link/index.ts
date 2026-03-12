@@ -154,7 +154,7 @@ serve(async (req: Request) => {
             declinedByName: targetName,
             declinedByUserId: currentUserId,
           },
-        }).catch(() => {});
+        }).catch((err) => console.warn('[respond-friend-link] Push failed:', err));
         console.log("Decline push sent to requester:", link.requester_id);
       } catch (pushErr) {
         console.error("Decline push notification error:", pushErr);
@@ -311,7 +311,7 @@ serve(async (req: Request) => {
           friendUserId: targetId,
           friendAvatarUrl: targetProfile?.avatar_url || null,
         },
-      }).catch(() => {});
+      }).catch((err) => console.warn('[respond-friend-link] Push failed:', err));
       console.log("Consent push sent to requester:", requesterId);
 
       sendPush({
@@ -325,7 +325,7 @@ serve(async (req: Request) => {
           friendUserId: requesterId,
           friendAvatarUrl: requesterProfile?.avatar_url || null,
         },
-      }).catch(() => {});
+      }).catch((err) => console.warn('[respond-friend-link] Push failed:', err));
       console.log("Consent push sent to target:", targetId);
     } catch (pushError) {
       console.error("Push notification error:", pushError);

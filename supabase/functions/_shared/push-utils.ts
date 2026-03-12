@@ -107,7 +107,7 @@ export async function sendPushToMany(
 ): Promise<boolean[]> {
   return Promise.all(
     userIds.map((userId) =>
-      sendPush({ targetUserId: userId, title, body, data, androidChannelId }).catch(() => false)
+      sendPush({ targetUserId: userId, title, body, data, androidChannelId }).catch((err) => { console.warn('[push-utils] sendPushToMany: push failed for user:', userId, err); return false; })
     )
   );
 }

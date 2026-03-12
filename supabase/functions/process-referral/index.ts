@@ -126,7 +126,7 @@ serve(async (req) => {
         body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
         data: { type: "referral_credited", referred_id },
         androidChannelId: "referral-rewards",
-      }).catch(() => {});
+      }).catch((err) => console.warn('[process-referral] Push failed:', err));
     } catch (pushError) {
       console.error("Push notification failed:", pushError);
     }

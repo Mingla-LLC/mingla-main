@@ -111,7 +111,9 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production"
+          "mode": "production",
+          "smallIcons": ["./assets/notification_icon.png"],
+          "smallIconAccentColor": "#EB7825"
         }
       ],
       "react-native-appsflyer"

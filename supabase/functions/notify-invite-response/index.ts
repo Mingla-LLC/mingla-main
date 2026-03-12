@@ -121,7 +121,7 @@ serve(async (req) => {
           deepLink: deepLink,
         },
         androidChannelId: "collaboration-invites",
-      }).catch(() => {});
+      }).catch((err) => console.warn('[notify-invite-response] Push failed:', err));
       console.log("Push notification sent to inviter for invite response");
     } catch (pushError) {
       console.error("Error sending push notification:", pushError);

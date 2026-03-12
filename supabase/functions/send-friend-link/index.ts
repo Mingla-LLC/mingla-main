@@ -295,7 +295,7 @@ serve(async (req: Request) => {
               friendName: targetName,
               friendUserId: targetUserId,
             },
-          }).catch(() => {});
+          }).catch((err) => console.warn('[send-friend-link] Push failed:', err));
 
           sendPush({
             targetUserId: targetUserId,
@@ -307,7 +307,7 @@ serve(async (req: Request) => {
               friendName: requesterName,
               friendUserId: requesterId,
             },
-          }).catch(() => {});
+          }).catch((err) => console.warn('[send-friend-link] Push failed:', err));
         } catch (pushErr) {
           console.error("Re-initiation push error:", pushErr);
         }
@@ -412,7 +412,7 @@ serve(async (req: Request) => {
           requesterName: requesterDisplayName,
           requesterAvatarUrl: requesterProfile?.avatar_url || null,
         },
-      }).catch(() => {});
+      }).catch((err) => console.warn('[send-friend-link] Push failed:', err));
       console.log("Push notification sent to target:", targetUserId);
     } catch (pushError) {
       console.error("Push notification error:", pushError);

@@ -90,7 +90,7 @@ serve(async (req) => {
         senderUsername: senderUsername,
       },
       androidChannelId: "friend-requests",
-    }).catch(() => {});
+    }).catch((err) => console.warn('[send-friend-request-email] Push failed:', err));
 
     console.log("Push notification sent for friend request");
 

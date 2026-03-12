@@ -55,9 +55,8 @@ import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
-  loginOneSignal,
+  loginAndSubscribe,
   logoutOneSignal,
-  requestPushPermission,
   onForegroundNotification,
   onNotificationClicked,
 } from "../src/services/oneSignalService";
@@ -104,6 +103,12 @@ function AppContent() {
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
+  // Ref that always holds the current user ID. Allows notification listeners
+  // (registered once with [] deps) to read the latest auth state without
+  // stale closures — setters from useState are stable, but derived values
+  // like isAuthenticated are not.
+  const userIdRef = useRef<string | undefined>(undefined);
+  userIdRef.current = user?.id;
   // Generation counter for refreshAllSessions() concurrency protection.
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
@@ -150,14 +155,18 @@ function AppContent() {
     initializeOneSignal();
   }, []); // intentionally once
 
-  // Link / unlink the OneSignal player to the Supabase user ID on auth changes.
-  // Request push permission only after login so the user has context.
+  // Full login sequence: link device → request OS permission → opt in.
+  // Login path: if user?.id is available (even while auth is still "loading"
+  // from a persisted Zustand session), call loginAndSubscribe immediately.
+  // Logout path: only fires after isLoadingAuth is false, to prevent
+  // premature logout while auth is still resolving a cached session.
   useEffect(() => {
-    if (isLoadingAuth) return;
     if (user?.id) {
-      loginOneSignal(user.id);
-      requestPushPermission();
-    } else {
+      console.log('[OneSignal] Calling loginAndSubscribe for:', user.id);
+      loginAndSubscribe(user.id).catch((err) =>
+        console.warn('[OneSignal] loginAndSubscribe failed:', err)
+      );
+    } else if (!isLoadingAuth) {
       logoutOneSignal();
     }
   }, [user?.id, isLoadingAuth]);
@@ -193,14 +202,18 @@ function AppContent() {
     });
   }, []);
 
-  // Push notification listeners — convert pushes to in-app notifications
+  // Push notification listeners — convert pushes to in-app notifications.
+  // Registered once on mount. Uses userIdRef (not closure-captured isAuthenticated)
+  // to check current auth state, avoiding stale-closure bugs.
   useEffect(() => {
-    // Foreground: push arrives while app is open
-    const removeForeground = onForegroundNotification((data, prevent) => {
-      if (!data?.type) return;
-
-      // Suppress system tray notification — handle purely in-app
-      prevent();
+    /** Shared handler: route notification data to the in-app service. */
+    const processNotification = (data: Record<string, unknown>, navigateTo?: string) => {
+      // Auth guard: ignore notifications if the user isn't logged in.
+      // This prevents navigation to app pages while on the WelcomeScreen.
+      if (!userIdRef.current) {
+        console.log('[OneSignal] Notification ignored — user not authenticated')
+        return
+      }
 
       switch (data.type) {
         case "friend_link_request":
@@ -260,73 +273,45 @@ function AppContent() {
             { sessionId: data.sessionId }
           );
           break;
+        default:
+          console.log('[OneSignal] Unknown notification type:', data.type)
+          return; // Don't navigate for unknown types
       }
+
+      // Navigate only if a target was specified (click handler only)
+      if (navigateTo) {
+        setCurrentPage(navigateTo as any);
+      }
+    };
+
+    // Navigation targets per notification type (used by click handler only)
+    const NAV_TARGETS: Record<string, string> = {
+      friend_link_request: "discover",
+      link_consent_request: "connections",
+      collaboration_invite_received: "home",
+      link_consent_completed: "discover",
+      collaboration_invite_response: "home",
+      collaboration_invite_sent: "home",
+    };
+
+    // Foreground: push arrives while app is open
+    const removeForeground = onForegroundNotification((data, prevent) => {
+      if (!data?.type) return;
+
+      // Only suppress system tray if the user is authenticated and the
+      // in-app service can handle it. If not authenticated, let the system
+      // notification show — it's the only way the user will see it.
+      if (userIdRef.current) {
+        prevent();
+      }
+
+      processNotification(data);
     });
 
     // Background: user taps a push notification
     const removeClicked = onNotificationClicked((data) => {
       if (!data?.type) return;
-
-      switch (data.type) {
-        case "friend_link_request":
-          inAppNotificationService.notifyFriendLinkRequest(
-            (data.requesterName as string) || "Someone",
-            data.linkId as string,
-            data.requesterId as string,
-            data.requesterAvatarUrl as string | undefined
-          );
-          setCurrentPage("discover");
-          break;
-        case "link_consent_request":
-          inAppNotificationService.notifyLinkConsentRequest(
-            (data.friendName as string) || "Someone",
-            data.linkId as string,
-            data.friendUserId as string,
-            data.friendAvatarUrl as string | undefined
-          );
-          setCurrentPage("connections");
-          break;
-        case "collaboration_invite_received":
-          inAppNotificationService.notifyCollaborationInvite(
-            (data.sessionName as string) || "a session",
-            (data.inviterName as string) || "Someone",
-            data.sessionId as string,
-            data.inviteId as string,
-            data.inviterAvatarUrl as string | undefined
-          );
-          setCurrentPage("home");
-          break;
-        case "link_consent_completed":
-          inAppNotificationService.add(
-            "system",
-            (data.title as string) || `You and ${(data.friendName as string) || "your friend"} are now linked!`,
-            (data.body as string) || "You can now see each other's details in For You.",
-            { page: "discover" },
-            { linkId: data.linkId }
-          );
-          setCurrentPage("discover");
-          break;
-        case "collaboration_invite_response":
-          inAppNotificationService.add(
-            "collaboration_invite",
-            (data.title as string) || "Collaboration update",
-            (data.body as string) || "Someone responded to your invite.",
-            { page: "home" },
-            { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
-          );
-          setCurrentPage("home");
-          break;
-        case "collaboration_invite_sent":
-          inAppNotificationService.add(
-            "system",
-            (data.title as string) || "Invite sent",
-            (data.body as string) || "Your collaboration invite was sent.",
-            { page: "home" },
-            { sessionId: data.sessionId }
-          );
-          setCurrentPage("home");
-          break;
-      }
+      processNotification(data, NAV_TARGETS[data.type as string]);
     });
 
     return () => {

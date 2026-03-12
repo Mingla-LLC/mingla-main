@@ -134,7 +134,7 @@ serve(async (req) => {
           inviterAvatarUrl: inviterProfile?.avatar_url || null,
         },
         androidChannelId: "collaboration-invites",
-      }).catch(() => {});
+      }).catch((err) => console.warn('[send-collaboration-invite] Push failed:', err));
       console.log("Push notification sent to invitee successfully");
     } catch (pushError) {
       console.error("Error sending push notification to invitee:", pushError);
@@ -156,7 +156,7 @@ serve(async (req) => {
             invitedUsername: invitedUsername,
           },
           androidChannelId: "collaboration-invites",
-        }).catch(() => {});
+        }).catch((err) => console.warn('[send-collaboration-invite] Push failed:', err));
         console.log("Push notification sent to inviter successfully");
       }
     } catch (inviterPushError) {

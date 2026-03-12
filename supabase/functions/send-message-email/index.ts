@@ -84,7 +84,7 @@ serve(async (req) => {
         conversationId: conversationId,
       },
       androidChannelId: "messages",
-    }).catch(() => {});
+    }).catch((err) => console.warn('[send-message-email] Push failed:', err));
 
     console.log("Push notification sent for message");
 
