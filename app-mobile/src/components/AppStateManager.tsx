@@ -779,26 +779,9 @@ export function useAppState() {
       setShowShareModal(false);
       setShowOnboardingFlow(false);
 
-      // Delete push token from server before clearing local state.
-      // Must happen BEFORE clearUserData() wipes the user ID.
-      try {
-        const { supabase } = await import("../services/supabase");
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (currentUser?.id) {
-          await supabase
-            .from("user_push_tokens")
-            .delete()
-            .eq("user_id", currentUser.id);
-        }
-      } catch (tokenCleanupError) {
-        // Non-blocking — continue with sign-out even if this fails.
-        // Token will be orphaned but won't cause harm (pushes will fail gracefully).
-        console.warn("Push token cleanup failed:", tokenCleanupError);
-      }
-
-      // Reset push token service state so re-login triggers fresh registration
-      const { enhancedNotificationService } = await import("../services/enhancedNotificationService");
-      enhancedNotificationService.resetTokenState();
+      // Dissociate device from user in OneSignal — next login will re-associate
+      const { logoutOneSignal } = await import("../services/oneSignalService");
+      logoutOneSignal();
 
       // Clear all user data from the store immediately
       const store = useAppStore.getState();

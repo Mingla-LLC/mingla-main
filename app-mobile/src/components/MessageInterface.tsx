@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Text,
   View,
@@ -6,10 +6,10 @@ import {
   TextInput,
   StyleSheet,
   ScrollView,
+  FlatList,
   Image,
   Alert,
   Platform,
-  Keyboard,
   Animated,
   Linking,
   Modal,
@@ -24,6 +24,16 @@ import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import CollaborationModule from "./CollaborationModule";
 import { supabase } from "../services/supabase";
+import { useKeyboard } from "../hooks/useKeyboard";
+import { useChatPresence } from "../hooks/useChatPresence";
+import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
+import { MessageBubble } from "./chat/MessageBubble";
+import { ChatStatusLine } from "./chat/ChatStatusLine";
+import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
+import { DirectMessage } from "../services/messagingService";
+import { HapticFeedback } from "../utils/hapticFeedback";
+import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -39,6 +49,8 @@ interface Message {
   fileName?: string;
   fileSize?: string;
   isMe: boolean;
+  unread?: boolean;
+  failed?: boolean;
 }
 
 interface Friend {
@@ -77,6 +89,10 @@ interface MessageInterfaceProps {
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends?: Friend[];
   isBlocked?: boolean;
+  conversationId?: string | null;
+  currentUserId?: string | null;
+  currentUserName?: string | null;
+  broadcastSeenIds?: React.MutableRefObject<Set<string>>;
 }
 
 export default function MessageInterface({
@@ -98,6 +114,10 @@ export default function MessageInterface({
   onNavigateToBoard,
   availableFriends = [],
   isBlocked = false,
+  conversationId = null,
+  currentUserId = null,
+  currentUserName = null,
+  broadcastSeenIds: broadcastSeenIdsProp,
 }: MessageInterfaceProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -122,53 +142,90 @@ export default function MessageInterface({
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
-  const messagesEndRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  const keyboardHeight = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
-  // Handle keyboard show/hide
+  // ── Keyboard handling via useKeyboard hook ─────────────────
+  const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
+    disableLayoutAnimation: true, // We use animated values instead
+  });
+
+  // Animated keyboard height (for smooth input bar transitions)
+  const animatedKeyboardHeight = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const keyboardWillShowListener = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (event) => {
-        Animated.timing(keyboardHeight, {
-          toValue: event.endCoordinates.height,
-          duration: event.duration || 250,
-          useNativeDriver: false,
-        }).start();
-        // Scroll to bottom when keyboard appears
-        setTimeout(() => {
-          messagesEndRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
-    );
+    // On iOS, keyboard height includes safe area — subtract it
+    const adjustedHeight = Platform.OS === "ios"
+      ? Math.max(0, keyboardHeight - insets.bottom)
+      : keyboardHeight;
+    Animated.timing(animatedKeyboardHeight, {
+      toValue: adjustedHeight,
+      duration: Platform.OS === "ios" ? 250 : 220,
+      useNativeDriver: false,
+    }).start();
+  }, [keyboardHeight, insets.bottom]);
 
-    const keyboardWillHideListener = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        Animated.timing(keyboardHeight, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: false,
-        }).start();
-      }
-    );
+  // ── Fallback broadcastSeenIds ref if not provided ─────────
+  const localBroadcastSeenIds = useRef(new Set<string>());
+  const broadcastSeenIds = broadcastSeenIdsProp || localBroadcastSeenIds;
 
-    return () => {
-      keyboardWillShowListener.remove();
-      keyboardWillHideListener.remove();
-    };
-  }, [keyboardHeight]);
+  // ── Presence & typing ─────────────────────────────────────
+  const {
+    participants: presenceParticipants,
+    typingUsers,
+    startTyping,
+    stopTyping,
+  } = useChatPresence({
+    conversationId,
+    currentUserId,
+  });
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollToEnd({ animated: true });
+  // ── Broadcast receiver (receive-only) ─────────────────────
+  const handleBroadcastMessage = useCallback(
+    (msg: DirectMessage) => {
+      // The broadcast message is handled by ConnectionsPage's onMessage callback
+      // via the postgres_changes path. The broadcastSeenIds ref tracks dedup.
+      // No additional handling needed here — ConnectionsPage owns message state.
+    },
+    []
+  );
+
+  useBroadcastReceiver({
+    conversationId,
+    currentUserId,
+    broadcastSeenIds,
+    onBroadcastMessage: handleBroadcastMessage,
+  });
+
+  // ── Message grouping (memoized) ───────────────────────────
+  // groupMessages returns chronological order (oldest first).
+  // FlatList with inverted={true} renders data[0] at the BOTTOM,
+  // so we reverse to put newest first → newest appears at bottom.
+  const groupedMessages = useMemo(() => {
+    if (!messages.length) return [];
+    const grouped = groupMessages(messages as any);
+    return [...grouped].reverse();
   }, [messages]);
+
+  // ── Presence-derived state for header ─────────────────────
+  // presenceParticipants is Record<userId, { isOnline, lastSeenAt }>
+  // typingUsers is string[] of userIds
+  const otherPresence = useMemo(() => {
+    if (!currentUserId) return null;
+    const entries = Object.entries(presenceParticipants);
+    const other = entries.find(([uid]) => uid !== currentUserId);
+    return other ? other[1] : null;
+  }, [presenceParticipants, currentUserId]);
+
+  const isOtherOnline = otherPresence?.isOnline ?? friend.isOnline;
+  const otherLastSeen = otherPresence?.lastSeenAt ?? null;
+  const isOtherTyping = currentUserId
+    ? typingUsers.some((uid) => uid !== currentUserId)
+    : false;
 
   const handleSendMessage = () => {
     if (newMessage.trim() || selectedFile) {
       if (selectedFile) {
-        // Determine file type based on selected file
         const fileType =
           selectedFile.type === "image"
             ? "image"
@@ -186,6 +243,8 @@ export default function MessageInterface({
         onSendMessage(newMessage.trim(), "text");
       }
       setNewMessage("");
+      stopTyping();
+      HapticFeedback.light();
     }
   };
 
@@ -458,203 +517,6 @@ export default function MessageInterface({
     );
   };
 
-  const renderMessage = (message: Message) => {
-    const isMe = message.isMe;
-
-    return (
-      <View
-        key={message.id}
-        style={[
-          styles.messageContainer,
-          isMe ? styles.messageContainerRight : styles.messageContainerLeft,
-        ]}
-      >
-        <View
-          style={[
-            styles.messageBubble,
-            message.type === "text" &&
-              (isMe ? styles.messageBubbleRight : styles.messageBubbleLeft),
-          ]}
-        >
-          {message.type === "text" && (
-            <Text
-              style={[
-                styles.messageText,
-                isMe ? styles.messageTextRight : styles.messageTextLeft,
-              ]}
-            >
-              {message.content}
-            </Text>
-          )}
-
-          {message.type === "image" && (
-            <View>
-              {message.content && message.content !== message.fileName && (
-                <Text
-                  style={[
-                    styles.messageText,
-                    isMe ? styles.messageTextRight : styles.messageTextLeft,
-                    styles.messageCaption,
-                  ]}
-                >
-                  {message.content}
-                </Text>
-              )}
-              <ImageWithFallback
-                source={{ uri: message.fileUrl || "" }}
-                style={styles.messageImage}
-              />
-            </View>
-          )}
-
-          {message.type === "video" && (
-            <View>
-              {message.content && message.content !== message.fileName && (
-                <Text
-                  style={[
-                    styles.messageText,
-                    isMe ? styles.messageTextRight : styles.messageTextLeft,
-                    styles.messageCaption,
-                  ]}
-                >
-                  {message.content}
-                </Text>
-              )}
-              {/* TODO: Uncomment Video component after rebuilding app with expo-av native module
-              {message.fileUrl ? (
-                <TouchableOpacity
-                  style={styles.videoContainer}
-                  onLongPress={() => handleOpenVideo(message.fileUrl!)}
-                  activeOpacity={0.9}
-                >
-                  <Video
-                    source={{ uri: message.fileUrl }}
-                    style={styles.videoPlayer}
-                    useNativeControls
-                    resizeMode={ResizeMode.CONTAIN}
-                    shouldPlay={false}
-                    isLooping={false}
-                    onError={(error: any) => {
-                      console.error("Video playback error:", error);
-                      console.error("Video URL:", message.fileUrl);
-                    }}
-                    onLoad={() => {
-                      console.log(
-                        "Video loaded successfully:",
-                        message.fileUrl
-                      );
-                    }}
-                    onLoadStart={() => {
-                      console.log("Video loading started:", message.fileUrl);
-                    }}
-                  />
-                </TouchableOpacity>
-              ) : (
-              */}
-              <TouchableOpacity
-                style={styles.videoPlaceholder}
-                onPress={() => {
-                  if (message.fileUrl) {
-                    handleOpenVideo(message.fileUrl);
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name="play-circle"
-                  size={48}
-                  color={isMe ? "white" : "#eb7825"}
-                />
-                <Text
-                  style={[
-                    styles.videoText,
-                    isMe ? styles.videoTextRight : styles.videoTextLeft,
-                  ]}
-                >
-                  Video message
-                </Text>
-              </TouchableOpacity>
-              {/* )} - End of commented Video component */}
-            </View>
-          )}
-
-          {message.type === "file" && (
-            <View>
-              {message.content && message.content !== message.fileName && (
-                <Text
-                  style={[
-                    styles.messageText,
-                    isMe ? styles.messageTextRight : styles.messageTextLeft,
-                    styles.messageCaption,
-                  ]}
-                >
-                  {message.content}
-                </Text>
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.fileContainer,
-                  isMe ? styles.fileContainerRight : styles.fileContainerLeft,
-                ]}
-                onPress={() => {
-                  if (message.fileUrl) {
-                    handleViewDocument(message.fileUrl);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.fileIcon,
-                    isMe ? styles.fileIconRight : styles.fileIconLeft,
-                  ]}
-                >
-                  <Ionicons
-                    name="document-text"
-                    size={16}
-                    color={isMe ? "white" : "#eb7825"}
-                  />
-                </View>
-                <View style={styles.fileInfo}>
-                  <Text
-                    style={[
-                      styles.fileName,
-                      isMe ? styles.fileNameRight : styles.fileNameLeft,
-                    ]}
-                  >
-                    {message.fileName || "Document"}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.fileSize,
-                      isMe ? styles.fileSizeRight : styles.fileSizeLeft,
-                    ]}
-                  >
-                    {message.fileSize || "Unknown size"}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="open-outline"
-                  size={16}
-                  color={isMe ? "white" : "#6b7280"}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        <Text
-          style={[
-            styles.messageTimestamp,
-            isMe ? styles.messageTimestampRight : styles.messageTimestampLeft,
-          ]}
-        >
-          {formatTimestamp(message.timestamp)}
-        </Text>
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -681,16 +543,16 @@ export default function MessageInterface({
                 </Text>
               </View>
             )}
-            {friend.isOnline && <View style={styles.onlineIndicator} />}
+            {isOtherOnline && <View style={styles.onlineIndicator} />}
           </View>
 
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{cleanName(friend.name)}</Text>
-            <Text style={styles.userStatus}>
-              {friend.isOnline
-                ? "Online"
-                : `Last seen ${friend.lastSeen || "recently"}`}
-            </Text>
+            <ChatStatusLine
+              isOnline={isOtherOnline}
+              isTyping={isOtherTyping}
+              lastSeenAt={otherLastSeen}
+            />
           </View>
         </View>
 
@@ -765,27 +627,50 @@ export default function MessageInterface({
       </View>
 
       {/* Messages */}
-      <ScrollView
-        style={styles.messagesContainer}
-        ref={messagesEndRef}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardDismissMode="interactive"
-      >
-        {messages.length === 0 ? (
+      {messages.length === 0 ? (
+        <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
               <Ionicons name="chatbubble" size={32} color="#eb7825" />
             </View>
             <Text style={styles.emptyStateTitle}>Start your conversation</Text>
             <Text style={styles.emptyStateText}>
-              Send a message to {friend.name}
+              Send a message to {cleanName(friend.name)}
             </Text>
           </View>
-        ) : (
-          <View style={styles.messagesList}>{messages.map(renderMessage)}</View>
-        )}
-      </ScrollView>
+        </View>
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={groupedMessages}
+          renderItem={({ item }) => (
+            <MessageBubble
+              message={{
+                id: item.message.id,
+                content: item.message.content,
+                timestamp: item.message.timestamp,
+                type: item.message.type,
+                fileUrl: item.message.fileUrl,
+                fileName: item.message.fileName,
+                fileSize: item.message.fileSize,
+                isMe: item.message.isMe,
+                failed: item.message.failed,
+              }}
+              isMe={item.message.isMe}
+              groupPosition={item.groupPosition}
+              showTimestamp={item.showTimestamp}
+              isRead={item.message.isMe && !item.message.id.startsWith("temp-") && !item.message.unread}
+            />
+          )}
+          keyExtractor={(item) => item.message.id}
+          inverted={true}
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContentContainer}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       {/* Processing File Loader */}
       <Modal visible={isProcessingFile} transparent={true} animationType="fade">
@@ -884,15 +769,12 @@ export default function MessageInterface({
         style={[
           styles.inputArea,
           {
-            paddingBottom: keyboardHeight.interpolate({
-              inputRange: [0, 400],
-              outputRange: [12, 0],
-            }),
-            marginBottom: keyboardHeight.interpolate({
-              inputRange: [0, 16, 400],
-              outputRange: [0, 0, 384],
+            paddingBottom: animatedKeyboardHeight.interpolate({
+              inputRange: [0, 1],
+              outputRange: [Math.max(insets.bottom, 6), 6],
               extrapolate: "clamp",
             }),
+            marginBottom: animatedKeyboardHeight,
           },
         ]}
       >
@@ -965,7 +847,15 @@ export default function MessageInterface({
             <TextInput
               ref={inputRef}
               value={newMessage}
-              onChangeText={setNewMessage}
+              onChangeText={(text) => {
+                setNewMessage(text);
+                if (text.length > 0) {
+                  startTyping();
+                } else {
+                  stopTyping();
+                }
+              }}
+              onBlur={stopTyping}
               placeholder={
                 selectedFile ? "Add a caption..." : "Type a message..."
               }
@@ -1279,7 +1169,10 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
-    padding: 16,
+  },
+  messagesContentContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   emptyState: {
     flex: 1,
@@ -1546,9 +1439,9 @@ const styles = StyleSheet.create({
   inputArea: {
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 6,
     backgroundColor: "white",
   },
   inputContainer: {

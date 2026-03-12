@@ -96,28 +96,6 @@ serve(async (req) => {
 
     const isAccepted = response === "accepted";
 
-    // Look up inviter's push token
-    const { data: pushTokenData } = await supabase
-      .from("user_push_tokens")
-      .select("push_token")
-      .eq("user_id", inviterId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const pushToken = pushTokenData?.push_token;
-
-    if (!pushToken) {
-      console.log("No push token found for inviter:", inviterId);
-      return new Response(
-        JSON.stringify({ success: true, method: "none", reason: "no_push_token" }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
     // Build push notification copy
     const title = isAccepted
       ? `${invitedName} is in!`
@@ -131,28 +109,22 @@ serve(async (req) => {
 
     // Send push notification to inviter
     try {
-      await sendPush(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-        {
-          to: pushToken,
-          title: title,
-          body: body,
-          sound: "default",
-          data: {
-            type: "collaboration_invite_response",
-            inviteId: inviteId,
-            sessionId: sessionId,
-            response: response,
-            deepLink: deepLink,
-          },
-          channelId: "collaboration-invites",
-        }
-      );
+      await sendPush({
+        targetUserId: inviterId,
+        title: title,
+        body: body,
+        data: {
+          type: "collaboration_invite_response",
+          inviteId: inviteId,
+          sessionId: sessionId,
+          response: response,
+          deepLink: deepLink,
+        },
+        androidChannelId: "collaboration-invites",
+      }).catch(() => {});
       console.log("Push notification sent to inviter for invite response");
     } catch (pushError) {
       console.error("Error sending push notification:", pushError);
-      // Don't fail the whole request if push fails
     }
 
     return new Response(

@@ -18,7 +18,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Live Events | Ticketmaster Discovery API v2 |
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
 | Payments | Stripe Connect |
-| Push Notifications | Expo Push Notifications |
+| Push Notifications | OneSignal (FCM v1 + APNs) |
 | Analytics | Mixpanel (event tracking, user identification) |
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
@@ -112,8 +112,8 @@ Tapping a friend's avatar in the connections list opens their full profile as an
 The person-centric "For You" view provides personalized recommendations for each saved person:
 
 - **Birthday Hero Card** -- Orange hero card with birthday countdown and AI-generated gift/experience summary (~80 char). Falls back to a dark "Picks" card when no birthday is set.
-- **Person Recommendation Cards** -- Horizontal scroll of 2-3 personalized place cards powered by the linked user's swipe data via `get-personalized-cards`.
-- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Gender-filtered standard holidays plus user-created custom holidays.
+- **Person Recommendation Cards** -- Horizontal scroll of 2-3 personalized place cards powered by the linked user's swipe data via `get-personalized-cards`. Tappable with haptic feedback, gradient overlays, category-colored badges, and Google Maps navigation on tap.
+- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
 - **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
 - **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
@@ -229,7 +229,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 - **Pull-to-refresh** on SavedTab, CalendarTab, DiscoverScreen, and ConnectionsPage
 - **Haptic feedback** on all interactive buttons (buttonPress, success, warning, error, selection patterns)
 - **Duplicate mutation guards** — isPending checks prevent double-tap on accept/decline/send buttons
-- **Push token lifecycle** — tokens deleted on logout, re-registered on every app launch (survives reinstalls and iOS updates)
+- **Push notifications** — OneSignal handles all push delivery (FCM v1 + APNs), token management, and device registration. Edge functions target users by Supabase UUID via OneSignal REST API
 
 ### Additional Features
 - GPS and manual location with travel time preferences
@@ -257,7 +257,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `user_push_tokens` | Expo push tokens per user/device (platform, device_id, updated_at) |
+| `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally). Retained as safety net; will be dropped after 2-week confirmation period. |
 
 ### Social Tables
 
@@ -338,11 +338,11 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `respond-link-consent` | Process link consent responses (atomic RPC with row-level locking, creates linked saved_people when both consent) |
 | `unlink-friend` | Remove friend connections (requires consented link_status) |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
-| `send-friend-request-email` | Email notifications for friend requests |
-| `send-collaboration-invite` | Push notifications for session invites |
-| `notify-invite-response` | Push notifications for invite responses |
-| `send-message-email` | Push notifications for new direct messages |
-| `process-referral` | Manual referral credit reconciliation |
+| `send-friend-request-email` | Push notification for friend requests (via OneSignal) |
+| `send-collaboration-invite` | Push notification for session invites (via OneSignal) |
+| `notify-invite-response` | Push notification for invite responses (via OneSignal) |
+| `send-message-email` | Push notification for new direct messages (via OneSignal) |
+| `process-referral` | Manual referral credit reconciliation + push notification |
 
 ### Authentication
 
@@ -400,6 +400,8 @@ TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN
 TWILIO_VERIFY_SERVICE_SID
 TWILIO_FROM_PHONE (or TWILIO_MESSAGING_SERVICE_SID)
+ONESIGNAL_APP_ID
+ONESIGNAL_REST_API_KEY
 ```
 
 ---
@@ -461,8 +463,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Mobile-Native Overhaul** -- 11 fixes across 4 domains: realtime subscriptions for messaging, friends, and calendar; 3 new push notification types handled; push token lifecycle (cleanup on logout, refresh on launch); pull-to-refresh on all list screens; haptic feedback on all interactive elements; link consent race condition fixed with atomic PostgreSQL locking; duplicate mutation guards; targeted board invalidation; removed browser-only refetchOnWindowFocus.
-- **Social System Integration** -- Closed 7 gaps across the social system: deferred friend link intents for non-Mingla users, push-to-in-app notification pipeline, notification sheet action buttons for all social notification types, onboarding consent sub-step, decline push notifications, 3 new realtime subscriptions, and React Query invalidation gap fixes.
+- **OneSignal Push Migration** -- Migrated all push notifications from Expo Push to OneSignal. Rewrote `push-utils.ts` to target users by Supabase UUID via OneSignal REST API. Updated all 8 edge functions. Removed expo-notifications from mobile. Eliminated mobile-side push sending (security fix). OneSignal now handles FCM/APNs token management, delivery, and analytics.
+- **Holiday Cards Fix** -- Fixed broken holiday card pipeline across three layers: data, interaction, and styling. Intent types resolve via INTENT_CATEGORY_MAP. Up to 3 cards per category.
+- **Social System Integration** -- Closed 7 gaps across the social system: deferred friend link intents, push-to-in-app notification pipeline, notification sheet action buttons, onboarding consent sub-step, decline push notifications, realtime subscriptions, and React Query invalidation gap fixes.
 - **Full React Query Migration (Boards & Saves)** -- Replaced `useBoards`, `useEnhancedBoards`, and `useSaves` hooks with a clean two-layer architecture.
 - **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions.
 

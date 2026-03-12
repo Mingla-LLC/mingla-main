@@ -15,7 +15,7 @@ import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
-import FriendRequestsModal from "./FriendRequestsModal";
+import FriendsModal from "./FriendsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
@@ -478,11 +478,18 @@ export default function HomePage({
           onDeclineCollabInvite={handleDeclineCollabInvite}
         />
 
-        {/* Friend Requests Modal - Opens on top of Notifications Modal */}
+        {/* Friends Modal — Friends list + Requests tabs */}
         {showFriendRequestsModal && (
-          <FriendRequestsModal
+          <FriendsModal
             isOpen={showFriendRequestsModal}
             onClose={() => setShowFriendRequestsModal(false)}
+            onMessageFriend={(_friendUserId: string) => {
+              // Close the modal — the user can navigate to Chats tab
+              // to continue the conversation. Cross-tab navigation
+              // requires plumbing through app/index.tsx and is out
+              // of scope for this change.
+              setShowFriendRequestsModal(false);
+            }}
           />
         )}
 

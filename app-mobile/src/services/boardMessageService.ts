@@ -712,30 +712,11 @@ export class BoardMessageService {
 
       const sessionName = session?.name || 'Board';
 
-      // Send notifications to each participant
+      // Send mention notifications via edge function (OneSignal handles push delivery)
       for (const participant of participants) {
         const recipientId = participant.user_id;
         const isMentioned = message.mentions && Array.isArray(message.mentions) && message.mentions.includes(recipientId);
 
-        // Import notification service dynamically
-        const { enhancedNotificationService } = await import('./enhancedNotificationService');
-
-        // Send push notification
-        await enhancedNotificationService.sendPushNotification(recipientId, {
-          type: 'board_update',
-          title: isMentioned 
-            ? `${senderName} mentioned you in ${sessionName}`
-            : `New message in ${sessionName}`,
-          body: messagePreview,
-          data: {
-            sessionId,
-            messageId: message.id,
-            messageType: 'board_message',
-            isMention: isMentioned,
-          },
-        });
-
-        // Send push notification if mentioned (edge function handles push delivery)
         if (isMentioned) {
           await this.sendMentionEmailNotification(recipientId, senderName, messagePreview, sessionId, sessionName);
         }

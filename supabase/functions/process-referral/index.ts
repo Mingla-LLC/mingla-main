@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
@@ -121,30 +120,13 @@ serve(async (req) => {
     const referredName = referredProfile?.display_name || referredProfile?.first_name || "Your friend";
 
     try {
-      const { data: referrerTokenData } = await adminClient
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", referrer_id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const pushToken = referrerTokenData?.push_token;
-
-      if (pushToken) {
-        await sendPush(
-          supabaseUrl,
-          supabaseServiceKey,
-          {
-            to: pushToken,
-            sound: "default",
-            title: "You earned Elite time!",
-            body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
-            data: { type: "referral_credited", referred_id },
-            channelId: "referral-rewards",
-          }
-        );
-      }
+      await sendPush({
+        targetUserId: referrer_id,
+        title: "You earned Elite time!",
+        body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
+        data: { type: "referral_credited", referred_id },
+        androidChannelId: "referral-rewards",
+      }).catch(() => {});
     } catch (pushError) {
       console.error("Push notification failed:", pushError);
     }

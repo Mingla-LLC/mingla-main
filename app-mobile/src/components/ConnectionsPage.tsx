@@ -203,6 +203,17 @@ export default function ConnectionsPageRefactored({
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const conversationChannelRef = useRef<any>(null);
+  const broadcastSeenIds = useRef(new Set<string>());
+
+  // Current user's display name — needed for broadcast payload
+  const profile = useAppStore((state) => state.profile);
+  const currentUserDisplayName = useMemo(() => {
+    if (profile?.display_name) return profile.display_name;
+    if (profile?.first_name && profile?.last_name)
+      return `${profile.first_name} ${profile.last_name}`;
+    if (profile?.username) return profile.username;
+    return user?.email || "Unknown";
+  }, [profile, user]);
 
   // ── Modal state (for MessageInterface actions) ───────────
   const [showAddToBoardModal, setShowAddToBoardModal] = useState(false);
@@ -618,60 +629,68 @@ export default function ConnectionsPageRefactored({
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
-          const transformedMsg = transformMessage(newMessage, userId);
+          // Broadcast dedup: if broadcast already delivered this message to
+          // the UI, skip the message-add but still run all side effects
+          // (cache sync, conversation list update, auto-mark-as-read).
+          const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
 
-          // Add to messages (replace optimistic or add new)
-          setMessages((prev) => {
-            const exists = prev.some((msg) => msg.id === transformedMsg.id);
-            if (exists) return prev;
+          if (!alreadyDelivered) {
+            const transformedMsg = transformMessage(newMessage, userId);
 
-            const optimisticIndex = prev.findIndex(
-              (msg) =>
-                msg.id.startsWith("temp-") &&
-                msg.senderId === transformedMsg.senderId &&
-                msg.content === transformedMsg.content &&
-                Math.abs(
-                  new Date(msg.timestamp).getTime() -
-                    new Date(transformedMsg.timestamp).getTime()
-                ) < 5000
-            );
+            // Add to messages (replace optimistic or add new)
+            setMessages((prev) => {
+              const exists = prev.some((msg) => msg.id === transformedMsg.id);
+              if (exists) return prev;
 
-            if (optimisticIndex !== -1) {
-              const updated = [...prev];
-              updated[optimisticIndex] = transformedMsg;
-              return updated;
-            }
+              const optimisticIndex = prev.findIndex(
+                (msg) =>
+                  msg.id.startsWith("temp-") &&
+                  msg.senderId === transformedMsg.senderId &&
+                  msg.content === transformedMsg.content &&
+                  Math.abs(
+                    new Date(msg.timestamp).getTime() -
+                      new Date(transformedMsg.timestamp).getTime()
+                  ) < 5000
+              );
 
-            return [...prev, transformedMsg];
-          });
+              if (optimisticIndex !== -1) {
+                const updated = [...prev];
+                updated[optimisticIndex] = transformedMsg;
+                return updated;
+              }
 
-          // Update cache
+              return [...prev, transformedMsg];
+            });
+          }
+
+          // Cache update ALWAYS runs (even if broadcast already delivered to UI)
+          const transformedForCache = transformMessage(newMessage, userId);
           setMessagesCache((prev) => {
             const existing = prev[conversationId] || [];
-            const exists = existing.some((msg) => msg.id === transformedMsg.id);
+            const exists = existing.some((msg) => msg.id === transformedForCache.id);
             if (exists) return prev;
 
             const optimisticIndex = existing.findIndex(
               (msg) =>
                 msg.id.startsWith("temp-") &&
-                msg.senderId === transformedMsg.senderId &&
-                msg.content === transformedMsg.content &&
+                msg.senderId === transformedForCache.senderId &&
+                msg.content === transformedForCache.content &&
                 Math.abs(
                   new Date(msg.timestamp).getTime() -
-                    new Date(transformedMsg.timestamp).getTime()
+                    new Date(transformedForCache.timestamp).getTime()
                 ) < 5000
             );
 
             if (optimisticIndex !== -1) {
               const updated = [...existing];
-              updated[optimisticIndex] = transformedMsg;
+              updated[optimisticIndex] = transformedForCache;
               return { ...prev, [conversationId]: updated };
             }
 
-            return { ...prev, [conversationId]: [...existing, transformedMsg] };
+            return { ...prev, [conversationId]: [...existing, transformedForCache] };
           });
 
-          // Update conversation list
+          // Conversation list update ALWAYS runs
           setConversations((prev) =>
             prev.map((conv) => {
               if (conv.id === conversationId) {
@@ -688,10 +707,32 @@ export default function ConnectionsPageRefactored({
             })
           );
 
-          // Auto-mark as read
+          // Auto-mark as read ALWAYS runs
           if (newMessage.sender_id !== userId) {
             messagingService.markAsRead([newMessage.id], userId).catch(console.error);
           }
+        },
+
+        // Read receipt flow: when the receiver marks a message as read,
+        // the sync_message_read_status trigger sets is_read=true on the
+        // messages row, which fires a postgres_changes UPDATE event.
+        // This callback updates the sender's UI with the read state.
+        onMessageUpdated: (updatedMessage: DirectMessage) => {
+          const transformed = transformMessage(updatedMessage, userId);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === transformed.id ? { ...msg, ...transformed } : msg
+            )
+          );
+          setMessagesCache((prev) => {
+            const existing = prev[conversationId] || [];
+            return {
+              ...prev,
+              [conversationId]: existing.map((msg) =>
+                msg.id === transformed.id ? { ...msg, ...transformed } : msg
+              ),
+            };
+          });
         },
       }
     );
@@ -709,6 +750,7 @@ export default function ConnectionsPageRefactored({
     setCurrentConversationId(null);
     setMessages([]);
     setActiveChatIsBlocked(false);
+    broadcastSeenIds.current.clear();
 
     // Refresh conversations to get updated unread counts
     if (user?.id) {
@@ -848,12 +890,16 @@ export default function ConnectionsPageRefactored({
       if (sendError || !sentMessage) {
         console.error("Error sending message:", sendError);
 
-        // Remove optimistic message
-        setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+        // Mark optimistic message as failed (not removed — user sees retry state)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempId ? { ...msg, failed: true } : msg
+          )
+        );
         setMessagesCache((prev) => ({
           ...prev,
-          [currentConversationId]: (prev[currentConversationId] || []).filter(
-            (msg) => msg.id !== tempId
+          [currentConversationId]: (prev[currentConversationId] || []).map(
+            (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
           ),
         }));
 
@@ -875,21 +921,15 @@ export default function ConnectionsPageRefactored({
         return;
       }
 
-      // Replace optimistic with real message
+      // CRITICAL: Replace temp ID with real ID in messages state
       const realMsg = transformMessage(sentMessage, user.id);
 
-      setMessages((prev) => {
-        const hasTempId = prev.some((msg) => msg.id === tempId);
-        const hasRealId = prev.some((msg) => msg.id === realMsg.id);
-        if (!hasTempId && hasRealId) return prev;
-        return prev.map((msg) => (msg.id === tempId ? realMsg : msg));
-      });
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === tempId ? realMsg : msg))
+      );
 
       setMessagesCache((prev) => {
         const existing = prev[currentConversationId] || [];
-        const hasTempId = existing.some((msg) => msg.id === tempId);
-        const hasRealId = existing.some((msg) => msg.id === realMsg.id);
-        if (!hasTempId && hasRealId) return prev;
         return {
           ...prev,
           [currentConversationId]: existing.map((msg) =>
@@ -907,13 +947,38 @@ export default function ConnectionsPageRefactored({
           return conv;
         })
       );
+
+      // Add real ID to broadcast seen set so postgres_changes backup won't dupe
+      broadcastSeenIds.current.add(sentMessage.id);
+
+      // Broadcast to other participants (instant delivery <500ms)
+      try {
+        const channelName = `chat:${currentConversationId}`;
+        const broadcastChannel = supabase.channel(channelName);
+        broadcastChannel.send({
+          type: "broadcast",
+          event: "new_message",
+          payload: {
+            ...sentMessage,
+            sender_name: currentUserDisplayName,
+          },
+        });
+      } catch (broadcastErr) {
+        // Broadcast failure is non-fatal — postgres_changes will deliver
+        console.warn("Broadcast send failed (non-fatal):", broadcastErr);
+      }
     } catch (e) {
       console.error("Error sending message:", e);
-      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+      // Mark as failed instead of removing
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempId ? { ...msg, failed: true } : msg
+        )
+      );
       setMessagesCache((prev) => ({
         ...prev,
-        [currentConversationId]: (prev[currentConversationId] || []).filter(
-          (msg) => msg.id !== tempId
+        [currentConversationId]: (prev[currentConversationId] || []).map(
+          (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
         ),
       }));
     }
@@ -1237,6 +1302,10 @@ export default function ConnectionsPageRefactored({
             onNavigateToBoard={onNavigateToBoard}
             availableFriends={[]}
             isBlocked={activeChatIsBlocked}
+            conversationId={currentConversationId}
+            currentUserId={user?.id || null}
+            currentUserName={currentUserDisplayName}
+            broadcastSeenIds={broadcastSeenIds}
           />
         </View>
 

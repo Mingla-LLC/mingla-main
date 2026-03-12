@@ -2,8 +2,6 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
 import { enhancedLocationTrackingService } from '../services/enhancedLocationTrackingService';
-import { enhancedNotificationService } from '../services/enhancedNotificationService';
-import { smartNotificationService } from '../services/smartNotificationService';
 import { cameraService } from '../services/cameraService';
 // Removed aiReasoningService import - using RecommendationsGrid instead
 import { useAppStore } from '../store/appStore';
@@ -16,11 +14,6 @@ interface MobileFeaturesContextType {
   startLocationTracking: () => void;
   stopLocationTracking: () => void;
   getCurrentLocation: () => Promise<LocationData | null>;
-  
-  // Notifications
-  notificationPermissionGranted: boolean;
-  registerForNotifications: () => Promise<boolean>;
-  sendLocalNotification: (title: string, body: string, data?: any) => Promise<void>;
   
   // Camera
   cameraPermissionGranted: boolean;
@@ -49,7 +42,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
-  const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(false);
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
@@ -87,13 +79,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     return () => subscription?.remove();
   }, [isLocationTracking]);
 
-  // Register for notifications when user changes
-  useEffect(() => {
-    if (user && isInitialized) {
-      registerForNotifications();
-    }
-  }, [user, isInitialized]);
-
   const initializeMobileFeatures = async () => {
     try {
       setInitializationError(null);
@@ -119,25 +104,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
           .catch(error => {
             return false;
           }),
-
-        // Initialize notification service
-        enhancedNotificationService.initialize()
-          .then(permission => {
-            setNotificationPermissionGranted(permission);
-            return permission;
-          })
-          .catch(error => {
-            return false;
-          }),
-
-        // Initialize smart notification service (if user is logged in)
-        user ? smartNotificationService.initializeUser(user.id)
-          .then(() => {
-            return true;
-          })
-          .catch(error => {
-            return false;
-          }) : Promise.resolve(false),
 
         // Initialize camera service
         cameraService.initialize()
@@ -217,34 +183,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     }
   };
 
-  const registerForNotifications = async (): Promise<boolean> => {
-    if (!user) return false;
-    
-    try {
-      const success = await enhancedNotificationService.registerForPushNotifications(user.id);
-      if (success) {
-        setNotificationPermissionGranted(true);
-      }
-      return success;
-    } catch (error) {
-      console.error('Error registering for notifications:', error);
-      return false;
-    }
-  };
-
-  const sendLocalNotification = async (title: string, body: string, data?: any): Promise<void> => {
-    try {
-      await enhancedNotificationService.sendLocalNotification({
-        type: 'location_reminder',
-        title,
-        body,
-        data,
-      });
-    } catch (error) {
-      console.error('Error sending local notification:', error);
-    }
-  };
-
   const takePhoto = async (options?: any) => {
     try {
       return await cameraService.takePhoto(options);
@@ -282,11 +220,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     startLocationTracking,
     stopLocationTracking,
     getCurrentLocation,
-    
-    // Notifications
-    notificationPermissionGranted,
-    registerForNotifications,
-    sendLocalNotification,
     
     // Camera
     cameraPermissionGranted,

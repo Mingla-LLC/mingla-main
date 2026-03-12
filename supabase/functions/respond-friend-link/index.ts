@@ -144,36 +144,20 @@ serve(async (req: Request) => {
 
         const targetName = targetProf?.display_name || targetProf?.username || "Someone";
 
-        const { data: requesterTokenRow } = await supabaseAdmin
-          .from("user_push_tokens")
-          .select("push_token")
-          .eq("user_id", link.requester_id)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (requesterTokenRow?.push_token) {
-          sendPush(
-            Deno.env.get("SUPABASE_URL")!,
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-            {
-              to: requesterTokenRow.push_token,
-              sound: "default",
-              title: "Connection update",
-              body: `${targetName} isn't available to connect right now.`,
-              data: {
-                type: "friend_link_declined",
-                linkId,
-                declinedByName: targetName,
-                declinedByUserId: currentUserId,
-              },
-            }
-          ).catch(() => {});
-          console.log("Decline push sent to requester:", link.requester_id);
-        }
+        sendPush({
+          targetUserId: link.requester_id,
+          title: "Connection update",
+          body: `${targetName} isn't available to connect right now.`,
+          data: {
+            type: "friend_link_declined",
+            linkId,
+            declinedByName: targetName,
+            declinedByUserId: currentUserId,
+          },
+        }).catch(() => {});
+        console.log("Decline push sent to requester:", link.requester_id);
       } catch (pushErr) {
         console.error("Decline push notification error:", pushErr);
-        // Never fail the decline
       }
 
       return new Response(
@@ -316,68 +300,35 @@ serve(async (req: Request) => {
 
     // ── Send consent notification to BOTH users (replaces old acceptance notification) ──
     try {
-      // Notification to requester
-      const { data: requesterTokenData } = await supabaseAdmin
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", requesterId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      sendPush({
+        targetUserId: requesterId,
+        title: `You and ${targetDisplayName} are now friends!`,
+        body: "Want to link profiles and share your details with each other?",
+        data: {
+          type: "link_consent_request",
+          linkId: linkId,
+          friendName: targetDisplayName,
+          friendUserId: targetId,
+          friendAvatarUrl: targetProfile?.avatar_url || null,
+        },
+      }).catch(() => {});
+      console.log("Consent push sent to requester:", requesterId);
 
-      if (requesterTokenData?.push_token) {
-        sendPush(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          {
-            to: requesterTokenData.push_token,
-            sound: "default",
-            title: `You and ${targetDisplayName} are now friends!`,
-            body: "Want to link profiles and share your details with each other?",
-            data: {
-              type: "link_consent_request",
-              linkId: linkId,
-              friendName: targetDisplayName,
-              friendUserId: targetId,
-              friendAvatarUrl: targetProfile?.avatar_url || null,
-            },
-          }
-        ).catch(() => {});
-        console.log("Consent push sent to requester:", requesterId);
-      }
-
-      // Notification to target (the one who just accepted)
-      const { data: targetTokenData } = await supabaseAdmin
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", targetId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (targetTokenData?.push_token) {
-        sendPush(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          {
-            to: targetTokenData.push_token,
-            sound: "default",
-            title: `You and ${requesterDisplayName} are now friends!`,
-            body: "Want to link profiles and share your details with each other?",
-            data: {
-              type: "link_consent_request",
-              linkId: linkId,
-              friendName: requesterDisplayName,
-              friendUserId: requesterId,
-              friendAvatarUrl: requesterProfile?.avatar_url || null,
-            },
-          }
-        ).catch(() => {});
-        console.log("Consent push sent to target:", targetId);
-      }
+      sendPush({
+        targetUserId: targetId,
+        title: `You and ${requesterDisplayName} are now friends!`,
+        body: "Want to link profiles and share your details with each other?",
+        data: {
+          type: "link_consent_request",
+          linkId: linkId,
+          friendName: requesterDisplayName,
+          friendUserId: requesterId,
+          friendAvatarUrl: requesterProfile?.avatar_url || null,
+        },
+      }).catch(() => {});
+      console.log("Consent push sent to target:", targetId);
     } catch (pushError) {
       console.error("Push notification error:", pushError);
-      // Don't fail the request
     }
 
     return new Response(

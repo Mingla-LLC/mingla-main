@@ -3,7 +3,6 @@ import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
-import { notificationService } from '../services/notificationService';
 import { PreferencesService } from '../services/preferencesService';
 import { normalizePreferencesForSave } from '../utils/preferencesConverter';
 
@@ -1109,24 +1108,6 @@ export const useSessionManagement = () => {
 
       // Handle pending invitations or session management
       if (isCreator || isAdmin) {
-        // Send notifications before deletion
-        const { data: otherParticipants } = await supabase
-          .from('session_participants')
-          .select('user_id')
-          .eq('session_id', sessionId)
-          .neq('user_id', user.id);
-
-        if (otherParticipants?.length) {
-          const sessionName = sessionState.availableSessions.find(s => s.id === sessionId)?.name ?? 'Session';
-          for (const p of otherParticipants) {
-            try {
-              await notificationService.sendSessionUpdate(p.user_id, sessionName, 'session_ended');
-            } catch (notifError) {
-              console.error('[useSessionManagement] Push notification failed:', notifError);
-            }
-          }
-        }
-
         // User is the creator or admin - revoke the session
         await supabase
           .from('collaboration_invites')

@@ -119,87 +119,48 @@ serve(async (req) => {
 
     // Send push notification to the INVITED USER (receiver)
     try {
-      // Get invitee's push token
-      const { data: tokenData } = await supabase
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", invitedUserId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const pushToken = tokenData?.push_token;
-
-      if (pushToken) {
-        await sendPush(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          {
-            to: pushToken,
-            sound: "default",
-            title: "New Collaboration Invite",
-            body: `${inviterName} invited you to join "${sessionName}"`,
-            data: {
-              type: "collaboration_invite_received",
-              sessionId: sessionId,
-              sessionName: sessionName,
-              inviteId: inviteId,
-              inviterId: inviterId,
-              inviterName: inviterName,
-              inviterUsername: inviterUsername,
-              inviterAvatarUrl: inviterProfile?.avatar_url || null,
-            },
-            channelId: "collaboration-invites",
-          }
-        );
-        console.log("Push notification sent to invitee successfully");
-      } else {
-        console.log("No push token found for invitee:", invitedUserId);
-      }
+      await sendPush({
+        targetUserId: invitedUserId,
+        title: "New Collaboration Invite",
+        body: `${inviterName} invited you to join "${sessionName}"`,
+        data: {
+          type: "collaboration_invite_received",
+          sessionId: sessionId,
+          sessionName: sessionName,
+          inviteId: inviteId,
+          inviterId: inviterId,
+          inviterName: inviterName,
+          inviterUsername: inviterUsername,
+          inviterAvatarUrl: inviterProfile?.avatar_url || null,
+        },
+        androidChannelId: "collaboration-invites",
+      }).catch(() => {});
+      console.log("Push notification sent to invitee successfully");
     } catch (pushError) {
       console.error("Error sending push notification to invitee:", pushError);
-      // Don't fail the whole request if push notification fails
     }
 
     // Send notification to the INVITER (sender)
     try {
-      const { data: inviterTokenData } = await supabase
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", inviterId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const inviterPushToken = inviterTokenData?.push_token;
-
-      if (inviterPushToken && invitedDisplayName) {
-        await sendPush(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          {
-            to: inviterPushToken,
-            sound: "default",
-            title: "Collaboration Invite Sent",
-            body: `You invited ${invitedDisplayName} to join "${sessionName}"`,
-            data: {
-              type: "collaboration_invite_sent",
-              sessionId: sessionId,
-              sessionName: sessionName,
-              inviteId: inviteId,
-              invitedUserId: invitedUserId,
-              invitedUsername: invitedUsername,
-            },
-            channelId: "collaboration-invites",
-          }
-        );
+      if (invitedDisplayName) {
+        await sendPush({
+          targetUserId: inviterId,
+          title: "Collaboration Invite Sent",
+          body: `You invited ${invitedDisplayName} to join "${sessionName}"`,
+          data: {
+            type: "collaboration_invite_sent",
+            sessionId: sessionId,
+            sessionName: sessionName,
+            inviteId: inviteId,
+            invitedUserId: invitedUserId,
+            invitedUsername: invitedUsername,
+          },
+          androidChannelId: "collaboration-invites",
+        }).catch(() => {});
         console.log("Push notification sent to inviter successfully");
-      } else {
-        console.log("No push token or display name found for inviter:", inviterId);
       }
     } catch (inviterPushError) {
       console.error("Error sending push notification to inviter:", inviterPushError);
-      // Don't fail the whole request if push notification fails
     }
 
     return new Response(

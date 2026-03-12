@@ -4,11 +4,14 @@ export interface HolidayCard {
   id: string;
   title: string;
   category: string;
+  categorySlug: string;
   imageUrl: string | null;
   rating: number | null;
   priceLevel: string | null;
   address: string | null;
   googlePlaceId: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 export async function getHolidayCards(params: {

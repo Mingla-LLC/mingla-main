@@ -53,7 +53,13 @@ import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
-import { initializeOneSignal, loginOneSignal, logoutOneSignal } from "../src/services/oneSignalService";
+import {
+  initializeOneSignal,
+  loginOneSignal,
+  logoutOneSignal,
+  onForegroundNotification,
+  onNotificationClicked,
+} from "../src/services/oneSignalService";
 import { initializeAppsFlyer, setAppsFlyerUserId } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
@@ -72,7 +78,6 @@ import { debugService } from "../src/services/debugService";
 import { logger } from "../src/utils/logger";
 import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
-import * as Notifications from "expo-notifications";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { usePendingLinkConsents } from "../src/hooks/useLinkConsent";
@@ -188,143 +193,142 @@ function AppContent() {
   // Push notification listeners — convert pushes to in-app notifications
   useEffect(() => {
     // Foreground: push arrives while app is open
-    const notificationReceivedSub =
-      Notifications.addNotificationReceivedListener((notification) => {
-        const data = notification.request.content.data;
-        if (!data?.type) return;
+    const removeForeground = onForegroundNotification((data, prevent) => {
+      if (!data?.type) return;
 
-        switch (data.type) {
-          case "friend_link_request":
-            inAppNotificationService.notifyFriendLinkRequest(
-              data.requesterName || "Someone",
-              data.linkId,
-              data.requesterId,
-              data.requesterAvatarUrl
-            );
-            break;
-          case "link_consent_request":
-            inAppNotificationService.notifyLinkConsentRequest(
-              data.friendName || "Someone",
-              data.linkId,
-              data.friendUserId,
-              data.friendAvatarUrl
-            );
-            break;
-          case "collaboration_invite_received":
-            inAppNotificationService.notifyCollaborationInvite(
-              data.sessionName || "a session",
-              data.inviterName || "Someone",
-              data.sessionId,
-              data.inviteId,
-              data.inviterAvatarUrl
-            );
-            break;
-          case "friend_link_declined":
-            inAppNotificationService.notifyFriendLinkDeclined(
-              data.declinedByName || "Someone"
-            );
-            break;
-          case "link_consent_completed":
-            inAppNotificationService.add(
-              "system",
-              data.title || `You and ${data.friendName || "your friend"} are now linked!`,
-              data.body || "You can now see each other's details in For You.",
-              { page: "discover" },
-              { linkId: data.linkId }
-            );
-            break;
-          case "collaboration_invite_response":
-            inAppNotificationService.add(
-              "collaboration_invite",
-              data.title || "Collaboration update",
-              data.body || "Someone responded to your invite.",
-              { page: "home" },
-              { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
-            );
-            break;
-          case "collaboration_invite_sent":
-            inAppNotificationService.add(
-              "system",
-              data.title || "Invite sent",
-              data.body || "Your collaboration invite was sent.",
-              { page: "home" },
-              { sessionId: data.sessionId }
-            );
-            break;
-        }
-      });
+      // Suppress system tray notification — handle purely in-app
+      prevent();
+
+      switch (data.type) {
+        case "friend_link_request":
+          inAppNotificationService.notifyFriendLinkRequest(
+            (data.requesterName as string) || "Someone",
+            data.linkId as string,
+            data.requesterId as string,
+            data.requesterAvatarUrl as string | undefined
+          );
+          break;
+        case "link_consent_request":
+          inAppNotificationService.notifyLinkConsentRequest(
+            (data.friendName as string) || "Someone",
+            data.linkId as string,
+            data.friendUserId as string,
+            data.friendAvatarUrl as string | undefined
+          );
+          break;
+        case "collaboration_invite_received":
+          inAppNotificationService.notifyCollaborationInvite(
+            (data.sessionName as string) || "a session",
+            (data.inviterName as string) || "Someone",
+            data.sessionId as string,
+            data.inviteId as string,
+            data.inviterAvatarUrl as string | undefined
+          );
+          break;
+        case "friend_link_declined":
+          inAppNotificationService.notifyFriendLinkDeclined(
+            (data.declinedByName as string) || "Someone"
+          );
+          break;
+        case "link_consent_completed":
+          inAppNotificationService.add(
+            "system",
+            (data.title as string) || `You and ${(data.friendName as string) || "your friend"} are now linked!`,
+            (data.body as string) || "You can now see each other's details in For You.",
+            { page: "discover" },
+            { linkId: data.linkId }
+          );
+          break;
+        case "collaboration_invite_response":
+          inAppNotificationService.add(
+            "collaboration_invite",
+            (data.title as string) || "Collaboration update",
+            (data.body as string) || "Someone responded to your invite.",
+            { page: "home" },
+            { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
+          );
+          break;
+        case "collaboration_invite_sent":
+          inAppNotificationService.add(
+            "system",
+            (data.title as string) || "Invite sent",
+            (data.body as string) || "Your collaboration invite was sent.",
+            { page: "home" },
+            { sessionId: data.sessionId }
+          );
+          break;
+      }
+    });
 
     // Background: user taps a push notification
-    const notificationResponseSub =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data;
-        if (!data?.type) return;
+    const removeClicked = onNotificationClicked((data) => {
+      if (!data?.type) return;
 
-        switch (data.type) {
-          case "friend_link_request":
-            inAppNotificationService.notifyFriendLinkRequest(
-              data.requesterName || "Someone",
-              data.linkId,
-              data.requesterId,
-              data.requesterAvatarUrl
-            );
-            setCurrentPage("discover");
-            break;
-          case "link_consent_request":
-            inAppNotificationService.notifyLinkConsentRequest(
-              data.friendName || "Someone",
-              data.linkId,
-              data.friendUserId,
-              data.friendAvatarUrl
-            );
-            setCurrentPage("connections");
-            break;
-          case "collaboration_invite_received":
-            inAppNotificationService.notifyCollaborationInvite(
-              data.sessionName || "a session",
-              data.inviterName || "Someone",
-              data.sessionId,
-              data.inviteId,
-              data.inviterAvatarUrl
-            );
-            setCurrentPage("home");
-            break;
-          case "link_consent_completed":
-            inAppNotificationService.add(
-              "system",
-              data.title || `You and ${data.friendName || "your friend"} are now linked!`,
-              data.body || "You can now see each other's details in For You.",
-              { page: "discover" },
-              { linkId: data.linkId }
-            );
-            setCurrentPage("discover");
-            break;
-          case "collaboration_invite_response":
-            inAppNotificationService.add(
-              "collaboration_invite",
-              data.title || "Collaboration update",
-              data.body || "Someone responded to your invite.",
-              { page: "home" },
-              { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
-            );
-            setCurrentPage("home");
-            break;
-          case "collaboration_invite_sent":
-            inAppNotificationService.add(
-              "system",
-              data.title || "Invite sent",
-              data.body || "Your collaboration invite was sent.",
-              { page: "home" },
-              { sessionId: data.sessionId }
-            );
-            setCurrentPage("home");
-            break;
-        }
-      });
+      switch (data.type) {
+        case "friend_link_request":
+          inAppNotificationService.notifyFriendLinkRequest(
+            (data.requesterName as string) || "Someone",
+            data.linkId as string,
+            data.requesterId as string,
+            data.requesterAvatarUrl as string | undefined
+          );
+          setCurrentPage("discover");
+          break;
+        case "link_consent_request":
+          inAppNotificationService.notifyLinkConsentRequest(
+            (data.friendName as string) || "Someone",
+            data.linkId as string,
+            data.friendUserId as string,
+            data.friendAvatarUrl as string | undefined
+          );
+          setCurrentPage("connections");
+          break;
+        case "collaboration_invite_received":
+          inAppNotificationService.notifyCollaborationInvite(
+            (data.sessionName as string) || "a session",
+            (data.inviterName as string) || "Someone",
+            data.sessionId as string,
+            data.inviteId as string,
+            data.inviterAvatarUrl as string | undefined
+          );
+          setCurrentPage("home");
+          break;
+        case "link_consent_completed":
+          inAppNotificationService.add(
+            "system",
+            (data.title as string) || `You and ${(data.friendName as string) || "your friend"} are now linked!`,
+            (data.body as string) || "You can now see each other's details in For You.",
+            { page: "discover" },
+            { linkId: data.linkId }
+          );
+          setCurrentPage("discover");
+          break;
+        case "collaboration_invite_response":
+          inAppNotificationService.add(
+            "collaboration_invite",
+            (data.title as string) || "Collaboration update",
+            (data.body as string) || "Someone responded to your invite.",
+            { page: "home" },
+            { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
+          );
+          setCurrentPage("home");
+          break;
+        case "collaboration_invite_sent":
+          inAppNotificationService.add(
+            "system",
+            (data.title as string) || "Invite sent",
+            (data.body as string) || "Your collaboration invite was sent.",
+            { page: "home" },
+            { sessionId: data.sessionId }
+          );
+          setCurrentPage("home");
+          break;
+      }
+    });
 
     return () => {
-      notificationReceivedSub.remove();
-      notificationResponseSub.remove();
+      removeForeground();
+      removeClicked();
     };
   }, []);
 

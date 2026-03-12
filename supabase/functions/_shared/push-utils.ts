@@ -1,54 +1,66 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// supabase/functions/_shared/push-utils.ts
+//
+// Sends push notifications via OneSignal REST API.
+// Targets users by external_id (= Supabase auth.users.id).
+// OneSignal manages FCM/APNs tokens internally — no token storage needed.
+
+const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
+const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 
 interface PushPayload {
-  to: string;                // Expo push token
+  targetUserId: string;           // Supabase UUID — maps to OneSignal external_id
   title: string;
   body: string;
   data?: Record<string, unknown>;
-  sound?: "default" | null;
-  badge?: number;
-  channelId?: string;
+  androidChannelId?: string;      // Android notification channel
 }
 
-interface ExpoTicket {
-  status: "ok" | "error";
+interface OneSignalResponse {
   id?: string;
-  message?: string;
-  details?: { error?: string };
-}
-
-interface ExpoPushResponse {
-  data: ExpoTicket[];
+  errors?: string[] | Record<string, string[]>;
 }
 
 /**
- * Sends a push notification via Expo and purges the token if it is stale.
+ * Sends a push notification to a specific user via OneSignal.
  *
- * Call this instead of calling fetch("https://exp.host/...") directly.
- * Returns true if the push was accepted, false if the token was stale or delivery failed.
+ * The user must have been registered in OneSignal via `OneSignal.login(userId)`
+ * on the mobile client. OneSignal resolves the external_id to the correct
+ * device(s) and delivers via FCM (Android) or APNs (iOS) automatically.
+ *
+ * Returns true if the push was accepted by OneSignal, false otherwise.
  */
-export async function sendPush(
-  supabaseUrl: string,
-  supabaseServiceKey: string,
-  payload: PushPayload
-): Promise<boolean> {
-  let response: Response;
+export async function sendPush(payload: PushPayload): Promise<boolean> {
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+    console.warn("[push-utils] OneSignal credentials not configured. Skipping push.");
+    return false;
+  }
 
+  const oneSignalPayload = {
+    app_id: ONESIGNAL_APP_ID,
+    target_channel: "push",
+    include_aliases: {
+      external_id: [payload.targetUserId],
+    },
+    headings: { en: payload.title },
+    contents: { en: payload.body },
+    data: payload.data ?? {},
+    ...(payload.androidChannelId && {
+      android_channel_id: payload.androidChannelId,
+    }),
+  };
+
+  let response: Response;
   try {
-    // 5-second hard cap — Supabase edge functions default timeout is 2s on the
-    // Starter plan and 400ms on the free plan. An unresponsive Expo server
-    // would otherwise stall all 8 notification edge functions indefinitely.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
-      response = await fetch("https://exp.host/--/api/v2/push/send", {
+      response = await fetch("https://api.onesignal.com/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
-          "Accept-Encoding": "gzip, deflate",
+          Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(oneSignalPayload),
         signal: controller.signal,
       });
     } finally {
@@ -60,35 +72,42 @@ export async function sendPush(
   }
 
   if (!response.ok) {
-    console.warn("[push-utils] Expo returned HTTP", response.status);
+    const errorText = await response.text().catch(() => "unknown");
+    console.warn("[push-utils] OneSignal returned HTTP", response.status, errorText);
     return false;
   }
 
-  let body: ExpoPushResponse;
+  let body: OneSignalResponse;
   try {
     body = await response.json();
   } catch {
-    // Cannot parse response — treat as delivered (non-critical)
     return true;
   }
 
-  const ticket = body?.data?.[0];
-  if (!ticket) return true;
-
-  if (ticket.status === "error" && ticket.details?.error === "DeviceNotRegistered") {
-    console.warn("[push-utils] DeviceNotRegistered for token, purging:", payload.to);
-    // Purge the stale token from the database
-    try {
-      const admin = createClient(supabaseUrl, supabaseServiceKey);
-      await admin
-        .from("user_push_tokens")
-        .delete()
-        .eq("push_token", payload.to);
-    } catch (purgeErr) {
-      console.warn("[push-utils] Failed to purge stale token:", purgeErr);
-    }
+  if (body.errors) {
+    console.warn("[push-utils] OneSignal errors:", JSON.stringify(body.errors));
+    // "All included players are not subscribed" means the user hasn't registered
+    // a device yet. This is not a bug — they just haven't opened the app.
     return false;
   }
 
-  return ticket.status === "ok";
+  return true;
+}
+
+/**
+ * Sends a push to multiple users. Fires in parallel, never throws.
+ * Returns an array of booleans (one per user) indicating success/failure.
+ */
+export async function sendPushToMany(
+  userIds: string[],
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+  androidChannelId?: string
+): Promise<boolean[]> {
+  return Promise.all(
+    userIds.map((userId) =>
+      sendPush({ targetUserId: userId, title, body, data, androidChannelId }).catch(() => false)
+    )
+  );
 }

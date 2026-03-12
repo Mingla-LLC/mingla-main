@@ -4,8 +4,9 @@
 import { vs, ms } from '../utils/responsive';
 
 export const spacing = {
+  xxs: 2,   // 2px — ultra-compact message grouping
   xs: 4,    // 4px
-  sm: 8,    // 8px  
+  sm: 8,    // 8px
   md: 16,   // 16px
   lg: 24,   // 24px
   xl: 32,   // 32px
@@ -186,6 +187,13 @@ export const colors = {
     tertiary: '#6b7280',
     inverse: '#ffffff',
   },
+
+  // Chat semantic aliases (no new color values — references to existing tokens)
+  chat: {
+    bubbleSent: '#f97316',     // primary[500]
+    bubbleReceived: '#f3f4f6', // gray[100]
+    timestampPill: '#f9fafb',  // gray[50]
+  },
 } as const;
 
 export const animations = {
@@ -222,6 +230,7 @@ export const taglineTypography = {
 
 // Responsive spacing — same scale, proportionally adapted
 export const responsiveSpacing = {
+  xxs: vs(2),
   xs: vs(4),
   sm: vs(8),
   md: vs(16),

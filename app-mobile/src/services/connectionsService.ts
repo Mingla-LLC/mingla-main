@@ -23,6 +23,7 @@ export interface Message {
   fileSize?: string;
   isMe: boolean;
   unread?: boolean;
+  failed?: boolean;
 }
 
 export interface Conversation {

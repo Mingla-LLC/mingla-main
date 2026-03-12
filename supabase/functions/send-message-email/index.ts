@@ -1,6 +1,4 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
@@ -63,34 +61,6 @@ serve(async (req) => {
       );
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
-      "SUPABASE_SERVICE_ROLE_KEY"
-    )!;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Look up recipient's push token
-    const { data: pushTokenData } = await supabase
-      .from("user_push_tokens")
-      .select("push_token")
-      .eq("user_id", recipientId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const pushToken = pushTokenData?.push_token;
-
-    if (!pushToken) {
-      console.log("No push token found for user:", recipientId);
-      return new Response(
-        JSON.stringify({ success: true, method: "none", reason: "no_push_token" }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
     // Strip markdown and truncate message preview
     const cleanPreview = stripMarkdown(messagePreview);
     const truncatedPreview =
@@ -104,22 +74,17 @@ serve(async (req) => {
       : senderName;
     const body = truncatedPreview;
 
-    // Send push notification via Expo
-    await sendPush(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      {
-        to: pushToken,
-        title: title,
-        body: body,
-        sound: "default",
-        data: {
-          type: isMention ? "mention" : "message",
-          conversationId: conversationId,
-        },
-        channelId: "messages",
-      }
-    );
+    // Send push notification via OneSignal
+    await sendPush({
+      targetUserId: recipientId,
+      title: title,
+      body: body,
+      data: {
+        type: isMention ? "mention" : "message",
+        conversationId: conversationId,
+      },
+      androidChannelId: "messages",
+    }).catch(() => {});
 
     console.log("Push notification sent for message");
 

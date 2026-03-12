@@ -583,41 +583,11 @@ export class MessagingService {
       for (const participant of participants) {
         const recipientId = participant.user_id;
 
-        // Send push notification
-        await this.sendPushNotification(recipientId, senderName, messagePreview, conversationId);
-
-        // Send push notification via edge function (email removed — push only)
+        // Send push notification via edge function (OneSignal handles delivery)
         await this.sendEdgeFunctionNotification(recipientId, senderName, messagePreview, conversationId, senderProfile?.email);
       }
     } catch (error) {
       console.error('Error sending message notifications:', error);
-    }
-  }
-
-  /**
-   * Send push notification to recipient
-   */
-  private async sendPushNotification(
-    recipientId: string,
-    senderName: string,
-    messagePreview: string,
-    conversationId: string
-  ): Promise<void> {
-    try {
-      // Import enhanced notification service dynamically to avoid circular dependencies
-      const { enhancedNotificationService } = await import('./enhancedNotificationService');
-      
-      await enhancedNotificationService.sendPushNotification(recipientId, {
-        type: 'session_message',
-        title: `New message from ${senderName}`,
-        body: messagePreview,
-        data: {
-          conversationId,
-          messageType: 'direct_message',
-        },
-      });
-    } catch (error) {
-      console.error('Error sending push notification:', error);
     }
   }
 

@@ -14,7 +14,7 @@ import {
   GenderOption,
   HolidayDefinition,
 } from "../types/holidayTypes";
-import { STANDARD_HOLIDAYS } from "../constants/holidays";
+import { STANDARD_HOLIDAYS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 import { s } from "../utils/responsive";
 import BirthdayHero from "./BirthdayHero";
 import PersonRecommendationCards from "./PersonRecommendationCards";
@@ -144,7 +144,12 @@ export default function PersonHolidayView({
     const standardItems = filtered.map((holiday) => {
       const { date, daysAway } = getNextOccurrence(holiday.getDate);
       const categorySlugs = holiday.sections
-        .map((sec) => sec.categorySlug || sec.type)
+        .flatMap((sec) => {
+          if (sec.categorySlug) return [sec.categorySlug];
+          // Resolve intent types to their mapped category slugs
+          const mapped = INTENT_CATEGORY_MAP[sec.type];
+          return mapped ?? [];
+        })
         .filter(Boolean);
       return {
         id: holiday.id,

@@ -7,34 +7,20 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
 import { SavedPerson } from "../services/savedPeopleService";
 import { usePersonalizedCards } from "../hooks/usePersonalizedCards";
+import { getReadableCategoryName, getCategoryColor, getCategoryIcon } from "../utils/categoryUtils";
 
 interface PersonRecommendationCardsProps {
   person: SavedPerson;
   location: { latitude: number; longitude: number };
-}
-
-type SourceType = "Activity" | "Audio" | "Dining";
-
-const SOURCE_ICONS: Record<SourceType, keyof typeof Ionicons.glyphMap> = {
-  Activity: "trending-up-outline",
-  Audio: "mic-outline",
-  Dining: "restaurant-outline",
-};
-
-function getSourceIcon(category: string): keyof typeof Ionicons.glyphMap {
-  if (category.toLowerCase().includes("dining") || category.toLowerCase().includes("restaurant")) {
-    return "restaurant-outline";
-  }
-  if (category.toLowerCase().includes("audio") || category.toLowerCase().includes("music")) {
-    return "mic-outline";
-  }
-  return "trending-up-outline";
 }
 
 const PersonRecommendationCards: React.FC<PersonRecommendationCardsProps> = ({
@@ -90,47 +76,73 @@ const PersonRecommendationCards: React.FC<PersonRecommendationCardsProps> = ({
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
     >
-      {data.cards.map((card) => (
-        <View key={card.id} style={styles.card}>
-          <View style={styles.imageArea}>
-            {card.imageUrl ? (
-              <Image
-                source={{ uri: card.imageUrl }}
-                style={styles.cardImage}
-                resizeMode="cover"
+      {data.cards.map((card) => {
+        const categoryColor = getCategoryColor(card.category);
+        const categoryIcon = getCategoryIcon(card.category);
+        const categoryLabel = getReadableCategoryName(card.category);
+
+        return (
+          <TouchableOpacity
+            key={card.id}
+            style={styles.card}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (card.location?.latitude && card.location?.longitude) {
+                Linking.openURL(
+                  `https://www.google.com/maps/search/?api=1&query=${card.location.latitude},${card.location.longitude}`
+                ).catch(() => {});
+              } else if (card.address) {
+                Linking.openURL(
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
+                ).catch(() => {});
+              }
+            }}
+          >
+            <View style={styles.imageArea}>
+              {card.imageUrl ? (
+                <Image
+                  source={{ uri: card.imageUrl }}
+                  style={styles.cardImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.cardImage, styles.placeholderImage]}>
+                  <Ionicons name={categoryIcon as any} size={s(28)} color="rgba(255,255,255,0.6)" />
+                </View>
+              )}
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.5)"]}
+                style={styles.cardGradient}
               />
-            ) : (
-              <View style={[styles.cardImage, styles.placeholderImage]} />
-            )}
-            <View style={styles.categoryBadge}>
-              <Text style={styles.categoryText}>{card.category}</Text>
-            </View>
-            <View style={styles.sourceChip}>
-              <Ionicons
-                name={getSourceIcon(card.category)}
-                size={s(14)}
-                color="#FFFFFF"
-              />
-            </View>
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {card.title}
-            </Text>
-            {card.address ? (
-              <Text style={styles.cardAddress} numberOfLines={1}>
-                {card.address}
-              </Text>
-            ) : null}
-            {card.rating ? (
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={s(12)} color="#eb7825" />
-                <Text style={styles.ratingText}>{card.rating}</Text>
+              <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
+                <Text style={styles.categoryText}>{categoryLabel}</Text>
               </View>
-            ) : null}
-          </View>
-        </View>
-      ))}
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {card.title}
+              </Text>
+              {card.address ? (
+                <Text style={styles.cardAddress} numberOfLines={1}>
+                  {card.address}
+                </Text>
+              ) : null}
+              <View style={styles.cardFooter}>
+                {card.rating ? (
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={s(11)} color="#F59E0B" />
+                    <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.mapHint}>
+                  <Ionicons name="navigate-outline" size={s(11)} color={colors.gray[400]} />
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
   );
 };
@@ -138,76 +150,79 @@ const PersonRecommendationCards: React.FC<PersonRecommendationCardsProps> = ({
 const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: s(16),
+    paddingBottom: vs(4),
     gap: s(12),
   },
   card: {
-    width: s(160),
-    height: s(200),
+    width: s(180),
+    height: s(230),
     borderRadius: s(16),
     backgroundColor: "#FFFFFF",
     overflow: "hidden",
-    ...shadows.sm,
+    ...shadows.md,
   },
   skeletonCard: {
     backgroundColor: colors.gray[100],
   },
   imageArea: {
     width: "100%",
-    height: "60%",
+    height: "55%",
     position: "relative",
   },
   cardImage: {
     width: "100%",
     height: "100%",
   },
+  cardGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+  },
   placeholderImage: {
-    backgroundColor: colors.gray[300],
+    backgroundColor: colors.gray[200],
+    alignItems: "center",
+    justifyContent: "center",
   },
   skeletonImage: {
     width: "100%",
-    height: "60%",
+    height: "55%",
     backgroundColor: colors.gray[200],
   },
   categoryBadge: {
     position: "absolute",
     top: s(8),
     left: s(8),
-    backgroundColor: "rgba(0,0,0,0.6)",
     paddingHorizontal: s(8),
     paddingVertical: vs(3),
     borderRadius: s(8),
   },
   categoryText: {
     fontSize: s(10),
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#FFFFFF",
-  },
-  sourceChip: {
-    position: "absolute",
-    top: s(8),
-    right: s(8),
-    backgroundColor: "rgba(0,0,0,0.5)",
-    width: s(28),
-    height: s(28),
-    borderRadius: s(14),
-    alignItems: "center",
-    justifyContent: "center",
   },
   cardContent: {
     flex: 1,
-    padding: s(10),
-    justifyContent: "center",
+    padding: s(12),
+    justifyContent: "space-between",
   },
   cardTitle: {
     fontSize: s(13),
-    fontWeight: "600",
+    fontWeight: "700",
     color: colors.gray[800],
-    marginBottom: vs(2),
   },
   cardAddress: {
     fontSize: s(11),
     color: colors.gray[500],
-    marginBottom: vs(2),
+    marginTop: vs(2),
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: vs(4),
   },
   ratingRow: {
     flexDirection: "row",
@@ -216,8 +231,11 @@ const styles = StyleSheet.create({
   },
   ratingText: {
     fontSize: s(11),
-    fontWeight: "500",
-    color: colors.gray[600],
+    fontWeight: "600",
+    color: colors.gray[700],
+  },
+  mapHint: {
+    opacity: 0.6,
   },
   skeletonTitle: {
     width: "80%",

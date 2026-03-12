@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
@@ -79,46 +78,19 @@ serve(async (req) => {
       );
     }
 
-    // Look up recipient's push token
-    const { data: pushTokenData } = await supabase
-      .from("user_push_tokens")
-      .select("push_token")
-      .eq("user_id", receiverId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const pushToken = pushTokenData?.push_token;
-
-    if (!pushToken) {
-      console.log("No push token found for user:", receiverId);
-      return new Response(
-        JSON.stringify({ success: true, method: "none", reason: "no_push_token" }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Send push notification via Expo
-    await sendPush(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      {
-        to: pushToken,
-        title: `${senderName} wants to connect`,
-        body: "Tap to accept or pass.",
-        sound: "default",
-        data: {
-          type: "friend_request",
-          requestId: requestId,
-          senderId: senderId,
-          senderUsername: senderUsername,
-        },
-        channelId: "friend-requests",
-      }
-    );
+    // Send push notification via OneSignal
+    await sendPush({
+      targetUserId: receiverId,
+      title: `${senderName} wants to connect`,
+      body: "Tap to accept or pass.",
+      data: {
+        type: "friend_request",
+        requestId: requestId,
+        senderId: senderId,
+        senderUsername: senderUsername,
+      },
+      androidChannelId: "friend-requests",
+    }).catch(() => {});
 
     console.log("Push notification sent for friend request");
 

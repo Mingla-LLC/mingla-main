@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getPlaceTypesForCategory, resolveCategory } from "../_shared/categoryPlaceTypes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,22 +10,6 @@ const corsHeaders = {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const CATEGORY_TYPE_MAP: Record<string, string[]> = {
-  romantic: ["restaurant"],
-  fine_dining: ["restaurant"],
-  dining: ["restaurant"],
-  play: ["amusement_park", "bowling_alley", "movie_theater"],
-  entertainment: ["amusement_park", "bowling_alley", "movie_theater"],
-  nature: ["park", "hiking_area", "campground"],
-  outdoors: ["park", "hiking_area", "campground"],
-  drink: ["bar", "night_club", "cafe"],
-  nightlife: ["bar", "night_club", "cafe"],
-  wellness: ["spa", "gym"],
-  spa: ["spa", "gym"],
-  watch: ["movie_theater", "performing_arts_theater", "museum"],
-  arts: ["movie_theater", "performing_arts_theater", "museum"],
-};
 
 interface RequestBody {
   personId: string;
@@ -38,15 +23,14 @@ interface Card {
   id: string;
   title: string;
   category: string;
+  categorySlug: string;
   imageUrl: string | null;
   rating: number | null;
   priceLevel: string | null;
   address: string | null;
   googlePlaceId: string | null;
-}
-
-function getIncludedTypes(slug: string): string[] {
-  return CATEGORY_TYPE_MAP[slug] ?? ["restaurant"];
+  lat: number | null;
+  lng: number | null;
 }
 
 serve(async (req: Request) => {
@@ -149,9 +133,15 @@ serve(async (req: Request) => {
     // Limit to 3 categories
     const slugs = categorySlugs.slice(0, 3);
 
+    // Resolve slugs to display names (card_pool stores display names, not slugs)
+    const resolvedCategories = slugs.map((slug) => ({
+      slug,
+      displayName: resolveCategory(slug) ?? slug,
+    }));
+
     // --- Fetch linked user saved categories for boosting ---
-    let linkedSavedCategorySet = new Set<string>();
-    let linkedSavedCardIds = new Set<string>();
+    const linkedSavedCategorySet = new Set<string>();
+    const linkedSavedCardIds = new Set<string>();
 
     if (linkedUserId) {
       const { data: savedCards } = await adminClient
@@ -177,44 +167,49 @@ serve(async (req: Request) => {
 
     const cards: Card[] = [];
 
-    for (const slug of slugs) {
+    for (const resolved of resolvedCategories) {
       // Query card_pool for this category within bounding box
-      const { data: poolCards, error: poolError } = await adminClient
+      // card_pool stores display names and uses lat/lng columns
+      const { data: poolCards } = await adminClient
         .from("card_pool")
         .select(
-          "id, title, category, image_url, rating, price_level, address, google_place_id"
+          "id, title, category, image_url, rating, price_level, address, google_place_id, lat, lng"
         )
-        .eq("category", slug)
-        .gte("latitude", latMin)
-        .lte("latitude", latMax)
-        .gte("longitude", lngMin)
-        .lte("longitude", lngMax)
+        .eq("category", resolved.displayName)
+        .gte("lat", latMin)
+        .lte("lat", latMax)
+        .gte("lng", lngMin)
+        .lte("lng", lngMax)
         .order("rating", { ascending: false })
         .limit(5);
 
       if (poolCards && poolCards.length > 0) {
-        // Pick the best card: linked user saved > highest rating > first
-        let chosen = poolCards[0];
-
+        // Take up to 3 cards, boosting linked user's saved cards to the top
+        let sorted = [...poolCards];
         if (linkedUserId && linkedSavedCardIds.size > 0) {
-          const linkedMatch = poolCards.find((c: any) =>
-            linkedSavedCardIds.has(c.id)
-          );
-          if (linkedMatch) {
-            chosen = linkedMatch;
-          }
+          sorted.sort((a: any, b: any) => {
+            const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
+            const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
+            if (aLinked !== bLinked) return bLinked - aLinked;
+            return (b.rating || 0) - (a.rating || 0);
+          });
         }
 
-        cards.push({
-          id: chosen.id,
-          title: chosen.title,
-          category: chosen.category,
-          imageUrl: chosen.image_url ?? null,
-          rating: chosen.rating ?? null,
-          priceLevel: chosen.price_level ?? null,
-          address: chosen.address ?? null,
-          googlePlaceId: chosen.google_place_id ?? null,
-        });
+        for (const chosen of sorted.slice(0, 3)) {
+          cards.push({
+            id: chosen.id,
+            title: chosen.title,
+            category: chosen.category,
+            categorySlug: resolved.slug,
+            imageUrl: chosen.image_url ?? null,
+            rating: chosen.rating ?? null,
+            priceLevel: chosen.price_level ?? null,
+            address: chosen.address ?? null,
+            googlePlaceId: chosen.google_place_id ?? null,
+            lat: chosen.lat ?? null,
+            lng: chosen.lng ?? null,
+          });
+        }
       } else {
         // --- Fallback: Google Places Nearby Search ---
         const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
@@ -223,7 +218,11 @@ serve(async (req: Request) => {
           continue;
         }
 
-        const includedTypes = getIncludedTypes(slug);
+        const includedTypes = getPlaceTypesForCategory(resolved.displayName);
+        if (includedTypes.length === 0) continue;
+
+        // Google Places API limits includedTypes — use first 5 types
+        const typesToSend = includedTypes.slice(0, 5);
 
         try {
           const placesRes = await fetch(
@@ -234,10 +233,10 @@ serve(async (req: Request) => {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": googleApiKey,
                 "X-Goog-FieldMask":
-                  "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos",
+                  "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location",
               },
               body: JSON.stringify({
-                includedTypes,
+                includedTypes: typesToSend,
                 maxResultCount: 5,
                 locationRestriction: {
                   circle: {
@@ -258,17 +257,27 @@ serve(async (req: Request) => {
             const places = placesData.places ?? [];
 
             if (places.length > 0) {
-              const p = places[0];
-              cards.push({
-                id: p.id ?? "",
-                title: p.displayName?.text ?? "Unknown",
-                category: slug,
-                imageUrl: null,
-                rating: p.rating ?? null,
-                priceLevel: p.priceLevel ?? null,
-                address: p.formattedAddress ?? null,
-                googlePlaceId: p.id ?? null,
-              });
+              const topPlaces = places.slice(0, 3);
+              for (const p of topPlaces) {
+                const photoRef = p.photos?.[0]?.name;
+                const imageUrl = photoRef
+                  ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=400&key=${googleApiKey}`
+                  : null;
+
+                cards.push({
+                  id: p.id ?? "",
+                  title: p.displayName?.text ?? "Unknown",
+                  category: resolved.displayName,
+                  categorySlug: resolved.slug,
+                  imageUrl,
+                  rating: p.rating ?? null,
+                  priceLevel: p.priceLevel ?? null,
+                  address: p.formattedAddress ?? null,
+                  googlePlaceId: p.id ?? null,
+                  lat: p.location?.latitude ?? null,
+                  lng: p.location?.longitude ?? null,
+                });
+              }
             }
           }
         } catch (_placesErr) {

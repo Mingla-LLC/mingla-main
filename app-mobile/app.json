@@ -32,6 +32,7 @@
       ]
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAFAFA"
@@ -83,7 +84,6 @@
     "plugins": [
       "expo-splash-screen",
       "expo-location",
-      "expo-notifications",
       "expo-camera",
       "expo-calendar",
       "expo-apple-authentication",
@@ -111,7 +111,7 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "development"
+          "mode": "production"
         }
       ],
       "react-native-appsflyer"
@@ -132,7 +132,7 @@
       "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "618060733220-l9ls35bklsvlqbj7ii9v5tiok9neqhee.apps.googleusercontent.com",
       "ANDROID_CLIENT_ID": "618060733220-hvlvia73dcm2sd5hgbvnp59bnas46gt0.apps.googleusercontent.com",
       "IOS_CLIENT_ID": "618060733220-t2vsovng5evma3vfkl0fd0f0pa28lnlc.apps.googleusercontent.com",
-      "GOOGLE_PROJECT_ID": "mingla-488410",
+      "GOOGLE_PROJECT_ID": "mingla-dev",
       "GOOGLE_WEB_CLIENT_SECRET": "",
       "GOOGLE_IOS_CLIENT_SECRET": "",
       "GOOGLE_ANDROID_CLIENT_ID": "618060733220-hvlvia73dcm2sd5hgbvnp59bnas46gt0.apps.googleusercontent.com"

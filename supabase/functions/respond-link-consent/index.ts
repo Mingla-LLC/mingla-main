@@ -326,44 +326,19 @@ serve(async (req: Request) => {
       .eq("id", linkId);
 
     // 13. Send confirmation push to BOTH users
-    const { data: requesterToken } = await adminClient
-      .from("user_push_tokens")
-      .select("push_token")
-      .eq("user_id", link.requester_id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    sendPush({
+      targetUserId: link.requester_id,
+      title: `You and ${targetName} are now linked!`,
+      body: "You can now see each other's details in For You.",
+      data: { type: "link_consent_completed", linkId },
+    }).catch((err) => console.warn("Push notification send failed:", err));
 
-    const { data: targetToken } = await adminClient
-      .from("user_push_tokens")
-      .select("push_token")
-      .eq("user_id", link.target_id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    if (requesterToken?.push_token) {
-      sendPush(supabaseUrl, supabaseServiceKey, {
-        to: requesterToken.push_token,
-        sound: "default",
-        title: `You and ${targetName} are now linked!`,
-        body: "You can now see each other's details in For You.",
-        data: { type: "link_consent_completed", linkId },
-      }).catch((err) => console.warn("Push notification send failed:", err));
-    }
-
-    if (targetToken?.push_token) {
-      sendPush(supabaseUrl, supabaseServiceKey, {
-        to: targetToken.push_token,
-        sound: "default",
-        title: `You and ${requesterName} are now linked!`,
-        body: "You can now see each other's details in For You.",
-        data: { type: "link_consent_completed", linkId },
-      }).catch((err) => console.warn("Push notification send failed:", err));
-    }
+    sendPush({
+      targetUserId: link.target_id,
+      title: `You and ${requesterName} are now linked!`,
+      body: "You can now see each other's details in For You.",
+      data: { type: "link_consent_completed", linkId },
+    }).catch((err) => console.warn("Push notification send failed:", err));
 
     // 14. Return success
     return new Response(

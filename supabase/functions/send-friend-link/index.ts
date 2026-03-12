@@ -285,62 +285,31 @@ serve(async (req: Request) => {
           const requesterName = requesterDisplayName?.display_name || requesterDisplayName?.username || "Your friend";
           const targetName = targetProfile.display_name || "Your friend";
 
-          const { data: requesterToken } = await supabaseAdmin
-            .from("user_push_tokens")
-            .select("push_token")
-            .eq("user_id", requesterId)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          sendPush({
+            targetUserId: requesterId,
+            title: "Link profiles?",
+            body: `Want to link profiles and share details with ${targetName}?`,
+            data: {
+              type: "link_consent_request",
+              linkId: declinedLink.id,
+              friendName: targetName,
+              friendUserId: targetUserId,
+            },
+          }).catch(() => {});
 
-          if (requesterToken?.push_token) {
-            sendPush(
-              Deno.env.get("SUPABASE_URL")!,
-              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-              {
-                to: requesterToken.push_token,
-                sound: "default",
-                title: "Link profiles?",
-                body: `Want to link profiles and share details with ${targetName}?`,
-                data: {
-                  type: "link_consent_request",
-                  linkId: declinedLink.id,
-                  friendName: targetName,
-                  friendUserId: targetUserId,
-                },
-              }
-            ).catch(() => {});
-          }
-
-          const { data: targetToken } = await supabaseAdmin
-            .from("user_push_tokens")
-            .select("push_token")
-            .eq("user_id", targetUserId)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (targetToken?.push_token) {
-            sendPush(
-              Deno.env.get("SUPABASE_URL")!,
-              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-              {
-                to: targetToken.push_token,
-                sound: "default",
-                title: "Link profiles?",
-                body: `${requesterName} wants to link profiles and share details with you.`,
-                data: {
-                  type: "link_consent_request",
-                  linkId: declinedLink.id,
-                  friendName: requesterName,
-                  friendUserId: requesterId,
-                },
-              }
-            ).catch(() => {});
-          }
+          sendPush({
+            targetUserId: targetUserId,
+            title: "Link profiles?",
+            body: `${requesterName} wants to link profiles and share details with you.`,
+            data: {
+              type: "link_consent_request",
+              linkId: declinedLink.id,
+              friendName: requesterName,
+              friendUserId: requesterId,
+            },
+          }).catch(() => {});
         } catch (pushErr) {
           console.error("Re-initiation push error:", pushErr);
-          // Non-fatal
         }
 
         return new Response(
@@ -432,40 +401,21 @@ serve(async (req: Request) => {
 
     // Send push notification to target (fire-and-forget, never fail the request)
     try {
-      // Read push token from user_push_tokens table (where the app stores it)
-      const { data: tokenRow } = await supabaseAdmin
-        .from("user_push_tokens")
-        .select("push_token")
-        .eq("user_id", targetUserId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (tokenRow?.push_token) {
-        await sendPush(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          {
-            to: tokenRow.push_token,
-            sound: "default",
-            title: `${requesterDisplayName} wants to connect`,
-            body: "Tap to accept and start planning together.",
-            data: {
-              type: "friend_link_request",
-              linkId,
-              requesterId,
-              requesterName: requesterDisplayName,
-              requesterAvatarUrl: requesterProfile?.avatar_url || null,
-            },
-          }
-        );
-        console.log("Push notification sent to target:", targetUserId);
-      } else {
-        console.log("No push token for target:", targetUserId);
-      }
+      sendPush({
+        targetUserId: targetUserId,
+        title: `${requesterDisplayName} wants to connect`,
+        body: "Tap to accept and start planning together.",
+        data: {
+          type: "friend_link_request",
+          linkId,
+          requesterId,
+          requesterName: requesterDisplayName,
+          requesterAvatarUrl: requesterProfile?.avatar_url || null,
+        },
+      }).catch(() => {});
+      console.log("Push notification sent to target:", targetUserId);
     } catch (pushError) {
       console.error("Push notification error:", pushError);
-      // Don't fail the request
     }
 
     return new Response(
