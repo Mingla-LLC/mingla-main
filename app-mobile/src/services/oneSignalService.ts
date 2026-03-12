@@ -1,4 +1,4 @@
-import OneSignal from 'react-native-onesignal'
+import { OneSignal, LogLevel } from 'react-native-onesignal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -19,6 +19,7 @@ let _initialized = false
 export function initializeOneSignal(): void {
   if (_initialized) return
   try {
+    OneSignal.Debug.setLogLevel(LogLevel.Verbose)
     OneSignal.initialize(ONESIGNAL_APP_ID)
 
     // Request notification permission immediately on first launch.

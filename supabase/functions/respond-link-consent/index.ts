@@ -240,7 +240,7 @@ serve(async (req: Request) => {
       targetProfile?.display_name || targetProfile?.username || "Friend";
 
     // Create saved_people entry for requester on TARGET's side
-    const { data: targetPersonEntry } = await adminClient
+    const { data: targetPersonEntry, error: targetPersonError } = await adminClient
       .from("saved_people")
       .upsert(
         {
@@ -262,8 +262,22 @@ serve(async (req: Request) => {
       .select("id")
       .single();
 
+    if (targetPersonError) {
+      console.error("Failed to upsert saved_people for target:", targetPersonError);
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create linked person entry",
+          details: targetPersonError.message,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Create saved_people entry for target on REQUESTER's side
-    const { data: requesterPersonEntry } = await adminClient
+    const { data: requesterPersonEntry, error: requesterPersonError } = await adminClient
       .from("saved_people")
       .upsert(
         {
@@ -284,6 +298,20 @@ serve(async (req: Request) => {
       )
       .select("id")
       .single();
+
+    if (requesterPersonError) {
+      console.error("Failed to upsert saved_people for requester:", requesterPersonError);
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create linked person entry",
+          details: requesterPersonError.message,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // 12. Update friend_links to consented with person IDs
     await adminClient

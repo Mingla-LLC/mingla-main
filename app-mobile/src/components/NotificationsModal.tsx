@@ -183,6 +183,20 @@ export default function NotificationsModal({
   const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
   const [pendingActionId, setPendingActionId] = React.useState<string | null>(null);
 
+  // Clear pendingActionId when the actioned notification is removed from the list
+  // (success case) or after a timeout (failure case — prevents permanent button lockup)
+  React.useEffect(() => {
+    if (pendingActionId && !notifications.some((n) => n.id === pendingActionId)) {
+      setPendingActionId(null);
+    }
+  }, [notifications, pendingActionId]);
+
+  React.useEffect(() => {
+    if (!pendingActionId) return;
+    const timeout = setTimeout(() => setPendingActionId(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [pendingActionId]);
+
   const sections = useMemo(
     () => groupNotificationsByDate(notifications),
     [notifications]

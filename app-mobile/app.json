@@ -111,7 +111,7 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production"
+          "mode": "development"
         }
       ],
       "react-native-appsflyer"

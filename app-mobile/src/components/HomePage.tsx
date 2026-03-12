@@ -21,6 +21,7 @@ import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
 import { useRespondToFriendLink } from "../hooks/useFriendLinks";
 import { useRespondLinkConsent } from "../hooks/useLinkConsent";
+import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { supabase } from "../services/supabase";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { HapticFeedback } from "../utils/hapticFeedback";
@@ -97,6 +98,8 @@ export default function HomePage({
   userId,
 }: HomePageProps) {
   useScreenLogger('home');
+  // Keep social query caches fresh via realtime even while on the Home tab
+  useSocialRealtime(userId);
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);

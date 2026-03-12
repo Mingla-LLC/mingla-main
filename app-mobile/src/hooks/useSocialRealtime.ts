@@ -76,8 +76,10 @@ export function useSocialRealtime(
         },
         () => {
           // Covers: target deletes account → sent request row is deleted,
-          // or target accepts/declines → status changes.
+          // or target accepts/declines → status changes,
+          // or target responds to link consent → link_status changes.
           queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
+          queryClient.invalidateQueries({ queryKey: linkConsentKeys.all });
           queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
           callbacksRef.current?.onFriendLinkChange?.();
         }
