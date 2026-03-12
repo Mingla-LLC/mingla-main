@@ -71,7 +71,7 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
  * into a Recommendation. The card already includes `category` so we derive the
  * icon and experienceType dynamically.
  */
-function unifiedCardToRecommendation(card: any): Recommendation {
+export function unifiedCardToRecommendation(card: any): Recommendation {
   // Defensive: ensure numeric fields are never undefined (edge fn may omit them)
   const distanceKm = card.distanceKm ?? 0;
   const travelTimeMin = card.travelTimeMin ?? 0;

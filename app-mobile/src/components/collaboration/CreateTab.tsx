@@ -19,10 +19,9 @@ interface CreateTabProps {
   availableFriends?: Friend[];
   onCreateSession: (sessionData: any) => void;
   onNavigateToInvites?: () => void;
-  onSessionCreated?: () => void; // Callback to reload sessions after creation
 }
 
-const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, onNavigateToInvites, onSessionCreated }: CreateTabProps) => {
+const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, onNavigateToInvites }: CreateTabProps) => {
   const { user } = useAppStore();
   const [createStep, setCreateStep] = useState<'details' | 'friends' | 'confirm'>('details');
   const [newSessionName, setNewSessionName] = useState('');
@@ -205,11 +204,6 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         });
       }
 
-      // Trigger session reload
-      if (onSessionCreated) {
-        onSessionCreated();
-      }
-
       // Reset form
       setNewSessionName('');
       setSelectedFriends(preSelectedFriend ? [preSelectedFriend] : []);
@@ -323,7 +317,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                     {friend.avatar ? (
                       <Image
                         source={{ uri: friend.avatar }}
-                        style={{ width: 24, height: 24, borderRadius: 12 }}
+                        style={styles.selectedFriendAvatarImage}
                       />
                     ) : (
                       <Text style={styles.selectedFriendAvatarText}>
@@ -380,7 +374,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                       {friend.avatar ? (
                         <Image
                           source={{ uri: friend.avatar }}
-                          style={{ width: 40, height: 40, borderRadius: 20 }}
+                          style={styles.friendAvatarImage}
                         />
                       ) : (
                         <Text style={styles.friendAvatarText}>
@@ -389,7 +383,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                       )}
                     </View>
                     <View style={styles.friendInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={styles.friendNameRow}>
                         <Text style={styles.friendName}>{friend.name}</Text>
                         {isPreSelected && (
                           <Text style={styles.preSelectedBadge}>Pre-selected</Text>
@@ -458,7 +452,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                   {friend.avatar ? (
                     <Image
                       source={{ uri: friend.avatar }}
-                      style={{ width: 32, height: 32, borderRadius: 16 }}
+                      style={styles.confirmFriendAvatarImage}
                     />
                   ) : (
                     <Text style={styles.confirmFriendAvatarText}>
@@ -679,6 +673,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  selectedFriendAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   selectedFriendAvatarText: {
     color: 'white',
     fontSize: 12,
@@ -731,6 +730,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  friendAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
   friendAvatarText: {
     color: 'white',
     fontWeight: '600',
@@ -738,6 +742,11 @@ const styles = StyleSheet.create({
   },
   friendInfo: {
     flex: 1,
+  },
+  friendNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   friendName: {
     fontWeight: '500',
@@ -796,6 +805,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  confirmFriendAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   confirmFriendAvatarText: {
     color: 'white',

@@ -39,7 +39,7 @@ interface BoardSessionCallbacks {
   onParticipantLeft?: (participant: any) => void;
   onSessionUpdated?: (session: any) => void;
   onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
-  onRotationChanged?: (newOwnerId: string, newOrder: string[]) => void;
+  onDeckRegenerated?: (deckPayload: any) => void;
   onCardLocked?: (savedCardId: string, lockedAt: string) => void;
 }
 
@@ -486,6 +486,19 @@ export class RealtimeService {
           }
         }
       )
+      // Session deck regeneration — all participants refetch when new deck is generated
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "session_decks",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          dispatch('onDeckRegenerated', payload.new);
+        }
+      )
       // Session updates
       .on(
         "postgres_changes",
@@ -497,9 +510,6 @@ export class RealtimeService {
         },
         (payload) => {
           const newSession = payload.new as any;
-          if (newSession.active_preference_owner_id !== (payload.old as any)?.active_preference_owner_id) {
-            dispatch('onRotationChanged', newSession.active_preference_owner_id, newSession.rotation_order);
-          }
           dispatch('onSessionUpdated', newSession);
         }
       )

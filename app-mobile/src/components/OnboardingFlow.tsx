@@ -1071,6 +1071,41 @@ const OnboardingFlow = ({
         custom_location: data.manualLocation,
       } as any)
 
+      // Backfill any collaboration preferences rows that were created with empty defaults
+      // (from invites accepted before onboarding completed)
+      try {
+        const { data: soloPrefs } = await supabase
+          .from("preferences")
+          .select("categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location")
+          .eq("profile_id", user.id)
+          .single()
+
+        if (soloPrefs && soloPrefs.categories?.length > 0) {
+          await supabase
+            .from("board_session_preferences")
+            .update({
+              categories: soloPrefs.categories,
+              intents: soloPrefs.intents ?? [],
+              price_tiers: soloPrefs.price_tiers ?? [],
+              budget_min: soloPrefs.budget_min ?? 0,
+              budget_max: soloPrefs.budget_max ?? 1000,
+              travel_mode: soloPrefs.travel_mode ?? "walking",
+              travel_constraint_value: soloPrefs.travel_constraint_value ?? 30,
+              date_option: soloPrefs.date_option ?? null,
+              time_slot: soloPrefs.time_slot ?? null,
+              exact_time: soloPrefs.exact_time ?? null,
+              datetime_pref: soloPrefs.datetime_pref ?? null,
+              use_gps_location: soloPrefs.use_gps_location ?? true,
+              custom_location: soloPrefs.custom_location ?? null,
+            })
+            .eq("user_id", user.id)
+            .filter("categories", "eq", "{}")
+        }
+      } catch (backfillErr) {
+        // Non-critical — log and continue
+        console.warn('[Onboarding] Collab prefs backfill failed:', backfillErr)
+      }
+
       persistStep(5).catch(() => {})
 
       // Warm the deck pool — both category cards and curated cards

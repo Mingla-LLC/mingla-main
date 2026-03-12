@@ -1,6 +1,8 @@
 import type { BoardSessionPreferences } from '../hooks/useBoardSession';
 
-export interface AggregatedNonRotatingPrefs {
+export interface AggregatedCollaborationPrefs {
+  categories: string[];
+  intents: string[];
   priceTiers: string[];
   budgetMin: number;
   budgetMax: number;
@@ -12,11 +14,11 @@ export interface AggregatedNonRotatingPrefs {
 }
 
 /**
- * Aggregate NON-ROTATING preferences across all participants.
- * Categories and intents are NOT aggregated — they come from the active
- * rotation participant only.
+ * Aggregate ALL preferences across all participants using union logic.
  *
  * Aggregation rules:
+ * - categories: union of all participants' categories (deduplicated)
+ * - intents: union of all participants' intents (deduplicated)
  * - priceTiers: union
  * - budgetMin: Math.min()
  * - budgetMax: Math.max()
@@ -26,11 +28,13 @@ export interface AggregatedNonRotatingPrefs {
  * - datetimePref: earliest ISO string
  * - location: midpoint of all custom_lat/custom_lng, null if none
  */
-export function aggregateNonRotatingPrefs(
+export function aggregateAllPrefs(
   rows: BoardSessionPreferences[]
-): AggregatedNonRotatingPrefs {
+): AggregatedCollaborationPrefs {
   if (rows.length === 0) {
     return {
+      categories: [],
+      intents: [],
       priceTiers: ['chill', 'comfy', 'bougie', 'lavish'],
       budgetMin: 0,
       budgetMax: 1000,
@@ -41,6 +45,24 @@ export function aggregateNonRotatingPrefs(
       location: null,
     };
   }
+
+  // Categories: union of all participants
+  const categorySet = new Set<string>();
+  for (const row of rows) {
+    for (const cat of (row.categories || [])) {
+      categorySet.add(cat);
+    }
+  }
+  const categories = Array.from(categorySet);
+
+  // Intents: union of all participants
+  const intentSet = new Set<string>();
+  for (const row of rows) {
+    for (const intent of (row.intents || [])) {
+      intentSet.add(intent);
+    }
+  }
+  const intents = Array.from(intentSet);
 
   // Price tiers: union
   const tierSet = new Set<string>();
@@ -95,6 +117,8 @@ export function aggregateNonRotatingPrefs(
   }
 
   return {
+    categories,
+    intents,
     priceTiers,
     budgetMin,
     budgetMax,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Text,
   View,
@@ -106,49 +106,6 @@ const timeSlots = [
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
-
-// Compatibility matrix: maps intent IDs to allowed category IDs
-// null means all categories are allowed
-const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "adventurous":   null, // All categories allowed
-  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play", "work_business"],
-  "romantic":      ["fine_dining", "creative_arts", "wellness"],
-  "friendly":      null, // All categories allowed
-  "group-fun":     ["play", "watch", "casual_eats"],
-  "picnic-dates":  ["groceries_flowers", "picnic_park"],
-  "take-a-stroll": ["casual_eats", "nature"],
-};
-
-// Get allowed category IDs based on selected intents
-const getAllowedCategoryIds = (
-  selectedIntents: string[]
-): Set<string> | null => {
-  if (selectedIntents.length === 0) {
-    // If no intents selected, show all categories
-    return null;
-  }
-
-  const allowedSets: Set<string>[] = [];
-
-  for (const intent of selectedIntents) {
-    const allowed = INTENT_CATEGORY_COMPATIBILITY[intent];
-    if (allowed === null) {
-      // This intent allows all categories, so return null (all allowed)
-      return null;
-    }
-    allowedSets.push(new Set(allowed));
-  }
-
-  // Union of all allowed categories
-  const union = new Set<string>();
-  for (const allowedSet of allowedSets) {
-    for (const categoryId of allowedSet) {
-      union.add(categoryId);
-    }
-  }
-
-  return union;
-};
 
 export default function CollaborationPreferences({
   isOpen,
@@ -314,33 +271,8 @@ export default function CollaborationPreferences({
     }
   }, [isOpen, dbPreferences]);
 
-  // Filter categories based on selected intents
-  const filteredCategories = useMemo(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds === null) {
-      // All categories allowed
-      return categories;
-    }
-    return categories.filter((category) => allowedIds.has(category.id));
-  }, [selectedIntents]);
-
-  // Filter out invalid selectedCategories when intents change.
-  // If all categories become invalid, auto-select the first compatible one
-  // to prevent the user from being left with zero selections.
-  useEffect(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds !== null) {
-      setSelectedCategories((prev) => {
-        const validCategories = prev.filter((catId) => allowedIds.has(catId));
-        if (validCategories.length === 0 && selectedIntents.length > 0) {
-          // All previous categories were invalidated — auto-select first compatible
-          const firstAllowed = categories.find((c) => allowedIds.has(c.id));
-          return firstAllowed ? [firstAllowed.id] : prev;
-        }
-        return validCategories.length !== prev.length ? validCategories : prev;
-      });
-    }
-  }, [selectedIntents]);
+  // All categories always visible (matching solo mode behavior)
+  const filteredCategories = categories;
 
   if (!isOpen) return null;
 
@@ -736,11 +668,7 @@ export default function CollaborationPreferences({
             )}
           </View>
 
-          {/* Price Tier Section - Hide when only "Nature" is selected */}
-          {!(
-            selectedCategories.length === 1 &&
-            selectedCategories[0] === "nature"
-          ) && (
+          {/* Price Tier Section - Always visible (matching solo mode) */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Price Range</Text>
               <View style={styles.priceTierGrid}>
@@ -764,7 +692,6 @@ export default function CollaborationPreferences({
                 })}
               </View>
             </View>
-          )}
 
           {/* Date & Time Section */}
           <View style={styles.section}>

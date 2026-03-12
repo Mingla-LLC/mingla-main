@@ -18,5 +18,11 @@ verify_jwt = true
 [functions.send-message-email]
 verify_jwt = true
 
+[functions.send-collaboration-invite]
+verify_jwt = true
+
+[functions.generate-session-deck]
+verify_jwt = true
+
 [functions.ticketmaster-events]
 verify_jwt = false

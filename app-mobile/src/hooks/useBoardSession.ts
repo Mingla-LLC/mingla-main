@@ -4,6 +4,7 @@ import { useAppStore } from "../store/appStore";
 import { realtimeService } from "../services/realtimeService";
 import { BoardInviteService } from "../services/boardInviteService";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
+import { useQueryClient } from "@tanstack/react-query";
 
 export interface BoardSession {
   id: string;
@@ -18,8 +19,6 @@ export interface BoardSession {
   created_at: string;
   last_activity_at?: string;
   participants?: any[];
-  active_preference_owner_id?: string | null;
-  rotation_order?: string[];
 }
 
 export interface BoardSessionPreferences {
@@ -56,6 +55,7 @@ export const useBoardSession = (sessionId?: string) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAppStore();
+  const queryClient = useQueryClient();
 
   // Load session data
   const loadSession = useCallback(
@@ -240,9 +240,21 @@ export const useBoardSession = (sessionId?: string) => {
       onPreferencesChanged: () => {
         // Reload all participants' preferences
         if (sessionId) loadSession(sessionId);
+
+        // Trigger server-side deck regeneration with updated preferences
+        if (sessionId) {
+          supabase.functions.invoke("generate-session-deck", {
+            body: { sessionId, batchSeed: 0 },
+          }).catch((err) => {
+            console.warn("[useBoardSession] Deck regeneration after prefs change failed:", err);
+          });
+        }
       },
-      onRotationChanged: (newOwnerId: string, newOrder: string[]) => {
-        // Handled by loadSession refresh
+      onDeckRegenerated: () => {
+        // Invalidate the session-deck query so useSessionDeck refetches
+        if (sessionId) {
+          queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
+        }
       },
     });
 

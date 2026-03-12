@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings -- combining AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 51 Deno serverless functions |
+| Edge Functions | 52 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -55,11 +55,11 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 51 Deno edge functions
+│   ├── functions/                      # 52 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 167 SQL migration files
+│   ├── migrations/                    # 169 SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -220,7 +220,11 @@ The Friends Modal (accessible from the Home page) provides a tabbed interface:
 ### Collaboration Sessions
 - Named sessions with multi-friend selection
 - Real-time card swiping, voting, RSVP, lock-in, calendar sync, and chat
-- Preference rotation system cycles through participants' preferences
+- Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses majority vote; travel time uses median; datetime uses earliest; location uses midpoint
+- Server-side synchronized deck generation: a single canonical deck is generated per session and stored in `session_decks`, ensuring all participants see identical cards in identical order
+- Auto-copy of solo preferences to collaboration sessions on invite acceptance and onboarding completion
+- Push notifications for collaboration invites via OneSignal
+- Realtime deck refresh: when any participant updates preferences, a new deck is generated and all clients are notified via Supabase Realtime
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime
 
@@ -313,7 +317,8 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `collaboration_invites` | Session invite records |
 | `session_participants` | Session participant records |
 | `boards` | Collaboration boards |
-| `board_session_preferences` | Per-session preference settings |
+| `board_session_preferences` | Per-session preference settings (auto-seeded from solo preferences) |
+| `session_decks` | Canonical server-generated decks per session (JSONB cards, preferences hash, 24h expiry, RLS for participants) |
 
 ### Pipeline Tables
 
@@ -345,6 +350,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
+| `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions (aggregates preferences, calls discover-cards internally, caches in session_decks with SHA-256 hash deduplication) |
 | `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
@@ -487,11 +493,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Person Page Redesign** -- Redesigned the BirthdayHero section with prominent age display, a horizontal scroll of AI-curated hero cards (`PersonCuratedCard`), and a "Generate More" button that fetches fresh recommendations while excluding already-seen cards.
-- **Hero + Generate More Edge Function Modes** -- Extended `get-holiday-cards` with `hero` and `generate_more` modes. Hero mode uses GPT-4o-mini to extract interest categories from a person's description, matches curated cards from the pool, and falls back to Google Places. Generate-more mode accepts `excludeCardIds` to serve fresh results. Both modes derive `priceTier` from Google price levels.
-- **Unified Card Components** -- Created `PersonGridCard` (matching the For You tab grid design) and `PersonCuratedCard` (compact hero section card). `HolidayRow` now uses `PersonGridCard` for consistent visual treatment across the person page.
-- **New React Query Hooks** -- Added `useHeroCards` (query) and `useGenerateMoreCards` (mutation) hooks backed by the new `getHolidayCardsWithMeta` service method in `holidayCardsService.ts`.
-- **Removed Legacy Wiring** -- `PersonHolidayView` now sources hero cards directly instead of relying on the previous `PersonRecommendationCards` component for the hero section.
+- **Collaboration Overhaul** -- Replaced the rotation-based preference system with union aggregation across all participants. All categories, intents, and price tiers are merged; logistics use statistical aggregation (widest budget, majority travel mode, median travel time).
+- **Server-Side Synchronized Decks** -- New `generate-session-deck` edge function and `session_decks` table ensure all collaboration participants see identical cards. Decks are cached by SHA-256 preferences hash with 24h expiry and race-safe upsert.
+- **Auto-Seeded Collaboration Preferences** -- Solo preferences are automatically copied to collaboration sessions on invite acceptance and backfilled on onboarding completion, replacing hardcoded empty defaults.
+- **Fixed Collaboration Push Notifications** -- Registered `send-collaboration-invite` in `config.toml` so the existing (correct) edge function actually deploys.
+- **Removed Intent-Category Filter** -- Collaboration preferences now show all 12 categories and price tiers regardless of intent selection, matching solo mode behavior.
 
 ---
 
