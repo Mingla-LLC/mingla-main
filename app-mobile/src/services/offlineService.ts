@@ -5,6 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RecommendationCard, RecommendationsRequest } from '../types';
+import type { UserPreferences } from './experiencesService';
 import { supabase } from './supabase';
 
 // Import NetInfo with error handling
@@ -17,7 +18,7 @@ try {
 
 export interface OfflineData {
   recommendations: RecommendationCard[];
-  userPreferences: any;
+  userPreferences: UserPreferences | null;
   savedExperiences: any[];
   socialPosts: any[];
   lastSyncTime: string;
@@ -247,7 +248,7 @@ class OfflineService {
   /**
    * Cache user preferences
    */
-  async cacheUserPreferences(preferences: any): Promise<void> {
+  async cacheUserPreferences(preferences: UserPreferences): Promise<void> {
     try {
       await this.saveOfflineData({
         userPreferences: preferences,
@@ -261,7 +262,7 @@ class OfflineService {
   /**
    * Get offline user preferences
    */
-  async getOfflineUserPreferences(): Promise<any> {
+  async getOfflineUserPreferences(): Promise<UserPreferences | null> {
     try {
       const offlineData = await this.getOfflineData();
       return offlineData?.userPreferences || null;

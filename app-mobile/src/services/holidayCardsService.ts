@@ -12,10 +12,14 @@ export interface HolidayCard {
   googlePlaceId: string | null;
   lat: number | null;
   lng: number | null;
-  // ── NEW FIELDS ──────────────────────────────────────────────
   priceTier: string | null;
   description: string | null;
   cardType: "single" | "curated";
+  tagline: string | null;
+  stops: number;
+  totalPriceMin: number | null;
+  totalPriceMax: number | null;
+  website: string | null;
 }
 
 export interface HolidayCardsResponse {

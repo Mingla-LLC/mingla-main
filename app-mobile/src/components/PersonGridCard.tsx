@@ -26,7 +26,6 @@ export interface PersonGridCardProps {
 }
 
 const PersonGridCard: React.FC<PersonGridCardProps> = ({
-  id,
   title,
   category,
   imageUrl,

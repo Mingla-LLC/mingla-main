@@ -10,20 +10,19 @@ import {
 } from 'react-native'
 import * as SplashScreen from 'expo-splash-screen'
 
-const logo = require('../../assets/mingla_official_logo.png')
-
-const BASE_WIDTH = 375
+// Use the SAME image as the native splash (app.json → splash.image) so
+// frame 0 of the animated overlay is pixel-identical to the native splash.
+const splashIcon = require('../../assets/splash-icon.png')
 
 interface AnimatedSplashScreenProps {
   onDone: () => void
 }
 
 export default function AnimatedSplashScreen({ onDone }: AnimatedSplashScreenProps) {
-  const { width: screenWidth } = useWindowDimensions()
-  const logoWidth = (200 / BASE_WIDTH) * screenWidth
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions()
 
-  const logoOpacity    = useRef(new Animated.Value(0)).current
-  const logoScale      = useRef(new Animated.Value(0.88)).current
+  // Start fully visible — the overlay must match the native splash exactly
+  // so that hideAsync() produces zero visual change.
   const overlayOpacity = useRef(new Animated.Value(1)).current
 
   // Stable ref so the animation closure always calls the latest onDone
@@ -32,9 +31,6 @@ export default function AnimatedSplashScreen({ onDone }: AnimatedSplashScreenPro
   useEffect(() => { onDoneRef.current = onDone })
 
   useEffect(() => {
-    // Component is definitely painted here — safe to dismiss the native splash.
-    SplashScreen.hideAsync().catch(() => {})
-
     let cancelled = false
     let holdTimeout: ReturnType<typeof setTimeout> | null = null
     let failsafeTimeout: ReturnType<typeof setTimeout> | null = null
@@ -42,6 +38,10 @@ export default function AnimatedSplashScreen({ onDone }: AnimatedSplashScreenPro
     const done = () => {
       if (!cancelled) onDoneRef.current()
     }
+
+    // Hide native splash immediately — our overlay is visually identical,
+    // so the user sees zero change. No flash, no gap.
+    SplashScreen.hideAsync().catch(() => {})
 
     const run = async () => {
       let reducedMotion = false
@@ -56,41 +56,25 @@ export default function AnimatedSplashScreen({ onDone }: AnimatedSplashScreenPro
         return
       }
 
-      // Phase 1: logo fade in + scale up — 700ms ease-out cubic
-      Animated.parallel([
-        Animated.timing(logoOpacity, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoScale, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished || cancelled) return
+      // Phase 1: Hold for 600ms so the brand registers
+      holdTimeout = setTimeout(() => {
+        if (cancelled) return
 
-        // Phase 2: hold 400ms, then fade entire overlay out over 350ms
-        holdTimeout = setTimeout(() => {
-          if (cancelled) return
-          Animated.timing(overlayOpacity, {
-            toValue: 0,
-            duration: 350,
-            easing: Easing.in(Easing.cubic),
-            useNativeDriver: true,
-          }).start(({ finished: fadeFinished }) => {
-            if (fadeFinished && !cancelled) done()
-          })
-        }, 400)
-      })
+        // Phase 2: Fade the entire overlay out over 400ms
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished && !cancelled) done()
+        })
+      }, 600)
     }
 
     // Failsafe: ensure splash is always dismissed even if the animation
     // never completes (Animated bridge stall, unexpected unmount, etc.)
-    failsafeTimeout = setTimeout(done, 5000)
+    failsafeTimeout = setTimeout(done, 3000)
 
     run()
 
@@ -98,30 +82,24 @@ export default function AnimatedSplashScreen({ onDone }: AnimatedSplashScreenPro
       cancelled = true
       if (holdTimeout) clearTimeout(holdTimeout)
       if (failsafeTimeout) clearTimeout(failsafeTimeout)
-      // Stop in-flight animations to prevent native bridge warnings
-      logoOpacity.stopAnimation()
-      logoScale.stopAnimation()
       overlayOpacity.stopAnimation()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Size the image to match how the native splash sizes it:
+  // contain mode on a 1:1 square image → limited by the shorter axis.
+  const imageSize = Math.min(screenWidth, screenHeight)
+
   return (
     <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
       <View style={styles.center}>
-        <Animated.View
-          style={{
-            opacity: logoOpacity,
-            transform: [{ scale: logoScale }],
-          }}
-        >
-          <Image
-            source={logo}
-            style={[styles.logo, { width: logoWidth }]}
-            resizeMode="contain"
-            accessibilityLabel="Mingla"
-            accessibilityRole="image"
-          />
-        </Animated.View>
+        <Image
+          source={splashIcon}
+          style={{ width: imageSize, height: imageSize }}
+          resizeMode="contain"
+          accessibilityLabel="Mingla"
+          accessibilityRole="image"
+        />
       </View>
     </Animated.View>
   )
@@ -137,8 +115,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logo: {
-    aspectRatio: 1356 / 480,
   },
 })

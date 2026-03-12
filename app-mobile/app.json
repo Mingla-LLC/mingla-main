@@ -112,7 +112,7 @@
         "onesignal-expo-plugin",
         {
           "mode": "production",
-          "smallIcons": ["./assets/notification_icon.png"],
+          "smallIcons": ["./assets/ic_stat_onesignal_default.png"],
           "smallIconAccentColor": "#EB7825"
         }
       ],

@@ -196,12 +196,12 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
                   key={card.id}
                   id={card.id}
                   title={card.title}
-                  tagline={card.description}
+                  tagline={card.tagline ?? card.description}
                   categoryLabel={getReadableCategoryName(card.categorySlug || card.category)}
                   imageUrl={card.imageUrl}
-                  stops={0}
-                  totalPriceMin={null}
-                  totalPriceMax={null}
+                  stops={card.stops}
+                  totalPriceMin={card.totalPriceMin}
+                  totalPriceMax={card.totalPriceMax}
                   rating={card.rating}
                   onPress={() => onCardPress(card)}
                 />

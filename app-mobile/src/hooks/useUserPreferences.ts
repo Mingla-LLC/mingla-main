@@ -2,30 +2,42 @@ import { useQuery } from '@tanstack/react-query';
 import { ExperiencesService, UserPreferences } from '../services/experiencesService';
 import { offlineService } from '../services/offlineService';
 
+const TIMEOUT_MS = 8000;
+
 const fetchUserPreferences = async (
-  userId: string | undefined
+  userId: string | undefined,
+  signal?: AbortSignal
 ): Promise<UserPreferences | null> => {
   if (!userId) {
     return null;
   }
 
-  // Wrap the entire fetch chain in an 8-second timeout.
-  // The Supabase client has a 30-second default; the offline fallback has none.
-  // Without a cap, this chain can hang indefinitely and block the loader.
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("useUserPreferences timed out after 8s")), 8000)
-  );
+  // Race the fetch chain against an 8-second timeout.
+  // The timer is always cleaned up — no dangling rejected promises.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error('useUserPreferences timed out after 8s')),
+      TIMEOUT_MS
+    );
+  });
 
   const fetchLogic = async (): Promise<UserPreferences | null> => {
     // Try database first — authoritative source of truth
     try {
       const prefs = await ExperiencesService.getUserPreferences(userId);
+
+      // Bail early if React Query cancelled this query (e.g. component unmounted)
+      if (signal?.aborted) return null;
+
       if (prefs) {
         // Update offline cache with fresh data (fire-and-forget)
         offlineService.cacheUserPreferences(prefs).catch(() => {});
         return prefs;
       }
     } catch (error) {
+      if (signal?.aborted) return null;
       console.log('DB fetch failed, falling back to offline cache:', error);
     }
 
@@ -34,7 +46,7 @@ const fetchUserPreferences = async (
       const cachedPrefs = await offlineService.getOfflineUserPreferences();
       if (cachedPrefs) {
         console.log('Using cached preferences (offline fallback)');
-        return cachedPrefs as UserPreferences;
+        return cachedPrefs;
       }
     } catch (error) {
       console.error('Offline cache also failed:', error);
@@ -43,18 +55,25 @@ const fetchUserPreferences = async (
     return null;
   };
 
-  return Promise.race([fetchLogic(), timeoutPromise]);
+  try {
+    return await Promise.race([fetchLogic(), timeoutPromise]);
+  } finally {
+    // Always clear the timer — prevents dangling rejected promises on happy path
+    clearTimeout(timer);
+  }
 };
 
 export const useUserPreferences = (userId: string | undefined) => {
   return useQuery({
     queryKey: ['userPreferences', userId],
-    queryFn: () => fetchUserPreferences(userId),
+    queryFn: ({ signal }) => fetchUserPreferences(userId, signal),
     enabled: !!userId,
     staleTime: 5 * 60 * 1000, // 5 minutes - preferences don't change often
     gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    // Timeout-based errors are not worth retrying — if Supabase was unreachable
+    // for 8s, a second attempt will almost certainly time out too.
+    retry: 0,
     // Show cached data immediately while fresh data loads
     placeholderData: (previousData) => previousData,
   });
 };
-

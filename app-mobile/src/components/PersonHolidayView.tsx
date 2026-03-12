@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
-  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -21,6 +20,9 @@ import { s } from "../utils/responsive";
 import BirthdayHero from "./BirthdayHero";
 import HolidayRow from "./HolidayRow";
 import CustomHolidayModal from "./CustomHolidayModal";
+import ExpandedCardModal from "./ExpandedCardModal";
+import { ExpandedCardData } from "../types/expandedCardTypes";
+import { getReadableCategoryName, getCategoryIcon } from "../utils/categoryUtils";
 import { useAiSummary } from "../hooks/useAiSummary";
 import { useHeroCards } from "../hooks/useHeroCards";
 import { useGenerateMoreCards } from "../hooks/useGenerateMoreCards";
@@ -111,6 +113,41 @@ function getCustomHolidayDaysAway(month: number, day: number): number {
 
 const MAX_GENERATE_MORE = 5;
 
+/** Convert a HolidayCard into ExpandedCardData for the modal */
+function holidayCardToExpandedCard(card: HolidayCard): ExpandedCardData {
+  const category = getReadableCategoryName(card.categorySlug || card.category);
+  const categoryIcon = getCategoryIcon(category) || "compass-outline";
+
+  const base: ExpandedCardData = {
+    id: card.id,
+    placeId: card.googlePlaceId || card.id,
+    title: card.title,
+    category,
+    categoryIcon,
+    description: card.description ?? "",
+    fullDescription: card.description ?? "",
+    image: card.imageUrl ?? "",
+    images: card.imageUrl ? [card.imageUrl] : [],
+    rating: card.rating ?? 0,
+    reviewCount: 0,
+    priceRange: card.priceTier ?? "",
+    priceTier: (card.priceTier as ExpandedCardData["priceTier"]) ?? undefined,
+    distance: "",
+    travelTime: "",
+    address: card.address ?? "",
+    highlights: [],
+    tags: [],
+    matchScore: 0,
+    matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    location: card.lat && card.lng ? { lat: card.lat, lng: card.lng } : undefined,
+    selectedDateTime: new Date(),
+    website: card.website ?? undefined,
+  };
+
+  return base;
+}
+
 export default function PersonHolidayView({
   person,
   location,
@@ -120,6 +157,8 @@ export default function PersonHolidayView({
   const [expandedHolidayId, setExpandedHolidayId] = useState<string | null>(null);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [isCustomModalVisible, setIsCustomModalVisible] = useState(false);
+  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
 
   // ── AI Summary ──
   const aiSummaryParams = useMemo(() => ({
@@ -179,15 +218,13 @@ export default function PersonHolidayView({
 
   const handleCardPress = useCallback((card: HolidayCard) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (card.lat && card.lng) {
-      Linking.openURL(
-        `https://www.google.com/maps/search/?api=1&query=${card.lat},${card.lng}`
-      ).catch(() => {});
-    } else if (card.address) {
-      Linking.openURL(
-        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
-      ).catch(() => {});
-    }
+    setSelectedCardForExpansion(holidayCardToExpandedCard(card));
+    setIsExpandedModalVisible(true);
+  }, []);
+
+  const handleCloseExpandedModal = useCallback(() => {
+    setIsExpandedModalVisible(false);
+    setSelectedCardForExpansion(null);
   }, []);
 
   // ── Custom Holidays ──
@@ -345,6 +382,7 @@ export default function PersonHolidayView({
               location={location}
               onToggle={() => handleToggleHoliday(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}
+              onCardPress={handleCardPress}
             />
           ))
         )}
@@ -385,6 +423,7 @@ export default function PersonHolidayView({
                   location={location}
                   onToggle={() => {}}
                   onArchive={() => {}}
+                  onCardPress={handleCardPress}
                   onUnarchive={
                     archivedEntry
                       ? () => handleUnarchive(archivedEntry.id)
@@ -401,6 +440,17 @@ export default function PersonHolidayView({
         visible={isCustomModalVisible}
         onClose={() => setIsCustomModalVisible(false)}
         onSave={handleSaveCustomHoliday}
+      />
+
+      {/* Expanded Card Modal */}
+      <ExpandedCardModal
+        visible={isExpandedModalVisible}
+        card={selectedCardForExpansion}
+        onClose={handleCloseExpandedModal}
+        onSave={async () => {}}
+        isSaved={true}
+        currentMode="solo"
+        hideTravelTime
       />
     </ScrollView>
   );

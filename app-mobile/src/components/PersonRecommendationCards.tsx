@@ -12,8 +12,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
-import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
+import { s, vs } from "../utils/responsive";
+import { colors, shadows } from "../constants/designSystem";
 import { SavedPerson } from "../services/savedPeopleService";
 import { usePersonalizedCards } from "../hooks/usePersonalizedCards";
 import { getReadableCategoryName, getCategoryColor, getCategoryIcon } from "../utils/categoryUtils";

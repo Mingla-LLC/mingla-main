@@ -8,13 +8,13 @@ import {
   Animated,
   PanResponder,
   ActivityIndicator,
-  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
 import { useHolidayCards } from "../hooks/useHolidayCards";
+import { HolidayCard } from "../services/holidayCardsService";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import PersonGridCard from "./PersonGridCard";
 import { PriceTierSlug } from "../constants/priceTiers";
@@ -41,6 +41,7 @@ interface HolidayRowProps {
   onToggle: () => void;
   onArchive: () => void;
   onUnarchive?: () => void;
+  onCardPress: (card: HolidayCard) => void;
 }
 
 const SWIPE_THRESHOLD = 100;
@@ -55,6 +56,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
   onToggle,
   onArchive,
   onUnarchive,
+  onCardPress,
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const chevronRotation = useRef(new Animated.Value(0)).current;
@@ -204,6 +206,12 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                   Couldn't load. Tap to retry.
                 </Text>
               </TouchableOpacity>
+            ) : data.length === 0 ? (
+              <View style={styles.expandedStatus}>
+                <Text style={styles.errorText}>
+                  No picks found nearby. Try a different location.
+                </Text>
+              </View>
             ) : (
               <ScrollView
                 horizontal
@@ -219,18 +227,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                     imageUrl={card.imageUrl}
                     priceTier={(card.priceTier as PriceTierSlug) ?? null}
                     priceLevel={card.priceLevel}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      if (card.lat && card.lng) {
-                        Linking.openURL(
-                          `https://www.google.com/maps/search/?api=1&query=${card.lat},${card.lng}`
-                        ).catch(() => {});
-                      } else if (card.address) {
-                        Linking.openURL(
-                          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
-                        ).catch(() => {});
-                      }
-                    }}
+                    onPress={() => onCardPress(card)}
                   />
                 ))}
               </ScrollView>

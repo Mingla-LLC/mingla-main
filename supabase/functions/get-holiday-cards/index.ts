@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getPlaceTypesForCategory, resolveCategory, ALL_CATEGORY_NAMES } from "../_shared/categoryPlaceTypes.ts";
+import { getPlaceTypesForCategory, resolveCategory, ALL_CATEGORY_NAMES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +37,33 @@ interface Card {
   priceTier: string | null;
   description: string | null;
   cardType: "single" | "curated";
+  tagline: string | null;
+  stops: number;
+  totalPriceMin: number | null;
+  totalPriceMax: number | null;
+  website: string | null;
+}
+
+interface PoolCard {
+  id: string;
+  title: string;
+  category: string;
+  image_url: string | null;
+  rating: number | null;
+  price_level: string | null;
+  price_tier?: string | null;
+  description?: string | null;
+  card_type?: string | null;
+  address: string | null;
+  google_place_id: string | null;
+  lat: number | null;
+  lng: number | null;
+  tagline?: string | null;
+  categories?: string[] | null;
+  stops?: unknown[] | null;
+  total_price_min?: number | null;
+  total_price_max?: number | null;
+  website?: string | null;
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -69,6 +96,10 @@ async function callGpt(
 ): Promise<string | null> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -85,12 +116,15 @@ async function callGpt(
           { role: "user", content: userPrompt },
         ],
       }),
+      signal: controller.signal,
     });
     if (!res.ok) return null;
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -100,7 +134,7 @@ async function googlePlacesFallback(
   categoryDisplayName: string,
   location: { latitude: number; longitude: number },
   limit: number,
-): Promise<any[]> {
+): Promise<GooglePlace[]> {
   const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
   if (!googleApiKey) return [];
 
@@ -118,10 +152,11 @@ async function googlePlacesFallback(
           "Content-Type": "application/json",
           "X-Goog-Api-Key": googleApiKey,
           "X-Goog-FieldMask":
-            "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location",
+            "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location,places.websiteUri",
         },
         body: JSON.stringify({
           includedTypes: typesToSend,
+          excludedTypes: getExcludedTypesForCategory(categoryDisplayName),
           maxResultCount: limit,
           locationRestriction: {
             circle: {
@@ -138,7 +173,7 @@ async function googlePlacesFallback(
     );
 
     if (placesRes.ok) {
-      const placesData = await placesRes.json();
+      const placesData: { places?: GooglePlace[] } = await placesRes.json();
       return placesData.places ?? [];
     }
   } catch {
@@ -147,8 +182,19 @@ async function googlePlacesFallback(
   return [];
 }
 
+interface GooglePlace {
+  id?: string;
+  displayName?: { text?: string };
+  rating?: number;
+  priceLevel?: string;
+  formattedAddress?: string;
+  photos?: Array<{ name?: string }>;
+  location?: { latitude?: number; longitude?: number };
+  websiteUri?: string;
+}
+
 function mapGooglePlaceToCard(
-  p: any,
+  p: GooglePlace,
   categoryDisplayName: string,
   categorySlug: string,
   cardType: "single" | "curated" = "single",
@@ -174,6 +220,11 @@ function mapGooglePlaceToCard(
     priceTier: derivePriceTier(null, p.priceLevel ?? null),
     description: `A great ${categoryDisplayName} spot to explore.`,
     cardType,
+    tagline: null,
+    stops: 0,
+    totalPriceMin: null,
+    totalPriceMax: null,
+    website: p.websiteUri ?? null,
   };
 }
 
@@ -370,7 +421,8 @@ serve(async (req: Request) => {
           matchedCategory = fallbacks[Math.floor(Math.random() * fallbacks.length)];
         }
 
-        resolvedSlugs[descMatchIdx] = matchedCategory;
+        // Convert display name to slug format for consistent slug storage
+        resolvedSlugs[descMatchIdx] = matchedCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "");
       }
 
       // Resolve all slugs to display names
@@ -387,7 +439,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
           )
           .eq("category", cat.displayName)
           .gte("lat", latMin)
@@ -401,7 +453,7 @@ serve(async (req: Request) => {
           // Boost linked user saved cards
           let sorted = [...poolCards];
           if (linkedUserId && linkedSavedCardIds.size > 0) {
-            sorted.sort((a: any, b: any) => {
+            sorted.sort((a: PoolCard, b: PoolCard) => {
               const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
               const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
               if (aLinked !== bLinked) return bLinked - aLinked;
@@ -410,7 +462,7 @@ serve(async (req: Request) => {
           }
 
           // Pick first non-excluded card
-          const chosen = sorted.find((c: any) => !excludeSet.has(c.id));
+          const chosen = sorted.find((c: PoolCard) => !excludeSet.has(c.id));
           if (chosen) {
             excludeSet.add(chosen.id);
             heroCards.push({
@@ -428,6 +480,11 @@ serve(async (req: Request) => {
               priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
               description: chosen.description ?? `A great ${cat.displayName} spot to explore.`,
               cardType: "single",
+              tagline: null,
+              stops: 0,
+              totalPriceMin: null,
+              totalPriceMax: null,
+              website: chosen.website ?? null,
             });
           }
         }
@@ -435,12 +492,12 @@ serve(async (req: Request) => {
         // Google Places fallback if no card found for this category
         if (!heroCards.some((c) => c.categorySlug === cat.slug)) {
           const places = await googlePlacesFallback(cat.displayName, location, 5);
-          if (places.length > 0) {
-            const chosen = places[0];
-            const card = mapGooglePlaceToCard(chosen, cat.displayName, cat.slug, "single");
+          for (const p of places) {
+            const card = mapGooglePlaceToCard(p, cat.displayName, cat.slug, "single");
             if (!excludeSet.has(card.id)) {
               excludeSet.add(card.id);
               heroCards.push(card);
+              break; // Only need 1 per category
             }
           }
         }
@@ -452,7 +509,7 @@ serve(async (req: Request) => {
         const { data: curatedCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, tagline, categories, stops, total_price_min, total_price_max"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max"
           )
           .eq("card_type", "curated")
           .gte("lat", latMin)
@@ -465,7 +522,7 @@ serve(async (req: Request) => {
           // Score by keyword overlap with description
           const descWords = description.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
           let bestScore = -1;
-          let bestCard: any = null;
+          let bestCard: PoolCard | null = null;
 
           for (const cc of curatedCards) {
             if (excludeSet.has(cc.id)) continue;
@@ -490,6 +547,7 @@ serve(async (req: Request) => {
 
           if (bestCard) {
             excludeSet.add(bestCard.id);
+            const stopsCount = Array.isArray(bestCard.stops) ? bestCard.stops.length : 0;
             curatedCard = {
               id: bestCard.id,
               title: bestCard.title,
@@ -505,6 +563,11 @@ serve(async (req: Request) => {
               priceTier: derivePriceTier(bestCard.price_tier ?? null, bestCard.price_level ?? null),
               description: bestCard.description ?? "A curated experience to explore.",
               cardType: "curated",
+              tagline: bestCard.tagline ?? null,
+              stops: stopsCount,
+              totalPriceMin: bestCard.total_price_min ?? null,
+              totalPriceMax: bestCard.total_price_max ?? null,
+              website: bestCard.website ?? null,
             };
           }
         }
@@ -572,7 +635,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
           )
           .eq("category", catName)
           .gte("lat", latMin)
@@ -588,7 +651,7 @@ serve(async (req: Request) => {
           // Boost linked user saved cards
           let sorted = [...poolCards];
           if (linkedUserId && linkedSavedCardIds.size > 0) {
-            sorted.sort((a: any, b: any) => {
+            sorted.sort((a: PoolCard, b: PoolCard) => {
               const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
               const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
               if (aLinked !== bLinked) return bLinked - aLinked;
@@ -614,6 +677,11 @@ serve(async (req: Request) => {
               priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
               description: chosen.description ?? `A great ${catName} spot to explore.`,
               cardType: "single",
+              tagline: null,
+              stops: 0,
+              totalPriceMin: null,
+              totalPriceMax: null,
+              website: chosen.website ?? null,
             });
           }
         }
@@ -623,6 +691,7 @@ serve(async (req: Request) => {
 
       // Round-robin to pick up to 2 per category, total up to 5
       const generateMoreCards: Card[] = [];
+      let poolCardsUsed = 0;
       const maxPerCategory = 2;
       const maxTotal = 5;
 
@@ -634,6 +703,7 @@ serve(async (req: Request) => {
           if (bucket.length > round) {
             excludeSet.add(bucket[round].id);
             generateMoreCards.push(bucket[round]);
+            poolCardsUsed++;
           }
         }
         if (generateMoreCards.length >= maxTotal) break;
@@ -657,7 +727,8 @@ serve(async (req: Request) => {
         }
       }
 
-      const hasMore = totalAvailable > generateMoreCards.length;
+      // hasMore = pool had more cards than we actually used from it
+      const hasMore = totalAvailable > poolCardsUsed;
 
       return new Response(JSON.stringify({ cards: generateMoreCards, hasMore }), {
         status: 200,
@@ -687,7 +758,7 @@ serve(async (req: Request) => {
       const { data: poolCards } = await adminClient
         .from("card_pool")
         .select(
-          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
+          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
         )
         .eq("category", resolved.displayName)
         .gte("lat", latMin)
@@ -701,7 +772,7 @@ serve(async (req: Request) => {
         // Take up to 3 cards, boosting linked user's saved cards to the top
         let sorted = [...poolCards];
         if (linkedUserId && linkedSavedCardIds.size > 0) {
-          sorted.sort((a: any, b: any) => {
+          sorted.sort((a: PoolCard, b: PoolCard) => {
             const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
             const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
             if (aLinked !== bLinked) return bLinked - aLinked;
@@ -725,6 +796,11 @@ serve(async (req: Request) => {
             priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
             description: chosen.description ?? `A great ${resolved.displayName} spot to explore.`,
             cardType: (chosen.card_type as "single" | "curated") ?? "single",
+            tagline: chosen.tagline ?? null,
+            stops: Array.isArray(chosen.stops) ? chosen.stops.length : 0,
+            totalPriceMin: chosen.total_price_min ?? null,
+            totalPriceMax: chosen.total_price_max ?? null,
+            website: chosen.website ?? null,
           });
         }
       } else {
@@ -750,10 +826,11 @@ serve(async (req: Request) => {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": googleApiKey,
                 "X-Goog-FieldMask":
-                  "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location",
+                  "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location,places.websiteUri",
               },
               body: JSON.stringify({
                 includedTypes: typesToSend,
+                excludedTypes: getExcludedTypesForCategory(resolved.displayName),
                 maxResultCount: 5,
                 locationRestriction: {
                   circle: {
@@ -770,8 +847,8 @@ serve(async (req: Request) => {
           );
 
           if (placesRes.ok) {
-            const placesData = await placesRes.json();
-            const places = placesData.places ?? [];
+            const placesData: { places?: GooglePlace[] } = await placesRes.json();
+            const places: GooglePlace[] = placesData.places ?? [];
 
             if (places.length > 0) {
               const topPlaces = places.slice(0, 3);
@@ -796,6 +873,11 @@ serve(async (req: Request) => {
                   priceTier: derivePriceTier(null, p.priceLevel ?? null),
                   description: `A great ${resolved.displayName} spot to explore.`,
                   cardType: "single",
+                  tagline: null,
+                  stops: 0,
+                  totalPriceMin: null,
+                  totalPriceMax: null,
+                  website: p.websiteUri ?? null,
                 });
               }
             }

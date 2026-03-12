@@ -36,7 +36,6 @@ function formatPriceRange(
 }
 
 const PersonCuratedCard: React.FC<PersonCuratedCardProps> = ({
-  id,
   title,
   tagline,
   categoryLabel,

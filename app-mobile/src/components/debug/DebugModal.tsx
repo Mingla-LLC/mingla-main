@@ -17,12 +17,14 @@ interface DebugModalProps {
   isVisible: boolean;
   onClose: () => void;
   viewShotRef?: any;
+  onOpenScreenshotAutomation?: () => void;
 }
 
 export const DebugModal: React.FC<DebugModalProps> = ({
   isVisible,
   onClose,
   viewShotRef,
+  onOpenScreenshotAutomation,
 }) => {
   const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<any[]>([]);
@@ -183,6 +185,15 @@ export const DebugModal: React.FC<DebugModalProps> = ({
           >
             <Text style={styles.buttonText}>🗑️ Clear</Text>
           </TouchableOpacity>
+
+          {onOpenScreenshotAutomation && (
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#e94560' }]}
+              onPress={onOpenScreenshotAutomation}
+            >
+              <Text style={styles.buttonText}>Screenshots</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.button, styles.closeButton]}

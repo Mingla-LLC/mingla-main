@@ -831,6 +831,19 @@ export default function DiscoverScreen({
   
   // Add Person Modal state
   const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
+
+  // DEV: Screenshot automation trigger
+  useEffect(() => {
+    if (!__DEV__) return;
+    const { useScreenshotStore } = require('../store/screenshotStore');
+    const unsub = useScreenshotStore.subscribe((state: any) => {
+      if (state.triggerAddPerson) {
+        setIsAddPersonModalVisible(true);
+        useScreenshotStore.getState().setTrigger('triggerAddPerson', false);
+      }
+    });
+    return unsub;
+  }, []);
   const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
   const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
   const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
@@ -918,7 +931,7 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const user = useAppStore((state) => state.user);
-  const { preferences: discoverUserPrefs } = useUserPreferences();
+  const { data: discoverUserPrefs } = useUserPreferences(user?.id);
   const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
   const savedPeople: SavedPerson[] = savedPeopleData;
 

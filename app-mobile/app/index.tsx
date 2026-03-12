@@ -10,8 +10,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Modal,
-  Image,
 } from "react-native";
 import { vs, ms, s } from "../src/utils/responsive";
 import { useAppLayout } from "../src/hooks/useAppLayout";
@@ -64,6 +62,7 @@ import { initializeAppsFlyer, setAppsFlyerUserId } from "../src/services/appsFly
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
+import AppLoadingScreen from '../src/components/AppLoadingScreen';
 
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
@@ -77,6 +76,7 @@ import { colors } from "../src/constants/colors";
 import { debugService } from "../src/services/debugService";
 import { logger } from "../src/utils/logger";
 import { DebugModal } from "../src/components/debug/DebugModal";
+import { ScreenshotAutomation } from "../src/components/debug/ScreenshotAutomation";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
@@ -98,6 +98,7 @@ function AppContent() {
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  const [showScreenshotAutomation, setShowScreenshotAutomation] = useState<boolean>(false);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -1541,38 +1542,7 @@ function AppContent() {
   // Show loading while checking authentication status
   if (isLoadingAuth) {
     logger.nav('Render: AuthLoading screen');
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#f9fafb",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <View style={{ alignItems: "center" }}>
-          <View
-            style={{
-              width: 64,
-              height: 64,
-              backgroundColor: "#eb7825",
-              borderRadius: 32,
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 16,
-            }}
-          >
-            <Text style={{ color: "white", fontSize: 24 }}>✨</Text>
-          </View>
-          <Text style={{ color: "#6b7280", fontSize: 16, marginBottom: 8 }}>
-            Loading Mingla...
-          </Text>
-          <Text style={{ color: "#9ca3af", fontSize: 14 }}>
-            Checking authentication...
-          </Text>
-        </View>
-      </View>
-    );
+    return <AppLoadingScreen message="Welcome back" testID="auth-loading" />;
   }
   // Show onboarding loader if active OR if user needs onboarding.
   // OnboardingLoader owns the async resume/loading state — AppContent never renders
@@ -1621,17 +1591,7 @@ function AppContent() {
   // NOT the WelcomeScreen
   if (user && !profile) {
     logger.nav('Render: ProfileLoading (user exists, waiting for profile)', { userId: user.id });
-    return (
-      <View style={styles.profileLoadingContainer}>
-        <StatusBar barStyle="dark-content" translucent={true} backgroundColor="transparent" />
-        <View style={styles.profileLoadingInner}>
-          <View style={styles.profileLoadingIcon}>
-            <Text style={styles.profileLoadingEmoji}>✨</Text>
-          </View>
-          <Text style={styles.profileLoadingText}>Loading your profile...</Text>
-        </View>
-      </View>
-    );
+    return <AppLoadingScreen message="Getting things ready" testID="profile-loading" />;
   }
 
   // Function to render current page based on navigation
@@ -1980,7 +1940,7 @@ function AppContent() {
                     <TouchableOpacity
                       activeOpacity={1}
                       onPress={handleDebugTap}
-                      style={{ position: 'absolute', top: 0, right: 0, width: 44, height: 44, zIndex: 9999 }}
+                      style={{ position: 'absolute', top: 0, right: 0, width: 120, height: 120, zIndex: 9999 }}
                     />
                     <View style={styles.container}>
                       {/* Main Content — paddingTop for safe area since we use a raw View root */}
@@ -2323,6 +2283,40 @@ function AppContent() {
           isVisible={showDebugModal}
           onClose={() => setShowDebugModal(false)}
           viewShotRef={viewShotRef}
+          onOpenScreenshotAutomation={() => {
+            setShowDebugModal(false);
+            setTimeout(() => setShowScreenshotAutomation(true), 300);
+          }}
+        />
+        <ScreenshotAutomation
+          isVisible={showScreenshotAutomation}
+          onClose={() => setShowScreenshotAutomation(false)}
+          navigationActions={{
+            setCurrentPage: (page: string) => setCurrentPage(page as any),
+            setShowPreferences,
+            setShowCollaboration,
+            setShowCollabPreferences,
+            setShowTermsOfService,
+            setShowPrivacyPolicy,
+            setShowAccountSettings,
+            setShowProfileSettings,
+            setShowShareModal,
+            setShowOnboardingFlow,
+            setShowPaywall,
+            resetOverlays: () => {
+              setShowPreferences(false);
+              setShowCollaboration(false);
+              setShowCollabPreferences(false);
+              setShowTermsOfService(false);
+              setShowPrivacyPolicy(false);
+              setShowAccountSettings(false);
+              setShowProfileSettings(false);
+              setShowShareModal(false);
+              setShowOnboardingFlow(false);
+              setShowPaywall(false);
+              setViewingFriendProfileId(null);
+            },
+          }}
         />
       </>
     );
@@ -2333,32 +2327,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "white",
-  },
-  profileLoadingContainer: {
-    flex: 1,
-    backgroundColor: colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileLoadingInner: {
-    alignItems: 'center',
-  },
-  profileLoadingIcon: {
-    width: 64,
-    height: 64,
-    backgroundColor: colors.primary,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  profileLoadingEmoji: {
-    color: colors.white,
-    fontSize: 24,
-  },
-  profileLoadingText: {
-    color: colors.gray500,
-    fontSize: 16,
   },
   container: {
     flex: 1,

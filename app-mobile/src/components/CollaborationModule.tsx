@@ -136,6 +136,27 @@ export default function CollaborationModule({
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
   );
+
+  // DEV: Screenshot automation triggers for tab switching
+  useEffect(() => {
+    if (!__DEV__) return;
+    const { useScreenshotStore } = require('../store/screenshotStore');
+    const unsub = useScreenshotStore.subscribe((state: any) => {
+      if (state.triggerCollabSessionsTab) {
+        setActiveTab('sessions');
+        useScreenshotStore.getState().setTrigger('triggerCollabSessionsTab', false);
+      }
+      if (state.triggerCollabInvitesTab) {
+        setActiveTab('invites');
+        useScreenshotStore.getState().setTrigger('triggerCollabInvitesTab', false);
+      }
+      if (state.triggerCollabCreateTab) {
+        setActiveTab('create');
+        useScreenshotStore.getState().setTrigger('triggerCollabCreateTab', false);
+      }
+    });
+    return unsub;
+  }, []);
   const [invitesTabType, setInvitesTabType] = useState<"sent" | "received">(
     "received"
   );
