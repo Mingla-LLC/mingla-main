@@ -30,16 +30,6 @@ interface Friend {
   lastActive?: string;
 }
 
-interface CollaborationInvite {
-  id: string;
-  sessionName: string;
-  fromUser: Friend;
-  toUser: Friend;
-  status: "pending" | "accepted" | "declined" | "canceled";
-  createdAt: string;
-  expiresAt?: string;
-}
-
 interface CollaborationSession {
   id: string;
   name: string;
@@ -68,56 +58,6 @@ interface CollaborationModuleProps {
   availableFriends?: Friend[];
   onRefreshBoards?: () => void; // Callback to refresh boards list
 }
-
-// Mock data
-const mockFriends: Friend[] = [
-  { id: "1", name: "Sarah Chen", status: "online" },
-  { id: "2", name: "Marcus Johnson", status: "online" },
-  { id: "3", name: "Alex Rivera", status: "offline", lastActive: "2h ago" },
-  { id: "4", name: "Jamie Park", status: "online" },
-  { id: "5", name: "Taylor Kim", status: "offline", lastActive: "1d ago" },
-  { id: "6", name: "Jordan Lee", status: "online" },
-];
-
-const mockSentInvites: CollaborationInvite[] = [
-  {
-    id: "sent-1",
-    sessionName: "Weekend Fun Squad",
-    fromUser: { id: "me", name: "You", status: "online" },
-    toUser: mockFriends[0],
-    status: "pending",
-    createdAt: "2h ago",
-    expiresAt: "22h",
-  },
-  {
-    id: "sent-2",
-    sessionName: "Coffee Hunters",
-    fromUser: { id: "me", name: "You", status: "online" },
-    toUser: mockFriends[2],
-    status: "pending",
-    createdAt: "1d ago",
-    expiresAt: "12h",
-  },
-];
-
-const mockReceivedInvites: CollaborationInvite[] = [
-  {
-    id: "recv-1",
-    sessionName: "Date Night Planning",
-    fromUser: mockFriends[1],
-    toUser: { id: "me", name: "You", status: "online" },
-    status: "pending",
-    createdAt: "30m ago",
-  },
-  {
-    id: "recv-2",
-    sessionName: "Adventure Squad",
-    fromUser: mockFriends[3],
-    toUser: { id: "me", name: "You", status: "online" },
-    status: "pending",
-    createdAt: "4h ago",
-  },
-];
 
 export default function CollaborationModule({
   isOpen,
@@ -963,121 +903,6 @@ export default function CollaborationModule({
 
   const pendingSessions: any[] = []; // No pending sessions for now - can be added later if needed
 
-  const styles = StyleSheet.create({
-    sheetOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.35)",
-      justifyContent: "flex-end",
-    },
-    backdropTouch: {
-      flex: 1,
-    },
-    sheetContent: {
-      height: SHEET_HEIGHT,
-      backgroundColor: "#FFFFFF",
-      borderTopLeftRadius: 36,
-      borderTopRightRadius: 36,
-      overflow: "hidden",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -12 },
-      shadowOpacity: 0.3,
-      shadowRadius: 24,
-      elevation: 30,
-    },
-    dragHandleContainer: {
-      alignItems: "center",
-      paddingTop: 12,
-      paddingBottom: 4,
-    },
-    dragHandle: {
-      width: 40,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: "#D1D5DB",
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: "#F3F4F6",
-    },
-    headerLeft: {
-      flex: 1,
-    },
-    headerTitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 13,
-      color: "#6B7280",
-      marginTop: 2,
-    },
-    closeButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: "#F3F4F6",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    tabsContainer: {
-      flexDirection: "row",
-      backgroundColor: "#f3f4f6",
-      borderRadius: 12,
-      marginHorizontal: 16,
-      marginVertical: 12,
-    },
-    tab: {
-      flex: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      position: "relative",
-    },
-    tabActive: {
-      backgroundColor: "#eb7825",
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 2,
-    },
-    tabText: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#6B7280",
-    },
-    tabTextActive: {
-      color: "#ffffff",
-    },
-    tabNotificationDot: {
-      position: "absolute",
-      top: 4,
-      right: 4,
-      width: 8,
-      height: 8,
-      backgroundColor: "#EF4444",
-      borderRadius: 4,
-    },
-    content: {
-      flex: 1,
-    },
-    contentContainer: {
-      paddingVertical: 16,
-      paddingBottom: 40,
-    },
-  });
-
   if (!isOpen) return null;
 
   return (
@@ -1218,3 +1043,118 @@ export default function CollaborationModule({
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
+  },
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabsContainer: {
+    flexDirection: "row",
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 12,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  tabActive: {
+    backgroundColor: "#eb7825",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#6B7280",
+  },
+  tabTextActive: {
+    color: "#ffffff",
+  },
+  tabNotificationDot: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    backgroundColor: "#EF4444",
+    borderRadius: 4,
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingVertical: 16,
+    paddingBottom: 40,
+  },
+});

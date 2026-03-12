@@ -451,7 +451,6 @@ export default function SessionViewModal({
 
   const {
     status: sessionStatus,
-    canGenerateCards,
     canVote,
     canRSVP,
     isLocked: isSessionLocked,
@@ -702,7 +701,6 @@ export default function SessionViewModal({
               onTabChange={setActiveTab}
               savedCount={savedCards.length}
               unreadMessages={unreadMessages}
-              canGenerateCards={canGenerateCards}
             />
 
             <View style={styles.content}>

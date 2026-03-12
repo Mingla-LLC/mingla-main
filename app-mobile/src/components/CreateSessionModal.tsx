@@ -91,6 +91,7 @@ export const CreateSessionModal: React.FC = () => {
   const {
     data: phoneLookupResult,
     isLoading: phoneLookupLoading,
+    error: phoneLookupError,
   } = usePhoneLookup(debouncedPhoneE164, debouncedPhoneDigitCount >= 7);
 
   const { createCollaborativeSession } = useSessionManagement();
@@ -517,6 +518,15 @@ export const CreateSessionModal: React.FC = () => {
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Phone lookup error feedback */}
+              {phoneLookupError && phoneRawDigits.length >= 7 && (
+                <Text style={styles.phoneLookupError}>
+                  {phoneLookupError instanceof Error
+                    ? phoneLookupError.message
+                    : 'Phone lookup failed. Please try again.'}
+                </Text>
+              )}
 
               {/* Phone invitees pills */}
               {phoneInvitees.length > 0 && (
@@ -1144,5 +1154,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: colors.orange[600],
+  },
+  phoneLookupError: {
+    fontSize: 13,
+    color: '#EF4444',
+    marginTop: 6,
   },
 });

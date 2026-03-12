@@ -31,396 +31,6 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
   );
   const [isCreating, setIsCreating] = useState(false);
 
-  const styles = StyleSheet.create({
-    container: {
-      gap: 24,
-    },
-    stepContainer: {
-      gap: 16,
-    },
-    title: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#111827',
-      marginBottom: 8,
-    },
-    subtitle: {
-      fontSize: 14,
-      color: '#6b7280',
-      marginBottom: 16,
-    },
-    inputContainer: {
-      marginBottom: 16,
-    },
-    inputLabel: {
-      color: '#374151',
-      fontWeight: '500',
-      fontSize: 14,
-      marginBottom: 8,
-    },
-    textInput: {
-      width: '100%',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: '#eb7825',
-      borderRadius: 12,
-      fontSize: 16,
-      backgroundColor: 'white',
-    },
-    helperText: {
-      fontSize: 14,
-      color: '#6B7280',
-      marginTop: 8,
-    },
-    preSelectedFriendCard: {
-      backgroundColor: '#dbeafe',
-      borderWidth: 1,
-      borderColor: '#93c5fd',
-      borderRadius: 12,
-      padding: 16,
-    },
-    preSelectedFriendTitle: {
-      fontWeight: '500',
-      color: '#1e40af',
-      marginBottom: 8,
-    },
-    preSelectedFriendContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-    },
-    preSelectedFriendAvatar: {
-      width: 32,
-      height: 32,
-      backgroundColor: '#3b82f6',
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    preSelectedFriendAvatarText: {
-      color: 'white',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    preSelectedFriendName: {
-      color: '#1e40af',
-      fontWeight: '500',
-      flex: 1,
-    },
-    removeButton: {
-      width: 24,
-      height: 24,
-      backgroundColor: '#f3f4f6',
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    preSelectedFriendNote: {
-      fontSize: 12,
-      color: '#1e40af',
-      marginTop: 8,
-    },
-    continueButton: {
-      width: '100%',
-      backgroundColor: '#eb7825',
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-    },
-    continueButtonDisabled: {
-      backgroundColor: '#eb7825',
-      opacity: 0.5,
-    },
-    continueButtonText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    backButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      marginBottom: 16,
-    },
-    backButtonIcon: {
-      padding: 8,
-      backgroundColor: '#f3f4f6',
-      borderRadius: 20,
-    },
-    backButtonText: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#111827',
-    },
-    backButtonSubtext: {
-      fontSize: 14,
-      color: '#6b7280',
-    },
-    selectedFriendsCard: {
-      backgroundColor: '#fef3e2',
-      borderWidth: 1,
-      borderColor: '#fed7aa',
-      borderRadius: 12,
-      padding: 16,
-    },
-    selectedFriendsTitle: {
-      fontWeight: '500',
-      color: '#111827',
-      marginBottom: 12,
-    },
-    selectedFriendsList: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    selectedFriendTag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      backgroundColor: 'white',
-      borderWidth: 1,
-      borderColor: '#fed7aa',
-      borderRadius: 20,
-      paddingHorizontal: 12,
-      paddingVertical: 4,
-    },
-    selectedFriendAvatar: {
-      width: 24,
-      height: 24,
-      backgroundColor: '#3b82f6',
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
-    selectedFriendAvatarText: {
-      color: 'white',
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    selectedFriendName: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: '#111827',
-    },
-    removeFriendButton: {
-      width: 16,
-      height: 16,
-      backgroundColor: '#f3f4f6',
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    friendsListTitle: {
-      fontWeight: '500',
-      color: '#111827',
-      marginBottom: 8,
-    },
-    friendsList: {
-      gap: 8,
-    },
-    friendItem: {
-      width: '100%',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 12,
-      borderRadius: 12,
-      borderWidth: 2,
-    },
-    friendItemSelected: {
-      borderColor: '#eb7825',
-      backgroundColor: '#fef3e2',
-    },
-    friendItemUnselected: {
-      borderColor: '#e5e7eb',
-      backgroundColor: 'white',
-    },
-    friendAvatar: {
-      width: 40,
-      height: 40,
-      backgroundColor: '#3b82f6',
-      borderRadius: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
-    friendAvatarText: {
-      color: 'white',
-      fontWeight: '600',
-      fontSize: 16,
-    },
-    friendInfo: {
-      flex: 1,
-    },
-    friendName: {
-      fontWeight: '500',
-      color: '#111827',
-      marginBottom: 2,
-    },
-    friendUsername: {
-      fontSize: 14,
-      color: '#6b7280',
-    },
-    preSelectedBadge: {
-      fontSize: 12,
-      backgroundColor: '#dbeafe',
-      color: '#1e40af',
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 12,
-    },
-    checkmark: {
-      width: 20,
-      height: 20,
-      color: '#eb7825',
-    },
-    confirmCard: {
-      backgroundColor: 'white',
-      borderWidth: 1,
-      borderColor: '#e5e7eb',
-      borderRadius: 16,
-      padding: 24,
-      gap: 16,
-    },
-    confirmSection: {
-      gap: 4,
-    },
-    confirmLabel: {
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: 4,
-    },
-    confirmValue: {
-      color: '#6b7280',
-    },
-    confirmFriendsList: {
-      gap: 8,
-    },
-    confirmFriendItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-    },
-    confirmFriendAvatar: {
-      width: 32,
-      height: 32,
-      backgroundColor: '#3b82f6',
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
-    confirmFriendAvatarText: {
-      color: 'white',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    confirmFriendName: {
-      fontWeight: '500',
-      color: '#6b7280',
-      flex: 1,
-    },
-    statusIndicator: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    statusOnline: {
-      backgroundColor: '#10b981',
-    },
-    statusOffline: {
-      backgroundColor: '#9ca3af',
-    },
-    infoCard: {
-      backgroundColor: '#dbeafe',
-      borderWidth: 1,
-      borderColor: '#93c5fd',
-      borderRadius: 12,
-      padding: 16,
-    },
-    infoCardContent: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 12,
-    },
-    infoCardIcon: {
-      width: 20,
-      height: 20,
-      color: '#1d4ed8',
-      marginTop: 2,
-    },
-    infoCardText: {
-      flex: 1,
-    },
-    infoCardTitle: {
-      fontWeight: '500',
-      marginBottom: 4,
-      color: '#1e40af',
-    },
-    infoCardDescription: {
-      fontSize: 14,
-      color: '#1e40af',
-    },
-    sendInvitesButton: {
-      width: '100%',
-      backgroundColor: '#eb7825',
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      alignItems: 'center',
-    },
-    sendInvitesButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    emptyStateContainer: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 48,
-      paddingHorizontal: 24,
-    },
-    emptyStateTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: '#111827',
-      marginTop: 16,
-      marginBottom: 8,
-    },
-    emptyStateText: {
-      fontSize: 14,
-      color: '#6B7280',
-      textAlign: 'center',
-      marginBottom: 24,
-    },
-    emptyStateButton: {
-      backgroundColor: '#eb7825',
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-    },
-    emptyStateButtonText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-  });
-
-  const mockFriends = [
-    { id: '1', name: 'Sarah Chen', status: 'online' },
-    { id: '2', name: 'Marcus Johnson', status: 'online' },
-    { id: '3', name: 'Alex Rivera', status: 'offline', lastActive: '2h ago' },
-    { id: '4', name: 'Jamie Park', status: 'online' },
-    { id: '5', name: 'Taylor Kim', status: 'offline', lastActive: '1d ago' },
-    { id: '6', name: 'Jordan Lee', status: 'online' }
-  ];
-
   const toggleFriendSelection = (friend: Friend) => {
     setSelectedFriends(prev => {
       const isSelected = prev.some(f => f.id === friend.id);
@@ -562,7 +172,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
         // Send push notification via Edge Function
         try {
           const { data: notifyData, error: notifyError } =
-            await supabase.functions.invoke('bright-responder', {
+            await supabase.functions.invoke('send-collaboration-invite', {
               body: {
                 inviterId: user.id,
                 invitedUserId: friendUserId,
@@ -901,5 +511,389 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 24,
+  },
+  stepContainer: {
+    gap: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    color: '#374151',
+    fontWeight: '500',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  textInput: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#eb7825',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  helperText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  preSelectedFriendCard: {
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    borderRadius: 12,
+    padding: 16,
+  },
+  preSelectedFriendTitle: {
+    fontWeight: '500',
+    color: '#1e40af',
+    marginBottom: 8,
+  },
+  preSelectedFriendContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  preSelectedFriendAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#3b82f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preSelectedFriendAvatarText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  preSelectedFriendName: {
+    color: '#1e40af',
+    fontWeight: '500',
+    flex: 1,
+  },
+  removeButton: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preSelectedFriendNote: {
+    fontSize: 12,
+    color: '#1e40af',
+    marginTop: 8,
+  },
+  continueButton: {
+    width: '100%',
+    backgroundColor: '#eb7825',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  continueButtonDisabled: {
+    backgroundColor: '#eb7825',
+    opacity: 0.5,
+  },
+  continueButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  backButtonIcon: {
+    padding: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+  },
+  backButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  backButtonSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  selectedFriendsCard: {
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 12,
+    padding: 16,
+  },
+  selectedFriendsTitle: {
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  selectedFriendsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  selectedFriendTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  selectedFriendAvatar: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  selectedFriendAvatarText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  selectedFriendName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  removeFriendButton: {
+    width: 16,
+    height: 16,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendsListTitle: {
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  friendsList: {
+    gap: 8,
+  },
+  friendItem: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  friendItemSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  friendItemUnselected: {
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  friendAvatar: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#3b82f6',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  friendAvatarText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  friendInfo: {
+    flex: 1,
+  },
+  friendName: {
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  friendUsername: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  preSelectedBadge: {
+    fontSize: 12,
+    backgroundColor: '#dbeafe',
+    color: '#1e40af',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  checkmark: {
+    width: 20,
+    height: 20,
+    color: '#eb7825',
+  },
+  confirmCard: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 16,
+    padding: 24,
+    gap: 16,
+  },
+  confirmSection: {
+    gap: 4,
+  },
+  confirmLabel: {
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  confirmValue: {
+    color: '#6b7280',
+  },
+  confirmFriendsList: {
+    gap: 8,
+  },
+  confirmFriendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  confirmFriendAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#3b82f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  confirmFriendAvatarText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  confirmFriendName: {
+    fontWeight: '500',
+    color: '#6b7280',
+    flex: 1,
+  },
+  statusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusOnline: {
+    backgroundColor: '#10b981',
+  },
+  statusOffline: {
+    backgroundColor: '#9ca3af',
+  },
+  infoCard: {
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    borderRadius: 12,
+    padding: 16,
+  },
+  infoCardContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  infoCardIcon: {
+    width: 20,
+    height: 20,
+    color: '#1d4ed8',
+    marginTop: 2,
+  },
+  infoCardText: {
+    flex: 1,
+  },
+  infoCardTitle: {
+    fontWeight: '500',
+    marginBottom: 4,
+    color: '#1e40af',
+  },
+  infoCardDescription: {
+    fontSize: 14,
+    color: '#1e40af',
+  },
+  sendInvitesButton: {
+    width: '100%',
+    backgroundColor: '#eb7825',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  sendInvitesButtonDisabled: {
+    opacity: 0.5,
+  },
+  sendInvitesButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    backgroundColor: '#eb7825',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
 export default CreateTab;

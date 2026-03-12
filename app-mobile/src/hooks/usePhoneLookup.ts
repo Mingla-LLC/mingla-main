@@ -25,12 +25,28 @@ function isViablePhoneNumber(phone: string): boolean {
   return /^\+[1-9]\d{6,14}$/.test(phone) && phone.length >= MIN_E164_DIGITS + 1
 }
 
+const PHONE_LOOKUP_TIMEOUT_MS = 10_000
+
 export function usePhoneLookup(phoneE164: string, enabled: boolean) {
   const viable = isViablePhoneNumber(phoneE164)
 
   return useQuery<PhoneLookupResult>({
     queryKey: phoneLookupKeys.lookup(phoneE164),
-    queryFn: () => lookupPhone(phoneE164),
+    queryFn: ({ signal }) => {
+      // Layer a timeout on top of React Query's built-in signal so the request
+      // never hangs indefinitely (edge-function cold starts can exceed 15s).
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), PHONE_LOOKUP_TIMEOUT_MS)
+
+      // Forward React Query's cancellation signal too
+      if (signal) {
+        signal.addEventListener('abort', () => controller.abort())
+      }
+
+      return lookupPhone(phoneE164, controller.signal).finally(() =>
+        clearTimeout(timeoutId)
+      )
+    },
     enabled: enabled && viable,
     staleTime: 30 * 1000,
     retry: false,

@@ -193,7 +193,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
         const friendEmail = friendProfile?.email;
         if (friendEmail && inviteData) {
           try {
-            await supabase.functions.invoke("bright-responder", {
+            await supabase.functions.invoke("send-collaboration-invite", {
               body: {
                 inviterId: user.id,
                 invitedUserId: friend.id,

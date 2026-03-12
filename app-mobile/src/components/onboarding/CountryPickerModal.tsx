@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Modal,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,34 +125,39 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color={colors.gray[400]}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, code, or dial code"
-            placeholderTextColor={colors.gray[400]}
-            value={search}
-            onChangeText={setSearch}
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-        </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.searchContainer}>
+            <Ionicons
+              name="search-outline"
+              size={20}
+              color={colors.gray[400]}
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name, code, or dial code"
+              placeholderTextColor={colors.gray[400]}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+          </View>
 
-        <FlatList
-          data={filteredCountries}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          getItemLayout={getItemLayout}
-          style={styles.list}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
-        />
+          <FlatList
+            data={filteredCountries}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            getItemLayout={getItemLayout}
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={true}
+          />
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
@@ -160,6 +167,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  keyboardAvoidingContainer: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

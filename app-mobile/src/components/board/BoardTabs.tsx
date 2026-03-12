@@ -5,39 +5,26 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-export type BoardTab = "swipe" | "saved" | "discussion";
+export type BoardTab = "saved" | "discussion";
 
 interface BoardTabsProps {
   activeTab: BoardTab;
   onTabChange: (tab: BoardTab) => void;
-  swipeCount?: number;
   savedCount?: number;
   unreadMessages?: number;
-  canGenerateCards?: boolean;
 }
 
 export const BoardTabs: React.FC<BoardTabsProps> = ({
   activeTab,
   onTabChange,
-  swipeCount = 0,
   savedCount = 0,
   unreadMessages = 0,
-  canGenerateCards = false,
 }) => {
   const tabs: Array<{
     id: BoardTab;
     label: string;
     count?: number;
   }> = [
-    ...(canGenerateCards
-      ? [
-          {
-            id: "swipe" as BoardTab,
-            label: "Swipe",
-            count: swipeCount > 0 ? swipeCount : undefined,
-          },
-        ]
-      : []),
     {
       id: "saved",
       label: "Cards",

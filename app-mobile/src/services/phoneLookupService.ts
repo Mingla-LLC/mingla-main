@@ -23,10 +23,34 @@ export interface PendingInvite {
   createdAt: string
 }
 
-export async function lookupPhone(phoneE164: string): Promise<PhoneLookupResult> {
-  const { data, error } = await supabase.functions.invoke('lookup-phone', {
-    body: { phone_e164: phoneE164 },
-  })
+export async function lookupPhone(phoneE164: string, signal?: AbortSignal): Promise<PhoneLookupResult> {
+  // Check if already aborted before making the request
+  if (signal?.aborted) {
+    throw new Error('Phone lookup timed out. Please try again.')
+  }
+
+  const fetchOptions: Record<string, unknown> = { body: { phone_e164: phoneE164 } }
+
+  // supabase-js v2 doesn't natively support AbortSignal on functions.invoke,
+  // so we race the invocation against the signal manually.
+  const invokePromise = supabase.functions.invoke('lookup-phone', fetchOptions)
+
+  const result = signal
+    ? await Promise.race([
+        invokePromise,
+        new Promise<never>((_, reject) => {
+          if (signal.aborted) {
+            reject(new Error('Phone lookup timed out. Please try again.'))
+            return
+          }
+          signal.addEventListener('abort', () =>
+            reject(new Error('Phone lookup timed out. Please try again.'))
+          )
+        }),
+      ])
+    : await invokePromise
+
+  const { data, error } = result
 
   if (error) {
     const detail = await extractFunctionError(error, 'Phone lookup failed')

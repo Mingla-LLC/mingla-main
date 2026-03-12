@@ -288,7 +288,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   // Phase 2: Session status hook
   const {
     status: sessionStatus,
-    canGenerateCards,
     canVote,
     canRSVP,
     isLocked: isSessionLocked,
@@ -657,7 +656,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         onTabChange={setActiveTab}
         savedCount={savedCards.length}
         unreadMessages={unreadMessages}
-        canGenerateCards={canGenerateCards}
       />
 
       <View style={styles.content}>
