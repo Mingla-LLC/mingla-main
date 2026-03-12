@@ -15,8 +15,9 @@ import { Platform } from 'react-native'
 // RevenueCat API key (test key — replace with platform-specific prod keys before launch)
 const RC_API_KEY = 'test_VOcmlrBhMcrSUqAlhRqDzUfkRYL'
 
-// The entitlement identifier configured in the RevenueCat dashboard
-export const RC_ENTITLEMENT_ID = 'Mingla Pro'
+// Entitlement identifiers — must match exactly what's in the RC dashboard
+export const RC_PRO_ENTITLEMENT_ID = 'Mingla Pro'
+export const RC_ELITE_ENTITLEMENT_ID = 'Mingla Elite'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -32,14 +33,20 @@ let _configured = false
  * @param userId  Supabase user UUID, or null for anonymous users.
  */
 export function configureRevenueCat(userId: string | null): void {
-  Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.ERROR)
+  try {
+    Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.ERROR)
 
-  if (!_configured) {
-    Purchases.configure({
-      apiKey: RC_API_KEY,
-      appUserID: userId ?? undefined, // undefined → anonymous
-    })
-    _configured = true
+    if (!_configured) {
+      Purchases.configure({
+        apiKey: RC_API_KEY,
+        appUserID: userId ?? undefined, // undefined → anonymous
+      })
+      _configured = true
+    }
+  } catch (e) {
+    // Native module unavailable — running in Expo Go or simulator without native build.
+    // RevenueCat requires a development build. Run: npx expo run:ios / npx expo run:android
+    console.warn('[RevenueCat] Native module not available. Build a dev client to test purchases.')
   }
 }
 
@@ -50,6 +57,7 @@ export function configureRevenueCat(userId: string | null): void {
  * Call this immediately after a successful Supabase sign-in.
  */
 export async function loginRevenueCat(userId: string): Promise<CustomerInfo> {
+  if (!_configured) throw new Error('[RevenueCat] Not configured')
   const { customerInfo } = await Purchases.logIn(userId)
   return customerInfo
 }
@@ -59,6 +67,7 @@ export async function loginRevenueCat(userId: string): Promise<CustomerInfo> {
  * RC will revert to an anonymous user session.
  */
 export async function logoutRevenueCat(): Promise<CustomerInfo> {
+  if (!_configured) throw new Error('[RevenueCat] Not configured')
   return Purchases.logOut()
 }
 
@@ -70,17 +79,40 @@ export async function logoutRevenueCat(): Promise<CustomerInfo> {
  * Returns true if the given CustomerInfo has an active "Mingla Pro" entitlement.
  */
 export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
-  return customerInfo.entitlements.active[RC_ENTITLEMENT_ID] !== undefined
+  return customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID] !== undefined
+}
+
+/**
+ * Returns true if the given CustomerInfo has an active "Mingla Elite" entitlement.
+ */
+export function hasEliteEntitlement(customerInfo: CustomerInfo): boolean {
+  return customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID] !== undefined
+}
+
+/**
+ * Returns true if the user has any active paid entitlement (Pro or Elite).
+ */
+export function hasAnyEntitlement(customerInfo: CustomerInfo): boolean {
+  return hasEliteEntitlement(customerInfo) || hasProEntitlement(customerInfo)
 }
 
 /**
  * Returns the expiration date of the active "Mingla Pro" entitlement,
- * or null if not active / lifetime purchase.
+ * or null if not active.
  */
 export function getProExpirationDate(customerInfo: CustomerInfo): Date | null {
-  const entitlement = customerInfo.entitlements.active[RC_ENTITLEMENT_ID]
-  if (!entitlement) return null
-  if (!entitlement.expirationDate) return null // lifetime
+  const entitlement = customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID]
+  if (!entitlement?.expirationDate) return null
+  return new Date(entitlement.expirationDate)
+}
+
+/**
+ * Returns the expiration date of the active "Mingla Elite" entitlement,
+ * or null if not active.
+ */
+export function getEliteExpirationDate(customerInfo: CustomerInfo): Date | null {
+  const entitlement = customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID]
+  if (!entitlement?.expirationDate) return null
   return new Date(entitlement.expirationDate)
 }
 
@@ -177,13 +209,14 @@ export async function presentPaywall(): Promise<PAYWALL_RESULT> {
 
 /**
  * Present the paywall only if the user does not already have the "Mingla Pro"
- * entitlement. Ideal for feature-gate upgrade prompts.
+ * entitlement (the minimum paid tier). Users with Elite already active will
+ * also not see the paywall.
  *
  * Returns PAYWALL_RESULT.NOT_PRESENTED if the user is already subscribed.
  */
 export async function presentPaywallIfNeeded(): Promise<PAYWALL_RESULT> {
   return RevenueCatUI.presentPaywallIfNeeded({
-    requiredEntitlementIdentifier: RC_ENTITLEMENT_ID,
+    requiredEntitlementIdentifier: RC_PRO_ENTITLEMENT_ID,
   })
 }
 

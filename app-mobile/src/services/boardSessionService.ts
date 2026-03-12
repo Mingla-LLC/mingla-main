@@ -34,12 +34,24 @@ export interface BoardSessionData {
 }
 
 class BoardSessionService {
+  /** Timestamp of the last successful fetch, used to skip redundant calls. */
+  private static lastFetchTime = 0;
+  /** Cached result from the last fetch, returned on dedup hits. */
+  private static lastFetchResult: BoardSessionData[] = [];
+  /** Minimum interval between fetches (milliseconds). */
+  private static readonly DEDUP_INTERVAL_MS = 5000;
+
   /**
-   * Fetch all board sessions where the user is a participant
+   * Fetch all active sessions where the user is a participant.
+   * Skips the query if the last fetch was less than 5 seconds ago (returns cached result).
    */
   static async fetchUserBoardSessions(
     userId: string
   ): Promise<BoardSessionData[]> {
+    const now = Date.now();
+    if (now - BoardSessionService.lastFetchTime < BoardSessionService.DEDUP_INTERVAL_MS) {
+      return BoardSessionService.lastFetchResult;
+    }
     try {
       // 1. Get all session IDs where user is a participant AND has accepted the invite
       // Only show boards where the user has explicitly accepted participation
@@ -55,7 +67,8 @@ class BoardSessionService {
       }
 
       if (!participations || participations.length === 0) {
-        console.log("⚠️ No participations found for user");
+        BoardSessionService.lastFetchTime = Date.now();
+        BoardSessionService.lastFetchResult = [];
         return [];
       }
 
@@ -85,15 +98,10 @@ class BoardSessionService {
       });
 
       if (!sessions || sessions.length === 0) {
-        console.log(
-          "⚠️ No board sessions found. Session types found:",
-          allSessions?.map((s) => ({
-            id: s.id,
-            name: s.name,
-            session_type: s.session_type,
-            archived_at: s.archived_at,
-          }))
-        );
+        // All sessions are either pending, completed, or archived — none are active.
+        // This is normal during onboarding or when all sessions are still awaiting acceptance.
+        BoardSessionService.lastFetchTime = Date.now();
+        BoardSessionService.lastFetchResult = [];
         return [];
       }
 
@@ -246,6 +254,8 @@ class BoardSessionService {
         })
       );
 
+      BoardSessionService.lastFetchTime = Date.now();
+      BoardSessionService.lastFetchResult = boardSessionsData;
       return boardSessionsData;
     } catch (error) {
       console.error("❌ Error in fetchUserBoardSessions:", error);

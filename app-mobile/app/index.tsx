@@ -53,6 +53,8 @@ import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
+import { initializeOneSignal, loginOneSignal, logoutOneSignal } from "../src/services/oneSignalService";
+import { initializeAppsFlyer, setAppsFlyerUserId } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
@@ -133,6 +135,40 @@ function AppContent() {
 
   // Keep React Query's CustomerInfo cache in sync with RC's real-time updates.
   useCustomerInfoListener();
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // ── OneSignal ──────────────────────────────────────────────────────────────
+  // Initialize once at mount — requests notification permission from the user.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    initializeOneSignal();
+  }, []); // intentionally once
+
+  // Link / unlink the OneSignal player to the Supabase user ID on auth changes.
+  useEffect(() => {
+    if (isLoadingAuth) return;
+    if (user?.id) {
+      loginOneSignal(user.id);
+    } else {
+      logoutOneSignal();
+    }
+  }, [user?.id, isLoadingAuth]);
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // ── AppsFlyer ──────────────────────────────────────────────────────────────
+  // Initialize once at mount — tracks installs and attribution automatically.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    initializeAppsFlyer();
+  }, []); // intentionally once
+
+  // Set the AppsFlyer customer user ID when the user signs in.
+  useEffect(() => {
+    if (isLoadingAuth) return;
+    if (user?.id) {
+      setAppsFlyerUserId(user.id);
+    }
+  }, [user?.id, isLoadingAuth]);
   // ───────────────────────────────────────────────────────────────────────────
 
   // Initialize in-app notification service on mount
@@ -1864,6 +1900,7 @@ function AppContent() {
               logger.action('Navigate to replay tips');
               setCurrentPage("replay-tips" as any);
             }}
+            onUpgradePress={() => setShowPaywall(true)}
           />
         );
       default:

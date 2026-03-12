@@ -1,5 +1,5 @@
 import type { CustomerInfo } from 'react-native-purchases'
-import { hasProEntitlement } from '../services/revenueCatService'
+import { hasProEntitlement, hasEliteEntitlement } from '../services/revenueCatService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tier system
@@ -45,15 +45,18 @@ export interface ReferralCredit {
  * Determine the effective tier from RevenueCat CustomerInfo alone.
  *
  * Priority:
- *   1. Active "Mingla Pro" entitlement via RevenueCat → 'pro'
- *   2. Otherwise → 'free'
+ *   1. Active "Mingla Elite" entitlement → 'elite'
+ *   2. Active "Mingla Pro" entitlement  → 'pro'
+ *   3. Otherwise → 'free'
  *
  * Trial and referral-bonus access is checked separately via getEffectiveTierFromSupabase.
  * The unified hook (useEffectiveTier) combines both sources.
  */
 export function getEffectiveTierFromRC(customerInfo: CustomerInfo | null): SubscriptionTier {
   if (!customerInfo) return 'free'
-  return hasProEntitlement(customerInfo) ? 'pro' : 'free'
+  if (hasEliteEntitlement(customerInfo)) return 'elite'
+  if (hasProEntitlement(customerInfo)) return 'pro'
+  return 'free'
 }
 
 /**

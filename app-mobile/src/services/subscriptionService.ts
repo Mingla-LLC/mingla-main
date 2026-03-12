@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { Subscription, ReferralCredit } from '../types/subscription'
 import type { CustomerInfo } from 'react-native-purchases'
-import { hasProEntitlement, getProExpirationDate } from './revenueCatService'
+import { hasProEntitlement, hasEliteEntitlement, getProExpirationDate, getEliteExpirationDate } from './revenueCatService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DB row shapes (snake_case → camelCase mapping)
@@ -138,12 +138,17 @@ export async function syncSubscriptionFromRC(
   customerInfo: CustomerInfo,
 ): Promise<void> {
   try {
+    const isElite = hasEliteEntitlement(customerInfo)
     const isPro = hasProEntitlement(customerInfo)
-    const expirationDate = getProExpirationDate(customerInfo)
+    const isActive = isElite || isPro
+
+    const expirationDate = isElite
+      ? getEliteExpirationDate(customerInfo)
+      : getProExpirationDate(customerInfo)
 
     const updates: Partial<SubscriptionRow> = {
-      tier: isPro ? 'pro' : 'free',
-      is_active: isPro,
+      tier: isElite ? 'elite' : isPro ? 'pro' : 'free',
+      is_active: isActive,
       current_period_end: expirationDate ? expirationDate.toISOString() : null,
       updated_at: new Date().toISOString(),
     }

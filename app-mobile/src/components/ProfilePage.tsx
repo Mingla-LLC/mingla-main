@@ -50,6 +50,7 @@ interface ProfilePageProps {
   onUnblockUser?: (blockedUser: any, suppressNotification?: boolean) => Promise<void>;
   onNavigateToFriendProfile?: (userId: string) => void;
   onNavigateToReplayTips?: () => void;
+  onUpgradePress?: () => void;
   userIdentity?: {
     firstName: string;
     lastName: string;
@@ -73,6 +74,7 @@ export default function ProfilePage({
   notificationsEnabled = true,
   onNotificationsToggle,
   onNavigateToReplayTips,
+  onUpgradePress,
   userIdentity,
 }: ProfilePageProps) {
   useScreenLogger('profile');
@@ -538,6 +540,16 @@ export default function ProfilePage({
             <Text style={styles.legalLink}>Terms of Service</Text>
           </TouchableOpacity>
         </View>
+
+        {/* TEST: Upgrade button — remove before launch */}
+        {__DEV__ && onUpgradePress && (
+          <TouchableOpacity
+            onPress={onUpgradePress}
+            style={{ alignItems: 'center', paddingVertical: 12, marginBottom: 8, backgroundColor: '#eb7825', borderRadius: 12, marginHorizontal: 16 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>🧪 Test Paywall (DEV ONLY)</Text>
+          </TouchableOpacity>
+        )}
 
         {/* 9. Sign Out */}
         <View style={styles.signOutSection}>

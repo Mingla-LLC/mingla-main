@@ -14,7 +14,8 @@ import type { CustomerInfo, PurchasesStoreTransaction } from 'react-native-purch
 import { useQueryClient } from '@tanstack/react-query'
 import { revenueCatKeys } from '../hooks/useRevenueCat'
 import { subscriptionKeys } from '../hooks/useSubscription'
-import { syncSubscriptionFromRC, presentCustomerCenter } from '../services/revenueCatService'
+import { presentCustomerCenter } from '../services/revenueCatService'
+import { syncSubscriptionFromRC } from '../services/subscriptionService'
 import { colors } from '../constants/colors'
 
 // ─────────────────────────────────────────────────────────────────────────────

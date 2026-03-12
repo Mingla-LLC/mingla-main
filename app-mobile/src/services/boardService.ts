@@ -36,7 +36,6 @@ export interface CreateBoardParams {
   description?: string;
   /** User IDs (UUIDs). For email-based lookup, use addCollaboratorByEmail() after board creation. */
   collaborators?: string[];
-  sessionId?: string;
   isPublic?: boolean;
 }
 
@@ -109,7 +108,6 @@ export async function createBoard(
       name: params.name,
       description: params.description,
       created_by: userId,
-      session_id: params.sessionId,
       is_public: params.isPublic || false,
     })
     .select()

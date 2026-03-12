@@ -8,44 +8,23 @@ import { RecommendationCard } from '../types';
 import { recommendationHistoryService } from './recommendationHistoryService';
 import { enhancedFavoritesService } from './enhancedFavoritesService';
 
+/**
+ * NotificationPreferences — matches the flat `notification_preferences` table exactly.
+ * Columns: id, user_id, push_enabled, email_enabled, friend_requests, link_requests,
+ * messages, collaboration_invites, marketing, created_at, updated_at.
+ */
 export interface NotificationPreferences {
   id: string;
   user_id: string;
-  enabled: boolean;
-  types: {
-    newRecommendations: boolean;
-    locationBased: boolean;
-    timeBased: boolean;
-    favoriteUpdates: boolean;
-    socialActivity: boolean;
-    personalizedInsights: boolean;
-  };
-  timing: {
-    quietHours: {
-      enabled: boolean;
-      start: string; // HH:MM format
-      end: string; // HH:MM format
-    };
-    maxPerDay: number;
-    minIntervalMinutes: number;
-  };
-  categories: {
-    enabled: string[];
-    disabled: string[];
-  };
-  locations: {
-    enabled: boolean;
-    radiusKm: number;
-    favoriteLocations: boolean;
-  };
-  frequency: 'low' | 'medium' | 'high' | 'custom';
-  customFrequency?: {
-    weekdays: boolean;
-    weekends: boolean;
-    morning: boolean;
-    afternoon: boolean;
-    evening: boolean;
-  };
+  push_enabled: boolean;
+  email_enabled: boolean;
+  friend_requests: boolean;
+  link_requests: boolean;
+  messages: boolean;
+  collaboration_invites: boolean;
+  marketing: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SmartNotification {
@@ -163,49 +142,23 @@ class SmartNotificationService {
    */
   async createDefaultPreferences(userId: string): Promise<NotificationPreferences | null> {
     try {
-      const defaultPreferences: Omit<NotificationPreferences, 'id'> = {
-        user_id: userId,
-        enabled: true,
-        types: {
-          newRecommendations: true,
-          locationBased: true,
-          timeBased: true,
-          favoriteUpdates: true,
-          socialActivity: false,
-          personalizedInsights: true,
-        },
-        timing: {
-          quietHours: {
-            enabled: true,
-            start: '22:00',
-            end: '08:00',
-          },
-          maxPerDay: 5,
-          minIntervalMinutes: 30,
-        },
-        categories: {
-          enabled: [],
-          disabled: [],
-        },
-        locations: {
-          enabled: true,
-          radiusKm: 5,
-          favoriteLocations: true,
-        },
-        frequency: 'medium',
-        // customFrequency removed - column doesn't exist in notification_preferences table
-      };
-
       const { data, error } = await supabase
         .from('notification_preferences')
-        .insert(defaultPreferences)
+        .insert({
+          user_id: userId,
+          push_enabled: true,
+          email_enabled: true,
+          friend_requests: true,
+          link_requests: true,
+          messages: true,
+          collaboration_invites: true,
+          marketing: false,
+        })
         .select()
         .single();
 
       if (error) {
-        // Silently fail if notification_preferences table doesn't exist or has schema issues
-        // This is optional functionality and shouldn't break the app
-        console.warn('Could not create notification preferences (table may not exist):', error.message);
+        console.warn('Could not create notification preferences:', error.message);
         return null;
       }
 
@@ -258,12 +211,12 @@ class SmartNotificationService {
   async scheduleSmartNotifications(userId: string): Promise<void> {
     try {
       const preferences = await this.getUserPreferences(userId);
-      if (!preferences || !preferences.enabled) {
+      if (!preferences || !preferences.push_enabled) {
         return;
       }
 
       // Check if we should send notifications based on timing rules
-      if (!this.shouldSendNotification(userId, preferences)) {
+      if (!this.shouldSendNotification(userId)) {
         return;
       }
 
@@ -271,28 +224,20 @@ class SmartNotificationService {
       const notifications: SmartNotification[] = [];
 
       // Location-based notifications
-      if (preferences.types.locationBased) {
-        const locationNotifications = await this.generateLocationBasedNotifications(userId, preferences);
-        notifications.push(...locationNotifications);
-      }
+      const locationNotifications = await this.generateLocationBasedNotifications(userId);
+      notifications.push(...locationNotifications);
 
       // Time-based notifications
-      if (preferences.types.timeBased) {
-        const timeNotifications = await this.generateTimeBasedNotifications(userId, preferences);
-        notifications.push(...timeNotifications);
-      }
+      const timeNotifications = await this.generateTimeBasedNotifications(userId);
+      notifications.push(...timeNotifications);
 
       // Personalized insights
-      if (preferences.types.personalizedInsights) {
-        const insightNotifications = await this.generatePersonalizedInsights(userId, preferences);
-        notifications.push(...insightNotifications);
-      }
+      const insightNotifications = await this.generatePersonalizedInsights(userId);
+      notifications.push(...insightNotifications);
 
       // Favorite updates
-      if (preferences.types.favoriteUpdates) {
-        const favoriteNotifications = await this.generateFavoriteUpdateNotifications(userId, preferences);
-        notifications.push(...favoriteNotifications);
-      }
+      const favoriteNotifications = await this.generateFavoriteUpdateNotifications(userId);
+      notifications.push(...favoriteNotifications);
 
       // Schedule notifications
       for (const notification of notifications) {
@@ -312,7 +257,6 @@ class SmartNotificationService {
    */
   private async generateLocationBasedNotifications(
     userId: string,
-    preferences: NotificationPreferences
   ): Promise<SmartNotification[]> {
     const notifications: SmartNotification[] = [];
 
@@ -362,7 +306,6 @@ class SmartNotificationService {
    */
   private async generateTimeBasedNotifications(
     userId: string,
-    preferences: NotificationPreferences
   ): Promise<SmartNotification[]> {
     const notifications: SmartNotification[] = [];
 
@@ -372,7 +315,7 @@ class SmartNotificationService {
       const dayOfWeek = now.getDay();
 
       // Check if it's a good time to send notifications
-      if (!this.isGoodTimeForNotification(hour, dayOfWeek, preferences)) {
+      if (!this.isGoodTimeForNotification(hour, dayOfWeek)) {
         return notifications;
       }
 
@@ -416,7 +359,6 @@ class SmartNotificationService {
    */
   private async generatePersonalizedInsights(
     userId: string,
-    preferences: NotificationPreferences
   ): Promise<SmartNotification[]> {
     const notifications: SmartNotification[] = [];
 
@@ -473,7 +415,6 @@ class SmartNotificationService {
    */
   private async generateFavoriteUpdateNotifications(
     userId: string,
-    preferences: NotificationPreferences
   ): Promise<SmartNotification[]> {
     const notifications: SmartNotification[] = [];
 
@@ -701,49 +642,38 @@ class SmartNotificationService {
   }
 
   // Helper methods
-  private shouldSendNotification(userId: string, preferences: NotificationPreferences): boolean {
+  private shouldSendNotification(userId: string): boolean {
     const now = new Date();
     const lastNotification = this.lastNotificationTimes.get(userId);
-    
+
+    // Default minimum interval: 30 minutes
+    const minIntervalMs = 30 * 60 * 1000;
+
     if (lastNotification) {
       const timeSinceLastNotification = now.getTime() - lastNotification.getTime();
-      const minIntervalMs = preferences.timing.minIntervalMinutes * 60 * 1000;
-      
       if (timeSinceLastNotification < minIntervalMs) {
         return false;
       }
     }
 
-    // Check quiet hours
-    if (preferences.timing.quietHours.enabled) {
-      const currentTime = now.toTimeString().slice(0, 5);
-      const startTime = preferences.timing.quietHours.start;
-      const endTime = preferences.timing.quietHours.end;
-      
-      if (this.isTimeInRange(currentTime, startTime, endTime)) {
-        return false;
-      }
+    // Default quiet hours: 22:00 – 08:00
+    const currentTime = now.toTimeString().slice(0, 5);
+    if (this.isTimeInRange(currentTime, '22:00', '08:00')) {
+      return false;
     }
 
     return true;
   }
 
-  private isGoodTimeForNotification(hour: number, dayOfWeek: number, preferences: NotificationPreferences): boolean {
+  private isGoodTimeForNotification(hour: number, dayOfWeek: number): boolean {
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const isWeekday = !isWeekend;
-    
+
     const isMorning = hour >= 6 && hour < 12;
-    const isAfternoon = hour >= 12 && hour < 17;
     const isEvening = hour >= 17 && hour < 21;
 
-    if (preferences.frequency === 'low') {
-      return isWeekday && isEvening;
-    } else if (preferences.frequency === 'high') {
-      return (isWeekday && (isMorning || isAfternoon || isEvening)) || (isWeekend && (isMorning || isEvening));
-    } else {
-      // medium frequency
-      return (isWeekday && (isMorning || isEvening)) || (isWeekend && isEvening);
-    }
+    // Default: medium frequency — mornings and evenings on weekdays, evenings on weekends
+    return (isWeekday && (isMorning || isEvening)) || (isWeekend && isEvening);
   }
 
   private groupByLocation(history: any[]): Map<string, any[]> {
