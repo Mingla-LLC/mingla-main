@@ -36,6 +36,8 @@ export interface BoardSessionData {
 class BoardSessionService {
   /** Timestamp of the last successful fetch, used to skip redundant calls. */
   private static lastFetchTime = 0;
+  /** User ID the cached result belongs to. */
+  private static lastFetchUserId = '';
   /** Cached result from the last fetch, returned on dedup hits. */
   private static lastFetchResult: BoardSessionData[] = [];
   /** Minimum interval between fetches (milliseconds). */
@@ -49,7 +51,10 @@ class BoardSessionService {
     userId: string
   ): Promise<BoardSessionData[]> {
     const now = Date.now();
-    if (now - BoardSessionService.lastFetchTime < BoardSessionService.DEDUP_INTERVAL_MS) {
+    if (
+      userId === BoardSessionService.lastFetchUserId &&
+      now - BoardSessionService.lastFetchTime < BoardSessionService.DEDUP_INTERVAL_MS
+    ) {
       return BoardSessionService.lastFetchResult;
     }
     try {
@@ -68,6 +73,7 @@ class BoardSessionService {
 
       if (!participations || participations.length === 0) {
         BoardSessionService.lastFetchTime = Date.now();
+        BoardSessionService.lastFetchUserId = userId;
         BoardSessionService.lastFetchResult = [];
         return [];
       }
@@ -101,6 +107,7 @@ class BoardSessionService {
         // All sessions are either pending, completed, or archived — none are active.
         // This is normal during onboarding or when all sessions are still awaiting acceptance.
         BoardSessionService.lastFetchTime = Date.now();
+        BoardSessionService.lastFetchUserId = userId;
         BoardSessionService.lastFetchResult = [];
         return [];
       }
@@ -255,10 +262,15 @@ class BoardSessionService {
       );
 
       BoardSessionService.lastFetchTime = Date.now();
+      BoardSessionService.lastFetchUserId = userId;
       BoardSessionService.lastFetchResult = boardSessionsData;
       return boardSessionsData;
     } catch (error) {
       console.error("❌ Error in fetchUserBoardSessions:", error);
+      // Cache the empty result to prevent error-hammering within the dedup window
+      BoardSessionService.lastFetchTime = Date.now();
+      BoardSessionService.lastFetchUserId = userId;
+      BoardSessionService.lastFetchResult = [];
       return [];
     }
   }
