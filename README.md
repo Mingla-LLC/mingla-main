@@ -42,13 +42,14 @@ Mingla/
 │   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~41 React Query hooks + useMessagingRealtime, useScreenLogger, useLifecycleLogger
-│   │   ├── services/                   # ~62 service files
+│   │   │   └── chat/                  # MessageBubble, ChatStatusLine, TypingIndicator
+│   │   ├── hooks/                      # ~43 React Query hooks + useMessagingRealtime, useChatPresence, useBroadcastReceiver, useScreenLogger, useLifecycleLogger
+│   │   ├── services/                   # ~63 service files (includes chatPresenceService)
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
-│   │   └── utils/                      # 13 utility files (includes breadcrumbs.ts)
+│   │   └── utils/                      # 14 utility files (includes breadcrumbs.ts, messageGrouping.ts)
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
@@ -127,7 +128,7 @@ The "Link a Friend" flow supports two methods:
 
 ### Connect Page
 
-The Connect page manages friend relationships:
+The Connect page manages friend relationships and real-time messaging:
 
 - **Add Friends** -- Phone number entry with country picker (reuses full-screen CountryPickerModal with ISO code search), debounced phone lookup, send friend link requests or invite non-users via Share. "Sent" tab shows pending requests with cancel option.
 - **Requests** -- View and respond to pending friend link requests with accept/decline actions.
@@ -135,6 +136,17 @@ The Connect page manages friend relationships:
 - **Invite** -- Share invite link via system share sheet.
 - **Pill Filters** -- Horizontal scrollable pill navigation with badge counts for pending requests.
 - **Avatar Navigation** -- Tapping a friend's avatar in the chat list navigates to their full profile.
+- **Real-Time Messaging** -- Dual-channel delivery: Supabase broadcast for sub-second messages (<500ms) plus postgres_changes as backup (1-3s). Deduplication via shared `broadcastSeenIds` ref prevents double-rendering. Optimistic messages with temp IDs replaced by real DB IDs after successful send. Failed messages shown with error state.
+- **Compact Chat UI** -- Messages grouped by sender (same sender within 2 minutes = one group). Grouped messages use compact border radius. Timestamp pills shown on >5 minute gaps. Read receipts: single check (sent), double gray (delivered), double orange (read).
+- **Presence & Typing** -- Real-time online/offline status via Supabase Realtime presence channels with 30-second heartbeat. 60-second stale threshold for ghost detection. Typing indicators via broadcast (no DB writes). 3-second auto-stop, 4-second expiry.
+- **Inverted FlatList** -- Standard React Native chat pattern replacing ScrollView. Prevents scroll jump on load-more. New messages appear at bottom without manual scroll management.
+
+### Friends Modal
+
+The Friends Modal (accessible from the Home page) provides a tabbed interface:
+
+- **Friends Tab** -- Searchable list of all friends with swipeable rows. Swipe reveals 4 actions: Mute, Block, Report, Remove. Message button opens the chat.
+- **Requests Tab** -- Incoming friend requests with accept/decline. Badge shows pending count. Processed requests animate out (slide + fade after 1.2s).
 
 ### Friend Links System
 
@@ -271,6 +283,12 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `pending_friend_link_intents` | Deferred friend link requests for non-Mingla users (pending/converted/cancelled state machine, converts when friend request is accepted) |
 | `referral_credits` | Referral credit audit log |
+
+### Chat & Presence Tables
+
+| Table | Purpose |
+|-------|---------|
+| `conversation_presence` | Per-user, per-conversation online status with heartbeat timestamps. Auto-update trigger on row modification. Stale presence cleanup function. |
 
 ### People & Experiences Tables
 
@@ -463,11 +481,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Chat Experience Overhaul** -- Dual-channel instant messaging (broadcast + postgres_changes backup), real-time presence with 30s heartbeat, typing indicators via broadcast, compact grouped message bubbles with read receipts, inverted FlatList chat, new FriendsModal replacing FriendRequestsModal, ChatStatusLine with online/typing/last-seen states, MessageBubble component with group positioning.
 - **OneSignal Push Migration** -- Migrated all push notifications from Expo Push to OneSignal. Rewrote `push-utils.ts` to target users by Supabase UUID via OneSignal REST API. Updated all 8 edge functions. Removed expo-notifications from mobile. Eliminated mobile-side push sending (security fix). OneSignal now handles FCM/APNs token management, delivery, and analytics.
 - **Holiday Cards Fix** -- Fixed broken holiday card pipeline across three layers: data, interaction, and styling. Intent types resolve via INTENT_CATEGORY_MAP. Up to 3 cards per category.
 - **Social System Integration** -- Closed 7 gaps across the social system: deferred friend link intents, push-to-in-app notification pipeline, notification sheet action buttons, onboarding consent sub-step, decline push notifications, realtime subscriptions, and React Query invalidation gap fixes.
 - **Full React Query Migration (Boards & Saves)** -- Replaced `useBoards`, `useEnhancedBoards`, and `useSaves` hooks with a clean two-layer architecture.
-- **Social Systems Stability Sprint** -- Fixed 7 bugs and 3 hardening items across friend requests, friend linking, and collaboration sessions.
 
 ---
 
