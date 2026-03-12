@@ -45,6 +45,7 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     contents: { en: payload.body },
     data: payload.data ?? {},
     small_icon: "ic_stat_onesignal_default",
+    large_icon: "ic_onesignal_large_icon_default",
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
     }),

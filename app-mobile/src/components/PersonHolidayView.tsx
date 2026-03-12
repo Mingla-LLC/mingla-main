@@ -142,7 +142,8 @@ function holidayCardToExpandedCard(card: HolidayCard): ExpandedCardData {
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     location: card.lat && card.lng ? { lat: card.lat, lng: card.lng } : undefined,
     selectedDateTime: new Date(),
-    website: card.website ?? undefined,
+    website: card.website
+      ?? (card.googlePlaceId ? `https://www.google.com/maps/place/?q=place_id:${card.googlePlaceId}` : undefined),
   };
 
   return base;

@@ -113,6 +113,7 @@
         {
           "mode": "production",
           "smallIcons": ["./assets/ic_stat_onesignal_default.png"],
+          "largeIcons": ["./assets/ic_onesignal_large_icon_default.png"],
           "smallIconAccentColor": "#EB7825"
         }
       ],
