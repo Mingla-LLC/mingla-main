@@ -2328,6 +2328,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "white",
   },
+  profileLoadingContainer: {
+    flex: 1,
+    backgroundColor: colors.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileLoadingInner: {
+    alignItems: 'center',
+  },
+  profileLoadingIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: colors.primary,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileLoadingEmoji: {
+    color: colors.white,
+    fontSize: 24,
+  },
+  profileLoadingText: {
+    color: colors.gray500,
+    fontSize: 16,
+  },
   container: {
     flex: 1,
   },
