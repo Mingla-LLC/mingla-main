@@ -49,43 +49,33 @@ function formatTimestampForPill(timestamp: string): string {
   return `${dateStr}, ${timeStr}`;
 }
 
-function getBorderRadius(isMe: boolean, position: 'solo' | 'first' | 'middle' | 'last') {
-  // Sent (right): small radius on the right side for grouped messages
-  // Received (left): small radius on the left side for grouped messages
-  const full = 16;
-  const small = 4;
+// Pre-computed border radius constants (8 variants: sent/received × 4 positions)
+const FULL = 16;
+const SMALL = 4;
 
-  if (isMe) {
-    switch (position) {
-      case 'solo': return { borderTopLeftRadius: full, borderTopRightRadius: full, borderBottomLeftRadius: full, borderBottomRightRadius: small };
-      case 'first': return { borderTopLeftRadius: full, borderTopRightRadius: full, borderBottomLeftRadius: full, borderBottomRightRadius: small };
-      case 'middle': return { borderTopLeftRadius: full, borderTopRightRadius: small, borderBottomLeftRadius: full, borderBottomRightRadius: small };
-      case 'last': return { borderTopLeftRadius: full, borderTopRightRadius: small, borderBottomLeftRadius: full, borderBottomRightRadius: full };
-    }
-  } else {
-    switch (position) {
-      case 'solo': return { borderTopLeftRadius: small, borderTopRightRadius: full, borderBottomLeftRadius: full, borderBottomRightRadius: full };
-      case 'first': return { borderTopLeftRadius: small, borderTopRightRadius: full, borderBottomLeftRadius: full, borderBottomRightRadius: full };
-      case 'middle': return { borderTopLeftRadius: small, borderTopRightRadius: full, borderBottomLeftRadius: small, borderBottomRightRadius: full };
-      case 'last': return { borderTopLeftRadius: small, borderTopRightRadius: full, borderBottomLeftRadius: full, borderBottomRightRadius: full };
-    }
-  }
-}
-
-function getSpacingBelow(position: 'solo' | 'first' | 'middle' | 'last'): number {
-  // 2px between grouped messages, 12px between different sender groups
-  if (position === 'last' || position === 'solo') return 12;
-  return 2;
-}
+const BORDER_RADIUS = {
+  sent: {
+    solo: { borderTopLeftRadius: FULL, borderTopRightRadius: FULL, borderBottomLeftRadius: FULL, borderBottomRightRadius: SMALL },
+    first: { borderTopLeftRadius: FULL, borderTopRightRadius: FULL, borderBottomLeftRadius: FULL, borderBottomRightRadius: SMALL },
+    middle: { borderTopLeftRadius: FULL, borderTopRightRadius: SMALL, borderBottomLeftRadius: FULL, borderBottomRightRadius: SMALL },
+    last: { borderTopLeftRadius: FULL, borderTopRightRadius: SMALL, borderBottomLeftRadius: FULL, borderBottomRightRadius: FULL },
+  },
+  received: {
+    solo: { borderTopLeftRadius: SMALL, borderTopRightRadius: FULL, borderBottomLeftRadius: FULL, borderBottomRightRadius: FULL },
+    first: { borderTopLeftRadius: SMALL, borderTopRightRadius: FULL, borderBottomLeftRadius: FULL, borderBottomRightRadius: FULL },
+    middle: { borderTopLeftRadius: SMALL, borderTopRightRadius: FULL, borderBottomLeftRadius: SMALL, borderBottomRightRadius: FULL },
+    last: { borderTopLeftRadius: SMALL, borderTopRightRadius: FULL, borderBottomLeftRadius: FULL, borderBottomRightRadius: FULL },
+  },
+} as const;
 
 export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead }: MessageBubbleProps) {
-  const borderRadius = getBorderRadius(isMe, groupPosition);
-  const marginBottom = getSpacingBelow(groupPosition);
+  const borderRadius = BORDER_RADIUS[isMe ? 'sent' : 'received'][groupPosition];
+  const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
   const isDelivered = !message.id.startsWith('temp-');
   const isFailed = message.failed === true;
 
   return (
-    <View style={{ marginBottom }}>
+    <View style={isGroupEnd ? styles.spacingGroupEnd : styles.spacingGroupContinue}>
       {/* Timestamp pill */}
       {showTimestamp && (
         <View style={styles.timestampContainer}>
@@ -191,6 +181,12 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
 }
 
 const styles = StyleSheet.create({
+  spacingGroupEnd: {
+    marginBottom: 12,
+  },
+  spacingGroupContinue: {
+    marginBottom: 2,
+  },
   timestampContainer: {
     alignItems: 'center',
     marginTop: 16,

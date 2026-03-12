@@ -12,6 +12,15 @@ export interface HolidayCard {
   googlePlaceId: string | null;
   lat: number | null;
   lng: number | null;
+  // ── NEW FIELDS ──────────────────────────────────────────────
+  priceTier: string | null;
+  description: string | null;
+  cardType: "single" | "curated";
+}
+
+export interface HolidayCardsResponse {
+  cards: HolidayCard[];
+  hasMore: boolean;
 }
 
 export async function getHolidayCards(params: {
@@ -44,4 +53,42 @@ export async function getHolidayCards(params: {
 
   const data = await response.json();
   return data.cards ?? [];
+}
+
+export async function getHolidayCardsWithMeta(params: {
+  personId: string;
+  holidayKey: string;
+  categorySlugs: string[];
+  location: { latitude: number; longitude: number };
+  linkedUserId?: string;
+  description?: string;
+  mode?: "holiday" | "hero" | "generate_more";
+  excludeCardIds?: string[];
+}): Promise<HolidayCardsResponse> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) throw new Error("Not authenticated");
+
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/get-holiday-cards`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(params),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to fetch holiday cards");
+  }
+
+  const data = await response.json();
+  return {
+    cards: data.cards ?? [],
+    hasMore: data.hasMore ?? false,
+  };
 }

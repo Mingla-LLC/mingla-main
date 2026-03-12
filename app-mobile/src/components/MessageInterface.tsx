@@ -51,6 +51,7 @@ interface Message {
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
+  isRead?: boolean;
 }
 
 interface Friend {
@@ -181,11 +182,14 @@ export default function MessageInterface({
   });
 
   // ── Broadcast receiver (receive-only) ─────────────────────
+  // IMPORTANT: This hook subscribes to the `chat:{conversationId}` broadcast channel.
+  // ConnectionsPage.handleSendMessage depends on this channel being subscribed
+  // so that supabase.channel() returns the existing subscribed channel for sending.
+  // Do NOT remove this hook without moving the channel subscription to ConnectionsPage.
   const handleBroadcastMessage = useCallback(
-    (msg: DirectMessage) => {
-      // The broadcast message is handled by ConnectionsPage's onMessage callback
-      // via the postgres_changes path. The broadcastSeenIds ref tracks dedup.
-      // No additional handling needed here — ConnectionsPage owns message state.
+    (_msg: DirectMessage) => {
+      // ConnectionsPage owns all message state — broadcast messages are deduplicated
+      // there via broadcastSeenIds ref + postgres_changes backup delivery.
     },
     []
   );
@@ -203,7 +207,7 @@ export default function MessageInterface({
   // so we reverse to put newest first → newest appears at bottom.
   const groupedMessages = useMemo(() => {
     if (!messages.length) return [];
-    const grouped = groupMessages(messages as any);
+    const grouped = groupMessages(messages);
     return [...grouped].reverse();
   }, [messages]);
 
@@ -659,7 +663,7 @@ export default function MessageInterface({
               isMe={item.message.isMe}
               groupPosition={item.groupPosition}
               showTimestamp={item.showTimestamp}
-              isRead={item.message.isMe && !item.message.id.startsWith("temp-") && !item.message.unread}
+              isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
             />
           )}
           keyExtractor={(item) => item.message.id}

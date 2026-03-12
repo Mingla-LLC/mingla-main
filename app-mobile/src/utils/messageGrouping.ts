@@ -3,11 +3,10 @@
  * Pure function — no dependencies on React or services.
  */
 
-interface MessageForGrouping {
+export interface MessageForGrouping {
   id: string;
   senderId: string;
   timestamp: string;
-  [key: string]: any; // Allow extra fields to pass through
 }
 
 export interface GroupedMessage<T extends MessageForGrouping = MessageForGrouping> {

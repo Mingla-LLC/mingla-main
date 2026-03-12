@@ -30,6 +30,15 @@ interface UseChatPresenceReturn {
   stopTyping: () => void;
 }
 
+/** Shape of the postgres_changes payload for conversation_presence rows */
+interface PresenceChangePayload {
+  user_id: string;
+  conversation_id: string;
+  is_online: boolean;
+  last_seen_at: string;
+  updated_at: string;
+}
+
 const TYPING_TIMEOUT_MS = 3000;
 const TYPING_EXPIRY_MS = 4000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -123,8 +132,8 @@ export function useChatPresence({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const record = payload.new as any;
-          if (!record || record.user_id === currentUserId || !isMounted) return;
+          const record = payload.new as PresenceChangePayload | undefined;
+          if (!record?.user_id || record.user_id === currentUserId || !isMounted) return;
 
           const isActuallyOnline =
             record.is_online &&

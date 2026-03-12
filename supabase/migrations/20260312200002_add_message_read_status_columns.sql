@@ -12,6 +12,9 @@ SET is_read = true, read_at = mr.read_at
 FROM public.message_reads mr
 WHERE mr.message_id = m.id;
 
+-- Partial index for efficient unread message queries (only indexes the minority of rows)
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON public.messages(id) WHERE is_read = false;
+
 -- Trigger: when a message_reads row is inserted, update the message's is_read flag
 CREATE OR REPLACE FUNCTION sync_message_read_status()
 RETURNS TRIGGER AS $$

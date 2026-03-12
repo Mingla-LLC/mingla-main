@@ -1,6 +1,6 @@
 # Mingla
 
-Mingla is a mobile app for planning social outings. It combines AI-powered place recommendations, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
+Mingla is a mobile app for planning social outings -- combining AI-powered place recommendations, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
 
 ---
 
@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 49 Deno serverless functions |
+| Edge Functions | 51 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -35,34 +35,36 @@ Mingla/
 │   ├── app/
 │   │   └── index.tsx                    # Entry point (AppContent)
 │   ├── src/
-│   │   ├── components/                  # ~90+ UI components
+│   │   ├── components/                  # ~100+ UI components
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
 │   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
 │   │   │   ├── board/                  # Board-related components
-│   │   │   ├── expandedCard/          # Expanded card sub-components (ActionButtons, etc.)
-│   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, StatsRow, EditBioSheet, EditInterestsSheet, ViewFriendProfileScreen, ProfilePersonalInfoSection
+│   │   │   ├── expandedCard/           # Expanded card sub-components (ActionButtons, etc.)
+│   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, etc.
+│   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   │   └── chat/                  # MessageBubble, ChatStatusLine, TypingIndicator
-│   │   ├── hooks/                      # ~43 React Query hooks + useMessagingRealtime, useChatPresence, useBroadcastReceiver, useScreenLogger, useLifecycleLogger
-│   │   ├── services/                   # ~63 service files (includes chatPresenceService)
+│   │   ├── hooks/                      # ~61 React Query hooks + realtime hooks
+│   │   ├── services/                   # ~75 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
-│   │   └── utils/                      # 14 utility files (includes breadcrumbs.ts, messageGrouping.ts)
+│   │   └── utils/                      # ~24 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 49 Deno edge functions
+│   ├── functions/                      # 51 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 120+ SQL migration files
+│   ├── migrations/                    # 167 SQL migration files
 │   └── config.toml
 │
-└── oauth-redirect/                    # Static OAuth callback page
+├── mingla-admin/                       # Admin tooling
+├── backend/                            # Backend utilities
+└── oauth-redirect/                     # Static OAuth callback page
 ```
 
 ---
@@ -108,13 +110,15 @@ The profile also includes visibility mode cycling (public/friends/private), acti
 
 Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, photo gallery, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
 
-### For You System
+### Person Page (For You)
 
-The person-centric "For You" view provides personalized recommendations for each saved person:
+The person-centric "For You" view provides personalized recommendations for each saved person with a redesigned card-forward layout:
 
-- **Birthday Hero Card** -- Orange hero card with birthday countdown and AI-generated gift/experience summary (~80 char). Falls back to a dark "Picks" card when no birthday is set.
-- **Person Recommendation Cards** -- Horizontal scroll of 2-3 personalized place cards powered by the linked user's swipe data via `get-personalized-cards`. Tappable with haptic feedback, gradient overlays, category-colored badges, and Google Maps navigation on tap.
-- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
+- **Birthday Hero Section** -- Displays the person's age prominently alongside birthday countdown. A horizontal scroll of AI-curated hero cards (`PersonCuratedCard`) shows top-pick experiences tailored to the person's interests via GPT-4o-mini category extraction. A "Generate More" button fetches additional recommendations, excluding already-seen cards. Falls back to a dark "Picks" card when no birthday is set.
+- **Hero Cards Pipeline** -- The `useHeroCards` hook calls `get-holiday-cards` in `hero` mode, which uses GPT-4o-mini to extract interest categories from the person's description, matches curated cards from the pool, and falls back to Google Places when the pool is insufficient. The `useGenerateMoreCards` mutation calls `generate_more` mode with `excludeCardIds` to avoid duplicates.
+- **PersonGridCard** -- Unified grid card component matching the For You tab design. Shows venue image, category-colored badge, price tier pill, rating, and opens Google Maps on tap. Used across holiday rows for consistent visual treatment.
+- **PersonCuratedCard** -- Compact curated card for the hero section horizontal scroll. Shows multi-stop itinerary info (stop count, price range) in a condensed format.
+- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Cards render as `PersonGridCard` for unified design. Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
 - **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
 - **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
@@ -175,7 +179,8 @@ The Friends Modal (accessible from the Home page) provides a tabbed interface:
 - Card pool data pipeline: pool-first serving, falls back to Google Places API
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
 - AI summary generation for birthday hero cards via `generate-ai-summary` edge function
-- Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km → 5km → closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
+- GPT-4o-mini category extraction from person descriptions for hero card curation
+- Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km -> 5km -> closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
 
 ### Card-Based Swipe Interface
 - Swipe right to save, left to skip, up to expand full details
@@ -228,20 +233,20 @@ The Friends Modal (accessible from the Home page) provides a tabbed interface:
 
 A `__DEV__`-only telemetry system that auto-logs every user interaction into a 30-entry ring buffer. When any error fires, the full breadcrumb trail dumps to the Metro console with timestamps and elapsed deltas.
 
-- **TrackedTouchableOpacity** — Drop-in replacement for TouchableOpacity that auto-logs taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
-- **Breadcrumb ring buffer** — Stores last 30 user actions (taps, navigations, mutations, lifecycle events) with `breadcrumbs.add()` / `breadcrumbs.dump()`
-- **Auto-dump on errors** — `logger.error()`, query/mutation failures, and ErrorBoundary catches all trigger breadcrumb dumps
-- **Screen transition logging** — `useScreenLogger()` hook logs `[NAV] home -> discover` on every screen change
-- **Lifecycle logging** — `useLifecycleLogger()` logs app foreground/background transitions and network connectivity changes
-- **Button tracking** — The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
-- **Zero production overhead** — All breadcrumb operations are gated behind `__DEV__`
-- **logger.render() excluded** — Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
+- **TrackedTouchableOpacity** -- Drop-in replacement for TouchableOpacity that auto-logs taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
+- **Breadcrumb ring buffer** -- Stores last 30 user actions (taps, navigations, mutations, lifecycle events) with `breadcrumbs.add()` / `breadcrumbs.dump()`
+- **Auto-dump on errors** -- `logger.error()`, query/mutation failures, and ErrorBoundary catches all trigger breadcrumb dumps
+- **Screen transition logging** -- `useScreenLogger()` hook logs `[NAV] home -> discover` on every screen change
+- **Lifecycle logging** -- `useLifecycleLogger()` logs app foreground/background transitions and network connectivity changes
+- **Button tracking** -- The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
+- **Zero production overhead** -- All breadcrumb operations are gated behind `__DEV__`
+- **logger.render() excluded** -- Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
 
 ### Native UX
 - **Pull-to-refresh** on SavedTab, CalendarTab, DiscoverScreen, and ConnectionsPage
 - **Haptic feedback** on all interactive buttons (buttonPress, success, warning, error, selection patterns)
-- **Duplicate mutation guards** — isPending checks prevent double-tap on accept/decline/send buttons
-- **Push notifications** — OneSignal handles all push delivery (FCM v1 + APNs), token management, and device registration. Edge functions target users by Supabase UUID via OneSignal REST API
+- **Duplicate mutation guards** -- isPending checks prevent double-tap on accept/decline/send buttons
+- **Push notifications** -- OneSignal handles all push delivery (FCM v1 + APNs), token management, and device registration. Edge functions target users by Supabase UUID via OneSignal REST API
 
 ### Additional Features
 - GPS and manual location with travel time preferences
@@ -269,7 +274,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally). Retained as safety net; will be dropped after 2-week confirmation period. |
+| `user_push_tokens` | Legacy Expo push tokens (unused -- OneSignal manages tokens internally). Retained as safety net. |
 
 ### Social Tables
 
@@ -336,11 +341,11 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `generate-person-experiences` | Person-specific experience recommendations |
 | `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-holiday-cards` | Holiday card sourcing: pool-first + Google Places fallback |
+| `get-holiday-cards` | Holiday card sourcing with three modes: `holiday` (pool-first + Google fallback per category), `hero` (GPT-4o-mini category extraction from person description, curated card matching, Google Places fallback, priceTier derivation), and `generate_more` (additional cards excluding already-seen IDs) |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
-| `discover-[category]` | Per-category discover endpoints |
+| `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
 | `warm-cache` | Cache warming for frequently accessed data |
@@ -380,6 +385,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `get-companion-stops` | Companion stop suggestions for itineraries |
 | `get-picnic-grocery` | Picnic and grocery place suggestions |
 | `night-out-experiences` | Night out experience generation |
+| `admin-place-search` | Admin place search utility |
 
 ### Utilities
 
@@ -481,11 +487,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Chat Experience Overhaul** -- Dual-channel instant messaging (broadcast + postgres_changes backup), real-time presence with 30s heartbeat, typing indicators via broadcast, compact grouped message bubbles with read receipts, inverted FlatList chat, new FriendsModal replacing FriendRequestsModal, ChatStatusLine with online/typing/last-seen states, MessageBubble component with group positioning.
-- **OneSignal Push Migration** -- Migrated all push notifications from Expo Push to OneSignal. Rewrote `push-utils.ts` to target users by Supabase UUID via OneSignal REST API. Updated all 8 edge functions. Removed expo-notifications from mobile. Eliminated mobile-side push sending (security fix). OneSignal now handles FCM/APNs token management, delivery, and analytics.
-- **Holiday Cards Fix** -- Fixed broken holiday card pipeline across three layers: data, interaction, and styling. Intent types resolve via INTENT_CATEGORY_MAP. Up to 3 cards per category.
-- **Social System Integration** -- Closed 7 gaps across the social system: deferred friend link intents, push-to-in-app notification pipeline, notification sheet action buttons, onboarding consent sub-step, decline push notifications, realtime subscriptions, and React Query invalidation gap fixes.
-- **Full React Query Migration (Boards & Saves)** -- Replaced `useBoards`, `useEnhancedBoards`, and `useSaves` hooks with a clean two-layer architecture.
+- **Person Page Redesign** -- Redesigned the BirthdayHero section with prominent age display, a horizontal scroll of AI-curated hero cards (`PersonCuratedCard`), and a "Generate More" button that fetches fresh recommendations while excluding already-seen cards.
+- **Hero + Generate More Edge Function Modes** -- Extended `get-holiday-cards` with `hero` and `generate_more` modes. Hero mode uses GPT-4o-mini to extract interest categories from a person's description, matches curated cards from the pool, and falls back to Google Places. Generate-more mode accepts `excludeCardIds` to serve fresh results. Both modes derive `priceTier` from Google price levels.
+- **Unified Card Components** -- Created `PersonGridCard` (matching the For You tab grid design) and `PersonCuratedCard` (compact hero section card). `HolidayRow` now uses `PersonGridCard` for consistent visual treatment across the person page.
+- **New React Query Hooks** -- Added `useHeroCards` (query) and `useGenerateMoreCards` (mutation) hooks backed by the new `getHolidayCardsWithMeta` service method in `holidayCardsService.ts`.
+- **Removed Legacy Wiring** -- `PersonHolidayView` now sources hero cards directly instead of relying on the previous `PersonRecommendationCards` component for the hero section.
 
 ---
 

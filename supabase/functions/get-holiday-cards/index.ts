@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getPlaceTypesForCategory, resolveCategory } from "../_shared/categoryPlaceTypes.ts";
+import { getPlaceTypesForCategory, resolveCategory, ALL_CATEGORY_NAMES } from "../_shared/categoryPlaceTypes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +17,9 @@ interface RequestBody {
   categorySlugs: string[];
   location: { latitude: number; longitude: number };
   linkedUserId?: string;
+  description?: string;
+  mode?: "holiday" | "hero" | "generate_more";
+  excludeCardIds?: string[];
 }
 
 interface Card {
@@ -31,6 +34,147 @@ interface Card {
   googlePlaceId: string | null;
   lat: number | null;
   lng: number | null;
+  priceTier: string | null;
+  description: string | null;
+  cardType: "single" | "curated";
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function derivePriceTier(priceTier: string | null, priceLevel: string | null): string | null {
+  if (priceTier) return priceTier;
+  if (!priceLevel) return "chill";
+  const mapping: Record<string, string> = {
+    PRICE_LEVEL_FREE: "chill",
+    PRICE_LEVEL_INEXPENSIVE: "chill",
+    PRICE_LEVEL_MODERATE: "comfy",
+    PRICE_LEVEL_EXPENSIVE: "bougie",
+    PRICE_LEVEL_VERY_EXPENSIVE: "lavish",
+  };
+  return mapping[priceLevel] ?? "chill";
+}
+
+function validateCategory(input: string): string {
+  const resolved = resolveCategory(input);
+  if (resolved && ALL_CATEGORY_NAMES.includes(resolved)) return resolved;
+  return "Casual Eats";
+}
+
+// ── GPT helper ───────────────────────────────────────────────────────────────
+
+async function callGpt(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+): Promise<string | null> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) return null;
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Google Places fallback (shared) ──────────────────────────────────────────
+
+async function googlePlacesFallback(
+  categoryDisplayName: string,
+  location: { latitude: number; longitude: number },
+  limit: number,
+): Promise<any[]> {
+  const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
+  if (!googleApiKey) return [];
+
+  const includedTypes = getPlaceTypesForCategory(categoryDisplayName);
+  if (includedTypes.length === 0) return [];
+
+  const typesToSend = includedTypes.slice(0, 5);
+
+  try {
+    const placesRes = await fetch(
+      "https://places.googleapis.com/v1/places:searchNearby",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleApiKey,
+          "X-Goog-FieldMask":
+            "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location",
+        },
+        body: JSON.stringify({
+          includedTypes: typesToSend,
+          maxResultCount: limit,
+          locationRestriction: {
+            circle: {
+              center: {
+                latitude: location.latitude,
+                longitude: location.longitude,
+              },
+              radius: 10000,
+            },
+          },
+          rankPreference: "POPULARITY",
+        }),
+      }
+    );
+
+    if (placesRes.ok) {
+      const placesData = await placesRes.json();
+      return placesData.places ?? [];
+    }
+  } catch {
+    // Silently skip on Google Places failure
+  }
+  return [];
+}
+
+function mapGooglePlaceToCard(
+  p: any,
+  categoryDisplayName: string,
+  categorySlug: string,
+  cardType: "single" | "curated" = "single",
+): Card {
+  const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY") ?? "";
+  const photoRef = p.photos?.[0]?.name;
+  const imageUrl = photoRef
+    ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=400&key=${googleApiKey}`
+    : null;
+
+  return {
+    id: p.id ?? "",
+    title: p.displayName?.text ?? "Unknown",
+    category: categoryDisplayName,
+    categorySlug,
+    imageUrl,
+    rating: p.rating ?? null,
+    priceLevel: p.priceLevel ?? null,
+    address: p.formattedAddress ?? null,
+    googlePlaceId: p.id ?? null,
+    lat: p.location?.latitude ?? null,
+    lng: p.location?.longitude ?? null,
+    priceTier: derivePriceTier(null, p.priceLevel ?? null),
+    description: `A great ${categoryDisplayName} spot to explore.`,
+    cardType,
+  };
 }
 
 serve(async (req: Request) => {
@@ -76,6 +220,21 @@ serve(async (req: Request) => {
     const { personId, holidayKey, categorySlugs, location, linkedUserId } =
       body;
 
+    // Determine effective mode (backward compatible)
+    const effectiveMode: "holiday" | "hero" | "generate_more" =
+      body.mode === "hero" || body.mode === "generate_more"
+        ? body.mode
+        : "holiday";
+
+    // Sanitize excludeCardIds
+    const excludeCardIds: string[] = Array.isArray(body.excludeCardIds)
+      ? body.excludeCardIds
+      : [];
+
+    // Sanitize description
+    const description: string =
+      typeof body.description === "string" ? body.description : "";
+
     if (!personId || !UUID_RE.test(personId)) {
       return new Response(
         JSON.stringify({ error: "Invalid or missing personId" }),
@@ -94,19 +253,38 @@ serve(async (req: Request) => {
         }
       );
     }
-    if (
-      !Array.isArray(categorySlugs) ||
-      categorySlugs.length === 0 ||
-      categorySlugs.some((s) => typeof s !== "string")
-    ) {
-      return new Response(
-        JSON.stringify({ error: "categorySlugs must be a non-empty string array" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+
+    // categorySlugs validation: only require non-empty for holiday mode
+    if (effectiveMode === "holiday") {
+      if (
+        !Array.isArray(categorySlugs) ||
+        categorySlugs.length === 0 ||
+        categorySlugs.some((s) => typeof s !== "string")
+      ) {
+        return new Response(
+          JSON.stringify({ error: "categorySlugs must be a non-empty string array" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    } else {
+      // For hero/generate_more, categorySlugs can be empty but must be an array of strings if present
+      if (
+        !Array.isArray(categorySlugs) ||
+        categorySlugs.some((s) => typeof s !== "string")
+      ) {
+        return new Response(
+          JSON.stringify({ error: "categorySlugs must be a string array" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
     }
+
     if (
       !location ||
       typeof location.latitude !== "number" ||
@@ -130,16 +308,14 @@ serve(async (req: Request) => {
       );
     }
 
-    // Limit to 3 categories
-    const slugs = categorySlugs.slice(0, 3);
+    // --- Bounding box (shared across modes) ---
+    const DEGREE_OFFSET = 0.09; // ~10km
+    const latMin = location.latitude - DEGREE_OFFSET;
+    const latMax = location.latitude + DEGREE_OFFSET;
+    const lngMin = location.longitude - DEGREE_OFFSET;
+    const lngMax = location.longitude + DEGREE_OFFSET;
 
-    // Resolve slugs to display names (card_pool stores display names, not slugs)
-    const resolvedCategories = slugs.map((slug) => ({
-      slug,
-      displayName: resolveCategory(slug) ?? slug,
-    }));
-
-    // --- Fetch linked user saved categories for boosting ---
+    // --- Fetch linked user saved categories for boosting (shared) ---
     const linkedSavedCategorySet = new Set<string>();
     const linkedSavedCardIds = new Set<string>();
 
@@ -158,13 +334,351 @@ serve(async (req: Request) => {
       }
     }
 
-    // --- Query card_pool per category ---
-    const DEGREE_OFFSET = 0.09; // ~10km
-    const latMin = location.latitude - DEGREE_OFFSET;
-    const latMax = location.latitude + DEGREE_OFFSET;
-    const lngMin = location.longitude - DEGREE_OFFSET;
-    const lngMax = location.longitude + DEGREE_OFFSET;
+    // =====================================================================
+    // MODE: hero
+    // =====================================================================
+    if (effectiveMode === "hero") {
+      // Step 1: Resolve category slugs — replace "description_match" with GPT-derived category
+      let resolvedSlugs = [...categorySlugs];
 
+      const descMatchIdx = resolvedSlugs.indexOf("description_match");
+      if (descMatchIdx !== -1) {
+        let matchedCategory: string | null = null;
+
+        if (description.length >= 10) {
+          const gptResult = await callGpt(
+            'Given a person description, pick the single best experience category from this list: Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business. Return JSON: { "category": "string" }',
+            `Description: ${description}`,
+            50,
+          );
+
+          if (gptResult) {
+            try {
+              const parsed = JSON.parse(gptResult);
+              if (parsed.category) {
+                matchedCategory = validateCategory(parsed.category);
+              }
+            } catch {
+              // GPT returned non-JSON; ignore
+            }
+          }
+        }
+
+        if (!matchedCategory) {
+          // No description or GPT failed — pick random fallback
+          const fallbacks = ["Casual Eats", "Drink", "Nature"];
+          matchedCategory = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        }
+
+        resolvedSlugs[descMatchIdx] = matchedCategory;
+      }
+
+      // Resolve all slugs to display names
+      const heroCategories = resolvedSlugs.map((slug) => ({
+        slug,
+        displayName: resolveCategory(slug) ?? validateCategory(slug),
+      }));
+
+      // Step 2: Query card_pool for each category, pick 1 per category
+      const heroCards: Card[] = [];
+      const excludeSet = new Set(excludeCardIds);
+
+      for (const cat of heroCategories) {
+        const { data: poolCards } = await adminClient
+          .from("card_pool")
+          .select(
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
+          )
+          .eq("category", cat.displayName)
+          .gte("lat", latMin)
+          .lte("lat", latMax)
+          .gte("lng", lngMin)
+          .lte("lng", lngMax)
+          .order("rating", { ascending: false })
+          .limit(5);
+
+        if (poolCards && poolCards.length > 0) {
+          // Boost linked user saved cards
+          let sorted = [...poolCards];
+          if (linkedUserId && linkedSavedCardIds.size > 0) {
+            sorted.sort((a: any, b: any) => {
+              const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
+              const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
+              if (aLinked !== bLinked) return bLinked - aLinked;
+              return (b.rating || 0) - (a.rating || 0);
+            });
+          }
+
+          // Pick first non-excluded card
+          const chosen = sorted.find((c: any) => !excludeSet.has(c.id));
+          if (chosen) {
+            excludeSet.add(chosen.id);
+            heroCards.push({
+              id: chosen.id,
+              title: chosen.title,
+              category: chosen.category,
+              categorySlug: cat.slug,
+              imageUrl: chosen.image_url ?? null,
+              rating: chosen.rating ?? null,
+              priceLevel: chosen.price_level ?? null,
+              address: chosen.address ?? null,
+              googlePlaceId: chosen.google_place_id ?? null,
+              lat: chosen.lat ?? null,
+              lng: chosen.lng ?? null,
+              priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+              description: chosen.description ?? `A great ${cat.displayName} spot to explore.`,
+              cardType: "single",
+            });
+          }
+        }
+
+        // Google Places fallback if no card found for this category
+        if (!heroCards.some((c) => c.categorySlug === cat.slug)) {
+          const places = await googlePlacesFallback(cat.displayName, location, 5);
+          if (places.length > 0) {
+            const chosen = places[0];
+            const card = mapGooglePlaceToCard(chosen, cat.displayName, cat.slug, "single");
+            if (!excludeSet.has(card.id)) {
+              excludeSet.add(card.id);
+              heroCards.push(card);
+            }
+          }
+        }
+      }
+
+      // Step 3: Query curated card
+      let curatedCard: Card | null = null;
+      {
+        const { data: curatedCards } = await adminClient
+          .from("card_pool")
+          .select(
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, tagline, categories, stops, total_price_min, total_price_max"
+          )
+          .eq("card_type", "curated")
+          .gte("lat", latMin)
+          .lte("lat", latMax)
+          .gte("lng", lngMin)
+          .lte("lng", lngMax)
+          .limit(5);
+
+        if (curatedCards && curatedCards.length > 0) {
+          // Score by keyword overlap with description
+          const descWords = description.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+          let bestScore = -1;
+          let bestCard: any = null;
+
+          for (const cc of curatedCards) {
+            if (excludeSet.has(cc.id)) continue;
+            let score = 0;
+            const cardText = [
+              cc.title ?? "",
+              cc.description ?? "",
+              cc.tagline ?? "",
+              ...(Array.isArray(cc.categories) ? cc.categories : []),
+            ]
+              .join(" ")
+              .toLowerCase();
+
+            for (const w of descWords) {
+              if (cardText.includes(w)) score++;
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              bestCard = cc;
+            }
+          }
+
+          if (bestCard) {
+            excludeSet.add(bestCard.id);
+            curatedCard = {
+              id: bestCard.id,
+              title: bestCard.title,
+              category: bestCard.category ?? "Curated",
+              categorySlug: "curated",
+              imageUrl: bestCard.image_url ?? null,
+              rating: bestCard.rating ?? null,
+              priceLevel: bestCard.price_level ?? null,
+              address: bestCard.address ?? null,
+              googlePlaceId: bestCard.google_place_id ?? null,
+              lat: bestCard.lat ?? null,
+              lng: bestCard.lng ?? null,
+              priceTier: derivePriceTier(bestCard.price_tier ?? null, bestCard.price_level ?? null),
+              description: bestCard.description ?? "A curated experience to explore.",
+              cardType: "curated",
+            };
+          }
+        }
+      }
+
+      // Step 4: Assemble final list [curated, description-matched, Fine Dining, Watch, Play]
+      const finalCards: Card[] = [];
+      if (curatedCard) finalCards.push(curatedCard);
+      for (const hc of heroCards) {
+        finalCards.push(hc);
+      }
+
+      return new Response(JSON.stringify({ cards: finalCards, hasMore: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =====================================================================
+    // MODE: generate_more
+    // =====================================================================
+    if (effectiveMode === "generate_more") {
+      // Step 1: Use GPT to extract up to 3 categories from description
+      let resolvedCategories: string[] = [];
+
+      if (description.length >= 10) {
+        const gptResult = await callGpt(
+          'Given a person description, pick up to 3 experience categories from this list that best match their interests: Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business. Return JSON: { "categories": ["string"] }',
+          `Description: ${description}`,
+          100,
+        );
+
+        if (gptResult) {
+          try {
+            const parsed = JSON.parse(gptResult);
+            if (Array.isArray(parsed.categories)) {
+              resolvedCategories = parsed.categories
+                .map((c: string) => validateCategory(c))
+                .filter((c: string, i: number, arr: string[]) => arr.indexOf(c) === i); // dedupe
+            }
+          } catch {
+            // GPT returned non-JSON; ignore
+          }
+        }
+      }
+
+      // If 0 resolved, fall back to categorySlugs from request
+      if (resolvedCategories.length === 0) {
+        resolvedCategories = categorySlugs
+          .map((slug) => resolveCategory(slug) ?? validateCategory(slug))
+          .filter((c, i, arr) => arr.indexOf(c) === i);
+
+        // If still empty, use default set
+        if (resolvedCategories.length === 0) {
+          resolvedCategories = ["Casual Eats", "Nature", "Drink"];
+        }
+      }
+
+      // Step 2: Query card_pool up to 5 per category, exclude excludeCardIds
+      const excludeSet = new Set(excludeCardIds);
+      const categoryBuckets: Map<string, Card[]> = new Map();
+      let totalAvailable = 0;
+
+      for (const catName of resolvedCategories) {
+        const { data: poolCards } = await adminClient
+          .from("card_pool")
+          .select(
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
+          )
+          .eq("category", catName)
+          .gte("lat", latMin)
+          .lte("lat", latMax)
+          .gte("lng", lngMin)
+          .lte("lng", lngMax)
+          .order("rating", { ascending: false })
+          .limit(5);
+
+        const bucket: Card[] = [];
+
+        if (poolCards && poolCards.length > 0) {
+          // Boost linked user saved cards
+          let sorted = [...poolCards];
+          if (linkedUserId && linkedSavedCardIds.size > 0) {
+            sorted.sort((a: any, b: any) => {
+              const aLinked = linkedSavedCardIds.has(a.id) ? 1 : 0;
+              const bLinked = linkedSavedCardIds.has(b.id) ? 1 : 0;
+              if (aLinked !== bLinked) return bLinked - aLinked;
+              return (b.rating || 0) - (a.rating || 0);
+            });
+          }
+
+          for (const chosen of sorted) {
+            if (excludeSet.has(chosen.id)) continue;
+            totalAvailable++;
+            bucket.push({
+              id: chosen.id,
+              title: chosen.title,
+              category: chosen.category,
+              categorySlug: catName.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+              imageUrl: chosen.image_url ?? null,
+              rating: chosen.rating ?? null,
+              priceLevel: chosen.price_level ?? null,
+              address: chosen.address ?? null,
+              googlePlaceId: chosen.google_place_id ?? null,
+              lat: chosen.lat ?? null,
+              lng: chosen.lng ?? null,
+              priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+              description: chosen.description ?? `A great ${catName} spot to explore.`,
+              cardType: "single",
+            });
+          }
+        }
+
+        categoryBuckets.set(catName, bucket);
+      }
+
+      // Round-robin to pick up to 2 per category, total up to 5
+      const generateMoreCards: Card[] = [];
+      const maxPerCategory = 2;
+      const maxTotal = 5;
+
+      // Round-robin: take 1 from each, then 1 more from each, until we hit 5
+      for (let round = 0; round < maxPerCategory; round++) {
+        for (const catName of resolvedCategories) {
+          if (generateMoreCards.length >= maxTotal) break;
+          const bucket = categoryBuckets.get(catName) ?? [];
+          if (bucket.length > round) {
+            excludeSet.add(bucket[round].id);
+            generateMoreCards.push(bucket[round]);
+          }
+        }
+        if (generateMoreCards.length >= maxTotal) break;
+      }
+
+      // Google Places fallback if total < 5
+      if (generateMoreCards.length < maxTotal) {
+        for (const catName of resolvedCategories) {
+          if (generateMoreCards.length >= maxTotal) break;
+
+          const places = await googlePlacesFallback(catName, location, 5);
+          for (const p of places) {
+            if (generateMoreCards.length >= maxTotal) break;
+            const placeId = p.id ?? "";
+            if (excludeSet.has(placeId)) continue;
+            excludeSet.add(placeId);
+
+            const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+            generateMoreCards.push(mapGooglePlaceToCard(p, catName, slug, "single"));
+          }
+        }
+      }
+
+      const hasMore = totalAvailable > generateMoreCards.length;
+
+      return new Response(JSON.stringify({ cards: generateMoreCards, hasMore }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =====================================================================
+    // MODE: holiday (default — existing code path, untouched logic)
+    // =====================================================================
+
+    // Limit to 3 categories
+    const slugs = categorySlugs.slice(0, 3);
+
+    // Resolve slugs to display names (card_pool stores display names, not slugs)
+    const resolvedCategories = slugs.map((slug) => ({
+      slug,
+      displayName: resolveCategory(slug) ?? slug,
+    }));
+
+    // --- Query card_pool per category ---
     const cards: Card[] = [];
 
     for (const resolved of resolvedCategories) {
@@ -173,7 +687,7 @@ serve(async (req: Request) => {
       const { data: poolCards } = await adminClient
         .from("card_pool")
         .select(
-          "id, title, category, image_url, rating, price_level, address, google_place_id, lat, lng"
+          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng"
         )
         .eq("category", resolved.displayName)
         .gte("lat", latMin)
@@ -208,6 +722,9 @@ serve(async (req: Request) => {
             googlePlaceId: chosen.google_place_id ?? null,
             lat: chosen.lat ?? null,
             lng: chosen.lng ?? null,
+            priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+            description: chosen.description ?? `A great ${resolved.displayName} spot to explore.`,
+            cardType: (chosen.card_type as "single" | "curated") ?? "single",
           });
         }
       } else {
@@ -276,6 +793,9 @@ serve(async (req: Request) => {
                   googlePlaceId: p.id ?? null,
                   lat: p.location?.latitude ?? null,
                   lng: p.location?.longitude ?? null,
+                  priceTier: derivePriceTier(null, p.priceLevel ?? null),
+                  description: `A great ${resolved.displayName} spot to explore.`,
+                  cardType: "single",
                 });
               }
             }
@@ -286,7 +806,7 @@ serve(async (req: Request) => {
       }
     }
 
-    return new Response(JSON.stringify({ cards }), {
+    return new Response(JSON.stringify({ cards, hasMore: false }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

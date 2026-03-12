@@ -6,10 +6,12 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { SavedPerson } from "../services/savedPeopleService";
+import { HolidayCard } from "../services/holidayCardsService";
 import {
   GenderOption,
   HolidayDefinition,
@@ -17,10 +19,11 @@ import {
 import { STANDARD_HOLIDAYS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 import { s } from "../utils/responsive";
 import BirthdayHero from "./BirthdayHero";
-import PersonRecommendationCards from "./PersonRecommendationCards";
 import HolidayRow from "./HolidayRow";
 import CustomHolidayModal from "./CustomHolidayModal";
 import { useAiSummary } from "../hooks/useAiSummary";
+import { useHeroCards } from "../hooks/useHeroCards";
+import { useGenerateMoreCards } from "../hooks/useGenerateMoreCards";
 import {
   useCustomHolidays,
   useArchivedHolidays,
@@ -106,6 +109,8 @@ function getCustomHolidayDaysAway(month: number, day: number): number {
 
 // ── Main Component ────────────────────────────────────────────────────────
 
+const MAX_GENERATE_MORE = 5;
+
 export default function PersonHolidayView({
   person,
   location,
@@ -116,7 +121,7 @@ export default function PersonHolidayView({
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [isCustomModalVisible, setIsCustomModalVisible] = useState(false);
 
-  // ── Hooks ──
+  // ── AI Summary ──
   const aiSummaryParams = useMemo(() => ({
     personId: person.id,
     personName: person.name,
@@ -127,6 +132,65 @@ export default function PersonHolidayView({
 
   const { data: aiSummary, isLoading: isLoadingSummary } = useAiSummary(aiSummaryParams);
 
+  // ── Hero Cards ──
+  const { data: heroCardsData, isLoading: isLoadingHeroCards } = useHeroCards({
+    personId: person.id,
+    description: person.description,
+    location,
+    linkedUserId: person.linked_user_id ?? undefined,
+    enabled: true,
+  });
+  const heroCards = heroCardsData?.cards ?? [];
+
+  // ── Generate More ──
+  const [generatedCards, setGeneratedCards] = useState<HolidayCard[]>([]);
+  const [generateCount, setGenerateCount] = useState(0);
+  const generateMoreMutation = useGenerateMoreCards();
+
+  const allHeroCardIds = useMemo(() => {
+    return [...heroCards, ...generatedCards].map((c) => c.id);
+  }, [heroCards, generatedCards]);
+
+  const canGenerateMore =
+    generateCount < MAX_GENERATE_MORE &&
+    !!person.description &&
+    person.description.length >= 10 &&
+    (generateMoreMutation.data?.hasMore !== false);
+
+  const handleGenerateMore = useCallback(() => {
+    if (!person.description || generateCount >= MAX_GENERATE_MORE) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    generateMoreMutation.mutate(
+      {
+        personId: person.id,
+        description: person.description,
+        location,
+        linkedUserId: person.linked_user_id ?? undefined,
+        excludeCardIds: allHeroCardIds,
+      },
+      {
+        onSuccess: (response) => {
+          setGeneratedCards((prev) => [...prev, ...response.cards]);
+          setGenerateCount((prev) => prev + 1);
+        },
+      }
+    );
+  }, [person, location, allHeroCardIds, generateCount, generateMoreMutation]);
+
+  const handleCardPress = useCallback((card: HolidayCard) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (card.lat && card.lng) {
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${card.lat},${card.lng}`
+      ).catch(() => {});
+    } else if (card.address) {
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
+      ).catch(() => {});
+    }
+  }, []);
+
+  // ── Custom Holidays ──
   const { data: customHolidays = [] } = useCustomHolidays(userId, person.id);
   const { data: archivedHolidays = [] } = useArchivedHolidays(userId, person.id);
   const createCustomHolidayMutation = useCreateCustomHoliday();
@@ -146,7 +210,6 @@ export default function PersonHolidayView({
       const categorySlugs = holiday.sections
         .flatMap((sec) => {
           if (sec.categorySlug) return [sec.categorySlug];
-          // Resolve intent types to their mapped category slugs
           const mapped = INTENT_CATEGORY_MAP[sec.type];
           return mapped ?? [];
         })
@@ -236,10 +299,14 @@ export default function PersonHolidayView({
         person={person}
         aiSummary={aiSummary ?? null}
         isLoadingSummary={isLoadingSummary}
+        heroCards={heroCards}
+        isLoadingHeroCards={isLoadingHeroCards}
+        generatedCards={generatedCards}
+        isGenerating={generateMoreMutation.isPending}
+        canGenerateMore={canGenerateMore}
+        onGenerateMore={handleGenerateMore}
+        onCardPress={handleCardPress}
       />
-
-      {/* Person Recommendation Cards */}
-      <PersonRecommendationCards person={person} location={location} />
 
       {/* Upcoming Holidays Section */}
       <View style={styles.holidaysContainer}>

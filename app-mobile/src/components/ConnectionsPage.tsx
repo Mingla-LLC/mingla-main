@@ -461,6 +461,7 @@ export default function ConnectionsPageRefactored({
       fileSize: msg.file_size?.toString(),
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
+      isRead: msg.is_read ?? false,
     }),
     []
   );
@@ -952,6 +953,9 @@ export default function ConnectionsPageRefactored({
       broadcastSeenIds.current.add(sentMessage.id);
 
       // Broadcast to other participants (instant delivery <500ms)
+      // NOTE: This depends on MessageInterface's useBroadcastReceiver having
+      // already subscribed to this channel. supabase.channel() returns the
+      // existing subscribed instance, enabling the send.
       try {
         const channelName = `chat:${currentConversationId}`;
         const broadcastChannel = supabase.channel(channelName);

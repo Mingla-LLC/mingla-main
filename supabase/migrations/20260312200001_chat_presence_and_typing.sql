@@ -42,6 +42,11 @@ CREATE POLICY "Users can update own presence"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- Users can delete their own presence records
+CREATE POLICY "Users can delete own presence"
+  ON public.conversation_presence FOR DELETE
+  USING (auth.uid() = user_id);
+
 -- Add to realtime publication for postgres_changes subscriptions
 ALTER PUBLICATION supabase_realtime ADD TABLE public.conversation_presence;
 

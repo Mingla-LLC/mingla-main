@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { useFriends, Friend } from "../hooks/useFriends";
+import { useFriends, Friend, FriendRequest } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
@@ -400,7 +400,7 @@ const swipeStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 interface RequestItemProps {
-  request: any;
+  request: FriendRequest;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
   processedStatus?: "accepted" | "declined";
@@ -699,11 +699,18 @@ function ItemSeparator() {
   return <View style={separatorStyles.line} />;
 }
 
+function RequestSeparator() {
+  return <View style={separatorStyles.requestGap} />;
+}
+
 const separatorStyles = StyleSheet.create({
   line: {
     height: 0.5,
     backgroundColor: colors.gray[100],
     marginLeft: 70,
+  },
+  requestGap: {
+    height: spacing.xs,
   },
 });
 
@@ -1100,7 +1107,7 @@ export default function FriendsModal({
           ItemSeparatorComponent={ItemSeparator}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1 }}
+          contentContainerStyle={styles.flatListContent}
           ListEmptyComponent={
             searchQuery.length > 0 ? (
               <View style={styles.emptyState}>
@@ -1154,9 +1161,9 @@ export default function FriendsModal({
             loading={actionLoading}
           />
         )}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
+        ItemSeparatorComponent={RequestSeparator}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1, paddingVertical: spacing.sm }}
+        contentContainerStyle={styles.requestsContent}
         keyboardShouldPersistTaps="handled"
       />
     );
@@ -1348,6 +1355,13 @@ const styles = StyleSheet.create({
   // Content
   content: {
     flex: 1,
+  },
+  flatListContent: {
+    flexGrow: 1,
+  },
+  requestsContent: {
+    flexGrow: 1,
+    paddingVertical: spacing.sm,
   },
 
   // Search

@@ -24,6 +24,7 @@ export interface Message {
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
+  isRead?: boolean;
 }
 
 export interface Conversation {

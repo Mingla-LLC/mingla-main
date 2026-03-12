@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
   Animated,
   PanResponder,
   ActivityIndicator,
@@ -13,11 +12,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
-import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
-import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
+import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
+import { colors } from "../constants/designSystem";
 import { useHolidayCards } from "../hooks/useHolidayCards";
-import { getReadableCategoryName, getCategoryColor, getCategoryIcon } from "../utils/categoryUtils";
+import { getReadableCategoryName } from "../utils/categoryUtils";
+import PersonGridCard from "./PersonGridCard";
+import { PriceTierSlug } from "../constants/priceTiers";
 
 const SHORT_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -137,7 +137,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.rowLeft}>
-            <Ionicons name={holiday.icon as any} size={s(22)} color={colors.gray[600]} />
+            <Ionicons name={holiday.icon as keyof typeof Ionicons.glyphMap} size={s(22)} color={colors.gray[600]} />
             <View style={styles.rowTextGroup}>
               <Text style={styles.holidayName}>{holiday.name}</Text>
               <Text style={styles.holidayDate}>{formattedDate}</Text>
@@ -210,74 +210,29 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.cardsScrollContent}
               >
-                {data.map((card) => {
-                  const slugKey = card.categorySlug || card.category;
-                  const categoryColor = getCategoryColor(slugKey);
-                  const categoryIcon = getCategoryIcon(slugKey);
-                  const categoryLabel = getReadableCategoryName(slugKey);
-
-                  return (
-                    <TouchableOpacity
-                      key={card.id}
-                      style={styles.holidayCard}
-                      activeOpacity={0.85}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        if (card.lat && card.lng) {
-                          Linking.openURL(
-                            `https://www.google.com/maps/search/?api=1&query=${card.lat},${card.lng}`
-                          ).catch(() => {});
-                        } else if (card.address) {
-                          Linking.openURL(
-                            `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
-                          ).catch(() => {});
-                        }
-                      }}
-                    >
-                      <View style={styles.cardImageArea}>
-                        {card.imageUrl ? (
-                          <Image
-                            source={{ uri: card.imageUrl }}
-                            style={styles.cardImage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View style={[styles.cardImage, styles.placeholderImage]}>
-                            <Ionicons name={categoryIcon as any} size={s(28)} color="rgba(255,255,255,0.6)" />
-                          </View>
-                        )}
-                        <LinearGradient
-                          colors={["transparent", "rgba(0,0,0,0.5)"]}
-                          style={styles.cardGradient}
-                        />
-                        <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
-                          <Text style={styles.categoryText}>{categoryLabel}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.cardContent}>
-                        <Text style={styles.cardTitle} numberOfLines={1}>
-                          {card.title}
-                        </Text>
-                        {card.address ? (
-                          <Text style={styles.cardAddress} numberOfLines={1}>
-                            {card.address}
-                          </Text>
-                        ) : null}
-                        <View style={styles.cardFooter}>
-                          {card.rating ? (
-                            <View style={styles.ratingRow}>
-                              <Ionicons name="star" size={s(11)} color="#F59E0B" />
-                              <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
-                            </View>
-                          ) : null}
-                          <View style={styles.mapHint}>
-                            <Ionicons name="navigate-outline" size={s(11)} color={colors.gray[400]} />
-                          </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                {data.map((card) => (
+                  <PersonGridCard
+                    key={card.id}
+                    id={card.id}
+                    title={card.title}
+                    category={getReadableCategoryName(card.categorySlug || card.category)}
+                    imageUrl={card.imageUrl}
+                    priceTier={(card.priceTier as PriceTierSlug) ?? null}
+                    priceLevel={card.priceLevel}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      if (card.lat && card.lng) {
+                        Linking.openURL(
+                          `https://www.google.com/maps/search/?api=1&query=${card.lat},${card.lng}`
+                        ).catch(() => {});
+                      } else if (card.address) {
+                        Linking.openURL(
+                          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`
+                        ).catch(() => {});
+                      }
+                    }}
+                  />
+                ))}
               </ScrollView>
             )}
           </View>
@@ -377,82 +332,6 @@ const styles = StyleSheet.create({
     paddingTop: vs(12),
     paddingBottom: vs(4),
     gap: s(12),
-  },
-  holidayCard: {
-    width: s(180),
-    height: s(230),
-    borderRadius: s(16),
-    backgroundColor: "#FFFFFF",
-    overflow: "hidden",
-    ...shadows.md,
-  },
-  cardImageArea: {
-    width: "100%",
-    height: "55%",
-    position: "relative",
-  },
-  cardImage: {
-    width: "100%",
-    height: "100%",
-  },
-  cardGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "50%",
-  },
-  placeholderImage: {
-    backgroundColor: colors.gray[200],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  categoryBadge: {
-    position: "absolute",
-    top: s(8),
-    left: s(8),
-    paddingHorizontal: s(8),
-    paddingVertical: vs(3),
-    borderRadius: s(8),
-  },
-  categoryText: {
-    fontSize: s(10),
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  cardContent: {
-    flex: 1,
-    padding: s(12),
-    justifyContent: "space-between",
-  },
-  cardTitle: {
-    fontSize: s(13),
-    fontWeight: "700",
-    color: colors.gray[800],
-  },
-  cardAddress: {
-    fontSize: s(11),
-    color: colors.gray[500],
-    marginTop: vs(2),
-  },
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: vs(4),
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(3),
-  },
-  ratingText: {
-    fontSize: s(11),
-    fontWeight: "600",
-    color: colors.gray[700],
-  },
-  mapHint: {
-    opacity: 0.6,
   },
 });
 
