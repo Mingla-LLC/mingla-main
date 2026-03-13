@@ -24,10 +24,7 @@ export type InAppNotificationType =
   | "purchase_complete"   // Purchase completed
   | "profile_updated"     // Profile was updated
   | "welcome"             // Welcome / onboarding complete
-  | "friend_link_request" // Received a friend link request
-  | "link_consent_request" // Link consent request
   | "collaboration_invite" // Collaboration session invite
-  | "friend_link_declined" // Friend link was declined
   | "system";             // System-level notification
 
 // Navigation targets for each notification type
@@ -261,36 +258,6 @@ class InAppNotificationServiceClass {
     );
   }
 
-  async notifyFriendLinkRequest(
-    fromUserName: string,
-    linkId: string,
-    userId?: string,
-    avatarUrl?: string | null
-  ) {
-    return this.add(
-      "friend_link_request",
-      `${fromUserName} wants to connect`,
-      "Tap to accept and start planning together.",
-      { page: "connections" as const },
-      { userName: fromUserName, linkId, userId, avatar_url: avatarUrl }
-    );
-  }
-
-  async notifyLinkConsentRequest(
-    friendName: string,
-    linkId: string,
-    friendUserId?: string,
-    avatarUrl?: string | null
-  ) {
-    return this.add(
-      "link_consent_request",
-      `Link profiles with ${friendName}?`,
-      "Share your name, birthday, and details with each other.",
-      { page: "connections" as const },
-      { userName: friendName, linkId, userId: friendUserId, avatar_url: avatarUrl }
-    );
-  }
-
   async notifyCollaborationInvite(
     sessionName: string,
     fromUserName: string,
@@ -310,16 +277,6 @@ class InAppNotificationServiceClass {
         inviteId,
         avatar_url: avatarUrl,
       }
-    );
-  }
-
-  async notifyFriendLinkDeclined(declinedByName: string) {
-    return this.add(
-      "friend_link_declined",
-      "Connection update",
-      `${declinedByName} isn't available to connect right now.`,
-      { page: "none" as const },
-      { userName: declinedByName }
     );
   }
 
@@ -462,14 +419,8 @@ class InAppNotificationServiceClass {
         return { icon: "person-outline", iconColor: "#8B5CF6" };
       case "welcome":
         return { icon: "sparkles", iconColor: "#eb7825" };
-      case "friend_link_request":
-        return { icon: "link-outline", iconColor: "#eb7825" };
-      case "link_consent_request":
-        return { icon: "people-outline", iconColor: "#8B5CF6" };
       case "collaboration_invite":
         return { icon: "calendar-outline", iconColor: "#eb7825" };
-      case "friend_link_declined":
-        return { icon: "person-remove-outline", iconColor: "#6B7280" };
       case "system":
       default:
         return { icon: "notifications-outline", iconColor: "#6B7280" };

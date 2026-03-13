@@ -39,21 +39,15 @@ import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
 import AddPersonModal from "./AddPersonModal";
-import LinkFriendSheet from "./LinkFriendSheet";
-import { IncomingLinkRequestCard, EnrichedLinkRequest } from "./IncomingLinkRequestCard";
 import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
-import { usePendingLinkRequests, useSentLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
-import { FriendLink, SentFriendLink } from "../types/friendLink";
-import { upsertSavedPersonByLink } from "../services/savedPeopleService";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import { hasElevatedAccess } from "../types/subscription";
 import ElitePeopleSummary from "./ElitePeopleSummary";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { friendLinkKeys } from "../hooks/socialQueryKeys";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -756,7 +750,6 @@ export default function DiscoverScreen({
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-    await queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
     setIsRefreshing(false);
   }, [queryClient]);
 
@@ -844,7 +837,6 @@ export default function DiscoverScreen({
     });
     return unsub;
   }, []);
-  const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
   const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
   const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
   const deletingAnimRef = useRef(new Animated.Value(1)).current;
@@ -854,7 +846,6 @@ export default function DiscoverScreen({
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
-  const [selectedIncomingRequestId, setSelectedIncomingRequestId] = useState<string | null>(null);
   const { data: personExperiences = [] } = usePersonExperiences(
     selectedPersonId !== "for-you" ? selectedPersonId : undefined
   );
@@ -935,54 +926,8 @@ export default function DiscoverScreen({
   const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
   const savedPeople: SavedPerson[] = savedPeopleData;
 
-  // Friend link requests
-  const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
-  const { data: sentLinkRequests = [] } = useSentLinkRequests(user?.id ?? "");
-  const respondToLinkMutation = useRespondToFriendLink();
   useSocialRealtime(user?.id);
   const effectiveTier = useEffectiveTier(user?.id);
-
-  // Batch-fetch requester profiles to build enriched link request objects.
-  // React Query handles cancellation, caching, and retries — no raw useEffect needed.
-  const enrichedRequesterIds = (pendingLinkRequests ?? []).map((r: FriendLink) => r.requesterId);
-  const { data: enrichedLinkRequests = [] } = useQuery<EnrichedLinkRequest[]>({
-    queryKey: ["enrichedLinkRequests", enrichedRequesterIds],
-    queryFn: async (): Promise<EnrichedLinkRequest[]> => {
-      if (enrichedRequesterIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, display_name, first_name, avatar_url")
-        .in("id", enrichedRequesterIds);
-      if (error) throw error;
-      const profileMap: Record<string, { display_name?: string; first_name?: string; avatar_url?: string }> = {};
-      (data ?? []).forEach((p: { id: string; display_name?: string; first_name?: string; avatar_url?: string }) => {
-        profileMap[p.id] = p;
-      });
-      return (pendingLinkRequests ?? []).map((r: FriendLink) => {
-        const profile = profileMap[r.requesterId] ?? {};
-        const rawName = profile.display_name || profile.first_name || "Someone";
-        return {
-          id: r.id,
-          requesterId: r.requesterId,
-          name: rawName,
-          initials: rawName.substring(0, 2).toUpperCase(),
-        };
-      });
-    },
-    enabled: (pendingLinkRequests ?? []).length > 0,
-    staleTime: 60 * 1000,
-  });
-
-  // Track which person IDs have pending outbound links (for greyed pills)
-  const pendingOutboundLinkedUserIds = useMemo(() => {
-    const ids = new Set<string>();
-    sentLinkRequests.forEach((req: SentFriendLink) => {
-      if (req.status === "pending" && req.targetId) {
-        ids.add(req.targetId);
-      }
-    });
-    return ids;
-  }, [sentLinkRequests]);
 
   // Get the currently selected person (null if "for-you" is selected)
   const selectedPerson = useMemo(() => {
@@ -2690,66 +2635,6 @@ export default function DiscoverScreen({
   const handleForYouSelect = () => {
     HapticFeedback.buttonPress();
     setSelectedPersonId("for-you");
-    setSelectedIncomingRequestId(null);
-  };
-
-  // Handle incoming link request pill tap → show IncomingLinkRequestCard
-  const handleIncomingRequestSelect = (requestId: string) => {
-    HapticFeedback.buttonPress();
-    setSelectedPersonId("for-you");
-    setSelectedIncomingRequestId((prev) => (prev === requestId ? null : requestId));
-  };
-
-  // Accept a link request, upsert the person, then open PersonHolidayView.
-  // Split into two sequential try/catch blocks:
-  //   Block 1 — accept the link. If this fails, the link is NOT yet accepted — bail with an error.
-  //   Block 2 — upsert saved_people. The link IS already accepted at this point. Never show
-  //             an error to the user if upsert fails — just refresh the list and navigate away.
-  //             Showing "try again" here would confuse users into re-accepting an already-accepted link.
-  const handleAcceptLinkRequest = async (linkId: string) => {
-    const request = enrichedLinkRequests.find((r) => r.id === linkId);
-    if (!request || !user) return;
-
-    try {
-      await respondToLinkMutation.mutateAsync({ linkId, action: "accept" });
-    } catch (err) {
-      console.error("[DiscoverScreen] Accept link request failed:", err);
-      Alert.alert("Error", "Failed to accept link request. Please try again.");
-      return;
-    }
-
-    // Link is accepted on the backend. Upsert is best-effort.
-    try {
-      const savedPerson = await upsertSavedPersonByLink({
-        currentUserId: user.id,
-        linkedUserId: request.requesterId,
-        linkId,
-        name: request.name,
-        initials: request.initials,
-      });
-      await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-      setSelectedIncomingRequestId(null);
-      if (savedPerson) {
-        setSelectedPersonId(savedPerson.id);
-      }
-    } catch (err) {
-      // Upsert failed but link IS accepted — refresh and navigate away gracefully.
-      console.warn("[DiscoverScreen] Person upsert failed after link accept:", err);
-      await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-      setSelectedIncomingRequestId(null);
-    }
-  };
-
-  // Decline a link request, clear the card
-  const handleDeclineLinkRequest = (linkId: string) => {
-    if (respondToLinkMutation.isPending) return;
-    respondToLinkMutation.mutate(
-      { linkId, action: "decline" },
-      {
-        onSuccess: () => setSelectedIncomingRequestId(null),
-        onError: () => Alert.alert("Error", "Failed to decline. Please try again."),
-      }
-    );
   };
 
   // Handle removing a person — mutation first, animation only on success
@@ -2758,7 +2643,7 @@ export default function DiscoverScreen({
 
     try {
       // Run the mutation FIRST — only animate out on success
-      await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
+      await deletePersonMutation.mutateAsync({ personId: person.id });
 
       // Mutation succeeded — now animate out
       Animated.timing(deletingAnimRef, {
@@ -3289,48 +3174,14 @@ export default function DiscoverScreen({
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Scrollable Saved People Pills + Incoming Link Request Pills */}
+                {/* Scrollable Saved People Pills */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.tabHeaderScrollContent}
                   style={styles.tabHeaderScrollView}
                 >
-                  {/* Incoming link request pills (grey, left of saved people) */}
-                  {enrichedLinkRequests.map((req) => {
-                    const isSelected = selectedIncomingRequestId === req.id;
-                    return (
-                      <TouchableOpacity
-                        key={`incoming-${req.id}`}
-                        style={[
-                          styles.personPill,
-                          isSelected && { borderColor: "#6b7280", borderWidth: 1.5 },
-                        ]}
-                        onPress={() => handleIncomingRequestSelect(req.id)}
-                        activeOpacity={0.7}
-                        accessibilityLabel={`Link request from ${req.name}`}
-                      >
-                        <View
-                          style={[
-                            styles.personPillAvatar,
-                            { backgroundColor: "#4b5563" },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.personPillInitials,
-                              { color: "#d1d5db" },
-                            ]}
-                          >
-                            {req.initials}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-
                   {savedPeople.map((person) => {
-                    const isPending = !person.is_linked && person.linked_user_id != null && pendingOutboundLinkedUserIds.has(person.linked_user_id);
                     const isSelected = selectedPersonId === person.id;
                     const isDeleting = deletingPersonId === person.id;
 
@@ -3340,7 +3191,6 @@ export default function DiscoverScreen({
                         style={[
                           styles.personPill,
                           isSelected && styles.personPillSelectedGradient,
-                          isPending && { opacity: 0.5 },
                           isDeleting && {
                             opacity: deletingAnimRef,
                             transform: [{ scale: deletingAnimRef }],
@@ -3351,39 +3201,26 @@ export default function DiscoverScreen({
                           style={styles.personPillTouchable}
                           onPress={() => {
                             if (deletingPersonId) return; // Don't allow selection changes during deletion
-                            if (isPending) {
-                              // Show tooltip for pending pills
-                              Alert.alert("", `Waiting for ${person.name} to accept`);
-                            } else {
-                              handlePersonSelect(person.id);
-                            }
+                            handlePersonSelect(person.id);
                           }}
                           onLongPress={() => handleLongPressPerson(person)}
                           activeOpacity={0.7}
-                          accessibilityLabel={isPending ? `Waiting for ${person.name} to accept` : person.name}
+                          accessibilityLabel={person.name}
                         >
                           <View
                             style={[
                               styles.personPillAvatar,
                               isSelected && styles.personPillAvatarSelectedGradient,
-                              isPending && { backgroundColor: "#d1d5db" },
                             ]}
                           >
                             <Text
                               style={[
                                 styles.personPillInitials,
                                 isSelected && styles.personPillInitialsSelected,
-                                isPending && { color: "#9ca3af" },
                               ]}
                             >
                               {person.initials}
                             </Text>
-                            {/* Link icon badge for linked persons */}
-                            {person.is_linked && (
-                              <View style={styles.linkedBadge}>
-                                <Ionicons name="link-outline" size={10} color="#eb7825" />
-                              </View>
-                            )}
                           </View>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -3405,21 +3242,6 @@ export default function DiscoverScreen({
                   })}
                 </ScrollView>
               </View>
-
-              {/* Incoming link request card when a request pill is tapped */}
-              {selectedIncomingRequestId && (() => {
-                const req = enrichedLinkRequests.find((r) => r.id === selectedIncomingRequestId);
-                if (!req) return null;
-                return (
-                  <IncomingLinkRequestCard
-                    request={req}
-                    isAccepting={respondToLinkMutation.isPending && respondToLinkMutation.variables?.linkId === selectedIncomingRequestId && respondToLinkMutation.variables?.action === "accept"}
-                    isDeclining={respondToLinkMutation.isPending && respondToLinkMutation.variables?.linkId === selectedIncomingRequestId && respondToLinkMutation.variables?.action === "decline"}
-                    onAccept={handleAcceptLinkRequest}
-                    onDecline={handleDeclineLinkRequest}
-                  />
-                );
-              })()}
 
               {/* Person-specific view when a person is selected */}
               {selectedPerson ? (
@@ -3678,19 +3500,6 @@ export default function DiscoverScreen({
           handleCloseAddPersonModal();
           setSelectedPersonId(personId);
         }}
-        onStartLinkFlow={() => {
-          handleCloseAddPersonModal();
-          setIsUserSearchVisible(true);
-        }}
-      />
-
-      {/* Link Friend Sheet (search + phone invite) */}
-      <LinkFriendSheet
-        visible={isUserSearchVisible}
-        onClose={() => setIsUserSearchVisible(false)}
-        onLinkSent={() => {
-          setIsUserSearchVisible(false);
-        }}
       />
 
       {/* Person Edit Sheet (long-press on person pill) */}
@@ -3700,10 +3509,6 @@ export default function DiscoverScreen({
           person={editingPerson}
           onClose={() => setEditingPerson(null)}
           onUpdated={() => setEditingPerson(null)}
-          onUnlinked={() => {
-            setEditingPerson(null);
-            setSelectedPersonId("for-you");
-          }}
         />
       )}
 

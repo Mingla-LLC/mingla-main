@@ -1,5 +1,4 @@
 import { supabase, supabaseUrl } from "./supabase";
-import { FriendLink } from "../types/friendLink";
 
 export interface SavedPerson {
   id: string;
@@ -19,9 +18,6 @@ export interface SavedPerson {
     | null;
   description: string | null;
   description_processed_at: string | null;
-  linked_user_id: string | null;
-  link_id: string | null;
-  is_linked: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -47,11 +43,7 @@ export async function getSavedPeople(userId: string): Promise<SavedPerson[]> {
 }
 
 export async function createSavedPerson(
-  person: Omit<SavedPerson, "id" | "created_at" | "updated_at" | "description_processed_at" | "linked_user_id" | "link_id" | "is_linked"> & {
-    linked_user_id?: string | null;
-    link_id?: string | null;
-    is_linked?: boolean;
-  }
+  person: Omit<SavedPerson, "id" | "created_at" | "updated_at" | "description_processed_at">
 ): Promise<SavedPerson> {
   const { data, error } = await supabase
     .from("saved_people")
@@ -127,121 +119,3 @@ export async function generatePersonExperiences(params: {
   return response.json();
 }
 
-// ── Link-based Upsert ────────────────────────────────────────────────────────
-
-/**
- * Upsert a saved_people row from an accepted link request.
- * Uses (user_id, linked_user_id) as the conflict key so re-accepting a link
- * after unlinking simply refreshes the row rather than creating a duplicate.
- */
-export async function upsertSavedPersonByLink(params: {
-  currentUserId: string;
-  linkedUserId: string;
-  linkId: string;
-  name: string;
-  initials: string;
-}): Promise<SavedPerson | null> {
-  const { data, error } = await supabase
-    .from("saved_people")
-    .upsert(
-      {
-        user_id: params.currentUserId,
-        name: params.name,
-        initials: params.initials,
-        linked_user_id: params.linkedUserId,
-        link_id: params.linkId,
-        is_linked: true,
-      },
-      { onConflict: "user_id,linked_user_id" }
-    )
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-// ── Linking Support ─────────────────────────────────────────────────────────
-
-function mapFriendLink(row: any): FriendLink {
-  return {
-    id: row.id,
-    requesterId: row.requester_id,
-    targetId: row.target_id,
-    status: row.status,
-    requesterPersonId: row.requester_person_id ?? null,
-    targetPersonId: row.target_person_id ?? null,
-    acceptedAt: row.accepted_at ?? null,
-    unlinkedAt: row.unlinked_at ?? null,
-    unlinkedBy: row.unlinked_by ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export async function getLinkForPerson(
-  personId: string
-): Promise<FriendLink | null> {
-  const { data, error } = await supabase
-    .from("friend_links")
-    .select("*")
-    .or(`requester_person_id.eq.${personId},target_person_id.eq.${personId}`)
-    .eq("status", "accepted")
-    .single();
-
-  if (error) {
-    // PGRST116 = no rows found — not an error, just no link
-    if (error.code === "PGRST116") return null;
-    throw new Error(error.message);
-  }
-
-  return data ? mapFriendLink(data) : null;
-}
-
-export async function refreshLinkedPersonProfile(
-  personId: string
-): Promise<void> {
-  // 1. Get the saved_people row to find linked_user_id
-  const { data: person, error: personError } = await supabase
-    .from("saved_people")
-    .select("linked_user_id")
-    .eq("id", personId)
-    .single();
-
-  if (personError) throw new Error(personError.message);
-  if (!person?.linked_user_id) {
-    throw new Error("Person is not linked to a user");
-  }
-
-  // 2. Fetch linked user's profile
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("display_name, birthday, gender, avatar_url")
-    .eq("id", person.linked_user_id)
-    .single();
-
-  if (profileError) throw new Error(profileError.message);
-  if (!profile) throw new Error("Linked user profile not found");
-
-  // 3. Compute initials from display_name
-  const displayName = profile.display_name || "";
-  const nameParts = displayName.trim().split(/\s+/);
-  const initials =
-    nameParts.length >= 2
-      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-      : displayName.substring(0, 2).toUpperCase();
-
-  // 4. Update saved_people
-  const { error: updateError } = await supabase
-    .from("saved_people")
-    .update({
-      name: displayName,
-      birthday: profile.birthday ?? null,
-      gender: profile.gender ?? null,
-      initials,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", personId);
-
-  if (updateError) throw new Error(updateError.message);
-}

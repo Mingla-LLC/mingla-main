@@ -34,7 +34,6 @@ import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPers
 import { createSavedPerson, SavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { uploadOnboardingAudio, deleteFromStorage, createAudioClipRecord } from '../services/personAudioService'
-import { sendFriendLink } from '../services/friendLinkService'
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
@@ -42,10 +41,7 @@ import { deckService } from '../services/deckService'
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
-import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
-import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
-import { usePendingLinkConsents, useRespondLinkConsent } from '../hooks/useLinkConsent'
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
@@ -184,26 +180,27 @@ const OnboardingFlow = ({
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, initialChosenPath: initialData.invitePath, hasGpsPermission })
 
-  const { data: pendingConsents, isLoading: isLoadingConsents } = usePendingLinkConsents(user?.id);
-  const respondConsentMutation = useRespondLinkConsent();
-
-  // Auto-skip consent sub-step if no pending consents exist
+  // Auto-skip friends and consent sub-steps (friend links feature removed)
+  const friendsAutoSkipRef = useRef(false);
   const consentAutoSkipRef = useRef(false);
   useEffect(() => {
-    if (
-      navState.subStep === 'consent' &&
-      !isLoadingConsents &&
-      (!pendingConsents || pendingConsents.length === 0) &&
-      !consentAutoSkipRef.current
-    ) {
+    if (navState.subStep === 'friends' && !friendsAutoSkipRef.current) {
+      friendsAutoSkipRef.current = true;
+      setData(prev => ({ ...prev, addedFriends: [], skippedFriends: true }));
+      setSkippedFriends(true);
+      goNext();
+    }
+    if (navState.subStep === 'consent' && !consentAutoSkipRef.current) {
       consentAutoSkipRef.current = true;
       goNext();
     }
-    // Reset the ref when leaving the consent step
+    if (navState.subStep !== 'friends') {
+      friendsAutoSkipRef.current = false;
+    }
     if (navState.subStep !== 'consent') {
       consentAutoSkipRef.current = false;
     }
-  }, [navState.subStep, isLoadingConsents, pendingConsents, goNext]);
+  }, [navState.subStep, goNext, setSkippedFriends]);
 
   // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
   // should appear. For phone-pre-verified users, this is Step 2/value_prop (their starting
@@ -1223,19 +1220,7 @@ const OnboardingFlow = ({
     setSaving(true)
     try {
       for (const friend of data.selectedSyncFriends) {
-        // 1. Send friend_link request for existing users
-        let linkId: string | undefined
-        if (friend.type === 'existing' && friend.userId) {
-          try {
-            const result = await sendFriendLink(friend.userId)
-            linkId = result.linkId
-          } catch (e) {
-            // Link may already exist — log and continue
-            console.warn(`[Onboarding] Friend link for ${friend.userId} failed:`, e)
-          }
-        }
-
-        // 2. ALWAYS create saved_person (not just when audio exists)
+        // Create saved_person for each friend
         const personData = {
           user_id: user.id,
           name: friend.displayName || 'Friend',
@@ -1243,8 +1228,6 @@ const OnboardingFlow = ({
           birthday: null as string | null,
           gender: null as SavedPerson['gender'],
           description: null as string | null,
-          // Link data if friend link was created
-          ...(linkId ? { link_id: linkId, linked_user_id: friend.userId, is_linked: false } : {}),
         }
         const person = await createSavedPerson(personData)
 
@@ -1267,17 +1250,6 @@ const OnboardingFlow = ({
           }
         }
 
-        // 4. Update friend_link with person_id
-        if (linkId && person?.id) {
-          try {
-            await supabase
-              .from('friend_links')
-              .update({ requester_person_id: person.id })
-              .eq('id', linkId)
-          } catch (e) {
-            console.warn('[Onboarding] Failed to update link with person_id:', e)
-          }
-        }
       }
       setSaving(false)
       goNext() // This triggers launch (end of Path A sequence)
@@ -1523,6 +1495,7 @@ const OnboardingFlow = ({
       case 'friends':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'consent':
+        // consent sub-step auto-skips (friend links feature removed)
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'collaboration':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
@@ -2446,77 +2419,23 @@ const OnboardingFlow = ({
     }
 
     // ─── STEP 5 ───
+    // Friends step — auto-skip (friend links feature removed, OnboardingFriendsStep deleted)
     if (subStep === 'friends') {
+      // Auto-advance handled by the state machine; show brief loading
       return (
-        <OnboardingFriendsStep
-          userId={user!.id}
-          userPhoneE164={buildE164()}
-          initialFriends={data.addedFriends}
-          onContinue={async (addedFriends) => {
-            // Persist each "existing" friend to the database as a pending friend request
-            // so the relationship survives regardless of which path the user picks next.
-            if (user?.id) {
-              for (const friend of addedFriends) {
-                if (friend.type === 'existing' && friend.userId && friend.friendshipStatus === 'none') {
-                  try {
-                    await supabase
-                      .from('friend_requests')
-                      .upsert(
-                        {
-                          sender_id: user.id,
-                          receiver_id: friend.userId,
-                          status: 'pending',
-                        },
-                        { onConflict: 'sender_id,receiver_id' }
-                      )
-
-                    // sendFriendLink already sends the push notification internally.
-                    // Do NOT also call send-friend-request-email — that would duplicate the push.
-                    sendFriendLink(friend.userId).catch((err) => {
-                      console.warn('[Onboarding] sendFriendLink failed (non-fatal):', friend.userId, err)
-                    })
-                  } catch (err) {
-                    console.warn('[Onboarding] Failed to persist friend:', friend.userId, err)
-                  }
-                }
-              }
-            }
-            setData(prev => ({ ...prev, addedFriends, skippedFriends: false }))
-            setSkippedFriends(false)
-            goNext()
-          }}
-          onSkip={() => {
-            setData(prev => ({ ...prev, addedFriends: [], skippedFriends: true }))
-            setSkippedFriends(true)
-            goNext()
-          }}
-        />
+        <View style={styles.consentLoading}>
+          <ActivityIndicator size="small" color={colors.primary[500]} />
+        </View>
       )
     }
 
+    // Consent step — auto-skip (friend links feature removed)
     if (subStep === 'consent') {
       // Auto-skip is handled by useEffect above — show loading while it fires
-      if (isLoadingConsents || !pendingConsents || pendingConsents.length === 0) {
-        return (
-          <View style={styles.consentLoading}>
-            <ActivityIndicator size="small" color={colors.primary[500]} />
-          </View>
-        );
-      }
-
       return (
-        <OnboardingConsentStep
-          pendingConsents={pendingConsents}
-          onRespond={async (linkId: string, action: "accept" | "decline") => {
-            try {
-              await respondConsentMutation.mutateAsync({ linkId, action });
-            } catch (err) {
-              console.warn('[Onboarding] Consent response failed:', err);
-            }
-          }}
-          isResponding={respondConsentMutation.isPending}
-          onContinue={() => goNext()}
-        />
+        <View style={styles.consentLoading}>
+          <ActivityIndicator size="small" color={colors.primary[500]} />
+        </View>
       );
     }
 

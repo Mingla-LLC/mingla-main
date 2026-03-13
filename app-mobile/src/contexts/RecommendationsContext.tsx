@@ -25,6 +25,7 @@ import type { DeckBatch } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
 import { useSessionDeck } from '../hooks/useSessionDeck';
+import { fetchSessionDeck } from '../services/sessionDeckService';
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
@@ -201,7 +202,7 @@ export const RecommendationsProvider: React.FC<
   // Read all participants' prefs from board session
   const allParticipantPrefs = boardSessionResult?.allParticipantPreferences ?? null;
 
-  // ── Collaboration mode flag (must be declared before rotation effects) ──
+  // ── Collaboration mode flag ──
   const isCollaborationMode: boolean = Boolean(
     currentMode !== "solo" && resolvedSessionId
   );
@@ -565,59 +566,70 @@ export const RecommendationsProvider: React.FC<
     if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards && batchSeed + 1 < MAX_BATCHES) {
       prefetchFiredRef.current = true;
       const nextSeed = batchSeed + 1;
-      const prefetchCategories = activeDeckParams.categories ?? [];
-      const prefetchIntents = activeDeckParams.intents ?? [];
-      const prefetchPriceTiers = isSoloMode
-        ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
-        : (activeDeckParams.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
-      const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams.budgetMin ?? 0);
-      const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams.budgetMax ?? 1000);
-      const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (activeDeckParams.travelMode ?? 'walking');
-      const prefetchConstraintType = 'time' as const;
-      const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
-      const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
-      const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
-      const prefetchDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
 
-      const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
-      const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
-      queryClient.prefetchQuery({
-        queryKey: [
-          'deck-cards',
-          prefetchLat, prefetchLng,
-          prefetchCategories.sort().join(','),
-          prefetchIntents.sort().join(','),
-          prefetchPriceTiers.sort().join(','),
-          prefetchBudgetMin,
-          prefetchBudgetMax,
-          prefetchTravelMode,
-          prefetchConstraintType,
-          prefetchConstraintValue,
-          prefetchDatetimePref,
-          prefetchDateOption,
-          prefetchTimeSlot ?? '',
-          nextSeed,
-        ],
-        queryFn: () => deckService.fetchDeck({
-          location: activeDeckLocation,
-          categories: prefetchCategories,
-          intents: prefetchIntents,
-          priceTiers: prefetchPriceTiers,
-          budgetMin: prefetchBudgetMin,
-          budgetMax: prefetchBudgetMax,
-          travelMode: prefetchTravelMode,
-          travelConstraintType: prefetchConstraintType,
-          travelConstraintValue: prefetchConstraintValue,
-          datetimePref: prefetchDatetimePref,
-          dateOption: prefetchDateOption,
-          timeSlot: prefetchTimeSlot,
-          batchSeed: nextSeed,
-          limit: 20,
-        }),
-        staleTime: 5 * 60 * 1000,
-      });
+      // Collaboration mode: prefetch via server-side session deck
+      if (isCollaborationMode && resolvedSessionId) {
+        queryClient.prefetchQuery({
+          queryKey: ['session-deck', resolvedSessionId, nextSeed],
+          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed),
+          staleTime: 30 * 60 * 1000,
+        });
+      } else {
+        // Solo mode: prefetch via client-side deckService
+        const prefetchCategories = activeDeckParams.categories ?? [];
+        const prefetchIntents = activeDeckParams.intents ?? [];
+        const prefetchPriceTiers = isSoloMode
+          ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
+          : (activeDeckParams.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
+        const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams.budgetMin ?? 0);
+        const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams.budgetMax ?? 1000);
+        const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (activeDeckParams.travelMode ?? 'walking');
+        const prefetchConstraintType = 'time' as const;
+        const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
+        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
+        const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
+        const prefetchDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
+
+        const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
+        const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
+        queryClient.prefetchQuery({
+          queryKey: [
+            'deck-cards',
+            prefetchLat, prefetchLng,
+            prefetchCategories.sort().join(','),
+            prefetchIntents.sort().join(','),
+            prefetchPriceTiers.sort().join(','),
+            prefetchBudgetMin,
+            prefetchBudgetMax,
+            prefetchTravelMode,
+            prefetchConstraintType,
+            prefetchConstraintValue,
+            prefetchDatetimePref,
+            prefetchDateOption,
+            prefetchTimeSlot ?? '',
+            nextSeed,
+          ],
+          queryFn: () => deckService.fetchDeck({
+            location: activeDeckLocation,
+            categories: prefetchCategories,
+            intents: prefetchIntents,
+            priceTiers: prefetchPriceTiers,
+            budgetMin: prefetchBudgetMin,
+            budgetMax: prefetchBudgetMax,
+            travelMode: prefetchTravelMode,
+            travelConstraintType: prefetchConstraintType,
+            travelConstraintValue: prefetchConstraintValue,
+            datetimePref: prefetchDatetimePref,
+            dateOption: prefetchDateOption,
+            timeSlot: prefetchTimeSlot,
+            batchSeed: nextSeed,
+            limit: 20,
+          }),
+          staleTime: 5 * 60 * 1000,
+        });
+      }
     }
-  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, userPrefs, queryClient]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   const previousDeckIdsRef = useRef<string>('');
@@ -799,6 +811,7 @@ export const RecommendationsProvider: React.FC<
 
   const refreshRecommendations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+    queryClient.invalidateQueries({ queryKey: ["session-deck"] });
     queryClient.invalidateQueries({ queryKey: ["userLocation"] });
     queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
   }, [queryClient]);
@@ -806,6 +819,7 @@ export const RecommendationsProvider: React.FC<
   const clearRecommendations = useCallback(() => {
     setRecommendations([]);
     queryClient.removeQueries({ queryKey: ["deck-cards"] });
+    queryClient.removeQueries({ queryKey: ["session-deck"] });
   }, [queryClient]);
 
   // ── Collab params change detector ─────────────────────────────────────
@@ -814,8 +828,8 @@ export const RecommendationsProvider: React.FC<
     if (!isCollaborationMode || !collabDeckParams) return;
     const paramsKey = JSON.stringify(collabDeckParams);
     if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
-      // Collab params changed (preference update) — invalidate deck
-      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      // Collab params changed (preference update) — invalidate session deck
+      queryClient.invalidateQueries({ queryKey: ['session-deck'] });
       setBatchSeed(0);
     }
     prevCollabParamsRef.current = paramsKey;

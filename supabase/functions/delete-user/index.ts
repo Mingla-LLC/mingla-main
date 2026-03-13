@@ -152,7 +152,6 @@ async function cleanupUserData(
     await Promise.allSettled([
       safeDeleteOr("friends", `user_id.eq.${userId},friend_user_id.eq.${userId}`),
       safeDeleteOr("friend_requests", `sender_id.eq.${userId},receiver_id.eq.${userId}`),
-      safeDeleteOr("friend_links", `requester_id.eq.${userId},target_id.eq.${userId}`),
       safeDeleteOr("blocked_users", `blocker_id.eq.${userId},blocked_id.eq.${userId}`),
       safeDeleteOr("muted_users", `muter_id.eq.${userId},muted_id.eq.${userId}`),
     ]);
@@ -198,9 +197,6 @@ async function cleanupUserData(
       safeDelete("app_feedback", "user_id", userId),
       safeDeleteOr("user_reports", `reporter_id.eq.${userId},reported_user_id.eq.${userId}`),
     ]);
-
-    // Must run after saved_people for this user are deleted
-    await safeDelete("saved_people", "linked_user_id", userId);
 
     // ── Pending invites: clean up by user's phone number ──
     // Without this, a new user signing up with the same phone would

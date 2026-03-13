@@ -56,10 +56,7 @@ export type NotificationType =
   | "purchase_complete"
   | "profile_updated"
   | "welcome"
-  | "friend_link_request"
-  | "link_consent_request"
   | "collaboration_invite"
-  | "friend_link_declined"
   | "system";
 
 interface NotificationsModalProps {
@@ -73,10 +70,6 @@ interface NotificationsModalProps {
   onOpenRequestsModal?: () => void;
   onAcceptFriendRequest?: (userId: string, notificationId: string) => void;
   onRejectFriendRequest?: (userId: string, notificationId: string) => void;
-  onAcceptFriendLink?: (linkId: string, notificationId: string) => void;
-  onDeclineFriendLink?: (linkId: string, notificationId: string) => void;
-  onAcceptLinkConsent?: (linkId: string, notificationId: string) => void;
-  onDeclineLinkConsent?: (linkId: string, notificationId: string) => void;
   onAcceptCollabInvite?: (sessionId: string, inviteId: string, notificationId: string) => void;
   onDeclineCollabInvite?: (sessionId: string, inviteId: string, notificationId: string) => void;
 }
@@ -172,10 +165,6 @@ export default function NotificationsModal({
   onOpenRequestsModal,
   onAcceptFriendRequest,
   onRejectFriendRequest,
-  onAcceptFriendLink,
-  onDeclineFriendLink,
-  onAcceptLinkConsent,
-  onDeclineLinkConsent,
   onAcceptCollabInvite,
   onDeclineCollabInvite,
 }: NotificationsModalProps) {
@@ -216,14 +205,10 @@ export default function NotificationsModal({
       item.type === "friend_request" ||
       item.type === "friend_accepted" ||
       item.type === "board_invite" ||
-      item.type === "friend_link_request" ||
-      item.type === "link_consent_request" ||
       item.type === "collaboration_invite";
 
     const isActionable =
       item.type === "friend_request" ||
-      item.type === "friend_link_request" ||
-      item.type === "link_consent_request" ||
       item.type === "collaboration_invite";
     const iconGradient = getIconGradient(item.iconColor);
 
@@ -241,9 +226,8 @@ export default function NotificationsModal({
       } else if (!isActionable) {
         onNotificationPress(item);
       }
-      // For other actionable types (friend_link_request, link_consent_request,
-      // collaboration_invite), the card tap is a no-op — users interact via
-      // the accept/decline buttons instead.
+      // For other actionable types (collaboration_invite), the card tap is
+      // a no-op — users interact via the accept/decline buttons instead.
     };
 
     const cardContent = (
@@ -355,10 +339,6 @@ export default function NotificationsModal({
                 setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onAcceptFriendRequest?.(item.data?.requestId, item.id);
-                } else if (item.type === "friend_link_request") {
-                  onAcceptFriendLink?.(item.data?.linkId, item.id);
-                } else if (item.type === "link_consent_request") {
-                  onAcceptLinkConsent?.(item.data?.linkId, item.id);
                 } else if (item.type === "collaboration_invite") {
                   onAcceptCollabInvite?.(item.data?.sessionId, item.data?.inviteId, item.id);
                 }
@@ -384,10 +364,6 @@ export default function NotificationsModal({
                 setPendingActionId(item.id);
                 if (item.type === "friend_request") {
                   onRejectFriendRequest?.(item.data?.requestId, item.id);
-                } else if (item.type === "friend_link_request") {
-                  onDeclineFriendLink?.(item.data?.linkId, item.id);
-                } else if (item.type === "link_consent_request") {
-                  onDeclineLinkConsent?.(item.data?.linkId, item.id);
                 } else if (item.type === "collaboration_invite") {
                   onDeclineCollabInvite?.(item.data?.sessionId, item.data?.inviteId, item.id);
                 }

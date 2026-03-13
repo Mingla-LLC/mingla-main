@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { unifiedCardToRecommendation } from './deckService';
+import { curatedToRecommendation } from '../utils/cardConverters';
 import { Recommendation } from '../types/recommendation';
 import { extractFunctionError } from '../utils/edgeFunctionError';
 
@@ -30,7 +31,11 @@ export async function fetchSessionDeck(
     throw new Error('Empty response from generate-session-deck');
   }
 
-  const cards = (data.cards || []).map(unifiedCardToRecommendation);
+  // Curated cards (from generate-curated-experiences) have a `stops` array;
+  // regular cards (from discover-cards) do not. Use the correct converter.
+  const cards = (data.cards || []).map((card: any) =>
+    card.stops ? curatedToRecommendation(card) : unifiedCardToRecommendation(card)
+  );
 
   return {
     cards,

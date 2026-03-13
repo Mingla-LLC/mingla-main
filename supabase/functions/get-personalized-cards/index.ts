@@ -177,21 +177,20 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Verify accepted link ───────────────────────────────────────────────
+    // ── Verify friendship ─────────────────────────────────────────────────
 
-    const { data: acceptedLink, error: linkError } = await supabaseAdmin
-      .from("friend_links")
+    const { data: friendRow, error: friendError } = await supabaseAdmin
+      .from("friends")
       .select("id")
       .or(
-        `and(requester_id.eq.${currentUserId},target_id.eq.${linkedUserId}),and(requester_id.eq.${linkedUserId},target_id.eq.${currentUserId})`
+        `and(user_id.eq.${currentUserId},friend_user_id.eq.${linkedUserId}),and(user_id.eq.${linkedUserId},friend_user_id.eq.${currentUserId})`
       )
       .eq("status", "accepted")
-      .eq("link_status", "consented")
       .maybeSingle();
 
-    if (linkError || !acceptedLink) {
+    if (friendError || !friendRow) {
       return new Response(
-        JSON.stringify({ error: "No accepted link found between these users" }),
+        JSON.stringify({ error: "No accepted friendship found between these users" }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

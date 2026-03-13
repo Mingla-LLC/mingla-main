@@ -31,7 +31,6 @@ interface AddPersonModalProps {
   visible: boolean;
   onClose: () => void;
   onPersonCreated: (personId: string) => void;
-  onStartLinkFlow: () => void;
 }
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -52,13 +51,12 @@ export default function AddPersonModal({
   visible,
   onClose,
   onPersonCreated,
-  onStartLinkFlow,
 }: AddPersonModalProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((state) => state.user);
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(2);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [birthday, setBirthday] = useState<Date | null>(null);
@@ -69,7 +67,7 @@ export default function AddPersonModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetState = useCallback(() => {
-    setStep(1);
+    setStep(2);
     setName("");
     setNameError(null);
     setBirthday(null);
@@ -84,12 +82,6 @@ export default function AddPersonModal({
     resetState();
     onClose();
   }, [resetState, onClose]);
-
-  const handleLinkFlow = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    handleClose();
-    onStartLinkFlow();
-  }, [handleClose, onStartLinkFlow]);
 
   const handleNextStep = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -189,47 +181,6 @@ export default function AddPersonModal({
 
   const renderStepContent = () => {
     switch (step) {
-      case 1:
-        return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Would you like to link a friend?</Text>
-            <Text style={styles.stepDescription}>
-              Link with a Mingla user to get personalized recommendations based on their activity, or add someone manually.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.choiceCard}
-              onPress={handleLinkFlow}
-              activeOpacity={0.7}
-            >
-              <View style={styles.choiceIconContainer}>
-                <Ionicons name="link-outline" size={s(32)} color="#eb7825" />
-              </View>
-              <Text style={styles.choiceTitle}>Link a Friend</Text>
-              <Text style={styles.choiceSubtitle}>
-                Search for a Mingla user and send a link request
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.choiceCardSecondary}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setStep(2);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.choiceIconContainerSecondary}>
-                <Ionicons name="person-add-outline" size={s(32)} color="#9ca3af" />
-              </View>
-              <Text style={styles.choiceTitle}>Add Manually</Text>
-              <Text style={styles.choiceSubtitle}>
-                Enter their details and describe them for recommendations
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-
       case 2:
         return (
           <View style={styles.stepContainer}>
@@ -433,7 +384,7 @@ export default function AddPersonModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerPlaceholder}>
-              {step > 1 && (
+              {step > 2 && (
                 <TouchableOpacity
                   onPress={handlePrevStep}
                   activeOpacity={0.7}
@@ -445,9 +396,7 @@ export default function AddPersonModal({
             </View>
             <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Add Person</Text>
-              {step > 1 && (
-                <Text style={styles.headerSubtitle}>Step {step - 1} of 5</Text>
-              )}
+              <Text style={styles.headerSubtitle}>Step {step - 1} of 5</Text>
             </View>
             <View style={styles.headerPlaceholder}>
               <TouchableOpacity
@@ -470,7 +419,7 @@ export default function AddPersonModal({
           </KeyboardAwareScrollView>
 
           {/* Bottom buttons */}
-          {step > 1 && (
+          {step >= 2 && (
             <View style={styles.buttonsContainer}>
               {step < 6 ? (
                 <TouchableOpacity
@@ -589,55 +538,7 @@ const styles = StyleSheet.create({
     lineHeight: s(20),
     marginBottom: s(20),
   },
-  // Step 1 — Choice cards
-  choiceCard: {
-    backgroundColor: "#ffffff",
-    borderWidth: 2,
-    borderColor: "#eb7825",
-    borderRadius: s(16),
-    padding: s(20),
-    marginBottom: s(16),
-    alignItems: "center",
-  },
-  choiceCardSecondary: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: s(16),
-    padding: s(20),
-    alignItems: "center",
-  },
-  choiceIconContainer: {
-    width: s(56),
-    height: s(56),
-    borderRadius: s(28),
-    backgroundColor: "#fff7ed",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: s(12),
-  },
-  choiceIconContainerSecondary: {
-    width: s(56),
-    height: s(56),
-    borderRadius: s(28),
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: s(12),
-  },
-  choiceTitle: {
-    fontSize: s(16),
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: s(4),
-  },
-  choiceSubtitle: {
-    fontSize: s(13),
-    color: "#6b7280",
-    textAlign: "center",
-    lineHeight: s(18),
-  },
-  // Step 2 — Name
+  // Step 1 — Name
   fieldContainer: {
     marginBottom: s(20),
   },

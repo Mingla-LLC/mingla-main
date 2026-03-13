@@ -26,7 +26,6 @@ import { COUNTRIES, getDefaultCountryCode, getCountryByCode } from '../constants
 import { CountryData } from '../types/onboarding';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite } from '../services/phoneLookupService';
-import { useSendFriendLink } from '../hooks/useFriendLinks';
 import { useAppStore } from '../store/appStore';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
@@ -126,7 +125,6 @@ export default function CollaborationSessions({
   const [phoneActionError, setPhoneActionError] = useState('');
   const [phoneInvitees, setPhoneInvitees] = useState<{ phoneE164: string }[]>([]);
 
-  const sendLinkMutation = useSendFriendLink();
   const { user } = useAppStore();
 
   // Build E.164 phone
@@ -307,11 +305,16 @@ export default function CollaborationSessions({
             setPhoneActionStatus('idle');
           }, 1500);
         } else if (phoneLookupResult.friendship_status === 'none') {
-          // Not friends yet — send friend request
+          // Not friends yet — send friend request via friend_requests table
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          await sendLinkMutation.mutateAsync({
-            targetUserId: lookupUser.id,
-          });
+          if (user) {
+            await supabase
+              .from('friend_requests')
+              .upsert(
+                { sender_id: user.id, receiver_id: lookupUser.id, status: 'pending' },
+                { onConflict: 'sender_id,receiver_id' }
+              );
+          }
           setPhoneActionStatus('sent');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert(
@@ -354,7 +357,7 @@ export default function CollaborationSessions({
       setPhoneActionError(err instanceof Error ? err.message : 'Something went wrong');
       setPhoneActionStatus('error');
     }
-  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, sendLinkMutation, user, selectedFriends, phoneInvitees]);
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, selectedFriends, phoneInvitees]);
 
   const getPhoneActionLabel = (): string => {
     if (phoneLookupLoading) return 'Looking up...';

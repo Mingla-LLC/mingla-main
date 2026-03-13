@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as savedPeopleService from "../services/savedPeopleService";
-import { unlinkFriend } from "../services/friendLinkService";
 
 export const savedPeopleKeys = {
   all: ["saved-people"] as const,
@@ -49,15 +48,9 @@ export function useDeletePerson() {
   return useMutation({
     mutationFn: async ({
       personId,
-      linkId,
     }: {
       personId: string;
-      linkId?: string | null;
     }) => {
-      // If the person is linked, unlink first
-      if (linkId) {
-        await unlinkFriend(linkId);
-      }
       await savedPeopleService.deleteSavedPerson(personId);
     },
     onSuccess: () => {
@@ -65,19 +58,6 @@ export function useDeletePerson() {
     },
     onError: (error: Error) => {
       console.error('[DeletePerson] Error:', error.message);
-    },
-  });
-}
-
-export function useRefreshLinkedProfile() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: savedPeopleService.refreshLinkedPersonProfile,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-    },
-    onError: (error: Error) => {
-      console.error('[RefreshLinkedProfile] Error:', error.message);
     },
   });
 }

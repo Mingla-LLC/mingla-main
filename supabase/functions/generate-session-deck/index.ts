@@ -236,17 +236,6 @@ serve(async (req: Request) => {
     // ── Compute preferences hash ──
     const preferencesHash = await computePreferencesHash(aggregated);
 
-    // ── Get current deck version ──
-    const { data: latestDeck } = await supabaseAdmin
-      .from('session_decks')
-      .select('deck_version')
-      .eq('session_id', sessionId)
-      .order('deck_version', { ascending: false })
-      .limit(1)
-      .single();
-
-    const currentVersion = latestDeck?.deck_version ?? 1;
-
     // ── Check cache: same hash + batch_seed and not expired ──
     const { data: cachedDeck } = await supabaseAdmin
       .from('session_decks')
@@ -324,47 +313,137 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Call discover-cards internally via HTTP ──
-    console.log(`[generate-session-deck] Generating deck for session ${sessionId}, batch ${batchSeed}, categories=[${aggregated.categories}]`);
+    // ── Build parallel fetch promises (mirrors solo deckService dual pipeline) ──
+    console.log(`[generate-session-deck] Generating deck for session ${sessionId}, batch ${batchSeed}, categories=[${aggregated.categories}], intents=[${aggregated.intents}]`);
 
-    const discoverUrl = `${SUPABASE_URL}/functions/v1/discover-cards`;
-    const discoverResponse = await fetch(discoverUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'apikey': Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      },
-      body: JSON.stringify({
-        categories: aggregated.categories,
-        location,
-        budgetMax: aggregated.budgetMax,
-        travelMode: aggregated.travelMode,
-        travelConstraintValue: aggregated.travelConstraintValue,
-        datetimePref: aggregated.datetimePref,
-        dateOption: aggregated.datetimePref ? 'specific' : 'now',
-        batchSeed,
-        limit: 20,
-        priceTiers: aggregated.priceTiers,
-      }),
-    });
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const commonHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'apikey': anonKey,
+    };
 
-    if (!discoverResponse.ok) {
-      const errorText = await discoverResponse.text();
-      console.error(`[generate-session-deck] discover-cards failed:`, errorText);
+    // Pipeline 1: Category cards via discover-cards
+    const categoryPromise: Promise<any[]> = (async () => {
+      if (aggregated.categories.length === 0) return [];
+      try {
+        const discoverUrl = `${SUPABASE_URL}/functions/v1/discover-cards`;
+        const resp = await fetch(discoverUrl, {
+          method: 'POST',
+          headers: commonHeaders,
+          body: JSON.stringify({
+            categories: aggregated.categories,
+            location,
+            budgetMax: aggregated.budgetMax,
+            travelMode: aggregated.travelMode,
+            travelConstraintValue: aggregated.travelConstraintValue,
+            datetimePref: aggregated.datetimePref,
+            dateOption: aggregated.datetimePref ? 'specific' : 'now',
+            batchSeed,
+            limit: 20,
+            priceTiers: aggregated.priceTiers,
+          }),
+        });
+        if (!resp.ok) {
+          console.error(`[generate-session-deck] discover-cards failed:`, await resp.text());
+          return [];
+        }
+        const data = await resp.json();
+        return data.cards || [];
+      } catch (err) {
+        console.error(`[generate-session-deck] discover-cards error:`, err);
+        return [];
+      }
+    })();
+
+    // Pipeline 2: Curated experience cards via generate-curated-experiences (one call per intent)
+    const curatedPromise: Promise<any[][]> = (async () => {
+      if (aggregated.intents.length === 0) return [];
+      const curatedUrl = `${SUPABASE_URL}/functions/v1/generate-curated-experiences`;
+      const curatedLimit = Math.ceil(20 / (aggregated.categories.length + aggregated.intents.length) || 5);
+      return Promise.all(
+        aggregated.intents.map(async (intent: string): Promise<any[]> => {
+          try {
+            const resp = await fetch(curatedUrl, {
+              method: 'POST',
+              headers: commonHeaders,
+              body: JSON.stringify({
+                experienceType: intent,
+                location,
+                budgetMin: aggregated.budgetMin,
+                budgetMax: aggregated.budgetMax,
+                travelMode: aggregated.travelMode,
+                travelConstraintType: 'time',
+                travelConstraintValue: aggregated.travelConstraintValue,
+                datetimePref: aggregated.datetimePref,
+                batchSeed,
+                selectedCategories: aggregated.categories.length > 0 ? aggregated.categories : undefined,
+                limit: curatedLimit,
+                skipDescriptions: true,
+              }),
+            });
+            if (!resp.ok) {
+              console.warn(`[generate-session-deck] curated "${intent}" failed:`, await resp.text());
+              return [];
+            }
+            const data = await resp.json();
+            return data.cards || [];
+          } catch (err) {
+            console.warn(`[generate-session-deck] curated "${intent}" error:`, err);
+            return [];
+          }
+        })
+      );
+    })();
+
+    // Run both pipelines in parallel
+    const [categoryResult, curatedResult] = await Promise.allSettled([
+      categoryPromise,
+      curatedPromise,
+    ]);
+
+    const categoryCards = categoryResult.status === 'fulfilled' ? categoryResult.value : [];
+    const curatedArrays = curatedResult.status === 'fulfilled' ? curatedResult.value : [];
+
+    // Flatten curated arrays into a single stream
+    const curatedCards: any[] = [];
+    for (const arr of curatedArrays) {
+      curatedCards.push(...arr);
+    }
+
+    // 1:1 interleave: alternate category and curated cards (mirrors solo deckService)
+    const cards: any[] = [];
+    const maxLen = Math.max(categoryCards.length, curatedCards.length);
+    const seen = new Set<string>();
+    for (let i = 0; i < maxLen && cards.length < 20; i++) {
+      if (i < categoryCards.length) {
+        const id = categoryCards[i].placeId || categoryCards[i].id || `cat_${i}`;
+        if (!seen.has(id)) {
+          seen.add(id);
+          cards.push(categoryCards[i]);
+        }
+      }
+      if (i < curatedCards.length && cards.length < 20) {
+        const id = curatedCards[i].id || `cur_${i}`;
+        if (!seen.has(id)) {
+          seen.add(id);
+          cards.push(curatedCards[i]);
+        }
+      }
+    }
+
+    if (categoryCards.length === 0 && curatedCards.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'Failed to generate deck from discover-cards' }),
+        JSON.stringify({ error: 'No cards generated from either pipeline' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const discoverData = await discoverResponse.json();
-    const cards = discoverData.cards || [];
-    const totalCards = discoverData.total || cards.length;
-    const hasMore = discoverData.metadata?.hasMore ?? false;
+    const totalCards = cards.length;
+    // hasMore if either pipeline could produce more
+    const hasMore = categoryCards.length >= 20 || curatedCards.length > 0;
 
-    // ── Determine new deck version ──
-    // If hash differs from latest deck's hash, increment version
+    // ── Determine new deck version (single query, fixes MED-001) ──
     const { data: latestForSession } = await supabaseAdmin
       .from('session_decks')
       .select('deck_version, preferences_hash')
@@ -373,12 +452,14 @@ serve(async (req: Request) => {
       .limit(1)
       .single();
 
+    const baseVersion = latestForSession?.deck_version ?? 1;
     const newVersion = latestForSession && latestForSession.preferences_hash !== preferencesHash
-      ? (latestForSession.deck_version ?? 0) + 1
-      : currentVersion;
+      ? baseVersion + 1
+      : baseVersion;
 
-    // ── Store deck — ON CONFLICT DO NOTHING to handle race conditions ──
-    const { error: insertError } = await supabaseAdmin
+    // ── Store deck — INSERT with ignoreDuplicates (ON CONFLICT DO NOTHING) ──
+    // This ensures the first writer wins and Realtime INSERT fires exactly once.
+    const { data: insertedDeck, error: insertError } = await supabaseAdmin
       .from('session_decks')
       .upsert({
         session_id: sessionId,
@@ -392,11 +473,16 @@ serve(async (req: Request) => {
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       }, {
         onConflict: 'session_id,deck_version,batch_seed',
-      });
+        ignoreDuplicates: true,
+      })
+      .select()
+      .single();
 
-    if (insertError) {
-      console.warn(`[generate-session-deck] Upsert warning:`, insertError.message);
-      // If upsert failed due to conflict, fetch the existing row
+    // If insert was ignored (conflict / no rows returned), fetch the existing row
+    if (!insertedDeck || insertError) {
+      if (insertError) {
+        console.warn(`[generate-session-deck] Insert conflict or error:`, insertError.message);
+      }
       const { data: existingDeck } = await supabaseAdmin
         .from('session_decks')
         .select('*')
@@ -406,6 +492,7 @@ serve(async (req: Request) => {
         .single();
 
       if (existingDeck) {
+        console.log(`[generate-session-deck] Returning existing deck (conflict): version=${newVersion}, batch=${batchSeed}`);
         return new Response(
           JSON.stringify({
             deckVersion: existingDeck.deck_version,
@@ -420,7 +507,7 @@ serve(async (req: Request) => {
       }
     }
 
-    console.log(`[generate-session-deck] Stored deck: version=${newVersion}, batch=${batchSeed}, cards=${cards.length}`);
+    console.log(`[generate-session-deck] Stored deck: version=${newVersion}, batch=${batchSeed}, cards=${cards.length}, curated=${curatedCards.length}`);
 
     return new Response(
       JSON.stringify({

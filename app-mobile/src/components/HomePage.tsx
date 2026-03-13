@@ -19,8 +19,6 @@ import FriendsModal from "./FriendsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
-import { useRespondToFriendLink } from "../hooks/useFriendLinks";
-import { useRespondLinkConsent } from "../hooks/useLinkConsent";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { supabase } from "../services/supabase";
 import { useScreenLogger } from "../hooks/useScreenLogger";
@@ -166,8 +164,6 @@ export default function HomePage({
     // For actionable types (with accept/decline buttons), don't close or navigate
     const actionableTypes = [
       "friend_request",
-      "friend_link_request",
-      "link_consent_request",
       "collaboration_invite",
     ];
     if (!actionableTypes.includes(notification.type)) {
@@ -205,45 +201,6 @@ export default function HomePage({
       console.error("Error rejecting friend request:", error);
     } finally {
       await inAppNotificationService.remove(notificationId);
-    }
-  };
-
-  const respondToFriendLink = useRespondToFriendLink();
-  const respondToLinkConsent = useRespondLinkConsent();
-
-  const handleAcceptFriendLink = async (linkId: string, notificationId: string) => {
-    try {
-      await respondToFriendLink.mutateAsync({ linkId, action: "accept" });
-      await inAppNotificationService.remove(notificationId);
-    } catch (error) {
-      console.error("Failed to accept friend link:", error);
-    }
-  };
-
-  const handleDeclineFriendLink = async (linkId: string, notificationId: string) => {
-    try {
-      await respondToFriendLink.mutateAsync({ linkId, action: "decline" });
-      await inAppNotificationService.remove(notificationId);
-    } catch (error) {
-      console.error("Failed to decline friend link:", error);
-    }
-  };
-
-  const handleAcceptLinkConsent = async (linkId: string, notificationId: string) => {
-    try {
-      await respondToLinkConsent.mutateAsync({ linkId, action: "accept" });
-      await inAppNotificationService.remove(notificationId);
-    } catch (error) {
-      console.error("Failed to accept link consent:", error);
-    }
-  };
-
-  const handleDeclineLinkConsent = async (linkId: string, notificationId: string) => {
-    try {
-      await respondToLinkConsent.mutateAsync({ linkId, action: "decline" });
-      await inAppNotificationService.remove(notificationId);
-    } catch (error) {
-      console.error("Failed to decline link consent:", error);
     }
   };
 
@@ -487,10 +444,6 @@ export default function HomePage({
           onOpenRequestsModal={handleOpenFriendRequestsModal}
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onRejectFriendRequest={handleRejectFriendRequest}
-          onAcceptFriendLink={handleAcceptFriendLink}
-          onDeclineFriendLink={handleDeclineFriendLink}
-          onAcceptLinkConsent={handleAcceptLinkConsent}
-          onDeclineLinkConsent={handleDeclineLinkConsent}
           onAcceptCollabInvite={handleAcceptCollabInvite}
           onDeclineCollabInvite={handleDeclineCollabInvite}
         />

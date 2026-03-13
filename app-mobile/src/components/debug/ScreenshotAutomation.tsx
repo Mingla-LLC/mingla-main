@@ -176,10 +176,6 @@ const STEPS: ScreenshotStep[] = [
     navigate: (n) => { /* MessageInterface should still be open */ } },
   { filename: 'Connections Modals - Block User.png', label: 'Block User (needs chat open)',
     navigate: (n) => { /* MessageInterface should still be open */ } },
-  { filename: 'Connections Modals - Add Friend View.png', label: 'Add Friend View',
-    navigate: (n) => { n.resetOverlays(); n.setCurrentPage('connections');
-      setTimeout(() => trigger('triggerAddFriendView'), 800); },
-    extraDelay: 500 },
   { filename: 'Connections Modals - Requests View.png', label: 'Requests View',
     navigate: (n) => { n.resetOverlays(); n.setCurrentPage('connections');
       setTimeout(() => trigger('triggerRequestsView'), 800); },

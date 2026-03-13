@@ -80,7 +80,6 @@ import { ScreenshotAutomation } from "../src/components/debug/ScreenshotAutomati
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
-import { usePendingLinkConsents } from "../src/hooks/useLinkConsent";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 
 const TAB_BAR_ICON_SIZE = ms(20);
@@ -302,22 +301,6 @@ function AppContent() {
       }
 
       switch (data.type) {
-        case "friend_link_request":
-          inAppNotificationService.notifyFriendLinkRequest(
-            (data.requesterName as string) || "Someone",
-            data.linkId as string,
-            data.requesterId as string,
-            data.requesterAvatarUrl as string | undefined
-          );
-          break;
-        case "link_consent_request":
-          inAppNotificationService.notifyLinkConsentRequest(
-            (data.friendName as string) || "Someone",
-            data.linkId as string,
-            data.friendUserId as string,
-            data.friendAvatarUrl as string | undefined
-          );
-          break;
         case "collaboration_invite_received":
           inAppNotificationService.notifyCollaborationInvite(
             (data.sessionName as string) || "a session",
@@ -325,20 +308,6 @@ function AppContent() {
             data.sessionId as string,
             data.inviteId as string,
             data.inviterAvatarUrl as string | undefined
-          );
-          break;
-        case "friend_link_declined":
-          inAppNotificationService.notifyFriendLinkDeclined(
-            (data.declinedByName as string) || "Someone"
-          );
-          break;
-        case "link_consent_completed":
-          inAppNotificationService.add(
-            "system",
-            (data.title as string) || `You and ${(data.friendName as string) || "your friend"} are now linked!`,
-            (data.body as string) || "You can now see each other's details in For You.",
-            { page: "discover" },
-            { linkId: data.linkId }
           );
           break;
         case "collaboration_invite_response":
@@ -372,10 +341,7 @@ function AppContent() {
 
     // Navigation targets per notification type (used by click handler only)
     const NAV_TARGETS: Record<string, string> = {
-      friend_link_request: "discover",
-      link_consent_request: "connections",
       collaboration_invite_received: "home",
-      link_consent_completed: "discover",
       collaboration_invite_response: "home",
       collaboration_invite_sent: "home",
     };
@@ -414,12 +380,6 @@ function AppContent() {
     },
     enabled: true,
   });
-
-  // Pending link consent count for badge on Connections tab
-  const { data: pendingLinkConsents } = usePendingLinkConsents(
-    isAuthenticated && hasCompletedOnboarding ? user?.id : undefined
-  );
-  const pendingConsentCount = pendingLinkConsents?.length ?? 0;
 
   // Transform boardsSessions to CollaborationSession format for the sessions bar
   const collaborationSessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => {
@@ -2096,9 +2056,6 @@ function AppContent() {
                                       : totalUnreadMessages}
                                   </Text>
                                 </View>
-                              )}
-                              {totalUnreadMessages === 0 && pendingConsentCount > 0 && (
-                                <View style={styles.tabBadgeDot} />
                               )}
                             </View>
                             <Text

@@ -167,8 +167,8 @@ export default function PersonHolidayView({
     personName: person.name,
     gender: person.gender,
     description: person.description,
-    linkedUserId: person.linked_user_id ?? undefined,
-  }), [person.id, person.name, person.gender, person.description, person.linked_user_id]);
+    linkedUserId: undefined,
+  }), [person.id, person.name, person.gender, person.description]);
 
   const { data: aiSummary, isLoading: isLoadingSummary } = useAiSummary(aiSummaryParams);
 
@@ -177,7 +177,7 @@ export default function PersonHolidayView({
     personId: person.id,
     description: person.description,
     location,
-    linkedUserId: person.linked_user_id ?? undefined,
+    linkedUserId: undefined,
     enabled: true,
   });
   const heroCards = heroCardsData?.cards ?? [];
@@ -205,7 +205,7 @@ export default function PersonHolidayView({
         personId: person.id,
         description: person.description,
         location,
-        linkedUserId: person.linked_user_id ?? undefined,
+        linkedUserId: undefined,
         excludeCardIds: allHeroCardIds,
       },
       {
@@ -379,7 +379,7 @@ export default function PersonHolidayView({
               isExpanded={expandedHolidayId === holiday.id}
               isArchived={false}
               personId={person.id}
-              linkedUserId={person.linked_user_id ?? undefined}
+              linkedUserId={undefined}
               location={location}
               onToggle={() => handleToggleHoliday(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}

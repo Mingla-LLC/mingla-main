@@ -15,15 +15,12 @@ interface ScreenshotStore {
 
   // Discover child modals
   triggerAddPerson: boolean;
-  triggerLinkFriend: boolean;
-
   // Profile child modals
   triggerEditBio: boolean;
   triggerEditInterests: boolean;
 
   // Connections child modals
   triggerMessageInterface: boolean;
-  triggerAddFriendView: boolean;
   triggerRequestsView: boolean;
   triggerBlockedUsers: boolean;
 
@@ -52,11 +49,9 @@ const INITIAL_STATE = {
   triggerDeckHistory: false,
   triggerDismissedCards: false,
   triggerAddPerson: false,
-  triggerLinkFriend: false,
   triggerEditBio: false,
   triggerEditInterests: false,
   triggerMessageInterface: false,
-  triggerAddFriendView: false,
   triggerRequestsView: false,
   triggerBlockedUsers: false,
   triggerBoardSettings: false,

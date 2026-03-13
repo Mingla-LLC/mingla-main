@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings -- combining AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 52 Deno serverless functions |
+| Edge Functions | 48 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -37,7 +37,7 @@ Mingla/
 │   ├── src/
 │   │   ├── components/                  # ~100+ UI components
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
-│   │   │   ├── connections/            # AddFriendView, RequestsView, PillFilters
+│   │   │   ├── connections/            # RequestsView, FriendsManagementList, PillFilters
 │   │   │   ├── board/                  # Board-related components
 │   │   │   ├── expandedCard/           # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, etc.
@@ -55,7 +55,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 52 Deno edge functions
+│   ├── functions/                      # 48 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
@@ -88,8 +88,8 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
-**Step 5 -- Social** -- add friends by phone (persisted to DB immediately), link consent prompts (auto-skipped if none pending), collaboration session management (always shown, even if friends step is skipped), then choose a path:
-- **Path A (Sync):** Select friends to sync with, record audio descriptions, friend link requests sent automatically. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
+**Step 5 -- Social** -- collaboration session management, then choose a path:
+- **Path A (Sync):** Select friends to sync with, record audio descriptions. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
 - **Path B (Add person):** Name, birthday, gender, then audio recording. Creates a saved person with AI-generated experience recommendations.
 - **Skip:** Goes straight to the app.
 
@@ -123,19 +123,11 @@ The person-centric "For You" view provides personalized recommendations for each
 - **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
 
-### Link a Friend
-
-The "Link a Friend" flow supports two methods:
-
-- **Search Mingla** -- Search existing Mingla users by username and send friend link requests.
-- **Invite by Phone** -- Enter a phone number with country picker (defaults to device locale), send an SMS invite via Twilio. When the invited person signs up and verifies their phone, both users become basic friends. Profile linkage requires separate consent from both users. Rate limited to 10 invites per 24 hours.
-
 ### Connect Page
 
 The Connect page manages friend relationships and real-time messaging:
 
-- **Add Friends** -- Phone number entry with country picker (reuses full-screen CountryPickerModal with ISO code search), debounced phone lookup, send friend link requests or invite non-users via Share. "Sent" tab shows pending requests with cancel option.
-- **Requests** -- View and respond to pending friend link requests with accept/decline actions.
+- **Friends Management Modal** -- Two-tab modal: "Friends" tab shows all accepted friends with search, three-dot dropdown menu (Mute/Unmute, Remove Friend, Block User, Report User); "Requests" tab shows pending friend requests with accept/decline. Badge on Requests tab shows pending count.
 - **Blocked** -- Manage blocked users.
 - **Invite** -- Share invite link via system share sheet.
 - **Pill Filters** -- Horizontal scrollable pill navigation with badge counts for pending requests.
@@ -145,33 +137,20 @@ The Connect page manages friend relationships and real-time messaging:
 - **Presence & Typing** -- Real-time online/offline status via Supabase Realtime presence channels with 30-second heartbeat. 60-second stale threshold for ghost detection. Typing indicators via broadcast (no DB writes). 3-second auto-stop, 4-second expiry.
 - **Inverted FlatList** -- Standard React Native chat pattern replacing ScrollView. Prevents scroll jump on load-more. New messages appear at bottom without manual scroll management.
 
-### Friends Modal
+### Friends Management Modal
 
-The Friends Modal (accessible from the Home page) provides a tabbed interface:
+The Friends Management Modal (accessible from the Chats page header via the people icon) provides a two-tab interface:
 
-- **Friends Tab** -- Searchable list of all friends with swipeable rows. Swipe reveals 4 actions: Mute, Block, Report, Remove. Message button opens the chat.
-- **Requests Tab** -- Incoming friend requests with accept/decline. Badge shows pending count. Processed requests animate out (slide + fade after 1.2s).
+- **Friends Tab** -- Searchable list of all accepted friends. Each friend row shows avatar (with initials fallback), display name, username, and muted badge. Three-dot dropdown menu offers: Mute/Unmute (with loading state), Remove Friend (with confirmation alert), Block User (opens BlockUserModal), Report User (opens ReportUserModal). Tapping outside closes open dropdowns.
+- **Requests Tab** -- Incoming friend requests with accept/decline buttons. Red badge on the tab shows pending count.
 
-### Friend Links System
+### Phone Invites
 
-- Friend link requests sent via `send-friend-link` edge function with push notifications
 - Phone invites via `send-phone-invite` edge function with Twilio SMS and basic friendship on signup
-- Mirror writes to legacy `friend_requests` table preserve referral credit triggers (upsert handles re-sends)
-- Auto-convert trigger creates `friend_links` + `friends` rows as basic friendship when invited users sign up (no auto-linking)
-- **Deferred friend link intents:** sending a friend link to a non-Mingla phone number stores a `pending_friend_link_intents` row. When the person signs up and accepts the friend request, the trigger auto-converts the intent into a real friend link request
-- Two-phase consent: accepting a friend request creates basic friendship only. Profile linkage (sharing name, birthday, gender, avatar) requires explicit consent from both users via `respond-link-consent`. Consent uses atomic `SELECT FOR UPDATE` locking to prevent race conditions when both users tap Accept simultaneously
-- **Onboarding consent sub-step:** after the friends step in onboarding, if any accepted friend links have pending consent, a consent sub-step auto-appears. If no pending consents exist, the step auto-skips silently
-- Link consent prompts appear in the Connections page "Requests" panel and in the notification sheet with accept/decline buttons
-- Post-onboarding badge dot on Connections tab when pending link consents exist
-- Re-initiation: users can re-initiate declined link consent via the add person flow, resetting the consent state
-- **Decline notifications:** declining a friend link sends a tactful push notification to the requester ("{name} isn't available to connect right now")
-- **Notification sheet action buttons:** friend link requests, link consent prompts, and collaboration invites all show accept/decline buttons in the notification sheet
-- **Push-to-in-app notification pipeline:** push notifications received in foreground or tapped from background are converted to in-app notifications with action buttons. Handles 7 notification types: friend_link_request, link_consent_request, collaboration_invite_received, friend_link_declined, link_consent_completed, collaboration_invite_response, collaboration_invite_sent
-- Cross-invalidation of React Query caches on consent response (link consent + saved people + friend links + friend link intents)
-- Realtime subscriptions for `pending_invites`, `saved_people`, `pending_friend_link_intents`, `messages`, `friends`, and `calendar_entries` tables
-- Saved people entries created for every synced friend during onboarding (not gated on audio recording)
-- Unified visibility: onboarding Step 5 and ConnectionsPage read from both `friend_requests` and `friend_links`, with Realtime subscriptions for instant updates and correct routing per source system
-- `lookup-phone` checks both `friends` and `friend_links` tables for friendship/pending status
+- Rate limited to 10 invites per 24 hours
+- Push-to-in-app notification pipeline for friend requests and collaboration invites
+- Realtime subscriptions for `pending_invites`, `saved_people`, `messages`, `friends`, and `calendar_entries` tables
+- `lookup-phone` checks `friends` and `friend_requests` tables for friendship/pending status
 
 ### AI-Powered Recommendations
 - Experience cards built from real Google Places data, enriched by GPT-4o-mini
@@ -284,13 +263,11 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `friend_requests` | Legacy friend request lifecycle with RLS (used for referral credit triggers) |
+| `friend_requests` | Friend request lifecycle with RLS |
 | `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
-| `friend_links` | Friend link requests with two-phase consent (pending/accepted + link_status: none/pending_consent/consented/declined) |
 | `blocked_users` | User blocks |
-| `pending_invites` | Phone invites for non-app users (auto-converts to pending friend_links + friend_requests on signup; user must explicitly accept) |
+| `pending_invites` | Phone invites for non-app users (auto-converts to friend_requests on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
-| `pending_friend_link_intents` | Deferred friend link requests for non-Mingla users (pending/converted/cancelled state machine, converts when friend request is accepted) |
 | `referral_credits` | Referral credit audit log |
 
 ### Chat & Presence Tables
@@ -362,10 +339,6 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 |----------|---------|
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
-| `send-friend-link` | Send friend link invitations (with referral mirror write + re-initiation after declined consent + phone-based deferred intent for non-Mingla users) |
-| `respond-friend-link` | Process friend link responses (creates basic friendship + initiates consent flow + decline push notification) |
-| `respond-link-consent` | Process link consent responses (atomic RPC with row-level locking, creates linked saved_people when both consent) |
-| `unlink-friend` | Remove friend connections (requires consented link_status) |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
 | `send-friend-request-email` | Push notification for friend requests (via OneSignal) |
 | `send-collaboration-invite` | Push notification for session invites (via OneSignal) |
@@ -493,11 +466,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Collaboration Overhaul** -- Replaced the rotation-based preference system with union aggregation across all participants. All categories, intents, and price tiers are merged; logistics use statistical aggregation (widest budget, majority travel mode, median travel time).
-- **Server-Side Synchronized Decks** -- New `generate-session-deck` edge function and `session_decks` table ensure all collaboration participants see identical cards. Decks are cached by SHA-256 preferences hash with 24h expiry and race-safe upsert.
-- **Auto-Seeded Collaboration Preferences** -- Solo preferences are automatically copied to collaboration sessions on invite acceptance and backfilled on onboarding completion, replacing hardcoded empty defaults.
-- **Fixed Collaboration Push Notifications** -- Registered `send-collaboration-invite` in `config.toml` so the existing (correct) edge function actually deploys.
-- **Removed Intent-Category Filter** -- Collaboration preferences now show all 12 categories and price tiers regardless of intent selection, matching solo mode behavior.
+- **Removed Friend Links Feature** -- Complete teardown of the friend link / link consent / profile linking system. Deleted 19 files (15 mobile + 4 edge functions), cleaned 17+ shared files, dropped `friend_links` and `pending_friend_link_intents` tables, removed linking columns from `saved_people`. Phone invites and legacy friend requests remain independent. Future redesign will start from scratch.
+- **Rewired Phone Invites** -- Phone invites (`usePhoneInvite`) now use independent query keys instead of depending on the deleted friend link system.
+- **Simplified Add Person Flow** -- The "Add Person" modal now goes directly to name entry, removing the "Link a Friend" choice step.
+- **Cleaned Onboarding** -- Friends and consent steps auto-skip silently; step state machine preserved.
 
 ---
 

@@ -237,12 +237,14 @@ export const useBoardSession = (sessionId?: string) => {
           };
         });
       },
-      onPreferencesChanged: () => {
+      onPreferencesChanged: (newPrefs: any) => {
         // Reload all participants' preferences
         if (sessionId) loadSession(sessionId);
 
-        // Trigger server-side deck regeneration with updated preferences
-        if (sessionId) {
+        // Only the user who changed their own preferences triggers deck regeneration.
+        // Other participants rely on the Realtime INSERT event from session_decks
+        // to refresh their deck, avoiding N redundant edge function calls.
+        if (sessionId && newPrefs?.user_id === user?.id) {
           supabase.functions.invoke("generate-session-deck", {
             body: { sessionId, batchSeed: 0 },
           }).catch((err) => {

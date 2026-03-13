@@ -30,28 +30,20 @@ import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
-import {
-  useSendFriendLink,
-  useCancelLinkRequest,
-  useUserSearch,
-} from "../hooks/useFriendLinks";
-import { usePendingLinkConsents, useRespondLinkConsent } from "../hooks/useLinkConsent";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
-import { LinkConsentCard } from "./LinkConsentCard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
-import { friendLinkKeys, linkConsentKeys } from "../hooks/socialQueryKeys";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
 import { FriendPickerSheet } from "./connections/FriendPickerSheet";
-import { AddFriendView } from "./connections/AddFriendView";
 import { RequestsView } from "./connections/RequestsView";
+import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
 import MessageInterface from "./MessageInterface";
 
-type PanelId = "add" | "requests" | "blocked" | null;
+type PanelId = "add" | "friends" | "blocked" | null;
 
 // Modals kept for MessageInterface actions
 import AddToBoardModal from "./AddToBoardModal";
@@ -120,12 +112,9 @@ export default function ConnectionsPageRefactored({
         }
         useScreenshotStore.getState().setTrigger('triggerMessageInterface', false);
       }
-      if (state.triggerAddFriendView) {
-        setActivePanel('add' as any);
-        useScreenshotStore.getState().setTrigger('triggerAddFriendView', false);
-      }
       if (state.triggerRequestsView) {
-        setActivePanel('requests' as any);
+        setActivePanel('friends' as any);
+        setFriendsModalTab('requests');
         useScreenshotStore.getState().setTrigger('triggerRequestsView', false);
       }
       if (state.triggerBlockedUsers) {
@@ -141,6 +130,7 @@ export default function ConnectionsPageRefactored({
   const [searchQuery, setSearchQuery] = useState("");
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [friendsModalTab, setFriendsModalTab] = useState<"friends" | "requests">("friends");
   const queryClient = useQueryClient();
 
   // ── Friends data via useFriends hook ─────────────────────
@@ -160,49 +150,17 @@ export default function ConnectionsPageRefactored({
     fetchBlockedUsers,
   } = useFriends();
 
-  // Realtime: instantly refresh friend links, requests, and consents on DB changes
+  // Realtime: instantly refresh friend requests and friends list on DB changes
   useSocialRealtime(user?.id, {
     onFriendRequestChange: loadFriendRequests,
-    onFriendLinkChange: () => { fetchFriends(); },
     onFriendListChange: () => { fetchFriends(); },
   });
 
-  // Link consent (new system) — pending link consent prompts
-  const {
-    data: pendingLinkConsents = [],
-    isLoading: consentsLoading,
-  } = usePendingLinkConsents(user?.id);
-
-  const respondConsentMutation = useRespondLinkConsent();
-  const [respondingConsentId, setRespondingConsentId] = useState<string | null>(null);
-
-  const handleRespondConsent = useCallback(
-    async (linkId: string, action: "accept" | "decline") => {
-      if (respondConsentMutation.isPending) return;
-      setRespondingConsentId(linkId);
-      try {
-        await respondConsentMutation.mutateAsync({ linkId, action });
-        HapticFeedback.medium();
-      } catch (err: unknown) {
-        console.error("Error responding to link consent:", err);
-        Alert.alert(
-          "Something went wrong",
-          err instanceof Error ? err.message : "Could not process your response. Please try again."
-        );
-      } finally {
-        setRespondingConsentId(null);
-      }
-    },
-    [respondConsentMutation]
-  );
-
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: friendLinkKeys.all });
-    await queryClient.invalidateQueries({ queryKey: linkConsentKeys.all });
     await fetchFriends();
     setIsRefreshing(false);
-  }, [queryClient, fetchFriends]);
+  }, [fetchFriends]);
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -255,8 +213,6 @@ export default function ConnectionsPageRefactored({
   const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
 
   // ── Derived data ─────────────────────────────────────────
-  // Link requests (friend_links) are now handled in DiscoverScreen.
-  // ConnectionsPage only shows legacy friend requests.
   const incomingRequests = useMemo(() => {
     return friendRequests
       .filter((r) => r.type === "incoming" && r.status === "pending")
@@ -438,6 +394,9 @@ export default function ConnectionsPageRefactored({
       }
       return;
     }
+    if (id === "friends") {
+      setFriendsModalTab("friends");
+    }
     setActivePanel((prev) => (prev === id ? null : id));
   };
 
@@ -474,6 +433,90 @@ export default function ConnectionsPageRefactored({
       console.error("Error unblocking user:", e);
       Alert.alert("Error", "Failed to unblock user.");
     }
+  };
+
+  // ── Friends modal handlers ──────────────────────────────
+  const getFriendDisplayNameFromUseFriend = (friend: UseFriend): string => {
+    return (
+      friend.display_name ||
+      (friend.first_name && friend.last_name
+        ? `${friend.first_name} ${friend.last_name}`
+        : friend.username) ||
+      "Unknown"
+    );
+  };
+
+  const handleMuteUserFromModal = async (friend: UseFriend) => {
+    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
+    if (muteLoadingFriendId) return;
+    setMuteLoadingFriendId(friendUserId);
+    try {
+      const { success, isMuted, error: muteError } = await muteService.toggleMuteUser(friendUserId);
+      if (success) {
+        setMutedUserIds((prev) =>
+          isMuted ? [...prev, friendUserId] : prev.filter((id) => id !== friendUserId)
+        );
+        HapticFeedback.light();
+      } else {
+        Alert.alert("Error", muteError || "Failed to update mute status.");
+      }
+    } catch (e) {
+      console.error("Error toggling mute:", e);
+      Alert.alert("Error", "Failed to update mute status.");
+    } finally {
+      setMuteLoadingFriendId(null);
+    }
+  };
+
+  const handleRemoveFriendFromModal = (friend: UseFriend) => {
+    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
+    const displayName = getFriendDisplayNameFromUseFriend(friend);
+    Alert.alert(
+      "Remove Friend",
+      `Are you sure you want to remove ${displayName} from your friends?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeFriend(friendUserId);
+              HapticFeedback.warning();
+            } catch (e) {
+              console.error("Error removing friend:", e);
+              Alert.alert("Error", "Failed to remove friend.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBlockFromModal = (friend: UseFriend) => {
+    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
+    const displayName = getFriendDisplayNameFromUseFriend(friend);
+    setSelectedUserToBlock({
+      id: friendUserId,
+      name: displayName,
+      username: friend.username || "",
+      status: "offline",
+      isOnline: false,
+    });
+    setShowBlockModal(true);
+  };
+
+  const handleReportFromModal = (friend: UseFriend) => {
+    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
+    const displayName = getFriendDisplayNameFromUseFriend(friend);
+    setSelectedUserToReport({
+      id: friendUserId,
+      name: displayName,
+      username: friend.username || "",
+      status: "offline",
+      isOnline: false,
+    });
+    setShowReportModal(true);
   };
 
   // ── Transform message from DirectMessage to MessageInterface format ──
@@ -1202,11 +1245,11 @@ export default function ConnectionsPageRefactored({
                 <Ionicons name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => handleActionPress("requests")}
-                style={[styles.headerIconBtn, activePanel === "requests" && styles.headerIconBtnActive]}
+                onPress={() => handleActionPress("friends")}
+                style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="people-outline" size={18} color={activePanel === "requests" ? "#ffffff" : "#eb7825"} />
+                <Ionicons name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
                 {incomingRequests.length > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
@@ -1253,13 +1296,13 @@ export default function ConnectionsPageRefactored({
       </TouchableWithoutFeedback>
 
       <View
-        style={[styles.sheetContainer, { maxHeight: screenHeight * 0.75 }]}
+        style={[styles.sheetContainer, { minHeight: screenHeight * 0.6, maxHeight: screenHeight * 0.88 }]}
         onStartShouldSetResponder={() => true}
       >
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>
-            {activePanel === "add" ? "Add Friend" : "Friend Requests"}
+            {activePanel === "add" ? "Add Friend" : "Friends"}
           </Text>
           <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
             <Ionicons name="close" size={24} color="#6b7280" />
@@ -1272,32 +1315,60 @@ export default function ConnectionsPageRefactored({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {activePanel === "add" && (
-            <AddFriendView
-              currentUserId={user?.id || ""}
-
-              onRequestSent={() => loadFriendRequests()}
-            />
-          )}
-          {activePanel === "requests" && (
+          {/* Add Friend panel removed — friend links feature deprecated */}
+          {activePanel === "friends" && (
             <>
-              <RequestsView
-                requests={incomingRequests}
-                loading={friendsLoading || requestsLoading}
-                onAccept={handleAcceptRequest}
-                onDecline={handleDeclineRequest}
-              />
-              {pendingLinkConsents.length > 0 && (
-                <View style={styles.linkConsentSection}>
-                  <Text style={styles.linkConsentSectionTitle}>Link Requests</Text>
-                  {pendingLinkConsents.map((consent) => (
-                    <LinkConsentCard
-                      key={consent.linkId}
-                      consent={consent}
-                      onRespond={handleRespondConsent}
-                      isResponding={respondingConsentId === consent.linkId}
-                    />
-                  ))}
+              {/* Tab Bar */}
+              <View style={styles.tabBar}>
+                <TouchableOpacity
+                  onPress={() => setFriendsModalTab("friends")}
+                  style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
+                    Friends
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setFriendsModalTab("requests")}
+                  style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
+                    Requests
+                  </Text>
+                  {incomingRequests.length > 0 && (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {incomingRequests.length}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Tab Content */}
+              {friendsModalTab === "friends" ? (
+                <FriendsManagementList
+                  friends={dbFriends}
+                  loading={friendsLoading}
+                  onRemoveFriend={handleRemoveFriendFromModal}
+                  onBlockUser={handleBlockFromModal}
+                  onReportUser={handleReportFromModal}
+                  onMuteUser={handleMuteUserFromModal}
+                  muteLoadingFriendId={muteLoadingFriendId}
+                  mutedUserIds={mutedUserIds}
+                  currentUserId={user?.id || ""}
+                />
+              ) : (
+                <View>
+                  <RequestsView
+                    requests={incomingRequests}
+                    loading={friendsLoading || requestsLoading}
+                    onAccept={handleAcceptRequest}
+                    onDecline={handleDeclineRequest}
+                  />
                 </View>
               )}
             </>
@@ -1307,6 +1378,32 @@ export default function ConnectionsPageRefactored({
     </View>
   </KeyboardAvoidingView>
 </Modal>
+
+        <ReportUserModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setSelectedUserToReport(null);
+          }}
+          user={
+            selectedUserToReport
+              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
+              : { id: "", name: "", username: "" }
+          }
+          onReport={handleReportSubmit}
+        />
+        <BlockUserModal
+          visible={showBlockModal}
+          onClose={() => {
+            if (!blockLoading) {
+              setShowBlockModal(false);
+              setSelectedUserToBlock(null);
+            }
+          }}
+          onConfirm={handleBlockConfirm}
+          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
+          loading={blockLoading}
+        />
       </>
     );
   }
@@ -1399,11 +1496,11 @@ export default function ConnectionsPageRefactored({
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => handleActionPress("requests")}
-                style={[styles.headerIconBtn, activePanel === "requests" && styles.headerIconBtnActive]}
+                onPress={() => handleActionPress("friends")}
+                style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="people-outline" size={18} color={activePanel === "requests" ? "#ffffff" : "#eb7825"} />
+                <Ionicons name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
                 {incomingRequests.length > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
@@ -1536,7 +1633,7 @@ export default function ConnectionsPageRefactored({
       </TouchableWithoutFeedback>
 
       <View
-        style={[styles.sheetContainer, { maxHeight: screenHeight * 0.75 }]}
+        style={[styles.sheetContainer, { minHeight: screenHeight * 0.6, maxHeight: screenHeight * 0.88 }]}
         onStartShouldSetResponder={() => true}
       >
         <View style={styles.sheetHandle} />
@@ -1544,8 +1641,8 @@ export default function ConnectionsPageRefactored({
           <Text style={styles.sheetTitle}>
             {activePanel === "add"
               ? "Add Friend"
-              : activePanel === "requests"
-              ? "Friend Requests"
+              : activePanel === "friends"
+              ? "Friends"
               : "Blocked Users"}
           </Text>
           <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
@@ -1559,32 +1656,60 @@ export default function ConnectionsPageRefactored({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {activePanel === "add" && (
-            <AddFriendView
-              currentUserId={user?.id || ""}
-
-              onRequestSent={() => loadFriendRequests()}
-            />
-          )}
-          {activePanel === "requests" && (
+          {/* Add Friend panel removed — friend links feature deprecated */}
+          {activePanel === "friends" && (
             <>
-              <RequestsView
-                requests={incomingRequests}
-                loading={friendsLoading || requestsLoading}
-                onAccept={handleAcceptRequest}
-                onDecline={handleDeclineRequest}
-              />
-              {pendingLinkConsents.length > 0 && (
-                <View style={styles.linkConsentSection}>
-                  <Text style={styles.linkConsentSectionTitle}>Link Requests</Text>
-                  {pendingLinkConsents.map((consent) => (
-                    <LinkConsentCard
-                      key={consent.linkId}
-                      consent={consent}
-                      onRespond={handleRespondConsent}
-                      isResponding={respondingConsentId === consent.linkId}
-                    />
-                  ))}
+              {/* Tab Bar */}
+              <View style={styles.tabBar}>
+                <TouchableOpacity
+                  onPress={() => setFriendsModalTab("friends")}
+                  style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
+                    Friends
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setFriendsModalTab("requests")}
+                  style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
+                    Requests
+                  </Text>
+                  {incomingRequests.length > 0 && (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {incomingRequests.length}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Tab Content */}
+              {friendsModalTab === "friends" ? (
+                <FriendsManagementList
+                  friends={dbFriends}
+                  loading={friendsLoading}
+                  onRemoveFriend={handleRemoveFriendFromModal}
+                  onBlockUser={handleBlockFromModal}
+                  onReportUser={handleReportFromModal}
+                  onMuteUser={handleMuteUserFromModal}
+                  muteLoadingFriendId={muteLoadingFriendId}
+                  mutedUserIds={mutedUserIds}
+                  currentUserId={user?.id || ""}
+                />
+              ) : (
+                <View>
+                  <RequestsView
+                    requests={incomingRequests}
+                    loading={friendsLoading || requestsLoading}
+                    onAccept={handleAcceptRequest}
+                    onDecline={handleDeclineRequest}
+                  />
                 </View>
               )}
             </>
@@ -1610,23 +1735,37 @@ export default function ConnectionsPageRefactored({
         friends={dbFriends}
         loadingFriends={friendsLoading}
       />
+
+      <ReportUserModal
+        isOpen={showReportModal}
+        onClose={() => {
+          setShowReportModal(false);
+          setSelectedUserToReport(null);
+        }}
+        user={
+          selectedUserToReport
+            ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
+            : { id: "", name: "", username: "" }
+        }
+        onReport={handleReportSubmit}
+      />
+      <BlockUserModal
+        visible={showBlockModal}
+        onClose={() => {
+          if (!blockLoading) {
+            setShowBlockModal(false);
+            setSelectedUserToBlock(null);
+          }
+        }}
+        onConfirm={handleBlockConfirm}
+        userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
+        loading={blockLoading}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  linkConsentSection: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[200],
-  },
-  linkConsentSectionTitle: {
-    ...typography.sm,
-    fontWeight: fontWeights.semibold,
-    color: colors.gray[500],
-    marginBottom: spacing.xs,
-  },
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
@@ -1832,10 +1971,53 @@ backdropFill: {
     color: "#111827",
   },
 sheetBody: {
-  flexGrow: 0,
+  flex: 1,
 },
 sheetBodyContent: {
   paddingTop: 8,
   paddingBottom: 24,
 },
+  // ── Tab bar (Friends modal) ────────────
+  tabBar: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    marginBottom: 12,
+    marginHorizontal: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabActive: {
+    borderBottomColor: "#eb7825",
+  },
+  tabText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#9ca3af",
+  },
+  tabTextActive: {
+    color: "#eb7825",
+  },
+  tabBadge: {
+    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  tabBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
 });

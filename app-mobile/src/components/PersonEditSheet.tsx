@@ -21,7 +21,6 @@ import { PersonAudioClip } from "../types/personAudio";
 import { SavedPerson } from "../services/savedPeopleService";
 import { useUpdatePerson, useDeletePerson } from "../hooks/useSavedPeople";
 import { usePersonAudioClips } from "../hooks/usePersonAudio";
-import { useUnlinkFriend } from "../hooks/useFriendLinks";
 import { useAppStore } from "../store/appStore";
 import { generateInitials } from "../utils/stringUtils";
 import { s } from "../utils/responsive";
@@ -32,7 +31,6 @@ interface PersonEditSheetProps {
   person: SavedPerson;
   onClose: () => void;
   onUpdated: () => void;
-  onUnlinked: () => void;
 }
 
 function formatBirthdayDisplay(dateStr: string | null): string {
@@ -56,14 +54,11 @@ export default function PersonEditSheet({
   person,
   onClose,
   onUpdated,
-  onUnlinked,
 }: PersonEditSheetProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((state) => state.user);
   const updatePersonMutation = useUpdatePerson();
   const deletePersonMutation = useDeletePerson();
-  const unlinkFriendMutation = useUnlinkFriend();
-
   const [name, setName] = useState(person.name);
   const [nameError, setNameError] = useState<string | null>(null);
   const [birthday, setBirthday] = useState<Date | null>(
@@ -75,10 +70,8 @@ export default function PersonEditSheet({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch audio clips for standard persons
-  const { data: fetchedClips } = usePersonAudioClips(
-    person.is_linked ? "" : person.id
-  );
+  // Fetch audio clips for this person
+  const { data: fetchedClips } = usePersonAudioClips(person.id);
 
   useEffect(() => {
     if (fetchedClips) {
@@ -165,7 +158,6 @@ export default function PersonEditSheet({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               await deletePersonMutation.mutateAsync({
                 personId: person.id,
-                linkId: undefined,
               });
               onClose();
             } catch (err: any) {
@@ -176,86 +168,6 @@ export default function PersonEditSheet({
       ]
     );
   }, [person, deletePersonMutation, onClose]);
-
-  const handleUnlink = useCallback(() => {
-    Alert.alert(
-      "Unlink Person",
-      `This will remove ${person.name} from both your and their For You tabs. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Unlink",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (person.link_id) {
-                await unlinkFriendMutation.mutateAsync(person.link_id);
-              }
-              onUnlinked();
-              onClose();
-            } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to unlink person");
-            }
-          },
-        },
-      ]
-    );
-  }, [person, unlinkFriendMutation, onUnlinked, onClose]);
-
-  const renderLinkedView = () => (
-    <View style={styles.linkedContainer}>
-      {/* Read-only profile card */}
-      <View style={styles.profileCard}>
-        <View style={styles.profileAvatarContainer}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>{person.initials}</Text>
-          </View>
-          <View style={styles.linkedBadge}>
-            <Ionicons name="link" size={s(12)} color="#ffffff" />
-          </View>
-        </View>
-
-        <Text style={styles.profileName}>{person.name}</Text>
-
-        <View style={styles.profileDetails}>
-          <View style={styles.profileDetailRow}>
-            <Ionicons name="calendar-outline" size={s(16)} color="#9ca3af" />
-            <Text style={styles.profileDetailText}>
-              {formatBirthdayDisplay(person.birthday)}
-            </Text>
-          </View>
-          <View style={styles.profileDetailRow}>
-            <Ionicons name="person-outline" size={s(16)} color="#9ca3af" />
-            <Text style={styles.profileDetailText}>
-              {getGenderLabel(person.gender)}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <Text style={styles.linkedHint}>
-        This person is linked to a Mingla account. Their profile syncs automatically.
-      </Text>
-
-      {/* Unlink button */}
-      <TouchableOpacity
-        style={styles.unlinkButton}
-        onPress={handleUnlink}
-        activeOpacity={0.7}
-        disabled={unlinkFriendMutation.isPending}
-      >
-        {unlinkFriendMutation.isPending ? (
-          <ActivityIndicator size="small" color="#ef4444" />
-        ) : (
-          <>
-            <Ionicons name="link-outline" size={s(18)} color="#ef4444" />
-            <Text style={styles.unlinkButtonText}>Unlink Person</Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
 
   const renderStandardView = () => (
     <View>
@@ -418,7 +330,7 @@ export default function PersonEditSheet({
             <View style={styles.headerPlaceholder} />
             <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>
-                {person.is_linked ? "Linked Person" : "Edit Person"}
+                Edit Person
               </Text>
               <Text style={styles.headerSubtitle}>{person.name}</Text>
             </View>
@@ -437,7 +349,7 @@ export default function PersonEditSheet({
             bounces={false}
             contentContainerStyle={styles.scrollContentContainer}
           >
-            {person.is_linked ? renderLinkedView() : renderStandardView()}
+            {renderStandardView()}
           </KeyboardAwareScrollView>
         </View>
       </View>
@@ -507,96 +419,6 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     paddingBottom: 24,
-  },
-  // Linked person view
-  linkedContainer: {
-    alignItems: "center",
-  },
-  profileCard: {
-    backgroundColor: "#f9fafb",
-    borderRadius: 20,
-    padding: s(24),
-    alignItems: "center",
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginBottom: s(16),
-  },
-  profileAvatarContainer: {
-    position: "relative",
-    marginBottom: s(12),
-  },
-  profileAvatar: {
-    width: s(72),
-    height: s(72),
-    borderRadius: s(36),
-    backgroundColor: "#eb7825",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  profileAvatarText: {
-    fontSize: s(24),
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  linkedBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: s(24),
-    height: s(24),
-    borderRadius: s(12),
-    backgroundColor: "#22c55e",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#ffffff",
-  },
-  profileName: {
-    fontSize: s(20),
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: s(12),
-  },
-  profileDetails: {
-    gap: s(8),
-    width: "100%",
-  },
-  profileDetailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: s(8),
-  },
-  profileDetailText: {
-    fontSize: s(14),
-    color: "#6b7280",
-  },
-  linkedHint: {
-    fontSize: s(13),
-    color: "#9ca3af",
-    textAlign: "center",
-    lineHeight: s(18),
-    marginBottom: s(24),
-    paddingHorizontal: s(16),
-  },
-  unlinkButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: s(8),
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    width: "100%",
-  },
-  unlinkButtonText: {
-    fontSize: s(15),
-    fontWeight: "600",
-    color: "#ef4444",
   },
   // Standard person view
   fieldContainer: {
