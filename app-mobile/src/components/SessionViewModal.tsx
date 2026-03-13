@@ -507,9 +507,6 @@ export default function SessionViewModal({
       return;
     }
 
-    // MED-003: Dead code removed — the !hasValidCardData case is already handled above,
-    // so this block was unreachable. Card data is embedded JSONB, so offline is fine if data exists.
-    }
 
     const expandedCardData: ExpandedCardData = {
       id: cardData.id || card.id,
