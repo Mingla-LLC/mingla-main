@@ -16,6 +16,13 @@
 -- Fix: Replace partial ON CONFLICT specs with the full constraint reference.
 -- For DO UPDATE cases, move the status filter into a WHERE on the UPDATE clause
 -- to preserve the original intent (only update pending/accepted rows).
+--
+-- MED-001: Also revive cancelled invites. If a collaboration_invite exists with
+-- status='cancelled' (e.g., from a friend-decline cascade), and a new conversion
+-- event fires (phone verified or friend accepted), the old DO NOTHING / filtered
+-- DO UPDATE silently skipped the cancelled row — marking the pending_session_invite
+-- as 'converted' with nothing to show for it. Fix: include 'cancelled' in the
+-- update filter and reset status to 'pending' when reviving.
 
 -- ═══════════════════════════════════════════════════════════
 -- FIX 1: convert_pending_invites_on_phone_verified
@@ -74,8 +81,13 @@ BEGIN
       'pending',
       true  -- HIDDEN until friend request accepted
     )
-    ON CONFLICT (session_id, invited_user_id) DO NOTHING  -- FIX: removed partial WHERE clause
-    RETURNING id INTO new_invite_id;
+    ON CONFLICT (session_id, invited_user_id)                          -- FIX: removed partial WHERE clause
+    DO UPDATE SET                                                      -- MED-001: revive cancelled invites
+      status = 'pending',
+      pending_friendship = true,
+      updated_at = NOW()
+    WHERE collaboration_invites.status = 'cancelled'                   -- only cancelled rows are revived;
+    RETURNING id INTO new_invite_id;                                   -- pending/accepted/declined: no-op (WHERE miss → NULL)
 
     IF new_invite_id IS NOT NULL THEN
       INSERT INTO public.session_participants (session_id, user_id, has_accepted)
@@ -185,8 +197,14 @@ BEGIN
       'friends_list'
     )
     ON CONFLICT (session_id, invited_user_id)                          -- FIX: removed partial WHERE clause
-    DO UPDATE SET pending_friendship = false, updated_at = NOW()
-    WHERE collaboration_invites.status IN ('pending', 'accepted');     -- FIX: status filter moved here
+    DO UPDATE SET                                                      -- MED-001: also revive cancelled invites
+      pending_friendship = false,
+      status = CASE
+        WHEN collaboration_invites.status = 'cancelled' THEN 'pending'
+        ELSE collaboration_invites.status
+      END,
+      updated_at = NOW()
+    WHERE collaboration_invites.status IN ('pending', 'accepted', 'cancelled'); -- declined = user said no, respect it
 
     INSERT INTO public.session_participants (
       session_id, user_id, has_accepted, role
@@ -221,8 +239,14 @@ BEGIN
       'friends_list'
     )
     ON CONFLICT (session_id, invited_user_id)                          -- FIX: removed partial WHERE clause
-    DO UPDATE SET pending_friendship = false, updated_at = NOW()
-    WHERE collaboration_invites.status IN ('pending', 'accepted');     -- FIX: status filter moved here
+    DO UPDATE SET                                                      -- MED-001: also revive cancelled invites
+      pending_friendship = false,
+      status = CASE
+        WHEN collaboration_invites.status = 'cancelled' THEN 'pending'
+        ELSE collaboration_invites.status
+      END,
+      updated_at = NOW()
+    WHERE collaboration_invites.status IN ('pending', 'accepted', 'cancelled'); -- declined = user said no, respect it
 
     INSERT INTO public.session_participants (
       session_id, user_id, has_accepted, role
