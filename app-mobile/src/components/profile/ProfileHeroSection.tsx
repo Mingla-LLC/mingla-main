@@ -21,7 +21,6 @@ interface ProfileHeroSectionProps {
   location?: string;
   isLoadingLocation?: boolean;
   locationError?: string | null;
-  showCompletionBar?: boolean;
   onAvatarPress?: () => void;
   onBioPress?: () => void;
   onLocationRefresh?: () => void;
@@ -55,8 +54,8 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   const showHint = isOwnProfile && (missingBio || missingAvatar);
 
   const hintText = missingAvatar
-    ? 'Upload a profile photo to complete your profile'
-    : 'Add a bio to let people know what you\'re about';
+    ? 'Add a photo to complete your profile'
+    : 'Write a bio so people know what you\'re about';
 
   return (
     <View style={styles.container}>
@@ -95,6 +94,10 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
       </View>
 
       <Text style={styles.name}>{displayName}</Text>
+
+      {username && (
+        <Text style={styles.username}>@{username}</Text>
+      )}
 
       {(location || isOwnProfile) && (
         <View style={styles.locationRow}>
@@ -135,21 +138,21 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center', paddingBottom: 16 },
-  gradient: { ...StyleSheet.absoluteFillObject, height: 120 },
-  avatarWrap: { marginTop: 24, position: 'relative' },
+  gradient: { ...StyleSheet.absoluteFillObject, height: 140 },
+  avatarWrap: { marginTop: 28, position: 'relative' },
   avatar: {
-    width: 96, height: 96, borderRadius: 48,
+    width: 104, height: 104, borderRadius: 52,
     backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center',
   },
   initials: { fontSize: 32, fontWeight: '700', color: '#ffffff' },
   cameraBadge: {
     position: 'absolute', bottom: 0, right: 0,
-    width: 28, height: 28, borderRadius: 14,
+    width: 30, height: 30, borderRadius: 15,
     backgroundColor: '#eb7825', alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#ffffff',
   },
-  name: { fontSize: 22, fontWeight: '700', color: '#111827', marginTop: 12 },
-  username: { fontSize: 14, color: '#6b7280', marginTop: 2 },
+  name: { fontSize: 24, fontWeight: '700', color: '#111827', marginTop: 12 },
+  username: { fontSize: 14, fontWeight: '500', color: '#6b7280', marginTop: 2 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   locationText: { fontSize: 14, color: '#6b7280', marginLeft: 4 },
   locationLoader: { marginLeft: 4 },

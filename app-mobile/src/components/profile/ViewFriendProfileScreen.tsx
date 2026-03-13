@@ -11,7 +11,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import ProfileHeroSection from './ProfileHeroSection';
-import ProfilePhotosGallery from './ProfilePhotosGallery';
 import ProfileInterestsSection from './ProfileInterestsSection';
 import ProfileStatsRow from './ProfileStatsRow';
 
@@ -80,7 +79,6 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
     );
   }
 
-  const hasPhotos = profile.photos.length > 0;
   const hasInterests = profile.intents.length > 0 || profile.categories.length > 0;
 
   return (
@@ -95,13 +93,6 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           avatarUrl={profile.avatar_url}
           bio={profile.bio}
         />
-
-        {hasPhotos && (
-          <ProfilePhotosGallery
-            photos={profile.photos}
-            isOwnProfile={false}
-          />
-        )}
 
         {hasInterests && (
           <ProfileInterestsSection

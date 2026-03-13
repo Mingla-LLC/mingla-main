@@ -54,19 +54,126 @@ attached `full_scope_architecture.md`. Hold this in working memory for every dec
 
 ---
 
-## Step 2: Refine the Request
+## Step 2: Interactive Discovery — Extract the Full Picture Before Writing a Single Line
 
-Ask the user the minimum questions needed to produce a precise spec. Do not ask more than 3-4 
-questions at once. Focus on:
+**This step is MANDATORY. Never skip it. Never shortcut it. Even if the user's request seems clear,
+there are always hidden use cases, edge cases, and behavioral decisions that the user has opinions
+about but hasn't stated yet. Your job is to pull those out.**
 
-- **What problem does this solve?** (user-facing outcome)
-- **Where does it live in the app?** (which tab, screen, or flow)
-- **What data does it need?** (existing tables, new tables, external APIs)
-- **Any constraints?** (budget, performance, specific behavior)
-- **Success criteria** — what specific, observable behaviors confirm this works?
+### How the Discovery Process Works
 
-If the user's request is already clear, skip the interview. Do not ask questions you can answer 
-yourself from the architecture document. Never ask a question just to seem thorough.
+**MANDATORY: Use the `AskUserQuestion` tool for ALL discovery questions.** Never present questions
+as plain text for the user to type back. Always use the interactive popup format with selectable
+options so the user can tap/click their answers. This ensures zero ambiguity and faster responses.
+
+- Use `AskUserQuestion` with 1-4 questions per call (tool limit)
+- Each question must have 2-4 selectable options (the tool auto-adds "Other" for custom input)
+- Use `multiSelect: true` when choices are not mutually exclusive
+- Run multiple rounds (2-4 rounds typical), wait for answers, then ask the next round
+
+**Do NOT dump all questions at once.** Ask 1-4 questions per round via `AskUserQuestion`, wait for
+answers, then ask the next round based on what you learned. Stop when you have enough to write an
+unambiguous spec.
+
+### Round 1: Core Intent & Scope
+
+Start here. Understand WHAT and WHY before anything else.
+
+1. **The problem:** "What user problem does this solve? Describe the pain point in one sentence."
+2. **Where it lives:** "Where does this feature live in the app?" — present options based on
+   existing screens/tabs from the architecture (e.g., "A) Home tab, B) Discover tab, C) Profile,
+   D) New standalone screen, E) Modal/sheet overlay, F) Other (describe)")
+3. **Who uses it:** "Who interacts with this feature?" — present options like:
+   "A) The user themselves only, B) The user + their linked friends, C) Any user can see it,
+   D) Only specific roles (describe)"
+4. **Trigger:** "How does the user get to this feature?" — present options:
+   "A) Always visible on the screen, B) Tap a button/icon, C) Triggered by an event/notification,
+   D) Part of an existing flow, E) Multiple entry points (describe)"
+5. **Scope check:** "Which best describes the size of this feature?" — present options:
+   "A) Small — modifies existing UI/logic only, B) Medium — new component + service/hook changes,
+   C) Large — new DB tables + edge functions + full new screen, D) Not sure yet"
+
+### Round 2: Use Cases & User Flows
+
+Based on Round 1 answers, map out every way a user interacts with this feature.
+
+1. **Happy path:** "Walk me through the ideal flow step by step — what does the user do, what do
+   they see at each step?" (open-ended — let the user describe their vision)
+2. **Entry states:** "When the user first sees this feature, what state is it in?" — options:
+   "A) Empty — no data yet, needs onboarding/CTA, B) Pre-populated with defaults, C) Shows
+   existing data from another feature, D) Depends on context (describe)"
+3. **Actions available:** "What can the user DO with this feature? Select all that apply:" —
+   generate options based on the feature type (e.g., "A) Create/add items, B) Edit/update items,
+   C) Delete/remove items, D) Reorder/sort items, E) Filter/search items, F) Share with others,
+   G) View details, H) Toggle on/off, I) Other (describe)")
+4. **Data visibility:** "Can other users see this data?" — options:
+   "A) Completely private to the user, B) Visible to linked/friended users, C) Visible to
+   collaboration session members, D) Publicly visible to all users, E) Configurable privacy"
+5. **Real-time needs:** "Does this feature need to update live when data changes?" — options:
+   "A) No — pull-to-refresh is fine, B) Yes — should update instantly when I or others make changes,
+   C) Yes — but only when the screen is active, D) Not sure"
+
+### Round 3: Edge Cases & Error Scenarios
+
+This is where most specs fail. Force the user to think about what goes wrong.
+
+1. **Empty/zero state:** "What should the user see when there's no data yet?" — options:
+   "A) Helpful message + CTA to get started, B) Nothing — hide the feature entirely until there's
+   data, C) Placeholder/skeleton, D) Specific empty state design (describe)"
+2. **Limits:** "Are there any limits?" — present relevant options:
+   "A) Max number of items (how many?), B) Max text length, C) Rate limiting (how often?),
+   D) Time-based expiry, E) No limits, F) Not sure — recommend something"
+3. **Conflict handling:** "What happens if two users act on the same data simultaneously?" — options:
+   "A) Last write wins, B) Show conflict and let user choose, C) Not applicable — single-user data,
+   D) Queue/lock mechanism, E) Not sure — recommend something"
+4. **Failure states:** "What should happen when things go wrong? Select all that apply:" — options:
+   "A) Show inline error with retry button, B) Show toast/snackbar notification, C) Silently retry
+   in background, D) Roll back optimistic update, E) Navigate away with error message, F) Not sure
+   — recommend best practice"
+5. **Offline behavior:** "What happens when the user is offline?" — options:
+   "A) Feature is unavailable — show message, B) Show cached data (read-only), C) Allow full
+   interaction — sync when back online, D) Not applicable"
+6. **Destructive actions:** "Are there any destructive/irreversible actions?" — options:
+   "A) Yes — delete/remove (should we confirm first?), B) Yes — but make it reversible (undo),
+   C) No destructive actions, D) Describe..."
+
+### Round 4: Behavioral Details & Polish (if needed)
+
+Only ask this round if the feature involves significant UI or complex interactions.
+
+1. **Animations/transitions:** "How should transitions feel?" — options:
+   "A) Standard — follow existing app patterns, B) Specific animation (describe), C) No animation
+   needed, D) Not sure — match the rest of the app"
+2. **Haptic feedback:** "Which interactions should have haptic feedback? Select all that apply:" —
+   "A) Tap primary action, B) Toggle/switch, C) Delete/destructive action, D) Success confirmation,
+   E) None, F) Follow existing app patterns"
+3. **Loading behavior:** "How should loading feel?" — options:
+   "A) Full-screen skeleton loader, B) Inline spinner on the affected area, C) Pull-to-refresh only,
+   D) Optimistic — show result immediately, correct if wrong, E) Shimmer/placeholder cards"
+4. **Sorting/ordering:** "How should items be ordered?" — options based on feature:
+   "A) Newest first, B) Oldest first, C) Alphabetical, D) By relevance/distance, E) Custom
+   user-defined order, F) Multiple sort options"
+5. **Notifications:** "Should this feature trigger any notifications?" — options:
+   "A) Push notification to other users, B) In-app notification/badge, C) Both push + in-app,
+   D) No notifications, E) Describe..."
+
+### Discovery Rules
+
+- **Present options as lettered choices** (A, B, C...) so the user can respond with just letters.
+- **Include an "Other/Describe" escape hatch** on every question where the options might not cover
+  the user's intent.
+- **Include "Not sure — recommend something"** on technical questions — then YOU decide and state
+  your decision in the spec with the reasoning.
+- **After each round, summarize** what you've understood so far in 2-3 bullet points, so the user
+  can correct misunderstandings before you go deeper.
+- **Stop asking when you have enough** — if Round 2 answers make Round 3/4 unnecessary (e.g.,
+  a simple config change), skip them. But NEVER skip Rounds 1 and 2.
+- **If the user says "just do it" or "you decide"** — that's permission to make all remaining
+  decisions yourself, but you MUST document every decision you made in the spec under a
+  "Architect's Decisions" section so the user can review and override.
+- **Adapt questions to the feature** — the examples above are templates. Replace generic options
+  with specific ones that reference actual Mingla screens, components, and data models from the
+  architecture. The more specific the options, the faster the user can answer.
 
 ---
 

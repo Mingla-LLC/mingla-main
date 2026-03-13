@@ -24,7 +24,6 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { getReadableCategoryName, getCategoryIcon } from "../utils/categoryUtils";
 import { useAiSummary } from "../hooks/useAiSummary";
-import { useHeroCards } from "../hooks/useHeroCards";
 import { useGenerateMoreCards } from "../hooks/useGenerateMoreCards";
 import {
   useCustomHolidays,
@@ -172,30 +171,10 @@ export default function PersonHolidayView({
 
   const { data: aiSummary, isLoading: isLoadingSummary } = useAiSummary(aiSummaryParams);
 
-  // ── Hero Cards ──
-  const { data: heroCardsData, isLoading: isLoadingHeroCards } = useHeroCards({
-    personId: person.id,
-    description: person.description,
-    location,
-    linkedUserId: undefined,
-    enabled: true,
-  });
-  const heroCards = heroCardsData?.cards ?? [];
-
-  // ── Generate More ──
+  // ── Generate More (kept for AI-powered deep suggestions) ──
   const [generatedCards, setGeneratedCards] = useState<HolidayCard[]>([]);
   const [generateCount, setGenerateCount] = useState(0);
   const generateMoreMutation = useGenerateMoreCards();
-
-  const allHeroCardIds = useMemo(() => {
-    return [...heroCards, ...generatedCards].map((c) => c.id);
-  }, [heroCards, generatedCards]);
-
-  const canGenerateMore =
-    generateCount < MAX_GENERATE_MORE &&
-    !!person.description &&
-    person.description.length >= 10 &&
-    (generateMoreMutation.data?.hasMore !== false);
 
   const handleGenerateMore = useCallback(() => {
     if (!person.description || generateCount >= MAX_GENERATE_MORE) return;
@@ -206,7 +185,7 @@ export default function PersonHolidayView({
         description: person.description,
         location,
         linkedUserId: undefined,
-        excludeCardIds: allHeroCardIds,
+        excludeCardIds: generatedCards.map((c) => c.id),
       },
       {
         onSuccess: (response) => {
@@ -215,7 +194,7 @@ export default function PersonHolidayView({
         },
       }
     );
-  }, [person, location, allHeroCardIds, generateCount, generateMoreMutation]);
+  }, [person, location, generatedCards, generateCount, generateMoreMutation]);
 
   const handleCardPress = useCallback((card: HolidayCard) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -335,16 +314,26 @@ export default function PersonHolidayView({
       {/* Birthday Hero Card */}
       <BirthdayHero
         person={person}
+        personId={person.id}
+        location={location}
+        userId={userId}
         aiSummary={aiSummary ?? null}
         isLoadingSummary={isLoadingSummary}
-        heroCards={heroCards}
-        isLoadingHeroCards={isLoadingHeroCards}
-        generatedCards={generatedCards}
-        isGenerating={generateMoreMutation.isPending}
-        canGenerateMore={canGenerateMore}
-        onGenerateMore={handleGenerateMore}
         onCardPress={handleCardPress}
       />
+
+      {/* Generate More — AI-powered suggestions for people with descriptions */}
+      {person.description && person.description.length >= 10 && (
+        <TouchableOpacity
+          style={styles.generateMoreRow}
+          onPress={handleGenerateMore}
+          activeOpacity={0.7}
+          disabled={generateMoreMutation.isPending}
+        >
+          <Ionicons name="sparkles-outline" size={s(16)} color="#eb7825" />
+          <Text style={styles.generateMoreText}>Generate more suggestions</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Upcoming Holidays Section */}
       <View style={styles.holidaysContainer}>
@@ -528,6 +517,22 @@ const styles = StyleSheet.create({
     fontSize: s(14),
     fontWeight: "600",
     color: "#6b7280",
+    lineHeight: s(20),
+  },
+  // Generate More
+  generateMoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: s(6),
+    paddingVertical: s(12),
+    marginTop: s(8),
+    marginHorizontal: s(16),
+  },
+  generateMoreText: {
+    fontSize: s(14),
+    fontWeight: "600",
+    color: "#eb7825",
     lineHeight: s(20),
   },
 });

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
-import { useHolidayCards } from "../hooks/useHolidayCards";
+import { usePersonHeroCards } from "../hooks/usePersonHeroCards";
+import { useShuffleCards } from "../hooks/useShuffleCards";
 import { HolidayCard } from "../services/holidayCardsService";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import PersonGridCard from "./PersonGridCard";
@@ -51,7 +52,6 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
   isExpanded,
   isArchived,
   personId,
-  linkedUserId,
   location,
   onToggle,
   onArchive,
@@ -61,14 +61,50 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
   const translateX = useRef(new Animated.Value(0)).current;
   const chevronRotation = useRef(new Animated.Value(0)).current;
 
-  const { data, isLoading, isError, refetch } = useHolidayCards({
-    holidayKey: holiday.id,
+  // Derive curated experience type from category slugs
+  const curatedExperienceType = useMemo(() => {
+    if (holiday.categorySlugs.includes("romantic")) return "romantic";
+    if (holiday.categorySlugs.includes("adventurous")) return "adventurous";
+    return null;
+  }, [holiday.categorySlugs]);
+
+  // Pool-first cards
+  const { data, isLoading, isError, refetch } = usePersonHeroCards({
     personId,
-    linkedUserId,
-    location,
+    holidayKey: holiday.id,
     categorySlugs: holiday.categorySlugs,
+    curatedExperienceType,
+    location,
     enabled: isExpanded && !isArchived,
   });
+
+  const cards = data?.cards ?? [];
+  const hasMore = data?.hasMore ?? false;
+
+  // Shuffle mechanic
+  const shuffleCards = useShuffleCards();
+  const [isShuffling, setIsShuffling] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const handleShuffle = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsShuffling(true);
+
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      shuffleCards(personId, holiday.id);
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setIsShuffling(false));
+      }, 100);
+    });
+  }, [personId, holiday.id, shuffleCards, fadeAnim]);
 
   useEffect(() => {
     Animated.timing(chevronRotation, {
@@ -197,7 +233,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 <ActivityIndicator size="small" color="#eb7825" />
                 <Text style={styles.loadingText}>Finding picks...</Text>
               </View>
-            ) : isError || !data ? (
+            ) : isError || !cards ? (
               <TouchableOpacity
                 style={styles.expandedStatus}
                 onPress={() => refetch()}
@@ -206,7 +242,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                   Couldn't load. Tap to retry.
                 </Text>
               </TouchableOpacity>
-            ) : data.length === 0 ? (
+            ) : cards.length === 0 ? (
               <View style={styles.expandedStatus}>
                 <Text style={styles.errorText}>
                   No picks found nearby. Try a different location.
@@ -218,18 +254,31 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.cardsScrollContent}
               >
-                {data.map((card) => (
-                  <PersonGridCard
-                    key={card.id}
-                    id={card.id}
-                    title={card.title}
-                    category={getReadableCategoryName(card.categorySlug || card.category)}
-                    imageUrl={card.imageUrl}
-                    priceTier={(card.priceTier as PriceTierSlug) ?? null}
-                    priceLevel={card.priceLevel}
-                    onPress={() => onCardPress(card)}
-                  />
-                ))}
+                <Animated.View style={[styles.cardsAnimatedRow, { opacity: fadeAnim }]}>
+                  {cards.map((card) => (
+                    <PersonGridCard
+                      key={card.id}
+                      id={card.id}
+                      title={card.title}
+                      category={getReadableCategoryName(card.categorySlug || card.category)}
+                      imageUrl={card.imageUrl}
+                      priceTier={(card.priceTier as PriceTierSlug) ?? null}
+                      priceLevel={card.priceLevel}
+                      onPress={() => onCardPress(card)}
+                    />
+                  ))}
+                </Animated.View>
+
+                {/* Shuffle card */}
+                <TouchableOpacity
+                  style={styles.shuffleCard}
+                  onPress={handleShuffle}
+                  activeOpacity={0.7}
+                  disabled={isShuffling}
+                >
+                  <Ionicons name="shuffle-outline" size={s(22)} color="rgba(0,0,0,0.4)" />
+                  <Text style={styles.shuffleText}>Shuffle</Text>
+                </TouchableOpacity>
               </ScrollView>
             )}
           </View>
@@ -329,6 +378,28 @@ const styles = StyleSheet.create({
     paddingTop: vs(12),
     paddingBottom: vs(4),
     gap: s(12),
+  },
+  cardsAnimatedRow: {
+    flexDirection: "row",
+    gap: s(12),
+  },
+  // Shuffle card (light theme for holiday rows)
+  shuffleCard: {
+    width: s(60),
+    height: s(180),
+    borderRadius: s(12),
+    borderWidth: 1.5,
+    borderColor: "rgba(0,0,0,0.1)",
+    borderStyle: "dashed",
+    backgroundColor: "rgba(0,0,0,0.03)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: vs(4),
+  },
+  shuffleText: {
+    fontSize: s(11),
+    fontWeight: "600",
+    color: "rgba(0,0,0,0.4)",
   },
 });
 

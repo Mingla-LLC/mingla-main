@@ -160,6 +160,8 @@ export default function CollaborationPreferences({
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [selectedLat, setSelectedLat] = useState<number | null>(null);
+  const [selectedLng, setSelectedLng] = useState<number | null>(null);
 
   // Location autocomplete suggestions
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
@@ -267,6 +269,11 @@ export default function CollaborationPreferences({
         } else {
           setUseLocation("search");
         }
+      }
+      // Load saved coordinates
+      if (dbPreferences.custom_lat != null && dbPreferences.custom_lng != null) {
+        setSelectedLat(dbPreferences.custom_lat);
+        setSelectedLng(dbPreferences.custom_lng);
       }
     }
   }, [isOpen, dbPreferences]);
@@ -390,6 +397,10 @@ export default function CollaborationPreferences({
       // Get current location
       const location = await locationService.getCurrentLocation();
       if (location) {
+        // Save coordinates
+        setSelectedLat(location.latitude);
+        setSelectedLng(location.longitude);
+
         // Reverse geocode to get city name
         const cityName = await locationService.reverseGeocode(
           location.latitude,
@@ -416,6 +427,8 @@ export default function CollaborationPreferences({
   // Handle location input change with autocomplete
   const handleLocationInputChange = (text: string) => {
     setSearchLocation(text);
+    setSelectedLat(null);
+    setSelectedLng(null);
 
     // Clear any existing debounce timeout
     if (debounceTimeoutRef.current) {
@@ -451,6 +464,8 @@ export default function CollaborationPreferences({
 
     // Update input with displayName for better UX (shorter, more readable)
     setSearchLocation(suggestion.displayName);
+    setSelectedLat(suggestion.location?.lat ?? null);
+    setSelectedLng(suggestion.location?.lng ?? null);
     setShowSuggestions(false);
     setIsInputFocused(false);
 
@@ -500,6 +515,8 @@ export default function CollaborationPreferences({
           : null,
         use_gps_location: isGps,
         custom_location: !isGps && searchLocation ? searchLocation : null,
+        custom_lat: selectedLat != null ? selectedLat : null,
+        custom_lng: selectedLng != null ? selectedLng : null,
       };
 
       // Add location if searchLocation is provided (backward compat for legacy readers)

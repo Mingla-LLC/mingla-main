@@ -1,6 +1,6 @@
 # Mingla
 
-Mingla is a mobile app for planning social outings -- combining AI-powered place recommendations, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
+Mingla is a mobile app for planning social outings -- combining pool-first card serving, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
 
 ---
 
@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings -- combining AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 48 Deno serverless functions |
+| Edge Functions | 49 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -40,11 +40,11 @@ Mingla/
 │   │   │   ├── connections/            # RequestsView, FriendsManagementList, PillFilters
 │   │   │   ├── board/                  # Board-related components
 │   │   │   ├── expandedCard/           # Expanded card sub-components (ActionButtons, etc.)
-│   │   │   ├── profile/               # ProfileHeroSection, PhotosGallery, InterestsSection, etc.
+│   │   │   ├── profile/               # ProfileHeroSection, InterestsSection, Toggle, SettingsRow, EditProfileSheet, EditBioSheet, EditInterestsSheet
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~61 React Query hooks + realtime hooks
-│   │   ├── services/                   # ~75 service files
+│   │   ├── hooks/                      # ~60 React Query hooks + realtime hooks
+│   │   ├── services/                   # ~74 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
@@ -55,11 +55,11 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 48 Deno edge functions
+│   ├── functions/                      # 49 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 171 SQL migration files
+│   ├── migrations/                    # SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -88,40 +88,58 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
-**Step 5 -- Social** -- collaboration session management, then choose a path:
+**Step 5 -- Social** -- friends, consent, collaboration session management, then choose a path:
+- **Friends** (OnboardingFriendsStep) -- Interactive phone input to add friends or invite non-users to the platform. No longer auto-skipped.
+- **Consent** (OnboardingConsentStep) -- Interactive step with explicit data consent. No longer auto-skipped.
 - **Path A (Sync):** Select friends to sync with, record audio descriptions. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
-- **Path B (Add person):** Name, birthday, gender, then audio recording. Creates a saved person with AI-generated experience recommendations.
+- **Path B (Add person):** Streamlined 4-step flow: Name, birthday, gender, then confirm. The confirmation step features warm personal copy, staggered entrance animations, and an "Add to my people" CTA. No audio recording -- cards are served instantly from the pool.
 - **Skip:** Goes straight to the app.
 
 ### Profile Page
 
-The profile page is a decomposed orchestrator (~340 lines) composing 7 sub-components:
+The profile page is a clean, modern single-scroll experience with 5 sections and inline editing via bottom sheets. No sub-screens -- all editing happens from the profile page itself.
 
-- **ProfileHeroSection** -- Avatar with initials fallback and camera badge, display name, username, location with refresh, bio display (tappable to edit), and profile completion hints
-- **ProfilePhotosGallery** -- 3-slot horizontal gallery for additional photos beyond the avatar. Upload via image picker, long-press to remove. Photos stored as `TEXT[]` on the profiles table, uploaded to Supabase Storage "avatars" bucket
-- **ProfileInterestsSection** -- Displays user intents (filled orange pills) and categories (outlined pills). Tappable pencil icon opens the edit sheet
-- **ProfileStatsRow** -- 3-column stats display: Saved count, Connections count, Boards count
+- **ProfileHeroSection** -- 104px avatar with initials gradient fallback and camera badge, display name, @username, location with refresh, bio display (tappable to edit via EditBioSheet), and profile completion hints
+- **ProfileInterestsSection** -- Displays user intents (filled orange pills) and categories (outlined pills). Tappable pencil icon opens the EditInterestsSheet
+- **ProfileStatsRow** -- 3-column stats display: Saved count, Friends count, Boards count. Each stat is tappable for navigation
+- **Settings Section** -- Notifications toggle, Profile Visibility cycling (Friends Only / Everyone / Nobody), Show Activity toggle. Uses shared Toggle and SettingsRow components
+- **Account Section** -- Edit Profile (opens EditProfileSheet bottom sheet for name, username, bio), Replay Tips, Account settings navigation
+- **EditProfileSheet** -- Bottom sheet for editing first name, last name, username (with real-time sanitization), and bio (160 char max)
 - **EditBioSheet** -- Bottom sheet modal with multiline text input, 160-character limit with counter
-- **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories. Uses onboarding intent definitions with per-intent colors. Saves to the preferences table
+- **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories
+- **Toggle** -- Shared animated toggle component with haptic feedback, used by all toggle rows
+- **SettingsRow** -- Reusable row component handling toggle, value-cycling, and navigation row variants
 
-The profile also includes visibility mode cycling (public/friends/private), activity status toggle, notifications toggle, settings links (account, profile info, privacy), recent activity list, legal links, and sign out.
+The profile also includes legal links (Privacy Policy, Terms of Service) and sign out.
 
 ### View Friend Profile
 
-Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, photo gallery, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
+Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
 
 ### Person Page (For You)
 
-The person-centric "For You" view provides personalized recommendations for each saved person with a redesigned card-forward layout:
+The person-centric "For You" view provides personalized recommendations for each saved person with a card-forward layout powered by pool-first card serving:
 
-- **Birthday Hero Section** -- Displays the person's age prominently alongside birthday countdown. A horizontal scroll of AI-curated hero cards (`PersonCuratedCard`) shows top-pick experiences tailored to the person's interests via GPT-4o-mini category extraction. A "Generate More" button fetches additional recommendations, excluding already-seen cards. Falls back to a dark "Picks" card when no birthday is set.
-- **Hero Cards Pipeline** -- The `useHeroCards` hook calls `get-holiday-cards` in `hero` mode, which uses GPT-4o-mini to extract interest categories from the person's description, matches curated cards from the pool, and falls back to Google Places when the pool is insufficient. The `useGenerateMoreCards` mutation calls `generate_more` mode with `excludeCardIds` to avoid duplicates.
+- **Birthday Hero Section** -- Displays the person's age prominently alongside birthday countdown. A horizontal scroll of hero cards (`PersonCuratedCard`) shows top-pick experiences sourced from the `card_pool` table via the `get-person-hero-cards` edge function. Cards appear in under 1 second (no AI generation on load). A shuffle mechanic at the end of the horizontal scroll lets users refresh cards with a fade-out/fade-in animation and no-repeat guarantee via `person_card_impressions`. A "Generate More" button fetches additional AI-generated recommendations (GPT-4o-mini pipeline), excluding already-seen cards. Falls back to a dark "Picks" card when no birthday is set.
+- **Hero Cards Pipeline** -- The `usePersonHeroCards` hook calls `get-person-hero-cards`, which queries the `card_pool` table directly using the person's location and categories. The DB function `query_person_hero_cards` uses progressive radius expansion to find matching cards. Cards are tracked via `person_card_impressions` to prevent repeats. The "Generate More" button still uses the older AI pipeline (`get-holiday-cards` in `generate_more` mode with GPT-4o-mini) for deeper suggestions beyond what the pool offers.
+- **Shuffle Mechanic** -- The `useShuffleCards` hook powers shuffle at the end of both hero section and holiday row horizontal scrolls. Triggers a fade-out/fade-in animation, fetches a fresh batch from the pool excluding previously seen card IDs, and records new impressions. Provides a seamless refresh experience without page navigation.
 - **PersonGridCard** -- Unified grid card component matching the For You tab design. Shows venue image, category-colored badge, price tier pill, rating, and opens Google Maps on tap. Used across holiday rows for consistent visual treatment.
 - **PersonCuratedCard** -- Compact curated card for the hero section horizontal scroll. Shows multi-stop itinerary info (stop count, price range) in a condensed format.
-- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away, with real card loading from `get-holiday-cards` (pool-first + Google Places fallback). Cards render as `PersonGridCard` for unified design. Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
+- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away. Each row lazy-loads cards on expand using `usePersonHeroCards` (pool-first from `card_pool`). Cards render as `PersonGridCard` for unified design. Shuffle mechanic available at end of horizontal scroll. Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
 - **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
 - **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
+
+### Add Person Flow
+
+Streamlined 4-step flow (reduced from 5 steps by removing the audio recording step):
+
+1. **Name** -- First and last name entry
+2. **Birthday** -- Date of birth picker
+3. **Gender** -- Gender selection
+4. **Confirm** -- Redesigned confirmation screen with warm personal copy, staggered entrance animations, and "Add to my people" CTA
+
+Audio description recording (`AudioDescriptionManager`) has been removed from the add person flow entirely. Audio services remain available for the onboarding sync path only.
 
 ### Connect Page
 
@@ -153,12 +171,12 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - `lookup-phone` checks `friends` and `friend_requests` tables for friendship/pending status
 
 ### AI-Powered Recommendations
-- Experience cards built from real Google Places data, enriched by GPT-4o-mini
-- Audio-to-recommendations pipeline: voice notes transcribed (Whisper), analyzed (GPT-4o-mini), used to generate personalized experience cards
-- Card pool data pipeline: pool-first serving, falls back to Google Places API
+- Pool-first card serving: hero cards and holiday cards are sourced directly from the `card_pool` table by location and categories, delivering results in under 1 second
+- "Generate More" fallback: GPT-4o-mini generates deeper recommendations beyond the pool, using Google Places API for fresh data
+- Audio-to-recommendations pipeline (onboarding only): voice notes transcribed (Whisper), analyzed (GPT-4o-mini), used to generate personalized experience cards
+- Card pool data pipeline: pool-first serving, falls back to Google Places API for "Generate More" requests
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
 - AI summary generation for birthday hero cards via `generate-ai-summary` edge function
-- GPT-4o-mini category extraction from person descriptions for hero card curation
 - Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km -> 5km -> closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
 
 ### Card-Based Swipe Interface
@@ -197,19 +215,20 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 | `lavish` | Lavish | $300+ | VERY_EXPENSIVE | `#F59E0B` |
 
 ### Collaboration Sessions
+- Friendship is a prerequisite for collaboration session **activation** but not **creation**. Non-friends can be invited to sessions -- a hidden invite is created with `pending_friendship=true`, and a friend request is sent simultaneously. When the friend request is accepted, the invite auto-reveals. If declined, the invite is cancelled and empty sessions are deleted.
 - Unified session creation flow via `CreateSessionContent` component (embedded in CollaborationModule's Create tab, also available standalone)
 - Named sessions with multi-friend selection via `FriendSelectionModal`
-- Phone number invites: invite friends by phone number, non-friends get a friend request first, non-platform users get an SMS invite via Share sheet with auto-conversion on signup (DB triggers handle the full pending → converted pipeline for both friend invites AND session invites)
+- Phone number invites: invite friends by phone number, non-friends get a friend request first, non-platform users get an SMS invite via Share sheet with auto-conversion on signup (DB triggers handle the full pending -> converted pipeline for both friend invites AND session invites)
 - JWT-validated invite edge function prevents impersonation
 - Real-time card swiping, voting (with synchronous double-tap guard), RSVP, lock-in, calendar sync, and chat
 - Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses deterministic majority vote (alphabetical tie-break); travel time uses median; datetime uses earliest; location uses midpoint
 - Server-side synchronized deck generation: a single canonical deck is generated per session and stored in `session_decks`, ensuring all participants see identical cards in identical order
-- Idempotent preference seeding (upsert) on invite acceptance — safe against double-accept race conditions
+- Idempotent preference seeding (upsert) on invite acceptance -- safe against double-accept race conditions
 - Auto-copy of solo preferences to collaboration sessions on invite acceptance and onboarding completion
 - Push notifications for collaboration invites via OneSignal (awaited with error logging)
 - Realtime deck refresh: when any participant updates preferences, a new deck is generated and all clients are notified via Supabase Realtime
 - Realtime invite status: InvitesTab auto-refreshes via Supabase Realtime subscription when invites are created, accepted, or cancelled
-- Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB — prevents premature actions on pending sessions
+- Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB -- prevents premature actions on pending sessions
 - DB-level unique constraint on `collaboration_sessions.board_id` prevents concurrent board creation race condition
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
@@ -241,8 +260,9 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 ### Additional Features
 - GPS and manual location with travel time preferences
-- Audio clips for saved people with AI-powered transcription and interest extraction
-- Holiday planning with custom holidays, archiving, and real card sourcing
+- Audio-to-recommendations pipeline for onboarding sync path (Whisper transcription + GPT-4o-mini interest extraction)
+- Holiday planning with custom holidays, archiving, and pool-first card sourcing with shuffle
+- Shuffle mechanic on hero cards and holiday rows -- fade-out/fade-in animation, no-repeat guarantee via impression tracking
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
 - Boards with card voting, RSVP, threaded discussion, and @mentions
@@ -257,7 +277,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, photos (TEXT[]), visibility_mode |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, show_activity, visibility_mode. Legacy `photos` TEXT[] column retained but unused by app |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 
@@ -289,7 +309,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | Table | Purpose |
 |-------|---------|
 | `saved_people` | Saved people with name, birthday, gender, AI-generated description |
-| `person_audio_clips` | Audio recordings describing saved people |
+| `person_audio_clips` | Audio recordings describing saved people (onboarding sync path only) |
 | `person_experiences` | AI-generated experience cards per person per occasion |
 | `custom_holidays` | User-created holidays for specific saved people (name, month, day, categories) |
 | `archived_holidays` | Tracks which holidays a user has archived for a specific person |
@@ -299,7 +319,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | Table | Purpose |
 |-------|---------|
 | `collaboration_sessions` | Collaboration session records |
-| `collaboration_invites` | Session invite records (canonical columns: `inviter_id`, `invited_user_id`) |
+| `collaboration_invites` | Session invite records (canonical columns: `inviter_id`, `invited_user_id`, `pending_friendship` boolean default false -- controls invite visibility until friendship is established) |
 | `session_participants` | Session participant records |
 | `boards` | Collaboration boards |
 | `board_session_preferences` | Per-session preference settings (auto-seeded from solo preferences) |
@@ -311,7 +331,8 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 |-------|---------|
 | `card_pool` | Enriched place cards shared across users |
 | `place_pool` | Place data pool from Google Places |
-| `user_card_impressions` | Tracks which cards users have seen |
+| `user_card_impressions` | Tracks which cards users have seen (discover/swipe) |
+| `person_card_impressions` | Tracks which cards each saved person has been shown (hero cards + holiday rows), enabling no-repeat shuffle and "Generate More" exclusions |
 | `ticketmaster_events_cache` | Cached Ticketmaster events (2-hour TTL) |
 | `google_places_cache` | Cached Google Places API responses |
 | `discover_daily_cache` | Cached discover feed results |
@@ -329,9 +350,10 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation |
 | `generate-person-experiences` | Person-specific experience recommendations |
-| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation |
+| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation (onboarding sync path) |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-holiday-cards` | Holiday card sourcing with three modes: `holiday` (pool-first + Google fallback per category), `hero` (GPT-4o-mini category extraction from person description, curated card matching, Google Places fallback, priceTier derivation), and `generate_more` (additional cards excluding already-seen IDs) |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Queries `card_pool` directly by location + categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` for no-repeat guarantee. Sub-second response time. |
+| `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
@@ -474,11 +496,14 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Realtime Publication Fix** -- Added `collaboration_invites`, `collaboration_sessions`, and `session_participants` to the `supabase_realtime` publication. All existing realtime subscriptions now actually receive events (previously they silently received nothing).
-- **Column Consolidation** -- Eliminated duplicate columns on `collaboration_invites` (`invitee_id`/`invited_user_id` and `inviter_id`/`invited_by`). The table now has exactly two participant columns: `inviter_id` (sender) and `invited_user_id` (recipient). Sync triggers removed. All app code, RLS policies, and edge functions use canonical columns only.
-- **In-App Notification Catch-Up** -- Added a foreground resume mechanism that queries pending invites and creates in-app notifications for any missed while the app was in background/killed, with deduplication via `notifiedCollabInviteIdsRef`.
-- **Debounced Invite Handler** -- Changed the `collaboration_invites` INSERT realtime handler in `useSessionManagement.ts` from immediate `loadUserSessions()` to debounced (300ms), preventing thundering herd when multiple invitations arrive simultaneously.
-- **Delete-User Edge Function** -- Updated `delete-user` to reference `invited_user_id` instead of the dropped `invitee_id` column.
+- **Hero Cards Redesign** -- Replaced the slow AI-driven hero card pipeline (GPT + live Google API calls on every load) with a fast pool-first system. The new `get-person-hero-cards` edge function queries `card_pool` directly using location + categories via the `query_person_hero_cards` DB function with progressive radius expansion. Cards now appear in under 1 second instead of multi-second AI generation waits.
+- **Shuffle Mechanic** -- Users can shuffle cards at the end of horizontal scrolls (both hero section and holiday rows). Fade-out/fade-in animation with a no-repeat guarantee via the new `person_card_impressions` table. Powered by `useShuffleCards` hook.
+- **Add Person Flow Streamlined** -- Removed Step 4 (audio description), reducing the flow from 5 steps to 4: Name, Birthday, Gender, Confirm. The confirmation step was redesigned with warm personal copy, staggered entrance animations, and an "Add to my people" CTA. `AudioDescriptionManager` component deleted.
+- **Audio Removal from Person Flows** -- All audio state, imports, and upload logic removed from `AddPersonModal` and `PersonEditSheet`. Audio services remain for the onboarding sync path only.
+- **New Database Table** -- `person_card_impressions` for per-person card impression tracking, enabling no-repeat shuffles and "Generate More" exclusions.
+- **New Edge Function** -- `get-person-hero-cards` for pool-first card serving with impression tracking.
+- **New Client Files** -- `personHeroCardsService.ts`, `usePersonHeroCards.ts`, `useShuffleCards.ts`.
+- **Holiday Rows Updated** -- Now use `usePersonHeroCards` (pool-first) instead of the old AI pipeline for default card loads. Each row lazy-loads on expand. Shuffle available at end of scroll.
 
 ---
 

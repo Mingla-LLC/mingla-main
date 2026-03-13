@@ -124,7 +124,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   }, [preSelectedFriend?.id]);
 
   const [showFriendModal, setShowFriendModal] = useState(false);
-  const { friends, fetchFriends, addFriend } = useFriends();
+  const { friends, fetchFriends } = useFriends();
 
   // Preferences (board sessions only — not used in embedded/collaboration mode)
   const [preferences, setPreferences] = useState<BoardPreferences | null>(null);
@@ -365,6 +365,17 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         if (sessionId && friendsWithoutUsername.length > 0) {
           for (const friend of friendsWithoutUsername) {
             try {
+              // Check friendship status
+              const { data: friendship } = await supabase
+                .from('friends')
+                .select('id')
+                .eq('status', 'accepted')
+                .or(`and(user_id.eq.${user.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user.id})`)
+                .limit(1)
+                .single();
+
+              const isFriend = !!friendship;
+
               // Add as participant (not accepted yet)
               await supabase
                 .from('session_participants')
@@ -374,14 +385,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                   has_accepted: false,
                 });
 
-              // Get friend's email for the push notification
-              const { data: friendProfile } = await supabase
-                .from('profiles')
-                .select('email')
-                .eq('id', friend.id)
-                .single();
-
-              // Create invite
+              // Create invite with pending_friendship flag
               const { data: inviteData } = await supabase
                 .from('collaboration_invites')
                 .insert({
@@ -389,12 +393,29 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                   inviter_id: user.id,
                   invited_user_id: friend.id,
                   status: 'pending',
+                  pending_friendship: !isFriend,
                 })
                 .select('id')
                 .single();
 
-              // Send push notification
-              if (inviteData) {
+              // If not friend, send friend request (non-blocking)
+              if (!isFriend) {
+                await supabase
+                  .from('friend_requests')
+                  .upsert(
+                    { sender_id: user.id, receiver_id: friend.id, status: 'pending' },
+                    { onConflict: 'sender_id,receiver_id' }
+                  );
+              }
+
+              // Only send push notification if invite is visible (friend)
+              if (isFriend && inviteData) {
+                const { data: friendProfile } = await supabase
+                  .from('profiles')
+                  .select('email')
+                  .eq('id', friend.id)
+                  .single();
+
                 await supabase.functions.invoke('send-collaboration-invite', {
                   body: {
                     inviterId: user.id,
@@ -600,55 +621,18 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                       if (isAlreadyInvited) return;
 
                       if (phoneLookupResult?.found && phoneLookupResult.user) {
-                        // User found on app but not a friend — prompt to send friend request
-                        if (phoneLookupResult.friendship_status === 'none') {
-                          Alert.alert(
-                            'Send friend request first?',
-                            `${phoneLookupResult.user.display_name || phoneLookupResult.user.username} is on Mingla but not your friend yet.`,
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Send Request',
-                                onPress: async () => {
-                                  const lookupUser = phoneLookupResult.user!;
-                                  try {
-                                    // Actually send the friend request
-                                    await addFriend(
-                                      lookupUser.id,
-                                      '', // email not available from phone lookup
-                                      lookupUser.username,
-                                    );
-                                    // Add as selected friend from lookup
-                                    const friendData: SelectedFriend = {
-                                      id: lookupUser.id,
-                                      name: lookupUser.display_name || lookupUser.username,
-                                      username: lookupUser.username,
-                                      avatar_url: lookupUser.avatar_url || undefined,
-                                    };
-                                    if (!selectedFriends.some(f => f.id === friendData.id)) {
-                                      setSelectedFriends(prev => [...prev, friendData]);
-                                    }
-                                    setPhoneDigits('');
-                                  } catch (err: unknown) {
-                                    Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send friend request');
-                                  }
-                                },
-                              },
-                            ]
-                          );
-                        } else {
-                          // Already friends — add directly
-                          const friendData: SelectedFriend = {
-                            id: phoneLookupResult.user.id,
-                            name: phoneLookupResult.user.display_name || phoneLookupResult.user.username,
-                            username: phoneLookupResult.user.username,
-                            avatar_url: phoneLookupResult.user.avatar_url || undefined,
-                          };
-                          if (!selectedFriends.some(f => f.id === friendData.id)) {
-                            setSelectedFriends(prev => [...prev, friendData]);
-                          }
-                          setPhoneDigits('');
+                        // Any Mingla user — add directly to session.
+                        // Friendship is handled at the invite/activation layer.
+                        const friendData: SelectedFriend = {
+                          id: phoneLookupResult.user.id,
+                          name: phoneLookupResult.user.display_name || phoneLookupResult.user.username,
+                          username: phoneLookupResult.user.username,
+                          avatar_url: phoneLookupResult.user.avatar_url || undefined,
+                        };
+                        if (!selectedFriends.some(f => f.id === friendData.id)) {
+                          setSelectedFriends(prev => [...prev, friendData]);
                         }
+                        setPhoneDigits('');
                       } else {
                         // Not on app — invite via share
                         setPhoneInviteLoading(true);

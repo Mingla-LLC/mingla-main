@@ -603,6 +603,43 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (friend2Error) throw friend2Error;
 
+        // After accepting friend request, check for newly revealed collaboration invites.
+        // The database trigger (credit_referral_on_friend_accepted) has already set
+        // pending_friendship = false. Now send push notifications for each revealed invite.
+        try {
+          const { data: revealedInvites } = await supabase
+            .from('collaboration_invites')
+            .select('id, session_id, inviter_id, invited_user_id, collaboration_sessions!collaboration_invites_session_id_fkey(name)')
+            .or(
+              `and(inviter_id.eq.${request.sender_id},invited_user_id.eq.${request.receiver_id}),` +
+              `and(inviter_id.eq.${request.receiver_id},invited_user_id.eq.${request.sender_id})`
+            )
+            .eq('status', 'pending')
+            .eq('pending_friendship', false)
+            .gte('updated_at', new Date(Date.now() - 10000).toISOString());
+
+          if (revealedInvites && revealedInvites.length > 0) {
+            for (const invite of revealedInvites) {
+              const sessionName = Array.isArray(invite.collaboration_sessions)
+                ? invite.collaboration_sessions[0]?.name
+                : (invite.collaboration_sessions as { name: string } | null)?.name;
+
+              await supabase.functions.invoke('send-collaboration-invite', {
+                body: {
+                  inviterId: invite.inviter_id,
+                  invitedUserId: invite.invited_user_id,
+                  sessionId: invite.session_id,
+                  sessionName: sessionName || 'Collaboration Session',
+                  inviteId: invite.id,
+                },
+              });
+            }
+          }
+        } catch (notifyErr) {
+          // Non-critical — invite is already visible via realtime, push is a bonus
+          console.error('[useFriends] Error sending revealed invite notifications:', notifyErr);
+        }
+
         // Reload data
         await Promise.all([fetchFriends(), loadFriendRequests()]);
       } catch (error) {

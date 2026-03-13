@@ -28,7 +28,7 @@ import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
 import TermsOfService from "../src/components/profile/TermsOfService";
 import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
-import ProfileSettings from "../src/components/profile/ProfileSettings";
+
 import ViewFriendProfileScreen from "../src/components/profile/ViewFriendProfileScreen";
 import OnboardingLoader from "../src/components/onboarding/OnboardingLoader";
 import LikesPage from "../src/components/LikesPage";
@@ -113,8 +113,6 @@ function AppContent() {
     setShowPrivacyPolicy,
     showAccountSettings,
     setShowAccountSettings,
-    showProfileSettings,
-    setShowProfileSettings,
     showShareModal,
     setShowShareModal,
     shareData,
@@ -503,7 +501,8 @@ function AppContent() {
           profiles!collaboration_invites_inviter_id_fkey(display_name, first_name, username, avatar_url)
         `)
         .eq('invited_user_id', user.id)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .eq('pending_friendship', false);
 
       if (!pendingInvites || pendingInvites.length === 0) return;
 
@@ -668,8 +667,6 @@ function AppContent() {
       logger.nav('Modal: PrivacyPolicy');
     } else if (showAccountSettings) {
       logger.nav('Modal: AccountSettings');
-    } else if (showProfileSettings) {
-      logger.nav('Modal: ProfileSettings');
     } else {
       logger.nav(`Page: ${currentPage}`, { userId: user?.id });
     }
@@ -685,7 +682,6 @@ function AppContent() {
     showTermsOfService,
     showPrivacyPolicy,
     showAccountSettings,
-    showProfileSettings,
   ]);
 
   // Track main screen visits in Mixpanel
@@ -809,7 +805,8 @@ function AppContent() {
             collaboration_sessions!inner(id, name, status, created_by, created_at)
           `)
           .eq('invited_user_id', user.id)
-          .eq('status', 'pending'),
+          .eq('status', 'pending')
+          .eq('pending_friendship', false),
       ]);
 
       // Discard this result if a newer call has already started.
@@ -1840,28 +1837,20 @@ function AppContent() {
               logger.action('Navigate to connections from profile');
               setCurrentPage("connections");
             }}
-            onNavigateToProfileSettings={() => {
-              logger.action('Open profile settings');
-              setShowProfileSettings(true);
-            }}
             onNavigateToAccountSettings={() => { logger.action('Open account settings'); setShowAccountSettings(true) }}
             onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
             onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
-            connectionsCount={friendsList?.length || 0}
             notificationsEnabled={notificationsEnabled}
             onNotificationsToggle={(enabled: boolean) =>
               console.log("Toggle notifications:", enabled)
             }
             userIdentity={userIdentity}
-            onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-            onUnblockUser={handlers.handleUnblockUser}
             onNavigateToReplayTips={() => {
               logger.action('Navigate to replay tips');
               setCurrentPage("replay-tips" as any);
             }}
-            onUpgradePress={() => setShowPaywall(true)}
           />
         );
       default:
@@ -1915,7 +1904,6 @@ function AppContent() {
 
   // Ensure any full-screen profile overlays are closed when switching tabs/pages
   const closeProfileOverlays = () => {
-    setShowProfileSettings(false);
     setShowAccountSettings(false);
     setShowPrivacyPolicy(false);
     setShowTermsOfService(false);
@@ -1964,8 +1952,6 @@ function AppContent() {
                           <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
                         ) : showAccountSettings ? (
                           <AccountSettings />
-                        ) : showProfileSettings ? (
-                          <ProfileSettings onNavigateBack={() => setShowProfileSettings(false)} />
                         ) : (
                           renderCurrentPage()
                         )}

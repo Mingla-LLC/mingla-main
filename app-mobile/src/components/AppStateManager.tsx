@@ -169,7 +169,6 @@ export function useAppState() {
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   // Load currentMode from storage first, then verify with database
@@ -368,7 +367,7 @@ export function useAppState() {
   useEffect(() => {
     if (!user) {
       setCurrentPage("home");
-      setShowProfileSettings(false);
+
       setShowAccountSettings(false);
       setShowPreferences(false);
       setShowCollaboration(false);
@@ -769,7 +768,7 @@ export function useAppState() {
     try {
       // Reset navigation/UI state immediately so next sign-in starts on Explore
       setCurrentPage("home");
-      setShowProfileSettings(false);
+
       setShowAccountSettings(false);
       setShowPreferences(false);
       setShowCollaboration(false);
@@ -877,8 +876,6 @@ export function useAppState() {
     setShowPrivacyPolicy,
     showAccountSettings,
     setShowAccountSettings,
-    showProfileSettings,
-    setShowProfileSettings,
     showShareModal,
     setShowShareModal,
     shareData,

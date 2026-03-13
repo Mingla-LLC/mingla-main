@@ -188,6 +188,7 @@ export default function CollaborationModule({
         )
         .eq("invited_user_id", user.id)
         .eq("status", "pending")
+        .eq("pending_friendship", false)
         .order("created_at", { ascending: false });
 
       if (receivedError) {

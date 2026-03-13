@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Text,
   View,
@@ -6,31 +6,24 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  Animated,
-  ActivityIndicator,
 } from "react-native";
 import * as Location from "expo-location";
 import { throttledReverseGeocode } from "../utils/throttledGeocode";
-import { Ionicons } from "@expo/vector-icons";
-import Feather from "@expo/vector-icons/Feather";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFriends } from "../hooks/useFriends";
-import { useRecentActivity } from "../hooks/useRecentActivity";
-import { formatActivityDate } from "../utils/dateUtils";
-import type { UserActivityRecord } from "../services/userActivityService";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
 import { useAppState } from "./AppStateManager";
 import { mixpanelService } from "../services/mixpanelService";
-import { useProfilePhotos, useUploadProfilePhoto, useDeleteProfilePhoto } from "../hooks/useProfilePhotos";
 import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProfileInterests";
 import ProfileHeroSection from "./profile/ProfileHeroSection";
-import ProfilePhotosGallery from "./profile/ProfilePhotosGallery";
 import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
+import SettingsRow from "./profile/SettingsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
+import EditProfileSheet from "./profile/EditProfileSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
 
@@ -38,19 +31,14 @@ interface ProfilePageProps {
   onSignOut?: () => void;
   onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
   onNavigateToConnections?: () => void;
-  onNavigateToProfileSettings?: () => void;
   onNavigateToAccountSettings?: () => void;
   onNavigateToPrivacyPolicy?: () => void;
   onNavigateToTermsOfService?: () => void;
+  onNavigateToReplayTips?: () => void;
   savedExperiences?: number;
   boardsCount?: number;
-  connectionsCount?: number;
   notificationsEnabled?: boolean;
   onNotificationsToggle?: (enabled: boolean) => void;
-  onUnblockUser?: (blockedUser: any, suppressNotification?: boolean) => Promise<void>;
-  onNavigateToFriendProfile?: (userId: string) => void;
-  onNavigateToReplayTips?: () => void;
-  onUpgradePress?: () => void;
   userIdentity?: {
     firstName: string;
     lastName: string;
@@ -64,17 +52,14 @@ export default function ProfilePage({
   onSignOut,
   onNavigateToActivity,
   onNavigateToConnections,
-  onNavigateToProfileSettings,
   onNavigateToAccountSettings,
   onNavigateToPrivacyPolicy,
   onNavigateToTermsOfService,
+  onNavigateToReplayTips,
   savedExperiences = 0,
   boardsCount = 0,
-  connectionsCount = 0,
   notificationsEnabled = true,
   onNotificationsToggle,
-  onNavigateToReplayTips,
-  onUpgradePress,
   userIdentity,
 }: ProfilePageProps) {
   useScreenLogger('profile');
@@ -84,11 +69,6 @@ export default function ProfilePage({
   useEffect(() => {
     fetchFriends();
   }, [fetchFriends]);
-
-  const {
-    activities: recentActivities,
-    loading: recentActivityLoading,
-  } = useRecentActivity(5);
 
   const [currentLocation, setCurrentLocation] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -101,35 +81,11 @@ export default function ProfilePage({
   // Modal state
   const [showBioSheet, setShowBioSheet] = useState(false);
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
-
-  // Profile photos
-  const { data: galleryPhotos } = useProfilePhotos();
-  const uploadPhotoMutation = useUploadProfilePhoto();
-  const deletePhotoMutation = useDeleteProfilePhoto();
+  const [showEditProfileSheet, setShowEditProfileSheet] = useState(false);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
   const updateInterestsMutation = useUpdateProfileInterests();
-
-  // Notification toggle animation
-  const toggleAnim = useRef(new Animated.Value(notificationsEnabled ? 20 : 2)).current;
-  useEffect(() => {
-    Animated.timing(toggleAnim, {
-      toValue: notificationsEnabled ? 20 : 2,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [notificationsEnabled]);
-
-  // Activity status toggle animation
-  const activityToggleAnim = useRef(new Animated.Value(profile?.active !== false ? 20 : 2)).current;
-  useEffect(() => {
-    Animated.timing(activityToggleAnim, {
-      toValue: profile?.active !== false ? 20 : 2,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [profile?.active]);
 
   // Location
   useEffect(() => {
@@ -246,45 +202,6 @@ export default function ProfilePage({
     }
   };
 
-  // Gallery photo handlers
-  const handleAddGalleryPhoto = (position: number) => {
-    Alert.alert("Add Photo", "Choose how you want to add a photo", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Take Photo",
-        onPress: async () => {
-          const result = await cameraService.takePhoto({
-            allowsEditing: true, aspect: [1, 1], quality: 0.8, compress: true, maxWidth: 800, maxHeight: 800,
-          });
-          if (result?.uri) uploadPhotoMutation.mutate(
-            { imageUri: result.uri, position },
-            { onError: () => Alert.alert("Error", "Failed to upload photo. Please try again.") }
-          );
-        },
-      },
-      {
-        text: "Choose from Gallery",
-        onPress: async () => {
-          const result = await cameraService.pickFromLibrary({
-            allowsEditing: true, aspect: [1, 1], quality: 0.8, compress: true, maxWidth: 800, maxHeight: 800,
-          });
-          if (result?.uri) uploadPhotoMutation.mutate(
-            { imageUri: result.uri, position },
-            { onError: () => Alert.alert("Error", "Failed to upload photo. Please try again.") }
-          );
-        },
-      },
-    ]);
-  };
-
-  const handleRemoveGalleryPhoto = (position: number) => {
-    deletePhotoMutation.mutate(position, {
-      onError: () => Alert.alert("Error", "Failed to remove photo. Please try again."),
-    });
-  };
-
-  const isGalleryBusy = uploadPhotoMutation.isPending || deletePhotoMutation.isPending;
-
   // Bio save
   const handleSaveBio = async (bio: string) => {
     if (!user?.id) return;
@@ -303,8 +220,8 @@ export default function ProfilePage({
   };
 
   // Notifications toggle
-  const handleNotificationsToggle = (enabled: boolean) => {
-    onNotificationsToggle?.(enabled);
+  const handleNotificationsToggle = () => {
+    onNotificationsToggle?.(!notificationsEnabled);
   };
 
   // Visibility mode cycling
@@ -317,6 +234,7 @@ export default function ProfilePage({
   const currentVisibility = profile?.visibility_mode || "friends";
   const handleCycleVisibility = async () => {
     if (!user?.id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const currentIndex = visibilityModes.indexOf(currentVisibility);
     const nextMode = visibilityModes[(currentIndex + 1) % visibilityModes.length];
     try {
@@ -326,12 +244,12 @@ export default function ProfilePage({
     }
   };
 
-  // Activity status
-  const isActive = profile?.active !== false;
-  const handleToggleActive = async () => {
+  // Show Activity — uses show_activity (NOT active, which is account status)
+  const showActivity = profile?.show_activity !== false;
+  const handleToggleShowActivity = async () => {
     if (!user?.id) return;
     try {
-      await authService.updateUserProfile(user.id, { active: !isActive });
+      await authService.updateUserProfile(user.id, { show_activity: !showActivity });
     } catch (error) {
       Alert.alert("Error", "Failed to update activity status.");
     }
@@ -345,46 +263,27 @@ export default function ProfilePage({
     }
   };
 
-  const getActivityLabel = (activity: UserActivityRecord): string => {
-    switch (activity.activity_type) {
-      case "saved_card": return "Saved";
-      case "scheduled_card": return "";
-      case "joined_board": return "Joined board";
-      default: return "Activity";
-    }
-  };
-
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
         {/* 1. Hero Section */}
-        <View>
-          <ProfileHeroSection
-            isOwnProfile
-            firstName={userIdentity?.firstName || null}
-            lastName={userIdentity?.lastName || null}
-            username={userIdentity?.username || null}
-            avatarUrl={userIdentity?.profileImage || null}
-            bio={profile?.bio || null}
-            location={currentLocation}
-            isLoadingLocation={isLoadingLocation}
-            locationError={locationError}
-            onAvatarPress={handleAvatarChange}
-            onBioPress={() => setShowBioSheet(true)}
-            onLocationRefresh={updateLocation}
-            isUploading={isUploading}
-          />
-        </View>
-
-        {/* 2. Photos Gallery */}
-        <ProfilePhotosGallery
-          photos={galleryPhotos || []}
+        <ProfileHeroSection
           isOwnProfile
-          onAddPhoto={isGalleryBusy ? undefined : handleAddGalleryPhoto}
-          onRemovePhoto={isGalleryBusy ? undefined : handleRemoveGalleryPhoto}
+          firstName={userIdentity?.firstName || null}
+          lastName={userIdentity?.lastName || null}
+          username={userIdentity?.username || null}
+          avatarUrl={userIdentity?.profileImage || null}
+          bio={profile?.bio || null}
+          location={currentLocation}
+          isLoadingLocation={isLoadingLocation}
+          locationError={locationError}
+          onAvatarPress={handleAvatarChange}
+          onBioPress={() => setShowBioSheet(true)}
+          onLocationRefresh={updateLocation}
+          isUploading={isUploading}
         />
 
-        {/* 3. Interests Section */}
+        {/* 2. Interests Section */}
         <View style={styles.sectionSpacing}>
           <ProfileInterestsSection
             intents={interests?.intents || []}
@@ -394,8 +293,7 @@ export default function ProfilePage({
           />
         </View>
 
-        {/* 4. Stats Row */}
-        <View>
+        {/* 3. Stats Row */}
         <ProfileStatsRow
           savedCount={savedExperiences}
           connectionsCount={actualConnectionsCount}
@@ -406,131 +304,59 @@ export default function ProfilePage({
             else if (stat === "connections") onNavigateToConnections?.();
           }}
         />
-        </View>
 
-        {/* 5. Recent Activity */}
+        {/* 4. Settings Section */}
         <View style={styles.section}>
-          <View style={styles.sectionCard}>
-            <View style={styles.recentActivityHeader}>
-              <Text style={styles.sectionTitle}>Recent Activity</Text>
-              <TouchableOpacity onPress={() => onNavigateToActivity?.("calendar")} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={styles.viewAllLink}>View All</Text>
-              </TouchableOpacity>
-            </View>
-            {recentActivityLoading ? (
-              <ActivityIndicator size="small" color="#eb7825" style={styles.loader} />
-            ) : recentActivities.length === 0 ? (
-              <Text style={styles.emptyText}>No recent activity yet</Text>
-            ) : (
-              <View style={styles.activityList}>
-                {recentActivities.map((activity) => (
-                  <View key={activity.id} style={styles.activityItem}>
-                    <View style={styles.activityDot} />
-                    <View style={styles.activityContent}>
-                      <Text style={styles.activityTitle} numberOfLines={1}>{activity.title}</Text>
-                      <Text style={styles.activityDate}>
-                        {getActivityLabel(activity)}{getActivityLabel(activity) ? " – " : ""}{formatActivityDate(activity.created_at)}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
+          <Text style={styles.sectionLabel}>SETTINGS</Text>
+          <SettingsRow
+            label="Notifications"
+            hint="Invites, boards, and messages"
+            toggle
+            toggleValue={notificationsEnabled}
+            onToggle={handleNotificationsToggle}
+          />
+          <SettingsRow
+            label="Profile Visibility"
+            value={visibilityLabels[currentVisibility] || "Friends Only"}
+            onPress={handleCycleVisibility}
+          />
+          <SettingsRow
+            label="Show Activity"
+            hint="Friends can see when you're active"
+            toggle
+            toggleValue={showActivity}
+            onToggle={handleToggleShowActivity}
+            isLast
+          />
         </View>
 
-        {/* 6. Quick Settings */}
+        {/* 5. Account Section */}
         <View style={styles.section}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Settings</Text>
-
-            {/* Notifications toggle */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>Notifications</Text>
-                <Text style={styles.settingHint}>Invites, board updates, and messages</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => handleNotificationsToggle(!notificationsEnabled)}
-                style={[styles.toggle, { backgroundColor: notificationsEnabled ? "#eb7825" : "#d1d5db" }]}
-              >
-                <Animated.View style={[styles.toggleThumb, { transform: [{ translateX: toggleAnim }] }]} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Visibility cycle */}
-            <TouchableOpacity style={styles.settingRow} onPress={handleCycleVisibility}>
-              <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>Profile Visibility</Text>
-              </View>
-              <View style={styles.settingValueRow}>
-                <Text style={styles.settingValue}>{visibilityLabels[currentVisibility] || "Friends Only"}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-              </View>
-            </TouchableOpacity>
-
-            {/* Activity status toggle */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>Show Activity</Text>
-                <Text style={styles.settingHint}>Let friends see when you're active</Text>
-              </View>
-              <TouchableOpacity
-                onPress={handleToggleActive}
-                style={[styles.toggle, { backgroundColor: isActive ? "#eb7825" : "#d1d5db" }]}
-              >
-                <Animated.View
-                  style={[styles.toggleThumb, { transform: [{ translateX: activityToggleAnim }] }]}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Replay Tips */}
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={handleReplayTips}
-              accessibilityRole="button"
-              accessibilityLabel="Replay Tips"
-              accessibilityHint="Browse and replay tutorial tips"
-            >
-              <View style={styles.settingLabelContainer}>
-                <View style={styles.replayTipsLabelRow}>
-                  <Ionicons name="refresh-outline" size={22} color="#f97316" />
-                  <Text style={styles.settingLabel}>Replay Tips</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.sectionLabel}>ACCOUNT</Text>
+          <SettingsRow
+            icon="settings"
+            label="Edit Profile"
+            description="Name, username, and bio"
+            showChevron
+            onPress={() => setShowEditProfileSheet(true)}
+          />
+          <SettingsRow
+            icon="refresh-cw"
+            label="Replay Tips"
+            showChevron
+            onPress={handleReplayTips}
+          />
+          <SettingsRow
+            icon="shield"
+            label="Account"
+            description="App info and account management"
+            showChevron
+            onPress={onNavigateToAccountSettings}
+            isLast
+          />
         </View>
 
-        {/* 7. Account & More */}
-        <View style={styles.section}>
-          <View style={styles.settingsContainer}>
-            <TouchableOpacity onPress={onNavigateToProfileSettings} style={styles.settingsItem}>
-              <View style={styles.settingsIconContainer}>
-                <Feather name="settings" size={20} color="#6b7280" />
-              </View>
-              <View style={styles.settingsContent}>
-                <Text style={styles.settingsLabel}>Edit Profile</Text>
-                <Text style={styles.settingsDescription}>Name, username, email, and more</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onNavigateToAccountSettings} style={styles.settingsItem}>
-              <View style={styles.settingsIconContainer}>
-                <Feather name="shield" size={20} color="#6b7280" />
-              </View>
-              <View style={styles.settingsContent}>
-                <Text style={styles.settingsLabel}>Account</Text>
-                <Text style={styles.settingsDescription}>Delete account and app info</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* 8. Legal */}
+        {/* 6. Legal Footer */}
         <View style={styles.legalRow}>
           <TouchableOpacity onPress={onNavigateToPrivacyPolicy}>
             <Text style={styles.legalLink}>Privacy Policy</Text>
@@ -541,26 +367,15 @@ export default function ProfilePage({
           </TouchableOpacity>
         </View>
 
-        {/* TEST: Upgrade button — remove before launch */}
-        {__DEV__ && onUpgradePress && (
-          <TouchableOpacity
-            onPress={onUpgradePress}
-            style={{ alignItems: 'center', paddingVertical: 12, marginBottom: 8, backgroundColor: '#eb7825', borderRadius: 12, marginHorizontal: 16 }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>🧪 Test Paywall (DEV ONLY)</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* 9. Sign Out */}
+        {/* 7. Sign Out */}
         <View style={styles.signOutSection}>
           <TouchableOpacity onPress={onSignOut} style={styles.signOutButton}>
-            <Ionicons name="log-out" size={16} color="#dc2626" />
             <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Modals */}
+      {/* Bottom Sheets */}
       <EditBioSheet
         visible={showBioSheet}
         onClose={() => setShowBioSheet(false)}
@@ -574,69 +389,69 @@ export default function ProfilePage({
         currentCategories={interests?.categories || []}
         onSave={handleSaveInterests}
       />
+      <EditProfileSheet
+        visible={showEditProfileSheet}
+        onClose={() => setShowEditProfileSheet(false)}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f5f5f5" },
-  content: { flex: 1, maxWidth: 400, alignSelf: "center", backgroundColor: "white", minHeight: "100%" },
-  sectionSpacing: { marginTop: 16 },
-  section: { paddingHorizontal: 24, paddingBottom: 16 },
-  sectionCard: {
-    backgroundColor: "white", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb",
-    padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
   },
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 },
-  recentActivityHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  viewAllLink: { fontSize: 14, color: "#eb7825", fontWeight: "600" },
-  loader: { marginVertical: 16 },
-  emptyText: { fontSize: 14, color: "#9ca3af", textAlign: "center", paddingVertical: 12 },
-  activityList: { gap: 12 },
-  activityItem: { flexDirection: "row", alignItems: "center" },
-  activityDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#eb7825", marginRight: 10 },
-  activityContent: { flex: 1 },
-  activityTitle: { fontSize: 14, fontWeight: "500", color: "#111827" },
-  activityDate: { fontSize: 12, color: "#6b7280", marginTop: 2 },
-  settingRow: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f3f4f6",
+  content: {
+    flex: 1,
+    alignSelf: 'center',
+    width: '100%',
+    backgroundColor: '#ffffff',
+    minHeight: '100%',
   },
-  settingLabelContainer: { flex: 1 },
-  settingLabel: { fontSize: 15, fontWeight: "500", color: "#111827" },
-  settingHint: { fontSize: 12, color: "#6b7280", marginTop: 2 },
-  settingValueRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  settingValue: { fontSize: 14, color: "#eb7825", fontWeight: "600" },
-  toggle: { width: 44, height: 24, borderRadius: 12, justifyContent: "center", paddingHorizontal: 2 },
-  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: "white" },
-  settingsContainer: {
-    backgroundColor: "white", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb",
-    overflow: "hidden",
+  sectionSpacing: {
+    marginTop: 16,
   },
-  settingsItem: {
-    flexDirection: "row", alignItems: "center", padding: 16,
-    borderBottomWidth: 1, borderBottomColor: "#f3f4f6",
+  section: {
+    paddingHorizontal: 24,
   },
-  settingsIconContainer: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: "#f3f4f6",
-    alignItems: "center", justifyContent: "center", marginRight: 12,
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9ca3af',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 24,
   },
-  settingsContent: { flex: 1 },
-  settingsLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
-  settingsDescription: { fontSize: 13, color: "#6b7280", marginTop: 2 },
   legalRow: {
-    flexDirection: "row", justifyContent: "center", alignItems: "center",
-    paddingVertical: 16, gap: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginTop: 16,
+    gap: 12,
   },
-  legalLink: { fontSize: 13, color: "#6b7280" },
-  legalSeparator: { fontSize: 13, color: "#d1d5db" },
-  signOutSection: { paddingHorizontal: 24, paddingBottom: 48, alignItems: "center" },
+  legalLink: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  legalSeparator: {
+    fontSize: 13,
+    color: '#d1d5db',
+  },
+  signOutSection: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+    alignItems: 'center',
+  },
   signOutButton: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 12, paddingHorizontal: 24,
-    borderRadius: 12, borderWidth: 1, borderColor: "#fecaca",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
   },
-  signOutText: { fontSize: 15, fontWeight: "600", color: "#dc2626" },
-  replayTipsLabelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  signOutText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#dc2626',
+  },
 });

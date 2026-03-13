@@ -536,6 +536,17 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
+        // Check friendship status — both directions
+        const { data: friendship } = await supabase
+          .from('friends')
+          .select('id')
+          .eq('status', 'accepted')
+          .or(`and(user_id.eq.${user.id},friend_user_id.eq.${userData.id}),and(user_id.eq.${userData.id},friend_user_id.eq.${user.id})`)
+          .limit(1)
+          .single();
+
+        const isFriend = !!friendship;
+
         // Add as participant (not accepted yet)
         const { error: participantError } = await supabase
           .from('session_participants')
@@ -550,14 +561,15 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
-        // Send invitation and get invite ID back for the notification
+        // Create collaboration invite with pending_friendship flag
         const { data: inviteData, error: inviteError } = await supabase
           .from('collaboration_invites')
           .insert({
             session_id: sessionData.id,
             inviter_id: user.id,
             invited_user_id: userData.id,
-            status: 'pending'
+            status: 'pending',
+            pending_friendship: !isFriend,
           })
           .select('id')
           .single();
@@ -567,22 +579,32 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
-        // M2 FIX: Await push notification so failures are reported, not silently lost.
-        // The try/catch around the whole invite block already handles errors gracefully.
-        try {
-          await supabase.functions.invoke('send-collaboration-invite', {
-            body: {
-              inviterId: user.id,
-              invitedUserId: userData.id,
-              invitedUserEmail: userData.email || '',
-              sessionId: sessionData.id,
-              sessionName: resolvedName,
-              inviteId: inviteData?.id,
-            }
-          });
-        } catch (pushErr) {
-          console.warn('[useSessionManagement] Push notification failed for', username, pushErr);
-          // Don't fail the invite — push is best-effort, invite row already exists
+        // If not friend, send friend request (non-blocking side-effect)
+        if (!isFriend) {
+          await supabase
+            .from('friend_requests')
+            .upsert(
+              { sender_id: user.id, receiver_id: userData.id, status: 'pending' },
+              { onConflict: 'sender_id,receiver_id' }
+            );
+        }
+
+        // Only send push notification if invite is visible (friend)
+        if (isFriend && inviteData) {
+          try {
+            await supabase.functions.invoke('send-collaboration-invite', {
+              body: {
+                inviterId: user.id,
+                invitedUserId: userData.id,
+                invitedUserEmail: userData.email || '',
+                sessionId: sessionData.id,
+                sessionName: resolvedName,
+                inviteId: inviteData.id,
+              }
+            });
+          } catch (pushErr) {
+            console.warn('[useSessionManagement] Push notification failed for', username, pushErr);
+          }
         }
 
         return { success: true, username, userId: userData.id };

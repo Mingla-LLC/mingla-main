@@ -8,10 +8,11 @@ export interface UserProfile {
   display_name?: string;
   first_name?: string;
   last_name?: string;
-  avatar_url?: string;
+  avatar_url?: string | null;
   bio?: string;
   location?: string;
   active?: boolean;
+  show_activity?: boolean;
   visibility_mode?: "public" | "friends" | "private";
   photos?: string[];
   created_at: string;

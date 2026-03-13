@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
+import * as Haptics from "expo-haptics";
+import { s, vs, SCREEN_HEIGHT } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
 import { SavedPerson } from "../services/savedPeopleService";
 import { HolidayCard } from "../services/holidayCardsService";
@@ -16,6 +18,9 @@ import PersonGridCard from "./PersonGridCard";
 import PersonCuratedCard from "./PersonCuratedCard";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import { PriceTierSlug } from "../constants/priceTiers";
+import { usePersonHeroCards } from "../hooks/usePersonHeroCards";
+import { useShuffleCards } from "../hooks/useShuffleCards";
+import { DEFAULT_PERSON_SECTIONS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -65,14 +70,11 @@ function getNextAge(birthdayStr: string): number {
 
 interface BirthdayHeroProps {
   person: SavedPerson;
+  personId: string;
+  location: { latitude: number; longitude: number };
+  userId: string;
   aiSummary: string | null;
   isLoadingSummary: boolean;
-  heroCards: HolidayCard[];
-  isLoadingHeroCards: boolean;
-  generatedCards: HolidayCard[];
-  isGenerating: boolean;
-  canGenerateMore: boolean;
-  onGenerateMore: () => void;
   onCardPress: (card: HolidayCard) => void;
 }
 
@@ -92,18 +94,71 @@ const SkeletonCard: React.FC = () => (
 
 const BirthdayHero: React.FC<BirthdayHeroProps> = ({
   person,
+  personId,
+  location,
+  userId,
   aiSummary,
   isLoadingSummary,
-  heroCards,
-  isLoadingHeroCards,
-  generatedCards,
-  isGenerating,
-  canGenerateMore,
-  onGenerateMore,
   onCardPress,
 }) => {
   const hasBirthday = !!person.birthday;
-  const allCards = [...heroCards, ...generatedCards];
+
+  // ── Derive category slugs from DEFAULT_PERSON_SECTIONS ──
+  const categorySlugs = useMemo(() => {
+    return DEFAULT_PERSON_SECTIONS
+      .flatMap((sec) => {
+        if (sec.categorySlug) return [sec.categorySlug];
+        const mapped = INTENT_CATEGORY_MAP[sec.type];
+        return mapped ?? [];
+      })
+      .filter(Boolean);
+  }, []);
+
+  const curatedExperienceType = useMemo(() => {
+    const hasRomantic = DEFAULT_PERSON_SECTIONS.some((s) => s.type === "romantic");
+    return hasRomantic ? "romantic" : null;
+  }, []);
+
+  // ── Pool-first hero cards ──
+  const { data, isLoading: isLoadingHeroCards } = usePersonHeroCards({
+    personId,
+    holidayKey: "hero",
+    categorySlugs,
+    curatedExperienceType,
+    location,
+    enabled: true,
+  });
+
+  const heroCards = data?.cards ?? [];
+  const hasMore = data?.hasMore ?? false;
+
+  // ── Shuffle mechanic ──
+  const shuffleCards = useShuffleCards();
+  const [isShuffling, setIsShuffling] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const handleShuffle = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsShuffling(true);
+
+    // Fade out
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      // Invalidate cache → triggers refetch with new random cards
+      shuffleCards(personId, "hero");
+      // Fade back in after a tick (query refetch is near-instant from pool)
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setIsShuffling(false));
+      }, 100);
+    });
+  }, [personId, shuffleCards, fadeAnim]);
 
   // ── Birthday info ──
   const daysAway = hasBirthday ? getDaysUntilBirthday(person.birthday!) : 0;
@@ -113,7 +168,7 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
     daysAway === 0 ? "today!" : daysAway === 1 ? "day away" : "days away";
 
   // ── Loading state (only if no summary AND loading) ──
-  if (isLoadingSummary && !aiSummary && allCards.length === 0 && isLoadingHeroCards) {
+  if (isLoadingSummary && !aiSummary && heroCards.length === 0 && isLoadingHeroCards) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <ActivityIndicator size="large" color={colors.gray[400]} />
@@ -124,9 +179,6 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
   const containerStyle = hasBirthday
     ? styles.birthdayContainer
     : styles.noBirthdayContainer;
-
-  const showGenerateMore =
-    canGenerateMore && !!person.description && !isGenerating;
 
   return (
     <View
@@ -186,59 +238,51 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
         contentContainerStyle={styles.cardsScrollContent}
         style={styles.cardsScroll}
       >
-        {isLoadingHeroCards && allCards.length === 0
-          ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-              <SkeletonCard key={`skeleton-${i}`} />
-            ))
-          : allCards.map((card) =>
-              card.cardType === "curated" ? (
-                <PersonCuratedCard
-                  key={card.id}
-                  id={card.id}
-                  title={card.title}
-                  tagline={card.tagline ?? card.description}
-                  categoryLabel={getReadableCategoryName(card.categorySlug || card.category)}
-                  imageUrl={card.imageUrl}
-                  stops={card.stops}
-                  totalPriceMin={card.totalPriceMin}
-                  totalPriceMax={card.totalPriceMax}
-                  rating={card.rating}
-                  onPress={() => onCardPress(card)}
-                />
-              ) : (
-                <PersonGridCard
-                  key={card.id}
-                  id={card.id}
-                  title={card.title}
-                  category={getReadableCategoryName(card.categorySlug || card.category)}
-                  imageUrl={card.imageUrl}
-                  priceTier={(card.priceTier as PriceTierSlug) ?? null}
-                  priceLevel={card.priceLevel}
-                  onPress={() => onCardPress(card)}
-                />
-              )
-            )}
+        <Animated.View style={[styles.cardsAnimatedRow, { opacity: fadeAnim }]}>
+          {isLoadingHeroCards && heroCards.length === 0
+            ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                <SkeletonCard key={`skeleton-${i}`} />
+              ))
+            : heroCards.map((card) =>
+                card.cardType === "curated" ? (
+                  <PersonCuratedCard
+                    key={card.id}
+                    id={card.id}
+                    title={card.title}
+                    tagline={card.tagline ?? card.description}
+                    categoryLabel={getReadableCategoryName(card.categorySlug || card.category)}
+                    imageUrl={card.imageUrl}
+                    stops={card.stops}
+                    totalPriceMin={card.totalPriceMin}
+                    totalPriceMax={card.totalPriceMax}
+                    rating={card.rating}
+                    onPress={() => onCardPress(card)}
+                  />
+                ) : (
+                  <PersonGridCard
+                    key={card.id}
+                    id={card.id}
+                    title={card.title}
+                    category={getReadableCategoryName(card.categorySlug || card.category)}
+                    imageUrl={card.imageUrl}
+                    priceTier={(card.priceTier as PriceTierSlug) ?? null}
+                    priceLevel={card.priceLevel}
+                    onPress={() => onCardPress(card)}
+                  />
+                )
+              )}
+        </Animated.View>
 
-        {/* Generating spinner */}
-        {isGenerating && (
-          <View style={styles.generatingContainer}>
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
-          </View>
-        )}
-
-        {/* Generate More button */}
-        {showGenerateMore && (
+        {/* Shuffle card */}
+        {heroCards.length > 0 && (
           <TouchableOpacity
-            style={styles.generateMoreButton}
-            onPress={onGenerateMore}
+            style={styles.shuffleCard}
+            onPress={handleShuffle}
             activeOpacity={0.7}
+            disabled={isShuffling}
           >
-            <Ionicons
-              name="add-circle-outline"
-              size={s(28)}
-              color="rgba(255,255,255,0.8)"
-            />
-            <Text style={styles.generateMoreText}>More</Text>
+            <Ionicons name="shuffle-outline" size={s(28)} color="rgba(255,255,255,0.8)" />
+            <Text style={styles.shuffleText}>Shuffle</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -359,6 +403,10 @@ const styles = StyleSheet.create({
     gap: s(12),
     alignItems: "flex-start",
   },
+  cardsAnimatedRow: {
+    flexDirection: "row",
+    gap: s(12),
+  },
   // ── Skeleton card ──
   skeletonCard: {
     width: s(180),
@@ -388,15 +436,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
     borderRadius: s(4),
   },
-  // ── Generating spinner ──
-  generatingContainer: {
-    width: s(80),
-    height: s(240),
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  // ── Generate More button ──
-  generateMoreButton: {
+  // ── Shuffle card ──
+  shuffleCard: {
     width: s(80),
     height: s(240),
     borderRadius: s(16),
@@ -408,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: vs(6),
   },
-  generateMoreText: {
+  shuffleText: {
     fontSize: s(12),
     fontWeight: "600",
     color: "rgba(255,255,255,0.8)",

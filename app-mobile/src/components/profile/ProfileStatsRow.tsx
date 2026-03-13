@@ -46,7 +46,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   <View style={styles.container}>
     <StatItem count={savedCount} label="Saved" statKey="saved" onPress={onStatPress} />
     <View style={styles.divider} />
-    <StatItem count={connectionsCount} label="Connections" statKey="connections" onPress={onStatPress} />
+    <StatItem count={connectionsCount} label="Friends" statKey="connections" onPress={onStatPress} />
     <View style={styles.divider} />
     <StatItem count={boardsCount} label="Boards" statKey="boards" onPress={onStatPress} />
   </View>

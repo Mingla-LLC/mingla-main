@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  ScrollView,
   ActivityIndicator,
   Platform,
   Alert,
@@ -17,14 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import { GenderOption, GENDER_OPTIONS } from "../types/holidayTypes";
-import { PersonAudioClip } from "../types/personAudio";
 import { SavedPerson } from "../services/savedPeopleService";
 import { useUpdatePerson, useDeletePerson } from "../hooks/useSavedPeople";
-import { usePersonAudioClips } from "../hooks/usePersonAudio";
-import { useAppStore } from "../store/appStore";
 import { generateInitials } from "../utils/stringUtils";
 import { s } from "../utils/responsive";
-import AudioDescriptionManager from "./AudioDescriptionManager";
 
 interface PersonEditSheetProps {
   visible: boolean;
@@ -56,7 +51,6 @@ export default function PersonEditSheet({
   onUpdated,
 }: PersonEditSheetProps) {
   const insets = useSafeAreaInsets();
-  const user = useAppStore((state) => state.user);
   const updatePersonMutation = useUpdatePerson();
   const deletePersonMutation = useDeletePerson();
   const [name, setName] = useState(person.name);
@@ -66,18 +60,8 @@ export default function PersonEditSheet({
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<GenderOption | null>(person.gender);
-  const [audioClips, setAudioClips] = useState<PersonAudioClip[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Fetch audio clips for this person
-  const { data: fetchedClips } = usePersonAudioClips(person.id);
-
-  useEffect(() => {
-    if (fetchedClips) {
-      setAudioClips(fetchedClips);
-    }
-  }, [fetchedClips]);
 
   // Reset state when person changes
   useEffect(() => {
@@ -261,14 +245,6 @@ export default function PersonEditSheet({
           ))}
         </View>
       </View>
-
-      {/* Audio descriptions */}
-      <AudioDescriptionManager
-        personId={person.id}
-        userId={user?.id || ""}
-        clips={audioClips}
-        onClipsChange={setAudioClips}
-      />
 
       {error && <Text style={styles.errorText}>{error}</Text>}
 

@@ -45,6 +45,8 @@ import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaboratio
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
+import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
+import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
 import { processPersonAudio } from '../services/personAudioProcessingService'
 import { PulseDotLoader } from './ui/PulseDotLoader'
 
@@ -180,27 +182,6 @@ const OnboardingFlow = ({
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, initialChosenPath: initialData.invitePath, hasGpsPermission })
 
-  // Auto-skip friends and consent sub-steps (friend links feature removed)
-  const friendsAutoSkipRef = useRef(false);
-  const consentAutoSkipRef = useRef(false);
-  useEffect(() => {
-    if (navState.subStep === 'friends' && !friendsAutoSkipRef.current) {
-      friendsAutoSkipRef.current = true;
-      setData(prev => ({ ...prev, addedFriends: [], skippedFriends: true }));
-      setSkippedFriends(true);
-      goNext();
-    }
-    if (navState.subStep === 'consent' && !consentAutoSkipRef.current) {
-      consentAutoSkipRef.current = true;
-      goNext();
-    }
-    if (navState.subStep !== 'friends') {
-      friendsAutoSkipRef.current = false;
-    }
-    if (navState.subStep !== 'consent') {
-      consentAutoSkipRef.current = false;
-    }
-  }, [navState.subStep, goNext, setSkippedFriends]);
 
   // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
   // should appear. For phone-pre-verified users, this is Step 2/value_prop (their starting
@@ -1493,9 +1474,10 @@ const OnboardingFlow = ({
       case 'travel_time':
         return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends':
+        // OnboardingFriendsStep has its own Continue/Skip buttons
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'consent':
-        // consent sub-step auto-skips (friend links feature removed)
+        // OnboardingConsentStep has its own action buttons
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'collaboration':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
@@ -2419,24 +2401,41 @@ const OnboardingFlow = ({
     }
 
     // ─── STEP 5 ───
-    // Friends step — auto-skip (friend links feature removed, OnboardingFriendsStep deleted)
     if (subStep === 'friends') {
-      // Auto-advance handled by the state machine; show brief loading
       return (
-        <View style={styles.consentLoading}>
-          <ActivityIndicator size="small" color={colors.primary[500]} />
-        </View>
+        <OnboardingFriendsStep
+          userId={user!.id}
+          userPhoneE164={data.phoneNumber}
+          addedFriends={data.addedFriends}
+          onAddFriend={(friend) => {
+            setData(prev => ({
+              ...prev,
+              addedFriends: [...prev.addedFriends, friend],
+            }))
+          }}
+          onRemoveFriend={(phoneE164) => {
+            setData(prev => ({
+              ...prev,
+              addedFriends: prev.addedFriends.filter(f => f.phoneE164 !== phoneE164),
+            }))
+          }}
+          onContinue={() => goNext()}
+          onSkip={() => {
+            setData(prev => ({ ...prev, skippedFriends: true }))
+            setSkippedFriends(true)
+            goNext()
+          }}
+        />
       )
     }
 
-    // Consent step — auto-skip (friend links feature removed)
     if (subStep === 'consent') {
-      // Auto-skip is handled by useEffect above — show loading while it fires
       return (
-        <View style={styles.consentLoading}>
-          <ActivityIndicator size="small" color={colors.primary[500]} />
-        </View>
-      );
+        <OnboardingConsentStep
+          onConsent={() => goNext()}
+          onDecline={() => goNext()}
+        />
+      )
     }
 
     if (subStep === 'collaboration') {

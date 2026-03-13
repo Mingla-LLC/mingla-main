@@ -283,53 +283,27 @@ export default function CollaborationSessions({
           return;
         }
 
-        if (phoneLookupResult.friendship_status === 'friends') {
-          // Already friends — auto-add to selectedFriends as collaborator
-          const alreadySelected = selectedFriends.some(f => f.id === lookupUser.id);
-          if (alreadySelected) {
-            Alert.alert('Already selected', 'This friend is already added as a collaborator.');
-          } else {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            const friendData: Friend = {
-              id: lookupUser.id,
-              name: lookupUser.display_name || lookupUser.username || 'User',
-              username: lookupUser.username,
-              avatar: lookupUser.avatar_url || undefined,
-            };
-            setSelectedFriends(prev => [...prev, friendData]);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          setPhoneActionStatus('sent');
-          setTimeout(() => {
-            setPhoneNumber('');
-            setPhoneActionStatus('idle');
-          }, 1500);
-        } else if (phoneLookupResult.friendship_status === 'none') {
-          // Not friends yet — send friend request via friend_requests table
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          if (user) {
-            await supabase
-              .from('friend_requests')
-              .upsert(
-                { sender_id: user.id, receiver_id: lookupUser.id, status: 'pending' },
-                { onConflict: 'sender_id,receiver_id' }
-              );
-          }
-          setPhoneActionStatus('sent');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Alert.alert(
-            'Friend request sent',
-            `${lookupUser.display_name || lookupUser.username} will appear in your collaborators list once they accept.`
-          );
-          setTimeout(() => {
-            setPhoneNumber('');
-            setPhoneActionStatus('idle');
-          }, 2000);
+        // Add any Mingla user to session — friendship is handled at the
+        // invite/activation layer, not at the UI selection layer.
+        const alreadySelected = selectedFriends.some(f => f.id === lookupUser.id);
+        if (alreadySelected) {
+          Alert.alert('Already selected', 'This person is already added as a collaborator.');
         } else {
-          // pending_sent or pending_received
-          Alert.alert('Request Pending', 'A friend request is already pending with this person.');
-          setPhoneActionStatus('idle');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          const friendData: Friend = {
+            id: lookupUser.id,
+            name: lookupUser.display_name || lookupUser.username || 'User',
+            username: lookupUser.username,
+            avatar: lookupUser.avatar_url || undefined,
+          };
+          setSelectedFriends(prev => [...prev, friendData]);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+        setPhoneActionStatus('sent');
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 1500);
       } else {
         // Not on Mingla — save pending invite + track for session + native share
         if (user) {
@@ -363,13 +337,8 @@ export default function CollaborationSessions({
     if (phoneLookupLoading) return 'Looking up...';
     if (!isPhoneValid) return 'Enter phone number';
     if (phoneLookupResult?.found) {
-      if (phoneLookupResult.friendship_status === 'friends') {
-        // Check if already selected
-        const alreadySelected = selectedFriends.some(f => f.id === phoneLookupResult.user?.id);
-        return alreadySelected ? 'Already added' : 'Add as collaborator';
-      }
-      if (phoneLookupResult.friendship_status === 'none') return 'Send friend request';
-      return 'Request pending';
+      const alreadySelected = selectedFriends.some(f => f.id === phoneLookupResult.user?.id);
+      return alreadySelected ? 'Already added' : 'Add to session';
     }
     return 'Invite to Mingla';
   };
@@ -380,10 +349,6 @@ export default function CollaborationSessions({
     phoneActionStatus === 'sending' ||
     phoneActionStatus === 'sent' ||
     (phoneLookupResult?.found &&
-      phoneLookupResult.friendship_status !== 'none' &&
-      phoneLookupResult.friendship_status !== 'friends') ||
-    (phoneLookupResult?.found &&
-      phoneLookupResult.friendship_status === 'friends' &&
       selectedFriends.some(f => f.id === phoneLookupResult.user?.id));
 
   const canCreateSession = newSessionName.trim().length > 0 && (selectedFriends.length > 0 || phoneInvitees.length > 0) && !isCreatingSession;
