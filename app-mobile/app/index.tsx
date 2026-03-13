@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   AppState,
@@ -368,25 +368,25 @@ function AppContent() {
   }, []);
 
   // Transform boardsSessions to CollaborationSession format for the sessions bar
-  const collaborationSessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => {
-    // Determine session type based on status and user participation
-    let sessionType: 'active' | 'sent-invite' | 'received-invite' = 'active';
-    if (board.status === 'pending') {
-      // Check if user is the inviter or invitee
-      const isCreator = board.creatorId === user?.id || board.created_by === user?.id;
-      sessionType = isCreator ? 'sent-invite' : 'received-invite';
-    }
+  const collaborationSessions: CollaborationSession[] = useMemo(() => {
+    return (boardsSessions || []).map((board: any) => {
+      let sessionType: 'active' | 'sent-invite' | 'received-invite' = 'active';
+      if (board.status === 'pending') {
+        const isCreator = board.creatorId === user?.id || board.created_by === user?.id;
+        sessionType = isCreator ? 'sent-invite' : 'received-invite';
+      }
 
-    return {
-      id: board.id || board.session_id,
-      name: board.name,
-      initials: getInitials(board.name),
-      type: sessionType,
-      participants: board.participants?.length || 0,
-      createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
-      invitedBy: board.inviterProfile || undefined,
-    };
-  });
+      return {
+        id: board.id || board.session_id,
+        name: board.name,
+        initials: getInitials(board.name),
+        type: sessionType,
+        participants: board.participants?.length || 0,
+        createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
+        invitedBy: board.inviterProfile || undefined,
+      };
+    });
+  }, [boardsSessions, user?.id]);
 
   // Load all sessions (including pending invites) on mount
   useEffect(() => {
@@ -497,6 +497,7 @@ function AppContent() {
           session_id,
           inviter_id,
           status,
+          created_at,
           collaboration_sessions!inner(name),
           profiles!collaboration_invites_inviter_id_fkey(display_name, first_name, username, avatar_url)
         `)
@@ -526,6 +527,25 @@ function AppContent() {
           inviterProfile?.avatar_url
         );
         notifiedCollabInviteIdsRef.current.add(invite.id);
+
+        // For freshly converted phone invites (created in last 60s),
+        // also trigger a push notification so it appears in the system tray.
+        const inviteAge = Date.now() - new Date(invite.created_at).getTime();
+        if (inviteAge < 60_000) {
+          try {
+            await supabase.functions.invoke('send-collaboration-invite', {
+              body: {
+                inviterId: invite.inviter_id,
+                invitedUserId: user.id,
+                sessionId: invite.session_id,
+                sessionName: sessionName || 'Collaboration Session',
+                inviteId: invite.id,
+              },
+            });
+          } catch {
+            // Push is best-effort
+          }
+        }
       }
     } catch (err) {
       console.warn('[CollabCatchUp] Failed to catch up notifications:', err);
@@ -1018,7 +1038,6 @@ function AppContent() {
           .insert({
             session_id: session.id,
             inviter_id: user.id,
-            inviter_id: user.id,
             invited_user_id: friendUserId,
             status: 'pending',
           })
@@ -1170,37 +1189,134 @@ function AppContent() {
         .eq('session_id', sessionId);
 
       if (!participantsError && allParticipants) {
-        const acceptedCount = allParticipants.filter((p: any) => p.has_accepted === true).length;
-        
-        // If at least 1 member has accepted, session becomes active
-        if (acceptedCount >= 1) {
-          const { error: sessionUpdateError } = await supabase
-            .from('collaboration_sessions')
-            .update({ status: 'active' })
-            .eq('id', sessionId);
+        const acceptedMembers = allParticipants.filter((p: any) => p.has_accepted === true);
+        const acceptedCount = acceptedMembers.length;
 
-          if (sessionUpdateError) {
-            console.error('Error updating session status:', sessionUpdateError);
+        // Session becomes active when at least 2 members have accepted
+        if (acceptedCount >= 2) {
+          // Check if board already exists for this session (concurrent accept protection)
+          const { data: currentSession } = await supabase
+            .from('collaboration_sessions')
+            .select('board_id, status')
+            .eq('id', sessionId)
+            .single();
+
+          let boardId: string | null = currentSession?.board_id || null;
+
+          if (currentSession?.board_id) {
+            // Board already created by concurrent accept — use existing board
+            boardId = currentSession.board_id;
+          } else {
+            // Create board (only if no board exists yet)
+            const { data: newBoard, error: boardError } = await supabase
+              .from('boards')
+              .insert({
+                name: sessionName,
+                description: `Collaborative board for ${sessionName}`,
+                created_by: user.id,
+                is_public: false,
+              })
+              .select('id')
+              .single();
+
+            if (boardError) {
+              console.error('Error creating board:', boardError);
+            } else {
+              boardId = newBoard.id;
+
+              // Atomically set board_id only if still NULL (optimistic locking)
+              const { data: updateResult } = await supabase
+                .from('collaboration_sessions')
+                .update({
+                  status: 'active',
+                  board_id: boardId,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', sessionId)
+                .is('board_id', null)
+                .select('id');
+
+              if (!updateResult || updateResult.length === 0) {
+                // Another accept already set board_id — use theirs, delete our orphan
+                const { data: existing } = await supabase
+                  .from('collaboration_sessions')
+                  .select('board_id')
+                  .eq('id', sessionId)
+                  .single();
+
+                if (existing?.board_id && existing.board_id !== boardId) {
+                  // Clean up our orphaned board
+                  await supabase.from('boards').delete().eq('id', boardId);
+                  boardId = existing.board_id;
+                }
+              }
+            }
+          }
+
+          // If session is still pending (no board creation happened), just activate it
+          if (!boardId && currentSession?.status === 'pending') {
+            await supabase
+              .from('collaboration_sessions')
+              .update({ status: 'active', updated_at: new Date().toISOString() })
+              .eq('id', sessionId)
+              .eq('status', 'pending');
+          }
+
+          // Add all accepted participants as board collaborators (idempotent)
+          if (boardId) {
+            const { data: sessionDetails } = await supabase
+              .from('collaboration_sessions')
+              .select('created_by')
+              .eq('id', sessionId)
+              .single();
+
+            for (const participant of acceptedMembers) {
+              await supabase
+                .from('board_collaborators')
+                .upsert({
+                  board_id: boardId,
+                  user_id: participant.user_id,
+                  role: participant.user_id === sessionDetails?.created_by ? 'owner' : 'collaborator'
+                }, {
+                  onConflict: 'board_id,user_id',
+                  ignoreDuplicates: true
+                });
+            }
           }
         }
       }
 
-      // Create preference record for the accepting user
+      // Create preference record for the accepting user (upsert for idempotency)
+      const { data: soloPrefs } = await supabase
+        .from('preferences')
+        .select('categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_type, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location')
+        .eq('profile_id', user.id)
+        .single();
+
       const { error: preferencesError } = await supabase
         .from('board_session_preferences')
-        .insert({
+        .upsert({
           session_id: sessionId,
           user_id: user.id,
-          budget_min: 0,
-          budget_max: 1000,
-          categories: [],
-          travel_mode: 'walking',
+          categories: soloPrefs?.categories ?? [],
+          intents: soloPrefs?.intents ?? [],
+          price_tiers: soloPrefs?.price_tiers ?? [],
+          budget_min: soloPrefs?.budget_min ?? 0,
+          budget_max: soloPrefs?.budget_max ?? 1000,
+          travel_mode: soloPrefs?.travel_mode ?? 'walking',
           travel_constraint_type: 'time',
-          travel_constraint_value: 30,
+          travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+          date_option: soloPrefs?.date_option ?? null,
+          time_slot: soloPrefs?.time_slot ?? null,
+          exact_time: soloPrefs?.exact_time ?? null,
+          datetime_pref: soloPrefs?.datetime_pref ?? null,
+          use_gps_location: soloPrefs?.use_gps_location ?? true,
+          custom_location: soloPrefs?.custom_location ?? null,
+        }, {
+          onConflict: 'session_id,user_id',
         });
 
-      if (preferencesError && preferencesError.code !== '23505') {
-        // 23505 is unique violation - preference already exists
+      if (preferencesError) {
         console.error('Error creating preferences:', preferencesError);
       }
 

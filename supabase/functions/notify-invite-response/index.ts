@@ -25,6 +25,46 @@ serve(async (req) => {
   }
 
   try {
+    // ── HIGH-001 FIX: Validate JWT — the invitee (responder) must be authenticated ──
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Supabase configuration missing" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user: jwtUser }, error: authError } = await supabaseAuth.auth.getUser();
+
+    if (authError || !jwtUser) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired token" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const payload: InviteResponsePayload = await req.json();
     const {
       inviteId,
@@ -34,6 +74,17 @@ serve(async (req) => {
       sessionId,
       sessionName,
     } = payload;
+
+    // Enforce: JWT user must be the invited user (the one responding to the invite)
+    if (jwtUser.id !== invitedUserId) {
+      return new Response(
+        JSON.stringify({ error: "Authenticated user does not match invitedUserId" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Validate required fields
     if (
@@ -48,19 +99,6 @@ serve(async (req) => {
         JSON.stringify({ error: "Missing required fields" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return new Response(
-        JSON.stringify({ error: "Supabase configuration missing" }),
-        {
-          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
@@ -96,6 +134,28 @@ serve(async (req) => {
 
     const isAccepted = response === "accepted";
 
+    // Check if the inviter has opted out of collaboration invite notifications
+    const { data: notifPrefs } = await supabase
+      .from("notification_preferences")
+      .select("collaboration_invites")
+      .eq("user_id", inviterId)
+      .maybeSingle();
+
+    if (notifPrefs && notifPrefs.collaboration_invites === false) {
+      console.log("Inviter has disabled collaboration invite notifications, skipping push");
+      return new Response(
+        JSON.stringify({
+          success: true,
+          method: "none",
+          reason: "user_disabled_collaboration_notifications",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Build push notification copy
     const title = isAccepted
       ? `${invitedName} is in!`
@@ -107,7 +167,7 @@ serve(async (req) => {
     // Generate deep link for the app
     const deepLink = `mingla://collaboration/session/${sessionId}`;
 
-    // Send push notification to inviter
+    // Send push notification to inviter (best-effort — failures logged, not propagated)
     try {
       await sendPush({
         targetUserId: inviterId,
@@ -121,10 +181,10 @@ serve(async (req) => {
           deepLink: deepLink,
         },
         androidChannelId: "collaboration-invites",
-      }).catch((err) => console.warn('[notify-invite-response] Push failed:', err));
+      });
       console.log("Push notification sent to inviter for invite response");
     } catch (pushError) {
-      console.error("Error sending push notification:", pushError);
+      console.warn("[notify-invite-response] Push to inviter failed:", pushError);
     }
 
     return new Response(
@@ -138,11 +198,9 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    console.error("[notify-invite-response] Unhandled error:", error);
     return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : String(error),
-      }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

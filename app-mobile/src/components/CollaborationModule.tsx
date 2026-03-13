@@ -431,8 +431,7 @@ export default function CollaborationModule({
         (s) => s.archived_at === null && s.status !== "completed" && s.status !== "archived"
       );
 
-      // Load participants separately for better reliability
-      // Only load participants who have accepted the invite
+      // Load ALL participants (accepted and pending) for accurate counts
       let allParticipants: { session_id: string; user_id: string; has_accepted: boolean; profiles: { display_name: string | null; email: string | null; avatar_url: string | null } | null }[] = [];
       if (sessions && sessions.length > 0) {
         const { data: participantsData, error: participantsError } =
@@ -446,8 +445,7 @@ export default function CollaborationModule({
             profiles!session_participants_user_id_fkey(display_name, email, avatar_url)
           `
             )
-            .in("session_id", allSessionIds)
-            .eq("has_accepted", true);
+            .in("session_id", allSessionIds);
 
         if (!participantsError && participantsData) {
           allParticipants = participantsData;
@@ -473,11 +471,13 @@ export default function CollaborationModule({
 
       // Format sessions for display
       const formattedSessions = (sessions || []).map((session) => {
-        // Get participants for this session
+        // Get ALL participants for this session (for accurate counts)
         const sessionParticipants = allParticipants.filter(
           (p) => p.session_id === session.id
         );
-        const participants = sessionParticipants.map((p) => ({
+        // Only show accepted participants in the display list
+        const acceptedParticipants = sessionParticipants.filter((p) => p.has_accepted);
+        const participants = acceptedParticipants.map((p) => ({
           id: p.user_id,
           name: p.profiles?.display_name || p.profiles?.email || "Unknown",
           avatar: p.profiles?.avatar_url,
@@ -493,7 +493,7 @@ export default function CollaborationModule({
           createdAt: session.created_at,
           lastActivity: session.updated_at || session.created_at,
           totalParticipants: participants.length,
-          pendingParticipants: 0,
+          pendingParticipants: sessionParticipants.filter(p => !p.has_accepted).length,
           boardCards: sessionCardCounts[session.id] || 0,
           admins: session.admins || [],
         };
@@ -595,13 +595,15 @@ export default function CollaborationModule({
             .single();
 
           if (!sessionFetchError && sessionDetails) {
-            // IDEMPOTENT BOARD CREATION: Use session's board_id (the actual relationship)
-            // collaboration_sessions.board_id points to boards.id — NOT boards.session_id
+            // Check if board already exists (concurrent accept protection)
             let boardId: string | null = sessionDetails.board_id || null;
 
-            // Only create board if session doesn't already have one
-            if (!boardId) {
-              const { data: boardData, error: boardError } = await supabase
+            if (sessionDetails.board_id) {
+              // Board already created by concurrent accept — use existing board
+              boardId = sessionDetails.board_id;
+            } else {
+              // Create board (only if no board exists yet)
+              const { data: newBoard, error: boardError } = await supabase
                 .from("boards")
                 .insert({
                   name: sessionDetails.name,
@@ -609,34 +611,50 @@ export default function CollaborationModule({
                   created_by: user.id,
                   is_public: false,
                 })
-                .select()
+                .select("id")
                 .single();
 
               if (boardError) {
                 console.error("Error creating board:", boardError);
               } else {
-                boardId = boardData.id;
-                console.log("✅ Board created successfully:", boardId);
+                boardId = newBoard.id;
+
+                // Atomically set board_id only if still NULL (optimistic locking)
+                const { data: updateResult } = await supabase
+                  .from("collaboration_sessions")
+                  .update({
+                    status: "active",
+                    board_id: boardId,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", invite.session_id)
+                  .is("board_id", null)
+                  .select("id");
+
+                if (!updateResult || updateResult.length === 0) {
+                  // Another accept already set board_id — use theirs, delete our orphan
+                  const { data: existing } = await supabase
+                    .from("collaboration_sessions")
+                    .select("board_id")
+                    .eq("id", invite.session_id)
+                    .single();
+
+                  if (existing?.board_id && existing.board_id !== boardId) {
+                    // Clean up our orphaned board
+                    await supabase.from("boards").delete().eq("id", boardId);
+                    boardId = existing.board_id;
+                  }
+                }
               }
             }
 
-            // Update session status to active if we have a board
-            if (boardId && sessionDetails.status !== 'active') {
-              const { error: sessionUpdateError } = await supabase
+            // If session is still pending (no board creation happened), just activate it
+            if (!boardId && sessionDetails.status === 'pending') {
+              await supabase
                 .from("collaboration_sessions")
-                .update({
-                  status: "active",
-                  board_id: boardId,
-                  updated_at: new Date().toISOString()
-                })
+                .update({ status: "active", updated_at: new Date().toISOString() })
                 .eq("id", invite.session_id)
-                .eq("status", "pending"); // Optimistic locking
-
-              if (sessionUpdateError) {
-                console.error("Error updating session status:", sessionUpdateError);
-              } else {
-                console.log("✅ Session status updated to active");
-              }
+                .eq("status", "pending");
             }
 
             // Add all accepted participants as board collaborators (idempotent)

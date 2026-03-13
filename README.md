@@ -217,10 +217,14 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 
 ### Collaboration Sessions
 - Friendship is a prerequisite for collaboration session **activation** but not **creation**. Non-friends can be invited to sessions -- a hidden invite is created with `pending_friendship=true`, and a friend request is sent simultaneously. When the friend request is accepted, the invite auto-reveals. If declined, the invite is cancelled and empty sessions are deleted.
+- **Atomic friend operations:** Friend accept and removal use PostgreSQL RPC functions (`accept_friend_request_atomic`, `remove_friend_atomic`) that wrap all DB operations in a single transaction -- no split state between `friend_requests` and `friends` tables is possible. The accept RPC returns revealed collaboration invite IDs deterministically from within the same transaction, eliminating timing-window race conditions.
+- **Defense-in-depth friendship check:** Session creation checks both `friends` table (primary) and `friend_requests` table (fallback) to handle any historical desync.
 - Unified session creation flow via `CreateSessionContent` component (embedded in CollaborationModule's Create tab, also available standalone)
 - Named sessions with multi-friend selection via `FriendSelectionModal`
 - Phone number invites: invite friends by phone number, non-friends get a friend request first, non-platform users get an SMS invite via Share sheet with auto-conversion on signup (DB triggers handle the full pending -> converted pipeline for both friend invites AND session invites)
+- **Phone invite catch-up push:** When a new user signs up and verifies their phone, freshly converted invites (< 60s old) trigger a system push notification in addition to the in-app notification.
 - JWT-validated invite edge function prevents impersonation
+- **Notification preferences enforced:** Both `send-collaboration-invite` and `notify-invite-response` edge functions check `notification_preferences.collaboration_invites` before sending push -- respects user opt-out settings.
 - Real-time card swiping, voting (with synchronous double-tap guard), RSVP, lock-in, calendar sync, and chat
 - Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses deterministic majority vote (alphabetical tie-break); travel time uses median; datetime uses earliest; location uses midpoint
 - Server-side synchronized deck generation: a single canonical deck is generated per session and stored in `session_decks`, ensuring all participants see identical cards in identical order
@@ -229,11 +233,13 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - Push notifications for collaboration invites via OneSignal (awaited with error logging)
 - Realtime deck refresh: when any participant updates preferences, a new deck is generated and all clients are notified via Supabase Realtime
 - Realtime invite status: InvitesTab auto-refreshes via Supabase Realtime subscription when invites are created, accepted, or cancelled
+- **Consolidated realtime subscriptions:** Session management uses a single realtime channel in index.tsx for pill bar updates; CollaborationModule maintains its own channel for modal-specific data. Redundant duplicate subscription eliminated.
 - Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB -- prevents premature actions on pending sessions
-- DB-level unique constraint on `collaboration_sessions.board_id` prevents concurrent board creation race condition
+- **Concurrent board creation protection:** DB-level partial unique index on `collaboration_sessions.board_id` (non-null values only) prevents duplicate boards. App-side optimistic locking (`.is('board_id', null)`) ensures only one accept creates the board; the loser cleans up its orphaned board immediately.
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
 - In-app notification catch-up mechanism: on foreground resume, pending invites are queried and notifications are created for any missed while the app was in background/killed, with deduplication via ref-tracked invite IDs
+- **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
 
 ### Subscription System
 - Free, Pro, and Elite tiers with 1-week trial
@@ -292,8 +298,8 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `friend_requests` | Friend request lifecycle with RLS |
-| `friends` | Bidirectional friendship records (user_id, friend_user_id, status) |
+| `friend_requests` | Friend request lifecycle with RLS. Atomic accept via `accept_friend_request_atomic` RPC. |
+| `friends` | Bidirectional friendship records (user_id, friend_user_id, status). Atomic removal via `remove_friend_atomic` RPC. |
 | `blocked_users` | User blocks |
 | `pending_invites` | Phone invites for non-app users (auto-converts to friend_requests on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
@@ -497,10 +503,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Special Day Hero Redesign** -- Custom special days promoted from HolidayRows to full hero cards. Each hero shows countdown, commemoration year badge, occasion-aware AI suggestion, and experience cards with independent shuffle.
-- **Custom Holiday Modal Simplified** -- Replaced month/day scroll pickers + categories/description with a visual calendar grid and name-only input. Year is now tracked for commemoration age.
-- **Edge Function Extended** -- `generate-ai-summary` now accepts optional `customDayName`/`customDayYear` fields for occasion-aware AI suggestions (backward compatible).
-- **Database Schema Updated** -- `custom_holidays` table now includes `year` column (NOT NULL with backfill); `categories` made nullable for simplified new entries.
+- **Bulletproof Collaboration Invites** -- Fixed 11 defects across database atomicity, query consistency, notification gaps, realtime redundancy, and race conditions. Friend accept/remove operations are now atomic PostgreSQL RPCs. Concurrent board creation prevented by DB constraint + app-side optimistic locking. Notification preferences enforced. Hidden invites filtered from all UI surfaces. Phone invite catch-up now includes push notifications.
+- **3 New Database Migrations** -- `accept_friend_request_atomic` RPC, `board_id` partial unique index, `remove_friend_atomic` RPC.
+- **Edge Functions Hardened** -- `send-collaboration-invite` and `notify-invite-response` now respect `notification_preferences.collaboration_invites` before sending push.
+- **Realtime Consolidation** -- Removed redundant realtime subscription from useSessionManagement (covered by index.tsx). Reduced Supabase Realtime connection count.
+- **Performance** -- `collaborationSessions` array memoized to prevent pill bar re-renders.
 
 ---
 

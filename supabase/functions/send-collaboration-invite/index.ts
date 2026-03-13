@@ -71,10 +71,16 @@ serve(async (req) => {
       phone_e164,
     } = payload;
 
-    // Enforce: inviterId MUST match the JWT user — prevents impersonation
-    if (inviterId !== jwtUser.id) {
+    // Enforce: JWT user must be either the inviter OR the invited user.
+    // The inviter calls this when sending an invite. The invitee calls this for:
+    //   - Revealed invite push (useFriends.ts): after friend accept, invitee's device
+    //     triggers push for newly-revealed invites
+    //   - Phone catch-up push (index.tsx): after phone verification, invitee's device
+    //     triggers push for pending invites
+    // Allowing invitedUserId prevents silent 403 failures in both paths.
+    if (inviterId !== jwtUser.id && invitedUserId !== jwtUser.id) {
       return new Response(
-        JSON.stringify({ error: "inviterId does not match authenticated user" }),
+        JSON.stringify({ error: "Authenticated user is neither the inviter nor the invited user" }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -128,6 +134,32 @@ serve(async (req) => {
     const userExists = !!invitedUserProfile;
     const invitedUsername = invitedUserProfile?.username;
     const invitedDisplayName = invitedUserProfile?.display_name || invitedUsername;
+
+    // Check if the invited user has opted out of collaboration invite notifications
+    if (userExists) {
+      const { data: notifPrefs } = await supabase
+        .from("notification_preferences")
+        .select("collaboration_invites")
+        .eq("user_id", invitedUserId)
+        .maybeSingle();
+
+      // If the user has explicitly disabled collaboration invite notifications, skip push
+      // but still return success (the invite record exists, they'll see it in-app)
+      if (notifPrefs && notifPrefs.collaboration_invites === false) {
+        console.log("User has disabled collaboration invite notifications, skipping push");
+        return new Response(
+          JSON.stringify({
+            success: true,
+            method: "none",
+            reason: "user_disabled_collaboration_notifications",
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
 
     // NEW: Handle phone-only invites for non-platform users
     if (phone_e164 && !userExists) {

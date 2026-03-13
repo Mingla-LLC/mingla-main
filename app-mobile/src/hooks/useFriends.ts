@@ -254,84 +254,55 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const acceptFriendRequest = useCallback(
     async (requestId: string) => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        // Single atomic RPC call replaces 3 separate operations:
+        // 1. UPDATE friend_requests SET status='accepted'
+        // 2. UPSERT friends (sender → receiver)
+        // 3. UPSERT friends (receiver → sender)
+        // All three succeed or all three roll back — no split state possible.
+        const { data, error } = await supabase.rpc('accept_friend_request_atomic', {
+          p_request_id: requestId,
+        });
 
-        const { data: request, error: fetchError } = await supabase
-          .from("friend_requests")
-          .select("*")
-          .eq("id", requestId)
-          .single();
+        if (error) throw error;
 
-        if (fetchError) throw fetchError;
+        const result = data as {
+          success: boolean;
+          error?: string;
+          sender_id?: string;
+          receiver_id?: string;
+          revealed_invite_ids?: Array<{
+            id: string;
+            session_id: string;
+            inviter_id: string;
+            invited_user_id: string;
+            session_name: string;
+          }>;
+        };
 
-        const { error: updateError } = await supabase
-          .from("friend_requests")
-          .update({ status: "accepted" })
-          .eq("id", requestId);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to accept friend request');
+        }
 
-        if (updateError) throw updateError;
-
-        const { error: friend1Error } = await supabase
-          .from("friends")
-          .upsert(
-            {
-              user_id: request.sender_id,
-              friend_user_id: request.receiver_id,
-              status: "accepted",
-            },
-            { onConflict: "user_id,friend_user_id" }
-          );
-
-        if (friend1Error) throw friend1Error;
-
-        const { error: friend2Error } = await supabase
-          .from("friends")
-          .upsert(
-            {
-              user_id: request.receiver_id,
-              friend_user_id: request.sender_id,
-              status: "accepted",
-            },
-            { onConflict: "user_id,friend_user_id" }
-          );
-
-        if (friend2Error) throw friend2Error;
-
-        // Check for newly revealed collaboration invites
-        try {
-          const { data: revealedInvites } = await supabase
-            .from('collaboration_invites')
-            .select('id, session_id, inviter_id, invited_user_id, collaboration_sessions!collaboration_invites_session_id_fkey(name)')
-            .or(
-              `and(inviter_id.eq.${request.sender_id},invited_user_id.eq.${request.receiver_id}),` +
-              `and(inviter_id.eq.${request.receiver_id},invited_user_id.eq.${request.sender_id})`
-            )
-            .eq('status', 'pending')
-            .eq('pending_friendship', false)
-            .gte('updated_at', new Date(Date.now() - 10000).toISOString());
-
-          if (revealedInvites && revealedInvites.length > 0) {
-            for (const invite of revealedInvites) {
-              const sessionName = Array.isArray(invite.collaboration_sessions)
-                ? invite.collaboration_sessions[0]?.name
-                : (invite.collaboration_sessions as { name: string } | null)?.name;
-
+        // Send push notifications for revealed collaboration invites.
+        // The RPC returns the exact invite IDs that were just revealed —
+        // no timing window, no race condition, no 10-second guesswork.
+        if (result.revealed_invite_ids && result.revealed_invite_ids.length > 0) {
+          for (const invite of result.revealed_invite_ids) {
+            try {
               await supabase.functions.invoke('send-collaboration-invite', {
                 body: {
                   inviterId: invite.inviter_id,
                   invitedUserId: invite.invited_user_id,
                   sessionId: invite.session_id,
-                  sessionName: sessionName || 'Collaboration Session',
+                  sessionName: invite.session_name,
                   inviteId: invite.id,
                 },
               });
+            } catch (notifyErr) {
+              // Push is best-effort; log but don't fail the accept
+              console.warn('[useFriends] Failed to notify for revealed invite:', notifyErr);
             }
           }
-        } catch (notifyErr) {
-          console.error('[useFriends] Error sending revealed invite notifications:', notifyErr);
         }
 
         // Invalidate all friends caches (friends list + requests)
@@ -366,34 +337,24 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const removeFriend = useCallback(
     async (friendUserId: string) => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data, error } = await supabase.rpc('remove_friend_atomic', {
+          p_friend_user_id: friendUserId,
+        });
 
-        const { error: error1 } = await supabase
-          .from("friends")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("friend_user_id", friendUserId);
+        if (error) throw error;
 
-        if (error1) throw error1;
+        const result = data as { success: boolean; error?: string };
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to remove friend');
+        }
 
-        const { error: error2 } = await supabase
-          .from("friends")
-          .delete()
-          .eq("user_id", friendUserId)
-          .eq("friend_user_id", user.id);
-
-        if (error2) throw error2;
-
-        await queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId ?? "") });
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
       } catch (error) {
         console.error("Error removing friend:", error);
         throw error;
       }
     },
-    [queryClient, userId]
+    [queryClient]
   );
 
   const blockFriend = useCallback(

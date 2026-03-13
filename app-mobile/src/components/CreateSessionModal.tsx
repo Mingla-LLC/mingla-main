@@ -365,16 +365,30 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         if (sessionId && friendsWithoutUsername.length > 0) {
           for (const friend of friendsWithoutUsername) {
             try {
-              // Check friendship status
+              // Primary check: friends table (source of truth for accepted friendships)
               const { data: friendship } = await supabase
                 .from('friends')
                 .select('id')
                 .eq('status', 'accepted')
                 .or(`and(user_id.eq.${user.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user.id})`)
                 .limit(1)
-                .single();
+                .maybeSingle();
 
-              const isFriend = !!friendship;
+              let isFriend = !!friendship;
+
+              // Fallback: check friend_requests in case friends table is out of sync
+              // (should not happen after atomic accept RPC, but defense-in-depth)
+              if (!isFriend) {
+                const { data: acceptedRequest } = await supabase
+                  .from('friend_requests')
+                  .select('id')
+                  .eq('status', 'accepted')
+                  .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${user.id})`)
+                  .limit(1)
+                  .maybeSingle();
+
+                isFriend = !!acceptedRequest;
+              }
 
               // Add as participant (not accepted yet)
               await supabase

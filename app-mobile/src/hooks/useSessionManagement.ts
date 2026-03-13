@@ -173,7 +173,8 @@ export const useSessionManagement = () => {
         .from('collaboration_invites')
         .select('*')
         .eq('invited_user_id', user.id)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .eq('pending_friendship', false);
 
       if (receivedError) {
         console.error('❌ Error loading received invites:', receivedError);
@@ -536,16 +537,30 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
-        // Check friendship status — both directions
+        // Primary check: friends table (source of truth for accepted friendships)
         const { data: friendship } = await supabase
           .from('friends')
           .select('id')
           .eq('status', 'accepted')
           .or(`and(user_id.eq.${user.id},friend_user_id.eq.${userData.id}),and(user_id.eq.${userData.id},friend_user_id.eq.${user.id})`)
           .limit(1)
-          .single();
+          .maybeSingle();
 
-        const isFriend = !!friendship;
+        let isFriend = !!friendship;
+
+        // Fallback: check friend_requests in case friends table is out of sync
+        // (should not happen after atomic accept RPC, but defense-in-depth)
+        if (!isFriend) {
+          const { data: acceptedRequest } = await supabase
+            .from('friend_requests')
+            .select('id')
+            .eq('status', 'accepted')
+            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${userData.id}),and(sender_id.eq.${userData.id},receiver_id.eq.${user.id})`)
+            .limit(1)
+            .maybeSingle();
+
+          isFriend = !!acceptedRequest;
+        }
 
         // Add as participant (not accepted yet)
         const { error: participantError } = await supabase
@@ -1177,103 +1192,16 @@ export const useSessionManagement = () => {
   }, [sessionState.availableSessions, sessionState.currentSession, user, loadUserSessions]);
 
   // Debounced reload — collapses rapid Realtime events into a single query burst.
-  // Creating a session inserts into 3 tables in quick succession; without debouncing,
-  // each insert fires loadUserSessions() independently (3× the queries).
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedReload = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    reloadTimerRef.current = setTimeout(() => {
-      loadUserSessions();
-    }, 300);
-  }, [loadUserSessions]);
-
-  // Clean up debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    };
-  }, []);
-
-  // Load sessions on mount and when user changes
+  // Load sessions on mount and when user changes.
+  // Realtime updates are handled by the parent (index.tsx) which calls
+  // refreshAllSessions() on any collaboration table change. That function
+  // updates boardsSessions state, which is the single source of truth for pills.
+  // Components that need fresh data (CollaborationModule, onboarding) call
+  // loadUserSessions() directly when they open.
   useEffect(() => {
     if (!user) return;
-
     loadUserSessions();
-
-    // Set up realtime subscriptions for collaboration updates.
-    // Filter collaboration_invites to only events targeting this user (invited_user_id)
-    // so the pill appears instantly when an invite is created for them.
-    // session_participants and collaboration_sessions rely on RLS for access
-    // control — we can't filter by a single column since involvement is
-    // determined by the session_participants join.
-    const channel = supabase
-      .channel(`collaboration-updates-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'session_participants'
-        },
-        () => {
-          debouncedReload();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'collaboration_sessions'
-        },
-        () => {
-          debouncedReload();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'collaboration_invites',
-          filter: `invited_user_id=eq.${user.id}`
-        },
-        () => {
-          // New invite targeting this user — use a short debounce
-          // to batch multiple simultaneous invites while still feeling instant.
-          // 300ms is imperceptible to users but prevents thundering herd when
-          // multiple invitations arrive in rapid succession.
-          debouncedReload();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'collaboration_invites'
-        },
-        () => {
-          debouncedReload();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'collaboration_invites'
-        },
-        () => {
-          debouncedReload();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, loadUserSessions, debouncedReload]);
+  }, [user, loadUserSessions]);
 
   return {
     ...sessionState,
