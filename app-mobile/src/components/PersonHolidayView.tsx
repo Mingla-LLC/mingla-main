@@ -102,6 +102,7 @@ const MAX_GENERATE_MORE = 5;
 
 /** Convert a HolidayCard into ExpandedCardData for the modal */
 function holidayCardToExpandedCard(card: HolidayCard): ExpandedCardData {
+  console.log(`[holidayCardToExpandedCard] id=${card.id} cardType=${card.cardType} stopsData=`, card.stopsData, `typeof=${typeof card.stopsData} isArray=${Array.isArray(card.stopsData)} length=${Array.isArray(card.stopsData) ? card.stopsData.length : 'N/A'}`);
   const category = getReadableCategoryName(card.categorySlug || card.category);
   const categoryIcon = getCategoryIcon(category) || "compass-outline";
 
@@ -133,19 +134,22 @@ function holidayCardToExpandedCard(card: HolidayCard): ExpandedCardData {
       ?? (card.googlePlaceId ? `https://www.google.com/maps/place/?q=place_id:${card.googlePlaceId}` : undefined),
   };
 
-  // Curated card fields — pass through to ExpandedCardModal for CuratedPlanView
-  if (card.cardType === "curated") {
+  // Curated card fields — only set cardType: "curated" when we have valid stops data.
+  // Without stops, the ExpandedCardModal would render neither the curated timeline
+  // nor the single-location view (both gated on isCuratedCard). Falling back to
+  // single-location view is the correct degradation for incomplete curated data.
+  if (
+    card.cardType === "curated" &&
+    Array.isArray(card.stopsData) &&
+    card.stopsData.length > 0
+  ) {
     base.cardType = "curated";
     base.tagline = card.tagline ?? undefined;
     base.totalPriceMin = card.totalPriceMin ?? undefined;
     base.totalPriceMax = card.totalPriceMax ?? undefined;
     base.estimatedDurationMinutes = card.estimatedDurationMinutes ?? undefined;
     base.experienceType = card.experienceType ?? undefined;
-    // stopsData is the raw JSONB array from the API; cast to CuratedStop[]
-    // The ExpandedCardModal expects stops as CuratedStop[]
-    if (Array.isArray(card.stopsData) && card.stopsData.length > 0) {
-      base.stops = card.stopsData as unknown as import("../types/curatedExperience").CuratedStop[];
-    }
+    base.stops = card.stopsData as unknown as import("../types/curatedExperience").CuratedStop[];
     // Shopping list for picnic-type curated experiences
     if (Array.isArray(card.shoppingList)) {
       base.shoppingList = card.shoppingList as string[];

@@ -121,7 +121,8 @@ Tapping a friend's avatar in the connections list opens their full profile as an
 The person-centric "For You" view provides personalized recommendations for each saved person with a card-forward layout powered by pool-first card serving:
 
 - **Birthday Hero Section** -- Displays the person's age prominently alongside birthday countdown. A horizontal scroll of hero cards (`PersonCuratedCard`) shows top-pick experiences sourced from the `card_pool` table via the `get-person-hero-cards` edge function. Cards appear in under 1 second (no AI generation on load). A shuffle mechanic at the end of the horizontal scroll lets users refresh cards with a fade-out/fade-in animation and no-repeat guarantee via `person_card_impressions`. A "Generate More" button fetches additional AI-generated recommendations (GPT-4o-mini pipeline), excluding already-seen cards. Falls back to a dark "Picks" card when no birthday is set.
-- **Hero Cards Pipeline** -- The `usePersonHeroCards` hook calls `get-person-hero-cards`, which queries the `card_pool` table directly using the person's location and categories. The DB function `query_person_hero_cards` uses progressive radius expansion to find matching cards. Cards are tracked via `person_card_impressions` to prevent repeats. The "Generate More" button still uses the older AI pipeline (`get-holiday-cards` in `generate_more` mode with GPT-4o-mini) for deeper suggestions beyond what the pool offers.
+- **Hero Cards Pipeline** -- The `usePersonHeroCards` hook (the sole hook for hero and holiday card fetching -- legacy `useHeroCards` and `useHolidayCards` hooks have been deleted) calls `get-person-hero-cards`, which queries the `card_pool` table directly using the person's location and categories. The DB function `query_person_hero_cards` uses progressive radius expansion to find matching cards. Cards are tracked via `person_card_impressions` to prevent repeats. The hook uses cache versioning (`CACHE_VERSION = "v2"` embedded in query keys) so that deploys with schema changes auto-bust stale AsyncStorage caches without requiring users to clear app data. `staleTime` is set to 30 minutes (previously `Infinity`) to ensure data freshness after deploys. The "Generate More" button still uses the older AI pipeline (`get-holiday-cards` in `generate_more` mode with GPT-4o-mini) for deeper suggestions beyond what the pool offers.
+- **Curated Cards Pipeline** -- Edge functions (`get-person-hero-cards`, `get-holiday-cards`) now pass full stop data (`stopsData`) through to the mobile client. The `HolidayCard` type carries `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` fields. When a curated card is tapped, `PersonHolidayView` maps `stopsData` to `CuratedStop[]` and passes it to the `ExpandedCardModal`, enabling full multi-stop timeline rendering with per-stop details (name, image, duration, price). The shared `mapPoolCardToResponseCard` helper in `get-holiday-cards` replaced 3 inline card builders, ensuring all card types carry consistent stop data.
 - **Shuffle Mechanic** -- The `useShuffleCards` hook powers shuffle at the end of both hero section and holiday row horizontal scrolls. Triggers a fade-out/fade-in animation, fetches a fresh batch from the pool excluding previously seen card IDs, and records new impressions. Provides a seamless refresh experience without page navigation.
 - **PersonGridCard** -- Unified grid card component matching the For You tab design. Shows venue image, category-colored badge, price tier pill, rating, and opens Google Maps on tap. Used across holiday rows for consistent visual treatment.
 - **PersonCuratedCard** -- Compact curated card for the hero section horizontal scroll. Shows multi-stop itinerary info (stop count, price range) in a condensed format.
@@ -179,6 +180,7 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
 - AI summary generation for birthday hero cards via `generate-ai-summary` edge function
 - Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km -> 5km -> closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
+- Full curated card data pipeline: edge functions pass complete stop data (`stopsData`) through to mobile, enabling multi-stop timeline rendering in the ExpandedCardModal with per-stop name, image, duration, and price
 
 ### Card-Based Swipe Interface
 - Swipe right to save, left to skip, up to expand full details
@@ -336,7 +338,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 
 | Table | Purpose |
 |-------|---------|
-| `card_pool` | Enriched place cards shared across users |
+| `card_pool` | Enriched place cards shared across users. Curated cards include full `stopsData` JSONB with per-stop details (name, image, duration, price). |
 | `place_pool` | Place data pool from Google Places |
 | `user_card_impressions` | Tracks which cards users have seen (discover/swipe) |
 | `person_card_impressions` | Tracks which cards each saved person has been shown (hero cards + holiday rows), enabling no-repeat shuffle and "Generate More" exclusions |
@@ -359,8 +361,8 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `generate-person-experiences` | Person-specific experience recommendations |
 | `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation (onboarding sync path) |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Queries `card_pool` directly by location + categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` for no-repeat guarantee. Sub-second response time. |
-| `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Queries `card_pool` directly by location + categories using `query_person_hero_cards` DB function with progressive radius expansion. Returns full `stopsData` for curated cards. Tracks impressions in `person_card_impressions` for no-repeat guarantee. Sub-second response time. |
+| `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Uses shared `mapPoolCardToResponseCard` helper to build consistent card responses across all modes (replacing 3 previous inline card builders). Returns full `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` on every card. Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char). Extended with optional `customDayName`/`customDayYear` fields for occasion-aware suggestions that reference both the person and the special day |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
@@ -503,11 +505,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Bulletproof Collaboration Invites** -- Fixed 11 defects across database atomicity, query consistency, notification gaps, realtime redundancy, and race conditions. Friend accept/remove operations are now atomic PostgreSQL RPCs. Concurrent board creation prevented by DB constraint + app-side optimistic locking. Notification preferences enforced. Hidden invites filtered from all UI surfaces. Phone invite catch-up now includes push notifications.
-- **3 New Database Migrations** -- `accept_friend_request_atomic` RPC, `board_id` partial unique index, `remove_friend_atomic` RPC.
-- **Edge Functions Hardened** -- `send-collaboration-invite` and `notify-invite-response` now respect `notification_preferences.collaboration_invites` before sending push.
-- **Realtime Consolidation** -- Removed redundant realtime subscription from useSessionManagement (covered by index.tsx). Reduced Supabase Realtime connection count.
-- **Performance** -- `collaborationSessions` array memoized to prevent pill bar re-renders.
+- **Date picker modal fix** -- Fixed iOS DateTimePicker rendering behind the ProposeDateTimeModal. Wrapped iOS spinners in dedicated `<Modal>` components with slide animation, backdrop dismiss, and Done/Cancel buttons. Fixed onChange handlers that were prematurely dismissing the picker on every spinner scroll.
+- **Scheduling error fix** -- Fixed card scheduling failing on physical iPhone for all card types. Root cause: `card_data` JSONB payload was receiving the entire `ExpandedCardData` object via spread, potentially including non-serializable `Date` objects and unnecessary fields. Fixed with allowlist-based sanitization in `CalendarService`. Added Date validation guard before `toISOString()`. Added diagnostic logging (DEV: payload shape before INSERT, structured error details on failure). DEV mode Alerts now surface actual Supabase error messages.
+- **Curated cards rendering pipeline fix** -- Fixed curated cards rendering as plain category cards in hero and holiday rows. Edge functions now pass full stop data (`stopsData`) through to mobile.
+- **Bulletproof Collaboration Invites** -- Fixed 11 defects across database atomicity, query consistency, notification gaps, realtime redundancy, and race conditions.
+- **Realtime Consolidation** -- Removed redundant realtime subscription from useSessionManagement. Reduced Supabase Realtime connection count.
 
 ---
 

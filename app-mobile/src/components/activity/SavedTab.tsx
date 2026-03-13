@@ -1251,6 +1251,12 @@ const SavedTab = ({
     console.log("cardToSchedule", cardToSchedule.lng);
 
     try {
+      if (isNaN(scheduledDateTime.getTime())) {
+        Alert.alert("Invalid Date", "The selected date is not valid. Please try again.");
+        setSchedulingCardId(null);
+        setCardToSchedule(null);
+        return;
+      }
       setSchedulingCardId(cardToSchedule.id);
       const scheduledDateISO = scheduledDateTime.toISOString();
 
@@ -1386,11 +1392,12 @@ const SavedTab = ({
       );
 
       // Call the original handler if provided (for any additional logic)
-    } catch (error) {
-      console.error("Error scheduling card:", error);
+    } catch (error: any) {
+      console.error("[SavedTab] Scheduling error:", error);
+      const detail = __DEV__ && error?.message ? `\n\nDEV: ${error.message}` : "";
       Alert.alert(
         "Schedule failed",
-        "We couldn't add this to your calendar. Please try again."
+        `We couldn't add this to your calendar. Please try again.${detail}`,
       );
     } finally {
       setSchedulingCardId(null);

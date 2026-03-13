@@ -398,9 +398,12 @@ function MultiStopPlanView({
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onClose: () => void;
 }) {
+  // Defensive: stops may be undefined if card data is stale or cast from ExpandedCardData
+  const stops = Array.isArray(card.stops) ? card.stops : [];
+
   const avgRating =
-    card.stops.length > 0
-      ? (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1)
+    stops.length > 0
+      ? (stops.reduce((s, st) => s + st.rating, 0) / stops.length).toFixed(1)
       : '–';
 
   const priceText =
@@ -409,8 +412,8 @@ function MultiStopPlanView({
       : `$${card.totalPriceMin}–$${card.totalPriceMax}`;
 
   // Total time calculation
-  const totalStopMinutes = card.stops.reduce((s, st) => s + (st.estimatedDurationMinutes ?? 45), 0);
-  const totalTravelMinutes = card.stops
+  const totalStopMinutes = stops.reduce((s, st) => s + (st.estimatedDurationMinutes ?? 45), 0);
+  const totalTravelMinutes = stops
     .slice(1)
     .reduce((s, st) => s + (st.travelTimeFromPreviousStopMin ?? 0), 0);
   const grandTotalMinutes = totalStopMinutes + totalTravelMinutes;
@@ -426,7 +429,7 @@ function MultiStopPlanView({
   const [browserTitle, setBrowserTitle] = useState('');
 
   // Stagger entry animations
-  const stopAnims = useRef(card.stops.map(() => new Animated.Value(0))).current;
+  const stopAnims = useRef(stops.map(() => new Animated.Value(0))).current;
   useEffect(() => {
     Animated.stagger(
       120,
@@ -489,7 +492,7 @@ function MultiStopPlanView({
 
       {/* Stops */}
       <View style={curatedStyles.stopsContainer}>
-        {card.stops.map((stop, idx) => {
+        {stops.map((stop, idx) => {
           const isExpanded = expandedStops.has(stop.stopNumber);
           const anim = stopAnims[idx];
           return (
@@ -1016,7 +1019,7 @@ export default function ExpandedCardModal({
             nestedScrollEnabled={true}
           >
             {/* ===== Curated Experience Plan ===== */}
-            {isCuratedCard && curatedCard && (
+            {isCuratedCard && curatedCard && Array.isArray(curatedCard.stops) && (
               <>
                 <CuratedPlanView
                   card={curatedCard}

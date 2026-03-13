@@ -485,6 +485,11 @@ export default function ActionButtons({
 
     setIsScheduling(true);
     try {
+      if (isNaN(scheduledDateTime.getTime())) {
+        Alert.alert("Invalid Date", "The selected date is not valid. Please try again.");
+        setIsScheduling(false);
+        return;
+      }
       const scheduledDateISO = scheduledDateTime.toISOString();
 
       // Determine source based on current mode
@@ -554,11 +559,12 @@ export default function ActionButtons({
       } else if (onClose) {
         onClose();
       }
-    } catch (error) {
-      console.error("Error scheduling card:", error);
+    } catch (error: any) {
+      console.error("[ActionButtons] Scheduling error:", error);
+      const detail = __DEV__ && error?.message ? `\n\nDEV: ${error.message}` : "";
       Alert.alert(
         "Schedule failed",
-        "We couldn't add this to your calendar. Please try again.",
+        `We couldn't add this to your calendar. Please try again.${detail}`,
       );
     } finally {
       setIsScheduling(false);

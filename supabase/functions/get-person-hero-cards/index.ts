@@ -307,13 +307,17 @@ serve(async (req: Request) => {
               },
             );
 
-            if (rpcRows2 && rpcRows2.length > cards.length) {
-              cards = rpcRows2.map(
-                (row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
+            if (rpcRows2 && rpcRows2.length > 0) {
+              // Deduplicate: merge gap-fill results with original cards by ID
+              const existingIds = new Set(cards.map((c) => c.id));
+              const newCards = rpcRows2
+                .filter((row: { card: Record<string, unknown> }) => !existingIds.has(row.card.id as string))
+                .map((row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
                   mapPoolCardToCard(row.card, row.card_type),
-              );
+                );
+              cards = [...cards, ...newCards];
               console.log(
-                `[get-person-hero-cards] Re-mapped after gap-fill: ${cards.length} cards — types: [${cards.map(c => c.cardType).join(", ")}]`,
+                `[get-person-hero-cards] Merged after gap-fill: ${cards.length} cards (${newCards.length} new) — types: [${cards.map(c => c.cardType).join(", ")}]`,
               );
             }
           }
@@ -322,6 +326,16 @@ serve(async (req: Request) => {
         // Gap-fill failure is non-fatal — return pool-only results
         console.warn("[get-person-hero-cards] Gap-fill failed:", gapFillError);
       }
+    }
+
+    // --- Final dedup safety net (prevents any source of duplicate IDs) ---
+    {
+      const seen = new Set<string>();
+      cards = cards.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
     }
 
     // --- Record impressions ---

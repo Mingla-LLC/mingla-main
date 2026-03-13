@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ExperiencesService, UserPreferences } from '../services/experiencesService';
 import { offlineService } from '../services/offlineService';
 
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 15000;
 
 const fetchUserPreferences = async (
   userId: string | undefined,
@@ -12,13 +12,15 @@ const fetchUserPreferences = async (
     return null;
   }
 
-  // Race the fetch chain against an 8-second timeout.
+  // Race the fetch chain against a 15-second timeout.
+  // 15s matches mobile network realities (Android auth token restoration
+  // from AsyncStorage can take 5-8s alone before the Supabase query fires).
   // The timer is always cleaned up — no dangling rejected promises.
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error('useUserPreferences timed out after 8s')),
+      () => reject(new Error('useUserPreferences timed out after 15s')),
       TIMEOUT_MS
     );
   });

@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
@@ -64,6 +65,8 @@ export default function ProposeDateTimeModal({
   const [availabilityAssumption, setAvailabilityAssumption] = useState<
     string | null
   >(null);
+
+  const insets = useSafeAreaInsets();
 
   // Bottom sheet slide animation
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -395,7 +398,9 @@ export default function ProposeDateTimeModal({
   };
 
   const handleDatePickerChange = (_event: any, date?: Date) => {
-    if (Platform.OS === "android") setShowDatePicker(false);
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
 
     if (date) {
       setCustomDate(date);
@@ -403,12 +408,27 @@ export default function ProposeDateTimeModal({
       setIsPlaceOpen(false);
       setProposedDateTime(null);
       setAvailabilityAssumption(null);
-      setShowTimePicker(true);
+
+      // On Android, onChange fires once on OK — auto-advance to time picker.
+      // On iOS, onChange fires on every spinner scroll — the "Done" button handles the transition.
+      if (Platform.OS === "android") {
+        setShowTimePicker(true);
+      }
     }
   };
 
+  /** iOS only: user tapped "Done" on the date picker modal */
+  const handleDatePickerDone = () => {
+    setShowDatePicker(false);
+    setShowTimePicker(true);
+  };
+
   const handleTimePickerChange = (_event: any, time?: Date) => {
-    if (Platform.OS === "android") setShowTimePicker(false);
+    if (Platform.OS === "android") {
+      setShowTimePicker(false);
+    }
+    // On iOS: do NOT dismiss — onChange fires on every spinner scroll.
+    // The user dismisses via "Done", "Cancel", or backdrop tap.
 
     if (time) {
       setCustomTime(time);
@@ -416,9 +436,12 @@ export default function ProposeDateTimeModal({
       setIsPlaceOpen(false);
       setProposedDateTime(null);
       setAvailabilityAssumption(null);
-
-      if (Platform.OS === "ios") setShowTimePicker(false);
     }
+  };
+
+  /** iOS only: user tapped "Done" on the time picker modal */
+  const handleTimePickerDone = () => {
+    setShowTimePicker(false);
   };
 
   const handleCheckCompatibility = async () => {
@@ -818,25 +841,106 @@ export default function ProposeDateTimeModal({
         </KeyboardAwareView>
       </Modal>
 
-      {/* Date Picker */}
+      {/* Date Picker — iOS: wrapped in Modal so it renders above everything */}
       {showDatePicker && (
-        <DateTimePicker
-          value={customDate}
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={handleDatePickerChange}
-          minimumDate={new Date()}
-        />
+        Platform.OS === "ios" ? (
+          <Modal
+            visible={showDatePicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={pickerModalStyles.overlay}>
+              <TouchableOpacity
+                style={pickerModalStyles.backdrop}
+                activeOpacity={1}
+                onPress={() => setShowDatePicker(false)}
+              />
+              <SafeAreaView
+                style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
+                edges={["bottom", "left", "right"]}
+              >
+                <View style={pickerModalStyles.header}>
+                  <Text style={pickerModalStyles.title}>Select Date</Text>
+                  <View style={pickerModalStyles.headerButtons}>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text style={pickerModalStyles.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleDatePickerDone}>
+                      <Text style={pickerModalStyles.doneText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <DateTimePicker
+                  value={customDate}
+                  mode="date"
+                  display="spinner"
+                  onChange={handleDatePickerChange}
+                  minimumDate={new Date()}
+                  style={pickerModalStyles.picker}
+                />
+              </SafeAreaView>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={customDate}
+            mode="date"
+            display="default"
+            onChange={handleDatePickerChange}
+            minimumDate={new Date()}
+          />
+        )
       )}
 
-      {/* Time Picker */}
+      {/* Time Picker — iOS: wrapped in Modal so it renders above everything */}
       {showTimePicker && (
-        <DateTimePicker
-          value={customTime || new Date()}
-          mode="time"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={handleTimePickerChange}
-        />
+        Platform.OS === "ios" ? (
+          <Modal
+            visible={showTimePicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowTimePicker(false)}
+          >
+            <View style={pickerModalStyles.overlay}>
+              <TouchableOpacity
+                style={pickerModalStyles.backdrop}
+                activeOpacity={1}
+                onPress={() => setShowTimePicker(false)}
+              />
+              <SafeAreaView
+                style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
+                edges={["bottom", "left", "right"]}
+              >
+                <View style={pickerModalStyles.header}>
+                  <Text style={pickerModalStyles.title}>Select Time</Text>
+                  <View style={pickerModalStyles.headerButtons}>
+                    <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                      <Text style={pickerModalStyles.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleTimePickerDone}>
+                      <Text style={pickerModalStyles.doneText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <DateTimePicker
+                  value={customTime || new Date()}
+                  mode="time"
+                  display="spinner"
+                  onChange={handleTimePickerChange}
+                  style={pickerModalStyles.picker}
+                />
+              </SafeAreaView>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={customTime || new Date()}
+            mode="time"
+            display="default"
+            onChange={handleTimePickerChange}
+          />
+        )
       )}
     </>
   );
@@ -1124,5 +1228,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "rgba(245,158,11,0.9)",
     fontWeight: "500",
+  },
+});
+
+const pickerModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+  },
+  content: {
+    backgroundColor: "#1C1C1E",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
+  },
+  headerButtons: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  cancelText: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.6)",
+    fontWeight: "500",
+  },
+  doneText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#F59E0B",
+  },
+  picker: {
+    height: 200,
   },
 });
