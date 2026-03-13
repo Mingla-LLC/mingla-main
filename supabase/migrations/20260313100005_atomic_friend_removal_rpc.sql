@@ -29,5 +29,3 @@ BEGIN
   RETURN jsonb_build_object('success', true);
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.remove_friend_atomic(UUID) TO authenticated;

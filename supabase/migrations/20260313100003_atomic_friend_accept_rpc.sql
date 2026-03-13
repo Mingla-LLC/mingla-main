@@ -82,6 +82,3 @@ BEGIN
   RETURN v_result;
 END;
 $$;
-
--- Grant execute to authenticated users
-GRANT EXECUTE ON FUNCTION public.accept_friend_request_atomic(UUID) TO authenticated;
