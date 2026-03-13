@@ -6,8 +6,8 @@ export function useShuffleCards() {
   const queryClient = useQueryClient();
 
   return useCallback(
-    (personId: string, holidayKey: string) => {
-      queryClient.invalidateQueries({
+    (personId: string, holidayKey: string): Promise<void> => {
+      return queryClient.invalidateQueries({
         queryKey: personHeroCardKeys.forPersonHoliday(personId, holidayKey),
       });
     },

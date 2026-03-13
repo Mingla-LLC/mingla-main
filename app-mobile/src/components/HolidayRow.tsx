@@ -94,15 +94,14 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
       toValue: 0,
       duration: 200,
       useNativeDriver: true,
-    }).start(() => {
-      shuffleCards(personId, holiday.id);
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => setIsShuffling(false));
-      }, 100);
+    }).start(async () => {
+      // Await cache invalidation + refetch before fading back in
+      await shuffleCards(personId, holiday.id);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => setIsShuffling(false));
     });
   }, [personId, holiday.id, shuffleCards, fadeAnim]);
 

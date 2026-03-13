@@ -325,7 +325,7 @@ serve(async (req: Request) => {
     }
 
     // --- Return response ---
-    const hasMore = totalAvailable > 6 || cards.length >= 6;
+    const hasMore = totalAvailable > cards.length;
 
     return new Response(
       JSON.stringify({ cards, hasMore }),

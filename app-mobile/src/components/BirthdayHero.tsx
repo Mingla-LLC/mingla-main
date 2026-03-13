@@ -146,17 +146,14 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
       toValue: 0,
       duration: 200,
       useNativeDriver: true,
-    }).start(() => {
-      // Invalidate cache → triggers refetch with new random cards
-      shuffleCards(personId, "hero");
-      // Fade back in after a tick (query refetch is near-instant from pool)
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => setIsShuffling(false));
-      }, 100);
+    }).start(async () => {
+      // Invalidate cache → triggers refetch; await ensures data is ready before fade-in
+      await shuffleCards(personId, "hero");
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => setIsShuffling(false));
     });
   }, [personId, shuffleCards, fadeAnim]);
 
