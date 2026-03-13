@@ -168,9 +168,13 @@ const KeyboardAwareScrollView = forwardRef<
     const scrollToFocusedInput = useCallback(
       (kbHeight: number) => {
         // Find the currently focused TextInput
+        const State = TextInput.State as any;
         const focusedInput =
-          (TextInput.State as any).currentlyFocusedInput?.() ??
-          (TextInput.State as any).currentlyFocusedField?.();
+          typeof State.currentlyFocusedInput === "function"
+            ? State.currentlyFocusedInput()
+            : typeof State.currentlyFocusedField === "function"
+              ? State.currentlyFocusedField()
+              : null;
 
         if (!focusedInput || !scrollViewRef.current) return;
 

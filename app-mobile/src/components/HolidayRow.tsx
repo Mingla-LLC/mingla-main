@@ -60,6 +60,8 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const chevronRotation = useRef(new Animated.Value(0)).current;
+  const isExpandedRef = useRef(isExpanded);
+  isExpandedRef.current = isExpanded;
 
   // Derive curated experience type from category slugs
   const curatedExperienceType = useMemo(() => {
@@ -121,6 +123,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
+        !isExpandedRef.current &&
         Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 10,
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dx < 0) {

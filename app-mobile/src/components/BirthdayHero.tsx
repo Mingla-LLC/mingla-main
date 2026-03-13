@@ -314,6 +314,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: s(12),
   },
   infoLeft: {
     flex: 1,
@@ -402,6 +403,7 @@ const styles = StyleSheet.create({
   },
   cardsAnimatedRow: {
     flexDirection: "row",
+    alignItems: "flex-start",
     gap: s(12),
   },
   // ── Skeleton card ──

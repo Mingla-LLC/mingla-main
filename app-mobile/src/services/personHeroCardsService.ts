@@ -25,8 +25,16 @@ export async function fetchPersonHeroCards(params: {
   );
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Failed to fetch hero cards");
+    const rawText = await response.text().catch(() => "");
+    let errorMessage = `Hero cards fetch failed (HTTP ${response.status})`;
+    try {
+      const errorData = JSON.parse(rawText);
+      if (errorData.error) errorMessage = errorData.error;
+    } catch {
+      // Response wasn't JSON — include raw text for debugging
+      if (rawText) errorMessage += `: ${rawText.slice(0, 200)}`;
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
