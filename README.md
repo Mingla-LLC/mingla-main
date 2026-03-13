@@ -511,9 +511,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Onboarding Social Handoff** -- Incoming friend requests now display during onboarding Step 5/friends with accept/decline UI. Push handler processes `friend_request` type notifications with deduplication. `catchUpCollabNotifications()` fires after friend acceptance in all post-onboarding entry points (NotificationsModal, FriendsModal, ConnectionsPage). Edge function calls in `useFriends.ts` now use `trackedInvoke` for observability.
-- **Automatic Foreground Resume Refresh** -- Centralized `useForegroundRefresh` hook detects background → active transitions, validates/refreshes the Supabase auth session, then invalidates all critical React Query caches.
-- **Loading flash fix** -- `refreshAllSessions()` no longer sets `isLoadingBoards(true)` on foreground resume. Collaboration pills remain visible during background refresh.
+- **Solo/Collab Mode Switching Stability** -- Eliminated duplicate `fetchDeck` calls during mode transitions via `useRef`-based stability guard that defers React Query until params settle. Reduced `retry` from 2 to 1, cutting worst-case timeout from 90s to 30s.
+- **Realtime Channel Thrashing Fix** -- Debounced `useBoardSession` realtime subscription with 300ms `setTimeout` to absorb rapid `sessionId` flickers during mode transitions. Immediate unsubscribe on clear, delayed subscribe on set. Separate unmount cleanup via `stableSessionIdRef`.
+- **iOS Network Starvation Fix** -- Staggered warm pool call by 2s after home screen mount, preventing 4+ concurrent HTTP/2 requests from causing head-of-line blocking on iOS.
+- **Preferences Timeout Alignment** -- Increased PreferencesSheet save timeout from 15s to 25s to cover PreferencesService's 20s first-attempt timeout plus 5s buffer.
 
 ---
 

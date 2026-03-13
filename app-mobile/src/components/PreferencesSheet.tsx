@@ -769,7 +769,7 @@ export default function PreferencesSheet({
 
       let timeoutId: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Save timeout after 15s')), 15000);
+        timeoutId = setTimeout(() => reject(new Error('Save timeout after 25s')), 25000);
       });
 
       try {

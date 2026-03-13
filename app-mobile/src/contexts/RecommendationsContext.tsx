@@ -234,23 +234,32 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     if (userLocation && userPrefs && !warmPoolFired.current) {
       warmPoolFired.current = true;
-      const warmStart = Date.now();
-      deckService.warmDeckPool({
-        location: userLocation,
-        categories: userPrefs.categories ?? [],
-        intents: userPrefs.intents ?? [],
-        priceTiers: userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
-        budgetMin: userPrefs.budget_min ?? 0,
-        budgetMax: userPrefs.budget_max ?? 1000,
-        travelMode: userPrefs.travel_mode ?? 'walking',
-        travelConstraintType: 'time' as const,
-        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
-        datetimePref: userPrefs.datetime_pref,
-        dateOption: userPrefs.date_option ?? 'now',
-        timeSlot: userPrefs.time_slot ?? null,
-      }).then(() => {
-        if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
-      }).catch(() => {});
+
+      // Stagger warm pool 2s after initial load. The warm pool is fire-and-forget
+      // (UI doesn't wait for it), so delaying it costs nothing. But it prevents
+      // 4+ concurrent HTTP/2 requests from competing for the same TCP connection
+      // on iOS, which causes head-of-line blocking and cascading timeouts.
+      const warmDelay = setTimeout(() => {
+        const warmStart = Date.now();
+        deckService.warmDeckPool({
+          location: userLocation,
+          categories: userPrefs.categories ?? [],
+          intents: userPrefs.intents ?? [],
+          priceTiers: userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
+          budgetMin: userPrefs.budget_min ?? 0,
+          budgetMax: userPrefs.budget_max ?? 1000,
+          travelMode: userPrefs.travel_mode ?? 'walking',
+          travelConstraintType: 'time' as const,
+          travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+          datetimePref: userPrefs.datetime_pref,
+          dateOption: userPrefs.date_option ?? 'now',
+          timeSlot: userPrefs.time_slot ?? null,
+        }).then(() => {
+          if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
+        }).catch(() => {});
+      }, 2000);
+
+      return () => clearTimeout(warmDelay);
     }
   }, [userLocation, userPrefs]);
 
@@ -309,6 +318,34 @@ export const RecommendationsProvider: React.FC<
     ? userLocation
     : (collabDeckParams?.location ?? userLocation);
 
+  // ── Guard: defer deck query until params are stable for 1 tick ──────
+  // During mode transitions, activeDeckParams can flicker null → value → same value
+  // across successive renders. Each flicker creates a different React Query key,
+  // causing duplicate fetchDeck calls. This ref ensures useDeckCards only enables
+  // AFTER the params have been non-null for at least one render cycle.
+  const deckParamsStableRef = useRef(false);
+  const prevDeckParamsRef = useRef<string | null>(null);
+
+  const currentParamsKey = activeDeckParams
+    ? JSON.stringify([activeDeckParams.categories, activeDeckParams.intents])
+    : null;
+
+  useEffect(() => {
+    if (currentParamsKey !== null && currentParamsKey === prevDeckParamsRef.current) {
+      // Params settled — same value two renders in a row
+      deckParamsStableRef.current = true;
+    } else {
+      // Params changed or still null — not yet stable
+      deckParamsStableRef.current = false;
+    }
+    prevDeckParamsRef.current = currentParamsKey;
+  });
+
+  const isDeckParamsStable = deckParamsStableRef.current || (
+    // First load fast path: if params are available and we're not mid-transition, allow immediately
+    activeDeckParams !== null && !isModeTransitioning
+  );
+
   const {
     cards: soloDeckCards,
     deckMode: soloDeckMode,
@@ -334,6 +371,7 @@ export const RecommendationsProvider: React.FC<
     enabled: isSoloMode &&
       !!activeDeckLocation &&
       activeDeckParams !== null &&
+      isDeckParamsStable &&
       !isWaitingForSessionResolution,
   });
 

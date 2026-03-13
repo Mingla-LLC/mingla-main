@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { realtimeService } from "../services/realtimeService";
@@ -205,65 +205,95 @@ export const useBoardSession = (sessionId?: string) => {
     return linkData;
   }, [sessionId]);
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates — debounced to prevent rapid subscribe/unsubscribe
+  // cycling during mode transitions when sessionId flickers across renders.
+  const stableSessionIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    if (!sessionId) return;
+    // If sessionId is cleared, unsubscribe immediately (no debounce needed)
+    if (!sessionId) {
+      if (stableSessionIdRef.current) {
+        realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+        stableSessionIdRef.current = undefined;
+      }
+      return;
+    }
 
-    const channel = realtimeService.subscribeToBoardSession(sessionId, {
-      onSessionUpdated: (updatedSession) => {
-        setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
-      },
-      onParticipantJoined: (participant) => {
-        setSession((prev) => {
-          if (!prev) return null;
-          const existing = prev.participants || [];
-          if (existing.find((p) => p.user_id === participant.user_id)) {
-            return prev;
-          }
-          return {
-            ...prev,
-            participants: [...existing, participant],
-          };
-        });
-      },
-      onParticipantLeft: (participant) => {
-        setSession((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            participants: (prev.participants || []).filter(
-              (p) => p.user_id !== participant.user_id
-            ),
-          };
-        });
-      },
-      onPreferencesChanged: (newPrefs: any) => {
-        // Reload all participants' preferences
-        if (sessionId) loadSession(sessionId);
+    // If sessionId is the same as what we're already subscribed to, skip
+    if (sessionId === stableSessionIdRef.current) return;
 
-        // Only the user who changed their own preferences triggers deck regeneration.
-        // Other participants rely on the Realtime INSERT event from session_decks
-        // to refresh their deck, avoiding N redundant edge function calls.
-        if (sessionId && newPrefs?.user_id === user?.id) {
-          supabase.functions.invoke("generate-session-deck", {
-            body: { sessionId, batchSeed: 0 },
-          }).catch((err) => {
-            console.warn("[useBoardSession] Deck regeneration after prefs change failed:", err);
+    // Immediately unsubscribe from previous session to prevent stale events
+    // from corrupting state during the debounce window (HIGH-001 fix).
+    // Only the subscribe is debounced — unsubscribe is always instant.
+    if (stableSessionIdRef.current) {
+      realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+      stableSessionIdRef.current = undefined;
+    }
+
+    // Debounce: wait 300ms before subscribing to avoid thrashing
+    const timer = setTimeout(() => {
+      stableSessionIdRef.current = sessionId;
+
+      realtimeService.subscribeToBoardSession(sessionId, {
+        onSessionUpdated: (updatedSession) => {
+          setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
+        },
+        onParticipantJoined: (participant) => {
+          setSession((prev) => {
+            if (!prev) return null;
+            const existing = prev.participants || [];
+            if (existing.find((p) => p.user_id === participant.user_id)) {
+              return prev;
+            }
+            return {
+              ...prev,
+              participants: [...existing, participant],
+            };
           });
-        }
-      },
-      onDeckRegenerated: () => {
-        // Invalidate the session-deck query so useSessionDeck refetches
-        if (sessionId) {
-          queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
-        }
-      },
-    });
+        },
+        onParticipantLeft: (participant) => {
+          setSession((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              participants: (prev.participants || []).filter(
+                (p) => p.user_id !== participant.user_id
+              ),
+            };
+          });
+        },
+        onPreferencesChanged: (newPrefs: any) => {
+          if (sessionId) loadSession(sessionId);
+          if (sessionId && newPrefs?.user_id === user?.id) {
+            supabase.functions.invoke("generate-session-deck", {
+              body: { sessionId, batchSeed: 0 },
+            }).catch((err) => {
+              console.warn("[useBoardSession] Deck regeneration after prefs change failed:", err);
+            });
+          }
+        },
+        onDeckRegenerated: () => {
+          if (sessionId) {
+            queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
+          }
+        },
+      });
+    }, 300);
 
     return () => {
-      realtimeService.unsubscribe(`board_session:${sessionId}`);
+      clearTimeout(timer);
     };
   }, [sessionId]);
+
+  // Cleanup on unmount — unsubscribe from whatever channel is active
+  useEffect(() => {
+    return () => {
+      if (stableSessionIdRef.current) {
+        realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+        stableSessionIdRef.current = undefined;
+      }
+    };
+  }, []);
 
   // Load session on mount or when sessionId or user changes
   useEffect(() => {
