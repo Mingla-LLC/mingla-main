@@ -7,8 +7,9 @@ export interface CustomHoliday {
   name: string;
   month: number;
   day: number;
+  year: number;
   description: string | null;
-  categories: string[];
+  categories: string[] | null;
   created_at: string;
   updated_at: string;
 }

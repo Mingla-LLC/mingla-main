@@ -1,333 +1,54 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../services/supabase";
 import { blockService } from "../services/blockService";
+import { useAppStore } from "../store/appStore";
+import {
+  useFriendsList,
+  useFriendRequests as useFriendRequestsQuery,
+  useBlockedUsers,
+  friendsKeys,
+} from "./useFriendsQuery";
 
-export interface Friend {
-  id: string;
-  user_id: string;
-  friend_user_id: string;
-  username: string;
-  display_name?: string;
-  first_name?: string;
-  last_name?: string;
-  avatar_url?: string;
-  status: "accepted" | "pending" | "blocked";
-  created_at: string;
-}
-
-export interface FriendRequest {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
-  sender: {
-    username: string;
-    display_name?: string;
-    first_name?: string;
-    last_name?: string;
-    avatar_url?: string;
-    email?: string;
-  };
-  status: "pending" | "accepted" | "declined" | "cancelled";
-  created_at: string;
-  type?: "incoming" | "outgoing";
-}
-
-export interface BlockedUser {
-  id: string;
-  name: string;
-  username?: string;
-  avatar_url?: string;
-  blocked_at?: string;
-}
+// Re-export types from service so existing imports work
+export type { Friend, FriendRequest, BlockedUser } from "../services/friendsService";
 
 export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const { autoFetchBlockedUsers = true } = options || {};
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [friendCount, setFriendCount] = useState(0);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [requestsLoading, setRequestsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  // Track previous values via refs to avoid stale closure issues in useCallback
-  const prevBlockedUsersJson = useRef('[]');
-  const prevFriendsJson = useRef('[]');
-  const prevFriendRequestsJson = useRef('[]');
-  const prevFriendCount = useRef(0);
+  // Get userId synchronously from Zustand store (set by useAuthSimple on login)
+  const userId = useAppStore((s) => s.user?.id);
 
-  // Fetch blocked users from blocked_users table (new system)
-  const fetchBlockedUsers = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return; // Not authenticated yet, skip silently
+  // ── React Query hooks ──
+  const friendsQuery = useFriendsList(userId);
+  const requestsQuery = useFriendRequestsQuery(userId);
+  const blockedQuery = useBlockedUsers(userId, autoFetchBlockedUsers);
 
-      const result = await blockService.getBlockedUsers();
-      
-      if (result.error) {
-        console.error("Error fetching blocked users:", result.error);
-        setBlockedUsers([]);
-        return;
-      }
+  // ── Derived values (backwards-compatible) ──
+  const friends = friendsQuery.data ?? [];
+  const friendCount = friends.length;
+  const friendRequests = requestsQuery.data ?? [];
+  const blockedUsers = blockedQuery.data ?? [];
+  const loading = friendsQuery.isLoading;
+  const requestsLoading = requestsQuery.isLoading;
+  const error = friendsQuery.error?.message ?? null;
 
-      const list: BlockedUser[] = result.data.map((b: any) => ({
-        id: b.blocked_id,
-        name:
-          b.profile
-            ? [b.profile.first_name, b.profile.last_name].filter(Boolean).join(" ") ||
-              b.profile.display_name ||
-              b.profile.username ||
-              "Unknown"
-            : "Unknown",
-        username: b.profile?.username,
-        avatar_url: undefined, // Profile doesn't include avatar in current query
-        blocked_at: b.created_at,
-      }));
-      const listJson = JSON.stringify(list);
-      if (prevBlockedUsersJson.current !== listJson) {
-        prevBlockedUsersJson.current = listJson;
-        setBlockedUsers(list);
-      }
-    } catch (error) {
-      console.error("Error fetching blocked users:", error);
-      if (prevBlockedUsersJson.current !== '[]') {
-        prevBlockedUsersJson.current = '[]';
-        setBlockedUsers([]);
-      }
-    }
-  }, []);
-
-  // Fetch blocked users when hook is used (e.g. when Profile or Connections screen mounts)
-  useEffect(() => {
-    if (!autoFetchBlockedUsers) return;
-    fetchBlockedUsers();
-  }, [fetchBlockedUsers, autoFetchBlockedUsers]);
-
-  // Load friends
+  // ── Refetch functions (backwards-compatible) ──
   const fetchFriends = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    await queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId ?? "") });
+  }, [queryClient, userId]);
 
-      // Get friends from both sides in a single query using .or()
-      const { data: allRawFriends, error: friendsError } = await supabase
-        .from("friends")
-        .select("*")
-        .eq("status", "accepted")
-        .or(`user_id.eq.${user.id},friend_user_id.eq.${user.id}`);
-
-      if (friendsError) throw friendsError;
-
-      // Normalize so friend_user_id always points to the OTHER user
-      const allFriendsData = (allRawFriends || []).map((f: any) => {
-        if (f.user_id === user.id) return f;
-        // Reverse relationship — swap so friend_user_id = the other person
-        return {
-          ...f,
-          user_id: f.friend_user_id,
-          friend_user_id: f.user_id,
-        };
-      });
-
-      // Remove duplicates based on friend_user_id
-      const uniqueFriends = allFriendsData.reduce((acc: any[], friend: any) => {
-        if (!acc.find((f: any) => f.friend_user_id === friend.friend_user_id)) {
-          acc.push(friend);
-        }
-        return acc;
-      }, []);
-
-      // Set count immediately so UI updates fast
-      if (prevFriendCount.current !== uniqueFriends.length) {
-        prevFriendCount.current = uniqueFriends.length;
-        setFriendCount(uniqueFriends.length);
-      }
-
-      const friendsData = uniqueFriends;
-
-      // Batch-fetch all profiles in a single query instead of N+1
-      const friendUserIds = friendsData.map((f: any) => f.friend_user_id);
-      const { data: allProfiles, error: profilesError } = friendUserIds.length > 0
-        ? await supabase
-            .from("profiles")
-            .select("id, username, display_name, first_name, last_name, avatar_url")
-            .in("id", friendUserIds)
-        : { data: [], error: null };
-
-      if (profilesError) {
-        console.error("Error fetching profiles:", profilesError);
-      }
-
-      // Build a lookup map for O(1) access
-      const profilesMap = new Map(
-        (allProfiles || []).map((p: any) => [p.id, p])
-      );
-
-      // Transform friends using the pre-fetched profiles
-      const transformedFriends: Friend[] = friendsData.map((friend: any) => {
-        const profileData = profilesMap.get(friend.friend_user_id);
-
-        return {
-          id: friend.id,
-          user_id: friend.user_id,
-          friend_user_id: friend.friend_user_id,
-          username: profileData?.username || `user_${friend.friend_user_id.substring(0, 8)}`,
-          display_name:
-            profileData?.display_name ||
-            (profileData?.first_name && profileData?.last_name
-              ? `${profileData.first_name} ${profileData.last_name}`
-              : undefined),
-          first_name: profileData?.first_name,
-          last_name: profileData?.last_name,
-          avatar_url: profileData?.avatar_url,
-          status: friend.status,
-          created_at: friend.created_at,
-        };
-      });
-
-      const friendsJson = JSON.stringify(transformedFriends);
-      if (prevFriendsJson.current !== friendsJson) {
-        prevFriendsJson.current = friendsJson;
-        setFriends(transformedFriends);
-      }
-    } catch (err: any) {
-      console.error("Error loading friends:", err);
-      const errorMessage = err?.message?.includes('network') || err?.message?.includes('Network') || err?.code === 'NETWORK_ERROR'
-        ? 'Unable to load friends. Please check your internet connection.'
-        : 'Failed to load friends. Please try again.';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load friend requests
   const loadFriendRequests = useCallback(async () => {
-    setRequestsLoading(true);
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    await queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId ?? "") });
+  }, [queryClient, userId]);
 
-      // Get incoming friend requests
-      const { data: incomingRequests, error: incomingError } = await supabase
-        .from("friend_requests")
-        .select("*")
-        .eq("receiver_id", user.id)
-        .eq("status", "pending");
+  const fetchBlockedUsers = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: friendsKeys.blocked(userId ?? "") });
+  }, [queryClient, userId]);
 
-      if (incomingError) throw incomingError;
+  // ── Mutations ──
 
-      // Get outgoing friend requests
-      const { data: outgoingRequests, error: outgoingError } = await supabase
-        .from("friend_requests")
-        .select("*")
-        .eq("sender_id", user.id)
-        .eq("status", "pending");
-
-      if (outgoingError) throw outgoingError;
-
-      // Transform the data
-      const transformedRequests: FriendRequest[] = [];
-
-      // Batch-fetch all sender profiles in one query
-      const incomingSenderIds = (incomingRequests || []).map((r: any) => r.sender_id);
-      const { data: senderProfiles } = incomingSenderIds.length > 0
-        ? await supabase
-            .from("profiles")
-            .select("id, username, display_name, first_name, last_name, avatar_url, email")
-            .in("id", incomingSenderIds)
-        : { data: [] };
-
-      const senderProfileMap = new Map(
-        (senderProfiles || []).map((p: any) => [p.id, p])
-      );
-
-      // Process incoming requests using the pre-fetched profiles
-      for (const request of incomingRequests || []) {
-        const senderProfile = senderProfileMap.get(request.sender_id);
-        transformedRequests.push({
-          id: request.id,
-          sender_id: request.sender_id,
-          receiver_id: request.receiver_id,
-          sender: {
-            username:
-              senderProfile?.username ||
-              `user_${request.sender_id.substring(0, 8)}`,
-            display_name:
-              senderProfile?.display_name ||
-              (senderProfile?.first_name && senderProfile?.last_name
-                ? `${senderProfile.first_name} ${senderProfile.last_name}`
-                : undefined),
-            first_name: senderProfile?.first_name,
-            last_name: senderProfile?.last_name,
-            avatar_url: senderProfile?.avatar_url,
-            email: senderProfile?.email,
-          },
-          status: request.status,
-          created_at: request.created_at,
-          type: "incoming" as const,
-        });
-      }
-
-      // Batch-fetch all receiver profiles in one query
-      const outgoingReceiverIds = (outgoingRequests || []).map((r: any) => r.receiver_id);
-      const { data: receiverProfiles } = outgoingReceiverIds.length > 0
-        ? await supabase
-            .from("profiles")
-            .select("id, username, display_name, first_name, last_name, avatar_url, email")
-            .in("id", outgoingReceiverIds)
-        : { data: [] };
-
-      const receiverProfileMap = new Map(
-        (receiverProfiles || []).map((p: any) => [p.id, p])
-      );
-
-      // Process outgoing requests using the pre-fetched profiles
-      for (const request of outgoingRequests || []) {
-        const receiverProfile = receiverProfileMap.get(request.receiver_id);
-        transformedRequests.push({
-          id: request.id,
-          sender_id: request.sender_id,
-          receiver_id: request.receiver_id,
-          sender: {
-            username:
-              receiverProfile?.username ||
-              `user_${request.receiver_id.substring(0, 8)}`,
-            display_name:
-              receiverProfile?.display_name ||
-              (receiverProfile?.first_name && receiverProfile?.last_name
-                ? `${receiverProfile.first_name} ${receiverProfile.last_name}`
-                : undefined),
-            first_name: receiverProfile?.first_name,
-            last_name: receiverProfile?.last_name,
-            avatar_url: receiverProfile?.avatar_url,
-            email: receiverProfile?.email,
-          },
-          status: request.status,
-          created_at: request.created_at,
-          type: "outgoing" as const,
-        });
-      }
-
-      const requestsJson = JSON.stringify(transformedRequests);
-      if (prevFriendRequestsJson.current !== requestsJson) {
-        prevFriendRequestsJson.current = requestsJson;
-        setFriendRequests(transformedRequests);
-      }
-    } catch (error) {
-      console.error("Error loading friend requests:", error);
-    } finally {
-      setRequestsLoading(false);
-    }
-  }, []);
-
-  // Send friend request
   const addFriend = useCallback(
     async (
       friendUserIdOrEmail: string,
@@ -356,24 +77,20 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             ? `${senderProfile.first_name} ${senderProfile.last_name}`
             : senderUsername);
 
-        // Check if user exists in database (by ID or email)
         let receiverId: string | null = null;
         let userExists = false;
         let receiverUsernameFinal = receiverUsername;
         let isUUID = false;
 
-        // Check if friendUserIdOrEmail is a UUID (meaning user was selected from search results)
         if (
           friendUserIdOrEmail.match(
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
           )
         ) {
           isUUID = true;
-          // If it's a UUID, the user was selected from search results, so they definitely exist
           receiverId = friendUserIdOrEmail;
           userExists = true;
 
-          // Get user details to ensure we have correct email and username
           const { data: userById, error: idError } = await supabase
             .from("profiles")
             .select("id, username, email")
@@ -382,18 +99,15 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
           if (idError) {
             console.error("Error fetching user by ID:", idError);
-            // Don't fail - we know the user exists from search results
           }
 
           if (userById) {
             receiverEmail = userById.email || receiverEmail;
             receiverUsernameFinal = userById.username || receiverUsernameFinal;
           } else {
-            // This shouldn't happen - user was in search results but not found
             throw new Error("User not found. Please try searching again.");
           }
         } else {
-          // Not a UUID - try to find by email (for email-only invites)
           if (receiverEmail) {
             const { data: visibilityData } = await supabase.rpc(
               "resolve_user_visibility_by_identifier",
@@ -435,12 +149,8 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         let requestId: string | null = null;
 
-        // If user exists, persist friend request to database
         if (userExists && receiverId) {
-          // If user was found from search results (UUID), trust that they exist
-          // Only verify if we found them by email
           if (!isUUID) {
-            // Double-check the receiver exists (only for email-based searches)
             const { data: receiverProfile, error: receiverError } =
               await supabase
                 .from("profiles")
@@ -462,7 +172,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
 
           if (userExists && receiverId) {
-            // Check if request already exists (any status)
             const { data: existingRequest } = await supabase
               .from("friend_requests")
               .select("id, status")
@@ -472,10 +181,8 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
             if (existingRequest) {
               if (existingRequest.status === "pending") {
-                // Already pending, just use existing
                 requestId = existingRequest.id;
               } else {
-                // Update existing request to pending (for declined/cancelled requests)
                 const { data: updatedRequest, error: updateError } = await supabase
                   .from("friend_requests")
                   .update({ status: "pending", created_at: new Date().toISOString() })
@@ -490,7 +197,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
                 requestId = updatedRequest.id;
               }
             } else {
-              // Create new friend request
               const { data: newRequest, error: insertError } = await supabase
                 .from("friend_requests")
                 .insert({
@@ -502,9 +208,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
                 .single();
 
               if (insertError) {
-                // Log the error for debugging
                 console.error("Error creating friend request:", insertError);
-                // Throw the error - don't silently treat it as "user doesn't exist"
                 throw insertError;
               } else {
                 requestId = newRequest.id;
@@ -514,7 +218,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         }
 
         // Notifications are side effects — DB write already succeeded.
-        // Never re-throw notification errors; they must not roll back the UI.
         try {
           const { error: notifyError } =
             await supabase.functions.invoke("send-friend-request-email", {
@@ -534,22 +237,20 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
         } catch (notifyErr: any) {
           console.warn("[useFriends] Notification failed (non-critical):", notifyErr);
-          // Do NOT re-throw — notification is a side effect, not the primary operation
         }
 
-        // Reload friend requests if user exists
+        // Invalidate friend requests cache
         if (userExists) {
-          await loadFriendRequests();
+          await queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId ?? "") });
         }
       } catch (error: any) {
         console.error("Error sending friend request:", error);
         throw error;
       }
     },
-    [loadFriendRequests]
+    [queryClient, userId]
   );
 
-  // Accept friend request
   const acceptFriendRequest = useCallback(
     async (requestId: string) => {
       try {
@@ -558,7 +259,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Get the friend request
         const { data: request, error: fetchError } = await supabase
           .from("friend_requests")
           .select("*")
@@ -567,7 +267,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (fetchError) throw fetchError;
 
-        // Update the request status
         const { error: updateError } = await supabase
           .from("friend_requests")
           .update({ status: "accepted" })
@@ -575,8 +274,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (updateError) throw updateError;
 
-        // Create friendship records for both users (idempotent — upsert handles
-        // duplicates from phone invite trigger, link accept, or race conditions)
         const { error: friend1Error } = await supabase
           .from("friends")
           .upsert(
@@ -603,9 +300,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (friend2Error) throw friend2Error;
 
-        // After accepting friend request, check for newly revealed collaboration invites.
-        // The database trigger (credit_referral_on_friend_accepted) has already set
-        // pending_friendship = false. Now send push notifications for each revealed invite.
+        // Check for newly revealed collaboration invites
         try {
           const { data: revealedInvites } = await supabase
             .from('collaboration_invites')
@@ -636,21 +331,19 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             }
           }
         } catch (notifyErr) {
-          // Non-critical — invite is already visible via realtime, push is a bonus
           console.error('[useFriends] Error sending revealed invite notifications:', notifyErr);
         }
 
-        // Reload data
-        await Promise.all([fetchFriends(), loadFriendRequests()]);
+        // Invalidate all friends caches (friends list + requests)
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
       } catch (error) {
         console.error("Error accepting friend request:", error);
         throw error;
       }
     },
-    [fetchFriends, loadFriendRequests]
+    [queryClient]
   );
 
-  // Decline friend request
   const declineFriendRequest = useCallback(
     async (requestId: string) => {
       try {
@@ -661,17 +354,15 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (error) throw error;
 
-        // Reload friend requests
-        await loadFriendRequests();
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId ?? "") });
       } catch (error) {
         console.error("Error declining friend request:", error);
         throw error;
       }
     },
-    [loadFriendRequests]
+    [queryClient, userId]
   );
 
-  // Remove friend
   const removeFriend = useCallback(
     async (friendUserId: string) => {
       try {
@@ -680,7 +371,6 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Remove friendship from both sides
         const { error: error1 } = await supabase
           .from("friends")
           .delete()
@@ -697,60 +387,52 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (error2) throw error2;
 
-        // Reload friends
-        await fetchFriends();
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId ?? "") });
       } catch (error) {
         console.error("Error removing friend:", error);
         throw error;
       }
     },
-    [fetchFriends]
+    [queryClient, userId]
   );
 
-  // Block user using new block service
-  // This works for any user, not just existing friends
   const blockFriend = useCallback(
-    async (userId: string, reason?: "harassment" | "spam" | "inappropriate" | "other") => {
+    async (blockUserId: string, reason?: "harassment" | "spam" | "inappropriate" | "other") => {
       try {
-        const result = await blockService.blockUser(userId, reason);
-        
+        const result = await blockService.blockUser(blockUserId, reason);
+
         if (!result.success) {
           throw new Error(result.error || "Failed to block user");
         }
 
-        // Refresh friends list (blocked user will be auto-removed by DB trigger)
-        await fetchFriends();
-        await fetchBlockedUsers();
+        // Invalidate all friends caches (friends list + blocked list)
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
       } catch (error) {
         console.error("Error blocking user:", error);
         throw error;
       }
     },
-    [fetchFriends, fetchBlockedUsers]
+    [queryClient]
   );
 
-  // Unblock user using new block service
-  // Note: This only removes the block, does NOT auto-restore friendship
   const unblockFriend = useCallback(
     async (blockedUserId: string) => {
       try {
         const result = await blockService.unblockUser(blockedUserId);
-        
+
         if (!result.success) {
           throw new Error(result.error || "Failed to unblock user");
         }
 
-        // Refresh blocked users list
-        await fetchBlockedUsers();
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.blocked(userId ?? "") });
       } catch (error) {
         console.error("Error unblocking user:", error);
         throw error;
       }
     },
-    [fetchBlockedUsers]
+    [queryClient, userId]
   );
 
-  // Cancel friend request (delete from database)
   const cancelFriendRequest = useCallback(
     async (requestId: string) => {
       try {
@@ -761,14 +443,13 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         if (error) throw error;
 
-        // Reload friend requests
-        await loadFriendRequests();
+        await queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId ?? "") });
       } catch (error) {
         console.error("Error cancelling friend request:", error);
         throw error;
       }
     },
-    [loadFriendRequests]
+    [queryClient, userId]
   );
 
   return {

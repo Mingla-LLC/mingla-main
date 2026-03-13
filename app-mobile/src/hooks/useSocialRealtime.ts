@@ -4,6 +4,7 @@ import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
 import { phoneInviteKeys } from "./usePhoneInvite";
 import { savedPeopleKeys } from "./useSavedPeople";
+import { friendsKeys } from "./useFriendsQuery";
 
 /**
  * Subscribes to realtime changes on friend_requests and other social tables
@@ -59,6 +60,7 @@ export function useSocialRealtime(
           filter: `receiver_id=eq.${userId}`,
         },
         () => {
+          queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId) });
           callbacksRef.current?.onFriendRequestChange?.();
         }
       )
@@ -127,7 +129,20 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
+          queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId) });
           callbacksRef.current?.onFriendListChange?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friends",
+          filter: `friend_user_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId) });
         }
       )
       .on(

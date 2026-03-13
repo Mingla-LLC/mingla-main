@@ -18,6 +18,7 @@ import {
 import { STANDARD_HOLIDAYS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 import { s } from "../utils/responsive";
 import BirthdayHero from "./BirthdayHero";
+import CustomDayHero from "./CustomDayHero";
 import HolidayRow from "./HolidayRow";
 import CustomHolidayModal from "./CustomHolidayModal";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -219,10 +220,10 @@ export default function PersonHolidayView({
     [archivedHolidays]
   );
 
-  // ── Sorted standard holidays ──
-  const allHolidays = useMemo(() => {
+  // ── Standard holidays only (for HolidayRows) ──
+  const standardHolidays = useMemo(() => {
     const filtered = filterHolidaysByGender(STANDARD_HOLIDAYS, person.gender);
-    const standardItems = filtered.map((holiday) => {
+    return filtered.map((holiday) => {
       const { date, daysAway } = getNextOccurrence(holiday.getDate);
       const categorySlugs = holiday.sections
         .flatMap((sec) => {
@@ -238,32 +239,43 @@ export default function PersonHolidayView({
         daysAway,
         icon: getHolidayIcon(holiday.id),
         categorySlugs,
-        isCustom: false,
+        isCustom: false as const,
       };
-    });
+    }).sort((a, b) => a.daysAway - b.daysAway);
+  }, [person.gender]);
 
-    const customItems = customHolidays.map((ch) => ({
-      id: ch.id,
-      name: ch.name,
-      date: new Date(new Date().getFullYear(), ch.month - 1, ch.day),
-      daysAway: getCustomHolidayDaysAway(ch.month, ch.day),
-      icon: "star-outline" as string,
-      categorySlugs: ch.categories,
-      isCustom: true,
-    }));
-
-    return [...standardItems, ...customItems].sort((a, b) => a.daysAway - b.daysAway);
-  }, [person.gender, customHolidays]);
+  // ── Custom days for hero cards — sorted by days away ──
+  const upcomingCustomDays = useMemo(() => {
+    return customHolidays
+      .map((ch) => ({
+        ...ch,
+        daysAway: getCustomHolidayDaysAway(ch.month, ch.day),
+      }))
+      .sort((a, b) => a.daysAway - b.daysAway);
+  }, [customHolidays]);
 
   const activeHolidays = useMemo(
-    () => allHolidays.filter((h) => !archivedKeys.has(h.id)),
-    [allHolidays, archivedKeys]
+    () => standardHolidays.filter((h) => !archivedKeys.has(h.id)),
+    [standardHolidays, archivedKeys]
   );
 
-  const archivedHolidayItems = useMemo(
-    () => allHolidays.filter((h) => archivedKeys.has(h.id)),
-    [allHolidays, archivedKeys]
-  );
+  // Archived items include both standard and custom holidays
+  const archivedHolidayItems = useMemo(() => {
+    const standardArchived = standardHolidays
+      .filter((h) => archivedKeys.has(h.id));
+    const customArchived = customHolidays
+      .filter((ch) => archivedKeys.has(ch.id))
+      .map((ch) => ({
+        id: ch.id,
+        name: ch.name,
+        date: new Date(new Date().getFullYear(), ch.month - 1, ch.day),
+        daysAway: getCustomHolidayDaysAway(ch.month, ch.day),
+        icon: "star-outline" as string,
+        categorySlugs: ch.categories ?? [],
+        isCustom: true as const,
+      }));
+    return [...standardArchived, ...customArchived];
+  }, [standardHolidays, customHolidays, archivedKeys]);
 
   // ── Handlers ──
   const handleToggleHoliday = useCallback((holidayId: string) => {
@@ -287,15 +299,16 @@ export default function PersonHolidayView({
   }, [unarchiveHolidayMutation]);
 
   const handleSaveCustomHoliday = useCallback(
-    (holiday: { name: string; month: number; day: number; description: string | null; categories: string[] }) => {
+    (holiday: { name: string; month: number; day: number; year: number }) => {
       createCustomHolidayMutation.mutate({
         user_id: userId,
         person_id: person.id,
         name: holiday.name,
         month: holiday.month,
         day: holiday.day,
-        description: holiday.description,
-        categories: holiday.categories,
+        year: holiday.year,
+        description: null,
+        categories: null,
       }, {
         onError: () => Alert.alert("Error", "Failed to create holiday."),
       });
@@ -311,7 +324,7 @@ export default function PersonHolidayView({
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.contentContainer}
     >
-      {/* Birthday Hero Card */}
+      {/* Birthday Hero Card — always first */}
       <BirthdayHero
         person={person}
         personId={person.id}
@@ -321,6 +334,29 @@ export default function PersonHolidayView({
         isLoadingSummary={isLoadingSummary}
         onCardPress={handleCardPress}
       />
+
+      {/* Custom Day Hero Cards — sorted by days away, after birthday */}
+      {upcomingCustomDays
+        .filter((ch) => !archivedKeys.has(ch.id))
+        .map((ch) => (
+          <View key={ch.id} style={styles.customDayHeroWrapper}>
+            <CustomDayHero
+              person={person}
+              personId={person.id}
+              customDay={{
+                id: ch.id,
+                name: ch.name,
+                month: ch.month,
+                day: ch.day,
+                year: ch.year,
+              }}
+              location={location}
+              userId={userId}
+              onCardPress={handleCardPress}
+              onArchive={handleArchive}
+            />
+          </View>
+        ))}
 
       {/* Generate More — AI-powered suggestions for people with descriptions */}
       {person.description && person.description.length >= 10 && (
@@ -335,7 +371,7 @@ export default function PersonHolidayView({
         </TouchableOpacity>
       )}
 
-      {/* Upcoming Holidays Section */}
+      {/* Upcoming Holidays Section (standard holidays only) */}
       <View style={styles.holidaysContainer}>
         <View style={styles.holidaysHeader}>
           <Text style={styles.holidaysTitle}>Upcoming Holidays</Text>
@@ -345,7 +381,7 @@ export default function PersonHolidayView({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setIsCustomModalVisible(true);
             }}
-            accessibilityLabel="Add custom holiday"
+            accessibilityLabel={`Add a special day for ${person.name}`}
           >
             <Ionicons name="add" size={s(16)} color="#eb7825" />
           </TouchableOpacity>
@@ -357,7 +393,7 @@ export default function PersonHolidayView({
               No upcoming holidays for {person.name}
             </Text>
             <TouchableOpacity onPress={() => setIsCustomModalVisible(true)}>
-              <Text style={styles.emptyHolidaysCta}>Add a special day</Text>
+              <Text style={styles.emptyHolidaysCta}>Mark a day that matters</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -454,6 +490,9 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: s(80),
+  },
+  customDayHeroWrapper: {
+    marginTop: s(16),
   },
   // Holidays
   holidaysContainer: {

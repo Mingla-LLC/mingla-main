@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
-import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
+import { colors } from "../constants/designSystem";
 
 interface CustomHolidayModalProps {
   visible: boolean;
@@ -22,28 +22,42 @@ interface CustomHolidayModalProps {
     name: string;
     month: number;
     day: number;
-    description: string | null;
-    categories: string[];
+    year: number;
   }) => void;
 }
-
-const CATEGORIES = [
-  { label: "Fine Dining", slug: "fine_dining" },
-  { label: "Play", slug: "play" },
-  { label: "Nature", slug: "nature" },
-  { label: "Drink", slug: "drink" },
-  { label: "Wellness", slug: "wellness" },
-  { label: "Watch", slug: "watch" },
-];
 
 const MONTHS_LIST = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
-function getDaysInMonth(month: number): number {
-  // month is 1-indexed
-  return new Date(2024, month, 0).getDate();
+const DAY_HEADERS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function getDaysInMonth(year: number, month: number): number {
+  // month is 0-indexed here (JS Date convention)
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfWeek(year: number, month: number): number {
+  // month is 0-indexed
+  return new Date(year, month, 1).getDay();
+}
+
+function isToday(year: number, month: number, day: number): boolean {
+  const now = new Date();
+  return (
+    now.getFullYear() === year &&
+    now.getMonth() === month &&
+    now.getDate() === day
+  );
+}
+
+function isFutureDate(year: number, month: number, day: number): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(year, month, day);
+  target.setHours(0, 0, 0, 0);
+  return target > today;
 }
 
 const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
@@ -52,49 +66,29 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
   onSave,
 }) => {
   const [name, setName] = useState("");
-  const [month, setMonth] = useState<number | null>(null);
-  const [day, setDay] = useState<number | null>(null);
-  const [description, setDescription] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [errors, setErrors] = useState<{
-    name?: string;
-    date?: string;
-    categories?: string;
-  }>({});
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(new Date().getMonth()); // 0-indexed for display
+  const [selectedDate, setSelectedDate] = useState<{
+    month: number;
+    day: number;
+    year: number;
+  } | null>(null);
+  const [errors, setErrors] = useState<{ name?: string; date?: string }>({});
 
   useEffect(() => {
     if (!visible) {
       setName("");
-      setMonth(null);
-      setDay(null);
-      setDescription("");
-      setSelectedCategories([]);
+      setViewYear(new Date().getFullYear());
+      setViewMonth(new Date().getMonth());
+      setSelectedDate(null);
       setErrors({});
     }
   }, [visible]);
 
-  const maxDay = month ? getDaysInMonth(month) : 31;
-
-  useEffect(() => {
-    if (day && month && day > getDaysInMonth(month)) {
-      setDay(getDaysInMonth(month));
-    }
-  }, [month]);
-
-  const toggleCategory = (slug: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(slug)
-        ? prev.filter((c) => c !== slug)
-        : [...prev, slug]
-    );
-  };
-
   const validate = (): boolean => {
-    const newErrors: typeof errors = {};
+    const newErrors: { name?: string; date?: string } = {};
     if (!name.trim()) newErrors.name = "Give this day a name";
-    if (!month || !day) newErrors.date = "Pick a date";
-    if (selectedCategories.length === 0)
-      newErrors.categories = "Choose at least one category";
+    if (!selectedDate) newErrors.date = "Pick a date";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -104,12 +98,86 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onSave({
       name: name.trim(),
-      month: month!,
-      day: day!,
-      description: description.trim() || null,
-      categories: selectedCategories,
+      month: selectedDate!.month,
+      day: selectedDate!.day,
+      year: selectedDate!.year,
     });
     onClose();
+  };
+
+  const navigateMonth = (direction: -1 | 1) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    let newMonth = viewMonth + direction;
+    let newYear = viewYear;
+    if (newMonth < 0) {
+      newMonth = 11;
+      newYear -= 1;
+    } else if (newMonth > 11) {
+      newMonth = 0;
+      newYear += 1;
+    }
+    setViewMonth(newMonth);
+    setViewYear(newYear);
+  };
+
+  // Can't navigate forward past the current month
+  const canGoForward = useMemo(() => {
+    const now = new Date();
+    if (viewYear < now.getFullYear()) return true;
+    if (viewYear === now.getFullYear() && viewMonth < now.getMonth()) return true;
+    return false;
+  }, [viewYear, viewMonth]);
+
+  // Build calendar grid
+  const calendarRows = useMemo(() => {
+    const daysInMonth = getDaysInMonth(viewYear, viewMonth);
+    const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
+
+    const rows: (number | null)[][] = [];
+    let currentRow: (number | null)[] = [];
+
+    // Fill empty slots before the 1st
+    for (let i = 0; i < firstDay; i++) {
+      currentRow.push(null);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      currentRow.push(day);
+      if (currentRow.length === 7) {
+        rows.push(currentRow);
+        currentRow = [];
+      }
+    }
+
+    // Fill remaining slots in the last row
+    if (currentRow.length > 0) {
+      while (currentRow.length < 7) {
+        currentRow.push(null);
+      }
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }, [viewYear, viewMonth]);
+
+  const isSelected = (day: number): boolean => {
+    if (!selectedDate) return false;
+    return (
+      selectedDate.year === viewYear &&
+      selectedDate.month === viewMonth + 1 && // selectedDate.month is 1-indexed
+      selectedDate.day === day
+    );
+  };
+
+  const handleDayPress = (day: number) => {
+    if (isFutureDate(viewYear, viewMonth, day)) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDate({
+      month: viewMonth + 1, // Store as 1-indexed
+      day,
+      year: viewYear,
+    });
+    if (errors.date) setErrors((e) => ({ ...e, date: undefined }));
   };
 
   return (
@@ -131,15 +199,18 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
             >
               {/* Header */}
               <View style={styles.header}>
-                <Text style={styles.title}>Add a Special Day</Text>
-                <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={styles.title}>Mark a day that matters</Text>
+                <TouchableOpacity
+                  onPress={onClose}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Ionicons name="close" size={s(24)} color={colors.gray[400]} />
                 </TouchableOpacity>
               </View>
 
               {/* Name */}
               <View style={styles.field}>
-                <Text style={styles.label}>Day Name</Text>
+                <Text style={styles.label}>What's the day?</Text>
                 <TextInput
                   style={[styles.textInput, errors.name && styles.inputError]}
                   value={name}
@@ -147,7 +218,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                     setName(t);
                     if (errors.name) setErrors((e) => ({ ...e, name: undefined }));
                   }}
-                  placeholder="e.g. Our Anniversary"
+                  placeholder="e.g. Our first trip together"
                   placeholderTextColor={colors.gray[400]}
                   maxLength={50}
                 />
@@ -156,146 +227,96 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                 ) : null}
               </View>
 
-              {/* Date */}
+              {/* Calendar Date Picker */}
               <View style={styles.field}>
-                <Text style={styles.label}>Date</Text>
-                <View style={styles.dateRow}>
-                  {/* Month picker */}
-                  <View style={styles.monthPicker}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.monthScrollContent}
-                    >
-                      {MONTHS_LIST.map((m, i) => (
-                        <TouchableOpacity
-                          key={m}
-                          style={[
-                            styles.monthPill,
-                            month === i + 1 && styles.monthPillSelected,
-                          ]}
-                          onPress={() => {
-                            setMonth(i + 1);
-                            if (errors.date)
-                              setErrors((e) => ({ ...e, date: undefined }));
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.monthPillText,
-                              month === i + 1 && styles.monthPillTextSelected,
-                            ]}
-                          >
-                            {m.slice(0, 3)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </View>
-                {/* Day picker */}
-                {month ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dayScrollContent}
-                    style={styles.dayPicker}
+                <Text style={styles.label}>When is it?</Text>
+
+                {/* Month/Year Navigation */}
+                <View style={styles.calendarNav}>
+                  <TouchableOpacity
+                    onPress={() => navigateMonth(-1)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    {Array.from({ length: maxDay }, (_, i) => i + 1).map(
-                      (d) => (
-                        <TouchableOpacity
-                          key={d}
-                          style={[
-                            styles.dayPill,
-                            day === d && styles.dayPillSelected,
-                          ]}
-                          onPress={() => {
-                            setDay(d);
-                            if (errors.date)
-                              setErrors((e) => ({ ...e, date: undefined }));
-                          }}
-                        >
-                          <Text
+                    <Ionicons
+                      name="chevron-back"
+                      size={s(20)}
+                      color={colors.gray[700]}
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.calendarMonthYear}>
+                    {MONTHS_LIST[viewMonth]} {viewYear}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => navigateMonth(1)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    disabled={!canGoForward}
+                  >
+                    <Ionicons
+                      name="chevron-forward"
+                      size={s(20)}
+                      color={canGoForward ? colors.gray[700] : colors.gray[300]}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Day Headers */}
+                <View style={styles.calendarHeaderRow}>
+                  {DAY_HEADERS.map((dh) => (
+                    <View key={dh} style={styles.calendarCell}>
+                      <Text style={styles.calendarDayHeader}>{dh}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Calendar Grid */}
+                {calendarRows.map((row, rowIdx) => (
+                  <View key={rowIdx} style={styles.calendarRow}>
+                    {row.map((day, colIdx) => {
+                      if (day === null) {
+                        return <View key={`empty-${colIdx}`} style={styles.calendarCell} />;
+                      }
+                      const future = isFutureDate(viewYear, viewMonth, day);
+                      const selected = isSelected(day);
+                      const todayMark = isToday(viewYear, viewMonth, day);
+
+                      return (
+                        <View key={day} style={styles.calendarCell}>
+                          <TouchableOpacity
                             style={[
-                              styles.dayPillText,
-                              day === d && styles.dayPillTextSelected,
+                              styles.calendarDayButton,
+                              selected && styles.calendarDaySelected,
                             ]}
+                            onPress={() => handleDayPress(day)}
+                            disabled={future}
+                            activeOpacity={future ? 1 : 0.6}
                           >
-                            {d}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    )}
-                  </ScrollView>
-                ) : null}
+                            <Text
+                              style={[
+                                styles.calendarDayText,
+                                future && styles.calendarDayDisabled,
+                                selected && styles.calendarDayTextSelected,
+                              ]}
+                            >
+                              {day}
+                            </Text>
+                          </TouchableOpacity>
+                          {todayMark && !selected ? (
+                            <View style={styles.todayDot} />
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ))}
+
                 {errors.date ? (
                   <Text style={styles.errorText}>{errors.date}</Text>
                 ) : null}
               </View>
 
-              {/* Description */}
-              <View style={styles.field}>
-                <Text style={styles.label}>Description (optional)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="What makes this day special?"
-                  placeholderTextColor={colors.gray[400]}
-                  multiline
-                  maxLength={200}
-                />
-              </View>
-
-              {/* Categories */}
-              <View style={styles.field}>
-                <Text style={styles.label}>Categories</Text>
-                <View style={styles.categoriesWrap}>
-                  {CATEGORIES.map((cat) => {
-                    const selected = selectedCategories.includes(cat.slug);
-                    return (
-                      <TouchableOpacity
-                        key={cat.slug}
-                        style={[
-                          styles.categoryPill,
-                          selected && styles.categoryPillSelected,
-                        ]}
-                        onPress={() => {
-                          toggleCategory(cat.slug);
-                          if (errors.categories)
-                            setErrors((e) => ({
-                              ...e,
-                              categories: undefined,
-                            }));
-                        }}
-                      >
-                        {selected ? (
-                          <Ionicons
-                            name="checkmark"
-                            size={s(14)}
-                            color="#FFFFFF"
-                          />
-                        ) : null}
-                        <Text
-                          style={[
-                            styles.categoryPillText,
-                            selected && styles.categoryPillTextSelected,
-                          ]}
-                        >
-                          {cat.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {errors.categories ? (
-                  <Text style={styles.errorText}>{errors.categories}</Text>
-                ) : null}
-              </View>
-
               {/* Save */}
               <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveButtonText}>Save Day</Text>
+                <Text style={styles.saveButtonText}>Save this day</Text>
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
@@ -322,7 +343,7 @@ const styles = StyleSheet.create({
     borderRadius: s(20),
     padding: s(24),
     marginHorizontal: s(24),
-    maxHeight: SCREEN_HEIGHT * 0.8,
+    maxHeight: SCREEN_HEIGHT * 0.85,
     width: SCREEN_WIDTH - s(48),
   },
   header: {
@@ -355,10 +376,6 @@ const styles = StyleSheet.create({
     color: colors.gray[800],
     backgroundColor: colors.gray[50] ?? "#F9FAFB",
   },
-  textArea: {
-    minHeight: vs(80),
-    textAlignVertical: "top",
-  },
   inputError: {
     borderColor: "#E53935",
   },
@@ -367,87 +384,65 @@ const styles = StyleSheet.create({
     color: "#E53935",
     marginTop: vs(4),
   },
-  dateRow: {
+  // Calendar
+  calendarNav: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: vs(12),
+    paddingHorizontal: s(4),
+  },
+  calendarMonthYear: {
+    fontSize: s(16),
+    fontWeight: "600",
+    color: colors.gray[800],
+  },
+  calendarHeaderRow: {
+    flexDirection: "row",
+    marginBottom: vs(4),
+  },
+  calendarRow: {
     flexDirection: "row",
   },
-  monthPicker: {
+  calendarCell: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    height: s(40),
   },
-  monthScrollContent: {
-    gap: s(6),
+  calendarDayHeader: {
+    fontSize: s(12),
+    fontWeight: "600",
+    color: colors.gray[400],
   },
-  monthPill: {
-    paddingHorizontal: s(12),
-    paddingVertical: vs(8),
-    borderRadius: s(10),
-    backgroundColor: colors.gray[100],
-  },
-  monthPillSelected: {
-    backgroundColor: "#eb7825",
-  },
-  monthPillText: {
-    fontSize: s(13),
-    fontWeight: "500",
-    color: colors.gray[600],
-  },
-  monthPillTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  dayPicker: {
-    marginTop: vs(10),
-  },
-  dayScrollContent: {
-    gap: s(6),
-  },
-  dayPill: {
-    width: s(36),
-    height: s(36),
-    borderRadius: s(18),
-    backgroundColor: colors.gray[100],
+  calendarDayButton: {
+    width: s(34),
+    height: s(34),
+    borderRadius: s(17),
     alignItems: "center",
     justifyContent: "center",
   },
-  dayPillSelected: {
+  calendarDaySelected: {
     backgroundColor: "#eb7825",
   },
-  dayPillText: {
-    fontSize: s(13),
+  calendarDayText: {
+    fontSize: s(14),
     fontWeight: "500",
-    color: colors.gray[600],
+    color: colors.gray[800],
   },
-  dayPillTextSelected: {
+  calendarDayDisabled: {
+    color: colors.gray[300],
+  },
+  calendarDayTextSelected: {
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  categoriesWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: s(8),
-  },
-  categoryPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(4),
-    paddingHorizontal: s(14),
-    paddingVertical: vs(8),
-    borderRadius: s(20),
-    backgroundColor: colors.gray[100],
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  categoryPillSelected: {
+  todayDot: {
+    width: s(4),
+    height: s(4),
+    borderRadius: s(2),
     backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-  },
-  categoryPillText: {
-    fontSize: s(13),
-    fontWeight: "500",
-    color: colors.gray[600],
-  },
-  categoryPillTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+    marginTop: vs(1),
   },
   saveButton: {
     backgroundColor: "#eb7825",

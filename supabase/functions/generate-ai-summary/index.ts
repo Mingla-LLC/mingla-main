@@ -16,6 +16,8 @@ interface RequestBody {
   gender: string | null;
   description: string | null;
   linkedUserId?: string;
+  customDayName?: string;
+  customDayYear?: number;
 }
 
 function getPronouns(gender: string | null): {
@@ -38,6 +40,10 @@ function getFallbackSummary(gender: string | null): string {
   if (subject === "He")
     return "He'd love a night out with great food and fun";
   return "They'd love a night out with great food and fun";
+}
+
+function getCustomDayFallback(dayName: string, possessive: string): string {
+  return `Make ${dayName} one ${possessive} remember`;
 }
 
 serve(async (req: Request) => {
@@ -106,6 +112,22 @@ serve(async (req: Request) => {
       );
     }
 
+    // Validate optional custom day fields
+    if (body.customDayName !== undefined && (typeof body.customDayName !== "string" || body.customDayName.trim().length === 0)) {
+      return new Response(
+        JSON.stringify({ error: "customDayName must be a non-empty string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (body.customDayYear !== undefined && (typeof body.customDayYear !== "number" || body.customDayYear < 0)) {
+      return new Response(
+        JSON.stringify({ error: "customDayYear must be a non-negative number" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const isCustomDay = !!body.customDayName;
+
     // --- Collect context ---
     const contextParts: string[] = [];
 
@@ -151,6 +173,12 @@ serve(async (req: Request) => {
       `Person's name: ${personName}`,
       pronounInfo,
     ];
+    if (body.customDayName) {
+      userPromptParts.push(`Special day: ${body.customDayName}`);
+      if (body.customDayYear && body.customDayYear > 0) {
+        userPromptParts.push(`This is year ${body.customDayYear} of this occasion.`);
+      }
+    }
     if (contextParts.length > 0) {
       userPromptParts.push(`Context:\n${contextParts.join("\n")}`);
     }
@@ -159,10 +187,14 @@ serve(async (req: Request) => {
 
     // --- Call OpenAI ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const fallback = isCustomDay
+      ? getCustomDayFallback(body.customDayName!, possessive)
+      : getFallbackSummary(gender);
+
     if (!openaiKey) {
       // No API key — return fallback
       return new Response(
-        JSON.stringify({ summary: getFallbackSummary(gender) }),
+        JSON.stringify({ summary: fallback }),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -186,8 +218,9 @@ serve(async (req: Request) => {
             messages: [
               {
                 role: "system",
-                content:
-                  'Generate a 1-sentence gift/experience suggestion for a person. Be specific and personal. Max 80 characters. Return JSON: { "summary": "..." }',
+                content: isCustomDay
+                  ? 'Generate a 1-sentence gift or experience suggestion for a specific special day. The suggestion must reference both the person AND the occasion by name. Be specific, personal, and action-oriented. Max 80 characters. Return JSON: { "summary": "..." }'
+                  : 'Generate a 1-sentence gift/experience suggestion for a person. Be specific and personal. Max 80 characters. Return JSON: { "summary": "..." }',
               },
               {
                 role: "user",
@@ -202,27 +235,27 @@ serve(async (req: Request) => {
       );
 
       if (!openaiRes.ok) {
-        summary = getFallbackSummary(gender);
+        summary = fallback;
       } else {
         const openaiData = await openaiRes.json();
         const content = openaiData.choices?.[0]?.message?.content;
 
         if (!content) {
-          summary = getFallbackSummary(gender);
+          summary = fallback;
         } else {
           try {
             const parsed = JSON.parse(content);
             summary =
               typeof parsed.summary === "string" && parsed.summary.length > 0
                 ? parsed.summary
-                : getFallbackSummary(gender);
+                : fallback;
           } catch {
-            summary = getFallbackSummary(gender);
+            summary = fallback;
           }
         }
       }
     } catch {
-      summary = getFallbackSummary(gender);
+      summary = fallback;
     }
 
     return new Response(JSON.stringify({ summary }), {

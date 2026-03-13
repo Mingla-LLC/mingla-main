@@ -127,7 +127,8 @@ The person-centric "For You" view provides personalized recommendations for each
 - **PersonCuratedCard** -- Compact curated card for the hero section horizontal scroll. Shows multi-stop itinerary info (stop count, price range) in a condensed format.
 - **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away. Each row lazy-loads cards on expand using `usePersonHeroCards` (pool-first from `card_pool`). Cards render as `PersonGridCard` for unified design. Shuffle mechanic available at end of horizontal scroll. Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
 - **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
-- **Custom Holiday Modal** -- Create personal special days with name, date picker (month + day scrollable pills), description, and category selection.
+- **Custom Day Heroes** -- Custom special days (anniversaries, first dates, graduations) are promoted to full hero cards with the same visual weight as the birthday hero. Each hero shows a countdown ("days to make it count"), commemoration year badge ("Year 3"), occasion-aware AI suggestion (references both person AND day), and horizontally scrollable experience cards with independent shuffle. Custom days appear after the birthday hero, sorted by proximity.
+- **Custom Holiday Modal** -- Simplified calendar-based date picker for marking special days. Users enter a name and pick a date from a visual calendar grid (no categories or description). The year is stored to track commemoration age.
 - **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
 
 ### Add Person Flow
@@ -311,7 +312,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `saved_people` | Saved people with name, birthday, gender, AI-generated description |
 | `person_audio_clips` | Audio recordings describing saved people (onboarding sync path only) |
 | `person_experiences` | AI-generated experience cards per person per occasion |
-| `custom_holidays` | User-created holidays for specific saved people (name, month, day, categories) |
+| `custom_holidays` | User-created holidays for specific saved people (name, month, day, year for commemoration tracking; categories nullable) |
 | `archived_holidays` | Tracks which holidays a user has archived for a specific person |
 
 ### Collaboration Tables
@@ -354,7 +355,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
 | `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Queries `card_pool` directly by location + categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` for no-repeat guarantee. Sub-second response time. |
 | `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
-| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) |
+| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char). Extended with optional `customDayName`/`customDayYear` fields for occasion-aware suggestions that reference both the person and the special day |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
 | `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions (aggregates preferences, calls discover-cards internally, caches in session_decks with SHA-256 hash deduplication) |
@@ -496,14 +497,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Hero Cards Redesign** -- Replaced the slow AI-driven hero card pipeline (GPT + live Google API calls on every load) with a fast pool-first system. The new `get-person-hero-cards` edge function queries `card_pool` directly using location + categories via the `query_person_hero_cards` DB function with progressive radius expansion. Cards now appear in under 1 second instead of multi-second AI generation waits.
-- **Shuffle Mechanic** -- Users can shuffle cards at the end of horizontal scrolls (both hero section and holiday rows). Fade-out/fade-in animation with a no-repeat guarantee via the new `person_card_impressions` table. Powered by `useShuffleCards` hook.
-- **Add Person Flow Streamlined** -- Removed Step 4 (audio description), reducing the flow from 5 steps to 4: Name, Birthday, Gender, Confirm. The confirmation step was redesigned with warm personal copy, staggered entrance animations, and an "Add to my people" CTA. `AudioDescriptionManager` component deleted.
-- **Audio Removal from Person Flows** -- All audio state, imports, and upload logic removed from `AddPersonModal` and `PersonEditSheet`. Audio services remain for the onboarding sync path only.
-- **New Database Table** -- `person_card_impressions` for per-person card impression tracking, enabling no-repeat shuffles and "Generate More" exclusions.
-- **New Edge Function** -- `get-person-hero-cards` for pool-first card serving with impression tracking.
-- **New Client Files** -- `personHeroCardsService.ts`, `usePersonHeroCards.ts`, `useShuffleCards.ts`.
-- **Holiday Rows Updated** -- Now use `usePersonHeroCards` (pool-first) instead of the old AI pipeline for default card loads. Each row lazy-loads on expand. Shuffle available at end of scroll.
+- **Special Day Hero Redesign** -- Custom special days promoted from HolidayRows to full hero cards. Each hero shows countdown, commemoration year badge, occasion-aware AI suggestion, and experience cards with independent shuffle.
+- **Custom Holiday Modal Simplified** -- Replaced month/day scroll pickers + categories/description with a visual calendar grid and name-only input. Year is now tracked for commemoration age.
+- **Edge Function Extended** -- `generate-ai-summary` now accepts optional `customDayName`/`customDayYear` fields for occasion-aware AI suggestions (backward compatible).
+- **Database Schema Updated** -- `custom_holidays` table now includes `year` column (NOT NULL with backfill); `categories` made nullable for simplified new entries.
 
 ---
 

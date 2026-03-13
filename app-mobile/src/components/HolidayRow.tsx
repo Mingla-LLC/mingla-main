@@ -18,6 +18,7 @@ import { useShuffleCards } from "../hooks/useShuffleCards";
 import { HolidayCard } from "../services/holidayCardsService";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import PersonGridCard from "./PersonGridCard";
+import PersonCuratedCard from "./PersonCuratedCard";
 import { PriceTierSlug } from "../constants/priceTiers";
 
 const SHORT_MONTHS = [
@@ -257,18 +258,34 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 contentContainerStyle={styles.cardsScrollContent}
               >
                 <Animated.View style={[styles.cardsAnimatedRow, { opacity: fadeAnim }]}>
-                  {cards.map((card) => (
-                    <PersonGridCard
-                      key={card.id}
-                      id={card.id}
-                      title={card.title}
-                      category={getReadableCategoryName(card.categorySlug || card.category)}
-                      imageUrl={card.imageUrl}
-                      priceTier={(card.priceTier as PriceTierSlug) ?? null}
-                      priceLevel={card.priceLevel}
-                      onPress={() => onCardPress(card)}
-                    />
-                  ))}
+                  {cards.map((card) =>
+                    card.cardType === "curated" ? (
+                      <PersonCuratedCard
+                        key={card.id}
+                        id={card.id}
+                        title={card.title}
+                        tagline={card.tagline ?? card.description}
+                        categoryLabel={getReadableCategoryName(card.categorySlug || card.category)}
+                        imageUrl={card.imageUrl}
+                        stops={card.stops}
+                        totalPriceMin={card.totalPriceMin}
+                        totalPriceMax={card.totalPriceMax}
+                        rating={card.rating}
+                        onPress={() => onCardPress(card)}
+                      />
+                    ) : (
+                      <PersonGridCard
+                        key={card.id}
+                        id={card.id}
+                        title={card.title}
+                        category={getReadableCategoryName(card.categorySlug || card.category)}
+                        imageUrl={card.imageUrl}
+                        priceTier={(card.priceTier as PriceTierSlug) ?? null}
+                        priceLevel={card.priceLevel}
+                        onPress={() => onCardPress(card)}
+                      />
+                    )
+                  )}
                 </Animated.View>
 
                 {/* Shuffle card */}

@@ -18,7 +18,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFriends, Friend, FriendRequest } from "../hooks/useFriends";
+import { useMutedUserIds, friendsKeys } from "../hooks/useFriendsQuery";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
@@ -32,6 +34,7 @@ import {
   typography,
   fontWeights,
 } from "../constants/designSystem";
+import { useAppStore } from "../store/appStore";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -742,6 +745,8 @@ export default function FriendsModal({
     }
   }, [windowHeight, keyboardVisible]);
 
+  const currentUserId = useAppStore((s) => s.user?.id);
+
   const {
     friends,
     friendRequests,
@@ -755,11 +760,11 @@ export default function FriendsModal({
     blockFriend,
   } = useFriends();
 
+  const { data: mutedIds = new Set<string>() } = useMutedUserIds(currentUserId);
+
   const [activeTab, setActiveTab] = useState<TabKey>("friends");
   const [searchQuery, setSearchQuery] = useState("");
-  const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
   const [processedRequests, setProcessedRequests] = useState<{
     [key: string]: "accepted" | "declined";
   }>({});
@@ -767,31 +772,15 @@ export default function FriendsModal({
   // Tab indicator animation
   const tabIndicatorX = useRef(new Animated.Value(0)).current;
 
-  // Load data when modal opens
+  // Reset UI state when modal closes
   useEffect(() => {
-    if (isOpen) {
-      setInitialLoading(true);
-      const load = async () => {
-        try {
-          await Promise.all([fetchFriends(), loadFriendRequests()]);
-          // Load muted user IDs
-          const { data: mutedUserIds } = await muteService.getMutedUserIds();
-          setMutedIds(new Set(mutedUserIds));
-        } catch (err) {
-          console.error("Error loading friends modal data:", err);
-        } finally {
-          setInitialLoading(false);
-        }
-      };
-      load();
-    } else {
-      setInitialLoading(true);
+    if (!isOpen) {
       setSearchQuery("");
       setActiveTab("friends");
       setProcessedRequests({});
       tabIndicatorX.setValue(0);
     }
-  }, [isOpen, fetchFriends, loadFriendRequests, tabIndicatorX]);
+  }, [isOpen, tabIndicatorX]);
 
   // Filter friends by search
   const filteredFriends = useMemo(() => {
@@ -850,8 +839,6 @@ export default function FriendsModal({
           });
         }
 
-        await loadFriendRequests();
-
         setTimeout(() => {
           setProcessedRequests((prev) => {
             const next = { ...prev };
@@ -870,7 +857,7 @@ export default function FriendsModal({
         setActionLoading(false);
       }
     },
-    [acceptFriendRequest, incomingRequests, loadFriendRequests]
+    [acceptFriendRequest, incomingRequests]
   );
 
   const handleDeclineRequest = useCallback(
@@ -896,8 +883,6 @@ export default function FriendsModal({
           });
         }
 
-        await loadFriendRequests();
-
         setTimeout(() => {
           setProcessedRequests((prev) => {
             const next = { ...prev };
@@ -916,30 +901,27 @@ export default function FriendsModal({
         setActionLoading(false);
       }
     },
-    [declineFriendRequest, incomingRequests, loadFriendRequests]
+    [declineFriendRequest, incomingRequests]
   );
 
   // Swipe action handlers
+  const queryClient = useQueryClient();
   const handleMute = useCallback(
     async (friend: Friend) => {
       const name = getFriendName(friend);
-      const result = await muteService.toggleMuteUser(friend.friend_user_id);
-      if (result.success) {
-        setMutedIds((prev) => {
-          const next = new Set(prev);
+      try {
+        const result = await muteService.toggleMuteUser(friend.friend_user_id);
+        if (result.success) {
+          queryClient.invalidateQueries({ queryKey: friendsKeys.muted(currentUserId ?? "") });
           if (result.isMuted) {
-            next.add(friend.friend_user_id);
-          } else {
-            next.delete(friend.friend_user_id);
+            Alert.alert("Muted", `Muted. You won't get notifications from ${name}.`);
           }
-          return next;
-        });
-        if (result.isMuted) {
-          Alert.alert("Muted", `Muted. You won't get notifications from ${name}.`);
         }
+      } catch (err) {
+        console.error("Error toggling mute:", err);
       }
     },
-    []
+    [queryClient, currentUserId]
   );
 
   const handleBlock = useCallback(
@@ -957,7 +939,6 @@ export default function FriendsModal({
               try {
                 await blockFriend(friend.friend_user_id);
                 Alert.alert("Blocked", `Blocked. ${name} can no longer message you.`);
-                await fetchFriends();
               } catch (err) {
                 console.error("Error blocking friend:", err);
               }
@@ -966,7 +947,7 @@ export default function FriendsModal({
         ]
       );
     },
-    [blockFriend, fetchFriends]
+    [blockFriend]
   );
 
   const handleReport = useCallback(
@@ -1023,13 +1004,10 @@ export default function FriendsModal({
   );
 
   const handleRetry = useCallback(async () => {
-    setInitialLoading(true);
     try {
       await Promise.all([fetchFriends(), loadFriendRequests()]);
     } catch (err) {
       console.error("Error retrying:", err);
-    } finally {
-      setInitialLoading(false);
     }
   }, [fetchFriends, loadFriendRequests]);
 
@@ -1047,7 +1025,7 @@ export default function FriendsModal({
   // ---------------------------------------------------------------------------
 
   const renderFriendsTab = () => {
-    if (initialLoading || friendsLoading) {
+    if (friendsLoading) {
       return (
         <View>
           {Array.from({ length: 6 }).map((_, i) => (
@@ -1142,7 +1120,7 @@ export default function FriendsModal({
   };
 
   const renderRequestsTab = () => {
-    if (initialLoading) {
+    if (friendsLoading) {
       return (
         <View>
           {Array.from({ length: 6 }).map((_, i) => (
