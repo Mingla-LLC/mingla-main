@@ -63,15 +63,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   headline: {
-    fontSize: typography.sizes['2xl'],
+    fontSize: typography.xxl.fontSize,
     fontWeight: fontWeights.bold as any,
-    color: colors.neutral[900],
+    color: colors.gray[900],
     marginBottom: spacing.md,
     textAlign: 'center',
   },
   body: {
-    fontSize: typography.sizes.md,
-    color: colors.neutral[500],
+    fontSize: typography.md.fontSize,
+    color: colors.gray[500],
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: spacing.xl,
@@ -93,11 +93,11 @@ const styles = StyleSheet.create({
   },
   consentButtonText: {
     color: '#fff',
-    fontSize: typography.sizes.md,
-    fontWeight: fontWeights.semiBold as any,
+    fontSize: typography.md.fontSize,
+    fontWeight: fontWeights.semibold as any,
   },
   skipText: {
-    fontSize: typography.sizes.md,
-    color: colors.neutral[400],
+    fontSize: typography.md.fontSize,
+    color: colors.gray[400],
   },
 })

@@ -181,7 +181,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="person" size={18} color={colors.neutral[400]} />
+                  <Ionicons name="person" size={18} color={colors.gray[400]} />
                 </View>
               )}
               <Text style={styles.lookupName} numberOfLines={1}>
@@ -215,7 +215,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                   <Image source={{ uri: friend.avatarUrl }} style={styles.friendAvatar} />
                 ) : (
                   <View style={styles.friendAvatarPlaceholder}>
-                    <Ionicons name="person" size={14} color={colors.neutral[400]} />
+                    <Ionicons name="person" size={14} color={colors.gray[400]} />
                   </View>
                 )}
                 <View style={styles.friendTextCol}>
@@ -231,7 +231,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 onPress={() => onRemoveFriend(friend.phoneE164)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="close-circle" size={22} color={colors.neutral[400]} />
+                <Ionicons name="close-circle" size={22} color={colors.gray[400]} />
               </TouchableOpacity>
             </View>
           ))}
@@ -262,14 +262,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   headline: {
-    fontSize: typography.sizes['2xl'],
+    fontSize: typography.xxl.fontSize,
     fontWeight: fontWeights.bold as any,
-    color: colors.neutral[900],
+    color: colors.gray[900],
     marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: typography.sizes.md,
-    color: colors.neutral[500],
+    fontSize: typography.md.fontSize,
+    color: colors.gray[500],
     marginBottom: spacing.lg,
     lineHeight: 22,
   },
@@ -301,14 +301,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.neutral[100],
+    backgroundColor: colors.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
   },
   lookupName: {
-    fontSize: typography.sizes.md,
+    fontSize: typography.md.fontSize,
     fontWeight: fontWeights.medium as any,
-    color: colors.neutral[800],
+    color: colors.gray[800],
     flex: 1,
   },
   actionButton: {
@@ -324,8 +324,8 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: typography.sizes.sm,
-    fontWeight: fontWeights.semiBold as any,
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
   },
   friendsList: {
     flex: 1,
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.neutral[100],
+    borderBottomColor: colors.gray[100],
   },
   friendInfo: {
     flexDirection: 'row',
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.neutral[100],
+    backgroundColor: colors.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -362,13 +362,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   friendName: {
-    fontSize: typography.sizes.md,
+    fontSize: typography.md.fontSize,
     fontWeight: fontWeights.medium as any,
-    color: colors.neutral[800],
+    color: colors.gray[800],
   },
   friendType: {
-    fontSize: typography.sizes.xs,
-    color: colors.neutral[400],
+    fontSize: typography.xs.fontSize,
+    color: colors.gray[400],
     marginTop: 2,
   },
   actions: {
@@ -386,11 +386,11 @@ const styles = StyleSheet.create({
   },
   continueButtonText: {
     color: '#fff',
-    fontSize: typography.sizes.md,
-    fontWeight: fontWeights.semiBold as any,
+    fontSize: typography.md.fontSize,
+    fontWeight: fontWeights.semibold as any,
   },
   skipText: {
-    fontSize: typography.sizes.md,
-    color: colors.neutral[400],
+    fontSize: typography.md.fontSize,
+    color: colors.gray[400],
   },
 })
