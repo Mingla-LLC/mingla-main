@@ -248,6 +248,7 @@ const OnboardingFlow = ({
   const [launchRetries, setLaunchRetries] = useState(0)
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
+  const [showPersonDatePicker, setShowPersonDatePicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
   // Audio state now lives in `data` for persistence (data.currentAudioFriendIndex, data.audioClipsByFriend)
@@ -1742,7 +1743,7 @@ const OnboardingFlow = ({
             <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
           </Pressable>
 
-          {showDatePicker && (
+          {showDatePicker && Platform.OS === 'ios' && (
             <View style={styles.detailsDatePickerContainer}>
               <DateTimePicker
                 value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
@@ -1770,6 +1771,21 @@ const OnboardingFlow = ({
                 <Text style={styles.detailsDatePickerDoneText}>Done</Text>
               </Pressable>
             </View>
+          )}
+          {showDatePicker && Platform.OS === 'android' && (
+            <DateTimePicker
+              value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
+              mode="date"
+              display="spinner"
+              maximumDate={new Date()}
+              minimumDate={MIN_BIRTHDAY_DATE}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false)
+                if (event.type === 'set' && selectedDate) {
+                  setData((p) => ({ ...p, userBirthday: selectedDate }))
+                }
+              }}
+            />
           )}
 
           {/* Preferred Language */}
@@ -2612,20 +2628,55 @@ const OnboardingFlow = ({
         <View>
           <Text style={styles.headline}>When's their birthday?</Text>
           <Text style={styles.body}>So we can get the vibe right.</Text>
-          <View style={styles.datePickerContainer}>
-            <DateTimePicker
-              value={data.personBirthday || DEFAULT_PERSON_DATE}
-              mode="date"
-              display="spinner"
-              minimumDate={MIN_PERSON_DATE}
-              maximumDate={MAX_PERSON_DATE}
-              onChange={(_, date) => {
-                if (date) {
-                  pendingPersonBirthdayRef.current = date
-                }
-              }}
-            />
-          </View>
+          {Platform.OS === 'ios' ? (
+            <View style={styles.datePickerContainer}>
+              <DateTimePicker
+                value={data.personBirthday || DEFAULT_PERSON_DATE}
+                mode="date"
+                display="spinner"
+                minimumDate={MIN_PERSON_DATE}
+                maximumDate={MAX_PERSON_DATE}
+                onChange={(_, date) => {
+                  if (date) {
+                    pendingPersonBirthdayRef.current = date
+                  }
+                }}
+              />
+            </View>
+          ) : (
+            <>
+              <Pressable
+                style={styles.detailsPickerButton}
+                onPress={() => setShowPersonDatePicker(true)}
+              >
+                <Text style={[
+                  styles.detailsPickerText,
+                  !data.personBirthday && styles.detailsPickerPlaceholder,
+                ]}>
+                  {data.personBirthday
+                    ? formatBirthdayDisplay(data.personBirthday)
+                    : 'Tap to select'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
+              </Pressable>
+              {showPersonDatePicker && (
+                <DateTimePicker
+                  value={data.personBirthday || DEFAULT_PERSON_DATE}
+                  mode="date"
+                  display="spinner"
+                  minimumDate={MIN_PERSON_DATE}
+                  maximumDate={MAX_PERSON_DATE}
+                  onChange={(event, date) => {
+                    setShowPersonDatePicker(false)
+                    if (event.type === 'set' && date) {
+                      setData((p) => ({ ...p, personBirthday: date }))
+                      pendingPersonBirthdayRef.current = date
+                    }
+                  }}
+                />
+              )}
+            </>
+          )}
         </View>
       )
     }

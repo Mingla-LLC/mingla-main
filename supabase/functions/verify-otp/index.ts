@@ -120,7 +120,7 @@ serve(async (req) => {
           })
         }
         console.error('Profile update error:', updateError)
-        return new Response(JSON.stringify({ error: `Phone verified but save failed. Contact support. [DEBUG: ${updateError.code} — ${updateError.message}]` }), {
+        return new Response(JSON.stringify({ error: 'Phone verified but save failed. Contact support.' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
