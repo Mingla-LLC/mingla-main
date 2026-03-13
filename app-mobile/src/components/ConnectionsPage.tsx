@@ -38,6 +38,7 @@ import { useQueryClient } from "@tanstack/react-query";
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
 import { FriendPickerSheet } from "./connections/FriendPickerSheet";
+import { AddFriendView } from "./connections/AddFriendView";
 import { RequestsView } from "./connections/RequestsView";
 import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
@@ -144,6 +145,8 @@ export default function ConnectionsPageRefactored({
     removeFriend,
     blockFriend,
     unblockFriend,
+    addFriend,
+    cancelFriendRequest,
     blockedUsers = [],
     loading: friendsLoading,
     requestsLoading,
@@ -217,6 +220,12 @@ export default function ConnectionsPageRefactored({
     return friendRequests
       .filter((r) => r.type === "incoming" && r.status === "pending")
       .map((r) => ({ ...r, _source: "legacy" as const }));
+  }, [friendRequests]);
+
+  const outgoingRequests = useMemo(() => {
+    return friendRequests.filter(
+      (r) => r.type === "outgoing" && r.status === "pending"
+    );
   }, [friendRequests]);
 
   // Sort conversations by most recent message
@@ -1296,7 +1305,7 @@ export default function ConnectionsPageRefactored({
       </TouchableWithoutFeedback>
 
       <View
-        style={[styles.sheetContainer, { minHeight: screenHeight * 0.6, maxHeight: screenHeight * 0.88 }]}
+        style={[styles.sheetContainer, { height: screenHeight * 0.88 }]}
         onStartShouldSetResponder={() => true}
       >
         <View style={styles.sheetHandle} />
@@ -1315,7 +1324,16 @@ export default function ConnectionsPageRefactored({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Add Friend panel removed — friend links feature deprecated */}
+          {activePanel === "add" && (
+            <AddFriendView
+              currentUserId={user?.id || ""}
+              onRequestSent={() => loadFriendRequests()}
+              outgoingRequests={outgoingRequests}
+              outgoingRequestsLoading={requestsLoading}
+              onCancelRequest={cancelFriendRequest}
+              onAddFriend={addFriend}
+            />
+          )}
           {activePanel === "friends" && (
             <>
               {/* Tab Bar */}
@@ -1633,7 +1651,7 @@ export default function ConnectionsPageRefactored({
       </TouchableWithoutFeedback>
 
       <View
-        style={[styles.sheetContainer, { minHeight: screenHeight * 0.6, maxHeight: screenHeight * 0.88 }]}
+        style={[styles.sheetContainer, { height: screenHeight * 0.88 }]}
         onStartShouldSetResponder={() => true}
       >
         <View style={styles.sheetHandle} />
@@ -1656,7 +1674,16 @@ export default function ConnectionsPageRefactored({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Add Friend panel removed — friend links feature deprecated */}
+          {activePanel === "add" && (
+            <AddFriendView
+              currentUserId={user?.id || ""}
+              onRequestSent={() => loadFriendRequests()}
+              outgoingRequests={outgoingRequests}
+              outgoingRequestsLoading={requestsLoading}
+              onCancelRequest={cancelFriendRequest}
+              onAddFriend={addFriend}
+            />
+          )}
           {activePanel === "friends" && (
             <>
               {/* Tab Bar */}
