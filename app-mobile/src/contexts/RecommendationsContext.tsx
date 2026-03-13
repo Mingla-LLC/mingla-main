@@ -32,6 +32,11 @@ export type { Recommendation };
 
 const MAX_BATCHES = 3;
 
+// Stable empty arrays — prevent new references on every render that trigger
+// useEffect dependency changes and cause infinite render loops.
+const EMPTY_CARDS: Recommendation[] = [];
+const EMPTY_PILLS: string[] = [];
+
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
   budget_min: 0,
@@ -215,9 +220,12 @@ export const RecommendationsProvider: React.FC<
     error: locationError,
   } = useUserLocation(user?.id, currentMode, refreshKey);
 
-  const userLocation: { lat: number; lng: number } | null = userLocationData
-    ? { lat: userLocationData.lat, lng: userLocationData.lng }
-    : null;
+  const userLocation: { lat: number; lng: number } | null = useMemo(
+    () => userLocationData
+      ? { lat: userLocationData.lat, lng: userLocationData.lng }
+      : null,
+    [userLocationData?.lat, userLocationData?.lng]
+  );
 
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
@@ -342,10 +350,10 @@ export const RecommendationsProvider: React.FC<
 
   // ── Unified deck output (branch by mode) ─────────────────────────────
   const deckCards = isCollaborationMode
-    ? (sessionDeckData?.cards ?? [])
+    ? (sessionDeckData?.cards ?? EMPTY_CARDS)
     : soloDeckCards;
   const deckMode = isCollaborationMode ? 'mixed' : soloDeckMode;
-  const activePills = isCollaborationMode ? [] : soloActivePills;
+  const activePills = isCollaborationMode ? EMPTY_PILLS : soloActivePills;
   const isDeckLoading = isCollaborationMode ? isSessionDeckLoading : isSoloDeckLoading;
   const isDeckFetching = isCollaborationMode ? isSessionDeckFetching : isSoloDeckFetching;
   const isDeckBatchLoaded = isCollaborationMode
@@ -658,7 +666,9 @@ export const RecommendationsProvider: React.FC<
       } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad) {
         // Genuinely empty — no cards available. All guards must be false
         // to avoid clearing recommendations while a slow batch is still loading.
-        setRecommendations([]);
+        // Use stable EMPTY_CARDS and guard against no-op to prevent infinite re-renders
+        // (Object.is([], []) is false — a new [] always triggers a re-render).
+        setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
       }
       // During batch transition with 0 cards from new query,
       // keep previous recommendations visible (no else branch needed)
@@ -681,7 +691,7 @@ export const RecommendationsProvider: React.FC<
       }
 
       setIsModeTransitioning(true);
-      setRecommendations([]);
+      setRecommendations(EMPTY_CARDS);
       setHasCompletedFetchForCurrentMode(false);
       previousDeckIdsRef.current = '';
 
@@ -817,7 +827,7 @@ export const RecommendationsProvider: React.FC<
   }, [queryClient]);
 
   const clearRecommendations = useCallback(() => {
-    setRecommendations([]);
+    setRecommendations(EMPTY_CARDS);
     queryClient.removeQueries({ queryKey: ["deck-cards"] });
     queryClient.removeQueries({ queryKey: ["session-deck"] });
   }, [queryClient]);

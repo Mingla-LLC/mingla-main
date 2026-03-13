@@ -7,11 +7,16 @@
  * Card conversion now happens inside deckService.fetchDeck() — this hook
  * receives ready-to-use Recommendation[] directly.
  */
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
 import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
 import type { PriceTierSlug } from '../constants/priceTiers';
+
+// Stable empty arrays to prevent new references on every render
+const EMPTY_CARDS: Recommendation[] = [];
+const EMPTY_PILLS: string[] = [];
 
 interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
@@ -98,15 +103,19 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     initialDataUpdatedAt: latestBatch?.timestamp,
   });
 
-  return {
-    cards: query.data?.cards ?? [],
+  const cards = query.data?.cards ?? EMPTY_CARDS;
+  const activePills = query.data?.activePills ?? EMPTY_PILLS;
+  const hasData = query.data !== undefined;
+
+  return useMemo(() => ({
+    cards,
     deckMode: query.data?.deckMode ?? 'curated',
-    activePills: query.data?.activePills ?? [],
+    activePills,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    isFullBatchLoaded: !query.isLoading && !query.isFetching && query.data !== undefined,
+    isFullBatchLoaded: !query.isLoading && !query.isFetching && hasData,
     hasMore: query.data?.hasMore ?? true,
     error: query.error as Error | null,
     refetch: query.refetch,
-  };
+  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, hasData, query.error, query.refetch]);
 }
