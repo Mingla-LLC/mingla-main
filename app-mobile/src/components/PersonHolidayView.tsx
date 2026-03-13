@@ -133,6 +133,25 @@ function holidayCardToExpandedCard(card: HolidayCard): ExpandedCardData {
       ?? (card.googlePlaceId ? `https://www.google.com/maps/place/?q=place_id:${card.googlePlaceId}` : undefined),
   };
 
+  // Curated card fields — pass through to ExpandedCardModal for CuratedPlanView
+  if (card.cardType === "curated") {
+    base.cardType = "curated";
+    base.tagline = card.tagline ?? undefined;
+    base.totalPriceMin = card.totalPriceMin ?? undefined;
+    base.totalPriceMax = card.totalPriceMax ?? undefined;
+    base.estimatedDurationMinutes = card.estimatedDurationMinutes ?? undefined;
+    base.experienceType = card.experienceType ?? undefined;
+    // stopsData is the raw JSONB array from the API; cast to CuratedStop[]
+    // The ExpandedCardModal expects stops as CuratedStop[]
+    if (Array.isArray(card.stopsData) && card.stopsData.length > 0) {
+      base.stops = card.stopsData as unknown as import("../types/curatedExperience").CuratedStop[];
+    }
+    // Shopping list for picnic-type curated experiences
+    if (Array.isArray(card.shoppingList)) {
+      base.shoppingList = card.shoppingList as string[];
+    }
+  }
+
   return base;
 }
 

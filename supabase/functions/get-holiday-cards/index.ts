@@ -39,9 +39,14 @@ interface Card {
   cardType: "single" | "curated";
   tagline: string | null;
   stops: number;
+  stopsData: unknown[] | null;
   totalPriceMin: number | null;
   totalPriceMax: number | null;
   website: string | null;
+  estimatedDurationMinutes: number | null;
+  experienceType: string | null;
+  categories: string[] | null;
+  shoppingList: unknown[] | null;
 }
 
 interface PoolCard {
@@ -64,6 +69,9 @@ interface PoolCard {
   total_price_min?: number | null;
   total_price_max?: number | null;
   website?: string | null;
+  estimated_duration_minutes?: number | null;
+  experience_type?: string | null;
+  shopping_list?: unknown[] | null;
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -222,9 +230,51 @@ function mapGooglePlaceToCard(
     cardType,
     tagline: null,
     stops: 0,
+    stopsData: null,
     totalPriceMin: null,
     totalPriceMax: null,
     website: p.websiteUri ?? null,
+    estimatedDurationMinutes: null,
+    experienceType: null,
+    categories: null,
+    shoppingList: null,
+  };
+}
+
+function mapPoolCardToResponseCard(
+  chosen: PoolCard,
+  categorySlug: string,
+): Card {
+  const isCurated = chosen.card_type === "curated";
+  const stopsArr = Array.isArray(chosen.stops) ? chosen.stops : null;
+  const stopsCount = stopsArr ? stopsArr.length : 0;
+  const catName = chosen.category ?? (isCurated ? "Curated" : "");
+
+  return {
+    id: chosen.id,
+    title: chosen.title,
+    category: catName,
+    categorySlug: isCurated ? "curated" : categorySlug,
+    imageUrl: chosen.image_url ?? null,
+    rating: chosen.rating ?? null,
+    priceLevel: chosen.price_level ?? null,
+    address: chosen.address ?? null,
+    googlePlaceId: chosen.google_place_id ?? null,
+    lat: chosen.lat ?? null,
+    lng: chosen.lng ?? null,
+    priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+    description: chosen.description ?? `A great ${catName} spot to explore.`,
+    cardType: (chosen.card_type as "single" | "curated") ?? "single",
+    tagline: chosen.tagline ?? null,
+    stops: stopsCount,
+    stopsData: isCurated ? stopsArr : null,
+    totalPriceMin: chosen.total_price_min ?? null,
+    totalPriceMax: chosen.total_price_max ?? null,
+    website: chosen.website ?? null,
+    estimatedDurationMinutes: chosen.estimated_duration_minutes ?? null,
+    experienceType: chosen.experience_type ?? null,
+    categories: Array.isArray(chosen.categories) ? chosen.categories : null,
+    shoppingList: Array.isArray(chosen.shopping_list) ? chosen.shopping_list : null,
   };
 }
 
@@ -439,7 +489,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("category", cat.displayName)
           .gte("lat", latMin)
@@ -465,27 +515,7 @@ serve(async (req: Request) => {
           const chosen = sorted.find((c: PoolCard) => !excludeSet.has(c.id));
           if (chosen) {
             excludeSet.add(chosen.id);
-            heroCards.push({
-              id: chosen.id,
-              title: chosen.title,
-              category: chosen.category,
-              categorySlug: cat.slug,
-              imageUrl: chosen.image_url ?? null,
-              rating: chosen.rating ?? null,
-              priceLevel: chosen.price_level ?? null,
-              address: chosen.address ?? null,
-              googlePlaceId: chosen.google_place_id ?? null,
-              lat: chosen.lat ?? null,
-              lng: chosen.lng ?? null,
-              priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
-              description: chosen.description ?? `A great ${cat.displayName} spot to explore.`,
-              cardType: "single",
-              tagline: null,
-              stops: 0,
-              totalPriceMin: null,
-              totalPriceMax: null,
-              website: chosen.website ?? null,
-            });
+            heroCards.push(mapPoolCardToResponseCard(chosen, cat.slug));
           }
         }
 
@@ -509,7 +539,7 @@ serve(async (req: Request) => {
         const { data: curatedCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("card_type", "curated")
           .gte("lat", latMin)
@@ -547,28 +577,7 @@ serve(async (req: Request) => {
 
           if (bestCard) {
             excludeSet.add(bestCard.id);
-            const stopsCount = Array.isArray(bestCard.stops) ? bestCard.stops.length : 0;
-            curatedCard = {
-              id: bestCard.id,
-              title: bestCard.title,
-              category: bestCard.category ?? "Curated",
-              categorySlug: "curated",
-              imageUrl: bestCard.image_url ?? null,
-              rating: bestCard.rating ?? null,
-              priceLevel: bestCard.price_level ?? null,
-              address: bestCard.address ?? null,
-              googlePlaceId: bestCard.google_place_id ?? null,
-              lat: bestCard.lat ?? null,
-              lng: bestCard.lng ?? null,
-              priceTier: derivePriceTier(bestCard.price_tier ?? null, bestCard.price_level ?? null),
-              description: bestCard.description ?? "A curated experience to explore.",
-              cardType: "curated",
-              tagline: bestCard.tagline ?? null,
-              stops: stopsCount,
-              totalPriceMin: bestCard.total_price_min ?? null,
-              totalPriceMax: bestCard.total_price_max ?? null,
-              website: bestCard.website ?? null,
-            };
+            curatedCard = mapPoolCardToResponseCard(bestCard, "curated");
           }
         }
       }
@@ -635,7 +644,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
+            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("category", catName)
           .gte("lat", latMin)
@@ -662,27 +671,8 @@ serve(async (req: Request) => {
           for (const chosen of sorted) {
             if (excludeSet.has(chosen.id)) continue;
             totalAvailable++;
-            bucket.push({
-              id: chosen.id,
-              title: chosen.title,
-              category: chosen.category,
-              categorySlug: catName.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-              imageUrl: chosen.image_url ?? null,
-              rating: chosen.rating ?? null,
-              priceLevel: chosen.price_level ?? null,
-              address: chosen.address ?? null,
-              googlePlaceId: chosen.google_place_id ?? null,
-              lat: chosen.lat ?? null,
-              lng: chosen.lng ?? null,
-              priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
-              description: chosen.description ?? `A great ${catName} spot to explore.`,
-              cardType: "single",
-              tagline: null,
-              stops: 0,
-              totalPriceMin: null,
-              totalPriceMax: null,
-              website: chosen.website ?? null,
-            });
+            const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+            bucket.push(mapPoolCardToResponseCard(chosen, slug));
           }
         }
 
@@ -758,7 +748,7 @@ serve(async (req: Request) => {
       const { data: poolCards } = await adminClient
         .from("card_pool")
         .select(
-          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website"
+          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
         )
         .eq("category", resolved.displayName)
         .gte("lat", latMin)
@@ -781,27 +771,7 @@ serve(async (req: Request) => {
         }
 
         for (const chosen of sorted.slice(0, 3)) {
-          cards.push({
-            id: chosen.id,
-            title: chosen.title,
-            category: chosen.category,
-            categorySlug: resolved.slug,
-            imageUrl: chosen.image_url ?? null,
-            rating: chosen.rating ?? null,
-            priceLevel: chosen.price_level ?? null,
-            address: chosen.address ?? null,
-            googlePlaceId: chosen.google_place_id ?? null,
-            lat: chosen.lat ?? null,
-            lng: chosen.lng ?? null,
-            priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
-            description: chosen.description ?? `A great ${resolved.displayName} spot to explore.`,
-            cardType: (chosen.card_type as "single" | "curated") ?? "single",
-            tagline: chosen.tagline ?? null,
-            stops: Array.isArray(chosen.stops) ? chosen.stops.length : 0,
-            totalPriceMin: chosen.total_price_min ?? null,
-            totalPriceMax: chosen.total_price_max ?? null,
-            website: chosen.website ?? null,
-          });
+          cards.push(mapPoolCardToResponseCard(chosen, resolved.slug));
         }
       } else {
         // --- Fallback: Google Places Nearby Search ---
@@ -875,9 +845,14 @@ serve(async (req: Request) => {
                   cardType: "single",
                   tagline: null,
                   stops: 0,
+                  stopsData: null,
                   totalPriceMin: null,
                   totalPriceMax: null,
                   website: p.websiteUri ?? null,
+                  estimatedDurationMinutes: null,
+                  experienceType: null,
+                  categories: null,
+                  shoppingList: null,
                 });
               }
             }

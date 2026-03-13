@@ -38,9 +38,14 @@ interface Card {
   cardType: "single" | "curated";
   tagline: string | null;
   stops: number;
+  stopsData: unknown[] | null;
   totalPriceMin: number | null;
   totalPriceMax: number | null;
   website: string | null;
+  estimatedDurationMinutes: number | null;
+  experienceType: string | null;
+  categories: string[] | null;
+  shoppingList: unknown[] | null;
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────
@@ -91,9 +96,14 @@ function mapPoolCardToCard(raw: Record<string, unknown>, rowCardType?: string): 
     cardType: cardType as "single" | "curated",
     tagline: (raw.tagline as string) ?? null,
     stops: stopsCount,
+    stopsData: cardType === "curated" && Array.isArray(stopsArr) ? stopsArr : null,
     totalPriceMin: (raw.total_price_min as number) ?? null,
     totalPriceMax: (raw.total_price_max as number) ?? null,
     website: (raw.website as string) ?? null,
+    estimatedDurationMinutes: (raw.estimated_duration_minutes as number) ?? null,
+    experienceType: (raw.experience_type as string) ?? null,
+    categories: Array.isArray(raw.categories) ? (raw.categories as string[]) : null,
+    shoppingList: Array.isArray(raw.shopping_list) ? (raw.shopping_list as unknown[]) : null,
   };
 }
 

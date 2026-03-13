@@ -17,9 +17,14 @@ export interface HolidayCard {
   cardType: "single" | "curated";
   tagline: string | null;
   stops: number;
+  stopsData: unknown[] | null;
   totalPriceMin: number | null;
   totalPriceMax: number | null;
   website: string | null;
+  estimatedDurationMinutes: number | null;
+  experienceType: string | null;
+  categories: string[] | null;
+  shoppingList: unknown[] | null;
 }
 
 export interface HolidayCardsResponse {
