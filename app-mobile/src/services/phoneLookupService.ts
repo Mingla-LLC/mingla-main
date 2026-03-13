@@ -119,7 +119,7 @@ export async function createPendingSessionInvite(
     .from('pending_session_invites')
     .upsert(
       { session_id: sessionId, inviter_id: inviterId, phone_e164: phoneE164, status: 'pending' },
-      { onConflict: 'session_id,phone_e164' }
+      { onConflict: 'session_id,inviter_id,phone_e164', ignoreDuplicates: true }
     )
 
   if (error) {

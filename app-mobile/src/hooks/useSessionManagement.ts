@@ -684,7 +684,11 @@ export const useSessionManagement = () => {
 
       for (const p of phoneInviteParticipants) {
         if (p.phoneE164) {
-          await createPendingSessionInvite(sessionId, authUser.id, p.phoneE164)
+          try {
+            await createPendingSessionInvite(sessionId, authUser.id, p.phoneE164)
+          } catch (inviteErr) {
+            console.error('[useSessionManagement] Phone invite failed (non-fatal):', inviteErr)
+          }
         }
       }
 
