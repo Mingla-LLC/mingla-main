@@ -224,7 +224,7 @@ export default function HomePage({
       // Fetch invite details BEFORE mutating so we have clean data for notification
       const { data: invite } = await supabase
         .from("collaboration_invites")
-        .select("invited_by, session_id")
+        .select("inviter_id, session_id")
         .eq("id", inviteId)
         .single();
 
@@ -254,7 +254,7 @@ export default function HomePage({
           body: {
             inviteId,
             response: "declined",
-            inviterId: invite.invited_by,
+            inviterId: invite.inviter_id,
             invitedUserId: userId,
             sessionId: invite.session_id,
             sessionName: session?.name || "a session",

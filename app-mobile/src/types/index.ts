@@ -267,7 +267,7 @@ export interface BoardCollaborator {
 export interface CollaborationInvite {
   id: string;
   session_id: string;
-  invited_by: string;
+  inviter_id: string;
   invited_user_id: string;
   status: "pending" | "accepted" | "declined" | "cancelled";
   message?: string;

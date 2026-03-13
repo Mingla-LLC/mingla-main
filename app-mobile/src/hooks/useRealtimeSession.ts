@@ -41,7 +41,7 @@ export const useRealtimeSession = () => {
         .select(`
           *,
           collaboration_sessions(name, status),
-          profiles!collaboration_invites_invited_by_fkey(display_name, email)
+          profiles!collaboration_invites_inviter_id_fkey(display_name, email)
         `)
         .eq('invited_user_id', user.id)
         .eq('status', 'pending');
@@ -112,7 +112,7 @@ export const useRealtimeSession = () => {
           .from('collaboration_invites')
           .insert({
             session_id: session.id,
-            invited_by: user.id,
+            inviter_id: user.id,
             invited_user_id: invitedUser.id,
             status: 'pending',
           });

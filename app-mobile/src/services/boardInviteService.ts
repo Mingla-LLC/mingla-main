@@ -4,7 +4,7 @@ import { userActivityService } from './userActivityService';
 export interface BoardInvite {
   id: string;
   session_id: string;
-  invited_by: string;
+  inviter_id: string;
   invited_user_id: string;
   invite_method: 'friends_list' | 'link' | 'qr_code' | 'invite_code';
   status: 'pending' | 'accepted' | 'declined' | 'cancelled';
@@ -127,7 +127,7 @@ export class BoardInviteService {
         .from('collaboration_invites')
         .upsert({
           session_id: session.id,
-          invited_by: session.id, // System invite
+          inviter_id: session.id, // System invite
           invited_user_id: userId,
           invite_method: 'invite_code',
           status: 'accepted',
@@ -182,7 +182,7 @@ export class BoardInviteService {
           .from('collaboration_invites')
           .insert({
             session_id: sessionId,
-            invited_by: inviterId,
+            inviter_id: inviterId,
             invited_user_id: friendId,
             invite_method: 'friends_list',
             status: 'pending',
@@ -218,7 +218,7 @@ export class BoardInviteService {
             session_type,
             created_by
           ),
-          profiles!collaboration_invites_invited_by_fkey (
+          profiles!collaboration_invites_inviter_id_fkey (
             id,
             display_name,
             username,

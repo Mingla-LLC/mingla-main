@@ -180,7 +180,7 @@ async function cleanupUserData(
       safeDelete("board_collaborators", "user_id", userId),
       safeDelete("preference_history", "user_id", userId),
       safeDelete("collaboration_invites", "inviter_id", userId),
-      safeDelete("collaboration_invites", "invitee_id", userId),
+      safeDelete("collaboration_invites", "invited_user_id", userId),
       safeDelete("user_presence", "user_id", userId),
       safeDelete("session_presence", "user_id", userId),
       safeDelete("typing_indicators", "user_id", userId),

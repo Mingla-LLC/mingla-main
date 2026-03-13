@@ -172,7 +172,7 @@ export const useSessionManagement = () => {
       const { data: receivedInvites, error: receivedError } = await supabase
         .from('collaboration_invites')
         .select('*')
-        .eq('invitee_id', user.id)
+        .eq('invited_user_id', user.id)
         .eq('status', 'pending');
 
       if (receivedError) {
@@ -556,7 +556,7 @@ export const useSessionManagement = () => {
           .insert({
             session_id: sessionData.id,
             inviter_id: user.id,
-            invitee_id: userData.id,
+            invited_user_id: userData.id,
             status: 'pending'
           })
           .select('id')
@@ -750,7 +750,7 @@ export const useSessionManagement = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', inviteId)
-        .eq('invitee_id', user.id);
+        .eq('invited_user_id', user.id);
 
       if (inviteUpdateError) {
         console.error('❌ Error updating invite status:', inviteUpdateError);
@@ -958,7 +958,7 @@ export const useSessionManagement = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', inviteId)
-        .eq('invitee_id', user.id);
+        .eq('invited_user_id', user.id);
 
       if (inviteUpdateError) {
         console.error('❌ Error declining invite:', inviteUpdateError);
@@ -1083,7 +1083,7 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .update({ status: 'declined' })
           .eq('session_id', sessionId)
-          .eq('invitee_id', user.id);
+          .eq('invited_user_id', user.id);
 
         // Switch to solo mode
         const newState = {
@@ -1135,7 +1135,7 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .update({ status: 'declined' })
           .eq('session_id', sessionId)
-          .eq('invitee_id', user.id);
+          .eq('invited_user_id', user.id);
 
         // Remove user from participants (this may trigger session cleanup)
         await supabase
@@ -1179,7 +1179,7 @@ export const useSessionManagement = () => {
     loadUserSessions();
 
     // Set up realtime subscriptions for collaboration updates.
-    // Filter collaboration_invites to only events targeting this user (invitee_id)
+    // Filter collaboration_invites to only events targeting this user (invited_user_id)
     // so the pill appears instantly when an invite is created for them.
     // session_participants and collaboration_sessions rely on RLS for access
     // control — we can't filter by a single column since involvement is
@@ -1214,12 +1214,14 @@ export const useSessionManagement = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'collaboration_invites',
-          filter: `invitee_id=eq.${user.id}`
+          filter: `invited_user_id=eq.${user.id}`
         },
         () => {
-          // New invite targeting this user — reload immediately (no debounce)
-          // so the collaboration pill appears as fast as possible.
-          loadUserSessions();
+          // New invite targeting this user — use a short debounce
+          // to batch multiple simultaneous invites while still feeling instant.
+          // 300ms is imperceptible to users but prevents thundering herd when
+          // multiple invitations arrive in rapid succession.
+          debouncedReload();
         }
       )
       .on(

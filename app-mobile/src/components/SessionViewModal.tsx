@@ -329,7 +329,7 @@ export default function SessionViewModal({
                 .from("collaboration_invites")
                 .update({ status: "declined", updated_at: new Date().toISOString() })
                 .eq("session_id", sessionId)
-                .eq("invitee_id", user.id)
+                .eq("invited_user_id", user.id)
                 .eq("status", "pending");
 
               if (onSessionExited) onSessionExited();

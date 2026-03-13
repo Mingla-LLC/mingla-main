@@ -50,8 +50,6 @@ interface CollaborationInviteRow {
   id: string;
   session_id: string;
   inviter_id: string;
-  invitee_id: string;
-  invited_by: string;
   invited_user_id: string;
   status: string;
   created_at: string;
@@ -147,7 +145,7 @@ export default function CollaborationModule({
           event: '*',
           schema: 'public',
           table: 'collaboration_invites',
-          filter: `invitee_id=eq.${user.id}`,
+          filter: `invited_user_id=eq.${user.id}`,
         },
         () => {
           loadInvites();
@@ -185,7 +183,7 @@ export default function CollaborationModule({
           `
           *,
           collaboration_sessions!collaboration_invites_session_id_fkey(name, status),
-          profiles!collaboration_invites_invited_by_fkey(id, display_name, email, avatar_url)
+          profiles!collaboration_invites_inviter_id_fkey(id, display_name, email, avatar_url)
         `
         )
         .eq("invited_user_id", user.id)
@@ -302,7 +300,7 @@ export default function CollaborationModule({
             id: invite.id,
             sessionName: sessionName,
             fromUser: {
-              id: profileData?.id || invite.invited_by,
+              id: profileData?.id || invite.inviter_id,
               name:
                 profileData?.display_name || profileData?.email || "Unknown",
               avatar: profileData?.avatar_url,
@@ -331,7 +329,7 @@ export default function CollaborationModule({
           profiles!collaboration_invites_invited_user_id_fkey(id, display_name, email, avatar_url)
         `
         )
-        .eq("invited_by", user.id)
+        .eq("inviter_id", user.id)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
 
@@ -527,7 +525,7 @@ export default function CollaborationModule({
           `
           id,
           session_id,
-          invited_by,
+          inviter_id,
           invited_user_id,
           collaboration_sessions!inner(name)
         `
@@ -705,7 +703,7 @@ export default function CollaborationModule({
             body: {
               inviteId: inviteId,
               response: "accepted",
-              inviterId: invite.invited_by,
+              inviterId: invite.inviter_id,
               invitedUserId: user.id,
               sessionId: invite.session_id,
               sessionName: sessionName,
@@ -747,7 +745,7 @@ export default function CollaborationModule({
           `
           id,
           session_id,
-          invited_by,
+          inviter_id,
           invited_user_id,
           collaboration_sessions!inner(name)
         `
@@ -797,7 +795,7 @@ export default function CollaborationModule({
             body: {
               inviteId: inviteId,
               response: "declined",
-              inviterId: invite.invited_by,
+              inviterId: invite.inviter_id,
               invitedUserId: user.id,
               sessionId: invite.session_id,
               sessionName: sessionName,
@@ -830,7 +828,7 @@ export default function CollaborationModule({
         .from("collaboration_invites")
         .update({ status: "cancelled" })
         .eq("id", inviteId)
-        .eq("invited_by", user.id);
+        .eq("inviter_id", user.id);
 
       if (error) {
         console.error("Error cancelling invite:", error);

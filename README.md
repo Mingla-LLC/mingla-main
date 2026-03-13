@@ -59,7 +59,7 @@ Mingla/
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 169 SQL migration files
+│   ├── migrations/                    # 171 SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -212,7 +212,8 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB — prevents premature actions on pending sessions
 - DB-level unique constraint on `collaboration_sessions.board_id` prevents concurrent board creation race condition
 - Consensus lock-in with auto calendar entries
-- Realtime sync via Supabase Realtime
+- Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
+- In-app notification catch-up mechanism: on foreground resume, pending invites are queried and notifications are created for any missed while the app was in background/killed, with deduplication via ref-tracked invite IDs
 
 ### Subscription System
 - Free, Pro, and Elite tiers with 1-week trial
@@ -298,7 +299,7 @@ A `__DEV__`-only telemetry system that auto-logs every user interaction into a 3
 | Table | Purpose |
 |-------|---------|
 | `collaboration_sessions` | Collaboration session records |
-| `collaboration_invites` | Session invite records |
+| `collaboration_invites` | Session invite records (canonical columns: `inviter_id`, `invited_user_id`) |
 | `session_participants` | Session participant records |
 | `boards` | Collaboration boards |
 | `board_session_preferences` | Per-session preference settings (auto-seeded from solo preferences) |
@@ -473,10 +474,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Collaboration Session Stability Overhaul** -- Fixed 24 bugs across the collaboration session system (3 critical, 10 high, 11 medium). Key fixes: phone invite trigger now converts both friend AND session invites on signup (C2), session status defaults to null with loading guard preventing premature action buttons (C3), JWT validation on invite edge function prevents impersonation (H2), synchronous useRef guards prevent double-vote/double-RSVP race conditions (H6), stale closure in switchToCollaborative fixed with useRef (H9), deterministic tie-breaking in majority vote (M7).
-- **DB-Level Race Condition Prevention** -- Added unique index on `collaboration_sessions.board_id` to prevent concurrent board creation, widened `pending_session_invites` UNIQUE constraint to `(session_id, inviter_id, phone_e164)`, added `price_tiers` column to `board_session_preferences`.
-- **Realtime Invites** -- CollaborationModule now subscribes to `collaboration_invites` changes via Supabase Realtime, so InvitesTab auto-refreshes when invites are created, accepted, or cancelled by other users.
-- **Type Safety** -- Replaced pervasive `any[]` types in CollaborationModule with proper interfaces (`CollaborationInviteRow`, `CollaborationSessionSummary`), `catch (error: any)` → `catch (error: unknown)` with `instanceof Error` checks.
+- **Realtime Publication Fix** -- Added `collaboration_invites`, `collaboration_sessions`, and `session_participants` to the `supabase_realtime` publication. All existing realtime subscriptions now actually receive events (previously they silently received nothing).
+- **Column Consolidation** -- Eliminated duplicate columns on `collaboration_invites` (`invitee_id`/`invited_user_id` and `inviter_id`/`invited_by`). The table now has exactly two participant columns: `inviter_id` (sender) and `invited_user_id` (recipient). Sync triggers removed. All app code, RLS policies, and edge functions use canonical columns only.
+- **In-App Notification Catch-Up** -- Added a foreground resume mechanism that queries pending invites and creates in-app notifications for any missed while the app was in background/killed, with deduplication via `notifiedCollabInviteIdsRef`.
+- **Debounced Invite Handler** -- Changed the `collaboration_invites` INSERT realtime handler in `useSessionManagement.ts` from immediate `loadUserSessions()` to debounced (300ms), preventing thundering herd when multiple invitations arrive simultaneously.
+- **Delete-User Edge Function** -- Updated `delete-user` to reference `invited_user_id` instead of the dropped `invitee_id` column.
 
 ---
 

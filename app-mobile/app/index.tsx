@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   AppState,
@@ -182,6 +182,10 @@ function AppContent() {
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
+  // Tracks collaboration invite IDs that have already generated in-app notifications.
+  // Prevents duplicates when the same invite is seen by both the push handler and
+  // the foreground catch-up mechanism.
+  const notifiedCollabInviteIdsRef = useRef<Set<string>>(new Set());
   // Ref that always holds the current user ID. Allows notification listeners
   // (registered once with [] deps) to read the latest auth state without
   // stale closures — setters from useState are stable, but derived values
@@ -291,6 +295,10 @@ function AppContent() {
 
       switch (data.type) {
         case "collaboration_invite_received":
+          // Record this invite ID to prevent duplicate notification on foreground catch-up
+          if (data.inviteId) {
+            notifiedCollabInviteIdsRef.current.add(data.inviteId as string);
+          }
           inAppNotificationService.notifyCollaborationInvite(
             (data.sessionName as string) || "a session",
             (data.inviterName as string) || "Someone",
@@ -476,11 +484,67 @@ function AppContent() {
     };
   }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
 
-  // AppState foreground listener: safety net for Realtime reconnection gaps.
+  // Collaboration invite notification catch-up helper.
+  // When the app returns from background (or on initial mount), pending invites
+  // may exist in the DB that never generated an in-app notification (push arrived
+  // while app was killed, or push was missed entirely). This queries pending
+  // invites and creates notifications for any not yet tracked.
+  const catchUpCollabNotifications = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data: pendingInvites } = await supabase
+        .from('collaboration_invites')
+        .select(`
+          id,
+          session_id,
+          inviter_id,
+          status,
+          collaboration_sessions!inner(name),
+          profiles!collaboration_invites_inviter_id_fkey(display_name, first_name, username, avatar_url)
+        `)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending');
+
+      if (!pendingInvites || pendingInvites.length === 0) return;
+
+      for (const invite of pendingInvites) {
+        if (notifiedCollabInviteIdsRef.current.has(invite.id)) continue;
+
+        const session = invite.collaboration_sessions as any;
+        const inviterProfile = invite.profiles as any;
+        const sessionName = session?.name || 'a session';
+        const inviterName =
+          inviterProfile?.display_name ||
+          inviterProfile?.first_name ||
+          inviterProfile?.username ||
+          'Someone';
+
+        await inAppNotificationService.notifyCollaborationInvite(
+          sessionName,
+          inviterName,
+          invite.session_id,
+          invite.id,
+          inviterProfile?.avatar_url
+        );
+        notifiedCollabInviteIdsRef.current.add(invite.id);
+      }
+    } catch (err) {
+      console.warn('[CollabCatchUp] Failed to catch up notifications:', err);
+    }
+  }, [user?.id]);
+
+  // Run catch-up once on mount (covers app launch after receiving pushes while killed)
+  useEffect(() => {
+    if (!user?.id) return;
+    catchUpCollabNotifications();
+  }, [user?.id, catchUpCollabNotifications]);
+
+  // AppState foreground listener: single consolidated listener for all foreground tasks.
   // Supabase Realtime does NOT replay events missed during a connection drop.
-  // When the app returns from background, if the Realtime connection was interrupted,
-  // events from that window are lost. This listener ensures a fresh fetch on foreground,
-  // catching any state that Realtime may have missed.
+  // When the app returns from background, this listener:
+  //   1. Refreshes all sessions (catches Realtime reconnection gaps)
+  //   2. Catches up collaboration invite notifications (missed pushes)
+  //   3. Updates appStateRef LAST (so both checks above read the pre-transition state)
   useEffect(() => {
     if (!user?.id) return;
 
@@ -494,8 +558,10 @@ function AppContent() {
 
         if (wasBackground && isNowActive) {
           refreshAllSessions();
+          catchUpCollabNotifications();
         }
 
+        // Update ref LAST so all checks above read the pre-transition state
         appStateRef.current = nextState;
       },
     );
@@ -503,7 +569,7 @@ function AppContent() {
     return () => {
       subscription.remove();
     };
-  }, [user?.id]);
+  }, [user?.id, catchUpCollabNotifications]);
 
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
@@ -739,7 +805,6 @@ function AppContent() {
           .select(`
             session_id,
             inviter_id,
-            invited_by,
             status,
             collaboration_sessions!inner(id, name, status, created_by, created_at)
           `)
@@ -777,11 +842,11 @@ function AppContent() {
       // Note: the Supabase query above already filters by status='pending', so the
       // null-guard (|| []) is the only defence needed here — no redundant .filter().
       const invitedSessionsList = invitedSessions || [];
-      // filter(Boolean) guards against corrupt rows where both inviter_id and invited_by
-      // are null — prevents SQL `WHERE id IN (null)` which silently matches nothing.
+      // filter(Boolean) guards against corrupt rows where inviter_id is null —
+      // prevents SQL `WHERE id IN (null)` which silently matches nothing.
       const inviterIds = [...new Set(
         invitedSessionsList
-          .map((inv: any) => inv.inviter_id || inv.invited_by)
+          .map((inv: any) => inv.inviter_id)
           .filter(Boolean)
       )];
 
@@ -815,7 +880,7 @@ function AppContent() {
       // Once accepted, they will appear in activeBoards instead
       const pendingInvitedSessions = invitedSessionsList
         .map((inv: any) => {
-          const inviterId = inv.inviter_id || inv.invited_by;
+          const inviterId = inv.inviter_id;
           const inviterProfile = inviterProfiles.find((p: any) => p.id === inviterId);
           const inviterName = getInviterName(inviterId);
 
@@ -956,7 +1021,7 @@ function AppContent() {
           .insert({
             session_id: session.id,
             inviter_id: user.id,
-            invited_by: user.id,
+            inviter_id: user.id,
             invited_user_id: friendUserId,
             status: 'pending',
           })
@@ -1048,7 +1113,7 @@ function AppContent() {
         .select(`
           id,
           session_id,
-          invited_by,
+          inviter_id,
           invited_user_id,
           collaboration_sessions!inner(name)
         `)
@@ -1180,7 +1245,7 @@ function AppContent() {
         .select(`
           id,
           session_id,
-          invited_by,
+          inviter_id,
           collaboration_sessions!inner(name)
         `)
         .eq('session_id', sessionId)

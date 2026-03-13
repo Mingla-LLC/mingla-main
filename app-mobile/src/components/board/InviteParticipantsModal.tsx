@@ -174,7 +174,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
           .from("collaboration_invites")
           .insert({
             session_id: sessionId,
-            invited_by: user.id,
+            inviter_id: user.id,
             invited_user_id: friend.id,
             status: "pending",
           })
