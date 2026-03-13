@@ -31,11 +31,29 @@ class CuratedExperiencesService {
     if (selectedCategories && selectedCategories.length > 0) {
       body.selectedCategories = selectedCategories;
     }
-    const { data, error } = await supabase.functions.invoke('generate-curated-experiences', {
-      body,
+
+    // supabase.functions.invoke() has no built-in timeout. Without this guard
+    // the promise hangs indefinitely when the app goes inactive and iOS
+    // suspends the network socket. 15s matches discover-cards and warmPool.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error('generate-curated-experiences timed out after 15s');
+        err.name = 'AbortError';
+        reject(err);
+      }, 15000);
     });
-    if (error) throw error;
-    return (data?.cards ?? []) as CuratedExperienceCard[];
+
+    try {
+      const { data, error } = await Promise.race([
+        supabase.functions.invoke('generate-curated-experiences', { body }),
+        timeoutPromise,
+      ]);
+      if (error) throw error;
+      return (data?.cards ?? []) as CuratedExperienceCard[];
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async warmPool(params: {
@@ -46,17 +64,18 @@ class CuratedExperiencesService {
     travelConstraintType: string;
     travelConstraintValue: number;
   }): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // supabase.functions.invoke() has no built-in timeout. Under bad network the promise
       // never settles, causing Promise.all(warmPromises) in deckService to hang indefinitely.
       // Match the identical pattern used in deckService.ts for the category branch.
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
           const err = new Error('generate-curated-experiences warmPool timed out after 15s');
           err.name = 'AbortError';
           reject(err);
-        }, 15000)
-      );
+        }, 15000);
+      });
 
       await Promise.race([
         supabase.functions.invoke('generate-curated-experiences', {
@@ -76,6 +95,8 @@ class CuratedExperiencesService {
     } catch (err) {
       // Fire and forget — don't throw. AbortError from timeout is expected under slow network.
       console.warn('[warmPool] Failed:', err);
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

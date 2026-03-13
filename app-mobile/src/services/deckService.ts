@@ -235,16 +235,17 @@ class DeckService {
         );
         const categoryLimit = limit;
 
+        let fetchTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           // supabase.functions.invoke() does not accept an AbortSignal.
           // Use Promise.race to enforce 15s timeout.
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            fetchTimer = setTimeout(() => {
               const err = new Error('discover-cards timed out after 15s');
               err.name = 'AbortError';
               reject(err);
-            }, 15000)
-          );
+            }, 15000);
+          });
 
           const { data, error } = await Promise.race([
             supabase.functions.invoke('discover-cards', {
@@ -295,6 +296,8 @@ class DeckService {
             console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
           }
           return [];
+        } finally {
+          clearTimeout(fetchTimer);
         }
       } catch (err) {
         console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
@@ -311,7 +314,6 @@ class DeckService {
             const cards = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
-              priceTiers: params.priceTiers,
               budgetMin: params.budgetMin,
               budgetMax: params.budgetMax,
               travelMode: params.travelMode,
@@ -420,13 +422,14 @@ class DeckService {
       const categoryNames = categoryPills.map(p =>
         PILL_TO_CATEGORY_NAME[p.id] || p.id
       );
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
+      let warmTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        warmTimer = setTimeout(() => {
           const err = new Error('discover-cards timed out after 15s');
           err.name = 'AbortError';
           reject(err);
-        }, 15000)
-      );
+        }, 15000);
+      });
       warmPromises.push(
         Promise.race([
           supabase.functions.invoke('discover-cards', {
@@ -446,7 +449,7 @@ class DeckService {
             },
           }),
           timeoutPromise,
-        ]).then(() => {}).catch(() => {})
+        ]).then(() => {}).catch(() => {}).finally(() => { clearTimeout(warmTimer); })
       );
     }
 

@@ -72,9 +72,12 @@ export const useUserPreferences = (userId: string | undefined) => {
     enabled: !!userId,
     staleTime: 5 * 60 * 1000, // 5 minutes - preferences don't change often
     gcTime: 24 * 60 * 60 * 1000, // 24 hours
-    // Timeout-based errors are not worth retrying — if Supabase was unreachable
-    // for 8s, a second attempt will almost certainly time out too.
-    retry: 0,
+    // Retry once after a short delay. The most common timeout cause is iOS
+    // suspending network sockets when the app goes inactive during startup.
+    // When the app returns to active, the network is restored immediately —
+    // a single retry succeeds. Two retries would stack 30s of dead waiting.
+    retry: 1,
+    retryDelay: 1000,
     // Show cached data immediately while fresh data loads
     placeholderData: (previousData) => previousData,
   });
