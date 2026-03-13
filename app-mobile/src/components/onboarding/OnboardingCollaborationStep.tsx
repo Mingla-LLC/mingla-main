@@ -105,7 +105,11 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
           event: 'INSERT',
           schema: 'public',
           table: 'collaboration_invites',
-          filter: `invited_user_id=eq.${userId}`,
+          // H3 FIX: Use canonical column name `invitee_id` instead of the
+          // generated alias `invited_user_id`. The alias works today via a
+          // generated column, but if that alias is ever dropped, this filter
+          // would silently return no results.
+          filter: `invitee_id=eq.${userId}`,
         },
         () => {
           loadUserSessions()

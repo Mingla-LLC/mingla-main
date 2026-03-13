@@ -451,6 +451,7 @@ export default function SessionViewModal({
 
   const {
     status: sessionStatus,
+    isStatusLoaded,
     canVote,
     canRSVP,
     isLocked: isSessionLocked,
@@ -662,7 +663,7 @@ export default function SessionViewModal({
         {!sessionLoading && sessionValid && hasPermission && (
           <>
             {/* Session Status Row */}
-            {session && (
+            {session && isStatusLoaded && sessionStatus && (
               <View style={styles.statusRow}>
                 <View
                   style={[
@@ -675,6 +676,8 @@ export default function SessionViewModal({
                           ? '#F59E0B'
                           : sessionStatus === 'completed'
                           ? '#6B7280'
+                          : sessionStatus === 'pending'
+                          ? '#9CA3AF'
                           : '#3B82F6',
                     },
                   ]}
@@ -683,6 +686,7 @@ export default function SessionViewModal({
                     {sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
                   </Text>
                 </View>
+                {/* H8 FIX: Only show action buttons for active/voting/locked sessions, never pending */}
                 {isCreator && sessionStatus === 'active' && (
                   <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
                     <Text style={styles.statusActionText}>Start Voting</Text>

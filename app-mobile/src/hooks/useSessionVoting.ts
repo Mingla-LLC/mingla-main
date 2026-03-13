@@ -50,6 +50,12 @@ export function useSessionVoting(
   const [isVoting, setIsVoting] = useState(false);
   const [isRSVPing, setIsRSVPing] = useState(false);
 
+  // H6 FIX: Synchronous refs for concurrency guards.
+  // React batches state updates, so `isVoting` state may not propagate fast enough
+  // to block a rapid double-tap. Refs update synchronously and are checked immediately.
+  const isVotingRef = useRef(false);
+  const isRSVPingRef = useRef(false);
+
   // Track saved card IDs for bulk loading
   const savedCardIdsRef = useRef<string[]>([]);
 
@@ -164,7 +170,10 @@ export function useSessionVoting(
   // Handle vote with optimistic updates and concurrency guard
   const handleVote = useCallback(
     async (savedCardId: string, vote: 'yes' | 'no') => {
-      if (!userId || !sessionId || isVoting) return;
+      // H6 FIX: Check ref synchronously BEFORE any async work.
+      // This blocks rapid double-taps that slip through batched state updates.
+      if (!userId || !sessionId || isVotingRef.current) return;
+      isVotingRef.current = true;
 
       setIsVoting(true);
 
@@ -302,16 +311,18 @@ export function useSessionVoting(
         }));
         Alert.alert('Error', 'Failed to submit vote');
       } finally {
+        isVotingRef.current = false;
         setIsVoting(false);
       }
     },
-    [userId, sessionId, isVoting, voteCounts, loadCounts]
+    [userId, sessionId, voteCounts, loadCounts]
   );
 
   // Handle RSVP with optimistic updates and concurrency guard
   const handleRSVP = useCallback(
     async (savedCardId: string, rsvp: 'yes' | 'no') => {
-      if (!userId || !sessionId || isRSVPing) return;
+      if (!userId || !sessionId || isRSVPingRef.current) return;
+      isRSVPingRef.current = true;
 
       setIsRSVPing(true);
 
@@ -448,10 +459,11 @@ export function useSessionVoting(
         }));
         Alert.alert('Error', 'Failed to update RSVP');
       } finally {
+        isRSVPingRef.current = false;
         setIsRSVPing(false);
       }
     },
-    [userId, sessionId, isRSVPing, rsvpCounts, participantCount, loadCounts]
+    [userId, sessionId, rsvpCounts, participantCount, loadCounts]
   );
 
   // Stable ref for loadCounts — prevents useEffect re-runs when participantCount changes

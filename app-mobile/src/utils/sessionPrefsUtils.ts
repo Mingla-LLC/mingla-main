@@ -130,18 +130,24 @@ export function aggregateAllPrefs(
   };
 }
 
+/**
+ * M7 FIX: Deterministic tie-breaking.
+ * When two values have the same count, the previous implementation relied on
+ * Object.entries() iteration order, which is insertion-order and thus
+ * non-deterministic when values arrive in different orders across clients.
+ * Fix: on tie, sort alphabetically so all clients pick the same winner.
+ */
 function majorityVote(values: string[], fallback: string): string {
   const counts: Record<string, number> = {};
   for (const v of values) {
     counts[v] = (counts[v] || 0) + 1;
   }
-  let best = fallback;
-  let bestCount = 0;
-  for (const [val, count] of Object.entries(counts)) {
-    if (count > bestCount) {
-      best = val;
-      bestCount = count;
-    }
-  }
-  return best;
+
+  // Sort entries by count descending, then alphabetically for deterministic tie-breaking
+  const sorted = Object.entries(counts).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1]; // higher count first
+    return a[0].localeCompare(b[0]);        // alphabetical tie-break
+  });
+
+  return sorted.length > 0 ? sorted[0][0] : fallback;
 }

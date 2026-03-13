@@ -155,6 +155,12 @@ export const useSessionManagement = () => {
   
   const { user } = useAppStore();
 
+  // H9 FIX: Keep a ref that always holds the latest sessionState.
+  // Callbacks that run after async operations (like loadUserSessions) close over
+  // the old sessionState value. Reading from the ref gives the post-reload value.
+  const sessionStateRef = useRef(sessionState);
+  sessionStateRef.current = sessionState;
+
   // Load user's sessions and invites
   const loadUserSessions = useCallback(async () => {
     if (!user) return;
@@ -561,19 +567,23 @@ export const useSessionManagement = () => {
           return { success: false, username };
         }
 
-        // Send push notification via edge function (fire-and-forget — don't block invite creation)
-        supabase.functions.invoke('send-collaboration-invite', {
-          body: {
-            inviterId: user.id,
-            invitedUserId: userData.id,
-            invitedUserEmail: userData.email || '',
-            sessionId: sessionData.id,
-            sessionName: resolvedName,
-            inviteId: inviteData?.id,
-          }
-        }).catch(err => {
-          console.error('[useSessionManagement] Push notification failed for', username, err);
-        });
+        // M2 FIX: Await push notification so failures are reported, not silently lost.
+        // The try/catch around the whole invite block already handles errors gracefully.
+        try {
+          await supabase.functions.invoke('send-collaboration-invite', {
+            body: {
+              inviterId: user.id,
+              invitedUserId: userData.id,
+              invitedUserEmail: userData.email || '',
+              sessionId: sessionData.id,
+              sessionName: resolvedName,
+              inviteId: inviteData?.id,
+            }
+          });
+        } catch (pushErr) {
+          console.warn('[useSessionManagement] Push notification failed for', username, pushErr);
+          // Don't fail the invite — push is best-effort, invite row already exists
+        }
 
         return { success: true, username, userId: userData.id };
       });
@@ -1014,22 +1024,23 @@ export const useSessionManagement = () => {
 
   // Switch to collaborative session (accept invitation)
   const switchToCollaborative = useCallback(async (sessionId: string) => {
-    
+
     // First try to find in available sessions, then reload if not found
-    let session = sessionState.availableSessions.find(s => s.id === sessionId);
-    
+    let session = sessionStateRef.current.availableSessions.find(s => s.id === sessionId);
+
     if (!session) {
       await loadUserSessions();
-      // Try to find again after reload
-      session = sessionState.availableSessions.find(s => s.id === sessionId);
+      // H9 FIX: Read from ref AFTER reload — the closure-captured state is stale,
+      // but the ref always holds the latest value set by setSessionState.
+      session = sessionStateRef.current.availableSessions.find(s => s.id === sessionId);
     }
-    
+
     if (!session || !user) {
-      console.error('❌ Session not found or no user:', { 
-        sessionId, 
-        session: session ? 'found' : 'not found', 
+      console.error('❌ Session not found or no user:', {
+        sessionId,
+        session: session ? 'found' : 'not found',
         user: user?.id,
-        availableSessions: sessionState.availableSessions.map(s => s.id)
+        availableSessions: sessionStateRef.current.availableSessions.map(s => s.id)
       });
       return;
     }
@@ -1038,22 +1049,17 @@ export const useSessionManagement = () => {
     try {
       // For active sessions, just switch to them
       if (session.status === 'active') {
-        const newState = {
-          currentSession: session,
-          availableSessions: sessionState.availableSessions,
-          pendingInvites: sessionState.pendingInvites,
+        setSessionState(prev => ({
+          ...prev,
+          currentSession: session!,
           isInSolo: false,
-          loading: sessionState.loading
-        };
-        
-        setSessionState(newState);
-      } else {
+        }));
       }
 
     } catch (error) {
       console.error('❌ Error in switchToCollaborative:', error);
     }
-  }, [sessionState.availableSessions, user, loadUserSessions]);
+  }, [user, loadUserSessions]);
 
   // Cancel/decline/revoke invite OR leave active session
   const cancelSession = useCallback(async (sessionId: string) => {

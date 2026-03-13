@@ -26,6 +26,40 @@ serve(async (req) => {
   }
 
   try {
+    // ── H2 FIX: Validate JWT and enforce inviterId matches the authenticated user ──
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
+      "SUPABASE_SERVICE_ROLE_KEY"
+    )!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Create a user-scoped client to extract the authenticated user from the JWT
+    const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user: jwtUser }, error: authError } = await supabaseAuth.auth.getUser();
+
+    if (authError || !jwtUser) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired token" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const payload: CollaborationInvitePayload = await req.json();
     const {
       inviterId,
@@ -37,8 +71,18 @@ serve(async (req) => {
       phone_e164,
     } = payload;
 
+    // Enforce: inviterId MUST match the JWT user — prevents impersonation
+    if (inviterId !== jwtUser.id) {
+      return new Response(
+        JSON.stringify({ error: "inviterId does not match authenticated user" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Validate required fields — email is only required when userId is absent
-    // (push notifications use userId to look up tokens, not email)
     if (!inviterId || !sessionId || !sessionName) {
       return new Response(
         JSON.stringify({ error: "Missing required fields: inviterId, sessionId, sessionName" }),
@@ -58,12 +102,6 @@ serve(async (req) => {
         }
       );
     }
-
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
-      "SUPABASE_SERVICE_ROLE_KEY"
-    )!;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Get inviter's profile
     const { data: inviterProfile } = await supabase

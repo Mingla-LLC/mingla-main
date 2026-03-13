@@ -196,8 +196,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "80%",
-    minHeight: "50%",
+    height: "88%",
     paddingBottom: 34,
   },
   handleBar: {

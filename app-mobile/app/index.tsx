@@ -1639,8 +1639,8 @@ function AppContent() {
             onUpdateBoardSession={(board: any) => {
               console.log("Updating board session:", board);
             }}
-            onCreateSession={(newSession: any) => {
-              console.log("Creating session:", newSession);
+            onCreateSession={async () => {
+              await refreshAllSessions();
             }}
             onNavigateToBoard={(board: any, discussionTab?: string) => {
               setBoardViewSessionId(board.id || board);
@@ -1920,9 +1920,9 @@ function AppContent() {
                         onUpdateBoardSession={(updatedBoard: any) =>
                           console.log("Update board session:", updatedBoard)
                         }
-                        onCreateSession={(newSession: any) =>
-                          console.log("Create session:", newSession)
-                        }
+                        onCreateSession={async () => {
+                          await refreshAllSessions();
+                        }}
                         onNavigateToBoard={(
                           board: any,
                           discussionTab?: string

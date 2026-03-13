@@ -197,13 +197,20 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 | `lavish` | Lavish | $300+ | VERY_EXPENSIVE | `#F59E0B` |
 
 ### Collaboration Sessions
-- Named sessions with multi-friend selection
-- Real-time card swiping, voting, RSVP, lock-in, calendar sync, and chat
-- Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses majority vote; travel time uses median; datetime uses earliest; location uses midpoint
+- Unified session creation flow via `CreateSessionContent` component (embedded in CollaborationModule's Create tab, also available standalone)
+- Named sessions with multi-friend selection via `FriendSelectionModal`
+- Phone number invites: invite friends by phone number, non-friends get a friend request first, non-platform users get an SMS invite via Share sheet with auto-conversion on signup (DB triggers handle the full pending → converted pipeline for both friend invites AND session invites)
+- JWT-validated invite edge function prevents impersonation
+- Real-time card swiping, voting (with synchronous double-tap guard), RSVP, lock-in, calendar sync, and chat
+- Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses deterministic majority vote (alphabetical tie-break); travel time uses median; datetime uses earliest; location uses midpoint
 - Server-side synchronized deck generation: a single canonical deck is generated per session and stored in `session_decks`, ensuring all participants see identical cards in identical order
+- Idempotent preference seeding (upsert) on invite acceptance — safe against double-accept race conditions
 - Auto-copy of solo preferences to collaboration sessions on invite acceptance and onboarding completion
-- Push notifications for collaboration invites via OneSignal
+- Push notifications for collaboration invites via OneSignal (awaited with error logging)
 - Realtime deck refresh: when any participant updates preferences, a new deck is generated and all clients are notified via Supabase Realtime
+- Realtime invite status: InvitesTab auto-refreshes via Supabase Realtime subscription when invites are created, accepted, or cancelled
+- Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB — prevents premature actions on pending sessions
+- DB-level unique constraint on `collaboration_sessions.board_id` prevents concurrent board creation race condition
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime
 
@@ -466,10 +473,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Removed Friend Links Feature** -- Complete teardown of the friend link / link consent / profile linking system. Deleted 19 files (15 mobile + 4 edge functions), cleaned 17+ shared files, dropped `friend_links` and `pending_friend_link_intents` tables, removed linking columns from `saved_people`. Phone invites and legacy friend requests remain independent. Future redesign will start from scratch.
-- **Rewired Phone Invites** -- Phone invites (`usePhoneInvite`) now use independent query keys instead of depending on the deleted friend link system.
-- **Simplified Add Person Flow** -- The "Add Person" modal now goes directly to name entry, removing the "Link a Friend" choice step.
-- **Cleaned Onboarding** -- Friends and consent steps auto-skip silently; step state machine preserved.
+- **Collaboration Session Stability Overhaul** -- Fixed 24 bugs across the collaboration session system (3 critical, 10 high, 11 medium). Key fixes: phone invite trigger now converts both friend AND session invites on signup (C2), session status defaults to null with loading guard preventing premature action buttons (C3), JWT validation on invite edge function prevents impersonation (H2), synchronous useRef guards prevent double-vote/double-RSVP race conditions (H6), stale closure in switchToCollaborative fixed with useRef (H9), deterministic tie-breaking in majority vote (M7).
+- **DB-Level Race Condition Prevention** -- Added unique index on `collaboration_sessions.board_id` to prevent concurrent board creation, widened `pending_session_invites` UNIQUE constraint to `(session_id, inviter_id, phone_e164)`, added `price_tiers` column to `board_session_preferences`.
+- **Realtime Invites** -- CollaborationModule now subscribes to `collaboration_invites` changes via Supabase Realtime, so InvitesTab auto-refreshes when invites are created, accepted, or cancelled by other users.
+- **Type Safety** -- Replaced pervasive `any[]` types in CollaborationModule with proper interfaces (`CollaborationInviteRow`, `CollaborationSessionSummary`), `catch (error: any)` → `catch (error: unknown)` with `instanceof Error` checks.
 
 ---
 

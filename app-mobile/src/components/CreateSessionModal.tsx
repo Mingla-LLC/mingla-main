@@ -104,6 +104,25 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         }]
       : []
   );
+
+  // H5 FIX: Sync selectedFriends when preSelectedFriend prop changes.
+  // useState initializer only runs once — if the parent re-renders with a different
+  // friend, this effect updates the selection to match.
+  useEffect(() => {
+    if (preSelectedFriend) {
+      setSelectedFriends(prev => {
+        const alreadySelected = prev.some(f => f.id === preSelectedFriend.id);
+        if (alreadySelected) return prev;
+        return [{
+          id: preSelectedFriend.id,
+          name: preSelectedFriend.name,
+          username: preSelectedFriend.username || '',
+          avatar_url: preSelectedFriend.avatar,
+        }];
+      });
+    }
+  }, [preSelectedFriend?.id]);
+
   const [showFriendModal, setShowFriendModal] = useState(false);
   const { friends, fetchFriends, addFriend } = useFriends();
 
@@ -333,9 +352,65 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         // Update presence for the creator
         await realtimeService.markOnline(boardSessionId, user.id);
       } else {
+        // Split friends: those with valid usernames go through the hook,
+        // those without (e.g., preSelectedFriend with optional username) get a direct ID-based fallback.
+        const friendsWithUsername = selectedFriends.filter(f => f.username && f.username.trim() !== '');
+        const friendsWithoutUsername = selectedFriends.filter(f => !f.username || f.username.trim() === '');
+
         // Create collaboration session via hook (handles duplicate check, ghost cleanup, prefs seeding)
-        const participantUsernames = selectedFriends.map(f => f.username);
+        const participantUsernames = friendsWithUsername.map(f => f.username);
         sessionId = await createCollaborativeSession(participantUsernames, sessionName.trim());
+
+        // Fallback: add friends without usernames directly by user ID
+        if (sessionId && friendsWithoutUsername.length > 0) {
+          for (const friend of friendsWithoutUsername) {
+            try {
+              // Add as participant (not accepted yet)
+              await supabase
+                .from('session_participants')
+                .insert({
+                  session_id: sessionId,
+                  user_id: friend.id,
+                  has_accepted: false,
+                });
+
+              // Get friend's email for the push notification
+              const { data: friendProfile } = await supabase
+                .from('profiles')
+                .select('email')
+                .eq('id', friend.id)
+                .single();
+
+              // Create invite
+              const { data: inviteData } = await supabase
+                .from('collaboration_invites')
+                .insert({
+                  session_id: sessionId,
+                  invited_by: user.id,
+                  invited_user_id: friend.id,
+                  status: 'pending',
+                })
+                .select('id')
+                .single();
+
+              // Send push notification
+              if (inviteData) {
+                await supabase.functions.invoke('send-collaboration-invite', {
+                  body: {
+                    inviterId: user.id,
+                    invitedUserId: friend.id,
+                    invitedUserEmail: friendProfile?.email,
+                    sessionId: sessionId,
+                    sessionName: sessionName.trim(),
+                    inviteId: inviteData.id,
+                  },
+                });
+              }
+            } catch (fallbackErr) {
+              console.error(`Error adding friend ${friend.name} by ID fallback:`, fallbackErr);
+            }
+          }
+        }
 
         // Handle phone invitees for collaboration sessions
         if (sessionId && phoneInvitees.length > 0) {
@@ -351,9 +426,13 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
       }
 
       if (sessionId) {
-        // Call onCreateSession callback BEFORE showing success screen
-        // In embedded mode, the parent (CollaborationModule) will switch to invites tab,
-        // which unmounts this component — the success screen may not be visible.
+        // H4 FIX: Show success screen BEFORE calling parent callback.
+        // In embedded mode, onCreateSession causes CollaborationModule to switch tabs,
+        // which unmounts this component. Setting state after unmount is a no-op,
+        // so the success screen never shows. By setting it first, React processes
+        // the state update synchronously before the parent callback runs.
+        setCurrentStep('success');
+
         if (onCreateSession) {
           onCreateSession({
             id: sessionId,
@@ -363,8 +442,6 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             createdAt: new Date().toISOString(),
           });
         }
-
-        setCurrentStep('success');
       } else {
         throw new Error('Failed to create session');
       }
@@ -943,8 +1020,52 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     );
   }
 
-  // --- STANDALONE MODAL RENDERING (preserved for future use) ---
-  return null;
+  // --- STANDALONE MODAL RENDERING ---
+  // C1 FIX: Standalone mode renders the same content without the embedded wrapper.
+  // Previously this returned null, making the standalone modal completely blank.
+  return (
+    <View style={styles.standaloneContainer}>
+      {renderStepContent()}
+      {currentStep !== 'success' && (
+        <TouchableOpacity
+          style={[
+            styles.nextButton,
+            (!canProceed() || loading) && styles.nextButtonDisabled
+          ]}
+          onPress={handleNext}
+          disabled={!canProceed() || loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.nextButtonText}>
+              {currentStep === 'review' ? 'Create Session' : 'Next'}
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+      {currentStep === 'success' && (
+        <TouchableOpacity
+          style={styles.doneButton}
+          onPress={resetState}
+        >
+          <Text style={styles.doneButtonText}>Create Another</Text>
+        </TouchableOpacity>
+      )}
+      <FriendSelectionModal
+        isOpen={showFriendModal}
+        onClose={() => setShowFriendModal(false)}
+        onSelectFriend={handleSelectFriend}
+        friends={friends.map(f => ({
+          id: f.friend_user_id,
+          name: f.display_name || f.username,
+          username: f.username,
+          avatar: f.avatar_url,
+          isOnline: false,
+        }))}
+      />
+    </View>
+  );
 };
 
 /**
@@ -1003,6 +1124,12 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
+  // === Standalone mode styles (C1 fix) ===
+  standaloneContainer: {
+    flex: 1,
+    gap: 16,
+    padding: 16,
+  },
   // === Embedded mode styles ===
   embeddedContainer: {
     gap: 16,

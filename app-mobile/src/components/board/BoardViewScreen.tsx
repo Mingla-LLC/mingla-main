@@ -272,6 +272,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   // Phase 2: Session status hook
   const {
     status: sessionStatus,
+    isStatusLoaded,
     canVote,
     canRSVP,
     isLocked: isSessionLocked,
@@ -596,44 +597,49 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         loading={loadingCards}
       />
 
-      {/* Phase 2: Session status controls */}
-      <View style={styles.statusRow}>
-        <View
-          style={[
-            styles.statusBadge,
-            {
-              backgroundColor:
-                sessionStatus === 'locked'
-                  ? '#10B981'
-                  : sessionStatus === 'voting'
-                  ? '#F59E0B'
-                  : sessionStatus === 'completed'
-                  ? '#6B7280'
-                  : '#3B82F6',
-            },
-          ]}
-        >
-          <Text style={styles.statusBadgeText}>
-            {sessionStatus === 'active' ? 'Active' :
-             sessionStatus === 'voting' ? 'Voting' :
-             sessionStatus === 'locked' ? 'Locked In' :
-             sessionStatus === 'completed' ? 'Completed' :
-             sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
-          </Text>
+      {/* Phase 2: Session status controls — only render after status loaded */}
+      {isStatusLoaded && sessionStatus && (
+        <View style={styles.statusRow}>
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor:
+                  sessionStatus === 'locked'
+                    ? '#10B981'
+                    : sessionStatus === 'voting'
+                    ? '#F59E0B'
+                    : sessionStatus === 'completed'
+                    ? '#6B7280'
+                    : sessionStatus === 'pending'
+                    ? '#9CA3AF'
+                    : '#3B82F6',
+              },
+            ]}
+          >
+            <Text style={styles.statusBadgeText}>
+              {sessionStatus === 'active' ? 'Active' :
+               sessionStatus === 'voting' ? 'Voting' :
+               sessionStatus === 'locked' ? 'Locked In' :
+               sessionStatus === 'completed' ? 'Completed' :
+               sessionStatus === 'pending' ? 'Pending' :
+               sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
+            </Text>
+          </View>
+          {isCreator && sessionStatus === 'active' && (
+            <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
+              <Ionicons name="hand-left-outline" size={14} color="white" />
+              <Text style={styles.statusActionText}>Start Voting</Text>
+            </TouchableOpacity>
+          )}
+          {isCreator && sessionStatus === 'locked' && (
+            <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
+              <Ionicons name="checkmark-circle-outline" size={14} color="white" />
+              <Text style={styles.statusActionText}>Mark Complete</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        {isCreator && sessionStatus === 'active' && (
-          <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
-            <Ionicons name="hand-left-outline" size={14} color="white" />
-            <Text style={styles.statusActionText}>Start Voting</Text>
-          </TouchableOpacity>
-        )}
-        {isCreator && sessionStatus === 'locked' && (
-          <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
-            <Ionicons name="checkmark-circle-outline" size={14} color="white" />
-            <Text style={styles.statusActionText}>Mark Complete</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      )}
 
       <BoardTabs
         activeTab={activeTab}

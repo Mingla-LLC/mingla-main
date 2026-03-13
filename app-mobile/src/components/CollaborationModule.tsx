@@ -45,16 +45,34 @@ interface CollaborationSession {
   admins?: string[];
 }
 
+// M11 FIX: Typed interfaces replacing pervasive `any[]` usage
+type CollaborationSessionSummary = CollaborationSession;
+
+interface CollaborationInviteRow {
+  id: string;
+  session_id: string;
+  inviter_id: string;
+  invitee_id: string;
+  invited_by: string;
+  invited_user_id: string;
+  status: string;
+  created_at: string;
+  expires_at?: string;
+  sessionName?: string;
+  collaboration_sessions?: { name: string; status: string } | null;
+  profiles?: { id: string; display_name: string | null; email: string | null; avatar_url: string | null } | null;
+}
+
 interface CollaborationModuleProps {
   isOpen: boolean;
   onClose: () => void;
   currentMode: "solo" | string;
   onModeChange: (mode: "solo" | string) => void;
   preSelectedFriend?: Friend | null;
-  boardsSessions?: any[];
-  onUpdateBoardSession?: (updatedBoard: any) => void;
-  onCreateSession?: (newSession: any) => void;
-  onNavigateToBoard?: (board: any, discussionTab?: string) => void;
+  boardsSessions?: CollaborationSessionSummary[];
+  onUpdateBoardSession?: (updatedBoard: CollaborationSessionSummary) => void;
+  onCreateSession?: (newSession: { id: string; name: string; status: string; createdBy: string; createdAt: string }) => void;
+  onNavigateToBoard?: (board: CollaborationSessionSummary, discussionTab?: string) => void;
   availableFriends?: Friend[];
   onRefreshBoards?: () => void; // Callback to refresh boards list
 }
@@ -86,10 +104,10 @@ export default function CollaborationModule({
     friendRequests,
     loadFriendRequests,
   } = useFriends();
-  const [receivedInvites, setReceivedInvites] = useState<any[]>([]);
-  const [sentInvites, setSentInvites] = useState<any[]>([]);
+  const [receivedInvites, setReceivedInvites] = useState<CollaborationInviteRow[]>([]);
+  const [sentInvites, setSentInvites] = useState<CollaborationInviteRow[]>([]);
   const [loadingInvites, setLoadingInvites] = useState(false);
-  const [userSessions, setUserSessions] = useState<any[]>([]);
+  const [userSessions, setUserSessions] = useState<CollaborationSessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
 
@@ -116,6 +134,45 @@ export default function CollaborationModule({
       loadFriendRequests();
     }
   }, [isOpen, user, fetchFriends, loadFriendRequests]);
+
+  // H7 FIX: Realtime subscription for invite changes.
+  // Without this, if another user cancels/accepts an invite while InvitesTab is open,
+  // the UI shows stale data — user may try to accept an already-cancelled invite.
+  useEffect(() => {
+    if (!isOpen || !user) return;
+
+    const channel = supabase
+      .channel(`collab-invites-live:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invitee_id=eq.${user.id}`,
+        },
+        () => {
+          loadInvites();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `inviter_id=eq.${user.id}`,
+        },
+        () => {
+          loadInvites();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen, user]);
 
 
   const loadInvites = async () => {
@@ -379,7 +436,7 @@ export default function CollaborationModule({
 
       // Load participants separately for better reliability
       // Only load participants who have accepted the invite
-      let allParticipants: any[] = [];
+      let allParticipants: { session_id: string; user_id: string; has_accepted: boolean; profiles: { display_name: string | null; email: string | null; avatar_url: string | null } | null }[] = [];
       if (sessions && sessions.length > 0) {
         const { data: participantsData, error: participantsError } =
           await supabase
@@ -486,10 +543,10 @@ export default function CollaborationModule({
       }
 
       // Get session name from the join
-      const sessionData = invite.collaboration_sessions as any;
+      const sessionData = invite.collaboration_sessions as Record<string, string> | Record<string, string>[] | null;
       const sessionName = Array.isArray(sessionData)
-        ? (sessionData[0] as any)?.name
-        : (sessionData as any)?.name || "Session";
+        ? sessionData[0]?.name
+        : sessionData?.name || "Session";
 
       // Update invite status
       const { error } = await supabase
@@ -611,9 +668,11 @@ export default function CollaborationModule({
         .eq("profile_id", user.id)
         .single();
 
+      // M1 FIX: Use upsert instead of insert. Double-accept (race or retry) would
+      // cause a unique constraint violation with insert. Upsert is idempotent.
       const { error: preferencesError } = await supabase
         .from("board_session_preferences")
-        .insert({
+        .upsert({
           session_id: invite.session_id,
           user_id: user.id,
           categories: soloPrefs?.categories ?? [],
@@ -630,15 +689,15 @@ export default function CollaborationModule({
           datetime_pref: soloPrefs?.datetime_pref ?? null,
           use_gps_location: soloPrefs?.use_gps_location ?? true,
           custom_location: soloPrefs?.custom_location ?? null,
+        }, {
+          onConflict: "session_id,user_id",
         });
 
-      if (preferencesError && preferencesError.code !== "23505") {
-        // 23505 is unique violation - preferences might already exist, which is fine
+      if (preferencesError) {
         console.error(
           "Error creating preferences for accepting user:",
           preferencesError
         );
-        // Don't fail - preferences can be created later when user opens preferences sheet
       }
 
       // Call edge function to notify inviter
@@ -704,10 +763,10 @@ export default function CollaborationModule({
       }
 
       // Get session name from the join
-      const sessionData = invite.collaboration_sessions as any;
+      const sessionData = invite.collaboration_sessions as Record<string, string> | Record<string, string>[] | null;
       const sessionName = Array.isArray(sessionData)
-        ? (sessionData[0] as any)?.name
-        : (sessionData as any)?.name || "Session";
+        ? sessionData[0]?.name
+        : sessionData?.name || "Session";
 
       // Update invite status
       const { error } = await supabase
@@ -815,13 +874,13 @@ export default function CollaborationModule({
           result.error || "Unable to switch to this session. Please try again."
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error joining session:", error);
       // Revert mode change on error
       onModeChange("solo");
       Alert.alert(
         "Error",
-        error.message || "Failed to switch session. Please try again."
+        error instanceof Error ? error.message : "Failed to switch session. Please try again."
       );
     }
   };
@@ -844,16 +903,16 @@ export default function CollaborationModule({
           result.error || "Unable to leave session. Please try again."
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error leaving session:", error);
       Alert.alert(
         "Error",
-        error.message || "Failed to leave session. Please try again."
+        error instanceof Error ? error.message : "Failed to leave session. Please try again."
       );
     }
   };
 
-  const handleCreateSession = async (sessionData: any) => {
+  const handleCreateSession = async (sessionData: { id: string; name: string; status: string; createdBy: string; createdAt: string }) => {
     if (!user?.id) {
       console.error("No user logged in");
       return;
@@ -879,7 +938,7 @@ export default function CollaborationModule({
   // Use real sessions from database only
   const activeSessions = userSessions;
 
-  const pendingSessions: any[] = []; // No pending sessions for now - can be added later if needed
+  const pendingSessions: CollaborationSessionSummary[] = [];
 
   if (!isOpen) return null;
 

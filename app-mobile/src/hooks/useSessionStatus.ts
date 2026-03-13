@@ -13,7 +13,8 @@ export type SessionStatus =
   | 'dormant';
 
 export interface UseSessionStatusReturn {
-  status: SessionStatus;
+  status: SessionStatus | null;
+  isStatusLoaded: boolean;
   canGenerateCards: boolean;
   canVote: boolean;
   canRSVP: boolean;
@@ -29,13 +30,22 @@ export function useSessionStatus(
   creatorId: string | undefined,
   userId: string | undefined,
 ): UseSessionStatusReturn {
-  const [status, setStatus] = useState<SessionStatus>('active');
+  // C3 FIX: Default to null (unknown) instead of 'active'.
+  // This prevents the UI from showing action buttons before the real status loads.
+  const [status, setStatus] = useState<SessionStatus | null>(null);
+  const [isStatusLoaded, setIsStatusLoaded] = useState(false);
 
   const isCreator = Boolean(userId && creatorId && userId === creatorId);
 
   // Load initial status
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setStatus(null);
+      setIsStatusLoaded(false);
+      return;
+    }
+
+    setIsStatusLoaded(false);
 
     const loadStatus = async () => {
       const { data, error } = await supabase
@@ -44,9 +54,13 @@ export function useSessionStatus(
         .eq('id', sessionId)
         .single();
 
-      if (!error && data) {
-        setStatus((data.status as SessionStatus) || 'active');
+      if (!error && data?.status) {
+        setStatus(data.status as SessionStatus);
+      } else {
+        // If we can't load status, default to pending (safest — no action buttons)
+        setStatus('pending');
       }
+      setIsStatusLoaded(true);
     };
 
     loadStatus();
@@ -89,7 +103,7 @@ export function useSessionStatus(
       if (error) throw error;
 
       setStatus('voting');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[useSessionStatus] Error advancing to voting:', err);
       Alert.alert('Error', 'Failed to start voting phase');
     }
@@ -113,19 +127,22 @@ export function useSessionStatus(
       if (error) throw error;
 
       setStatus('completed');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[useSessionStatus] Error marking completed:', err);
       Alert.alert('Error', 'Failed to mark session as completed');
     }
   }, [sessionId, isCreator, status]);
 
+  // C3 FIX: All boolean flags are false until status is loaded.
+  // This prevents premature UI rendering of action buttons.
   return {
     status,
-    canGenerateCards: status === 'active',
-    canVote: status === 'active' || status === 'voting',
-    canRSVP: status === 'active' || status === 'voting',
-    isLocked: status === 'locked',
-    isCompleted: status === 'completed',
+    isStatusLoaded,
+    canGenerateCards: isStatusLoaded && status === 'active',
+    canVote: isStatusLoaded && (status === 'active' || status === 'voting'),
+    canRSVP: isStatusLoaded && (status === 'active' || status === 'voting'),
+    isLocked: isStatusLoaded && status === 'locked',
+    isCompleted: isStatusLoaded && status === 'completed',
     advanceToVoting,
     markCompleted,
     isCreator,
