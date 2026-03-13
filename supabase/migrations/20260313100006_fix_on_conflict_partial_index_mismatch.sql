@@ -51,9 +51,7 @@ BEGIN
     VALUES (pending.inviter_id, NEW.id, 'pending')
     ON CONFLICT (sender_id, receiver_id) DO NOTHING;
 
-    INSERT INTO public.friend_links (requester_id, target_id, status)
-    VALUES (pending.inviter_id, NEW.id, 'pending')
-    ON CONFLICT DO NOTHING;
+    -- friend_links table was dropped in 20260312300003_remove_friend_link_feature.sql
 
     UPDATE public.pending_invites
     SET status = 'converted', converted_user_id = NEW.id, converted_at = NOW()
