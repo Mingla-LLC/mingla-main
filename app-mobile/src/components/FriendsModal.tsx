@@ -9,12 +9,14 @@ import {
   TextInput,
   Animated,
   PanResponder,
-  Dimensions,
   Alert,
   Image,
   ActivityIndicator,
+  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useKeyboard } from "../hooks/useKeyboard";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends, Friend, FriendRequest } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
@@ -718,14 +720,28 @@ const separatorStyles = StyleSheet.create({
 // Main Component
 // ---------------------------------------------------------------------------
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 export default function FriendsModal({
   isOpen,
   onClose,
   onMessageFriend,
 }: FriendsModalProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const {
+    isVisible: keyboardVisible,
+    keyboardHeight,
+    dismiss: dismissKeyboard,
+  } = useKeyboard({ disableLayoutAnimation: true });
+
+  // Capture the window height BEFORE the keyboard opens so we have a
+  // stable reference that doesn't shift on Android (adjustResize).
+  const stableHeightRef = useRef(windowHeight);
+  useEffect(() => {
+    if (!keyboardVisible) {
+      stableHeightRef.current = windowHeight;
+    }
+  }, [windowHeight, keyboardVisible]);
+
   const {
     friends,
     friendRequests,
@@ -798,6 +814,7 @@ export default function FriendsModal({
   const switchTab = useCallback(
     (tab: TabKey) => {
       if (tab === activeTab) return;
+      dismissKeyboard();
       HapticFeedback.light();
       setActiveTab(tab);
       Animated.timing(tabIndicatorX, {
@@ -806,7 +823,7 @@ export default function FriendsModal({
         useNativeDriver: true,
       }).start();
     },
-    [activeTab, tabIndicatorX]
+    [activeTab, tabIndicatorX, dismissKeyboard]
   );
 
   // Request handlers (reuse existing pattern from FriendRequestsModal)
@@ -1017,7 +1034,7 @@ export default function FriendsModal({
   }, [fetchFriends, loadFriendRequests]);
 
   // Tab indicator position
-  const tabWidth = Dimensions.get("window").width / 2;
+  const tabWidth = windowWidth / 2;
   const indicatorTranslateX = tabIndicatorX.interpolate({
     inputRange: [0, 1],
     outputRange: [0, tabWidth],
@@ -1107,6 +1124,7 @@ export default function FriendsModal({
           ItemSeparatorComponent={ItemSeparator}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={styles.flatListContent}
           ListEmptyComponent={
             searchQuery.length > 0 ? (
@@ -1185,13 +1203,23 @@ export default function FriendsModal({
         <TouchableOpacity
           style={styles.backdropTouch}
           activeOpacity={1}
-          onPress={onClose}
+          onPress={() => {
+            dismissKeyboard();
+            onClose();
+          }}
         />
 
         <View
           style={[
             styles.sheetContent,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            {
+              height: keyboardVisible
+                ? Math.max(200, stableHeightRef.current - keyboardHeight - 44)
+                : stableHeightRef.current * 0.88,
+              paddingBottom: keyboardVisible
+                ? 0
+                : Math.max(insets.bottom, 16),
+            },
           ]}
         >
           {/* Drag Handle */}
@@ -1280,7 +1308,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetContent: {
-    height: SCREEN_HEIGHT * 0.88,
     backgroundColor: colors.background.primary,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,

@@ -155,6 +155,9 @@ serve(async (req) => {
       );
     }
 
+    // HIGH-003 FIX: Single error handling strategy — try/catch only, no .catch() chain.
+    // Push is best-effort; failures are logged but don't fail the invite.
+
     // Send push notification to the INVITED USER (receiver)
     try {
       await sendPush({
@@ -172,10 +175,10 @@ serve(async (req) => {
           inviterAvatarUrl: inviterProfile?.avatar_url || null,
         },
         androidChannelId: "collaboration-invites",
-      }).catch((err) => console.warn('[send-collaboration-invite] Push failed:', err));
+      });
       console.log("Push notification sent to invitee successfully");
-    } catch (pushError) {
-      console.error("Error sending push notification to invitee:", pushError);
+    } catch (pushError: unknown) {
+      console.warn("[send-collaboration-invite] Push to invitee failed:", pushError);
     }
 
     // Send notification to the INVITER (sender)
@@ -194,11 +197,11 @@ serve(async (req) => {
             invitedUsername: invitedUsername,
           },
           androidChannelId: "collaboration-invites",
-        }).catch((err) => console.warn('[send-collaboration-invite] Push failed:', err));
+        });
         console.log("Push notification sent to inviter successfully");
       }
-    } catch (inviterPushError) {
-      console.error("Error sending push notification to inviter:", inviterPushError);
+    } catch (inviterPushError: unknown) {
+      console.warn("[send-collaboration-invite] Push to inviter failed:", inviterPushError);
     }
 
     return new Response(
@@ -212,12 +215,14 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    // CRIT-001 FIX: Log full error server-side, return static message to client.
+    // Never leak error.message or error.toString() — they can expose internal paths,
+    // library versions, and stack traces (OWASP Information Disclosure).
     console.error("Error sending collaboration invite:", error);
     return new Response(
       JSON.stringify({
-        error: error.message || "Failed to send invite",
-        details: error.toString(),
+        error: "Failed to send invite",
       }),
       {
         status: 500,

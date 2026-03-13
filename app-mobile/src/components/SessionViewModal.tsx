@@ -41,6 +41,29 @@ import ShareModal from "./ShareModal";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
+interface SavedCardData {
+  id?: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  fullDescription?: string;
+  category?: string;
+  categoryIcon?: string;
+  image?: string;
+  images?: string[];
+  rating?: number;
+  priceLevel?: string;
+  priceTier?: string;
+  address?: string;
+  location?: { lat: number; lng: number };
+  placeId?: string;
+  googleMapsUri?: string;
+  websiteUri?: string;
+  phone?: string;
+  openingHours?: string[];
+  tags?: string[];
+}
+
 interface SavedCard {
   id: string;
   saved_card_id?: string;
@@ -49,8 +72,8 @@ interface SavedCard {
   saved_at: string;
   experience_id?: string | null;
   saved_experience_id?: string | null;
-  card_data?: any;
-  experience_data?: any;
+  card_data?: SavedCardData;
+  experience_data?: SavedCardData;
 }
 
 interface SessionViewModalProps {
@@ -120,7 +143,7 @@ export default function SessionViewModal({
 
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareData, setShareData] = useState<{ experienceData: any; dateTimePreferences: any } | null>(null);
+  const [shareData, setShareData] = useState<{ experienceData: ExpandedCardData; dateTimePreferences: { timeOfDay: string; dayOfWeek: string; planningTimeframe: string } } | null>(null);
 
   const [cardMessageCounts, setCardMessageCounts] = useState<Record<string, number>>({});
 
@@ -166,7 +189,7 @@ export default function SessionViewModal({
 
         setHasMoreCards((data || []).length === CARDS_PER_PAGE);
         setSavedCardsPage(page);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error loading saved cards:", err);
         const boardError = BoardErrorHandler.handleNetworkError(err);
         BoardErrorHandler.showError(boardError);
@@ -199,7 +222,7 @@ export default function SessionViewModal({
 
       if (error) throw error;
       setParticipants((data || []) as Participant[]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading participants:", err);
     }
   }, [sessionId]);
@@ -221,7 +244,7 @@ export default function SessionViewModal({
       }
 
       setUnreadMessages(count || 0);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading unread count:", err);
       setUnreadMessages(0);
     }
@@ -248,7 +271,7 @@ export default function SessionViewModal({
       });
 
       setCardMessageCounts(counts);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading card message counts:", err);
     }
   }, [sessionId, user?.id, savedCards]);
@@ -311,11 +334,11 @@ export default function SessionViewModal({
 
               if (onSessionExited) onSessionExited();
               onClose();
-            } catch (error: any) {
+            } catch (error: unknown) {
               console.error("Error exiting board:", error);
               Alert.alert(
                 "Unable to Exit Board",
-                error?.message || "Please try again."
+                error instanceof Error ? error.message : "Please try again."
               );
             }
           },
@@ -484,13 +507,8 @@ export default function SessionViewModal({
       return;
     }
 
-    if (!networkState.isConnected && !hasValidCardData) {
-      Alert.alert(
-        "Offline",
-        "Unable to load card details. Please check your internet connection and try again.",
-        [{ text: "OK" }]
-      );
-      return;
+    // MED-003: Dead code removed — the !hasValidCardData case is already handled above,
+    // so this block was unreachable. Card data is embedded JSONB, so offline is fine if data exists.
     }
 
     const expandedCardData: ExpandedCardData = {

@@ -46,8 +46,6 @@ interface CollaborationSession {
 }
 
 // M11 FIX: Typed interfaces replacing pervasive `any[]` usage
-type CollaborationSessionSummary = CollaborationSession;
-
 interface CollaborationInviteRow {
   id: string;
   session_id: string;
@@ -69,10 +67,10 @@ interface CollaborationModuleProps {
   currentMode: "solo" | string;
   onModeChange: (mode: "solo" | string) => void;
   preSelectedFriend?: Friend | null;
-  boardsSessions?: CollaborationSessionSummary[];
-  onUpdateBoardSession?: (updatedBoard: CollaborationSessionSummary) => void;
+  boardsSessions?: CollaborationSession[];
+  onUpdateBoardSession?: (updatedBoard: CollaborationSession) => void;
   onCreateSession?: (newSession: { id: string; name: string; status: string; createdBy: string; createdAt: string }) => void;
-  onNavigateToBoard?: (board: CollaborationSessionSummary, discussionTab?: string) => void;
+  onNavigateToBoard?: (board: CollaborationSession, discussionTab?: string) => void;
   availableFriends?: Friend[];
   onRefreshBoards?: () => void; // Callback to refresh boards list
 }
@@ -107,7 +105,7 @@ export default function CollaborationModule({
   const [receivedInvites, setReceivedInvites] = useState<CollaborationInviteRow[]>([]);
   const [sentInvites, setSentInvites] = useState<CollaborationInviteRow[]>([]);
   const [loadingInvites, setLoadingInvites] = useState(false);
-  const [userSessions, setUserSessions] = useState<CollaborationSessionSummary[]>([]);
+  const [userSessions, setUserSessions] = useState<CollaborationSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
 
@@ -213,7 +211,7 @@ export default function CollaborationModule({
             .eq("invited_user_id", user.id);
 
           if (invitesWithSessions && invitesWithSessions.length > 0) {
-            invitesWithSessions.forEach((inv: any) => {
+            invitesWithSessions.forEach((inv: { session_id: string; collaboration_sessions: { id: string; name: string } | { id: string; name: string }[] }) => {
               const session = Array.isArray(inv.collaboration_sessions)
                 ? inv.collaboration_sessions[0]
                 : inv.collaboration_sessions;
@@ -232,7 +230,7 @@ export default function CollaborationModule({
               .eq("user_id", user.id);
 
             if (participants && participants.length > 0) {
-              participants.forEach((p: any) => {
+              participants.forEach((p: { session_id: string; collaboration_sessions: { id: string; name: string } | { id: string; name: string }[] }) => {
                 const session = Array.isArray(p.collaboration_sessions)
                   ? p.collaboration_sessions[0]
                   : p.collaboration_sessions;
@@ -480,7 +478,7 @@ export default function CollaborationModule({
         const sessionParticipants = allParticipants.filter(
           (p) => p.session_id === session.id
         );
-        const participants = sessionParticipants.map((p: any) => ({
+        const participants = sessionParticipants.map((p) => ({
           id: p.user_id,
           name: p.profiles?.display_name || p.profiles?.email || "Unknown",
           avatar: p.profiles?.avatar_url,
@@ -938,7 +936,7 @@ export default function CollaborationModule({
   // Use real sessions from database only
   const activeSessions = userSessions;
 
-  const pendingSessions: CollaborationSessionSummary[] = [];
+  const pendingSessions: CollaborationSession[] = [];
 
   if (!isOpen) return null;
 

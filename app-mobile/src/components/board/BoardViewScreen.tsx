@@ -193,7 +193,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
         setHasMoreCards((data || []).length === CARDS_PER_PAGE);
         setSavedCardsPage(page);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error loading saved cards:", err);
         const boardError = BoardErrorHandler.handleNetworkError(err);
         BoardErrorHandler.showError(boardError);
@@ -229,7 +229,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       if (error) throw error;
 
       setParticipants((data || []) as Participant[]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading participants:", err);
     }
   }, [sessionId]);
@@ -252,7 +252,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       }
 
       setUnreadMessages(count || 0);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading unread count:", err);
       setUnreadMessages(0);
     }
@@ -354,7 +354,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       });
 
       setCardMessageCounts(counts);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading card message counts:", err);
     }
   }, [sessionId, user?.id, savedCards]);
@@ -674,16 +674,8 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                   return;
                 }
                 
-                // If offline and no cached data, show error
-                if (!networkState.isConnected && !hasValidCardData) {
-                  Alert.alert(
-                    "Offline",
-                    "Unable to load card details. Please check your internet connection and try again.",
-                    [{ text: "OK" }]
-                  );
-                  return;
-                }
-                
+                // MED-003: Dead code removed — !hasValidCardData already handled above.
+
                 // Transform to ExpandedCardData format with safe fallbacks
                 const expandedCardData: ExpandedCardData = {
                   id: cardData.id || card.id,

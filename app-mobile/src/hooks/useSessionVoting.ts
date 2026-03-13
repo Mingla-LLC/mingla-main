@@ -162,7 +162,7 @@ export function useSessionVoting(
         };
       });
       setRsvpCounts(newRsvpCounts);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[useSessionVoting] Error loading counts:', err);
     }
   }, [sessionId, userId, participantCount]);
@@ -302,7 +302,7 @@ export function useSessionVoting(
 
         // Realtime subscription handles reload — no setTimeout needed
         loadCounts();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[useSessionVoting] Error voting:', err);
         // Rollback
         setVoteCounts((prev) => ({
@@ -450,7 +450,7 @@ export function useSessionVoting(
         // Note: DB trigger check_card_lock_in handles lock-in automatically.
         // loadCounts will pick up any lock state changes.
         loadCounts();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[useSessionVoting] Error RSVPing:', err);
         // Rollback
         setRsvpCounts((prev) => ({
