@@ -102,23 +102,6 @@ export default function ProfilePage({
   const [showBioSheet, setShowBioSheet] = useState(false);
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
 
-  // DEV: Screenshot automation triggers
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerEditBio) {
-        setShowBioSheet(true);
-        useScreenshotStore.getState().setTrigger('triggerEditBio', false);
-      }
-      if (state.triggerEditInterests) {
-        setShowInterestsSheet(true);
-        useScreenshotStore.getState().setTrigger('triggerEditInterests', false);
-      }
-    });
-    return unsub;
-  }, []);
-
   // Profile photos
   const { data: galleryPhotos } = useProfilePhotos();
   const uploadPhotoMutation = useUploadProfilePhoto();

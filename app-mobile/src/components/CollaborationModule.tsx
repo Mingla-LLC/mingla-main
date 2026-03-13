@@ -16,7 +16,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 import SessionsTab from "./collaboration/SessionsTab";
 import InvitesTab from "./collaboration/InvitesTab";
-import CreateTab from "./collaboration/CreateTab";
+import { CreateSessionContent } from "./CreateSessionModal";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
@@ -77,32 +77,11 @@ export default function CollaborationModule({
     "sessions"
   );
 
-  // DEV: Screenshot automation triggers for tab switching
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerCollabSessionsTab) {
-        setActiveTab('sessions');
-        useScreenshotStore.getState().setTrigger('triggerCollabSessionsTab', false);
-      }
-      if (state.triggerCollabInvitesTab) {
-        setActiveTab('invites');
-        useScreenshotStore.getState().setTrigger('triggerCollabInvitesTab', false);
-      }
-      if (state.triggerCollabCreateTab) {
-        setActiveTab('create');
-        useScreenshotStore.getState().setTrigger('triggerCollabCreateTab', false);
-      }
-    });
-    return unsub;
-  }, []);
   const [invitesTabType, setInvitesTabType] = useState<"sent" | "received">(
     "received"
   );
   const { user } = useAppStore();
   const {
-    friends: dbFriends,
     fetchFriends,
     friendRequests,
     loadFriendRequests,
@@ -138,21 +117,6 @@ export default function CollaborationModule({
     }
   }, [isOpen, user, fetchFriends, loadFriendRequests]);
 
-  // Transform database friends to match CreateTab's Friend interface
-  const transformedFriends: Friend[] = React.useMemo(() => {
-    return dbFriends.map((friend) => ({
-      id: friend.friend_user_id || friend.id,
-      name:
-        friend.display_name ||
-        `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
-        friend.username ||
-        "Unknown",
-      username: friend.username,
-      avatar: friend.avatar_url,
-      status: "offline" as const, // Default to offline, can be enhanced with presence later
-      mutualFriends: 0, // Can be calculated later if needed
-    }));
-  }, [dbFriends]);
 
   const loadInvites = async () => {
     if (!user) return;
@@ -1039,13 +1003,14 @@ export default function CollaborationModule({
               />
             )}
             {activeTab === "create" && (
-              <CreateTab
-                preSelectedFriend={preSelectedFriend}
-                availableFriends={
-                  transformedFriends.length > 0
-                    ? transformedFriends
-                    : availableFriends
-                }
+              <CreateSessionContent
+                isEmbedded={true}
+                preSelectedFriend={preSelectedFriend ? {
+                  id: preSelectedFriend.id,
+                  name: preSelectedFriend.name,
+                  username: preSelectedFriend.username,
+                  avatar: preSelectedFriend.avatar,
+                } : null}
                 onCreateSession={handleCreateSession}
                 onNavigateToInvites={() => setActiveTab("invites")}
               />

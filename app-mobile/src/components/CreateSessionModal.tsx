@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  ScrollView,
   Alert,
   ActivityIndicator,
   Image,
@@ -46,31 +45,78 @@ interface SelectedFriend {
   avatar_url?: string;
 }
 
-export const CreateSessionModal: React.FC = () => {
-  // Step management
-  const [currentStep, setCurrentStep] = useState<Step>('type');
-  const [sessionType, setSessionType] = useState<SessionType | null>(null);
-  
+// Props for the embeddable CreateSessionContent component
+export interface CreateSessionContentProps {
+  preSelectedFriend?: {
+    id: string;
+    name: string;
+    username?: string;
+    avatar?: string;
+  } | null;
+  onCreateSession?: (sessionData: {
+    id: string;
+    name: string;
+    status: string;
+    createdBy: string;
+    createdAt: string;
+  }) => void;
+  onNavigateToInvites?: () => void;
+  isEmbedded?: boolean;
+}
+
+/**
+ * CreateSessionContent — the core session creation UI.
+ *
+ * When isEmbedded=true (used inside CollaborationModule's Create tab):
+ *   - No Modal/backdrop/drag handle wrapper
+ *   - No KeyboardAwareScrollView (parent provides ScrollView)
+ *   - Auto-selects "collaboration" session type
+ *   - Skips type/preferences/invite steps → flow: basic → friends → review → success
+ *   - Accepts preSelectedFriend, onCreateSession, onNavigateToInvites props
+ *
+ * When isEmbedded=false (standalone modal, preserved for future use):
+ *   - Full Modal with backdrop, drag handle, KeyboardAwareScrollView
+ *   - All steps available: type → basic → friends → preferences → invite → review → success
+ *   - Controlled by NavigationContext (isCreateSessionModalOpen)
+ */
+export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
+  preSelectedFriend,
+  onCreateSession,
+  onNavigateToInvites,
+  isEmbedded = false,
+}) => {
+  // Step management — embedded mode starts at 'basic' with collaboration auto-selected
+  const [currentStep, setCurrentStep] = useState<Step>(isEmbedded ? 'basic' : 'type');
+  const [sessionType, setSessionType] = useState<SessionType | null>(isEmbedded ? 'collaboration' : null);
+
   // Basic info
   const [sessionName, setSessionName] = useState('');
   const [maxParticipants, setMaxParticipants] = useState<string>('');
-  
-  // Friends
-  const [selectedFriends, setSelectedFriends] = useState<SelectedFriend[]>([]);
+
+  // Friends — pre-populate with preSelectedFriend if provided
+  const [selectedFriends, setSelectedFriends] = useState<SelectedFriend[]>(
+    preSelectedFriend
+      ? [{
+          id: preSelectedFriend.id,
+          name: preSelectedFriend.name,
+          username: preSelectedFriend.username || '',
+          avatar_url: preSelectedFriend.avatar,
+        }]
+      : []
+  );
   const [showFriendModal, setShowFriendModal] = useState(false);
   const { friends, fetchFriends, addFriend } = useFriends();
-  
-  // Preferences
+
+  // Preferences (board sessions only — not used in embedded/collaboration mode)
   const [preferences, setPreferences] = useState<BoardPreferences | null>(null);
-  
-  // Invite method
-  const [inviteMethod, setInviteMethod] = useState<InviteMethod>(null);
-  
+
+  // Invite method — embedded mode auto-selects friends_list
+  const [inviteMethod, setInviteMethod] = useState<InviteMethod>(isEmbedded ? 'friends_list' : null);
+
   // Creation state
   const [loading, setLoading] = useState(false);
-  const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [inviteLinkData, setInviteLinkData] = useState<{ inviteCode: string; inviteLink: string } | null>(null);
-  
+
   // Phone lookup state
   const [phoneDigits, setPhoneDigits] = useState('');
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
@@ -95,20 +141,18 @@ export const CreateSessionModal: React.FC = () => {
   } = usePhoneLookup(debouncedPhoneE164, debouncedPhoneDigitCount >= 7);
 
   const { createCollaborativeSession } = useSessionManagement();
-  const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();
   const { user } = useAppStore();
-  const insets = useSafeAreaInsets();
 
-  // Load friends on mount
+  // Load friends when reaching friends step
   useEffect(() => {
-    if (isCreateSessionModalOpen && currentStep === 'friends') {
+    if (currentStep === 'friends') {
       fetchFriends();
     }
-  }, [isCreateSessionModalOpen, currentStep, fetchFriends]);
+  }, [currentStep, fetchFriends]);
 
   // Fetch referral code for share links
   useEffect(() => {
-    if (isCreateSessionModalOpen && user) {
+    if (user) {
       supabase
         .from('profiles')
         .select('referral_code')
@@ -118,24 +162,25 @@ export const CreateSessionModal: React.FC = () => {
           if (data?.referral_code) setReferralCode(data.referral_code);
         });
     }
-  }, [isCreateSessionModalOpen, user]);
-
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!isCreateSessionModalOpen) {
-      resetState();
-    }
-  }, [isCreateSessionModalOpen]);
+  }, [user]);
 
   const resetState = () => {
-    setCurrentStep('type');
-    setSessionType(null);
+    setCurrentStep(isEmbedded ? 'basic' : 'type');
+    setSessionType(isEmbedded ? 'collaboration' : null);
     setSessionName('');
     setMaxParticipants('');
-    setSelectedFriends([]);
+    setSelectedFriends(
+      preSelectedFriend
+        ? [{
+            id: preSelectedFriend.id,
+            name: preSelectedFriend.name,
+            username: preSelectedFriend.username || '',
+            avatar_url: preSelectedFriend.avatar,
+          }]
+        : []
+    );
     setPreferences(null);
-    setInviteMethod(null);
-    setCreatedSessionId(null);
+    setInviteMethod(isEmbedded ? 'friends_list' : null);
     setInviteLinkData(null);
     setPhoneDigits('');
     setPhoneInvitees([]);
@@ -152,18 +197,20 @@ export const CreateSessionModal: React.FC = () => {
         Alert.alert('Error', 'Please enter a session name');
         return;
       }
-
       setCurrentStep('friends');
     } else if (currentStep === 'friends') {
-      if (sessionType === 'collaboration' && selectedFriends.length === 0) {
+      if (sessionType === 'collaboration' && selectedFriends.length === 0 && phoneInvitees.length === 0) {
         Alert.alert(
           'Add a collaborator',
-          'Please add at least one friend as a collaborator before continuing. This is for safety purposes.'
+          'Please add at least one friend or phone invite as a collaborator before continuing. This is for safety purposes.'
         );
         return;
       }
 
-      if (sessionType === 'board') {
+      if (isEmbedded) {
+        // Embedded collaboration: skip preferences and invite steps
+        setCurrentStep('review');
+      } else if (sessionType === 'board') {
         setCurrentStep('preferences');
       } else {
         setCurrentStep('invite');
@@ -183,7 +230,10 @@ export const CreateSessionModal: React.FC = () => {
 
   const handleBack = () => {
     if (currentStep === 'basic') {
-      setCurrentStep('type');
+      if (!isEmbedded) {
+        setCurrentStep('type');
+      }
+      // In embedded mode, basic is the first step — no going back
     } else if (currentStep === 'friends') {
       setCurrentStep('basic');
     } else if (currentStep === 'preferences') {
@@ -195,7 +245,12 @@ export const CreateSessionModal: React.FC = () => {
         setCurrentStep('friends');
       }
     } else if (currentStep === 'review') {
-      setCurrentStep('invite');
+      if (isEmbedded) {
+        // Embedded: review goes back to friends (no invite step)
+        setCurrentStep('friends');
+      } else {
+        setCurrentStep('invite');
+      }
     }
   };
 
@@ -205,10 +260,10 @@ export const CreateSessionModal: React.FC = () => {
       return;
     }
 
-    if (sessionType === 'collaboration' && selectedFriends.length === 0) {
+    if (sessionType === 'collaboration' && selectedFriends.length === 0 && phoneInvitees.length === 0) {
       Alert.alert(
         'Add a collaborator',
-        'Please add at least one friend as a collaborator before creating this session. This is for safety purposes.'
+        'Please add at least one friend or phone invite as a collaborator before creating this session. This is for safety purposes.'
       );
       return;
     }
@@ -218,8 +273,7 @@ export const CreateSessionModal: React.FC = () => {
       let sessionId: string | null = null;
 
       if (sessionType === 'board') {
-        // Create board session
-        // Status starts as 'pending' until at least 2 members have accepted
+        // Create board session (standalone modal flow only)
         const { data: sessionData, error: sessionError } = await supabase
           .from('collaboration_sessions')
           .insert({
@@ -235,19 +289,18 @@ export const CreateSessionModal: React.FC = () => {
           .single();
 
         if (sessionError) throw sessionError;
-        sessionId = sessionData.id;
+        const boardSessionId = sessionData.id;
+        sessionId = boardSessionId;
 
         // Save preferences
         if (preferences) {
           await supabase
             .from('board_session_preferences')
             .insert({
-              session_id: sessionId,
+              session_id: boardSessionId,
               categories: preferences.categories || [],
               budget_min: preferences.budgetMin,
               budget_max: preferences.budgetMax,
-              // Note: group_size column doesn't exist in board_session_preferences table
-              // Group size is determined by the number of participants in the session
               experience_types: preferences.experienceTypes || [],
             });
         }
@@ -256,7 +309,7 @@ export const CreateSessionModal: React.FC = () => {
         await supabase
           .from('session_participants')
           .insert({
-            session_id: sessionId,
+            session_id: boardSessionId,
             user_id: user.id,
             has_accepted: true,
             joined_at: new Date().toISOString(),
@@ -265,11 +318,11 @@ export const CreateSessionModal: React.FC = () => {
         // Send friend invites if selected
         if (selectedFriends.length > 0 && inviteMethod === 'friends_list') {
           const friendIds = selectedFriends.map(f => f.id);
-          await BoardInviteService.sendFriendInvites(sessionId, friendIds, user.id);
+          await BoardInviteService.sendFriendInvites(boardSessionId, friendIds, user.id);
         }
 
         // Get invite link data
-        const linkData = await BoardInviteService.generateInviteLink(sessionId);
+        const linkData = await BoardInviteService.generateInviteLink(boardSessionId);
         if (linkData) {
           setInviteLinkData({
             inviteCode: linkData.inviteCode,
@@ -278,16 +331,14 @@ export const CreateSessionModal: React.FC = () => {
         }
 
         // Update presence for the creator
-        if (user) {
-          await realtimeService.markOnline(sessionId, user.id);
-        }
+        await realtimeService.markOnline(boardSessionId, user.id);
       } else {
-        // Create regular collaboration session
+        // Create collaboration session via hook (handles duplicate check, ghost cleanup, prefs seeding)
         const participantUsernames = selectedFriends.map(f => f.username);
         sessionId = await createCollaborativeSession(participantUsernames, sessionName.trim());
 
         // Handle phone invitees for collaboration sessions
-        if (sessionId && phoneInvitees.length > 0 && user) {
+        if (sessionId && phoneInvitees.length > 0) {
           for (const invitee of phoneInvitees) {
             try {
               await createPendingInvite(user.id, invitee.phoneE164);
@@ -300,7 +351,19 @@ export const CreateSessionModal: React.FC = () => {
       }
 
       if (sessionId) {
-        setCreatedSessionId(sessionId);
+        // Call onCreateSession callback BEFORE showing success screen
+        // In embedded mode, the parent (CollaborationModule) will switch to invites tab,
+        // which unmounts this component — the success screen may not be visible.
+        if (onCreateSession) {
+          onCreateSession({
+            id: sessionId,
+            name: sessionName.trim(),
+            status: 'pending',
+            createdBy: user.id,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
         setCurrentStep('success');
       } else {
         throw new Error('Failed to create session');
@@ -340,7 +403,7 @@ export const CreateSessionModal: React.FC = () => {
             <Text style={styles.stepDescription}>
               Select the type of session you want to create
             </Text>
-            
+
             <TouchableOpacity
               style={[styles.typeCard, sessionType === 'board' && styles.typeCardSelected]}
               onPress={() => handleSelectSessionType('board')}
@@ -373,17 +436,44 @@ export const CreateSessionModal: React.FC = () => {
         return (
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Session Details</Text>
-            
+
             <View style={styles.section}>
               <Text style={styles.label}>Session Name</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter session name"
+                placeholder="e.g., Weekend Plans, Date Night Ideas..."
+                placeholderTextColor="#9CA3AF"
                 value={sessionName}
                 onChangeText={setSessionName}
                 maxLength={50}
               />
+              <Text style={styles.helperText}>This will be visible to all participants</Text>
             </View>
+
+            {/* Pre-selected friend indicator */}
+            {preSelectedFriend && isEmbedded && (
+              <View style={styles.preSelectedCard}>
+                <Text style={styles.preSelectedTitle}>Pre-selected Friend</Text>
+                <View style={styles.preSelectedContent}>
+                  <View style={styles.preSelectedAvatar}>
+                    {preSelectedFriend.avatar ? (
+                      <Image
+                        source={{ uri: preSelectedFriend.avatar }}
+                        style={styles.preSelectedAvatarImage}
+                      />
+                    ) : (
+                      <Text style={styles.preSelectedAvatarText}>
+                        {preSelectedFriend.name[0]}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.preSelectedName}>{preSelectedFriend.name}</Text>
+                </View>
+                <Text style={styles.preSelectedNote}>
+                  You can modify your selection in the next step
+                </Text>
+              </View>
+            )}
 
             {sessionType === 'board' && (
               <View style={styles.section}>
@@ -549,39 +639,64 @@ export const CreateSessionModal: React.FC = () => {
               style={styles.friendButton}
               onPress={() => setShowFriendModal(true)}
             >
-              <Ionicons name="person-add" size={20} color="#007AFF" />
+              <Ionicons name="person-add" size={20} color="#eb7825" />
               <Text style={styles.friendButtonText}>Select Friends</Text>
             </TouchableOpacity>
 
             {selectedFriends.length > 0 && (
               <View style={styles.selectedFriendsContainer}>
-                {selectedFriends.map((friend) => (
-                  <View key={friend.id} style={styles.selectedFriendItem}>
-                    <View style={styles.selectedFriendAvatar}>
-                      {friend.avatar || friend.avatar_url ? (
-                        <Image
-                          source={{ uri: friend.avatar || friend.avatar_url }}
-                          style={styles.selectedFriendAvatarImage}
-                        />
-                      ) : (
-                        <View style={styles.selectedFriendAvatarPlaceholder}>
-                          <Text style={styles.selectedFriendAvatarText}>
-                            {friend.name.split(' ').map(n => n[0]).join('')}
-                          </Text>
+                {selectedFriends.map((friend) => {
+                  const isPreSelected = preSelectedFriend?.id === friend.id;
+                  return (
+                    <View key={friend.id} style={styles.selectedFriendItem}>
+                      <View style={styles.selectedFriendAvatar}>
+                        {friend.avatar || friend.avatar_url ? (
+                          <Image
+                            source={{ uri: friend.avatar || friend.avatar_url }}
+                            style={styles.selectedFriendAvatarImage}
+                          />
+                        ) : (
+                          <View style={styles.selectedFriendAvatarPlaceholder}>
+                            <Text style={styles.selectedFriendAvatarText}>
+                              {friend.name.split(' ').map(n => n[0]).join('')}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.selectedFriendInfo}>
+                        <View style={styles.selectedFriendNameRow}>
+                          <Text style={styles.selectedFriendText}>{friend.name}</Text>
+                          {isPreSelected && (
+                            <Text style={styles.preSelectedBadge}>Pre-selected</Text>
+                          )}
                         </View>
-                      )}
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
+                        style={styles.selectedFriendRemove}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.selectedFriendInfo}>
-                      <Text style={styles.selectedFriendText}>{friend.name}</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
-                      style={styles.selectedFriendRemove}
-                    >
-                      <Ionicons name="close-circle" size={20} color="#FF3B30" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Empty state — no friends and no phone invitees */}
+            {friends.length === 0 && selectedFriends.length === 0 && phoneInvitees.length === 0 && onNavigateToInvites && (
+              <View style={styles.emptyStateContainer}>
+                <Ionicons name="people-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyStateTitle}>No friends yet</Text>
+                <Text style={styles.emptyStateText}>
+                  Add friends to start collaborating, or invite someone by phone number above
+                </Text>
+                <TouchableOpacity
+                  onPress={onNavigateToInvites}
+                  style={styles.emptyStateButton}
+                >
+                  <Text style={styles.emptyStateButtonText}>Go to Invites</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -620,40 +735,63 @@ export const CreateSessionModal: React.FC = () => {
         return (
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Review & Create</Text>
-            
+
             <View style={styles.reviewCard}>
               <Text style={styles.reviewLabel}>Session Name</Text>
               <Text style={styles.reviewValue}>{sessionName}</Text>
             </View>
 
-            {sessionType === 'board' && (
-              <>
-                {selectedFriends.length > 0 && (
-                  <View style={styles.reviewCard}>
-                    <Text style={styles.reviewLabel}>Friends Invited</Text>
-                    <Text style={styles.reviewValue}>{selectedFriends.length} friend(s)</Text>
-                  </View>
-                )}
-                
-                {preferences && (
-                  <View style={styles.reviewCard}>
-                    <Text style={styles.reviewLabel}>Preferences</Text>
-                    <Text style={styles.reviewValue}>
-                      {preferences.categories?.length || 0} categories, Group size: {preferences.groupSize || 2}
-                    </Text>
-                  </View>
-                )}
-              </>
+            {selectedFriends.length > 0 && (
+              <View style={styles.reviewCard}>
+                <Text style={styles.reviewLabel}>Friends Invited</Text>
+                <Text style={styles.reviewValue}>
+                  {selectedFriends.map(f => f.name).join(', ')}
+                </Text>
+              </View>
             )}
 
-            <View style={styles.reviewCard}>
-              <Text style={styles.reviewLabel}>Invite Method</Text>
-              <Text style={styles.reviewValue}>
-                {inviteMethod === 'friends_list' ? 'Friends List' :
-                 inviteMethod === 'link' ? 'Share Link' :
-                 inviteMethod === 'qr_code' ? 'QR Code' :
-                 inviteMethod === 'invite_code' ? 'Invite Code' : 'None'}
-              </Text>
+            {phoneInvitees.length > 0 && (
+              <View style={styles.reviewCard}>
+                <Text style={styles.reviewLabel}>Phone Invites</Text>
+                <Text style={styles.reviewValue}>
+                  {phoneInvitees.map(i => i.phoneE164).join(', ')}
+                </Text>
+              </View>
+            )}
+
+            {/* Only show invite method in standalone (non-embedded) mode */}
+            {!isEmbedded && (
+              <View style={styles.reviewCard}>
+                <Text style={styles.reviewLabel}>Invite Method</Text>
+                <Text style={styles.reviewValue}>
+                  {inviteMethod === 'friends_list' ? 'Friends List' :
+                   inviteMethod === 'link' ? 'Share Link' :
+                   inviteMethod === 'qr_code' ? 'QR Code' :
+                   inviteMethod === 'invite_code' ? 'Invite Code' : 'None'}
+                </Text>
+              </View>
+            )}
+
+            {sessionType === 'board' && preferences && (
+              <View style={styles.reviewCard}>
+                <Text style={styles.reviewLabel}>Preferences</Text>
+                <Text style={styles.reviewValue}>
+                  {preferences.categories?.length || 0} categories, Group size: {preferences.groupSize || 2}
+                </Text>
+              </View>
+            )}
+
+            {/* Info card about next steps */}
+            <View style={styles.infoCard}>
+              <View style={styles.infoCardContent}>
+                <Ionicons name="alert-circle" size={20} color="#1d4ed8" />
+                <View style={styles.infoCardText}>
+                  <Text style={styles.infoCardTitle}>Next Steps</Text>
+                  <Text style={styles.infoCardDescription}>
+                    Once all friends accept, you'll need to set collaboration preferences together before you can start swiping.
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
         );
@@ -675,7 +813,7 @@ export const CreateSessionModal: React.FC = () => {
                   inviteLink={inviteLinkData.inviteLink}
                   inviteCode={inviteLinkData.inviteCode}
                 />
-                
+
                 <View style={styles.qrSection}>
                   <Text style={styles.sectionTitle}>QR Code</Text>
                   <QRCodeDisplay data={inviteLinkData.inviteLink} />
@@ -702,7 +840,7 @@ export const CreateSessionModal: React.FC = () => {
         return sessionName.trim().length > 0;
       case 'friends':
         if (sessionType === 'collaboration') {
-          return selectedFriends.length > 0;
+          return selectedFriends.length > 0 || phoneInvitees.length > 0;
         }
         return true; // Friends are optional for board sessions
       case 'preferences':
@@ -711,7 +849,7 @@ export const CreateSessionModal: React.FC = () => {
         return inviteMethod !== null;
       case 'review':
         if (sessionType === 'collaboration') {
-          return selectedFriends.length > 0;
+          return selectedFriends.length > 0 || phoneInvitees.length > 0;
         }
         return true;
       case 'success':
@@ -733,6 +871,93 @@ export const CreateSessionModal: React.FC = () => {
       default: return 'Create Session';
     }
   };
+
+  // Determine if back button should show
+  const showBackButton = isEmbedded
+    ? currentStep !== 'basic' && currentStep !== 'success'
+    : currentStep !== 'type' && currentStep !== 'success';
+
+  // --- EMBEDDED RENDERING (inside CollaborationModule's ScrollView) ---
+  if (isEmbedded) {
+    return (
+      <View style={styles.embeddedContainer}>
+        {/* Header with back button and step title */}
+        <View style={styles.embeddedHeader}>
+          {showBackButton ? (
+            <TouchableOpacity onPress={handleBack} style={styles.embeddedBackButton}>
+              <Ionicons name="chevron-back" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.embeddedBackButtonPlaceholder} />
+          )}
+          <Text style={styles.embeddedHeaderTitle}>{getStepTitle()}</Text>
+          <View style={styles.embeddedBackButtonPlaceholder} />
+        </View>
+
+        {/* Step content */}
+        {renderStepContent()}
+
+        {/* Footer button */}
+        {currentStep !== 'success' && (
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              (!canProceed() || loading) && styles.nextButtonDisabled
+            ]}
+            onPress={handleNext}
+            disabled={!canProceed() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.nextButtonText}>
+                {currentStep === 'review' ? 'Create Session' : 'Next'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {currentStep === 'success' && (
+          <TouchableOpacity
+            style={styles.doneButton}
+            onPress={resetState}
+          >
+            <Text style={styles.doneButtonText}>Create Another</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* FriendSelectionModal — renders as a separate Modal overlay */}
+        <FriendSelectionModal
+          isOpen={showFriendModal}
+          onClose={() => setShowFriendModal(false)}
+          onSelectFriend={handleSelectFriend}
+          friends={friends.map(f => ({
+            id: f.friend_user_id,
+            name: f.display_name || f.username,
+            username: f.username,
+            avatar: f.avatar_url,
+            isOnline: false,
+          }))}
+        />
+      </View>
+    );
+  }
+
+  // --- STANDALONE MODAL RENDERING (preserved for future use) ---
+  return null;
+};
+
+/**
+ * CreateSessionModal — thin Modal wrapper around CreateSessionContent.
+ * Preserved for future use as a standalone modal. Currently not rendered by anything.
+ */
+export const CreateSessionModal: React.FC = () => {
+  const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();
+  const insets = useSafeAreaInsets();
+
+  // Reset is handled internally by CreateSessionContent when it unmounts/remounts
+
+  if (!isCreateSessionModalOpen) return null;
 
   return (
     <Modal
@@ -756,71 +981,20 @@ export const CreateSessionModal: React.FC = () => {
             <View style={styles.dragHandle} />
           </View>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerSide}>
-              {currentStep !== 'type' && currentStep !== 'success' ? (
-                <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
-                  <Ionicons name="arrow-back" size={22} color="#6B7280" />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.iconButton} />
-              )}
-            </View>
-            <Text style={styles.title}>{getStepTitle()}</Text>
-            <View style={styles.headerSide} />
-          </View>
-
           <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false} bottomOffset={76}>
-            {renderStepContent()}
+            <CreateSessionContent isEmbedded={false} />
           </KeyboardAwareScrollView>
 
-          {currentStep !== 'success' && (
-            <View style={styles.footer}>
-              <TouchableOpacity
-                style={[
-                  styles.nextButton,
-                  (!canProceed() || loading) && styles.nextButtonDisabled
-                ]}
-                onPress={handleNext}
-                disabled={!canProceed() || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.nextButtonText}>
-                    {currentStep === 'review' ? 'Create Session' : 'Next'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {currentStep === 'success' && (
-            <View style={styles.footer}>
-              <TouchableOpacity
-                style={styles.doneButton}
-                onPress={closeCreateSessionModal}
-              >
-                <Text style={styles.doneButtonText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.doneButton}
+              onPress={closeCreateSessionModal}
+            >
+              <Text style={styles.doneButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-
-      <FriendSelectionModal
-        isOpen={showFriendModal}
-        onClose={() => setShowFriendModal(false)}
-        onSelectFriend={handleSelectFriend}
-        friends={friends.map(f => ({
-          id: f.friend_user_id,
-          name: f.display_name || f.username,
-          username: f.username,
-          avatar: f.avatar_url,
-          isOnline: false,
-        }))}
-      />
     </Modal>
   );
 };
@@ -829,6 +1003,34 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
+  // === Embedded mode styles ===
+  embeddedContainer: {
+    gap: 16,
+  },
+  embeddedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  embeddedBackButton: {
+    padding: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+  },
+  embeddedBackButtonPlaceholder: {
+    width: 36,
+    height: 36,
+  },
+  embeddedHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    flex: 1,
+  },
+
+  // === Standalone modal styles ===
   sheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -925,6 +1127,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e1e5e9',
   },
+  helperText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+  },
   typeCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -953,6 +1160,57 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
+
+  // === Pre-selected friend (basic step) ===
+  preSelectedCard: {
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  preSelectedTitle: {
+    fontWeight: '500',
+    color: '#1e40af',
+    marginBottom: 8,
+  },
+  preSelectedContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  preSelectedAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#3b82f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  preSelectedAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  preSelectedAvatarText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  preSelectedName: {
+    color: '#1e40af',
+    fontWeight: '500',
+    flex: 1,
+  },
+  preSelectedNote: {
+    fontSize: 12,
+    color: '#1e40af',
+    marginTop: 8,
+  },
+
+  // === Friends step ===
   friendButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1008,20 +1266,63 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  selectedFriendNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   selectedFriendText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#111827',
   },
-  selectedFriendUsername: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 2,
+  preSelectedBadge: {
+    fontSize: 11,
+    backgroundColor: '#dbeafe',
+    color: '#1e40af',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   selectedFriendRemove: {
     padding: 4,
     flexShrink: 0,
   },
+
+  // === Empty state ===
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    backgroundColor: '#eb7825',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // === Review step ===
   reviewCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -1040,6 +1341,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
   },
+
+  // === Info card (review step) ===
+  infoCard: {
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 4,
+  },
+  infoCardContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  infoCardText: {
+    flex: 1,
+  },
+  infoCardTitle: {
+    fontWeight: '500',
+    marginBottom: 4,
+    color: '#1e40af',
+  },
+  infoCardDescription: {
+    fontSize: 14,
+    color: '#1e40af',
+  },
+
+  // === Success step ===
   successContainer: {
     alignItems: 'center',
     paddingVertical: 32,
@@ -1072,6 +1402,8 @@ const styles = StyleSheet.create({
   codeSection: {
     marginTop: 24,
   },
+
+  // === Footer buttons ===
   footer: {
     padding: 20,
     borderTopWidth: 1,
@@ -1083,6 +1415,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginTop: 8,
   },
   nextButtonDisabled: {
     backgroundColor: '#D1D5DB',
@@ -1097,12 +1430,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginTop: 8,
   },
   doneButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
+
+  // === Phone input ===
   phoneInputSection: {
     marginBottom: 16,
   },

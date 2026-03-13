@@ -100,32 +100,6 @@ export default function ConnectionsPageRefactored({
   const { height: screenHeight } = useWindowDimensions();
 
 
-  // DEV: Screenshot automation triggers
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerMessageInterface) {
-        // Open chat with first friend if available
-        if (dbFriends?.length > 0) {
-          setActiveChat(dbFriends[0] as any);
-          setShowMessageInterface(true);
-        }
-        useScreenshotStore.getState().setTrigger('triggerMessageInterface', false);
-      }
-      if (state.triggerRequestsView) {
-        setActivePanel('friends' as any);
-        setFriendsModalTab('requests');
-        useScreenshotStore.getState().setTrigger('triggerRequestsView', false);
-      }
-      if (state.triggerBlockedUsers) {
-        setActivePanel('blocked' as any);
-        useScreenshotStore.getState().setTrigger('triggerBlockedUsers', false);
-      }
-    });
-    return unsub;
-  }, [dbFriends]);
-
   // ── UI state ─────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState<PanelId>(null);
   const [searchQuery, setSearchQuery] = useState("");

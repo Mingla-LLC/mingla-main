@@ -73,11 +73,7 @@ import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
-import { debugService } from "../src/services/debugService";
 import { logger } from "../src/utils/logger";
-import { DebugModal } from "../src/components/debug/DebugModal";
-import { ScreenshotAutomation } from "../src/components/debug/ScreenshotAutomation";
-import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
@@ -180,9 +176,7 @@ function AppContent() {
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
-  const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
-  const [showScreenshotAutomation, setShowScreenshotAutomation] = useState<boolean>(false);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -198,11 +192,6 @@ function AppContent() {
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
   const refreshGenerationRef = useRef(0);
-
-  // Initialize debug service on mount
-  useEffect(() => {
-    debugService.initialize();
-  }, []);
 
   // Initialize Mixpanel on mount
   useEffect(() => {
@@ -371,15 +360,6 @@ function AppContent() {
       removeClicked();
     };
   }, []);
-
-  // Setup 5-tap gesture to open debug modal
-  const { handleTap: handleDebugTap } = useDebugGesture({
-    onTrigger: () => {
-      setShowDebugModal(true);
-      console.log('🐛 Debug modal opened via tap gesture');
-    },
-    enabled: true,
-  });
 
   // Transform boardsSessions to CollaborationSession format for the sessions bar
   const collaborationSessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => {
@@ -1900,12 +1880,6 @@ function AppContent() {
                       translucent={true}
                       backgroundColor="transparent"
                     />
-                    {/* Invisible tap zone: tap 5 times quickly to open debug console */}
-                    <TouchableOpacity
-                      activeOpacity={1}
-                      onPress={handleDebugTap}
-                      style={{ position: 'absolute', top: 0, right: 0, width: 120, height: 120, zIndex: 9999 }}
-                    />
                     <View style={styles.container}>
                       {/* Main Content — paddingTop for safe area since we use a raw View root */}
                       <View style={[styles.mainContent, { paddingTop: layout.insets.top }]}>
@@ -2240,45 +2214,6 @@ function AppContent() {
           </ErrorBoundary>
         ) : null}
         <ToastContainer />
-        <DebugModal
-          isVisible={showDebugModal}
-          onClose={() => setShowDebugModal(false)}
-          viewShotRef={viewShotRef}
-          onOpenScreenshotAutomation={() => {
-            setShowDebugModal(false);
-            setTimeout(() => setShowScreenshotAutomation(true), 300);
-          }}
-        />
-        <ScreenshotAutomation
-          isVisible={showScreenshotAutomation}
-          onClose={() => setShowScreenshotAutomation(false)}
-          navigationActions={{
-            setCurrentPage: (page: string) => setCurrentPage(page as any),
-            setShowPreferences,
-            setShowCollaboration,
-            setShowCollabPreferences,
-            setShowTermsOfService,
-            setShowPrivacyPolicy,
-            setShowAccountSettings,
-            setShowProfileSettings,
-            setShowShareModal,
-            setShowOnboardingFlow,
-            setShowPaywall,
-            resetOverlays: () => {
-              setShowPreferences(false);
-              setShowCollaboration(false);
-              setShowCollabPreferences(false);
-              setShowTermsOfService(false);
-              setShowPrivacyPolicy(false);
-              setShowAccountSettings(false);
-              setShowProfileSettings(false);
-              setShowShareModal(false);
-              setShowOnboardingFlow(false);
-              setShowPaywall(false);
-              setViewingFriendProfileId(null);
-            },
-          }}
-        />
       </>
     );
   }

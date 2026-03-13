@@ -1,5 +1,5 @@
 // Structured domain-prefixed logger for Metro terminal troubleshooting
-// All output goes through console.log/error (captured by debugService automatically)
+// All output goes through console.log/error
 // Every log also records a breadcrumb for error context trail
 
 import { breadcrumbs, BreadcrumbCategory } from './breadcrumbs'

@@ -401,27 +401,6 @@ export default function SwipeableCards({
   const [historyVisible, setHistoryVisible] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
 
-  // DEV: Screenshot automation triggers
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerExpandedCard && recommendations.length > 0) {
-        setSelectedCardForExpansion(recommendations[0] as any);
-        setIsExpandedModalVisible(true);
-        useScreenshotStore.getState().setTrigger('triggerExpandedCard', false);
-      }
-      if (state.triggerDeckHistory) {
-        setHistoryVisible(true);
-        useScreenshotStore.getState().setTrigger('triggerDeckHistory', false);
-      }
-      if (state.triggerDismissedCards) {
-        setDismissedSheetVisible(true);
-        useScreenshotStore.getState().setTrigger('triggerDismissedCards', false);
-      }
-    });
-    return unsub;
-  }, [recommendations]);
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
   );

@@ -21,11 +21,12 @@ import { CountryPickerModal } from "../onboarding/CountryPickerModal";
 import { PendingInvite } from "../../services/phoneLookupService";
 import { FriendRequest } from "../../hooks/useFriends";
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
-import { usePendingPhoneInvites } from "../../hooks/usePhoneInvite";
+import { usePendingPhoneInvites, phoneInviteKeys } from "../../hooks/usePhoneInvite";
 import {
   createPendingInvite,
   cancelPendingInvite,
 } from "../../services/phoneLookupService";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../../store/appStore";
 import { s, vs } from "../../utils/responsive";
 
@@ -61,6 +62,7 @@ export function AddFriendView({
   onAddFriend,
 }: AddFriendViewProps) {
   const { user } = useAppStore();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>("add");
 
   // Pending phone invites (non-Mingla users)
@@ -120,12 +122,23 @@ export function AddFriendView({
 
   const handlePhoneAction = useCallback(async () => {
     if (!isPhoneValid || !debouncedPhoneE164) return;
+    if (!user) {
+      setActionError("Not signed in");
+      setActionStatus("error");
+      return;
+    }
 
     setActionStatus("sending");
     setActionError("");
 
     try {
       if (phoneLookupResult?.found && phoneLookupResult.user) {
+        // Self-lookup guard
+        if (phoneLookupResult.user.id === currentUserId) {
+          Alert.alert("That's you!", "You can't send a friend request to yourself.");
+          setActionStatus("idle");
+          return;
+        }
         if (phoneLookupResult.friendship_status === "none") {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           await onAddFriend(
@@ -157,11 +170,17 @@ export function AddFriendView({
         // Not on Mingla — create pending invite + share
         if (user) {
           await createPendingInvite(user.id, debouncedPhoneE164);
+          queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
         }
-        await Share.share({
-          message:
-            "Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com",
-        });
+        // Share in its own try/catch — dismissal is not an error
+        try {
+          await Share.share({
+            message:
+              "Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com",
+          });
+        } catch {
+          // User dismissed share sheet — not an error
+        }
         setActionStatus("sent");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => {
@@ -182,6 +201,8 @@ export function AddFriendView({
     phoneLookupResult,
     onAddFriend,
     user,
+    currentUserId,
+    queryClient,
     onRequestSent,
   ]);
 
@@ -252,6 +273,7 @@ export function AddFriendView({
           onPress: async () => {
             try {
               await cancelPendingInvite(inviteId);
+              queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
               Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success
               );
@@ -265,7 +287,7 @@ export function AddFriendView({
         },
       ]);
     },
-    []
+    [queryClient]
   );
 
   const getDisplayName = (request: FriendRequest): string => {

@@ -124,22 +124,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
 
-  // DEV: Screenshot automation triggers
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerBoardSettings) {
-        setShowSettings(true);
-        useScreenshotStore.getState().setTrigger('triggerBoardSettings', false);
-      }
-      if (state.triggerManageMembers) {
-        setShowManageMembersModal(true);
-        useScreenshotStore.getState().setTrigger('triggerManageMembers', false);
-      }
-    });
-    return unsub;
-  }, []);
   const [selectedCardForDiscussion, setSelectedCardForDiscussion] = useState<{
     savedCardId: string;
     cardTitle: string;

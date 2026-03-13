@@ -825,18 +825,6 @@ export default function DiscoverScreen({
   // Add Person Modal state
   const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
 
-  // DEV: Screenshot automation trigger
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerAddPerson) {
-        setIsAddPersonModalVisible(true);
-        useScreenshotStore.getState().setTrigger('triggerAddPerson', false);
-      }
-    });
-    return unsub;
-  }, []);
   const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
   const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
   const deletingAnimRef = useRef(new Animated.Value(1)).current;

@@ -102,22 +102,6 @@ export default function HomePage({
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
 
-  // DEV: Screenshot automation triggers
-  useEffect(() => {
-    if (!__DEV__) return;
-    const { useScreenshotStore } = require('../store/screenshotStore');
-    const unsub = useScreenshotStore.subscribe((state: any) => {
-      if (state.triggerNotificationsModal) {
-        setShowNotificationsModal(true);
-        useScreenshotStore.getState().setTrigger('triggerNotificationsModal', false);
-      }
-      if (state.triggerFriendsModal) {
-        setShowFriendRequestsModal(true);
-        useScreenshotStore.getState().setTrigger('triggerFriendsModal', false);
-      }
-    });
-    return unsub;
-  }, []);
   const [inviteModalTrigger, setInviteModalTrigger] = useState<{
     sessionId: string;
     nonce: number;
