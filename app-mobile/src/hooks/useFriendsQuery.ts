@@ -24,6 +24,7 @@ export function useFriendsList(userId: string | undefined) {
     queryFn: () => friendsService.fetchFriends(userId!),
     enabled: !!userId,
     staleTime: Infinity,
+    refetchOnWindowFocus: "always",
   });
 }
 
@@ -36,6 +37,7 @@ export function useFriendRequests(userId: string | undefined) {
     queryFn: () => friendsService.fetchFriendRequests(userId!),
     enabled: !!userId,
     staleTime: Infinity,
+    refetchOnWindowFocus: "always",
   });
 }
 
@@ -48,6 +50,7 @@ export function useBlockedUsers(userId: string | undefined, enabled = true) {
     queryFn: () => friendsService.fetchBlockedUsers(),
     enabled: !!userId && enabled,
     staleTime: Infinity,
+    refetchOnWindowFocus: "always",
   });
 }
 

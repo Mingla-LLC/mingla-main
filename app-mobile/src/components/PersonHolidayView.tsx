@@ -17,6 +17,7 @@ import {
 } from "../types/holidayTypes";
 import { STANDARD_HOLIDAYS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 import { s } from "../utils/responsive";
+import { getCustomDayDaysAway } from "../utils/customDayUtils";
 import BirthdayHero from "./BirthdayHero";
 import CustomDayHero from "./CustomDayHero";
 import HolidayRow from "./HolidayRow";
@@ -93,20 +94,6 @@ function getHolidayIcon(holidayId: string): string {
     new_years_eve: "wine-outline",
   };
   return icons[holidayId] || "calendar-outline";
-}
-
-function getCustomHolidayDaysAway(month: number, day: number): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-  // month is 1-based in custom holidays, Date uses 0-based
-  let next = new Date(thisYear, month - 1, day);
-  next.setHours(0, 0, 0, 0);
-  if (next < today) {
-    next = new Date(thisYear + 1, month - 1, day);
-    next.setHours(0, 0, 0, 0);
-  }
-  return Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
@@ -249,7 +236,7 @@ export default function PersonHolidayView({
     return customHolidays
       .map((ch) => ({
         ...ch,
-        daysAway: getCustomHolidayDaysAway(ch.month, ch.day),
+        daysAway: getCustomDayDaysAway(ch.month, ch.day),
       }))
       .sort((a, b) => a.daysAway - b.daysAway);
   }, [customHolidays]);
@@ -269,7 +256,7 @@ export default function PersonHolidayView({
         id: ch.id,
         name: ch.name,
         date: new Date(new Date().getFullYear(), ch.month - 1, ch.day),
-        daysAway: getCustomHolidayDaysAway(ch.month, ch.day),
+        daysAway: getCustomDayDaysAway(ch.month, ch.day),
         icon: "star-outline" as string,
         categorySlugs: ch.categories ?? [],
         isCustom: true as const,

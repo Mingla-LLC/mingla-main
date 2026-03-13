@@ -19,48 +19,12 @@ import { PriceTierSlug } from "../constants/priceTiers";
 import { usePersonHeroCards } from "../hooks/usePersonHeroCards";
 import { useShuffleCards } from "../hooks/useShuffleCards";
 import { useCustomDayAiSummary } from "../hooks/useCustomDayAiSummary";
+import { getCustomDayDaysAway, getCommemorationYear, formatCustomDayDate } from "../utils/customDayUtils";
 import { DEFAULT_PERSON_SECTIONS, INTENT_CATEGORY_MAP } from "../constants/holidays";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
 const SKELETON_COUNT = 3;
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getCustomDayDaysAway(month: number, day: number): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-  let next = new Date(thisYear, month - 1, day);
-  next.setHours(0, 0, 0, 0);
-  if (next < today) {
-    next = new Date(thisYear + 1, month - 1, day);
-    next.setHours(0, 0, 0, 0);
-  }
-  return Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function getCommemorationYear(originalYear: number, month: number, day: number): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-  const thisYearDate = new Date(thisYear, month - 1, day);
-  thisYearDate.setHours(0, 0, 0, 0);
-  let year = thisYear - originalYear;
-  if (thisYearDate < today) {
-    year = thisYear + 1 - originalYear;
-  }
-  return year;
-}
-
-function formatCustomDayDate(month: number, day: number): string {
-  return `${MONTHS[month - 1]} ${day}`;
-}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -189,7 +153,7 @@ const CustomDayHero: React.FC<CustomDayHeroProps> = ({
   return (
     <View
       style={styles.container}
-      accessibilityLabel={`${person.name}'s ${customDay.name} in ${daysAway} days`}
+      accessibilityLabel={`${person.name}'s ${customDay.name}${isToday ? " is today" : ` in ${daysAway} ${daysAway === 1 ? "day" : "days"}`}`}
     >
       {/* ── Info section ── */}
       <View style={styles.infoRow}>

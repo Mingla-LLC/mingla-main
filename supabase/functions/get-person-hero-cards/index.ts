@@ -63,11 +63,13 @@ function derivePriceTier(
 
 /**
  * Maps a raw card_pool JSONB row (snake_case) to the Card interface (camelCase).
+ * @param raw           The JSONB blob from to_jsonb(cp.*)
+ * @param rowCardType   The standalone card_type TEXT column from the RPC row
  */
-function mapPoolCardToCard(raw: Record<string, unknown>): Card {
+function mapPoolCardToCard(raw: Record<string, unknown>, rowCardType?: string): Card {
   const stopsArr = raw.stops;
   const stopsCount = Array.isArray(stopsArr) ? stopsArr.length : 0;
-  const cardType = (raw.card_type as string) ?? "single";
+  const cardType = rowCardType ?? (raw.card_type as string) ?? "single";
 
   return {
     id: (raw.id as string) ?? "",
@@ -238,9 +240,13 @@ serve(async (req: Request) => {
     // --- Map rows to Card[] ---
     const rows = rpcRows ?? [];
     let cards: Card[] = rows.map((row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
-      mapPoolCardToCard(row.card),
+      mapPoolCardToCard(row.card, row.card_type),
     );
     const totalAvailable = rows.length > 0 ? Number(rows[0].total_available) : 0;
+
+    console.log(
+      `[get-person-hero-cards] Mapped ${cards.length} cards — types: [${cards.map(c => c.cardType).join(", ")}]`,
+    );
 
     // --- Gap-fill if < 6 cards ---
     if (cards.length < 6) {
@@ -294,7 +300,10 @@ serve(async (req: Request) => {
             if (rpcRows2 && rpcRows2.length > cards.length) {
               cards = rpcRows2.map(
                 (row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
-                  mapPoolCardToCard(row.card),
+                  mapPoolCardToCard(row.card, row.card_type),
+              );
+              console.log(
+                `[get-person-hero-cards] Re-mapped after gap-fill: ${cards.length} cards — types: [${cards.map(c => c.cardType).join(", ")}]`,
               );
             }
           }
