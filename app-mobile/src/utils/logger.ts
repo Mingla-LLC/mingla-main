@@ -61,6 +61,31 @@ export const logger = {
     logAndCrumb('SUPABASE', 'action', message, data);
   },
 
+  /** Log Zustand store state changes — called by the devLogger middleware. */
+  store(action: string, data?: Record<string, unknown>) {
+    logAndCrumb('STORE', 'action', action, data);
+  },
+
+  /** Log edge function invocations — called by trackedInvoke wrapper. */
+  edge(message: string, data?: Record<string, unknown>) {
+    logAndCrumb('EDGE', 'network', message, data);
+  },
+
+  /** Log Supabase Realtime channel events. */
+  realtime(message: string, data?: Record<string, unknown>) {
+    logAndCrumb('REALTIME', 'network', message, data);
+  },
+
+  /** Log OneSignal push notification events. */
+  push(message: string, data?: Record<string, unknown>) {
+    logAndCrumb('PUSH', 'action', message, data);
+  },
+
+  /** Log mutation start/success/error — called by QueryClient mutation cache. */
+  mutation(message: string, data?: Record<string, unknown>) {
+    logAndCrumb('MUTATION', 'mutation', message, data);
+  },
+
   render(message: string, data?: Record<string, unknown>) {
     // Render logs are high-frequency — log to console but do NOT record breadcrumbs
     // to avoid flooding the 30-entry buffer with noise.

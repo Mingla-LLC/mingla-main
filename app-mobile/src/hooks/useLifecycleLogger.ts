@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { AppState, AppStateStatus } from 'react-native'
-import { breadcrumbs } from '../utils/breadcrumbs'
+import { AppState, Keyboard, Platform } from 'react-native'
+import type { AppStateStatus, KeyboardEvent } from 'react-native'
+import { logger } from '../utils/logger'
 
 // Dynamic require to match existing codebase pattern (see networkMonitor.ts).
 // NetInfo is not a guaranteed dependency — gracefully degrade if missing.
@@ -12,28 +13,53 @@ try {
 }
 
 /**
- * Call once in the root app component (app/index.tsx).
- * Automatically logs:
+ * Logs all app lifecycle events to Metro terminal.
+ * Call once at the app root level (e.g., inside AppStateManager or app/index.tsx).
+ *
+ * Tracks:
  * - App state transitions (active <-> background <-> inactive)
- * - Network connectivity changes (connected <-> disconnected, type changes)
+ * - Keyboard show/hide with height
+ * - Memory warnings (iOS only)
+ * - Network connectivity changes (if @react-native-community/netinfo is available)
  */
-export function useLifecycleLogger() {
+export function useLifecycleLogger(): void {
   // --- App State ---
   const prevAppState = useRef<AppStateStatus>(AppState.currentState)
 
   useEffect(() => {
     if (!__DEV__) return
 
-    const appSub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      const prev = prevAppState.current
-      if (prev !== next) {
-        breadcrumbs.add('lifecycle', `${prev} → ${next}`, { from: prev, to: next })
-        console.log(`[LIFECYCLE] ${prev} → ${next}`)
-        prevAppState.current = next
-      }
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      logger.lifecycle(`appState: ${prevAppState.current} \u2192 ${nextState}`)
+      prevAppState.current = nextState
     })
 
-    return () => appSub.remove()
+    // --- Keyboard events ---
+    const keyboardShowEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const keyboardHideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+
+    const kbShowSub = Keyboard.addListener(keyboardShowEvent, (e: KeyboardEvent) => {
+      logger.lifecycle('keyboard: show', { height: e.endCoordinates.height })
+    })
+    const kbHideSub = Keyboard.addListener(keyboardHideEvent, () => {
+      logger.lifecycle('keyboard: hide')
+    })
+
+    // --- Memory warning (iOS only) ---
+    const memorySub = Platform.OS === 'ios'
+      ? AppState.addEventListener('memoryWarning', () => {
+          logger.lifecycle('\u26a0 MEMORY WARNING')
+        })
+      : null
+
+    logger.lifecycle('useLifecycleLogger mounted \u2014 tracking appState, keyboard, memory')
+
+    return () => {
+      appStateSub.remove()
+      kbShowSub.remove()
+      kbHideSub.remove()
+      memorySub?.remove()
+    }
   }, [])
 
   // --- Network ---
@@ -48,13 +74,10 @@ export function useLifecycleLogger() {
       unsubscribe = NetInfo.addEventListener((state: any) => {
         const connected: boolean = state.isConnected ?? true
         if (prevConnected.current !== null && prevConnected.current !== connected) {
-          breadcrumbs.add('network', `connected=${connected}`, {
+          logger.network(`connected=${String(prevConnected.current)} \u2192 connected=${String(connected)}`, {
             type: state.type,
             isInternetReachable: state.isInternetReachable,
           })
-          console.log(
-            `[NETWORK] connected=${String(prevConnected.current)} → connected=${String(connected)} | type=${state.type}`
-          )
         }
         prevConnected.current = connected
       })

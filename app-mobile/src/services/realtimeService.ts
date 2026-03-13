@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { CollaborationSession, Board, Save } from "../types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "../utils/logger";
 
 // Offline action queue item
 interface QueuedAction {
@@ -66,6 +67,8 @@ export class RealtimeService {
       return this.channels.get(channelName);
     }
 
+    if (__DEV__) logger.realtime(`subscribing to channel: ${channelName}`);
+
     const channel = supabase
       .channel(channelName)
       .on(
@@ -77,6 +80,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT session_participants`, { new: payload.new });
           callbacks.onParticipantJoined?.(payload.new);
         }
       )
@@ -89,6 +93,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | DELETE session_participants`, { old: payload.old });
           callbacks.onParticipantLeft?.(payload.old);
         }
       )
@@ -101,10 +106,12 @@ export class RealtimeService {
           filter: `id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE collaboration_sessions`);
           callbacks.onSessionUpdated?.(payload.new as CollaborationSession);
         }
       )
       .on("broadcast", { event: "message" }, (payload) => {
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast message`);
         callbacks.onMessage?.(payload);
       })
       .subscribe();
@@ -130,6 +137,8 @@ export class RealtimeService {
       return this.channels.get(channelName);
     }
 
+    if (__DEV__) logger.realtime(`subscribing to channel: ${channelName}`);
+
     const channel = supabase
       .channel(channelName)
       .on(
@@ -141,6 +150,7 @@ export class RealtimeService {
           filter: `id=eq.${boardId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${boardId} | UPDATE boards`);
           callbacks.onBoardUpdated?.(payload.new as Board);
         }
       )
@@ -153,6 +163,7 @@ export class RealtimeService {
           filter: `board_id=eq.${boardId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${boardId} | INSERT board_collaborators`, { new: payload.new });
           callbacks.onCollaboratorJoined?.(payload.new);
         }
       )
@@ -165,13 +176,16 @@ export class RealtimeService {
           filter: `board_id=eq.${boardId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${boardId} | DELETE board_collaborators`, { old: payload.old });
           callbacks.onCollaboratorLeft?.(payload.old);
         }
       )
       .on("broadcast", { event: "experience_added" }, (payload) => {
+        if (__DEV__) logger.realtime(`${boardId} | broadcast experience_added`);
         callbacks.onExperienceAdded?.(payload);
       })
       .on("broadcast", { event: "experience_removed" }, (payload) => {
+        if (__DEV__) logger.realtime(`${boardId} | broadcast experience_removed`);
         callbacks.onExperienceRemoved?.(payload.experienceId);
       })
       .subscribe();
@@ -238,6 +252,7 @@ export class RealtimeService {
   unsubscribe(channelName: string) {
     const channel = this.channels.get(channelName);
     if (channel) {
+      if (__DEV__) logger.realtime(`unsubscribing from channel: ${channelName}`);
       supabase.removeChannel(channel);
       this.channels.delete(channelName);
       this.boardSessionCallbackSets.delete(channelName);
@@ -246,6 +261,7 @@ export class RealtimeService {
 
   // Unsubscribe from all channels
   unsubscribeAll() {
+    if (__DEV__) logger.realtime(`unsubscribing from all channels (${this.channels.size})`);
     this.channels.forEach((channel, channelName) => {
       supabase.removeChannel(channel);
     });
@@ -284,6 +300,8 @@ export class RealtimeService {
       return this.channels.get(channelName);
     }
 
+    if (__DEV__) logger.realtime(`subscribing to channel: ${channelName}`);
+
     // Helper: dispatch to ALL registered callback sets for this channel
     const dispatch = <K extends keyof BoardSessionCallbacks>(
       key: K,
@@ -308,6 +326,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_saved_cards`, { saved_by: payload.new.saved_by });
           dispatch('onCardSaved', payload.new, payload.new.saved_by);
         }
       )
@@ -321,6 +340,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_votes`, { vote_type: payload.new.vote_type });
           if (payload.new.saved_card_id) {
             dispatch('onCardVoted',
               payload.new.saved_card_id,
@@ -339,6 +359,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE board_votes`, { vote_type: payload.new.vote_type });
           if (payload.new.saved_card_id) {
             dispatch('onCardVoted',
               payload.new.saved_card_id,
@@ -358,6 +379,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_card_rsvps`, { rsvp_status: payload.new.rsvp_status });
           dispatch('onCardRSVP',
             payload.new.saved_card_id,
             payload.new.user_id,
@@ -374,6 +396,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE board_card_rsvps`, { rsvp_status: payload.new.rsvp_status });
           dispatch('onCardRSVP',
             payload.new.saved_card_id,
             payload.new.user_id,
@@ -391,6 +414,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_messages`);
           dispatch('onMessage', payload.new);
         }
       )
@@ -404,6 +428,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_card_messages`, { saved_card_id: payload.new.saved_card_id });
           dispatch('onCardMessage', payload.new.saved_card_id, payload.new);
         }
       )
@@ -417,6 +442,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE board_participant_presence`, { user_id: payload.new.user_id, is_online: payload.new.is_online });
           dispatch('onPresenceUpdate',
             payload.new.user_id,
             payload.new.is_online,
@@ -426,9 +452,11 @@ export class RealtimeService {
       )
       // Typing indicators via broadcast
       .on("broadcast", { event: "typing_start" }, (payload) => {
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_start`, { userId: payload.userId });
         dispatch('onTypingStart', payload.userId, payload.savedCardId);
       })
       .on("broadcast", { event: "typing_stop" }, (payload) => {
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_stop`, { userId: payload.userId });
         dispatch('onTypingStop', payload.userId, payload.savedCardId);
       })
       // Participants
@@ -441,6 +469,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT session_participants`, { new: payload.new });
           dispatch('onParticipantJoined', payload.new);
         }
       )
@@ -453,6 +482,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | DELETE session_participants`, { old: payload.old });
           dispatch('onParticipantLeft', payload.old);
         }
       )
@@ -466,6 +496,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | * board_session_preferences`);
           dispatch('onPreferencesChanged', payload.new as any, payload.old as any);
         }
       )
@@ -482,6 +513,7 @@ export class RealtimeService {
           const newRow = payload.new as any;
           const oldRow = payload.old as any;
           if (newRow.is_locked === true && oldRow?.is_locked !== true) {
+            if (__DEV__) logger.realtime(`${sessionId} | card locked`, { card_id: newRow.id });
             dispatch('onCardLocked', newRow.id, newRow.locked_at);
           }
         }
@@ -496,6 +528,7 @@ export class RealtimeService {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT session_decks`);
           dispatch('onDeckRegenerated', payload.new);
         }
       )
@@ -509,6 +542,7 @@ export class RealtimeService {
           filter: `id=eq.${sessionId}`,
         },
         (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE collaboration_sessions`);
           const newSession = payload.new as any;
           dispatch('onSessionUpdated', newSession);
         }

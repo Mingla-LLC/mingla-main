@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, trackedInvoke } from './supabase';
 import { unifiedCardToRecommendation } from './deckService';
 import { curatedToRecommendation } from '../utils/cardConverters';
 import { Recommendation } from '../types/recommendation';
@@ -18,7 +18,7 @@ export async function fetchSessionDeck(
   sessionId: string,
   batchSeed: number = 0
 ): Promise<SessionDeckResponse> {
-  const { data, error } = await supabase.functions.invoke('generate-session-deck', {
+  const { data, error } = await trackedInvoke('generate-session-deck', {
     body: { sessionId, batchSeed },
   });
 

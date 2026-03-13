@@ -10,7 +10,7 @@
  * Performance: 1 HTTP call + 0-N curated calls, down from 11+ HTTP calls.
  * Latency: <500ms from pool, <2s from Google API cold start.
  */
-import { supabase } from './supabase';
+import { supabase, trackedInvoke } from './supabase';
 import { curatedExperiencesService } from './curatedExperiencesService';
 import {
   curatedToRecommendation,
@@ -248,7 +248,7 @@ class DeckService {
           });
 
           const { data, error } = await Promise.race([
-            supabase.functions.invoke('discover-cards', {
+            trackedInvoke('discover-cards', {
               body: {
                 categories: categoryNames,
                 location: params.location,
@@ -432,7 +432,7 @@ class DeckService {
       });
       warmPromises.push(
         Promise.race([
-          supabase.functions.invoke('discover-cards', {
+          trackedInvoke('discover-cards', {
             body: {
               categories: categoryNames,
               location: params.location,

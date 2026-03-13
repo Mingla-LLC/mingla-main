@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, trackedInvoke } from './supabase';
 import { priceTierFromAmount } from '../constants/priceTiers';
 
 export interface Experience {
@@ -417,7 +417,7 @@ export class ExperiencesService {
     location?: { lat: number; lng: number }
   ): Promise<Experience[]> {
     try {
-      const { data, error } = await supabase.functions.invoke('recommendations-enhanced', {
+      const { data, error } = await trackedInvoke('recommendations-enhanced', {
         body: {
           user_id: userId,
           preferences,

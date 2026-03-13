@@ -1,4 +1,5 @@
 import { OneSignal, LogLevel } from 'react-native-onesignal'
+import { logger } from '../utils/logger'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -30,13 +31,13 @@ let _initAttempts = 0
  */
 export function initializeOneSignal(): void {
   if (_initialized) return
-  console.log('[OneSignal] initializeOneSignal() called')
+  if (__DEV__) logger.push('initializeOneSignal() called')
   try {
     OneSignal.Debug.setLogLevel(LogLevel.Verbose)
     OneSignal.initialize(ONESIGNAL_APP_ID)
     _initialized = true
     _initAttempts = 0
-    console.log('[OneSignal] initialized')
+    if (__DEV__) logger.push('initialized')
   } catch (e) {
     _initAttempts++
     console.warn(`[OneSignal] Initialization failed (attempt ${_initAttempts}/${MAX_INIT_RETRIES}):`, e)
@@ -79,19 +80,19 @@ export async function loginAndSubscribe(userId: string): Promise<void> {
     // backend associates this device with the external_id, causing the
     // subscription to register as anonymous.
     await OneSignal.login(userId)
-    console.log('[OneSignal] login:', userId)
+    if (__DEV__) logger.push('login', { userId })
 
     // Step 2: Request OS-level notification permission
     // On Android 13+ this shows the runtime POST_NOTIFICATIONS dialog.
     // On older Android this is a no-op (permission granted at install).
     const granted = await OneSignal.Notifications.requestPermission(true)
-    console.log('[OneSignal] permission result:', granted)
+    if (__DEV__) logger.push('permission result', { granted })
 
     // Step 3: Opt in to OneSignal's push subscription.
     // Even if OS permission is denied, calling optIn is safe — OneSignal
     // will deliver once permission is later granted in system settings.
     await OneSignal.User.pushSubscription.optIn()
-    console.log('[OneSignal] subscription opted in')
+    if (__DEV__) logger.push('subscription opted in')
   } catch (e) {
     console.warn('[OneSignal] loginAndSubscribe failed:', e)
   }
@@ -105,7 +106,7 @@ export function logoutOneSignal(): void {
   if (!_initialized) return
   try {
     OneSignal.logout()
-    console.log('[OneSignal] logout')
+    if (__DEV__) logger.push('logout')
   } catch (e) {
     console.warn('[OneSignal] logout failed:', e)
   }
@@ -140,6 +141,13 @@ export function onForegroundNotification(
 
   const handler = (event: any) => {
     const data = (event.getNotification().additionalData ?? {}) as OneSignalNotificationData
+    if (__DEV__) {
+      logger.push('foreground received', {
+        type: data.type ?? '(unknown)',
+        title: event.getNotification().title ?? '(no title)',
+        data,
+      })
+    }
     callback(data, () => event.preventDefault())
   }
 
@@ -165,6 +173,12 @@ export function onNotificationClicked(
 
   const handler = (event: any) => {
     const data = (event.notification.additionalData ?? {}) as OneSignalNotificationData
+    if (__DEV__) {
+      logger.push('notification tapped', {
+        type: data.type ?? '(unknown)',
+        data,
+      })
+    }
     callback(data)
   }
 

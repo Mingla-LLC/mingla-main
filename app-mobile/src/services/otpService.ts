@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { trackedInvoke } from './supabase'
 import { extractFunctionError } from '../utils/edgeFunctionError'
 
 interface SendOtpResult {
@@ -16,7 +16,7 @@ interface VerifyOtpResult {
  * Send OTP to the given phone number via Twilio Verify (proxied through edge function).
  */
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
-  const { data, error } = await supabase.functions.invoke('send-otp', {
+  const { data, error } = await trackedInvoke('send-otp', {
     body: { phone },
   })
 
@@ -38,7 +38,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
  * Verify OTP code. On success, phone is saved to profiles.phone server-side.
  */
 export async function verifyOtp(phone: string, code: string): Promise<VerifyOtpResult> {
-  const { data, error } = await supabase.functions.invoke('verify-otp', {
+  const { data, error } = await trackedInvoke('verify-otp', {
     body: { phone, code },
   })
 

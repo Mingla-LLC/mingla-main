@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from '../utils/logger';
 
 export const supabaseUrl = 'https://gqnoajqerqhnvulmnyvv.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo';
@@ -65,3 +66,31 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     fetch: fetchWithTimeout,
   },
 });
+
+/**
+ * Drop-in replacement for supabase.functions.invoke() that logs the full
+ * request and response to Metro terminal in dev.
+ */
+export async function trackedInvoke<T = any>(
+  functionName: string,
+  options?: { body?: unknown; headers?: Record<string, string> }
+): Promise<{ data: T | null; error: any }> {
+  if (__DEV__) {
+    logger.edge(`\u2192 ${functionName}`, { body: options?.body ?? '(none)' });
+  }
+  const start = Date.now();
+  const result = await supabase.functions.invoke<T>(functionName, options as any);
+  if (__DEV__) {
+    const duration = Date.now() - start;
+    if (result.error) {
+      logger.edge(`\u2190 ${functionName} ERROR ${duration}ms`, {
+        error: result.error?.message ?? String(result.error),
+      });
+    } else {
+      logger.edge(`\u2190 ${functionName} OK ${duration}ms`, {
+        data: JSON.stringify(result.data)?.slice(0, 500) ?? '(null)',
+      });
+    }
+  }
+  return result;
+}

@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, trackedInvoke } from './supabase';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 
 interface GenerateCuratedParams {
@@ -46,7 +46,7 @@ class CuratedExperiencesService {
 
     try {
       const { data, error } = await Promise.race([
-        supabase.functions.invoke('generate-curated-experiences', { body }),
+        trackedInvoke('generate-curated-experiences', { body }),
         timeoutPromise,
       ]);
       if (error) throw error;
@@ -78,7 +78,7 @@ class CuratedExperiencesService {
       });
 
       await Promise.race([
-        supabase.functions.invoke('generate-curated-experiences', {
+        trackedInvoke('generate-curated-experiences', {
           body: {
             experienceType: params.experienceType,
             location: params.location,

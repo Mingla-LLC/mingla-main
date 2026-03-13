@@ -23,7 +23,7 @@ Mingla is a mobile app for planning social outings -- combining pool-first card 
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
 | SVG | react-native-svg |
-| Dev Telemetry | Breadcrumb ring buffer + TrackedTouchableOpacity (`__DEV__` only) |
+| Dev Telemetry | Full-firehose activity tracker with domain-tagged logging (`__DEV__` only) |
 
 ---
 
@@ -250,15 +250,20 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 
 ### Console Telemetry & Breadcrumb Trail (Dev Only)
 
-A `__DEV__`-only telemetry system that auto-logs every user interaction into a 30-entry ring buffer. When any error fires, the full breadcrumb trail dumps to the Metro console with timestamps and elapsed deltas.
+A `__DEV__`-only full-firehose activity tracker that logs every user interaction, state change, background process, network call, realtime event, push notification, and lifecycle event to the Metro terminal with color-coded domain prefixes. Every log line starts with a domain tag -- `[TAP]`, `[NAV]`, `[STORE]`, `[EDGE]`, `[REALTIME]`, `[PUSH]`, `[LIFECYCLE]`, `[QUERY]`, `[MUTATION]` -- so you can scan or search by category instantly. All logs also record breadcrumbs into a 30-entry ring buffer that dumps on errors.
 
-- **TrackedTouchableOpacity** -- Drop-in replacement for TouchableOpacity that auto-logs taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
-- **Breadcrumb ring buffer** -- Stores last 30 user actions (taps, navigations, mutations, lifecycle events) with `breadcrumbs.add()` / `breadcrumbs.dump()`
+- **TrackedTouchableOpacity / TrackedPressable** -- Drop-in replacements for TouchableOpacity and Pressable that auto-log taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
+- **Zustand devLogger middleware** -- Intercepts every `set()` call on the app store, computes a diff of changed keys (skipping functions), and logs `[STORE] set(key) | changed={...}` with summarized values. Zero-cost in production.
+- **trackedInvoke wrapper** -- Drop-in replacement for `supabase.functions.invoke()` that logs `[EDGE] → functionName` on call and `[EDGE] ← functionName OK/ERROR Nms` on response with full request/response bodies. Migrated in the 5 most active services.
+- **Realtime channel logging** -- Every `.on()` handler in `realtimeService.ts` logs `[REALTIME] channelId | eventType | payload`. Subscribe/unsubscribe lifecycle events are logged.
+- **Push notification logging** -- OneSignal login, permission, foreground receive, and notification tap events all log via `[PUSH]` domain.
+- **React Query global callbacks** -- QueryCache `onSuccess` logs `[QUERY] success key`, MutationCache `onMutate`/`onSuccess`/`onError` logs `[MUTATION] start/success/ERROR key`.
+- **Lifecycle hook** -- `useLifecycleLogger()` logs app foreground/background transitions, keyboard show/hide with height, memory warnings (iOS), and network connectivity changes.
+- **Breadcrumb ring buffer** -- Stores last 30 user actions with `breadcrumbs.add()` / `breadcrumbs.dump()`
 - **Auto-dump on errors** -- `logger.error()`, query/mutation failures, and ErrorBoundary catches all trigger breadcrumb dumps
 - **Screen transition logging** -- `useScreenLogger()` hook logs `[NAV] home -> discover` on every screen change
-- **Lifecycle logging** -- `useLifecycleLogger()` logs app foreground/background transitions and network connectivity changes
 - **Button tracking** -- The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
-- **Zero production overhead** -- All breadcrumb operations are gated behind `__DEV__`
+- **Zero production overhead** -- All logging is gated behind `__DEV__` with early returns on hot paths
 - **logger.render() excluded** -- Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
 
 ### Native UX
@@ -505,11 +510,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Date picker modal fix** -- Fixed iOS DateTimePicker rendering behind the ProposeDateTimeModal. Wrapped iOS spinners in dedicated `<Modal>` components with slide animation, backdrop dismiss, and Done/Cancel buttons. Fixed onChange handlers that were prematurely dismissing the picker on every spinner scroll.
-- **Scheduling error fix** -- Fixed card scheduling failing on physical iPhone for all card types. Root cause: `card_data` JSONB payload was receiving the entire `ExpandedCardData` object via spread, potentially including non-serializable `Date` objects and unnecessary fields. Fixed with allowlist-based sanitization in `CalendarService`. Added Date validation guard before `toISOString()`. Added diagnostic logging (DEV: payload shape before INSERT, structured error details on failure). DEV mode Alerts now surface actual Supabase error messages.
-- **Curated cards rendering pipeline fix** -- Fixed curated cards rendering as plain category cards in hero and holiday rows. Edge functions now pass full stop data (`stopsData`) through to mobile.
-- **Bulletproof Collaboration Invites** -- Fixed 11 defects across database atomicity, query consistency, notification gaps, realtime redundancy, and race conditions.
-- **Realtime Consolidation** -- Removed redundant realtime subscription from useSessionManagement. Reduced Supabase Realtime connection count.
+- **Comprehensive Dev Activity Tracker** -- Full-firehose `__DEV__`-only activity logging system. Added 5 new logger domains (STORE, EDGE, REALTIME, PUSH, MUTATION). Zustand devLogger middleware logs state diffs. `trackedInvoke` wrapper logs edge function calls with timing. Realtime channel events, push notifications, React Query lifecycle, keyboard/AppState/memory events all logged to Metro with domain tags.
+- **TrackedPressable component** -- New `Pressable`-based tracked component matching `TrackedTouchableOpacity` pattern, available for future use.
+- **trackedInvoke migration** -- 5 most active service files (deckService, curatedExperiencesService, experiencesService, sessionDeckService, otpService) migrated from `supabase.functions.invoke` to `trackedInvoke` for automatic edge function logging.
 
 ---
 

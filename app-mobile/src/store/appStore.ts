@@ -8,8 +8,60 @@ import {
   CollaborationInvite,
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
+import { logger } from "../utils/logger";
 
 const DECK_SCHEMA_VERSION = 3; // Bump this to invalidate stale persisted deck data
+
+// --- Dev activity logger middleware (zero-cost in production) ---
+// Uses `any` for the middleware wrapper types because Zustand's internal
+// StateCreator type includes middleware mutator arrays that are impossible
+// to type correctly from outside. This is dev-only infrastructure — the
+// runtime behavior is fully type-safe (it just wraps `set` calls).
+const devLoggerMiddleware = <T extends object>(
+  config: (set: any, get: any, api: any) => T
+) => (set: any, get: any, api: any): T => {
+  const loggedSet = (partial: any, replace?: boolean) => {
+    if (!__DEV__) {
+      set(partial, replace);
+      return;
+    }
+    const prev = get();
+    set(partial, replace);
+    const next = get();
+    const changed: Record<string, { from: unknown; to: unknown }> = {};
+    for (const key of Object.keys(next)) {
+      if (typeof next[key] === "function") continue; // skip action methods
+      if (prev[key] !== next[key]) {
+        changed[key] = {
+          from: summarize(prev[key]),
+          to: summarize(next[key]),
+        };
+      }
+    }
+    if (Object.keys(changed).length > 0) {
+      const actionName =
+        typeof partial === "function"
+          ? "(updater)"
+          : Object.keys(partial as object).join(", ");
+      logger.store(`set(${actionName})`, { changed });
+    }
+  };
+  return config(loggedSet, get, api);
+};
+
+/** Summarize a value for log output — avoid dumping huge arrays/objects. */
+function summarize(val: unknown): unknown {
+  if (val === null || val === undefined) return val;
+  if (typeof val === "string")
+    return val.length > 80 ? val.slice(0, 80) + "\u2026" : val;
+  if (typeof val === "number" || typeof val === "boolean") return val;
+  if (Array.isArray(val)) return `Array(${val.length})`;
+  if (typeof val === "object") {
+    const keys = Object.keys(val);
+    return `{${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", \u2026" : ""}}`;
+  }
+  return String(val);
+}
 
 export interface DeckBatch {
   batchSeed: number;
@@ -70,7 +122,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    devLoggerMiddleware<AppState>((set, get, _api) => ({
       // Initial state
       user: null,
       isAuthenticated: false,
@@ -116,8 +168,8 @@ export const useAppStore = create<AppState>()(
         set({ showAccountSettings }),
 
       // Deck card history actions
-      addDeckBatch: (batch) => set((state) => {
-        const exists = state.deckBatches.some(b => b.batchSeed === batch.batchSeed);
+      addDeckBatch: (batch) => set((state: AppState) => {
+        const exists = state.deckBatches.some((b: DeckBatch) => b.batchSeed === batch.batchSeed);
         if (exists) return state;
         // Cap at 3 batches — do not store beyond the limit
         if (state.deckBatches.length >= 3) return state;
@@ -152,7 +204,7 @@ export const useAppStore = create<AppState>()(
           deckPrefsHash: '',
           deckSchemaVersion: DECK_SCHEMA_VERSION,
         }),
-    }),
+    })),  // end of state definition + devLoggerMiddleware
     {
       name: "mingla-mobile-storage",
       storage: createJSONStorage(() => AsyncStorage),

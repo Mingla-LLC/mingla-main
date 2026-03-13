@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
+import { logger } from '../utils/logger';
 
 // Refetch stale queries when the app returns to the foreground.
 // React Query's focusManager doesn't work in React Native out of the box —
@@ -19,21 +20,37 @@ focusManager.setEventListener((handleFocus) => {
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
+    onSuccess: (data, query) => {
+      if (!__DEV__) return;
+      const key = Array.isArray(query.queryKey) ? query.queryKey.join('.') : String(query.queryKey);
+      logger.query(`success ${key}`, {
+        dataType: Array.isArray(data) ? `Array(${(data as unknown[]).length})` : typeof data,
+      });
+    },
     onError: (error, query) => {
       const key = Array.isArray(query.queryKey) ? query.queryKey.join('.') : String(query.queryKey);
-      const msg = `key="${key}" | ${error.name}: ${error.message}`;
-      console.error(`[QUERY_ERROR] ${msg}`, error);
+      // console.error for production log aggregators; logger.query for dev Metro output
+      console.error(`[QUERY] ERROR ${key} | ${error.name}: ${error.message}`);
+      if (__DEV__) logger.query(`ERROR ${key}`, { error: error.message });
       breadcrumbs.add('error', `Query failed: ${key} — ${error.message}`, { queryKey: key });
       breadcrumbs.dump(`QUERY_ERROR: ${key}`);
     },
   }),
   mutationCache: new MutationCache({
+    onMutate: (_variables, mutation) => {
+      if (!__DEV__) return;
+      const key = mutation.options.mutationKey
+        ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
+        : '(unnamed)';
+      logger.mutation(`start ${key}`);
+    },
     onError: (error, _variables, _context, mutation) => {
       const key = mutation.options.mutationKey
         ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
         : '(unnamed)';
-      const msg = `key="${key}" | ${error.name}: ${error.message}`;
-      console.error(`[MUTATION_ERROR] ${msg}`, error);
+      // console.error for production log aggregators; logger.mutation for dev Metro output
+      console.error(`[MUTATION] ERROR ${key} | ${error.name}: ${error.message}`);
+      if (__DEV__) logger.mutation(`ERROR ${key}`, { error: error.message });
       breadcrumbs.add('error', `Mutation failed: ${key} — ${error.message}`, { mutationKey: key });
       breadcrumbs.dump(`MUTATION_ERROR: ${key}`);
     },
@@ -42,8 +59,8 @@ export const queryClient = new QueryClient({
       const key = mutation.options.mutationKey
         ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
         : '(unnamed)';
+      logger.mutation(`success ${key}`);
       breadcrumbs.add('mutation', `Mutation succeeded: ${key}`, { mutationKey: key });
-      console.log(`[MUTATION_OK] key="${key}"`);
     },
   }),
   defaultOptions: {
