@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   View,
   Text,
@@ -47,6 +47,7 @@ import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
 import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { useFriends } from '../hooks/useFriends'
 import { processPersonAudio } from '../services/personAudioProcessingService'
 import { PulseDotLoader } from './ui/PulseDotLoader'
 
@@ -164,6 +165,21 @@ const OnboardingFlow = ({
 }: OnboardingFlowProps) => {
   const { user, profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
+
+  // ─── Friends (for incoming request UI in Step 5/friends) ───
+  const {
+    friendRequests,
+    acceptFriendRequest,
+    declineFriendRequest,
+    loadFriendRequests,
+  } = useFriends({ autoFetchBlockedUsers: false })
+
+  const incomingPendingRequests = useMemo(
+    () => (friendRequests || []).filter(
+      (req: any) => req.type === 'incoming' && req.status === 'pending'
+    ),
+    [friendRequests]
+  )
 
   // ─── State ───
   const [data, setData] = useState<OnboardingData>(initialData)
@@ -2440,6 +2456,15 @@ const OnboardingFlow = ({
             setData(prev => ({ ...prev, skippedFriends: true }))
             setSkippedFriends(true)
             goNext()
+          }}
+          incomingRequests={incomingPendingRequests}
+          onAcceptRequest={async (requestId: string) => {
+            await acceptFriendRequest(requestId)
+            await loadFriendRequests()
+          }}
+          onDeclineRequest={async (requestId: string) => {
+            await declineFriendRequest(requestId)
+            await loadFriendRequests()
           }}
         />
       )

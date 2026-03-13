@@ -3,8 +3,6 @@ import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  AppState,
-  AppStateStatus,
   StatusBar,
   StyleSheet,
   Text,
@@ -77,6 +75,7 @@ import { logger } from "../src/utils/logger";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
+import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -323,6 +322,29 @@ function AppContent() {
             { sessionId: data.sessionId }
           );
           break;
+        case "friend_request": {
+          const requestId = data.requestId as string | undefined;
+          const senderName = (data.senderUsername as string) || "Someone";
+          const senderId = data.senderId as string | undefined;
+
+          // Guard: skip if request ID is missing (malformed push payload)
+          if (!requestId) {
+            console.warn('[OneSignal] friend_request push missing requestId, skipping');
+            break;
+          }
+
+          // Deduplicate: mark as notified so the polling loop (line ~634) skips it
+          notifiedFriendRequestIdsRef.current.add(requestId);
+
+          inAppNotificationService.notifyFriendRequest(
+            senderName,
+            senderId,
+            undefined,   // avatar_url — not included in push payload
+            undefined,   // email — not included in push payload
+            requestId
+          );
+          break;
+        }
         default:
           console.log('[OneSignal] Unknown notification type:', data.type)
           return; // Don't navigate for unknown types
@@ -339,6 +361,7 @@ function AppContent() {
       collaboration_invite_received: "home",
       collaboration_invite_response: "home",
       collaboration_invite_sent: "home",
+      friend_request: "connections",
     };
 
     // Foreground: push arrives while app is open
@@ -391,16 +414,13 @@ function AppContent() {
   // Load all sessions (including pending invites) on mount
   useEffect(() => {
     if (user?.id) {
-      refreshAllSessions();
+      refreshAllSessions({ showLoading: true });
     }
   }, [user?.id]);
 
   // Debounce ref for Realtime-triggered refreshes.
   // Collapses rapid database events into a single refreshAllSessions() call.
   const realtimeRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Tracks previous AppState to detect background → active transitions.
-  const appStateRef = useRef<string>(AppState.currentState);
 
   // Realtime subscription: keep the collaboration pill bar live.
   // Subscribes to three tables that cover all pill state changes:
@@ -558,37 +578,13 @@ function AppContent() {
     catchUpCollabNotifications();
   }, [user?.id, catchUpCollabNotifications]);
 
-  // AppState foreground listener: single consolidated listener for all foreground tasks.
-  // Supabase Realtime does NOT replay events missed during a connection drop.
-  // When the app returns from background, this listener:
-  //   1. Refreshes all sessions (catches Realtime reconnection gaps)
-  //   2. Catches up collaboration invite notifications (missed pushes)
-  //   3. Updates appStateRef LAST (so both checks above read the pre-transition state)
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const subscription = AppState.addEventListener(
-      'change',
-      (nextState: AppStateStatus) => {
-        const wasBackground =
-          appStateRef.current === 'background' ||
-          appStateRef.current === 'inactive';
-        const isNowActive = nextState === 'active';
-
-        if (wasBackground && isNowActive) {
-          refreshAllSessions();
-          catchUpCollabNotifications();
-        }
-
-        // Update ref LAST so all checks above read the pre-transition state
-        appStateRef.current = nextState;
-      },
-    );
-
-    return () => {
-      subscription.remove();
-    };
-  }, [user?.id, catchUpCollabNotifications]);
+  // Centralized foreground resume: refreshes auth session, invalidates all critical
+  // React Query caches, and runs non-RQ refreshes (sessions + notifications).
+  // See useForegroundRefresh for the full list of invalidated query families.
+  useForegroundRefresh(user?.id, () => {
+    refreshAllSessions();
+    catchUpCollabNotifications();
+  });
 
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
@@ -796,7 +792,7 @@ function AppContent() {
   };
 
   // Helper function to refresh all sessions (active + pending)
-  const refreshAllSessions = async () => {
+  const refreshAllSessions = async (options?: { showLoading?: boolean }) => {
     if (!user?.id) {
       setIsLoadingBoards(false);
       return;
@@ -806,7 +802,12 @@ function AppContent() {
     // will find its generation still current when it finishes.
     const generation = ++refreshGenerationRef.current;
 
-    setIsLoadingBoards(true);
+    // Only show loading indicator on explicit request (e.g., initial mount,
+    // user-triggered actions). Foreground resume should NOT flash a loading
+    // state over cached data — cached pills remain visible while refreshing.
+    if (options?.showLoading) {
+      setIsLoadingBoards(true);
+    }
     try {
       // Fetch all session types in parallel for better performance
       const [activeBoards, createdResult, invitedResult] = await Promise.all([
@@ -1090,8 +1091,8 @@ function AppContent() {
       }
 
       // Refresh all sessions (active + pending)
-      await refreshAllSessions();
-      
+      await refreshAllSessions({ showLoading: true });
+
       // Show success toast
       const friendCount = selectedFriends.length;
       const message = friendCount > 0 
@@ -1321,7 +1322,7 @@ function AppContent() {
       }
 
       // Refresh all sessions
-      await refreshAllSessions();
+      await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${sessionName}" successfully!`);
 
       const inviteNotifications = inAppNotificationService
@@ -1397,7 +1398,7 @@ function AppContent() {
       }
 
       // Refresh all sessions
-      await refreshAllSessions();
+      await refreshAllSessions({ showLoading: true });
       toastManager.success('Invite declined.');
     } catch (error) {
       console.error('Error declining invite:', error);
@@ -1419,7 +1420,7 @@ function AppContent() {
       if (error) throw error;
       
       // Refresh all sessions
-      await refreshAllSessions();
+      await refreshAllSessions({ showLoading: true });
       toastManager.success('Invite cancelled.');
     } catch (error) {
       console.error('Error cancelling invite:', error);
@@ -1687,7 +1688,7 @@ function AppContent() {
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
             setCurrentPage("home");
-            refreshAllSessions();
+            refreshAllSessions({ showLoading: true });
           }}
         />
       </ErrorBoundary>
@@ -1759,11 +1760,12 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
-            onSessionStateChanged={refreshAllSessions}
+            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
+            onFriendAccepted={catchUpCollabNotifications}
           />
         );
       case "discover":
@@ -1818,7 +1820,7 @@ function AppContent() {
               console.log("Updating board session:", board);
             }}
             onCreateSession={async () => {
-              await refreshAllSessions();
+              await refreshAllSessions({ showLoading: true });
             }}
             onNavigateToBoard={(board: any, discussionTab?: string) => {
               setBoardViewSessionId(board.id || board);
@@ -1826,6 +1828,7 @@ function AppContent() {
             }}
             onUnreadCountChange={setTotalUnreadMessages}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
+            onFriendAccepted={catchUpCollabNotifications}
           />
         );
       case "likes":
@@ -1908,7 +1911,7 @@ function AppContent() {
                 }
 
                 // Refresh boards list (active + pending) to ensure consistency
-                await refreshAllSessions();
+                await refreshAllSessions({ showLoading: true });
 
                 // Refresh active session from database
                 const activeSession = await SessionService.getActiveSession(
@@ -2008,11 +2011,12 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
-            onSessionStateChanged={refreshAllSessions}
+            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
+            onFriendAccepted={catchUpCollabNotifications}
           />
         );
     }
@@ -2088,7 +2092,7 @@ function AppContent() {
                           console.log("Update board session:", updatedBoard)
                         }
                         onCreateSession={async () => {
-                          await refreshAllSessions();
+                          await refreshAllSessions({ showLoading: true });
                         }}
                         onNavigateToBoard={(
                           board: any,
@@ -2103,7 +2107,7 @@ function AppContent() {
                         availableFriends={[]}
                         onRefreshBoards={async () => {
                           // Refresh boards list (active + pending) after accepting invite
-                          await refreshAllSessions();
+                          await refreshAllSessions({ showLoading: true });
                         }}
                       />
 

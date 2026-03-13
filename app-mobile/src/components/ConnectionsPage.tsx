@@ -71,6 +71,7 @@ interface ConnectionsPageProps {
   friendsList?: any[];
   onUnreadCountChange?: (count: number) => void;
   onNavigateToFriendProfile?: (userId: string) => void;
+  onFriendAccepted?: () => void;
 }
 
 const CONNECTIONS_CACHE_VERSION = "v1";
@@ -94,6 +95,7 @@ export default function ConnectionsPageRefactored({
   onNavigateToBoard,
   onUnreadCountChange,
   onNavigateToFriendProfile,
+  onFriendAccepted,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const user = useAppStore((state) => state.user);
@@ -390,6 +392,8 @@ export default function ConnectionsPageRefactored({
       await acceptFriendRequest(requestId);
       await loadFriendRequests();
       await fetchFriends();
+      // Catch up on collaboration invites revealed by the friend acceptance trigger
+      onFriendAccepted?.();
     } catch (e) {
       console.error("Error accepting request:", e);
       Alert.alert("Error", "Failed to accept friend request.");

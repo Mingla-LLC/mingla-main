@@ -44,6 +44,7 @@ interface FriendsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMessageFriend: (friendUserId: string) => void;
+  onFriendAccepted?: () => void;
 }
 
 type TabKey = "friends" | "requests";
@@ -727,6 +728,7 @@ export default function FriendsModal({
   isOpen,
   onClose,
   onMessageFriend,
+  onFriendAccepted,
 }: FriendsModalProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
@@ -839,6 +841,9 @@ export default function FriendsModal({
           });
         }
 
+        // Catch up on collaboration invites revealed by the friend acceptance trigger
+        onFriendAccepted?.();
+
         setTimeout(() => {
           setProcessedRequests((prev) => {
             const next = { ...prev };
@@ -857,7 +862,7 @@ export default function FriendsModal({
         setActionLoading(false);
       }
     },
-    [acceptFriendRequest, incomingRequests]
+    [acceptFriendRequest, incomingRequests, onFriendAccepted]
   );
 
   const handleDeclineRequest = useCallback(

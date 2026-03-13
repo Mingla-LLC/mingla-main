@@ -62,6 +62,7 @@ interface HomePageProps {
   isCreatingSession?: boolean;
   onNotificationNavigate?: (notification: InAppNotification) => void;
   userId?: string;
+  onFriendAccepted?: () => void;
 }
 
 export default function HomePage({
@@ -94,6 +95,7 @@ export default function HomePage({
   isCreatingSession = false,
   onNotificationNavigate,
   userId,
+  onFriendAccepted,
 }: HomePageProps) {
   useScreenLogger('home');
   // Keep social query caches fresh via realtime even while on the Home tab
@@ -169,6 +171,8 @@ export default function HomePage({
       if (requestId) {
         await acceptFriendRequest(requestId);
       }
+      // Catch up on collaboration invites revealed by the friend acceptance trigger
+      onFriendAccepted?.();
     } catch (error) {
       console.error("Error accepting friend request:", error);
     } finally {
@@ -437,6 +441,7 @@ export default function HomePage({
           <FriendsModal
             isOpen={showFriendRequestsModal}
             onClose={() => setShowFriendRequestsModal(false)}
+            onFriendAccepted={onFriendAccepted}
             onMessageFriend={(_friendUserId: string) => {
               // Close the modal — the user can navigate to Chats tab
               // to continue the conversation. Cross-tab navigation

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "../services/supabase";
+import { supabase, trackedInvoke } from "../services/supabase";
 import { blockService } from "../services/blockService";
 import { useAppStore } from "../store/appStore";
 import {
@@ -220,7 +220,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         // Notifications are side effects — DB write already succeeded.
         try {
           const { error: notifyError } =
-            await supabase.functions.invoke("send-friend-request-email", {
+            await trackedInvoke("send-friend-request-email", {
               body: {
                 senderId: user.id,
                 receiverId: receiverId,
@@ -289,7 +289,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         if (result.revealed_invite_ids && result.revealed_invite_ids.length > 0) {
           for (const invite of result.revealed_invite_ids) {
             try {
-              await supabase.functions.invoke('send-collaboration-invite', {
+              await trackedInvoke('send-collaboration-invite', {
                 body: {
                   inviterId: invite.inviter_id,
                   invitedUserId: invite.invited_user_id,

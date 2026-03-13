@@ -18,6 +18,7 @@ import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
 import { createPendingInvite } from '../../services/phoneLookupService'
 import { supabase } from '../../services/supabase'
 import { AddedFriend } from '../../types/onboarding'
+import { FriendRequest } from '../../services/friendsService'
 import { getDefaultCountryCode, getCountryByCode } from '../../constants/countries'
 import {
   colors,
@@ -35,6 +36,9 @@ interface OnboardingFriendsStepProps {
   onRemoveFriend: (phoneE164: string) => void
   onContinue: () => void
   onSkip: () => void
+  incomingRequests: FriendRequest[]
+  onAcceptRequest: (requestId: string) => Promise<void>
+  onDeclineRequest: (requestId: string) => Promise<void>
 }
 
 export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
@@ -45,10 +49,18 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
   onRemoveFriend,
   onContinue,
   onSkip,
+  incomingRequests,
+  onAcceptRequest,
+  onDeclineRequest,
 }) => {
   const [phoneDigits, setPhoneDigits] = useState('')
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode())
   const [actionLoading, setActionLoading] = useState(false)
+
+  // Track which request is currently being processed (accept/decline in-flight)
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null)
+  // Track visual feedback state per request after accept/decline completes
+  const [processedRequests, setProcessedRequests] = useState<Record<string, 'accepted' | 'declined'>>({})
 
   // Build E.164 from country + digits
   const countryData = getCountryByCode(phoneCountry)
@@ -132,6 +144,49 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     }
   }, [isPhoneValid, actionLoading, debouncedPhoneE164, userPhoneE164, phoneLookupResult, userId, addedFriends, onAddFriend])
 
+  const handleAccept = useCallback(async (requestId: string) => {
+    if (processingRequestId) return // prevent concurrent processing
+    setProcessingRequestId(requestId)
+    try {
+      await onAcceptRequest(requestId)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setProcessedRequests(prev => ({ ...prev, [requestId]: 'accepted' }))
+      // Remove from visual list after feedback delay
+      setTimeout(() => {
+        setProcessedRequests(prev => {
+          const next = { ...prev }
+          delete next[requestId]
+          return next
+        })
+      }, 800)
+    } catch {
+      Alert.alert('Something went wrong', "Couldn't process the request. Try again.")
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }, [processingRequestId, onAcceptRequest])
+
+  const handleDecline = useCallback(async (requestId: string) => {
+    if (processingRequestId) return
+    setProcessingRequestId(requestId)
+    try {
+      await onDeclineRequest(requestId)
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      setProcessedRequests(prev => ({ ...prev, [requestId]: 'declined' }))
+      setTimeout(() => {
+        setProcessedRequests(prev => {
+          const next = { ...prev }
+          delete next[requestId]
+          return next
+        })
+      }, 800)
+    } catch {
+      Alert.alert('Something went wrong', "Couldn't process the request. Try again.")
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }, [processingRequestId, onDeclineRequest])
+
   const getButtonLabel = (): string => {
     if (phoneLookupLoading) return 'Looking up...'
     if (!isPhoneValid) return 'Enter phone number'
@@ -146,12 +201,106 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
     debouncedPhoneE164 === userPhoneE164 ||
     addedFriends.some(f => f.phoneE164 === debouncedPhoneE164)
 
+  const visibleRequests = incomingRequests
+
   return (
     <View style={styles.container}>
       <Text style={styles.headline}>Add friends</Text>
       <Text style={styles.subtitle}>
         Find people you know on Mingla, or invite them to join.
       </Text>
+
+      {/* Incoming Friend Requests — only renders when there are requests */}
+      {visibleRequests.length > 0 && (
+        <View style={styles.incomingSection}>
+          <Text style={styles.incomingSectionLabel}>Friend Requests</Text>
+          {visibleRequests.map((request) => {
+            const status = processedRequests[request.id]
+            const isProcessing = processingRequestId === request.id
+            const senderName =
+              request.sender?.display_name ||
+              (request.sender?.first_name && request.sender?.last_name
+                ? `${request.sender.first_name} ${request.sender.last_name}`
+                : request.sender?.username) ||
+              'Someone'
+            const senderUsername = request.sender?.username
+            const initials = senderName
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2)
+
+            // Accepted feedback state
+            if (status === 'accepted') {
+              return (
+                <View key={request.id} style={[styles.requestCard, styles.requestCardAccepted]}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success?.[600] ?? '#059669'} />
+                  <Text style={styles.acceptedText}>Added</Text>
+                </View>
+              )
+            }
+
+            // Declined feedback state
+            if (status === 'declined') {
+              return (
+                <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
+                  <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                  <Text style={styles.declinedText}>Declined</Text>
+                </View>
+              )
+            }
+
+            return (
+              <View key={request.id} style={styles.requestCard}>
+                {/* Avatar */}
+                {request.sender?.avatar_url ? (
+                  <Image
+                    source={{ uri: request.sender.avatar_url }}
+                    style={styles.requestAvatar}
+                  />
+                ) : (
+                  <View style={styles.requestAvatarPlaceholder}>
+                    <Text style={styles.requestAvatarInitials}>{initials}</Text>
+                  </View>
+                )}
+
+                {/* Info */}
+                <View style={styles.requestInfo}>
+                  <Text style={styles.requestName} numberOfLines={1}>{senderName}</Text>
+                  {senderUsername && (
+                    <Text style={styles.requestUsername} numberOfLines={1}>@{senderUsername}</Text>
+                  )}
+                </View>
+
+                {/* Buttons */}
+                <View style={styles.requestButtons}>
+                  <TouchableOpacity
+                    style={styles.acceptButton}
+                    onPress={() => handleAccept(request.id)}
+                    disabled={!!processingRequestId}
+                    activeOpacity={0.7}
+                  >
+                    {isProcessing && processingRequestId === request.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.acceptButtonText}>Accept</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.declineButton}
+                    onPress={() => handleDecline(request.id)}
+                    disabled={!!processingRequestId}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.declineButtonText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )
+          })}
+        </View>
+      )}
 
       {/* Phone Input */}
       <View style={styles.phoneRow}>
@@ -273,6 +422,111 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     lineHeight: 22,
   },
+  // ─── Incoming Requests Section ───
+  incomingSection: {
+    marginBottom: spacing.lg,
+  },
+  incomingSectionLabel: {
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.gray[600],
+    marginBottom: spacing.sm,
+  },
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background?.primary ?? '#ffffff',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  requestCardAccepted: {
+    backgroundColor: colors.success?.[50] ?? '#f0fdf4',
+    borderColor: colors.success?.[200] ?? '#bbf7d0',
+    justifyContent: 'center',
+  },
+  requestCardDeclined: {
+    backgroundColor: colors.gray[50],
+    borderColor: colors.gray[200],
+    justifyContent: 'center',
+  },
+  acceptedText: {
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.success?.[600] ?? '#059669',
+  },
+  declinedText: {
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.gray[500],
+  },
+  requestAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  requestAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestAvatarInitials: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  requestInfo: {
+    flex: 1,
+  },
+  requestName: {
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
+    color: colors.text?.primary ?? colors.gray[900],
+  },
+  requestUsername: {
+    fontSize: typography.xs.fontSize,
+    color: colors.text?.tertiary ?? colors.gray[400],
+    marginTop: 1,
+  },
+  requestButtons: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  acceptButton: {
+    backgroundColor: colors.primary[500],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButtonText: {
+    color: '#ffffff',
+    fontSize: typography.xs.fontSize,
+    fontWeight: fontWeights.semibold as any,
+  },
+  declineButton: {
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  declineButtonText: {
+    color: colors.gray[600],
+    fontSize: typography.xs.fontSize,
+    fontWeight: fontWeights.semibold as any,
+  },
+  // ─── Existing Styles ───
   phoneRow: {
     marginBottom: spacing.md,
   },

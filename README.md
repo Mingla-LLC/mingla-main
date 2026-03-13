@@ -43,7 +43,7 @@ Mingla/
 │   │   │   ├── profile/               # ProfileHeroSection, InterestsSection, Toggle, SettingsRow, EditProfileSheet, EditBioSheet, EditInterestsSheet
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~60 React Query hooks + realtime hooks
+│   │   ├── hooks/                      # ~61 React Query hooks + realtime hooks
 │   │   ├── services/                   # ~74 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
@@ -89,7 +89,7 @@ The onboarding flow uses a 5-step state machine with sub-steps within each step.
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
 **Step 5 -- Social** -- friends, consent, collaboration session management, then choose a path:
-- **Friends** (OnboardingFriendsStep) -- Interactive phone input to add friends or invite non-users to the platform. No longer auto-skipped.
+- **Friends** (OnboardingFriendsStep) -- Interactive phone input to add friends or invite non-users to the platform. Incoming pending friend requests are displayed above the phone input with accept/decline buttons, haptic feedback, and visual feedback animations. Accepting a friend request triggers the DB trigger that reveals hidden collaboration invites. No longer auto-skipped.
 - **Consent** (OnboardingConsentStep) -- Interactive step with explicit data consent. No longer auto-skipped.
 - **Path A (Sync):** Select friends to sync with, record audio descriptions. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
 - **Path B (Add person):** Streamlined 4-step flow: Name, birthday, gender, then confirm. The confirmation step features warm personal copy, staggered entrance animations, and an "Add to my people" CTA. No audio recording -- cards are served instantly from the pool.
@@ -168,7 +168,7 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 
 - Phone invites via `send-phone-invite` edge function with Twilio SMS and basic friendship on signup
 - Rate limited to 10 invites per 24 hours
-- Push-to-in-app notification pipeline for friend requests and collaboration invites
+- Push-to-in-app notification pipeline for friend requests (with foreground `friend_request` push handling and deduplication against polling) and collaboration invites
 - Realtime subscriptions for `pending_invites`, `saved_people`, `messages`, `friends`, and `calendar_entries` tables
 - `lookup-phone` checks `friends` and `friend_requests` tables for friendship/pending status
 
@@ -240,7 +240,8 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - **Concurrent board creation protection:** DB-level partial unique index on `collaboration_sessions.board_id` (non-null values only) prevents duplicate boards. App-side optimistic locking (`.is('board_id', null)`) ensures only one accept creates the board; the loser cleans up its orphaned board immediately.
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
-- In-app notification catch-up mechanism: on foreground resume, pending invites are queried and notifications are created for any missed while the app was in background/killed, with deduplication via ref-tracked invite IDs
+- In-app notification catch-up mechanism: on foreground resume and after friend request acceptance, pending invites are queried and notifications are created for any missed while the app was in background/killed or newly revealed by the friend acceptance trigger, with deduplication via ref-tracked invite IDs
+- **Automatic foreground resume refresh:** Centralized `useForegroundRefresh` hook refreshes auth session and invalidates all critical React Query caches on background → active transition. 500ms debounce, no loading flash, expensive API queries excluded
 - **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
 
 ### Subscription System
@@ -510,9 +511,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Comprehensive Dev Activity Tracker** -- Full-firehose `__DEV__`-only activity logging system. Added 5 new logger domains (STORE, EDGE, REALTIME, PUSH, MUTATION). Zustand devLogger middleware logs state diffs. `trackedInvoke` wrapper logs edge function calls with timing. Realtime channel events, push notifications, React Query lifecycle, keyboard/AppState/memory events all logged to Metro with domain tags.
-- **TrackedPressable component** -- New `Pressable`-based tracked component matching `TrackedTouchableOpacity` pattern, available for future use.
-- **trackedInvoke migration** -- 5 most active service files (deckService, curatedExperiencesService, experiencesService, sessionDeckService, otpService) migrated from `supabase.functions.invoke` to `trackedInvoke` for automatic edge function logging.
+- **Onboarding Social Handoff** -- Incoming friend requests now display during onboarding Step 5/friends with accept/decline UI. Push handler processes `friend_request` type notifications with deduplication. `catchUpCollabNotifications()` fires after friend acceptance in all post-onboarding entry points (NotificationsModal, FriendsModal, ConnectionsPage). Edge function calls in `useFriends.ts` now use `trackedInvoke` for observability.
+- **Automatic Foreground Resume Refresh** -- Centralized `useForegroundRefresh` hook detects background → active transitions, validates/refreshes the Supabase auth session, then invalidates all critical React Query caches.
+- **Loading flash fix** -- `refreshAllSessions()` no longer sets `isLoadingBoards(true)` on foreground resume. Collaboration pills remain visible during background refresh.
 
 ---
 
