@@ -8,13 +8,7 @@ import { RecommendationCard, RecommendationsRequest } from '../types';
 import type { UserPreferences } from './experiencesService';
 import { supabase } from './supabase';
 
-// Import NetInfo with error handling
-let NetInfo: any = null;
-try {
-  NetInfo = require('@react-native-community/netinfo');
-} catch (error) {
-  console.warn('NetInfo not available, using fallback network detection');
-}
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 
 export interface OfflineData {
   recommendations: RecommendationCard[];
@@ -57,6 +51,7 @@ class OfflineService {
   private syncTimer: NodeJS.Timeout | null = null;
   private syncInProgress: boolean = false;
   private listeners: Array<(status: SyncStatus) => void> = [];
+  private netInfoUnsubscribe?: () => void;
 
   constructor(config?: Partial<OfflineConfig>) {
     this.config = { ...this.DEFAULT_CONFIG, ...config };
@@ -83,21 +78,14 @@ class OfflineService {
    * Set up network monitoring
    */
   private setupNetworkMonitoring(): void {
-    if (!NetInfo) {
-      console.warn('NetInfo not available, using fallback network detection');
-      // Set up a basic fallback that assumes online
-      this.isOnline = true;
-      return;
-    }
-
-    NetInfo.addEventListener((state: any) => {
+    this.netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       const wasOnline = this.isOnline;
-      this.isOnline = state.isConnected ?? false;
-      
+      this.isOnline = state.isConnected === true && state.isInternetReachable !== false;
+
       if (!wasOnline && this.isOnline) {
         this.syncOfflineData();
       }
-      
+
       this.notifyListeners();
     });
   }
@@ -588,6 +576,7 @@ class OfflineService {
    * Cleanup on service destruction
    */
   destroy(): void {
+    this.netInfoUnsubscribe?.();
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
       this.syncTimer = null;

@@ -1,7 +1,7 @@
 import { QueryClient, QueryCache, MutationCache, focusManager, onlineManager } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Network from 'expo-network';
+import NetInfo from '@react-native-community/netinfo';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
 
@@ -15,15 +15,16 @@ focusManager.setEventListener(() => {
   return () => {};
 });
 
-// Wire React Query's online detection to expo-network for React Native.
+// Wire React Query's online detection to NetInfo for React Native.
 // Without this, refetchOnReconnect:'always' never fires — the default uses
 // browser-only `window.addEventListener('online')` which doesn't exist in RN.
-// expo-network is a JS-only Expo module — no native rebuild required.
+// Uses isInternetReachable (not just isConnected) to detect captive portals
+// and dead routers where wifi is connected but there's no actual internet.
 onlineManager.setEventListener(setOnline => {
-  const sub = Network.addNetworkStateListener(state => {
-    setOnline(state.isConnected ?? true);
+  return NetInfo.addEventListener(state => {
+    const online = state.isConnected === true && state.isInternetReachable !== false;
+    setOnline(online);
   });
-  return () => sub.remove();
 });
 
 // ─── Centralized 401 Handler ─────────────────────────────────────────

@@ -1,12 +1,5 @@
 import { useEffect, useState } from 'react';
-
-// Import NetInfo with error handling
-let NetInfo: any = null;
-try {
-  NetInfo = require('@react-native-community/netinfo');
-} catch (error) {
-  console.warn('NetInfo not available, using fallback network detection');
-}
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 
 export interface NetworkState {
   isConnected: boolean;
@@ -25,13 +18,8 @@ export const useNetworkMonitor = () => {
   });
 
   useEffect(() => {
-    if (!NetInfo) {
-      // Fallback: assume connected if NetInfo not available
-      return;
-    }
-
     // Get initial state
-    NetInfo.fetch().then((state: any) => {
+    NetInfo.fetch().then((state: NetInfoState) => {
       setNetworkState({
         isConnected: state.isConnected ?? false,
         isInternetReachable: state.isInternetReachable ?? false,
@@ -40,7 +28,7 @@ export const useNetworkMonitor = () => {
     });
 
     // Subscribe to network state updates
-    const unsubscribe = NetInfo.addEventListener((state: any) => {
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       setNetworkState({
         isConnected: state.isConnected ?? false,
         isInternetReachable: state.isInternetReachable ?? false,
@@ -48,11 +36,7 @@ export const useNetworkMonitor = () => {
       });
     });
 
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    return () => unsubscribe();
   }, []);
 
   return networkState;
@@ -62,10 +46,6 @@ export const useNetworkMonitor = () => {
  * Check if device is online
  */
 export const isOnline = async (): Promise<boolean> => {
-  if (!NetInfo) {
-    // Fallback: assume online if NetInfo not available
-    return true;
-  }
   const state = await NetInfo.fetch();
   return state.isConnected ?? false;
 };

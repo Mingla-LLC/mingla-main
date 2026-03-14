@@ -186,6 +186,7 @@ serve(async (req: Request) => {
         `and(user_id.eq.${currentUserId},friend_user_id.eq.${linkedUserId}),and(user_id.eq.${linkedUserId},friend_user_id.eq.${currentUserId})`
       )
       .eq("status", "accepted")
+      .limit(1)
       .maybeSingle();
 
     if (friendError || !friendRow) {

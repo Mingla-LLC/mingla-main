@@ -23,6 +23,7 @@ Mingla is a mobile app for planning social outings -- combining pool-first card 
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
 | SVG | react-native-svg |
+| Network State | expo-network (React Query onlineManager integration) |
 | Dev Telemetry | Full-firehose activity tracker with domain-tagged logging (`__DEV__` only) |
 
 ---
@@ -128,10 +129,13 @@ Pairing replaces the manual Saved People system. Instead of recording voice desc
 
 **Pill States on Discover:**
 - `active` — Full color, tappable, shows PersonHolidayView with hero cards and holidays
+- `incoming_request` — Orange border + red notification dot (incoming pair request, tappable to accept/decline)
 - `pending_active` — Full opacity + "Pending" badge (Tier 1: friend, awaiting pair accept)
 - `greyed_waiting_friend` — 40% opacity (Tier 2: waiting for friend accept)
 - `greyed_waiting_pair` — 40% opacity (Tier 2: friend accepted, waiting for pair accept)
 - `greyed_waiting_signup` — 40% opacity (Tier 3: waiting for person to join Mingla)
+
+**IncomingPairRequestCard:** Tapping an incoming request pill opens a bottom sheet with sender avatar, name, "wants to pair with you" subtitle, Accept/Decline buttons, success/error states, and haptic feedback. Accept shows brief "You're paired!" state before closing. Decline closes immediately. Both paths invalidate React Query cache.
 
 **PairingInfoCard:** Tapping a greyed/pending pill shows a bottom sheet with status message + "Cancel Pair Request" button.
 
@@ -241,7 +245,12 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
 - In-app notification catch-up mechanism: on foreground resume and after friend request acceptance, pending invites are queried and notifications are created for any missed while the app was in background/killed or newly revealed by the friend acceptance trigger, with deduplication via ref-tracked invite IDs
-- **Industry-standard foreground recovery:** Centralized `useForegroundRefresh` hook is the single authority for resume-triggered query work. React Query's `focusManager` is explicitly disabled to prevent uncontrolled, auth-unvalidated refetches. On resume: auth session is validated with 8-second timeout, then all critical React Query caches are invalidated for background refresh. Short backgrounds (< 30 seconds) skip auth and query invalidation entirely. Cached data remains visible during refresh -- no spinner on resume when cached data exists. Network timeout is 12 seconds (industry standard), worst-case spinner capped at 25 seconds instead of permanent hang. Resume safety timeout re-arms on every background resume to cap spinner at 10 seconds.
+- **Industry-standard foreground recovery:** Centralized `useForegroundRefresh` hook is the single authority for resume-triggered query work. React Query's `focusManager` is explicitly disabled to prevent uncontrolled, auth-unvalidated refetches. On resume: auth session is validated with 8-second timeout, Realtime WebSocket is force-reconnected, then all critical React Query caches are invalidated for background refresh. Short backgrounds (< 30 seconds) skip auth, Realtime reconnection, and query invalidation entirely. Cached data remains visible during refresh -- no spinner on resume when cached data exists. Network timeout is 12 seconds (industry standard), worst-case spinner capped at 25 seconds instead of permanent hang. Resume safety timeout re-arms on every background resume to cap spinner at 10 seconds.
+- **Network-aware query refetching:** React Query's `onlineManager` is wired to `expo-network`, enabling automatic refetch of all stale queries within seconds of network recovery (airplane mode, subway, elevator). `refetchOnReconnect: 'always'` is active and functional.
+- **Centralized 401 handler:** Consecutive auth failures (JWT expired, invalid token) are tracked globally across all queries and mutations. After 3 consecutive 401s within a 30-second window, the app auto-signs-out to escape the "zombie authenticated" state and shows the login screen cleanly.
+- **Navigation state persistence:** The user's current page (Connections, Discover, Saved, Profile) is persisted to AsyncStorage. After process death, the app restores the user's last page instead of always resetting to Home. Board view and modal pages are excluded (complex dependent state).
+- **Deep link deferral:** When a deep link arrives while the user is unauthenticated, it is stored in AsyncStorage and processed after login + onboarding complete. Links older than 24 hours are discarded. OAuth callbacks always process immediately.
+- **Infinity-staleTime safety net:** Friends, friend requests, and blocked users queries use `staleTime: Infinity` with a 5-minute `refetchInterval` fallback, ensuring data refreshes even if Realtime channels silently disconnect.
 - **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
 
 ### Subscription System
@@ -522,11 +531,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Pairing Feature (replaces Saved People)** -- 3-tier pairing system: pair with friends (Tier 1), Mingla users via phone (Tier 2), or invite non-Mingla users (Tier 3). Chained friend request → pair request flow with DB triggers for automatic reveal and push notifications. Greyed-out pills with status info for pending pairings. Hero cards blend paired user's learned preferences with holiday categories.
-- **Database: 6 new migrations** -- pair_requests, pairings, pending_pair_invites tables + atomic accept RPC + data access policies + cleanup of person_audio_clips/person_experiences tables.
-- **Edge Functions: 2 new, 2 removed** -- Added send-pair-request (all 3 tiers) and notify-pair-request-visible. Removed process-person-audio and generate-person-experiences (replaced by real behavior data).
-- **Mobile: Full UI overhaul** -- PairRequestModal (friend picker + phone input), PairingInfoCard (status overlay), DiscoverScreen pill rendering (5 visual states), PersonHolidayView (pairedUserId-based), NotificationsModal (pair_request accept/decline).
-- **Realtime: pair_requests + pairings subscriptions** -- useSocialRealtime now subscribes to pair_requests and pairings tables for instant cache invalidation.
+- **Incoming Pair Request UI** -- Receiver-side UI for incoming pair requests on the Discover screen. Incoming requests render as pills with orange border + red notification dot. Tapping opens IncomingPairRequestCard bottom sheet with Accept/Decline buttons, success/error states, and haptic feedback. NotificationsModal accept/decline now also invalidates the pill bar cache.
+- **New mutation hooks:** `useAcceptPairRequest()` and `useDeclinePairRequest()` with named mutation keys and `["pairings"]` prefix cache invalidation.
+- **New component:** `IncomingPairRequestCard.tsx` -- bottom sheet for accepting/declining incoming pair requests.
+- **Files modified:** `usePairings.ts`, `DiscoverScreen.tsx`, `HomePage.tsx`.
+- **Zero breaking changes** -- all changes are additive. Existing pairing flows (send, cancel, unpair) unchanged.
 
 ---
 

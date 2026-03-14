@@ -2,15 +2,7 @@ import { useEffect, useRef } from 'react'
 import { AppState, Keyboard, Platform } from 'react-native'
 import type { AppStateStatus, KeyboardEvent } from 'react-native'
 import { logger } from '../utils/logger'
-
-// Dynamic require to match existing codebase pattern (see networkMonitor.ts).
-// NetInfo is not a guaranteed dependency — gracefully degrade if missing.
-let NetInfo: any = null
-try {
-  NetInfo = require('@react-native-community/netinfo')
-} catch {
-  // NetInfo not available — network logging will be silently skipped
-}
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo'
 
 /**
  * Logs all app lifecycle events to Metro terminal.
@@ -67,24 +59,18 @@ export function useLifecycleLogger(): void {
 
   useEffect(() => {
     if (!__DEV__) return
-    if (!NetInfo) return
 
-    let unsubscribe: (() => void) | undefined
-    try {
-      unsubscribe = NetInfo.addEventListener((state: any) => {
-        const connected: boolean = state.isConnected ?? true
-        if (prevConnected.current !== null && prevConnected.current !== connected) {
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      const connected = state.isConnected ?? true
+      if (prevConnected.current !== null && prevConnected.current !== connected) {
           logger.network(`connected=${String(prevConnected.current)} \u2192 connected=${String(connected)}`, {
             type: state.type,
             isInternetReachable: state.isInternetReachable,
           })
         }
         prevConnected.current = connected
-      })
-    } catch {
-      // NetInfo subscription failed — skip silently
-    }
+    })
 
-    return () => unsubscribe?.()
+    return () => unsubscribe()
   }, [])
 }
