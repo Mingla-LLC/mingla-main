@@ -13,6 +13,7 @@ import { deckService, DeckResponse } from '../services/deckService';
 import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
 import type { PriceTierSlug } from '../constants/priceTiers';
+import { normalizeDateTime } from '../utils/cardConverters';
 
 // Stable empty arrays to prevent new references on every render
 const EMPTY_CARDS: Recommendation[] = [];
@@ -64,6 +65,12 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const roundedLat = location ? Math.round(location.lat * 1000) / 1000 : null;
   const roundedLng = location ? Math.round(location.lng * 1000) / 1000 : null;
 
+  // Normalize datetimePref to prevent "Z" vs "+00:00" format differences from
+  // creating duplicate query keys (same moment, different string representation).
+  const normalizedDatetime = params.datetimePref
+    ? normalizeDateTime(params.datetimePref)
+    : undefined;
+
   const query = useQuery<DeckResponse>({
     queryKey: [
       'deck-cards',
@@ -77,7 +84,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       params.travelMode,
       params.travelConstraintType,
       params.travelConstraintValue,
-      params.datetimePref,
+      normalizedDatetime,
       params.dateOption ?? 'now',
       params.timeSlot ?? '',
       params.batchSeed,

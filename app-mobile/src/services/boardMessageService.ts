@@ -24,6 +24,13 @@ export interface BoardMessage {
     user_id: string;
     read_at: string;
   }>;
+  reactions?: Array<{
+    id: string;
+    message_id: string;
+    user_id: string;
+    emoji: string;
+    created_at: string;
+  }>;
 }
 
 export interface CardMessage {
@@ -114,21 +121,28 @@ export class BoardMessageService {
         profiles: profileMap.get(message.user_id) || null,
       }));
 
-      // Load read receipts for messages
+      // Load read receipts and reactions for messages
       const messageIds = messages.map(m => m.id);
       if (messageIds.length > 0) {
-        const { data: reads } = await supabase
-          .from('board_message_reads')
-          .select('message_id, user_id, read_at')
-          .in('message_id', messageIds);
+        const [{ data: reads }, { data: reactions }] = await Promise.all([
+          supabase
+            .from('board_message_reads')
+            .select('message_id, user_id, read_at')
+            .in('message_id', messageIds),
+          supabase
+            .from('board_message_reactions')
+            .select('id, message_id, user_id, emoji, created_at')
+            .in('message_id', messageIds),
+        ]);
 
-        // Attach read receipts to messages
-        const messagesWithReads = messagesWithProfiles.map(message => ({
+        // Attach read receipts and reactions to messages
+        const messagesWithExtras = messagesWithProfiles.map(message => ({
           ...message,
           read_by: reads?.filter(r => r.message_id === message.id) || [],
+          reactions: reactions?.filter(r => r.message_id === message.id) || [],
         }));
 
-        return { data: messagesWithReads as BoardMessage[], error: null };
+        return { data: messagesWithExtras as BoardMessage[], error: null };
       }
 
       return { data: messagesWithProfiles as BoardMessage[], error: null };
@@ -346,6 +360,43 @@ export class BoardMessageService {
     } catch (err: any) {
       console.error('Error marking all messages as read:', err);
       return { error: err };
+    }
+  }
+
+  /**
+   * Toggle an emoji reaction on a message (add if not present, remove if already added)
+   */
+  static async toggleReaction(
+    messageId: string,
+    userId: string,
+    emoji: string
+  ): Promise<{ added: boolean; error: any }> {
+    try {
+      const { data: existing } = await supabase
+        .from('board_message_reactions')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('board_message_reactions')
+          .delete()
+          .eq('id', existing.id);
+        if (error) throw error;
+        return { added: false, error: null };
+      } else {
+        const { error } = await supabase
+          .from('board_message_reactions')
+          .insert({ message_id: messageId, user_id: userId, emoji });
+        if (error) throw error;
+        return { added: true, error: null };
+      }
+    } catch (err: any) {
+      console.error('Error toggling reaction:', err);
+      return { added: false, error: err };
     }
   }
 

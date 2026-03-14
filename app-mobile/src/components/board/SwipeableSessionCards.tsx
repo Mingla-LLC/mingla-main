@@ -609,7 +609,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.35,
+    backgroundColor: "#D1D5DB",
   },
   rsvpProgressRow: {
     flexDirection: "row",

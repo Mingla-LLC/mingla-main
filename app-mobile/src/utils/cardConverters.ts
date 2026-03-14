@@ -8,6 +8,16 @@
 import type { Recommendation } from '../types/recommendation';
 import { getCategoryIcon } from './categoryUtils';
 
+/**
+ * Normalize a datetime string to ISO format ("Z" suffix).
+ * Returns the original string unchanged if parsing fails — prevents
+ * RangeError crashes from corrupt input reaching new Date().
+ */
+export function normalizeDateTime(dt: string): string {
+  const d = new Date(dt);
+  return Number.isNaN(d.getTime()) ? dt : d.toISOString();
+}
+
 export function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -144,7 +154,8 @@ export function computePrefsHash(prefs: any): string {
     prefs.travel_constraint_value ?? '',
     prefs.date_option ?? '',
     prefs.time_slot ?? '',
-    prefs.datetime_pref ?? '',
+    // Normalize to ISO string so "Z" vs "+00:00" don't produce different hashes
+    prefs.datetime_pref ? normalizeDateTime(prefs.datetime_pref) : '',
     prefs.custom_location ?? '',
     prefs.use_gps_location ?? '',
   ].join('|');

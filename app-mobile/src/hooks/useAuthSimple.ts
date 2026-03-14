@@ -73,9 +73,14 @@ export const useAuthSimple = () => {
 
         if (session?.user) {
           logger.auth('Session found', { userId: session.user.id, email: session.user.email });
-          if (mounted) setAuth(session.user as User);
+          if (mounted) {
+            setAuth(session.user as User);
+            // Clear loading immediately once we have a valid session.
+            // Profile loads in the background — no need to block navigation.
+            setLoading(false);
+          }
 
-          // Load profile
+          // Load profile (non-blocking — user sees home while this completes)
           try {
             const { data: profile, error: profileError } = await supabase
               .from("profiles")
@@ -177,7 +182,11 @@ export const useAuthSimple = () => {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
       if (session?.user) {
-        if (mounted) setAuth(session.user as User);
+        if (mounted) {
+          setAuth(session.user as User);
+          // Clear loading immediately — don't wait for profile fetch
+          setLoading(false);
+        }
 
         try {
           const { data: profile, error: profileError } = await supabase

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -390,6 +390,14 @@ export default function SessionViewModal({
     }
   }, [savedCards, loadCardMessageCounts]);
 
+  // Stable refs for realtime callbacks — prevents subscribe/unsubscribe thrashing
+  const loadCardMessageCountsRef = useRef(loadCardMessageCounts);
+  loadCardMessageCountsRef.current = loadCardMessageCounts;
+  const loadUnreadCountRef = useRef(loadUnreadCount);
+  loadUnreadCountRef.current = loadUnreadCount;
+  const loadParticipantsRef = useRef(loadParticipants);
+  loadParticipantsRef.current = loadParticipants;
+
   // Subscribe to real-time updates
   useEffect(() => {
     if (!visible || !sessionId) return;
@@ -400,21 +408,21 @@ export default function SessionViewModal({
           if (prev.some((c) => c.id === card.id)) return prev;
           return [card, ...prev];
         });
-        loadCardMessageCounts();
+        loadCardMessageCountsRef.current();
       },
       onMessage: () => {
-        loadUnreadCount();
-        loadCardMessageCounts();
+        loadUnreadCountRef.current();
+        loadCardMessageCountsRef.current();
       },
-      onCardMessage: () => loadCardMessageCounts(),
-      onParticipantJoined: () => loadParticipants(),
-      onParticipantLeft: () => loadParticipants(),
+      onCardMessage: () => loadCardMessageCountsRef.current(),
+      onParticipantJoined: () => loadParticipantsRef.current(),
+      onParticipantLeft: () => loadParticipantsRef.current(),
     });
 
     return () => {
       realtimeService.unsubscribe(`board_session:${sessionId}`);
     };
-  }, [visible, sessionId, loadSavedCards, loadUnreadCount, loadParticipants, loadCardMessageCounts]);
+  }, [visible, sessionId]);
 
   // Load account preferences on mount
   useEffect(() => {
@@ -882,7 +890,7 @@ export default function SessionViewModal({
 }
 
 // Modal height with proper centering - sits flush on bottom nav
-const MODAL_HEIGHT = SCREEN_HEIGHT * 0.88; // 88% of screen height for premium centered experience
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.95; // Near full height — preserves backdrop dismiss area
 const MODAL_MARGIN_BOTTOM = 0; // 0px margin for flush positioning on Android
 
 const styles = StyleSheet.create({

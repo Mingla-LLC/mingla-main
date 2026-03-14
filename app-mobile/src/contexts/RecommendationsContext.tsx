@@ -18,7 +18,7 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useDeckCards } from "../hooks/useDeckCards";
 import { deckService } from "../services/deckService";
-import { computePrefsHash } from "../utils/cardConverters";
+import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
 import type { DeckBatch } from "../store/appStore";
@@ -494,10 +494,22 @@ export const RecommendationsProvider: React.FC<
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
   useEffect(() => {
     setHasMoreCards(deckHasMore);
-    if (deckCards.length === 0 && !deckHasMore && isDeckBatchLoaded && !isDeckFetching) {
+    // Guard: never mark exhausted during transitions — the empty state is
+    // transient (old batch cleared, new batch not yet arrived). Only mark
+    // exhausted when ALL transition flags are false, meaning the deck has
+    // genuinely settled on 0 cards.
+    if (
+      deckCards.length === 0 &&
+      !deckHasMore &&
+      isDeckBatchLoaded &&
+      !isDeckFetching &&
+      !isBatchTransitioning &&
+      !isModeTransitioning &&
+      !isRefreshingAfterPrefChange
+    ) {
       setIsExhausted(true);
     }
-  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching]);
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isModeTransitioning, isRefreshingAfterPrefChange]);
 
   // Reset prefetchFiredRef when batchSeed changes
   useEffect(() => {
@@ -518,6 +530,7 @@ export const RecommendationsProvider: React.FC<
       previousBatchRef.current = [];
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
+      lastSyncedBatchIndexRef.current = -1;
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}`).catch(() => {});
@@ -598,6 +611,7 @@ export const RecommendationsProvider: React.FC<
     const newHash = computePrefsHash(userPrefs);
     if (newHash && newHash !== deckPrefsHash) {
       resetDeckHistory(newHash);
+      lastSyncedBatchIndexRef.current = -1;
     }
   }, [userPrefs, deckPrefsHash, resetDeckHistory]);
 
@@ -614,13 +628,24 @@ export const RecommendationsProvider: React.FC<
   }, [deckCards, isDeckBatchLoaded, batchSeed, activePills, addDeckBatch]);
 
   // ── Deck batch navigation: when navigating to a historical batch ─────
+  // Track the last index we synced to prevent re-fires when deckBatches
+  // array reference changes but the target batch hasn't actually changed.
+  const lastSyncedBatchIndexRef = useRef(-1);
+
   useEffect(() => {
     if (
       currentDeckBatchIndex >= 0 &&
       currentDeckBatchIndex < deckBatches.length
     ) {
       const batch = deckBatches[currentDeckBatchIndex];
-      if (batch.batchSeed !== batchSeed) {
+      // Only sync if the index actually changed AND the batchSeed differs.
+      // Without the index guard, every deckBatches array reference change
+      // (e.g. from addDeckBatch) re-fires this effect and bounces batchSeed.
+      if (
+        batch.batchSeed !== batchSeed &&
+        currentDeckBatchIndex !== lastSyncedBatchIndexRef.current
+      ) {
+        lastSyncedBatchIndexRef.current = currentDeckBatchIndex;
         setBatchSeed(batch.batchSeed);
         // Clear exhaustion when navigating to a batch with cards
         if (isExhausted) {
@@ -662,7 +687,11 @@ export const RecommendationsProvider: React.FC<
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
         const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
-        const prefetchDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
+        const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
+        // Normalize to ISO string to match useDeckCards query key format
+        const prefetchDatetimePref = rawDatetimePref
+          ? normalizeDateTime(rawDatetimePref)
+          : undefined;
 
         const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
         const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;

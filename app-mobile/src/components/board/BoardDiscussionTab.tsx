@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ScrollView,
   Platform,
@@ -24,6 +25,8 @@ import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import EmojiReactionPicker from "../discussion/EmojiReactionPicker";
+import * as Haptics from "expo-haptics";
 
 interface BoardDiscussionTabProps {
   sessionId: string;
@@ -54,6 +57,11 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
   const [mentionSearchText, setMentionSearchText] = useState("");
+  const [reactionPicker, setReactionPicker] = useState<{
+    visible: boolean;
+    messageId: string;
+    top: number;
+  }>({ visible: false, messageId: "", top: 0 });
   const scrollViewRef = useRef<ScrollView>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const MESSAGES_PER_PAGE = 50;
@@ -299,6 +307,78 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     return participant?.profiles?.username || "Unknown";
   };
 
+  // Handle long-press to open emoji reaction picker
+  const handleMessageLongPress = useCallback(
+    (messageId: string, pageY: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setReactionPicker({ visible: true, messageId, top: pageY });
+    },
+    []
+  );
+
+  // Guard against double-tap race on reactions
+  const reactionInFlightRef = useRef<Set<string>>(new Set());
+
+  // Handle emoji reaction toggle
+  const handleReaction = useCallback(
+    async (messageId: string, emoji: string) => {
+      if (!user?.id) return;
+      const key = `${messageId}:${emoji}`;
+      if (reactionInFlightRef.current.has(key)) return; // debounce
+      reactionInFlightRef.current.add(key);
+      setReactionPicker({ visible: false, messageId: "", top: 0 });
+
+      // Optimistic update
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          const reactions = msg.reactions || [];
+          const existing = reactions.find(
+            (r) => r.user_id === user.id && r.emoji === emoji
+          );
+          if (existing) {
+            return { ...msg, reactions: reactions.filter((r) => r.id !== existing.id) };
+          }
+          return {
+            ...msg,
+            reactions: [
+              ...reactions,
+              { id: `temp-${Date.now()}`, message_id: messageId, user_id: user.id, emoji, created_at: new Date().toISOString() },
+            ],
+          };
+        })
+      );
+
+      try {
+        const { error } = await BoardMessageService.toggleReaction(messageId, user.id, emoji);
+        if (error) {
+          // Rollback — reload messages
+          loadMessages(0, false);
+        }
+      } finally {
+        reactionInFlightRef.current.delete(key);
+      }
+    },
+    [user?.id, loadMessages]
+  );
+
+  // Group reactions by emoji for display
+  const groupReactions = useCallback(
+    (reactions: BoardMessage["reactions"]) => {
+      if (!reactions || reactions.length === 0) return [];
+      const groups: Record<string, { emoji: string; count: number; userReacted: boolean }> = {};
+      for (const r of reactions) {
+        if (!groups[r.emoji]) {
+          groups[r.emoji] = { emoji: r.emoji, count: 0, userReacted: false };
+        }
+        groups[r.emoji].count++;
+        if (r.user_id === user?.id) groups[r.emoji].userReacted = true;
+      }
+      return Object.values(groups);
+    },
+    [user?.id]
+  );
+
   // Render message with mentions and hashtags
   const renderMessageContent = (content: string, mentions?: string[]) => {
     const parts: React.ReactNode[] = [];
@@ -463,26 +543,59 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         ) : (
           messages.map((message, index) => {
             const senderName = getParticipantName(message.user_id);
+            const reactionGroups = groupReactions(message.reactions);
 
             return (
-              <View key={message.id} style={styles.messageWrapper}>
-                <View style={styles.avatarContainer}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {senderName.charAt(0).toUpperCase()}
-                    </Text>
+              <Pressable
+                key={message.id}
+                onLongPress={(e) =>
+                  handleMessageLongPress(message.id, e.nativeEvent.pageY)
+                }
+                delayLongPress={400}
+              >
+                <View style={styles.messageWrapper}>
+                  <View style={styles.avatarContainer}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>
+                        {senderName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.messageContent}>
+                    <View style={styles.messageHeader}>
+                      <Text style={styles.senderName}>{senderName}</Text>
+                      <Text style={styles.messageTime}>
+                        {formatTime(message.created_at)}
+                      </Text>
+                    </View>
+                    {renderMessageContent(message.content, message.mentions)}
+                    {reactionGroups.length > 0 && (
+                      <View style={styles.reactionsRow}>
+                        {reactionGroups.map((g) => (
+                          <TouchableOpacity
+                            key={g.emoji}
+                            style={[
+                              styles.reactionChip,
+                              g.userReacted && styles.reactionChipActive,
+                            ]}
+                            onPress={() => handleReaction(message.id, g.emoji)}
+                          >
+                            <Text style={styles.reactionEmoji}>{g.emoji}</Text>
+                            <Text
+                              style={[
+                                styles.reactionCount,
+                                g.userReacted && styles.reactionCountActive,
+                              ]}
+                            >
+                              {g.count}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 </View>
-                <View style={styles.messageContent}>
-                  <View style={styles.messageHeader}>
-                    <Text style={styles.senderName}>{senderName}</Text>
-                    <Text style={styles.messageTime}>
-                      {formatTime(message.created_at)}
-                    </Text>
-                  </View>
-                  {renderMessageContent(message.content, message.mentions)}
-                </View>
-              </View>
+              </Pressable>
             );
           })
         )}
@@ -617,6 +730,21 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
           keyboardHeight={keyboardHeight}
         />
       </View>
+
+      {/* Emoji Reaction Picker */}
+      <EmojiReactionPicker
+        visible={reactionPicker.visible}
+        position={{ top: reactionPicker.top }}
+        onSelect={(emoji) => handleReaction(reactionPicker.messageId, emoji)}
+        onClose={() => setReactionPicker({ visible: false, messageId: "", top: 0 })}
+        existingReactions={
+          reactionPicker.visible
+            ? (messages.find((m) => m.id === reactionPicker.messageId)?.reactions ?? [])
+                .filter((r) => r.user_id === user?.id)
+                .map((r) => r.emoji)
+            : []
+        }
+      />
     </KeyboardAwareView>
   );
 };
@@ -845,5 +973,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#007AFF",
     fontWeight: "500",
+  },
+  reactionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  reactionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  reactionChipActive: {
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#eb7825",
+  },
+  reactionEmoji: {
+    fontSize: 14,
+  },
+  reactionCount: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  reactionCountActive: {
+    color: "#eb7825",
   },
 });
