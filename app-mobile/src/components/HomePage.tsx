@@ -19,7 +19,6 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
-import { useAcceptPairRequest, useDeclinePairRequest } from "../hooks/usePairings";
 import { acceptPairRequest, declinePairRequest } from "../services/pairingService";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
