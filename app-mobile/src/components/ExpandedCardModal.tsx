@@ -41,6 +41,7 @@ import { PicnicShoppingList } from './PicnicShoppingList';
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
 import { SCREEN_HEIGHT } from "../utils/responsive";
+import { useIsPlaceOpen } from "../hooks/useIsPlaceOpen";
 
 
 const curatedStyles = StyleSheet.create({
@@ -259,9 +260,21 @@ const curatedStyles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
   },
+  openBadgeOpen: {
+    backgroundColor: 'rgba(16,185,129,0.15)',
+  },
+  openBadgeClosed: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+  },
   openBadgeText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  openBadgeTextOpen: {
+    color: '#10b981',
+  },
+  openBadgeTextClosed: {
+    color: '#ef4444',
   },
   expandedSection: {
     marginTop: 12,
@@ -573,18 +586,7 @@ function MultiStopPlanView({
                       <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
                     </>
                   ) : null}
-                  <Text style={curatedStyles.stopMetaDot}>·</Text>
-                  <View style={[
-                    curatedStyles.openBadge,
-                    { backgroundColor: stop.isOpenNow ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' },
-                  ]}>
-                    <Text style={[
-                      curatedStyles.openBadgeText,
-                      { color: stop.isOpenNow ? '#10b981' : '#ef4444' },
-                    ]}>
-                      {stop.isOpenNow ? 'Open Now' : 'Closed'}
-                    </Text>
-                  </View>
+                  <StopOpenBadge openingHours={stop.openingHours} />
                 </View>
 
                 {/* Policies & Reservations — only when website exists */}
@@ -702,6 +704,28 @@ function MultiStopPlanView({
         onClose={() => setBrowserUrl(null)}
       />
     </View>
+  );
+}
+
+/** Wrapper component so each curated stop gets its own useIsPlaceOpen hook instance */
+function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> | null | undefined }) {
+  const liveOpenStatus = useIsPlaceOpen(openingHours);
+  if (liveOpenStatus === null) return null;
+  return (
+    <>
+      <Text style={curatedStyles.stopMetaDot}>·</Text>
+      <View style={[
+        curatedStyles.openBadge,
+        liveOpenStatus ? curatedStyles.openBadgeOpen : curatedStyles.openBadgeClosed,
+      ]}>
+        <Text style={[
+          curatedStyles.openBadgeText,
+          liveOpenStatus ? curatedStyles.openBadgeTextOpen : curatedStyles.openBadgeTextClosed,
+        ]}>
+          {liveOpenStatus ? 'Open Now' : 'Closed'}
+        </Text>
+      </View>
+    </>
   );
 }
 

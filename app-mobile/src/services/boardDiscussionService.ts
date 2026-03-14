@@ -13,7 +13,7 @@ export interface BoardMessage {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  user?: { id: string; name: string; avatar_url: string | null };
+  user?: { id: string; display_name: string | null; avatar_url: string | null };
   reactions?: BoardMessageReaction[];
   read_by?: BoardMessageRead[];
 }
@@ -45,7 +45,7 @@ export async function fetchSessionMessages(
     .from('board_messages')
     .select(`
       *,
-      user:profiles!user_id(id, name, avatar_url),
+      user:profiles!user_id(id, display_name, avatar_url),
       reactions:board_message_reactions(*),
       read_by:board_message_reads(*)
     `)
@@ -84,7 +84,7 @@ export async function sendMessage(params: {
     })
     .select(`
       *,
-      user:profiles!user_id(id, name, avatar_url),
+      user:profiles!user_id(id, display_name, avatar_url),
       reactions:board_message_reactions(*),
       read_by:board_message_reads(*)
     `)
@@ -109,10 +109,11 @@ export async function toggleReaction(
     .maybeSingle();
 
   if (existing) {
-    await supabase
+    const { error: deleteError } = await supabase
       .from('board_message_reactions')
       .delete()
       .eq('id', existing.id);
+    if (deleteError) throw new Error(deleteError.message);
     return false;
   } else {
     const { error } = await supabase
@@ -166,5 +167,8 @@ export async function uploadMessageImage(
     .from('board-attachments')
     .createSignedUrl(filePath, 365 * 24 * 60 * 60);
 
-  return signedData?.signedUrl ?? '';
+  if (!signedData?.signedUrl) {
+    throw new Error('Failed to generate signed URL for uploaded image');
+  }
+  return signedData.signedUrl;
 }

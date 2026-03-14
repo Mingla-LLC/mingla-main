@@ -83,7 +83,7 @@ function MessageBubbleComponent({
   const reactions = message.reactions ?? [];
   const readBy = message.read_by ?? [];
   const senderName =
-    message.user?.name ??
+    message.user?.display_name ??
     participantNames[message.user_id] ??
     "Unknown";
 
@@ -243,6 +243,7 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: "row",
     gap: 10,
+    marginBottom: 12,
   },
   messageRowOwn: {
     justifyContent: "flex-end",
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
   },
   messageImage: {
     width: "100%",
-    maxHeight: 200,
+    height: 200,
     borderRadius: 12,
     marginBottom: 4,
   },

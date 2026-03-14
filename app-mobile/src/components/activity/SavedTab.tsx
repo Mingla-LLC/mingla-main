@@ -33,6 +33,7 @@ import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } 
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
+import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
 
 interface SavedCard {
   id: string;
@@ -1012,17 +1013,9 @@ const SavedTab = ({
       return;
     }
 
-    // Check if place is open - handle both object and string (legacy) formats
-    let parsedHours = (card as any).openingHours;
-    if (typeof parsedHours === "string" && parsedHours.trim()) {
-      try { parsedHours = JSON.parse(parsedHours); } catch { parsedHours = null; }
-    }
-    const isPlaceOpen =
-      (parsedHours && typeof parsedHours === "object" && parsedHours.open_now === false)
-        ? false
-        : true;
-
-    if (!isPlaceOpen) {
+    // Check if place is open using live client-side time computation
+    const liveStatus = isPlaceOpenNow(extractWeekdayText(card.openingHours));
+    if (liveStatus === false) {
       Alert.alert(
         "Place Closed",
         "This place is currently closed. Please schedule for when it's open."
@@ -1301,7 +1294,7 @@ const SavedTab = ({
         distance: (cardToSchedule as any).distance || "",
         travelTime: cardToSchedule.travelTime || "15 min",
         address: cardToSchedule.address || "",
-        openingHours: (cardToSchedule as any).openingHours,
+        openingHours: cardToSchedule.openingHours,
         highlights: cardToSchedule.highlights || [],
         tags: (cardToSchedule as any).tags || [],
         matchScore: cardToSchedule.matchScore || 0,
@@ -1428,7 +1421,7 @@ const SavedTab = ({
       distance: (card as any).distance || "",
       travelTime: card.travelTime || "N/A",
       address: card.address || "",
-      openingHours: (card as any).openingHours,
+      openingHours: card.openingHours,
       highlights: card.highlights || [],
       tags: (card as any).tags || [],
       matchScore: matchScore || 0,
@@ -1761,22 +1754,9 @@ const SavedTab = ({
     const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
     const isRemoving = removingCardIds.has(card.id);
 
-    // Check if place is currently open - handle both object and string (legacy) formats
-    let cardHours: any = (card as any).openingHours;
-    if (typeof cardHours === "string" && cardHours.trim()) {
-      try { cardHours = JSON.parse(cardHours); } catch { cardHours = null; }
-    }
-    const isPlaceOpen =
-      (cardHours && typeof cardHours === "object" && cardHours.open_now === false)
-        ? false
-        : true;
-
-    // Check if openingHours data is available
-    const hasOpeningHoursData =
-      cardHours &&
-      typeof cardHours === "object" &&
-      cardHours !== null &&
-      "open_now" in cardHours;
+    // Check if place is currently open using live client-side time computation
+    const liveStatus = isPlaceOpenNow(extractWeekdayText(card.openingHours));
+    const isPlaceOpen = liveStatus !== false; // true or null (unknown) → allow scheduling
 
     return (
       <View style={styles.experienceCard}>
@@ -1913,11 +1893,6 @@ const SavedTab = ({
                     This place is currently closed
                   </Text>
                 )}
-                {/*    {!hasOpeningHoursData && (
-                  <Text style={styles.warningMessage}>
-                    Opening hours not available - schedule at your own risk
-                  </Text>
-                )} */}
               </View>
             )}
 

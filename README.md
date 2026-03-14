@@ -44,13 +44,13 @@ Mingla/
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   ├── discussion/            # Board discussion components (MessageBubble, TypingIndicator, EmojiReactionPicker, SuggestionPopup, EmptyDiscussion)
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~61 React Query hooks + realtime hooks
+│   │   ├── hooks/                      # ~62 React Query hooks + realtime hooks
 │   │   ├── services/                   # ~74 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
-│   │   └── utils/                      # ~24 utility files
+│   │   └── utils/                      # ~25 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
@@ -515,6 +515,7 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Open/Closed Badge Fix** -- Replaced stale `openNow`/`isOpenNow` values from Google Places with live client-side computation using `weekday_text` data and the user's local clock. Badges now re-check every 60 seconds. When hours data is missing or unparseable, the badge is hidden entirely instead of lying. Affects ActionButtons, ProposeDateTimeModal, and ExpandedCardModal (curated stops).
 - **Luxurious Collaboration Discussion Redesign** -- Complete rewrite of the board discussion tab with iMessage-grade chat UX: inverted FlatList (no scroll-to-bottom hacks), cursor-based pagination, real-time updates via Supabase postgres_changes, emoji reactions (6-emoji long-press picker with haptics), photo attachments via camera/gallery with Supabase Storage, typing indicators, read receipts ("Seen by" labels), @mention and #card-tag suggestion popups, and polished empty state.
 - **Full-Height Collaboration Modal** -- CollaborationModule modal now extends to full screen height (safe-area aware) for maximum vertical real estate.
 - **Board Status Row Removed** -- Removed the voting/locking status badge and action buttons from BoardViewScreen for a cleaner board experience.

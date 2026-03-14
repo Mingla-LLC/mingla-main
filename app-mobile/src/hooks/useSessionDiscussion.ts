@@ -55,6 +55,9 @@ export function useSessionDiscussion(sessionId: string | null, currentUserId: st
           queryClient.invalidateQueries({ queryKey: discussionKeys.messages(sessionId) });
         }
       )
+      // NOTE: reactions and read_receipts subscriptions have no session_id filter because
+      // these tables lack a session_id column. At scale, consider denormalizing session_id
+      // onto both tables to enable Supabase-level filtering and reduce unnecessary invalidations.
       .on(
         'postgres_changes',
         {

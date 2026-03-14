@@ -227,15 +227,32 @@ export default function BoardDiscussion({
   const lastOwnMessageIndex = messages.findIndex(m => m.user_id === currentUserId);
 
   // Mention items from participants
-  const mentionItems = board.participants.map(p => ({ id: p.id, name: p.name, avatar_url: null }));
+  const allMentionItems = board.participants.map(p => ({ id: p.id, name: p.name, avatar_url: null }));
 
   // Card tag items from mock board cards (board prop doesn't carry cards data)
-  const cardTagItems = mockBoardCards.map(c => ({ id: c.id, name: c.title }));
+  const allCardTagItems = mockBoardCards.map(c => ({ id: c.id, name: c.title }));
+
+  // Filter mention/tag items by query text
+  const mentionQuery = showMentions ? newMessage.slice(newMessage.lastIndexOf('@') + 1).toLowerCase() : '';
+  const cardTagQuery = showCardTags ? newMessage.slice(newMessage.lastIndexOf('#') + 1).toLowerCase() : '';
+  const mentionItems = mentionQuery
+    ? allMentionItems.filter(p => p.name.toLowerCase().startsWith(mentionQuery))
+    : allMentionItems;
+  const cardTagItems = cardTagQuery
+    ? allCardTagItems.filter(c => c.name.toLowerCase().startsWith(cardTagQuery))
+    : allCardTagItems;
 
   // --- Handlers ---
 
   const handleInputChange = (text: string) => {
     setNewMessage(text);
+
+    // Typing indicator — always fire regardless of @/# detection
+    if (text.trim()) {
+      startTyping();
+    } else {
+      stopTyping();
+    }
 
     // Detect @mention trigger
     const lastAtIndex = text.lastIndexOf('@');
@@ -261,13 +278,6 @@ export default function BoardDiscussion({
 
     setShowMentions(false);
     setShowCardTags(false);
-
-    // Typing indicator
-    if (text.trim()) {
-      startTyping();
-    } else {
-      stopTyping();
-    }
   };
 
   const insertMention = (item: { id: string; name: string }) => {

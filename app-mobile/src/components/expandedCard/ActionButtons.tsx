@@ -21,6 +21,7 @@ import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
+import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 
 
 interface ActionButtonsProps {
@@ -118,6 +119,9 @@ export default function ActionButtons({
 
     return null;
   }, [card.openingHours]);
+
+  // Live open/closed status computed from weekday_text against local clock
+  const liveOpenStatus = useIsPlaceOpen(card.openingHours);
 
   // Get today's day name for highlighting
   const todayDayName = useMemo(() => {
@@ -699,20 +703,20 @@ export default function ActionButtons({
           <View style={styles.openingHoursHeader}>
             <Ionicons name="time" size={18} color="#ea580c" />
             <Text style={styles.openingHoursTitle}>Opening Hours</Text>
-            {parsedOpeningHours.openNow !== undefined && (
+            {liveOpenStatus !== null && (
               <View style={[
                 styles.openNowBadge,
-                parsedOpeningHours.openNow ? styles.openNowBadgeOpen : styles.openNowBadgeClosed,
+                liveOpenStatus ? styles.openNowBadgeOpen : styles.openNowBadgeClosed,
               ]}>
                 <View style={[
                   styles.openNowDot,
-                  parsedOpeningHours.openNow ? styles.openNowDotOpen : styles.openNowDotClosed,
+                  liveOpenStatus ? styles.openNowDotOpen : styles.openNowDotClosed,
                 ]} />
                 <Text style={[
                   styles.openNowText,
-                  parsedOpeningHours.openNow ? styles.openNowTextOpen : styles.openNowTextClosed,
+                  liveOpenStatus ? styles.openNowTextOpen : styles.openNowTextClosed,
                 ]}>
-                  {parsedOpeningHours.openNow ? "Open" : "Closed"}
+                  {liveOpenStatus ? "Open Now" : "Closed"}
                 </Text>
               </View>
             )}

@@ -17,6 +17,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
+import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -162,16 +163,18 @@ export default function ProposeDateTimeModal({
 
   const normalizedHours = useMemo(() => {
     if (!card) return null;
-    return normalizeOpeningHours((card as any).openingHours);
+    return normalizeOpeningHours(card.openingHours);
   }, [card]);
 
   const parsedOpeningHours = useMemo(() => {
     if (!normalizedHours || !normalizedHours.weekday_text) return null;
     return {
       lines: normalizedHours.weekday_text,
-      openNow: normalizedHours.open_now,
     };
   }, [normalizedHours]);
+
+  // Live open/closed status computed from weekday_text against local clock
+  const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null);
 
   const todayDayName = useMemo(() => {
     const days = [
@@ -681,11 +684,11 @@ export default function ProposeDateTimeModal({
                   <View style={styles.openingHoursHeader}>
                     <Ionicons name="time" size={18} color="#F59E0B" />
                     <Text style={styles.openingHoursTitle}>Opening Hours</Text>
-                    {parsedOpeningHours.openNow !== undefined && (
+                    {liveOpenStatus !== null && (
                       <View
                         style={[
                           styles.openNowBadge,
-                          parsedOpeningHours.openNow
+                          liveOpenStatus
                             ? styles.openNowBadgeOpen
                             : styles.openNowBadgeClosed,
                         ]}
@@ -693,7 +696,7 @@ export default function ProposeDateTimeModal({
                         <View
                           style={[
                             styles.openNowDot,
-                            parsedOpeningHours.openNow
+                            liveOpenStatus
                               ? styles.openNowDotOpen
                               : styles.openNowDotClosed,
                           ]}
@@ -701,12 +704,12 @@ export default function ProposeDateTimeModal({
                         <Text
                           style={[
                             styles.openNowText,
-                            parsedOpeningHours.openNow
+                            liveOpenStatus
                               ? styles.openNowTextOpen
                               : styles.openNowTextClosed,
                           ]}
                         >
-                          {parsedOpeningHours.openNow ? "Open Now" : "Closed"}
+                          {liveOpenStatus ? "Open Now" : "Closed"}
                         </Text>
                       </View>
                     )}
