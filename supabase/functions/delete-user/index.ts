@@ -255,6 +255,10 @@ async function cleanupUserData(
       safeDelete("person_audio_clips", "user_id", userId),
       safeDelete("person_experiences", "user_id", userId),
       safeDelete("saved_people", "user_id", userId),
+      // Pairing tables (CASCADE handles most, but explicit for safety)
+      safeDeleteOr("pair_requests", `sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      safeDeleteOr("pairings", `user_a_id.eq.${userId},user_b_id.eq.${userId}`),
+      safeDelete("pending_pair_invites", "inviter_id", userId),
       safeDelete("user_push_tokens", "user_id", userId),
       safeDelete("subscriptions", "user_id", userId),
       safeDeleteOr("referral_credits", `referrer_id.eq.${userId},referred_id.eq.${userId}`),
@@ -284,6 +288,15 @@ async function cleanupUserData(
           .eq("status", "pending");
       } catch (err) {
         console.warn("Warning: Could not cancel pending_session_invites by phone:", err);
+      }
+      try {
+        await adminClient
+          .from("pending_pair_invites")
+          .update({ status: "cancelled" })
+          .eq("phone_e164", userPhone)
+          .eq("status", "pending");
+      } catch (err) {
+        console.warn("Warning: Could not cancel pending_pair_invites by phone:", err);
       }
     }
 
@@ -393,24 +406,34 @@ serve(async (req) => {
       // Continue with deletion - don't block on non-critical errors
     }
 
-    // Step 2.5: Clear phone number BEFORE deleting anything — defensive measure.
-    // The profiles table has a UNIQUE constraint on phone. If profile deletion fails
-    // (Step 4), the orphaned row would still claim the phone number, blocking the user
-    // from re-signing up with the same number. NULLing it first guarantees the phone
-    // is freed regardless of what happens downstream.
+    // Step 2.5: Clear phone number from BOTH profiles AND auth.users BEFORE deletion.
+    // Two independent systems store the phone:
+    //   1. profiles.phone — has a UNIQUE constraint
+    //   2. auth.users.phone — Supabase Auth's own record
+    // Both must be cleared BEFORE deleteUser() to guarantee the phone is freed.
+    // If either clear fails, abort — leaving an orphaned phone is worse than a retry.
     if (userPhone) {
-      console.log("Step 2.5: Clearing phone number to free UNIQUE constraint...");
-      try {
-        const { error: phoneClearError } = await adminClient
-          .from("profiles")
-          .update({ phone: null })
-          .eq("id", userId);
-        if (phoneClearError) {
-          console.error("Failed to clear phone:", phoneClearError.message);
-        }
-      } catch (err) {
-        console.warn("Warning: Could not clear phone before deletion:", err);
-        // Continue — non-critical, profile delete in Step 4 will remove it anyway
+      console.log("Step 2.5: Clearing phone number from profiles and auth.users...");
+
+      // 2.5a: Clear from profiles table (UNIQUE constraint)
+      const { error: phoneClearError } = await adminClient
+        .from("profiles")
+        .update({ phone: null })
+        .eq("id", userId);
+      if (phoneClearError) {
+        console.error("Failed to clear profiles.phone:", phoneClearError.message);
+        return errorResponse("Failed to free phone number. Please try again.");
+      }
+
+      // 2.5b: Clear from auth.users (Supabase Auth layer)
+      const { error: authPhoneClearError } = await adminClient.auth.admin.updateUserById(
+        userId,
+        { phone: "" }
+      );
+      if (authPhoneClearError) {
+        // Non-fatal — auth.users row will be deleted in Step 3 anyway,
+        // but log it so we know if this path ever fires
+        console.warn("Warning: Could not clear auth.users.phone:", authPhoneClearError.message);
       }
     }
 

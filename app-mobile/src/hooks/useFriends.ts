@@ -283,6 +283,22 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           throw new Error(result.error || 'Failed to accept friend request');
         }
 
+        // Notify the original sender that their friend request was accepted.
+        // Best-effort — log but don't fail the accept.
+        if (result.sender_id) {
+          try {
+            await trackedInvoke('send-friend-accepted-notification', {
+              body: {
+                accepterId: userId,
+                senderId: result.sender_id,
+                requestId,
+              },
+            });
+          } catch (notifyErr) {
+            console.warn('[useFriends] Failed to send friend accepted notification:', notifyErr);
+          }
+        }
+
         // Send push notifications for revealed collaboration invites.
         // The RPC returns the exact invite IDs that were just revealed —
         // no timing window, no race condition, no 10-second guesswork.
@@ -312,7 +328,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         throw error;
       }
     },
-    [queryClient]
+    [queryClient, userId]
   );
 
   const declineFriendRequest = useCallback(

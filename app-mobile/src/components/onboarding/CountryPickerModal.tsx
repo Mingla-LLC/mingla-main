@@ -1,15 +1,23 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   FlatList,
+  Pressable,
   TouchableOpacity,
   Modal,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
+  Keyboard,
+  KeyboardEvent,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +50,48 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
 
+  // ── Keyboard spacer ──────────────────────────────────────────────
+  // Animate a spacer View at the bottom of the flex column.
+  // FlatList (flex:1) naturally shrinks to accommodate the spacer.
+  // Uses reanimated (native thread) — no LayoutAnimation dependency,
+  // works reliably inside nested Modals on both platforms.
+  const spacerHeight = useSharedValue(0);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: KeyboardEvent) => {
+      const duration = Platform.OS === 'ios' ? (e.duration || 250) : 150;
+      spacerHeight.value = withTiming(e.endCoordinates.height, {
+        duration,
+        easing: Easing.out(Easing.cubic),
+      });
+    };
+
+    const onHide = (e: KeyboardEvent) => {
+      const duration = Platform.OS === 'ios' ? (e.duration || 250) : 150;
+      spacerHeight.value = withTiming(0, {
+        duration,
+        easing: Easing.out(Easing.cubic),
+      });
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [spacerHeight]);
+
+  const spacerStyle = useAnimatedStyle(() => ({
+    height: spacerHeight.value,
+  }));
+
+  // ── Data ─────────────────────────────────────────────────────────
   const filteredCountries = useMemo(() => {
     if (!search.trim()) return COUNTRIES;
     const query = search.toLowerCase().trim();
@@ -53,6 +103,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
     );
   }, [search]);
 
+  // ── Handlers ─────────────────────────────────────────────────────
   const handleSelect = useCallback(
     (code: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -68,6 +119,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
     onClose();
   }, [onClose]);
 
+  // ── FlatList optimizations ───────────────────────────────────────
   const getItemLayout = useCallback(
     (_data: CountryData[] | null | undefined, index: number) => ({
       length: ROW_HEIGHT,
@@ -83,10 +135,13 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
     ({ item }: { item: CountryData }) => {
       const isSelected = item.code === selectedCode;
       return (
-        <TouchableOpacity
-          style={styles.row}
+        <Pressable
+          style={({ pressed }) => [
+            styles.row,
+            pressed && styles.rowPressed,
+          ]}
           onPress={() => handleSelect(item.code)}
-          activeOpacity={0.6}
+          android_ripple={{ color: colors.gray[200], borderless: false }}
           accessibilityRole="button"
           accessibilityLabel={`${item.name} ${item.dialCode}`}
         >
@@ -103,15 +158,25 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
               style={styles.checkmark}
             />
           )}
-        </TouchableOpacity>
+        </Pressable>
       );
     },
     [selectedCode, handleSelect],
   );
 
+  // ── Render ───────────────────────────────────────────────────────
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" statusBarTranslucent>
-      <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+    >
+      <SafeAreaView
+        style={[styles.container, { paddingBottom: insets.bottom }]}
+        edges={['top', 'left', 'right']}
+      >
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Select Country</Text>
           <TouchableOpacity
@@ -125,39 +190,40 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoidingContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.searchContainer}>
-            <Ionicons
-              name="search-outline"
-              size={20}
-              color={colors.gray[400]}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by name, code, or dial code"
-              placeholderTextColor={colors.gray[400]}
-              value={search}
-              onChangeText={setSearch}
-              autoCorrect={false}
-              autoCapitalize="none"
-              returnKeyType="search"
-            />
-          </View>
-
-          <FlatList
-            data={filteredCountries}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            getItemLayout={getItemLayout}
-            style={styles.list}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={true}
+        {/* Search */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search-outline"
+            size={20}
+            color={colors.gray[400]}
+            style={styles.searchIcon}
           />
-        </KeyboardAvoidingView>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name, code, or dial code"
+            placeholderTextColor={colors.gray[400]}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+        </View>
+
+        {/* Country list — flex:1 shrinks to accommodate the spacer */}
+        <FlatList
+          data={filteredCountries}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemLayout={getItemLayout}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={true}
+        />
+
+        {/* Keyboard spacer — animated height pushes FlatList up */}
+        <Animated.View style={spacerStyle} />
       </SafeAreaView>
     </Modal>
   );
@@ -167,9 +233,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
-  },
-  keyboardAvoidingContainer: {
-    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -220,6 +283,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: ROW_HEIGHT,
     paddingHorizontal: spacing.lg,
+  },
+  rowPressed: {
+    backgroundColor: Platform.OS === 'ios' ? colors.gray[100] : undefined,
   },
   flag: {
     fontSize: 22,

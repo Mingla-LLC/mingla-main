@@ -14,7 +14,8 @@ const UUID_RE =
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
 interface RequestBody {
-  personId: string;
+  personId?: string;         // DEPRECATED — saved_people.id
+  pairedUserId?: string;     // NEW — auth.users.id of paired user
   holidayKey: string;
   categorySlugs: string[];
   curatedExperienceType: string | null;
@@ -158,13 +159,50 @@ serve(async (req: Request) => {
 
     // --- Parse & validate body ---
     const body: RequestBody = await req.json();
-    const { personId, holidayKey, categorySlugs, curatedExperienceType, location } = body;
+    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location } = body;
 
-    if (!personId || !UUID_RE.test(personId)) {
+    // Accept either personId (deprecated) or pairedUserId (new pairing flow)
+    const effectivePersonId = pairedUserId ?? personId;
+    const usingPairedUser = !!pairedUserId;
+
+    if (!effectivePersonId || !UUID_RE.test(effectivePersonId)) {
       return new Response(
-        JSON.stringify({ error: "personId is required" }),
+        JSON.stringify({ error: "personId or pairedUserId is required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
       );
+    }
+
+    // --- Blend learned preferences for paired users ---
+    let blendedCategories = categorySlugs;
+    if (usingPairedUser) {
+      try {
+        const { data: learnedPrefs } = await adminClient
+          .from("user_preference_learning")
+          .select("preference_key, preference_value")
+          .eq("user_id", pairedUserId)
+          .eq("preference_type", "category")
+          .gt("preference_value", 0)
+          .order("preference_value", { ascending: false })
+          .limit(10);
+
+        if (learnedPrefs && learnedPrefs.length > 0) {
+          const existingSlugs = new Set(categorySlugs);
+          const topLearned = learnedPrefs
+            .map((p: { preference_key: string }) => p.preference_key)
+            .filter((key: string) => !existingSlugs.has(key))
+            .slice(0, 3);
+          blendedCategories = [...categorySlugs, ...topLearned];
+          console.log(
+            `[get-person-hero-cards] Blended ${topLearned.length} learned preferences for paired user ${pairedUserId}`,
+          );
+        } else {
+          console.log(
+            `[get-person-hero-cards] No learned preferences for paired user ${pairedUserId} — using holiday categories only`,
+          );
+        }
+      } catch (prefError) {
+        console.warn("[get-person-hero-cards] Failed to fetch learned preferences:", prefError);
+      }
     }
 
     if (!holidayKey || typeof holidayKey !== "string") {
@@ -196,7 +234,7 @@ serve(async (req: Request) => {
     // Expand intent-based slugs (romantic, adventurous) into concrete categories,
     // then resolve all to canonical Mingla category names
     const expandedSlugs: string[] = [];
-    for (const slug of categorySlugs) {
+    for (const slug of blendedCategories) {
       const intentCategories = INTENT_CATEGORY_MAP[slug];
       if (intentCategories) {
         expandedSlugs.push(...intentCategories);
@@ -220,7 +258,7 @@ serve(async (req: Request) => {
 
     // --- Call RPC ---
     console.log(
-      `[get-person-hero-cards] userId=${userId}, personId=${personId}, ` +
+      `[get-person-hero-cards] userId=${userId}, ${usingPairedUser ? 'pairedUserId' : 'personId'}=${effectivePersonId}, ` +
       `holidayKey=${holidayKey}, categories=[${resolvedCategories}], ` +
       `curatedType=${effectiveCuratedType}`,
     );
@@ -229,7 +267,7 @@ serve(async (req: Request) => {
       "query_person_hero_cards",
       {
         p_user_id: userId,
-        p_person_id: personId,
+        p_person_id: effectivePersonId,
         p_lat: location.latitude,
         p_lng: location.longitude,
         p_categories: resolvedCategories,
@@ -297,7 +335,7 @@ serve(async (req: Request) => {
               "query_person_hero_cards",
               {
                 p_user_id: userId,
-                p_person_id: personId,
+                p_person_id: effectivePersonId,
                 p_lat: location.latitude,
                 p_lng: location.longitude,
                 p_categories: resolvedCategories,
@@ -342,14 +380,22 @@ serve(async (req: Request) => {
     if (cards.length > 0) {
       const impressionRows = cards.map((card) => ({
         user_id: userId,
-        person_id: personId,
+        ...(usingPairedUser
+          ? { paired_user_id: effectivePersonId }
+          : { person_id: effectivePersonId }
+        ),
         card_pool_id: card.id,
         holiday_key: holidayKey,
       }));
 
       const { error: impressionError } = await adminClient
         .from("person_card_impressions")
-        .upsert(impressionRows, { onConflict: "user_id,person_id,card_pool_id", ignoreDuplicates: true });
+        .upsert(impressionRows, {
+          onConflict: usingPairedUser
+            ? "user_id,paired_user_id,card_pool_id"
+            : "user_id,person_id,card_pool_id",
+          ignoreDuplicates: true,
+        });
 
       if (impressionError) {
         // Non-fatal: log but don't fail the request

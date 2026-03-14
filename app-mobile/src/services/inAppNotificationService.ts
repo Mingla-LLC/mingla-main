@@ -25,6 +25,7 @@ export type InAppNotificationType =
   | "profile_updated"     // Profile was updated
   | "welcome"             // Welcome / onboarding complete
   | "collaboration_invite" // Collaboration session invite
+  | "pair_request"        // Received a pair request
   | "system";             // System-level notification
 
 // Navigation targets for each notification type
@@ -373,6 +374,20 @@ class InAppNotificationServiceClass {
     );
   }
 
+  notifyPairRequest(
+    fromUserName: string,
+    requestId?: string,
+    avatarUrl?: string
+  ) {
+    return this.add(
+      "pair_request",
+      "Pair Request",
+      `${fromUserName} wants to pair with you`,
+      { page: "discover" },
+      { userName: fromUserName, requestId, avatar_url: avatarUrl }
+    );
+  }
+
   notifyWelcome(userName?: string) {
     return this.add(
       "welcome",
@@ -397,6 +412,8 @@ class InAppNotificationServiceClass {
         return { icon: "share-outline", iconColor: "#3B82F6" };
       case "friend_request":
         return { icon: "person-add-outline", iconColor: "#3B82F6" };
+      case "pair_request":
+        return { icon: "people-outline", iconColor: "#EF4444" };
       case "friend_accepted":
         return { icon: "people", iconColor: "#10B981" };
       case "board_invite":

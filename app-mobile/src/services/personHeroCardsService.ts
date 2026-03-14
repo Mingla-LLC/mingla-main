@@ -2,7 +2,7 @@ import { supabase, supabaseUrl } from "./supabase";
 import { HolidayCardsResponse } from "./holidayCardsService";
 
 export async function fetchPersonHeroCards(params: {
-  personId: string;
+  pairedUserId: string;
   holidayKey: string;
   categorySlugs: string[];
   curatedExperienceType: string | null;
@@ -20,7 +20,13 @@ export async function fetchPersonHeroCards(params: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        pairedUserId: params.pairedUserId,
+        holidayKey: params.holidayKey,
+        categorySlugs: params.categorySlugs,
+        curatedExperienceType: params.curatedExperienceType,
+        location: params.location,
+      }),
     }
   );
 
@@ -31,7 +37,6 @@ export async function fetchPersonHeroCards(params: {
       const errorData = JSON.parse(rawText);
       if (errorData.error) errorMessage = errorData.error;
     } catch {
-      // Response wasn't JSON — include raw text for debugging
       if (rawText) errorMessage += `: ${rawText.slice(0, 200)}`;
     }
     throw new Error(errorMessage);

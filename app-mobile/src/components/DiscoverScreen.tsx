@@ -11,13 +11,12 @@ import {
   TextInput,
   Platform,
   Animated,
-  LayoutAnimation,
   ActivityIndicator,
   Alert,
-  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatPriceRange, parseAndFormatDistance, getCurrencyRate } from "./utils/formatters";
@@ -27,27 +26,19 @@ import { useRecommendations, Recommendation } from "../contexts/RecommendationsC
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
-import { useAppStore } from "../store/appStore";
-import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
-import { supabase } from "../services/supabase";
-import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences, savedPeopleKeys } from "../hooks/useSavedPeople";
-import { generateInitials } from "../utils/stringUtils";
-import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
-import AddPersonModal from "./AddPersonModal";
-import PersonEditSheet from "./PersonEditSheet";
+import { usePairingPills, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useUnpair, pairingKeys } from "../hooks/usePairings";
+import type { PairingPill } from "../services/pairingService";
+import PairRequestModal from "./PairRequestModal";
+import PairingInfoCard from "./PairingInfoCard";
+import LinkRequestBanner from "./LinkRequestBanner";
 import PersonHolidayView from "./PersonHolidayView";
-import { useSocialRealtime } from "../hooks/useSocialRealtime";
-import { useEffectiveTier } from "../hooks/useSubscription";
-import { hasElevatedAccess } from "../types/subscription";
-import ElitePeopleSummary from "./ElitePeopleSummary";
-import { useScreenLogger } from "../hooks/useScreenLogger";
-import { HapticFeedback } from "../utils/hapticFeedback";
-import { useQueryClient } from "@tanstack/react-query";
+import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -59,8 +50,8 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v7";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v6";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v5";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v4";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
 const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
 
@@ -80,19 +71,7 @@ interface CustomHoliday {
 }
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
-import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG, formatTierLabel, priceTierFromAmount } from '../constants/priceTiers';
-import { getCurrencySymbol } from './utils/formatters';
-
-/** Derive a PriceTierSlug from a raw priceRange string like "$25-75" or "Free". */
-function tierFromPriceRange(priceRange?: string): PriceTierSlug {
-  if (!priceRange) return 'chill';
-  if (priceRange.toLowerCase().includes('free')) return 'chill';
-  const match = priceRange.match(/\$?(\d+)(?:\s*[-–]\s*\$?(\d+))?/);
-  if (!match) return 'chill';
-  const min = parseInt(match[1], 10) || 0;
-  const max = match[2] ? parseInt(match[2], 10) : min;
-  return priceTierFromAmount(min, max);
-}
+import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG } from '../constants/priceTiers';
 
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
@@ -287,7 +266,6 @@ interface FeaturedCardData {
   image: string;
   images?: string[];
   priceRange: string;
-  priceTier?: PriceTierSlug;
   rating: number;
   reviewCount?: number;
   address?: string;
@@ -317,7 +295,6 @@ interface GridCardData {
   image: string;
   images?: string[];
   priceRange: string;
-  priceTier?: PriceTierSlug;
   rating: number;
   reviewCount?: number;
   address?: string;
@@ -451,7 +428,6 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 
 interface DiscoverScreenProps {
   onAddFriend?: () => void;
-  onUpgradePress?: () => void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -502,8 +478,7 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
 
 // Featured Card Component
 const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
-  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
+  const formattedPrice = formatPriceRange(card.priceRange, currency);
   const formattedDistance = parseAndFormatDistance(card.distance, measurementSystem);
   
   return (
@@ -549,7 +524,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
 
         {/* Bottom Row: Price Range and Rating */}
         <View style={styles.cardFooter}>
-          <Text style={styles.priceRange} numberOfLines={1}>{formattedPrice}</Text>
+          <Text style={styles.priceRange}>{formattedPrice}</Text>
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#eb7825" />
             <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
@@ -569,8 +544,7 @@ interface HeroCardProps {
 }
 
 const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
-  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
-  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
+  const formattedPrice = formatPriceRange(card.priceRange, currency);
   const categoryIcon = categoryIcons[card.experienceType] || "ellipse-outline";
 
   return (
@@ -598,7 +572,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
         <Text style={styles.heroCardTitle} numberOfLines={2}>{card.title}</Text>
         <Text style={styles.heroCardDescription} numberOfLines={2}>{card.description}</Text>
         <View style={styles.heroCardFooter}>
-          <Text style={styles.heroCardPrice} numberOfLines={1}>{formattedPrice}</Text>
+          <Text style={styles.heroCardPrice}>{formattedPrice}</Text>
           <View style={styles.heroCardRating}>
             <Ionicons name="star" size={13} color="#eb7825" />
             <Text style={styles.heroCardRatingText}>{card.rating.toFixed(1)}</Text>
@@ -611,8 +585,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
 
 // Grid Card Component (smaller version with category icon)
 const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) => {
-  const resolvedTier = card.priceTier ?? tierFromPriceRange(card.priceRange);
-  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
+  const formattedPrice = formatPriceRange(card.priceRange, currency);
   const categoryIcon = categoryIcons[card.category] || "ellipse-outline";
   
   return (
@@ -644,7 +617,7 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
 
         {/* Bottom Row: Price Range and Arrow Button */}
         <View style={styles.gridCardFooter}>
-          <Text style={styles.gridCardPrice} numberOfLines={1}>{formattedPrice}</Text>
+          <Text style={styles.gridCardPrice}>{formattedPrice}</Text>
           <View style={styles.gridCardArrowButton}>
             <Feather name="chevron-right" size={14} color="white" />
           </View>
@@ -733,26 +706,14 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 
 export default function DiscoverScreen({
   onAddFriend,
-  onUpgradePress,
   accountPreferences,
   preferencesRefreshKey,
 }: DiscoverScreenProps) {
-  useScreenLogger('discover');
   const insets = useSafeAreaInsets();
-
-
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-    setIsRefreshing(false);
-  }, [queryClient]);
-
+  
   // Entrance animation values
   const featuredCardOpacity = useRef(new Animated.Value(0)).current;
   const featuredCardSlide = useRef(new Animated.Value(40)).current;
@@ -822,21 +783,13 @@ export default function DiscoverScreen({
     }, 230); // 80ms after left column starts
   }, []);
   
-  // Add Person Modal state
-  const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
+  // Pairing modal state
+  const [isPairModalVisible, setIsPairModalVisible] = useState(false);
+  const [infoPill, setInfoPill] = useState<PairingPill | null>(null);
 
-  const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
-  const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
-  const deletingAnimRef = useRef(new Animated.Value(1)).current;
-
-  // Phase 2: Person selector — hooks re-enabled for For You System.
-  const createPersonMutation = useCreatePerson();
-  const deletePersonMutation = useDeletePerson();
-  const generateExperiencesMutation = useGeneratePersonExperiences();
-  const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
-  const { data: personExperiences = [] } = usePersonExperiences(
-    selectedPersonId !== "for-you" ? selectedPersonId : undefined
-  );
+  // Pairing selector
+  const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
+  // Person experiences removed — replaced by pairing system
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
@@ -879,7 +832,7 @@ export default function DiscoverScreen({
     setExpandedHolidayIds(new Set());
     setHolidayCardsById({});
     setHolidayCardsLoadingById({});
-  }, [selectedPersonId]);
+  }, [selectedPillId]);
 
   // ScrollView refs for holiday card navigation
   const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
@@ -909,23 +862,35 @@ export default function DiscoverScreen({
   };
 
   // Get auth for Discover features
-  const user = useAppStore((state) => state.user);
-  const { data: discoverUserPrefs } = useUserPreferences(user?.id);
-  const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
-  const savedPeople: SavedPerson[] = savedPeopleData;
+  const { user } = useAuthSimple();
+  const { data: pairingPills = [] } = usePairingPills(user?.id);
 
-  useSocialRealtime(user?.id);
-  const effectiveTier = useEffectiveTier(user?.id);
+  // Pairing mutation hooks
+  const cancelRequestMutation = useCancelPairRequest();
+  const cancelInviteMutation = useCancelPairInvite();
+  const unpairMutation = useUnpair();
 
-  // Get the currently selected person (null if "for-you" is selected)
-  const selectedPerson = useMemo(() => {
-    if (selectedPersonId === "for-you") return null;
-    return savedPeople?.find((p) => p.id === selectedPersonId) || null;
-  }, [selectedPersonId, savedPeople]);
+  const handleUnpair = (pairingId: string) => {
+    unpairMutation.mutate(pairingId, {
+      onSuccess: () => {
+        setSelectedPillId("for-you");
+      },
+    });
+  };
 
-  // Animate birthday hero section when person is selected
+  // Friend link requests
+  const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
+  const respondToLinkMutation = useRespondToFriendLink();
+
+  // Get the currently selected pill (null if "for-you" is selected)
+  const selectedPill = useMemo(() => {
+    if (selectedPillId === "for-you") return null;
+    return pairingPills?.find((p) => p.id === selectedPillId) || null;
+  }, [selectedPillId, pairingPills]);
+
+  // Animate birthday hero section when paired pill is selected
   useEffect(() => {
-    if (selectedPerson) {
+    if (selectedPill?.pillState === 'active') {
       // Reset animation values
       birthdayHeroOpacity.setValue(0);
       birthdayHeroSlide.setValue(30);
@@ -946,11 +911,10 @@ export default function DiscoverScreen({
         ]).start();
       }, 200);
     }
-  }, [selectedPerson, birthdayHeroOpacity, birthdayHeroSlide]);
+  }, [selectedPill, birthdayHeroOpacity, birthdayHeroSlide]);
 
-
-  // Holiday detection helper - checks for upcoming holidays relevant to person
-  const getUpcomingHolidays = useCallback((person: SavedPerson | null): string[] => {
+  // Holiday detection helper - checks for upcoming holidays relevant to selected pill
+  const getUpcomingHolidays = useCallback((pill: PairingPill | null): string[] => {
     const holidays: string[] = [];
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -962,18 +926,18 @@ export default function DiscoverScreen({
     }
 
     // Check for Mother's Day (2nd Sunday of May) - within 2 weeks before
-    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && person?.gender === "woman") {
+    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && pill?.gender === "woman") {
       holidays.push("mothers-day");
     }
 
     // Check for Father's Day (3rd Sunday of June) - within 2 weeks before
-    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && person?.gender === "man") {
+    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && pill?.gender === "man") {
       holidays.push("fathers-day");
     }
 
-    // Check if person's birthday is upcoming (within 2 weeks)
-    if (person?.birthday) {
-      const birthday = new Date(person.birthday);
+    // Check if paired user's birthday is upcoming (within 2 weeks)
+    if (pill?.birthday) {
+      const birthday = new Date(pill.birthday);
       const birthdayThisYear = new Date(now.getFullYear(), birthday.getMonth(), birthday.getDate());
       const diffDays = Math.ceil((birthdayThisYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays >= 0 && diffDays <= 14) {
@@ -1114,49 +1078,7 @@ export default function DiscoverScreen({
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
 
-  // One-time migration: AsyncStorage saved people → Supabase
-  useEffect(() => {
-    const migratePeopleFromAsyncStorage = async () => {
-      if (!user?.id) return;
-      const migrationKey = `mingla_people_migrated_${user.id}`;
-      try {
-        const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-        if (alreadyMigrated) return;
-
-        const oldStorageKey = `mingla_saved_people_${user.id}`;
-        const stored = await AsyncStorage.getItem(oldStorageKey);
-        if (stored) {
-          const oldPeople = JSON.parse(stored) as Array<{
-            id: string;
-            name: string;
-            initials: string;
-            birthday: string | null;
-            gender: string | null;
-            createdAt: string;
-          }>;
-          for (const person of oldPeople) {
-            try {
-              await createPersonMutation.mutateAsync({
-                user_id: user.id,
-                name: person.name,
-                initials: person.initials,
-                birthday: person.birthday ? person.birthday.split("T")[0] : null,
-                gender: person.gender,
-                description: null,
-              });
-            } catch {
-              // Skip duplicates or errors during migration
-            }
-          }
-          await AsyncStorage.removeItem(oldStorageKey);
-        }
-        await AsyncStorage.setItem(migrationKey, "true");
-      } catch (error) {
-        console.error("[Discover] People migration error:", error);
-      }
-    };
-    migratePeopleFromAsyncStorage();
-  }, [user?.id]);
+  // Note: Saved people migration removed — replaced by pairing system
 
   // Save custom holidays to AsyncStorage
   const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
@@ -1433,7 +1355,6 @@ export default function DiscoverScreen({
     image: card.image,
     images: card.images || [card.image],
     priceRange: card.priceRange,
-    priceTier: card.priceTier,
     rating: card.rating,
     reviewCount: card.reviewCount,
     address: card.address,
@@ -1443,8 +1364,6 @@ export default function DiscoverScreen({
     tags: card.tags || [],
     location: card.location,
     openingHours: card.openingHours || null,
-    website: card.website || null,
-    phone: card.phone || null,
   });
 
   const featuredFromRecommendation = (rec: Recommendation): FeaturedCardData => ({
@@ -1455,7 +1374,6 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images || [rec.image],
     priceRange: rec.priceRange,
-    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1463,10 +1381,8 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights || [],
     tags: rec.tags || [],
-    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
-    website: rec.website || null,
-    phone: rec.phone || null,
   });
 
   const gridFromRecommendation = (rec: Recommendation): GridCardData => ({
@@ -1477,7 +1393,6 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images || [rec.image],
     priceRange: rec.priceRange,
-    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1485,10 +1400,8 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights || [],
     tags: rec.tags || [],
-    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
-    website: rec.website || null,
-    phone: rec.phone || null,
   });
 
   const applyCachedDiscoverData = (cachedData: DiscoverCache) => {
@@ -1586,8 +1499,13 @@ export default function DiscoverScreen({
       let waitingForLocation = false;
       const today = getTodayDateString();
 
-      // Only fetch once per session — cache expiry (rolling 24h) handles refresh timing
-      if (hasFetchedRef.current) {
+      // Reset once-per-session guard when US day changes (refresh at US midnight)
+      if (lastDiscoverFetchDateRef.current && lastDiscoverFetchDateRef.current !== today) {
+        hasFetchedRef.current = false;
+      }
+
+      // Only fetch once per session
+      if (hasFetchedRef.current && lastDiscoverFetchDateRef.current === today) {
         return;
       }
 
@@ -1652,7 +1570,6 @@ export default function DiscoverScreen({
           10000, // 10km radius
           undefined,              // For You: always ALL categories (never filtered by user prefs)
           ["Fine Dining", "Play"], // For You: always these 2 hero categories
-          discoverUserPrefs?.travel_mode, // Use user's chosen transport mode for travel time estimates
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1683,7 +1600,6 @@ export default function DiscoverScreen({
           image: exp.heroImage,
           images: exp.images || [exp.heroImage],
           priceRange: exp.priceRange,
-          priceTier: exp.priceTier,
           distance: exp.distance,
           travelTime: exp.travelTime,
           experienceType: exp.category,
@@ -1710,8 +1626,6 @@ export default function DiscoverScreen({
             popularity: 85,
           },
           strollData: exp.strollData,
-          website: exp.website || null,
-          phone: exp.phone || null,
         }));
 
         // Transform hero cards from server response
@@ -1724,7 +1638,6 @@ export default function DiscoverScreen({
           image: hc.heroImage,
           images: hc.images || [hc.heroImage],
           priceRange: hc.priceRange,
-          priceTier: hc.priceTier as PriceTierSlug | undefined,
           rating: hc.rating,
           reviewCount: hc.reviewCount,
           address: hc.address,
@@ -1732,10 +1645,8 @@ export default function DiscoverScreen({
           distance: hc.distance,
           highlights: hc.highlights || [],
           tags: hc.highlights || [],
-          location: hc.lat != null && hc.lng != null ? { lat: hc.lat, lng: hc.lng } : undefined,
+          location: hc.lat && hc.lng ? { lat: hc.lat, lng: hc.lng } : undefined,
           openingHours: hc.openingHours || null,
-          website: hc.website || null,
-          phone: hc.phone || null,
         }));
 
         // CLIENT-SIDE FALLBACK: If server returned < 2 hero cards, extract from grid cards
@@ -1762,7 +1673,6 @@ export default function DiscoverScreen({
                 image: candidate.heroImage,
                 images: candidate.images || [candidate.heroImage],
                 priceRange: candidate.priceRange,
-                priceTier: candidate.priceTier as PriceTierSlug | undefined,
                 rating: candidate.rating,
                 reviewCount: candidate.reviewCount,
                 address: candidate.address,
@@ -1770,10 +1680,8 @@ export default function DiscoverScreen({
                 distance: candidate.distance,
                 highlights: candidate.highlights || [],
                 tags: candidate.highlights || [],
-                location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
-                website: candidate.website || null,
-                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               existingHeroCats.add(heroCategory);
@@ -1799,7 +1707,6 @@ export default function DiscoverScreen({
                 image: candidate.heroImage,
                 images: candidate.images || [candidate.heroImage],
                 priceRange: candidate.priceRange,
-                priceTier: candidate.priceTier as PriceTierSlug | undefined,
                 rating: candidate.rating,
                 reviewCount: candidate.reviewCount,
                 address: candidate.address,
@@ -1807,10 +1714,8 @@ export default function DiscoverScreen({
                 distance: candidate.distance,
                 highlights: candidate.highlights || [],
                 tags: candidate.highlights || [],
-                location: candidate.lat != null && candidate.lng != null ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
-                website: candidate.website || null,
-                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               console.log(`[For You] Filled hero slot with "${candidate.title}" (${candidate.category})`);
@@ -1836,7 +1741,6 @@ export default function DiscoverScreen({
             image: exp.heroImage,
             images: exp.images || [exp.heroImage],
             priceRange: exp.priceRange,
-            priceTier: exp.priceTier as PriceTierSlug | undefined,
             rating: exp.rating,
             reviewCount: exp.reviewCount,
             address: exp.address,
@@ -1846,8 +1750,6 @@ export default function DiscoverScreen({
             tags: exp.highlights || [],
             location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
             openingHours: exp.openingHours || null,
-            website: exp.website || null,
-            phone: exp.phone || null,
           }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
@@ -1896,7 +1798,6 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images,
     priceRange: rec.priceRange,
-    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1904,10 +1805,8 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights,
     tags: rec.tags,
-    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
-    website: rec.website || null,
-    phone: rec.phone || null,
   });
 
   // Transform Recommendation to GridCardData
@@ -1919,7 +1818,6 @@ export default function DiscoverScreen({
     image: rec.image,
     images: rec.images,
     priceRange: rec.priceRange,
-    priceTier: rec.priceTier as PriceTierSlug | undefined,
     rating: rec.rating,
     reviewCount: rec.reviewCount,
     address: rec.address,
@@ -1927,10 +1825,8 @@ export default function DiscoverScreen({
     distance: rec.distance,
     highlights: rec.highlights,
     tags: rec.tags,
-    location: rec.lat != null && rec.lng != null ? { lat: rec.lat, lng: rec.lng } : undefined,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
-    website: rec.website || null,
-    phone: rec.phone || null,
   });
 
   // State for selected cards (to prevent re-randomization on every render)
@@ -2066,8 +1962,9 @@ export default function DiscoverScreen({
     setSelectedFeaturedCard(featured);
     setSelectedGridCards(grid);
 
+    // CACHING DISABLED FOR TESTING
     // Save to cache for daily persistence
-    saveDiscoverCache(recommendations, featured, grid);
+    // saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
 
   // Use the stable selected cards
@@ -2220,7 +2117,6 @@ export default function DiscoverScreen({
       rating: card.rating,
       reviewCount: card.reviewCount || 0,
       priceRange: card.priceRange,
-      priceTier: card.priceTier,
       distance: card.distance || "",
       travelTime: card.travelTime || "",
       address: card.address || "",
@@ -2269,7 +2165,6 @@ export default function DiscoverScreen({
       rating: card.rating,
       reviewCount: card.reviewCount || 0,
       priceRange: card.priceRange,
-      priceTier: card.priceTier,
       distance: card.distance || "",
       travelTime: card.travelTime || "",
       address: card.address || "",
@@ -2567,121 +2462,14 @@ export default function DiscoverScreen({
     { id: "acoustic-indie", label: "Acoustic / Indie" },
   ];
 
-  // Add Person Modal handlers
-  const handleOpenAddPersonModal = () => {
-    HapticFeedback.buttonPress();
-    setIsAddPersonModalVisible(true);
-  };
-
-  const handleCloseAddPersonModal = () => {
-    setIsAddPersonModalVisible(false);
-  };
-
-  // Build occasions for experience generation
-  const buildOccasionsForPerson = (person: SavedPerson): Array<{ name: string; date: string }> => {
-    const occasions: Array<{ name: string; date: string }> = [];
-    const now = new Date();
-
-    // Birthday (if set)
-    if (person.birthday) {
-      const bday = new Date(person.birthday);
-      const thisYearBday = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
-      if (thisYearBday < now) {
-        thisYearBday.setFullYear(thisYearBday.getFullYear() + 1);
-      }
-      occasions.push({ name: "birthday", date: thisYearBday.toISOString().split("T")[0] });
-    }
-
-    // Upcoming calendar holidays (next 6 months, not archived)
-    if (calendarHolidays) {
-      const sixMonthsDays = 180;
-      const archivedKeys = new Set(archivedHolidayKeysByPerson[person.id] || []);
-      for (const holiday of calendarHolidays) {
-        if (holiday.daysAway >= 0 && holiday.daysAway <= sixMonthsDays) {
-          const holidayKey = `${holiday.name}_${holiday.date instanceof Date ? holiday.date.toISOString().split("T")[0] : holiday.date}`;
-          if (!archivedKeys.has(holidayKey)) {
-            const dateStr = holiday.date instanceof Date
-              ? holiday.date.toISOString().split("T")[0]
-              : new Date(holiday.date).toISOString().split("T")[0];
-            occasions.push({ name: holiday.name, date: dateStr });
-          }
-        }
-      }
-    }
-
-    return occasions.slice(0, 10); // Cap at 10 occasions to limit API calls
-  };
-
-  // Handle person pill selection ("for-you" or person.id)
-  const handlePersonSelect = (personId: string) => {
-    HapticFeedback.buttonPress();
-    setSelectedPersonId(personId);
-    setSelectedIncomingRequestId(null);
+  // Handle pill selection ("for-you" or pill.id)
+  const handlePillSelect = (pillId: string) => {
+    setSelectedPillId(pillId);
   };
 
   // Handle "For You" selection
   const handleForYouSelect = () => {
-    HapticFeedback.buttonPress();
-    setSelectedPersonId("for-you");
-  };
-
-  // Handle removing a person — mutation first, animation only on success
-  const handleRemovePerson = async (person: SavedPerson) => {
-    setDeletingPersonId(person.id);
-
-    try {
-      // Run the mutation FIRST — only animate out on success
-      await deletePersonMutation.mutateAsync({ personId: person.id });
-
-      // Mutation succeeded — now animate out
-      Animated.timing(deletingAnimRef, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }).start(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setDeletingPersonId(null);
-        deletingAnimRef.setValue(1); // Reset for next deletion
-
-        // Reset selection if deleted person was selected
-        if (selectedPersonId === person.id) {
-          setSelectedPersonId("for-you");
-        }
-      });
-
-      // Clean up custom holidays associated with this person
-      const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
-      setCustomHolidays(updatedHolidays);
-      await saveCustomHolidaysToStorage(updatedHolidays);
-    } catch (error) {
-      console.error("[Discover] Failed to delete person:", error);
-      // Reset animation state and show error
-      setDeletingPersonId(null);
-      deletingAnimRef.setValue(1);
-      Alert.alert("Error", "Failed to delete person. Please try again.");
-    }
-  };
-
-  // Handle long-press to edit a person
-  const handleLongPressPerson = (person: SavedPerson) => {
-    setEditingPerson(person);
-  };
-
-  const handleConfirmRemovePerson = (person: SavedPerson) => {
-    Alert.alert(
-      "Delete person?",
-      `Remove ${person.name} and all their custom holidays?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void handleRemovePerson(person);
-          },
-        },
-      ]
-    );
+    setSelectedPillId("for-you");
   };
 
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
@@ -2702,7 +2490,7 @@ export default function DiscoverScreen({
 
   // Add Custom Day Modal handlers
   const handleOpenAddCustomDayModal = () => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       // Can't add custom days without a person selected
       return;
     }
@@ -2755,7 +2543,7 @@ export default function DiscoverScreen({
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
       id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      personId: selectedPersonId,
+      personId: selectedPillId,
       name: customDayName.trim(),
       date: dateStr,
       description: customDayDescription.trim() || "Custom celebration day",
@@ -2773,7 +2561,7 @@ export default function DiscoverScreen({
       holidayName: customDayName.trim(),
       date: dateStr,
       categories: normalizedCategories,
-      personId: selectedPersonId,
+      personId: selectedPillId,
     });
 
     // Close modal
@@ -2841,15 +2629,15 @@ export default function DiscoverScreen({
   }, []);
 
   const handleArchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPersonId === "for-you") return;
+    if (selectedPillId === "for-you") return;
 
     const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
     if (currentPersonKeys.includes(holidayKey)) return;
 
     const nextArchiveMap = {
       ...archivedHolidayKeysByPerson,
-      [selectedPersonId]: [...currentPersonKeys, holidayKey],
+      [selectedPillId]: [...currentPersonKeys, holidayKey],
     };
 
     setArchivedHolidayKeysByPerson(nextArchiveMap);
@@ -2860,23 +2648,23 @@ export default function DiscoverScreen({
       next.delete(holiday.id);
       return next;
     });
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const handleUnarchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPersonId === "for-you") return;
+    if (selectedPillId === "for-you") return;
 
     const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
     if (!currentPersonKeys.includes(holidayKey)) return;
 
     const nextArchiveMap = {
       ...archivedHolidayKeysByPerson,
-      [selectedPersonId]: currentPersonKeys.filter((key) => key !== holidayKey),
+      [selectedPillId]: currentPersonKeys.filter((key) => key !== holidayKey),
     };
 
     setArchivedHolidayKeysByPerson(nextArchiveMap);
     await saveArchivedHolidaysToStorage(nextArchiveMap);
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const formatHolidayDateForDisplay = useCallback((dateValue: Date | string): string => {
     const holidayDate = new Date(dateValue);
@@ -2886,9 +2674,9 @@ export default function DiscoverScreen({
 
   // Get custom holidays for the currently selected person, formatted as CalendarHoliday
   const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
-    if (selectedPersonId === "for-you") return [];
+    if (selectedPillId === "for-you") return [];
     
-    const personHolidays = customHolidays.filter((h) => h.personId === selectedPersonId);
+    const personHolidays = customHolidays.filter((h) => h.personId === selectedPillId);
     
     return personHolidays.map((h) => {
       // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
@@ -2913,7 +2701,7 @@ export default function DiscoverScreen({
         isCustom: true, // Mark as custom holiday
       } as CalendarHoliday & { isCustom: boolean; categories: string[] };
     });
-  }, [customHolidays, selectedPersonId]);
+  }, [customHolidays, selectedPillId]);
 
   // Transform HolidayExperience to GridCardData for display
   const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
@@ -2928,7 +2716,6 @@ export default function DiscoverScreen({
       image: exp.imageUrl || "",
       images: exp.images,
       priceRange: `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`,
-      priceTier,
       rating: exp.rating,
       reviewCount: exp.reviewCount,
       address: exp.address,
@@ -2959,13 +2746,13 @@ export default function DiscoverScreen({
     try {
       let cards: GridCardData[] = [];
 
-      if (locationLat && locationLng && selectedPersonId !== "for-you") {
-        const personGender = selectedPerson?.gender;
+      if (locationLat && locationLng && selectedPillId !== "for-you") {
+        const personGender = selectedPill?.gender;
         const gender: "man" | "woman" | null =
           personGender === "man" || personGender === "woman" ? personGender : null;
 
         const personCustomHolidays = customHolidays
-          .filter((h) => h.personId === selectedPersonId)
+          .filter((h) => h.personId === selectedPillId)
           .map((h) => ({
             id: h.id,
             name: h.name,
@@ -3014,8 +2801,8 @@ export default function DiscoverScreen({
     holidayCardsLoadingById,
     locationLat,
     locationLng,
-    selectedPerson?.gender,
-    selectedPersonId,
+    selectedPill?.gender,
+    selectedPillId,
     transformHolidayExperienceToCard,
   ]);
 
@@ -3037,7 +2824,7 @@ export default function DiscoverScreen({
     const custom = getPersonCustomHolidays;
     
     // Get selected person's gender for filtering
-    const personGender = selectedPerson?.gender || null;
+    const personGender = selectedPill?.gender || null;
     
     // Combine and filter
     return [...calendar, ...custom]
@@ -3054,33 +2841,33 @@ export default function DiscoverScreen({
         return true;
       })
       .sort((a, b) => a.daysAway - b.daysAway);
-  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender]);
+  }, [calendarHolidays, getPersonCustomHolidays, selectedPill?.gender]);
 
   const visibleHolidays = useMemo(() => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       return allHolidays;
     }
 
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter(
       (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
     );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const archivedHolidays = useMemo(() => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       return [] as CalendarHoliday[];
     }
 
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter((holiday) =>
       archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
     );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   // Animate holiday items with staggered entrance when holidays are available
   useEffect(() => {
-    if (selectedPerson && visibleHolidays.length > 0 && !holidaysLoading) {
+    if (selectedPill?.pillState === 'active' && visibleHolidays.length > 0 && !holidaysLoading) {
       // Reset all holiday animations
       holidayItemAnimations.forEach((anim) => {
         anim.opacity.setValue(0);
@@ -3111,7 +2898,7 @@ export default function DiscoverScreen({
         }, baseDelay + index * staggerDelay);
       });
     }
-  }, [selectedPerson, visibleHolidays, holidaysLoading, holidayItemAnimations]);
+  }, [selectedPill, visibleHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -3128,18 +2915,30 @@ export default function DiscoverScreen({
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
         >
           {activeTab === "for-you" && (
             <>
+              {/* Link Request Banner */}
+              {pendingLinkRequests.length > 0 && (
+                <LinkRequestBanner
+                  requests={pendingLinkRequests}
+                  onAccept={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'accept' })}
+                  onDecline={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'decline' })}
+                />
+              )}
+
               {/* For You Tab Header with People Pills */}
-              <View style={styles.tabHeaderRow}>
-                {/* Fixed pills */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tabHeaderScrollView}
+                contentContainerStyle={styles.tabHeaderContent}
+              >
+                {/* For You Pill - Always First */}
                 <TouchableOpacity
                   style={[
                     styles.personPill,
-                    selectedPersonId === "for-you" && styles.personPillSelectedGradient,
+                    selectedPillId === "for-you" && styles.personPillSelectedGradient,
                   ]}
                   onPress={handleForYouSelect}
                   activeOpacity={0.7}
@@ -3147,109 +2946,104 @@ export default function DiscoverScreen({
                   <Text
                     style={[
                       styles.personPillName,
-                      selectedPersonId === "for-you" && styles.personPillNameSelectedGradient,
+                      selectedPillId === "for-you" && styles.personPillNameSelectedGradient,
                     ]}
                   >
                     For You
                   </Text>
                 </TouchableOpacity>
 
+                {/* Add Pair Button */}
                 <TouchableOpacity
                   style={styles.addUserButtonPill}
-                  onPress={handleOpenAddPersonModal}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsPairModalVisible(true); }}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Scrollable Saved People Pills */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.tabHeaderScrollContent}
-                  style={styles.tabHeaderScrollView}
-                >
-                  {savedPeople.map((person) => {
-                    const isSelected = selectedPersonId === person.id;
-                    const isDeleting = deletingPersonId === person.id;
+                {/* Pairing Pills */}
+                {pairingPills.map((pill) => {
+                  const isSelected = selectedPillId === pill.id;
+                  const isGreyed = pill.pillState.startsWith('greyed');
+                  const isPending = pill.pillState === 'pending_active';
 
-                    return (
-                      <Animated.View
-                        key={person.id}
+                  return (
+                    <TouchableOpacity
+                      key={pill.id}
+                      style={[
+                        styles.personPill,
+                        isSelected && !isGreyed && styles.personPillSelectedGradient,
+                        isGreyed && { opacity: 0.4 },
+                      ]}
+                      onPress={() => {
+                        if (pill.pillState === 'active') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedPillId(pill.id);
+                        } else {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setInfoPill(pill);
+                        }
+                      }}
+                      onLongPress={() => {
+                        if (pill.pillState === 'active') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          Alert.alert(
+                            "Unpair",
+                            `Unpair from ${pill.displayName}? Custom holidays and saved cards for them will be removed.`,
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              { text: "Unpair", style: "destructive", onPress: () => handleUnpair(pill.pairingId!) },
+                            ]
+                          );
+                        } else {
+                          setInfoPill(pill);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View
                         style={[
-                          styles.personPill,
-                          isSelected && styles.personPillSelectedGradient,
-                          isDeleting && {
-                            opacity: deletingAnimRef,
-                            transform: [{ scale: deletingAnimRef }],
-                          },
+                          styles.personPillAvatar,
+                          isSelected && !isGreyed && styles.personPillAvatarSelectedGradient,
                         ]}
                       >
-                        <TouchableOpacity
-                          style={styles.personPillTouchable}
-                          onPress={() => {
-                            if (deletingPersonId) return; // Don't allow selection changes during deletion
-                            handlePersonSelect(person.id);
-                          }}
-                          onLongPress={() => handleLongPressPerson(person)}
-                          activeOpacity={0.7}
-                          accessibilityLabel={person.name}
-                        >
-                          <View
+                        {pill.avatarUrl ? (
+                          <Image source={{ uri: pill.avatarUrl }} style={styles.pillAvatarImage} />
+                        ) : (
+                          <Text
                             style={[
-                              styles.personPillAvatar,
-                              isSelected && styles.personPillAvatarSelectedGradient,
+                              styles.personPillInitials,
+                              isSelected && styles.personPillInitialsSelected,
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.personPillInitials,
-                                isSelected && styles.personPillInitialsSelected,
-                              ]}
-                            >
-                              {person.initials}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.personPillRemoveButton,
-                            isSelected && styles.personPillRemoveButtonSelected,
-                          ]}
-                          onPress={() => handleConfirmRemovePerson(person)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons
-                            name="close"
-                            size={14}
-                            color={isSelected ? "white" : "#9ca3af"}
-                          />
-                        </TouchableOpacity>
-                      </Animated.View>
-                    );
-                  })}
-                </ScrollView>
-              </View>
+                            {pill.initials}
+                          </Text>
+                        )}
+                      </View>
+                      {isPending && (
+                        <View style={styles.pendingPillBadge}>
+                          <View style={styles.pendingPillBadgeDot} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
               {/* Person-specific view when a person is selected */}
-              {selectedPerson ? (
+              {selectedPill?.pillState === 'active' ? (
                 <PersonHolidayView
-                  person={selectedPerson}
-                  location={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : { latitude: 40.7128, longitude: -74.006 }}
+                  pairedUserId={selectedPill.pairedUserId!}
+                  pairingId={selectedPill.pairingId!}
+                  displayName={selectedPill.displayName}
+                  birthday={selectedPill.birthday}
+                  gender={selectedPill.gender}
+                  location={userLocation ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : { latitude: 40.7128, longitude: -74.006 }}
                   userId={user?.id ?? ""}
                 />
               ) : (
                 <>
-                  {/* Elite People Summary Hero */}
-                  {savedPeople.length > 0 && (
-                    <ElitePeopleSummary
-                      people={savedPeople}
-                      isElite={hasElevatedAccess(effectiveTier)}
-                      onPersonPress={(id) => setSelectedPersonId(id)}
-                      onUpgradePress={() => onUpgradePress?.()}
-                    />
-                  )}
-
                   {/* Loading State */}
                   {recommendationsLoading && !hasCompletedInitialFetch && (
                     <View style={styles.loadingContainer}>
@@ -3477,28 +3271,31 @@ export default function DiscoverScreen({
         isSaved={false}
         currentMode="solo"
         accountPreferences={accountPreferences}
-        hideTravelTime
       />
 
-      {/* Add Person Modal (new multi-step component) */}
-      <AddPersonModal
-        visible={isAddPersonModalVisible}
-        onClose={handleCloseAddPersonModal}
-        onPersonCreated={(personId) => {
-          handleCloseAddPersonModal();
-          setSelectedPersonId(personId);
+      {/* Pair Request Modal */}
+      <PairRequestModal
+        visible={isPairModalVisible}
+        onClose={() => setIsPairModalVisible(false)}
+        onPairRequestSent={() => {
+          setIsPairModalVisible(false);
         }}
       />
 
-      {/* Person Edit Sheet (long-press on person pill) */}
-      {editingPerson && (
-        <PersonEditSheet
-          visible={!!editingPerson}
-          person={editingPerson}
-          onClose={() => setEditingPerson(null)}
-          onUpdated={() => setEditingPerson(null)}
-        />
-      )}
+      {/* Pairing Info Card (tap on greyed/pending pill) */}
+      <PairingInfoCard
+        visible={!!infoPill}
+        pill={infoPill}
+        onCancel={() => {
+          if (infoPill?.type === 'pending_invite') {
+            cancelInviteMutation.mutate(infoPill.pendingInviteId!);
+          } else if (infoPill?.pairRequestId) {
+            cancelRequestMutation.mutate(infoPill.pairRequestId);
+          }
+          setInfoPill(null);
+        }}
+        onClose={() => setInfoPill(null)}
+      />
 
       {/* Add Custom Day Modal */}
       <Modal
@@ -4007,7 +3804,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroCardPrice: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: "600",
     color: "#eb7825",
   },
@@ -4032,22 +3829,15 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 16,
   },
-  tabHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  tabHeaderScrollView: {
     marginBottom: 16,
     marginHorizontal: -16,
-    paddingLeft: 16,
   },
-  tabHeaderScrollView: {
-    flex: 1,
-  },
-  tabHeaderScrollContent: {
+  tabHeaderContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingRight: 16,
+    paddingHorizontal: 16,
   },
   headerButton: {
     paddingVertical: 8,
@@ -4192,7 +3982,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   priceRange: {
-    fontSize: 11,
+    fontSize: 16,
     fontWeight: "600",
     color: "#eb7825",
   },
@@ -4269,8 +4059,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   gridCardPrice: {
-    fontSize: 9,
-    fontWeight: "500",
+    fontSize: 11,
+    fontWeight: "400",
     color: "#eb7825",
   },
   gridCardRatingContainer: {
@@ -4581,8 +4371,9 @@ const styles = StyleSheet.create({
   personPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF3E7",
-    borderColor: "#fcd9b6",
+    backgroundColor: "#f9fafb",
+    // borderWidth: 1,
+    borderColor: "#e5e7eb",
     borderRadius: 24,
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -4676,6 +4467,28 @@ const styles = StyleSheet.create({
   },
   personPillRemoveButtonSelected: {
     backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  pillAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  pendingPillBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingPillBadgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f97316',
   },
   // Error styles
   errorText: {

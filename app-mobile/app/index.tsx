@@ -179,6 +179,7 @@ function AppContent() {
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
+  const notifiedFriendAcceptedIdsRef = useRef<Set<string>>(new Set()); // Track which friend acceptances we've notified about
   // Tracks collaboration invite IDs that have already generated in-app notifications.
   // Prevents duplicates when the same invite is seen by both the push handler and
   // the foreground catch-up mechanism.
@@ -345,6 +346,23 @@ function AppContent() {
           );
           break;
         }
+        case "friend_accepted": {
+          const accepterName = (data.accepterName as string) || "Someone";
+          const accepterId = data.accepterId as string | undefined;
+          const acceptRequestId = data.requestId as string | undefined;
+
+          // Deduplicate: use requestId (or accepterId as fallback) to prevent duplicate notifications
+          const dedupeKey = acceptRequestId || accepterId || "";
+          if (dedupeKey && notifiedFriendAcceptedIdsRef.current.has(dedupeKey)) {
+            break;
+          }
+          if (dedupeKey) {
+            notifiedFriendAcceptedIdsRef.current.add(dedupeKey);
+          }
+
+          inAppNotificationService.notifyFriendAccepted(accepterName, accepterId);
+          break;
+        }
         default:
           console.log('[OneSignal] Unknown notification type:', data.type)
           return; // Don't navigate for unknown types
@@ -362,6 +380,7 @@ function AppContent() {
       collaboration_invite_response: "home",
       collaboration_invite_sent: "home",
       friend_request: "connections",
+      friend_accepted: "connections",
     };
 
     // Foreground: push arrives while app is open

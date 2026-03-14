@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings -- combining pool-first card 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 49 Deno serverless functions |
+| Edge Functions | 50 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -56,7 +56,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 49 Deno edge functions
+│   ├── functions/                      # 50 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
@@ -117,32 +117,31 @@ The profile also includes legal links (Privacy Policy, Terms of Service) and sig
 
 Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
 
-### Person Page (For You)
+### Pairing (Replaces Saved People)
 
-The person-centric "For You" view provides personalized recommendations for each saved person with a card-forward layout powered by pool-first card serving:
+Pairing replaces the manual Saved People system. Instead of recording voice descriptions and relying on AI to generate experience suggestions, users pair with real people and their actual behavior data (swipes, saves, visits) drives personalization.
 
-- **Birthday Hero Section** -- Displays the person's age prominently alongside birthday countdown. A horizontal scroll of hero cards (`PersonCuratedCard`) shows top-pick experiences sourced from the `card_pool` table via the `get-person-hero-cards` edge function. Cards appear in under 1 second (no AI generation on load). A shuffle mechanic at the end of the horizontal scroll lets users refresh cards with a fade-out/fade-in animation and no-repeat guarantee via `person_card_impressions`. A "Generate More" button fetches additional AI-generated recommendations (GPT-4o-mini pipeline), excluding already-seen cards. Falls back to a dark "Picks" card when no birthday is set.
-- **Hero Cards Pipeline** -- The `usePersonHeroCards` hook (the sole hook for hero and holiday card fetching -- legacy `useHeroCards` and `useHolidayCards` hooks have been deleted) calls `get-person-hero-cards`, which queries the `card_pool` table directly using the person's location and categories. The DB function `query_person_hero_cards` uses progressive radius expansion to find matching cards. Cards are tracked via `person_card_impressions` to prevent repeats. The hook uses cache versioning (`CACHE_VERSION = "v2"` embedded in query keys) so that deploys with schema changes auto-bust stale AsyncStorage caches without requiring users to clear app data. `staleTime` is set to 30 minutes (previously `Infinity`) to ensure data freshness after deploys. The "Generate More" button still uses the older AI pipeline (`get-holiday-cards` in `generate_more` mode with GPT-4o-mini) for deeper suggestions beyond what the pool offers.
-- **Curated Cards Pipeline** -- Edge functions (`get-person-hero-cards`, `get-holiday-cards`) now pass full stop data (`stopsData`) through to the mobile client. The `HolidayCard` type carries `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` fields. When a curated card is tapped, `PersonHolidayView` maps `stopsData` to `CuratedStop[]` and passes it to the `ExpandedCardModal`, enabling full multi-stop timeline rendering with per-stop details (name, image, duration, price). The shared `mapPoolCardToResponseCard` helper in `get-holiday-cards` replaced 3 inline card builders, ensuring all card types carry consistent stop data.
-- **Shuffle Mechanic** -- The `useShuffleCards` hook powers shuffle at the end of both hero section and holiday row horizontal scrolls. Triggers a fade-out/fade-in animation, fetches a fresh batch from the pool excluding previously seen card IDs, and records new impressions. Provides a seamless refresh experience without page navigation.
-- **PersonGridCard** -- Unified grid card component matching the For You tab design. Shows venue image, category-colored badge, price tier pill, rating, and opens Google Maps on tap. Used across holiday rows for consistent visual treatment.
-- **PersonCuratedCard** -- Compact curated card for the hero section horizontal scroll. Shows multi-stop itinerary info (stop count, price range) in a condensed format.
-- **Holiday Rows** -- Expandable rows for upcoming holidays, sorted by days away. Each row lazy-loads cards on expand using `usePersonHeroCards` (pool-first from `card_pool`). Cards render as `PersonGridCard` for unified design. Shuffle mechanic available at end of horizontal scroll. Up to 3 tappable cards per category with venue images, readable category labels with colored badges, gradient overlays, and Google Maps navigation on tap. Intent-based sections (e.g., romantic) resolve to mapped category slugs before querying. Gender-filtered standard holidays plus user-created custom holidays.
-- **Swipe-to-Archive** -- PanResponder-based swipe gesture on holiday rows with archive/unarchive persistence in the database.
-- **Custom Day Heroes** -- Custom special days (anniversaries, first dates, graduations) are promoted to full hero cards with the same visual weight as the birthday hero. Each hero shows a countdown ("days to make it count"), commemoration year badge ("Year 3"), occasion-aware AI suggestion (references both person AND day), and horizontally scrollable experience cards with independent shuffle. Custom days appear after the birthday hero, sorted by proximity.
-- **Custom Holiday Modal** -- Simplified calendar-based date picker for marking special days. Users enter a name and pick a date from a visual calendar grid (no categories or description). The year is stored to track commemoration age.
-- **Elite People Summary** -- Horizontal cards showing upcoming birthdays across all saved people. Non-Elite users see a BlurView teaser with upgrade CTA.
+**3-Tier Pairing System:**
+- **Tier 1 (Friend):** Send a direct pair request to any Mingla friend. Push + in-app notification. Pill shows at full opacity with "Pending" badge.
+- **Tier 2 (Mingla, not friend):** Enter phone number of a Mingla user. Creates friend request + hidden pair request. Receiver sees friend request first. When friendship accepted, DB trigger (`reveal_pair_requests_on_friend_accept`) flips pair request visibility and fires push notification. Sender sees greyed-out pill ("Waiting for friend request").
+- **Tier 3 (Not on Mingla):** Enter phone number of non-Mingla user. SMS invite sent. When person signs up and verifies phone, DB trigger auto-creates both friend request + hidden pair request. Same chain as Tier 2 from there. Sender sees greyed-out pill ("Waiting to join").
 
-### Add Person Flow
+**Pill States on Discover:**
+- `active` — Full color, tappable, shows PersonHolidayView with hero cards and holidays
+- `pending_active` — Full opacity + "Pending" badge (Tier 1: friend, awaiting pair accept)
+- `greyed_waiting_friend` — 40% opacity (Tier 2: waiting for friend accept)
+- `greyed_waiting_pair` — 40% opacity (Tier 2: friend accepted, waiting for pair accept)
+- `greyed_waiting_signup` — 40% opacity (Tier 3: waiting for person to join Mingla)
 
-Streamlined 4-step flow (reduced from 5 steps by removing the audio recording step):
+**PairingInfoCard:** Tapping a greyed/pending pill shows a bottom sheet with status message + "Cancel Pair Request" button.
 
-1. **Name** -- First and last name entry
-2. **Birthday** -- Date of birth picker
-3. **Gender** -- Gender selection
-4. **Confirm** -- Redesigned confirmation screen with warm personal copy, staggered entrance animations, and "Add to my people" CTA
+**PersonHolidayView (for active pairings):**
+- Birthday hero card with countdown and days away
+- Holiday rows sorted by proximity, gender-filtered, with pool-first hero card fetching via `get-person-hero-cards` (now blends the paired user's learned preferences from `user_preference_learning` with holiday categories)
+- Custom holidays tied to the pairing (CASCADE deleted on unpair)
+- Swipe-to-archive on holiday rows
 
-Audio description recording (`AudioDescriptionManager`) has been removed from the add person flow entirely. Audio services remain available for the onboarding sync path only.
+**Unpair:** Long-press active pill → confirmation → deletes pairing + CASCADEs to custom holidays, archived holidays, and card impressions.
 
 ### Connect Page
 
@@ -169,7 +168,7 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 
 - Phone invites via `send-phone-invite` edge function with Twilio SMS and basic friendship on signup
 - Rate limited to 10 invites per 24 hours
-- Push-to-in-app notification pipeline for friend requests (with foreground `friend_request` push handling and deduplication against polling) and collaboration invites
+- Push-to-in-app notification pipeline for friend requests and friend acceptances (with foreground `friend_request` and `friend_accepted` push handling and deduplication against polling) and collaboration invites. Both friend request and acceptance push notifications respect `notification_preferences`.
 - Realtime subscriptions for `pending_invites`, `saved_people`, `messages`, `friends`, and `calendar_entries` tables
 - `lookup-phone` checks `friends` and `friend_requests` tables for friendship/pending status
 
@@ -320,15 +319,22 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 |-------|---------|
 | `conversation_presence` | Per-user, per-conversation online status with heartbeat timestamps. Auto-update trigger on row modification. Stale presence cleanup function. |
 
-### People & Experiences Tables
+### Pairing Tables
 
 | Table | Purpose |
 |-------|---------|
-| `saved_people` | Saved people with name, birthday, gender, AI-generated description |
-| `person_audio_clips` | Audio recordings describing saved people (onboarding sync path only) |
-| `person_experiences` | AI-generated experience cards per person per occasion |
-| `custom_holidays` | User-created holidays for specific saved people (name, month, day, year for commemoration tracking; categories nullable) |
-| `archived_holidays` | Tracks which holidays a user has archived for a specific person |
+| `pair_requests` | Pair request lifecycle across 3 tiers. Columns: `visibility` ('visible'\|'hidden_until_friend'), `gated_by_friend_request_id` (FK for Tier 2/3 chaining), `pending_display_name`, `pending_phone_e164`. Atomic accept via `accept_pair_request_atomic` RPC. |
+| `pairings` | Active bidirectional pairings. `user_a_id < user_b_id` constraint prevents duplicates. CASCADE deletes to custom_holidays, archived_holidays, person_card_impressions. |
+| `pending_pair_invites` | Tier 3 phone invites for non-Mingla users. Auto-converts to friend_request + pair_request on phone verification via DB trigger. |
+
+### People & Experiences Tables (Legacy + Pairing)
+
+| Table | Purpose |
+|-------|---------|
+| `saved_people` | Legacy saved people (deprecated — replaced by pairings) |
+| `custom_holidays` | User-created holidays. Now linked to pairings via `pairing_id` and `paired_user_id` columns (legacy `person_id` retained for backward compat) |
+| `archived_holidays` | Tracks which holidays a user has archived. Now supports `pairing_id` and `paired_user_id` columns |
+| `person_card_impressions` | Tracks which cards each paired person has been shown. Now supports `paired_user_id` column |
 
 ### Collaboration Tables
 
@@ -368,10 +374,10 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `generate-experiences` | AI-powered place recommendations |
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation |
-| `generate-person-experiences` | Person-specific experience recommendations |
-| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation (onboarding sync path) |
+| `send-pair-request` | Handles all 3 pairing tiers: friend (Tier 1), Mingla non-friend via phone (Tier 2), non-Mingla via SMS invite (Tier 3). Auto-detects tier from input. |
+| `notify-pair-request-visible` | Sends push + in-app notification when a hidden pair request becomes visible (after friend request acceptance) |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Queries `card_pool` directly by location + categories using `query_person_hero_cards` DB function with progressive radius expansion. Returns full `stopsData` for curated cards. Tracks impressions in `person_card_impressions` for no-repeat guarantee. Sub-second response time. |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Now accepts `pairedUserId` to blend the paired user's learned preferences (`user_preference_learning`) with holiday categories. Queries `card_pool` directly by location + blended categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` (via `paired_user_id` column). Sub-second response time. |
 | `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Uses shared `mapPoolCardToResponseCard` helper to build consistent card responses across all modes (replacing 3 previous inline card builders). Returns full `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` on every card. Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char). Extended with optional `customDayName`/`customDayYear` fields for occasion-aware suggestions that reference both the person and the special day |
 | `discover-experiences` | Explore/discover tab |
@@ -389,7 +395,8 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
-| `send-friend-request-email` | Push notification for friend requests (via OneSignal) |
+| `send-friend-request-email` | Push notification for friend requests (via OneSignal). Checks `notification_preferences` before sending. |
+| `send-friend-accepted-notification` | Push notification when a friend request is accepted (via OneSignal). Notifies the original sender. Checks `notification_preferences` before sending. |
 | `send-collaboration-invite` | Push notification for session invites (via OneSignal) |
 | `notify-invite-response` | Push notification for invite responses (via OneSignal) |
 | `send-message-email` | Push notification for new direct messages (via OneSignal) |
@@ -515,11 +522,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Industry-Standard Foreground Recovery** -- Fixed 5 compounding flaws that caused permanent spinner after backgrounding: disabled competing focusManager (single-authority resume via useForegroundRefresh), added 8-second auth timeout, aligned network timeout to 12 seconds (industry standard), added re-armable resume safety timeout, and enabled cached-data-first behavior. Cached data now shows instantly on resume; worst-case spinner capped at 25 seconds instead of permanent hang.
-- **Open/Closed Badge Fix** -- Replaced stale `openNow`/`isOpenNow` values from Google Places with live client-side computation using `weekday_text` data and the user's local clock.
-- **Luxurious Collaboration Discussion Redesign** -- Complete rewrite of the board discussion tab with iMessage-grade chat UX.
-- **Full-Height Collaboration Modal** -- CollaborationModule modal now extends to full screen height.
-- **Board Status Row Removed** -- Removed the voting/locking status badge and action buttons from BoardViewScreen.
+- **Pairing Feature (replaces Saved People)** -- 3-tier pairing system: pair with friends (Tier 1), Mingla users via phone (Tier 2), or invite non-Mingla users (Tier 3). Chained friend request → pair request flow with DB triggers for automatic reveal and push notifications. Greyed-out pills with status info for pending pairings. Hero cards blend paired user's learned preferences with holiday categories.
+- **Database: 6 new migrations** -- pair_requests, pairings, pending_pair_invites tables + atomic accept RPC + data access policies + cleanup of person_audio_clips/person_experiences tables.
+- **Edge Functions: 2 new, 2 removed** -- Added send-pair-request (all 3 tiers) and notify-pair-request-visible. Removed process-person-audio and generate-person-experiences (replaced by real behavior data).
+- **Mobile: Full UI overhaul** -- PairRequestModal (friend picker + phone input), PairingInfoCard (status overlay), DiscoverScreen pill rendering (5 visual states), PersonHolidayView (pairedUserId-based), NotificationsModal (pair_request accept/decline).
+- **Realtime: pair_requests + pairings subscriptions** -- useSocialRealtime now subscribes to pair_requests and pairings tables for instant cache invalidation.
 
 ---
 

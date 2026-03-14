@@ -1,20 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
-import { HolidayCardsResponse } from "../services/holidayCardsService";
 import { fetchPersonHeroCards } from "../services/personHeroCardsService";
+import type { HolidayCardsResponse } from "../services/personHeroCardsService";
 
-// Bump this version whenever the Card response shape changes.
-// This forces all cached data to be ignored after a deployment that
-// changes the schema, preventing stale-shape data from being served.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v1";
+
+// ── Query Keys ──────────────────────────────────────────────────────────────
 
 export const personHeroCardKeys = {
   all: ["person-hero-cards", CACHE_VERSION] as const,
-  forPersonHoliday: (personId: string, holidayKey: string) =>
-    [...personHeroCardKeys.all, personId, holidayKey] as const,
+  forPairedUserHoliday: (pairedUserId: string, holidayKey: string) =>
+    [...personHeroCardKeys.all, pairedUserId, holidayKey] as const,
 };
 
+// ── Types ───────────────────────────────────────────────────────────────────
+
 interface UsePersonHeroCardsParams {
-  personId: string;
+  pairedUserId: string;
   holidayKey: string;
   categorySlugs: string[];
   curatedExperienceType: string | null;
@@ -22,22 +23,29 @@ interface UsePersonHeroCardsParams {
   enabled: boolean;
 }
 
+// ── Hook ────────────────────────────────────────────────────────────────────
+
 export function usePersonHeroCards(params: UsePersonHeroCardsParams) {
+  const {
+    pairedUserId,
+    holidayKey,
+    categorySlugs,
+    curatedExperienceType,
+    location,
+    enabled,
+  } = params;
+
   return useQuery<HolidayCardsResponse>({
-    queryKey: personHeroCardKeys.forPersonHoliday(
-      params.personId,
-      params.holidayKey
-    ),
+    queryKey: personHeroCardKeys.forPairedUserHoliday(pairedUserId, holidayKey),
     queryFn: () =>
       fetchPersonHeroCards({
-        personId: params.personId,
-        holidayKey: params.holidayKey,
-        categorySlugs: params.categorySlugs,
-        curatedExperienceType: params.curatedExperienceType,
-        location: params.location,
+        pairedUserId,
+        holidayKey,
+        categorySlugs,
+        curatedExperienceType,
+        location,
       }),
-    enabled: params.enabled,
-    staleTime: 30 * 60 * 1000, // 30 min — matches other hooks, ensures fresh data after deploys
-    gcTime: 60 * 60 * 1000,    // Keep in memory for 1 hour
+    enabled: enabled && !!pairedUserId && !!holidayKey,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }

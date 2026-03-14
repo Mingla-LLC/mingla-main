@@ -1,17 +1,21 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
-import { phoneInviteKeys } from "./usePhoneInvite";
-import { savedPeopleKeys } from "./useSavedPeople";
-import { friendsKeys } from "./useFriendsQuery";
+import { pairingKeys } from "./usePairings";
 
 /**
- * Subscribes to realtime changes on friend_requests and other social tables
- * for the given user, invalidating React Query caches on any change.
+ * Subscribes to realtime changes on social tables and invalidates
+ * the appropriate React Query caches.
  *
- * Call once per screen that displays social data (ConnectionsPage,
- * DiscoverScreen). The onboarding flow does NOT need this hook.
+ * Tables subscribed:
+ *   - friend_requests (receiver_id = userId)
+ *   - pending_invites (inviter_id = userId)
+ *   - messages (all, filtered in callback)
+ *   - conversation_participants (user_id = userId)
+ *   - friends (user_id = userId and friend_user_id = userId)
+ *   - calendar_entries (user_id = userId)
+ *   - pair_requests (receiver_id = userId)
+ *   - pairings (all, filtered in callback for user_a_id or user_b_id)
  */
 export function useSocialRealtime(
   userId: string | undefined,
@@ -19,38 +23,19 @@ export function useSocialRealtime(
     onFriendRequestChange?: () => void;
     onNewMessage?: () => void;
     onFriendListChange?: () => void;
+    onPairRequestChange?: () => void;
   }
 ) {
   const queryClient = useQueryClient();
-
-  // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
-
-  // Cache of conversation IDs this user participates in.
-  // Used to filter realtime message events — only trigger callback for
-  // conversations the user is actually in, instead of every message globally.
-  const conversationIdsRef = useRef<Set<string>>(new Set());
-
-  const refreshConversationIds = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase
-      .from("conversation_participants")
-      .select("conversation_id")
-      .eq("user_id", userId);
-    if (!error && data) {
-      conversationIdsRef.current = new Set(data.map((r) => r.conversation_id));
-    }
-  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
 
-    // Seed the conversation cache before subscribing
-    refreshConversationIds();
-
-    const channel: RealtimeChannel = supabase
-      .channel(`social-realtime:${userId}`)
+    const channel = supabase
+      .channel(`social-realtime-${userId}`)
+      // friend_requests: incoming requests
       .on(
         "postgres_changes",
         {
@@ -60,10 +45,11 @@ export function useSocialRealtime(
           filter: `receiver_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId) });
+          queryClient.invalidateQueries({ queryKey: ["friends"] });
           callbacksRef.current?.onFriendRequestChange?.();
         }
       )
+      // pending_invites
       .on(
         "postgres_changes",
         {
@@ -73,23 +59,10 @@ export function useSocialRealtime(
           filter: `inviter_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({
-            queryKey: phoneInviteKeys.all,
-          });
+          queryClient.invalidateQueries({ queryKey: ["friends"] });
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "saved_people",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: savedPeopleKeys.all });
-        }
-      )
+      // messages
       .on(
         "postgres_changes",
         {
@@ -97,16 +70,12 @@ export function useSocialRealtime(
           schema: "public",
           table: "messages",
         },
-        (payload) => {
-          // Only fire callback if this message belongs to a conversation
-          // the current user participates in. This prevents every user from
-          // refetching on every message sent anywhere in the app.
-          const conversationId = (payload.new as any)?.conversation_id;
-          if (conversationId && conversationIdsRef.current.has(conversationId)) {
-            callbacksRef.current?.onNewMessage?.();
-          }
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["messages"] });
+          callbacksRef.current?.onNewMessage?.();
         }
       )
+      // conversation_participants
       .on(
         "postgres_changes",
         {
@@ -116,10 +85,10 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          // User joined or left a conversation — refresh the local cache
-          refreshConversationIds();
+          queryClient.invalidateQueries({ queryKey: ["messages"] });
         }
       )
+      // friends
       .on(
         "postgres_changes",
         {
@@ -129,22 +98,11 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId) });
+          queryClient.invalidateQueries({ queryKey: ["friends"] });
           callbacksRef.current?.onFriendListChange?.();
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "friends",
-          filter: `friend_user_id=eq.${userId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId) });
-        }
-      )
+      // calendar_entries
       .on(
         "postgres_changes",
         {
@@ -154,7 +112,47 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["calendarEntries", userId] });
+          queryClient.invalidateQueries({ queryKey: ["calendar"] });
+        }
+      )
+      // pair_requests: incoming pair requests
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pair_requests",
+          filter: `receiver_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({
+            queryKey: pairingKeys.incomingRequests(userId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: pairingKeys.pills(userId),
+          });
+          callbacksRef.current?.onPairRequestChange?.();
+        }
+      )
+      // pairings: subscribe to all changes, filter in callback
+      // (Supabase realtime only supports single filter per subscription)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pairings",
+        },
+        (payload) => {
+          const record = (payload.new as any) || (payload.old as any);
+          if (
+            record &&
+            (record.user_a_id === userId || record.user_b_id === userId)
+          ) {
+            queryClient.invalidateQueries({
+              queryKey: pairingKeys.pills(userId),
+            });
+          }
         }
       )
       .subscribe();

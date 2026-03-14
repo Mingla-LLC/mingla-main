@@ -15,14 +15,10 @@ import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
-import FriendsModal from "./FriendsModal";
+import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
-import { useSocialRealtime } from "../hooks/useSocialRealtime";
-import { supabase } from "../services/supabase";
-import { useScreenLogger } from "../hooks/useScreenLogger";
-import { HapticFeedback } from "../utils/hapticFeedback";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -48,12 +44,13 @@ interface HomePageProps {
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string;
+  isHighlightingHeader?: boolean;
   // Collaboration sessions props
   collaborationSessions?: CollaborationSession[];
   selectedSessionId?: string | null;
   onSessionSelect?: (sessionId: string | null) => void;
   onSoloSelect?: () => void;
-  onCreateSession?: (sessionName: string, selectedFriends: Friend[], phoneInvitees?: { phoneE164: string }[]) => void;
+  onCreateSession?: (sessionName: string, selectedFriends: Friend[]) => void;
   onAcceptInvite?: (sessionId: string) => void;
   onDeclineInvite?: (sessionId: string) => void;
   onCancelInvite?: (sessionId: string) => void;
@@ -61,8 +58,6 @@ interface HomePageProps {
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
   onNotificationNavigate?: (notification: InAppNotification) => void;
-  userId?: string;
-  onFriendAccepted?: () => void;
 }
 
 export default function HomePage({
@@ -81,6 +76,7 @@ export default function HomePage({
   generateNewMockCard,
   onboardingData,
   refreshKey,
+  isHighlightingHeader,
   // Collaboration sessions props
   collaborationSessions = [],
   selectedSessionId = null,
@@ -94,16 +90,10 @@ export default function HomePage({
   availableFriends = [],
   isCreatingSession = false,
   onNotificationNavigate,
-  userId,
-  onFriendAccepted,
 }: HomePageProps) {
-  useScreenLogger('home');
-  // Keep social query caches fresh via realtime even while on the Home tab
-  useSocialRealtime(userId);
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
-
   const [inviteModalTrigger, setInviteModalTrigger] = useState<{
     sessionId: string;
     nonce: number;
@@ -122,7 +112,6 @@ export default function HomePage({
   const noop = useMemo(() => () => {}, []);
 
   const handleOpenNotifications = useCallback(() => {
-    HapticFeedback.buttonPress();
     setShowNotificationsModal(true);
   }, []);
 
@@ -147,12 +136,9 @@ export default function HomePage({
       return;
     }
 
-    // For actionable types (with accept/decline buttons), don't close or navigate
-    const actionableTypes = [
-      "friend_request",
-      "collaboration_invite",
-    ];
-    if (!actionableTypes.includes(notification.type)) {
+    // For friend requests, don't close or navigate - just mark as read
+    // The modal will be opened via callback
+    if (notification.type !== "friend_request") {
       // Close modal
       setShowNotificationsModal(false);
       // Navigate to the relevant page
@@ -171,8 +157,6 @@ export default function HomePage({
       if (requestId) {
         await acceptFriendRequest(requestId);
       }
-      // Catch up on collaboration invites revealed by the friend acceptance trigger
-      onFriendAccepted?.();
     } catch (error) {
       console.error("Error accepting friend request:", error);
     } finally {
@@ -192,84 +176,25 @@ export default function HomePage({
     }
   };
 
-  const handleAcceptCollabInvite = async (
-    sessionId: string,
-    inviteId: string,
-    notificationId: string
-  ) => {
+  const handleAcceptPairRequest = async (requestId: string, notificationId: string) => {
     try {
-      await supabase
-        .from("collaboration_invites")
-        .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("id", inviteId);
-
-      if (userId) {
-        await supabase.from("session_participants").upsert({
-          session_id: sessionId,
-          user_id: userId,
-          has_accepted: true,
-          role: "member",
-        });
-      }
-
-      await inAppNotificationService.remove(notificationId);
-      onSessionStateChanged?.();
+      // Pair request acceptance is handled by the pairing hooks in the Discover tab
+      // For now, just remove the notification — the user can accept via the Discover tab
+      console.log("[HomePage] Pair request accept:", requestId);
     } catch (error) {
-      console.error("Failed to accept collab invite:", error);
+      console.error("Error accepting pair request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
     }
   };
 
-  const handleDeclineCollabInvite = async (
-    sessionId: string,
-    inviteId: string,
-    notificationId: string
-  ) => {
+  const handleDeclinePairRequest = async (requestId: string, notificationId: string) => {
     try {
-      // Fetch invite details BEFORE mutating so we have clean data for notification
-      const { data: invite } = await supabase
-        .from("collaboration_invites")
-        .select("inviter_id, session_id")
-        .eq("id", inviteId)
-        .single();
-
-      const { data: session } = invite
-        ? await supabase
-            .from("collaboration_sessions")
-            .select("name")
-            .eq("id", invite.session_id)
-            .single()
-        : { data: null };
-
-      await supabase
-        .from("collaboration_invites")
-        .update({ status: "declined" })
-        .eq("id", inviteId);
-
-      if (userId) {
-        await supabase
-          .from("session_participants")
-          .delete()
-          .eq("session_id", sessionId)
-          .eq("user_id", userId);
-      }
-
-      if (invite && userId) {
-        await supabase.functions.invoke("notify-invite-response", {
-          body: {
-            inviteId,
-            response: "declined",
-            inviterId: invite.inviter_id,
-            invitedUserId: userId,
-            sessionId: invite.session_id,
-            sessionName: session?.name || "a session",
-          },
-        });
-      }
-
-      await inAppNotificationService.remove(notificationId);
-      onSessionStateChanged?.();
+      console.log("[HomePage] Pair request decline:", requestId);
     } catch (error) {
-      console.error("Failed to decline collab invite:", error);
+      console.error("Error declining pair request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
     }
   };
 
@@ -307,34 +232,32 @@ export default function HomePage({
         <Animated.View
           style={[
             styles.header,
+            isHighlightingHeader && { zIndex: 1000, elevation: 1000 },
             { transform: [{ translateY: headerSlideAnim }] },
           ]}
         >
           <View style={styles.headerLeft}>
-            <View>
-              <TouchableOpacity
-                onPress={() => {
-                  HapticFeedback.buttonPress();
-                  if (currentMode === "solo") {
-                    onOpenPreferences();
-                  } else {
-                    onOpenCollabPreferences?.();
-                  }
-                }}
-                style={[
-                  styles.preferencesButton,
-                  currentMode !== "solo" && styles.preferencesButtonActive,
-                ]}
-                activeOpacity={0.6}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              >
-                <Ionicons
-                  name="options-outline"
-                  size={18}
-                  color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
-                />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (currentMode === "solo") {
+                  onOpenPreferences();
+                } else {
+                  onOpenCollabPreferences?.();
+                }
+              }}
+              style={[
+                styles.preferencesButton,
+                currentMode !== "solo" && styles.preferencesButtonActive,
+              ]}
+              activeOpacity={0.6}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            >
+              <Ionicons
+                name="options-outline"
+                size={18}
+                color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.headerCenter}>
@@ -348,18 +271,16 @@ export default function HomePage({
           </View>
 
           <View style={styles.headerRight}>
-            <View>
-              <TouchableOpacity
-                onPress={handleOpenNotifications}
-                style={styles.notificationButton}
-                activeOpacity={0.6}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="notifications-outline" size={18} color="#1f2937" />
-                {/* Notification indicator dot */}
-                {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={handleOpenNotifications}
+              style={styles.notificationButton}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="notifications-outline" size={18} color="#1f2937" />
+              {/* Notification indicator dot */}
+              {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
@@ -399,25 +320,23 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <View style={{ flex: 1, width: '100%' }}>
-            <SwipeableCards
-              userPreferences={userPreferences}
-              accountPreferences={accountPreferences}
-              currentMode={currentMode}
-              onAddToCalendar={onAddToCalendar}
-              onCardLike={onSaveCard || noop}
-              onShareCard={onShareCard}
-              onPurchaseComplete={onPurchaseComplete}
-              removedCardIds={removedCardIds}
-              onResetCards={onResetCards}
-              onOpenPreferences={onOpenPreferences}
-              onOpenCollabPreferences={onOpenCollabPreferences}
-              generateNewMockCard={generateNewMockCard}
-              onboardingData={onboardingData}
-              refreshKey={refreshKey}
-              savedCards={savedCards}
-            />
-          </View>
+          <SwipeableCards
+            userPreferences={userPreferences}
+            accountPreferences={accountPreferences}
+            currentMode={currentMode}
+            onAddToCalendar={onAddToCalendar}
+            onCardLike={onSaveCard || noop}
+            onShareCard={onShareCard}
+            onPurchaseComplete={onPurchaseComplete}
+            removedCardIds={removedCardIds}
+            onResetCards={onResetCards}
+            onOpenPreferences={onOpenPreferences}
+            onOpenCollabPreferences={onOpenCollabPreferences}
+            generateNewMockCard={generateNewMockCard}
+            onboardingData={onboardingData}
+            refreshKey={refreshKey}
+            savedCards={savedCards}
+          />
         </View>
 
         {/* Notifications Modal */}
@@ -432,23 +351,15 @@ export default function HomePage({
           onOpenRequestsModal={handleOpenFriendRequestsModal}
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onRejectFriendRequest={handleRejectFriendRequest}
-          onAcceptCollabInvite={handleAcceptCollabInvite}
-          onDeclineCollabInvite={handleDeclineCollabInvite}
+          onAcceptPairRequest={handleAcceptPairRequest}
+          onDeclinePairRequest={handleDeclinePairRequest}
         />
 
-        {/* Friends Modal — Friends list + Requests tabs */}
+        {/* Friend Requests Modal - Opens on top of Notifications Modal */}
         {showFriendRequestsModal && (
-          <FriendsModal
+          <FriendRequestsModal
             isOpen={showFriendRequestsModal}
             onClose={() => setShowFriendRequestsModal(false)}
-            onFriendAccepted={onFriendAccepted}
-            onMessageFriend={(_friendUserId: string) => {
-              // Close the modal — the user can navigate to Chats tab
-              // to continue the conversation. Cross-tab navigation
-              // requires plumbing through app/index.tsx and is out
-              // of scope for this change.
-              setShowFriendRequestsModal(false);
-            }}
           />
         )}
 

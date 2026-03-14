@@ -78,6 +78,24 @@ serve(async (req) => {
       );
     }
 
+    // Check notification preferences for the receiver
+    const { data: prefs } = await supabase
+      .from("notification_preferences")
+      .select("friend_requests, push_enabled")
+      .eq("user_id", receiverId)
+      .maybeSingle();
+
+    if (prefs && (prefs.push_enabled === false || prefs.friend_requests === false)) {
+      console.log("Receiver has disabled friend request notifications, skipping push");
+      return new Response(
+        JSON.stringify({ success: true, method: "none", reason: "user_disabled_notifications" }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Send push notification via OneSignal
     await sendPush({
       targetUserId: receiverId,

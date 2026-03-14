@@ -1,27 +1,54 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as customHolidayService from "../services/customHolidayService";
+import {
+  getCustomHolidays,
+  createCustomHoliday,
+  deleteCustomHoliday,
+  getArchivedHolidays,
+  archiveHoliday,
+  unarchiveHoliday,
+  getCustomHolidaysByPairing,
+  createCustomHolidayForPairing,
+  getArchivedHolidaysByPairing,
+  archiveHolidayForPairing,
+  unarchiveHolidayForPairing,
+} from "../services/customHolidayService";
+import type { CustomHoliday, ArchivedHoliday } from "../services/customHolidayService";
+
+// ── Query Keys ──────────────────────────────────────────────────────────────
 
 export const customHolidayKeys = {
   all: ["custom-holidays"] as const,
   list: (userId: string, personId: string) =>
     [...customHolidayKeys.all, "list", userId, personId] as const,
+  listByPairing: (userId: string, pairingId: string) =>
+    [...customHolidayKeys.all, "pairing-list", userId, pairingId] as const,
   archived: (userId: string, personId: string) =>
     [...customHolidayKeys.all, "archived", userId, personId] as const,
+  archivedByPairing: (userId: string, pairingId: string) =>
+    [...customHolidayKeys.all, "pairing-archived", userId, pairingId] as const,
 };
 
-export function useCustomHolidays(userId: string | undefined, personId: string | undefined) {
-  return useQuery({
+// ── Person-based Hooks (backward compat) ────────────────────────────────────
+
+export function useCustomHolidays(
+  userId: string | undefined,
+  personId: string | undefined
+) {
+  return useQuery<CustomHoliday[]>({
     queryKey: customHolidayKeys.list(userId ?? "", personId ?? ""),
-    queryFn: () => customHolidayService.getCustomHolidays(userId!, personId!),
+    queryFn: () => getCustomHolidays(userId!, personId!),
     enabled: !!userId && !!personId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useArchivedHolidays(userId: string | undefined, personId: string | undefined) {
-  return useQuery({
+export function useArchivedHolidays(
+  userId: string | undefined,
+  personId: string | undefined
+) {
+  return useQuery<ArchivedHoliday[]>({
     queryKey: customHolidayKeys.archived(userId ?? "", personId ?? ""),
-    queryFn: () => customHolidayService.getArchivedHolidays(userId!, personId!),
+    queryFn: () => getArchivedHolidays(userId!, personId!),
     enabled: !!userId && !!personId,
     staleTime: 5 * 60 * 1000,
   });
@@ -30,29 +57,21 @@ export function useArchivedHolidays(userId: string | undefined, personId: string
 export function useCreateCustomHoliday() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: customHolidayService.createCustomHoliday,
+    mutationFn: createCustomHoliday,
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.list(variables.user_id, variables.person_id),
       });
     },
-    onError: (error: Error) => {
-      console.error('[CreateCustomHoliday] Error:', error.message);
-    },
   });
 }
 
-export function useDeleteCustomHoliday(userId: string, personId: string) {
+export function useDeleteCustomHoliday() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: customHolidayService.deleteCustomHoliday,
+    mutationFn: deleteCustomHoliday,
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: customHolidayKeys.list(userId, personId),
-      });
-    },
-    onError: (error: Error) => {
-      console.error('[DeleteCustomHoliday] Error:', error.message);
+      queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
     },
   });
 }
@@ -60,15 +79,11 @@ export function useDeleteCustomHoliday(userId: string, personId: string) {
 export function useArchiveHoliday(userId: string, personId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (holidayKey: string) =>
-      customHolidayService.archiveHoliday(userId, personId, holidayKey),
+    mutationFn: (holidayKey: string) => archiveHoliday(userId, personId, holidayKey),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.archived(userId, personId),
       });
-    },
-    onError: (error: Error) => {
-      console.error('[ArchiveHoliday] Error:', error.message);
     },
   });
 }
@@ -76,14 +91,78 @@ export function useArchiveHoliday(userId: string, personId: string) {
 export function useUnarchiveHoliday(userId: string, personId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: customHolidayService.unarchiveHoliday,
+    mutationFn: (holidayKey: string) => unarchiveHoliday(userId, personId, holidayKey),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.archived(userId, personId),
       });
     },
-    onError: (error: Error) => {
-      console.error('[UnarchiveHoliday] Error:', error.message);
+  });
+}
+
+// ── Pairing-based Hooks (new) ───────────────────────────────────────────────
+
+export function useCustomHolidaysByPairing(
+  userId: string | undefined,
+  pairingId: string | undefined
+) {
+  return useQuery<CustomHoliday[]>({
+    queryKey: customHolidayKeys.listByPairing(userId ?? "", pairingId ?? ""),
+    queryFn: () => getCustomHolidaysByPairing(userId!, pairingId!),
+    enabled: !!userId && !!pairingId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useArchivedHolidaysByPairing(
+  userId: string | undefined,
+  pairingId: string | undefined
+) {
+  return useQuery<ArchivedHoliday[]>({
+    queryKey: customHolidayKeys.archivedByPairing(userId ?? "", pairingId ?? ""),
+    queryFn: () => getArchivedHolidaysByPairing(userId!, pairingId!),
+    enabled: !!userId && !!pairingId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateCustomHolidayForPairing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createCustomHolidayForPairing,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: customHolidayKeys.listByPairing(
+          variables.user_id,
+          variables.pairing_id
+        ),
+      });
+    },
+  });
+}
+
+export function useArchiveHolidayForPairing(userId: string, pairingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (holidayKey: string) =>
+      archiveHolidayForPairing(userId, pairingId, holidayKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: customHolidayKeys.archivedByPairing(userId, pairingId),
+      });
+    },
+  });
+}
+
+export function useUnarchiveHolidayForPairing(userId: string, pairingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (holidayKey: string) =>
+      unarchiveHolidayForPairing(userId, pairingId, holidayKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: customHolidayKeys.archivedByPairing(userId, pairingId),
+      });
     },
   });
 }

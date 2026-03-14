@@ -70,7 +70,7 @@ function getNextAge(birthdayStr: string): number {
 
 interface BirthdayHeroProps {
   person: SavedPerson;
-  personId: string;
+  personId: string; // pairedUserId for pairing flow
   location: { latitude: number; longitude: number };
   userId: string;
   aiSummary: string | null;
@@ -121,7 +121,7 @@ const BirthdayHero: React.FC<BirthdayHeroProps> = ({
 
   // ── Pool-first hero cards ──
   const { data, isLoading: isLoadingHeroCards } = usePersonHeroCards({
-    personId,
+    pairedUserId: personId,
     holidayKey: "hero",
     categorySlugs,
     curatedExperienceType,

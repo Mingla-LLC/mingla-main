@@ -264,7 +264,6 @@ const OnboardingFlow = ({
   const [launchRetries, setLaunchRetries] = useState(0)
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
-  const [showPersonDatePicker, setShowPersonDatePicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
   // Audio state now lives in `data` for persistence (data.currentAudioFriendIndex, data.audioClipsByFriend)
@@ -1759,49 +1758,51 @@ const OnboardingFlow = ({
             <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
           </Pressable>
 
-          {showDatePicker && Platform.OS === 'ios' && (
-            <View style={styles.detailsDatePickerContainer}>
+          {showDatePicker && (
+            <View style={{ marginTop: spacing.sm }}>
               <DateTimePicker
-                value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
+                value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
                 display="spinner"
-                maximumDate={new Date()}
                 minimumDate={MIN_BIRTHDAY_DATE}
-                onChange={(_, selectedDate) => {
-                  if (selectedDate) {
-                    pendingBirthdayRef.current = selectedDate
+                maximumDate={new Date()}
+                onChange={(_event, selectedDate) => {
+                  if (Platform.OS === 'android') {
+                    // Android spinner fires once on confirm/dismiss
+                    if (_event.type === 'set' && selectedDate) {
+                      setData((p) => ({ ...p, userBirthday: selectedDate }))
+                    }
+                    setShowDatePicker(false)
+                    return
                   }
+                  // iOS spinner fires on every scroll
+                  if (selectedDate) pendingBirthdayRef.current = selectedDate
                 }}
               />
-              <Pressable
-                style={styles.detailsDatePickerDone}
-                onPress={() => {
-                  const dateToCommit = pendingBirthdayRef.current
-                  if (dateToCommit) {
-                    setData((p) => ({ ...p, userBirthday: dateToCommit }))
-                    pendingBirthdayRef.current = null
-                  }
-                  setShowDatePicker(false)
-                }}
-              >
-                <Text style={styles.detailsDatePickerDoneText}>Done</Text>
-              </Pressable>
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  style={{
+                    alignItems: 'flex-end',
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                  }}
+                  onPress={() => {
+                    const dateToCommit = pendingBirthdayRef.current
+                    if (dateToCommit) {
+                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
+                      pendingBirthdayRef.current = null
+                    }
+                    setShowDatePicker(false)
+                  }}
+                >
+                  <Text style={{
+                    ...typography.md,
+                    fontWeight: fontWeights.semibold,
+                    color: colors.primary[600],
+                  }}>Done</Text>
+                </Pressable>
+              )}
             </View>
-          )}
-          {showDatePicker && Platform.OS === 'android' && (
-            <DateTimePicker
-              value={data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
-              mode="date"
-              display="spinner"
-              maximumDate={new Date()}
-              minimumDate={MIN_BIRTHDAY_DATE}
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(false)
-                if (event.type === 'set' && selectedDate) {
-                  setData((p) => ({ ...p, userBirthday: selectedDate }))
-                }
-              }}
-            />
           )}
 
           {/* Preferred Language */}
@@ -2653,55 +2654,24 @@ const OnboardingFlow = ({
         <View>
           <Text style={styles.headline}>When's their birthday?</Text>
           <Text style={styles.body}>So we can get the vibe right.</Text>
-          {Platform.OS === 'ios' ? (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={data.personBirthday || DEFAULT_PERSON_DATE}
-                mode="date"
-                display="spinner"
-                minimumDate={MIN_PERSON_DATE}
-                maximumDate={MAX_PERSON_DATE}
-                onChange={(_, date) => {
-                  if (date) {
-                    pendingPersonBirthdayRef.current = date
-                  }
-                }}
-              />
-            </View>
-          ) : (
-            <>
-              <Pressable
-                style={styles.detailsPickerButton}
-                onPress={() => setShowPersonDatePicker(true)}
-              >
-                <Text style={[
-                  styles.detailsPickerText,
-                  !data.personBirthday && styles.detailsPickerPlaceholder,
-                ]}>
-                  {data.personBirthday
-                    ? formatBirthdayDisplay(data.personBirthday)
-                    : 'Tap to select'}
-                </Text>
-                <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
-              </Pressable>
-              {showPersonDatePicker && (
-                <DateTimePicker
-                  value={data.personBirthday || DEFAULT_PERSON_DATE}
-                  mode="date"
-                  display="spinner"
-                  minimumDate={MIN_PERSON_DATE}
-                  maximumDate={MAX_PERSON_DATE}
-                  onChange={(event, date) => {
-                    setShowPersonDatePicker(false)
-                    if (event.type === 'set' && date) {
-                      setData((p) => ({ ...p, personBirthday: date }))
-                      pendingPersonBirthdayRef.current = date
-                    }
-                  }}
-                />
-              )}
-            </>
-          )}
+          <DateTimePicker
+            value={pendingPersonBirthdayRef.current || data.personBirthday || DEFAULT_PERSON_DATE}
+            mode="date"
+            display="spinner"
+            minimumDate={MIN_PERSON_DATE}
+            maximumDate={MAX_PERSON_DATE}
+            onChange={(_event, selectedDate) => {
+              if (Platform.OS === 'android') {
+                // Android: commit immediately on confirm
+                if (_event.type === 'set' && selectedDate) {
+                  setData((p) => ({ ...p, personBirthday: selectedDate }))
+                }
+                return
+              }
+              // iOS: update ref, committed via Next CTA
+              if (selectedDate) pendingPersonBirthdayRef.current = selectedDate
+            }}
+          />
         </View>
       )
     }
@@ -3313,22 +3283,6 @@ const styles = StyleSheet.create({
     ...typography.sm,
     color: colors.text.secondary,
   },
-  detailsDatePickerContainer: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.md,
-    marginTop: spacing.sm,
-    overflow: 'hidden' as const,
-  },
-  detailsDatePickerDone: {
-    alignItems: 'flex-end' as const,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  detailsDatePickerDoneText: {
-    ...typography.md,
-    fontWeight: fontWeights.semibold as any,
-    color: colors.primary[600],
-  },
   // ─── Segmented Control ───
   segmentedControl: {
     flexDirection: 'row',
@@ -3366,11 +3320,6 @@ const styles = StyleSheet.create({
     ...typography.md,
     color: colors.text.primary,
     backgroundColor: colors.background.primary,
-  },
-  // ─── Date Picker ───
-  datePickerContainer: {
-    marginTop: spacing.lg,
-    alignItems: 'center',
   },
   // ─── Location Step (Glass Morphism) ───
   locContainer: {
