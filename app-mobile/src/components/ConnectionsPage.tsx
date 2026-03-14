@@ -1299,7 +1299,7 @@ export default function ConnectionsPageRefactored({
             </TouchableWithoutFeedback>
 
             <View
-              style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32 }]}
+              style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32, marginBottom: keyboardVisible ? keyboardHeight : 0 }]}
               onStartShouldSetResponder={() => true}
             >
               <View style={styles.sheetHandle} />
@@ -1641,7 +1641,7 @@ export default function ConnectionsPageRefactored({
           </TouchableWithoutFeedback>
 
           <View
-            style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32 }]}
+            style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32, marginBottom: keyboardVisible ? keyboardHeight : 0 }]}
             onStartShouldSetResponder={() => true}
           >
             <View style={styles.sheetHandle} />
