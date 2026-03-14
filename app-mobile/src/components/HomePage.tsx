@@ -176,6 +176,28 @@ export default function HomePage({
     }
   };
 
+  const handleAcceptPairRequest = async (requestId: string, notificationId: string) => {
+    try {
+      // Pair request acceptance is handled by the pairing hooks in the Discover tab
+      // For now, just remove the notification — the user can accept via the Discover tab
+      console.log("[HomePage] Pair request accept:", requestId);
+    } catch (error) {
+      console.error("Error accepting pair request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
+    }
+  };
+
+  const handleDeclinePairRequest = async (requestId: string, notificationId: string) => {
+    try {
+      console.log("[HomePage] Pair request decline:", requestId);
+    } catch (error) {
+      console.error("Error declining pair request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
+    }
+  };
+
   const handleClearAll = () => {
     clearAll();
   };
@@ -329,6 +351,8 @@ export default function HomePage({
           onOpenRequestsModal={handleOpenFriendRequestsModal}
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onRejectFriendRequest={handleRejectFriendRequest}
+          onAcceptPairRequest={handleAcceptPairRequest}
+          onDeclinePairRequest={handleDeclinePairRequest}
         />
 
         {/* Friend Requests Modal - Opens on top of Notifications Modal */}

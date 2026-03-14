@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { SavedPerson } from "../services/savedPeopleService";
 import {
   GenderOption,
   HolidayDefinition,
@@ -24,8 +23,13 @@ import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
 import { s, SCREEN_WIDTH } from "../utils/responsive";
 
 interface PersonHolidayViewProps {
-  person: SavedPerson;
+  pairedUserId: string;
+  pairingId: string;
+  displayName: string;
+  birthday: string | null;
+  gender: string | null;
   location: { latitude: number; longitude: number };
+  userId: string;
 }
 
 // ── Helper functions ────────────────────────────────────────────────────────
@@ -188,23 +192,22 @@ function HolidaySectionView({
   holiday,
   daysAway,
   date,
-  person,
+  pairedUserId,
   location,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
   date: Date;
-  person: SavedPerson;
+  pairedUserId: string;
   location: { latitude: number; longitude: number };
 }) {
-  const personalizedParams =
-    person.is_linked && person.linked_user_id
-      ? {
-          linkedUserId: person.linked_user_id,
-          occasion: holiday.id,
-          location,
-        }
-      : null;
+  const personalizedParams = pairedUserId
+    ? {
+        linkedUserId: pairedUserId,
+        occasion: holiday.id,
+        location,
+      }
+    : null;
 
   const { data: personalizedData, isLoading } =
     usePersonalizedCards(personalizedParams);
@@ -258,26 +261,29 @@ function HolidaySectionView({
 // ── Birthday Section Component ─────────────────────────────────────────────
 
 function BirthdaySection({
-  person,
+  birthday,
+  displayName,
+  pairedUserId,
   location,
 }: {
-  person: SavedPerson;
+  birthday: string | null;
+  displayName: string;
+  pairedUserId: string;
   location: { latitude: number; longitude: number };
 }) {
-  if (!person.birthday) return null;
+  if (!birthday) return null;
 
-  const birthdayDate = new Date(person.birthday);
+  const birthdayDate = new Date(birthday);
   const daysAway = getDaysUntil(birthdayDate.getMonth(), birthdayDate.getDate());
 
-  const personalizedParams =
-    person.is_linked && person.linked_user_id
-      ? {
-          linkedUserId: person.linked_user_id,
-          occasion: "birthday",
-          location,
-          isBirthday: true,
-        }
-      : null;
+  const personalizedParams = pairedUserId
+    ? {
+        linkedUserId: pairedUserId,
+        occasion: "birthday",
+        location,
+        isBirthday: true,
+      }
+    : null;
 
   const { data: personalizedData, isLoading } =
     usePersonalizedCards(personalizedParams);
@@ -292,10 +298,10 @@ function BirthdaySection({
         <View style={styles.birthdayHeroContent}>
           <View style={styles.birthdayHeroLeft}>
             <Text style={styles.birthdayHeroTitle}>
-              {person.name}'s Birthday
+              {displayName}'s Birthday
             </Text>
             <Text style={styles.birthdayHeroSubtitle}>
-              {formatBirthdayMonthDay(person.birthday!)}
+              {formatBirthdayMonthDay(birthday!)}
             </Text>
           </View>
           <View style={styles.birthdayHeroDays}>
@@ -336,19 +342,24 @@ function BirthdaySection({
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function PersonHolidayView({
-  person,
+  pairedUserId,
+  pairingId,
+  displayName,
+  birthday,
+  gender,
   location,
+  userId,
 }: PersonHolidayViewProps) {
   // Filter and sort holidays
   const sortedHolidays = useMemo(() => {
-    const filtered = filterHolidaysByGender(STANDARD_HOLIDAYS, person.gender);
+    const filtered = filterHolidaysByGender(STANDARD_HOLIDAYS, gender);
     return filtered
       .map((holiday) => {
         const { date, daysAway } = getNextOccurrence(holiday.getDate);
         return { holiday, date, daysAway };
       })
       .sort((a, b) => a.daysAway - b.daysAway);
-  }, [person.gender]);
+  }, [gender]);
 
   return (
     <ScrollView
@@ -357,7 +368,12 @@ export default function PersonHolidayView({
       contentContainerStyle={styles.contentContainer}
     >
       {/* Birthday section */}
-      <BirthdaySection person={person} location={location} />
+      <BirthdaySection
+        birthday={birthday}
+        displayName={displayName}
+        pairedUserId={pairedUserId}
+        location={location}
+      />
 
       {/* Standard holidays */}
       {sortedHolidays.length > 0 && (
@@ -369,7 +385,7 @@ export default function PersonHolidayView({
               holiday={holiday}
               daysAway={daysAway}
               date={date}
-              person={person}
+              pairedUserId={pairedUserId}
               location={location}
             />
           ))}

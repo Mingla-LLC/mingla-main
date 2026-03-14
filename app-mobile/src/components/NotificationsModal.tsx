@@ -65,6 +65,8 @@ interface NotificationsModalProps {
   onOpenRequestsModal?: () => void;
   onAcceptFriendRequest?: (userId: string, notificationId: string) => void;
   onRejectFriendRequest?: (userId: string, notificationId: string) => void;
+  onAcceptPairRequest?: (requestId: string, notificationId: string) => void;
+  onDeclinePairRequest?: (requestId: string, notificationId: string) => void;
 }
 
 // ── Section grouping helpers ──
@@ -141,6 +143,8 @@ export default function NotificationsModal({
   onOpenRequestsModal,
   onAcceptFriendRequest,
   onRejectFriendRequest,
+  onAcceptPairRequest,
+  onDeclinePairRequest,
 }: NotificationsModalProps) {
   const insets = useSafeAreaInsets();
   const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
@@ -173,12 +177,15 @@ export default function NotificationsModal({
     }
 
     const navLabel = getNavigationLabel(item.navigation);
-    const showAvatar = 
-      item.type === "friend_request" || 
+    const showAvatar =
+      item.type === "friend_request" ||
       item.type === "friend_accepted" ||
-      item.type === "board_invite";
+      item.type === "board_invite" ||
+      item.type === "pair_request";
 
     const isFriendRequest = item.type === "friend_request";
+    const isPairRequest = item.type === "pair_request";
+    const isActionable = isFriendRequest || isPairRequest;
 
     // For friend requests, try to show initials or avatar
     const initials = item.data?.userName
@@ -193,6 +200,9 @@ export default function NotificationsModal({
       if (isFriendRequest) {
         // Open the friend requests modal instead of navigating
         onOpenRequestsModal?.();
+      } else if (isPairRequest) {
+        // Navigate to discover tab (pair requests are handled there)
+        onNotificationPress(item);
       } else {
         onNotificationPress(item);
       }
@@ -200,12 +210,20 @@ export default function NotificationsModal({
 
     const handleAccept = (e: any) => {
       e.stopPropagation();
-      onAcceptFriendRequest?.(item.data?.requestId, item.id);
+      if (isPairRequest) {
+        onAcceptPairRequest?.(item.data?.requestId, item.id);
+      } else {
+        onAcceptFriendRequest?.(item.data?.requestId, item.id);
+      }
     };
 
     const handleReject = (e: any) => {
       e.stopPropagation();
-      onRejectFriendRequest?.(item.data?.requestId, item.id);
+      if (isPairRequest) {
+        onDeclinePairRequest?.(item.data?.requestId, item.id);
+      } else {
+        onRejectFriendRequest?.(item.data?.requestId, item.id);
+      }
     };
 
     return (
@@ -214,7 +232,7 @@ export default function NotificationsModal({
           style={[
             styles.notificationCard,
             !item.isRead && styles.notificationCardUnread,
-            isFriendRequest && styles.notificationCardWithActions,
+            isActionable && styles.notificationCardWithActions,
           ]}
           onPress={handleCardPress}
           activeOpacity={0.7}
@@ -281,13 +299,13 @@ export default function NotificationsModal({
             {/* Description - properly wrapped */}
             <Text 
               style={styles.notificationDescription}
-              numberOfLines={isFriendRequest ? 2 : 2}
+              numberOfLines={isActionable ? 2 : 2}
             >
               {item.description}
             </Text>
 
-            {/* Meta information - not shown for friend requests */}
-            {!isFriendRequest && (
+            {/* Meta information - not shown for actionable notifications */}
+            {!isActionable && (
               <View style={styles.metaSection}>
                 <Text style={styles.notificationTime}>{item.timeAgo}</Text>
                 {navLabel && (
@@ -304,8 +322,8 @@ export default function NotificationsModal({
             )}
           </View>
 
-          {/* Quick Action Buttons for Friend Requests - Right side, integrated */}
-          {isFriendRequest && (
+          {/* Quick Action Buttons for Friend/Pair Requests - Right side, integrated */}
+          {isActionable && (
             <View style={styles.actionsRight}>
               <TouchableOpacity
                 style={styles.acceptButtonCompact}

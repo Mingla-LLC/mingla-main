@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase functions deploy discover-cards --project-ref gqnoajqerqhnvulmnyvv)",
+      "Bash(npx supabase functions deploy discover-picnic-park --no-verify-jwt)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatPriceRange, parseAndFormatDistance, getCurrencyRate } from "./utils/formatters";
@@ -30,14 +31,12 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
-import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences } from "../hooks/useSavedPeople";
-import { generateInitials } from "../utils/stringUtils";
-import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
-import AddPersonModal from "./AddPersonModal";
-import UserSearchSheet from "./UserSearchSheet";
+import { usePairingPills, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useUnpair, pairingKeys } from "../hooks/usePairings";
+import type { PairingPill } from "../services/pairingService";
+import PairRequestModal from "./PairRequestModal";
+import PairingInfoCard from "./PairingInfoCard";
 import LinkRequestBanner from "./LinkRequestBanner";
-import PersonEditSheet from "./PersonEditSheet";
 import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 
@@ -784,21 +783,13 @@ export default function DiscoverScreen({
     }, 230); // 80ms after left column starts
   }, []);
   
-  // Add Person Modal state
-  const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
-  const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
-  const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
+  // Pairing modal state
+  const [isPairModalVisible, setIsPairModalVisible] = useState(false);
+  const [infoPill, setInfoPill] = useState<PairingPill | null>(null);
 
-  // Phase 2: Person selector — hooks disabled to prevent unnecessary Supabase queries.
-  // The UI still renders but with stub data. Re-enable hooks when person selector UI ships.
-  const createPersonMutation = useCreatePerson();
-  const deletePersonMutation = useDeletePerson();
-  const generateExperiencesMutation = useGeneratePersonExperiences();
-  const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
-  // const { data: personExperiences = [] } = usePersonExperiences(
-  //   selectedPersonId !== "for-you" ? selectedPersonId : undefined
-  // );
-  const personExperiences: any[] = [];
+  // Pairing selector
+  const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
+  // Person experiences removed — replaced by pairing system
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
@@ -841,7 +832,7 @@ export default function DiscoverScreen({
     setExpandedHolidayIds(new Set());
     setHolidayCardsById({});
     setHolidayCardsLoadingById({});
-  }, [selectedPersonId]);
+  }, [selectedPillId]);
 
   // ScrollView refs for holiday card navigation
   const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
@@ -872,22 +863,34 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const { user } = useAuthSimple();
-  const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
-  const savedPeople: SavedPerson[] = savedPeopleData;
+  const { data: pairingPills = [] } = usePairingPills(user?.id);
+
+  // Pairing mutation hooks
+  const cancelRequestMutation = useCancelPairRequest();
+  const cancelInviteMutation = useCancelPairInvite();
+  const unpairMutation = useUnpair();
+
+  const handleUnpair = (pairingId: string) => {
+    unpairMutation.mutate(pairingId, {
+      onSuccess: () => {
+        setSelectedPillId("for-you");
+      },
+    });
+  };
 
   // Friend link requests
   const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
   const respondToLinkMutation = useRespondToFriendLink();
 
-  // Get the currently selected person (null if "for-you" is selected)
-  const selectedPerson = useMemo(() => {
-    if (selectedPersonId === "for-you") return null;
-    return savedPeople?.find((p) => p.id === selectedPersonId) || null;
-  }, [selectedPersonId, savedPeople]);
+  // Get the currently selected pill (null if "for-you" is selected)
+  const selectedPill = useMemo(() => {
+    if (selectedPillId === "for-you") return null;
+    return pairingPills?.find((p) => p.id === selectedPillId) || null;
+  }, [selectedPillId, pairingPills]);
 
-  // Animate birthday hero section when person is selected
+  // Animate birthday hero section when paired pill is selected
   useEffect(() => {
-    if (selectedPerson) {
+    if (selectedPill?.pillState === 'active') {
       // Reset animation values
       birthdayHeroOpacity.setValue(0);
       birthdayHeroSlide.setValue(30);
@@ -908,10 +911,10 @@ export default function DiscoverScreen({
         ]).start();
       }, 200);
     }
-  }, [selectedPerson, birthdayHeroOpacity, birthdayHeroSlide]);
+  }, [selectedPill, birthdayHeroOpacity, birthdayHeroSlide]);
 
-  // Holiday detection helper - checks for upcoming holidays relevant to person
-  const getUpcomingHolidays = useCallback((person: SavedPerson | null): string[] => {
+  // Holiday detection helper - checks for upcoming holidays relevant to selected pill
+  const getUpcomingHolidays = useCallback((pill: PairingPill | null): string[] => {
     const holidays: string[] = [];
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -923,18 +926,18 @@ export default function DiscoverScreen({
     }
 
     // Check for Mother's Day (2nd Sunday of May) - within 2 weeks before
-    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && person?.gender === "woman") {
+    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && pill?.gender === "woman") {
       holidays.push("mothers-day");
     }
 
     // Check for Father's Day (3rd Sunday of June) - within 2 weeks before
-    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && person?.gender === "man") {
+    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && pill?.gender === "man") {
       holidays.push("fathers-day");
     }
 
-    // Check if person's birthday is upcoming (within 2 weeks)
-    if (person?.birthday) {
-      const birthday = new Date(person.birthday);
+    // Check if paired user's birthday is upcoming (within 2 weeks)
+    if (pill?.birthday) {
+      const birthday = new Date(pill.birthday);
       const birthdayThisYear = new Date(now.getFullYear(), birthday.getMonth(), birthday.getDate());
       const diffDays = Math.ceil((birthdayThisYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays >= 0 && diffDays <= 14) {
@@ -1075,49 +1078,7 @@ export default function DiscoverScreen({
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
 
-  // One-time migration: AsyncStorage saved people → Supabase
-  useEffect(() => {
-    const migratePeopleFromAsyncStorage = async () => {
-      if (!user?.id) return;
-      const migrationKey = `mingla_people_migrated_${user.id}`;
-      try {
-        const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
-        if (alreadyMigrated) return;
-
-        const oldStorageKey = `mingla_saved_people_${user.id}`;
-        const stored = await AsyncStorage.getItem(oldStorageKey);
-        if (stored) {
-          const oldPeople = JSON.parse(stored) as Array<{
-            id: string;
-            name: string;
-            initials: string;
-            birthday: string | null;
-            gender: string | null;
-            createdAt: string;
-          }>;
-          for (const person of oldPeople) {
-            try {
-              await createPersonMutation.mutateAsync({
-                user_id: user.id,
-                name: person.name,
-                initials: person.initials,
-                birthday: person.birthday ? person.birthday.split("T")[0] : null,
-                gender: person.gender,
-                description: null,
-              });
-            } catch {
-              // Skip duplicates or errors during migration
-            }
-          }
-          await AsyncStorage.removeItem(oldStorageKey);
-        }
-        await AsyncStorage.setItem(migrationKey, "true");
-      } catch (error) {
-        console.error("[Discover] People migration error:", error);
-      }
-    };
-    migratePeopleFromAsyncStorage();
-  }, [user?.id]);
+  // Note: Saved people migration removed — replaced by pairing system
 
   // Save custom holidays to AsyncStorage
   const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
@@ -2501,98 +2462,14 @@ export default function DiscoverScreen({
     { id: "acoustic-indie", label: "Acoustic / Indie" },
   ];
 
-  // Add Person Modal handlers
-  const handleOpenAddPersonModal = () => {
-    setIsAddPersonModalVisible(true);
-  };
-
-  const handleCloseAddPersonModal = () => {
-    setIsAddPersonModalVisible(false);
-  };
-
-  // Build occasions for experience generation
-  const buildOccasionsForPerson = (person: SavedPerson): Array<{ name: string; date: string }> => {
-    const occasions: Array<{ name: string; date: string }> = [];
-    const now = new Date();
-
-    // Birthday (if set)
-    if (person.birthday) {
-      const bday = new Date(person.birthday);
-      const thisYearBday = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
-      if (thisYearBday < now) {
-        thisYearBday.setFullYear(thisYearBday.getFullYear() + 1);
-      }
-      occasions.push({ name: "birthday", date: thisYearBday.toISOString().split("T")[0] });
-    }
-
-    // Upcoming calendar holidays (next 6 months, not archived)
-    if (calendarHolidays) {
-      const sixMonthsDays = 180;
-      const archivedKeys = new Set(archivedHolidayKeysByPerson[person.id] || []);
-      for (const holiday of calendarHolidays) {
-        if (holiday.daysAway >= 0 && holiday.daysAway <= sixMonthsDays) {
-          const holidayKey = `${holiday.name}_${holiday.date instanceof Date ? holiday.date.toISOString().split("T")[0] : holiday.date}`;
-          if (!archivedKeys.has(holidayKey)) {
-            const dateStr = holiday.date instanceof Date
-              ? holiday.date.toISOString().split("T")[0]
-              : new Date(holiday.date).toISOString().split("T")[0];
-            occasions.push({ name: holiday.name, date: dateStr });
-          }
-        }
-      }
-    }
-
-    return occasions.slice(0, 10); // Cap at 10 occasions to limit API calls
-  };
-
-  // Handle person pill selection ("for-you" or person.id)
-  const handlePersonSelect = (personId: string) => {
-    setSelectedPersonId(personId);
+  // Handle pill selection ("for-you" or pill.id)
+  const handlePillSelect = (pillId: string) => {
+    setSelectedPillId(pillId);
   };
 
   // Handle "For You" selection
   const handleForYouSelect = () => {
-    setSelectedPersonId("for-you");
-  };
-
-  // Handle removing a person
-  const handleRemovePerson = async (person: SavedPerson) => {
-    try {
-      await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
-    } catch (error) {
-      console.error("[Discover] Failed to delete person:", error);
-    }
-
-    // Also remove custom holidays associated with this person
-    const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
-    setCustomHolidays(updatedHolidays);
-    await saveCustomHolidaysToStorage(updatedHolidays);
-
-    if (selectedPersonId === person.id) {
-      setSelectedPersonId("for-you");
-    }
-  };
-
-  // Handle long-press to edit a person
-  const handleLongPressPerson = (person: SavedPerson) => {
-    setEditingPerson(person);
-  };
-
-  const handleConfirmRemovePerson = (person: SavedPerson) => {
-    Alert.alert(
-      "Delete person?",
-      `Remove ${person.name} and all their custom holidays?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void handleRemovePerson(person);
-          },
-        },
-      ]
-    );
+    setSelectedPillId("for-you");
   };
 
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
@@ -2613,7 +2490,7 @@ export default function DiscoverScreen({
 
   // Add Custom Day Modal handlers
   const handleOpenAddCustomDayModal = () => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       // Can't add custom days without a person selected
       return;
     }
@@ -2666,7 +2543,7 @@ export default function DiscoverScreen({
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
       id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      personId: selectedPersonId,
+      personId: selectedPillId,
       name: customDayName.trim(),
       date: dateStr,
       description: customDayDescription.trim() || "Custom celebration day",
@@ -2684,7 +2561,7 @@ export default function DiscoverScreen({
       holidayName: customDayName.trim(),
       date: dateStr,
       categories: normalizedCategories,
-      personId: selectedPersonId,
+      personId: selectedPillId,
     });
 
     // Close modal
@@ -2752,15 +2629,15 @@ export default function DiscoverScreen({
   }, []);
 
   const handleArchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPersonId === "for-you") return;
+    if (selectedPillId === "for-you") return;
 
     const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
     if (currentPersonKeys.includes(holidayKey)) return;
 
     const nextArchiveMap = {
       ...archivedHolidayKeysByPerson,
-      [selectedPersonId]: [...currentPersonKeys, holidayKey],
+      [selectedPillId]: [...currentPersonKeys, holidayKey],
     };
 
     setArchivedHolidayKeysByPerson(nextArchiveMap);
@@ -2771,23 +2648,23 @@ export default function DiscoverScreen({
       next.delete(holiday.id);
       return next;
     });
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const handleUnarchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPersonId === "for-you") return;
+    if (selectedPillId === "for-you") return;
 
     const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
     if (!currentPersonKeys.includes(holidayKey)) return;
 
     const nextArchiveMap = {
       ...archivedHolidayKeysByPerson,
-      [selectedPersonId]: currentPersonKeys.filter((key) => key !== holidayKey),
+      [selectedPillId]: currentPersonKeys.filter((key) => key !== holidayKey),
     };
 
     setArchivedHolidayKeysByPerson(nextArchiveMap);
     await saveArchivedHolidaysToStorage(nextArchiveMap);
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const formatHolidayDateForDisplay = useCallback((dateValue: Date | string): string => {
     const holidayDate = new Date(dateValue);
@@ -2797,9 +2674,9 @@ export default function DiscoverScreen({
 
   // Get custom holidays for the currently selected person, formatted as CalendarHoliday
   const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
-    if (selectedPersonId === "for-you") return [];
+    if (selectedPillId === "for-you") return [];
     
-    const personHolidays = customHolidays.filter((h) => h.personId === selectedPersonId);
+    const personHolidays = customHolidays.filter((h) => h.personId === selectedPillId);
     
     return personHolidays.map((h) => {
       // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
@@ -2824,7 +2701,7 @@ export default function DiscoverScreen({
         isCustom: true, // Mark as custom holiday
       } as CalendarHoliday & { isCustom: boolean; categories: string[] };
     });
-  }, [customHolidays, selectedPersonId]);
+  }, [customHolidays, selectedPillId]);
 
   // Transform HolidayExperience to GridCardData for display
   const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
@@ -2869,13 +2746,13 @@ export default function DiscoverScreen({
     try {
       let cards: GridCardData[] = [];
 
-      if (locationLat && locationLng && selectedPersonId !== "for-you") {
-        const personGender = selectedPerson?.gender;
+      if (locationLat && locationLng && selectedPillId !== "for-you") {
+        const personGender = selectedPill?.gender;
         const gender: "man" | "woman" | null =
           personGender === "man" || personGender === "woman" ? personGender : null;
 
         const personCustomHolidays = customHolidays
-          .filter((h) => h.personId === selectedPersonId)
+          .filter((h) => h.personId === selectedPillId)
           .map((h) => ({
             id: h.id,
             name: h.name,
@@ -2924,8 +2801,8 @@ export default function DiscoverScreen({
     holidayCardsLoadingById,
     locationLat,
     locationLng,
-    selectedPerson?.gender,
-    selectedPersonId,
+    selectedPill?.gender,
+    selectedPillId,
     transformHolidayExperienceToCard,
   ]);
 
@@ -2947,7 +2824,7 @@ export default function DiscoverScreen({
     const custom = getPersonCustomHolidays;
     
     // Get selected person's gender for filtering
-    const personGender = selectedPerson?.gender || null;
+    const personGender = selectedPill?.gender || null;
     
     // Combine and filter
     return [...calendar, ...custom]
@@ -2964,33 +2841,33 @@ export default function DiscoverScreen({
         return true;
       })
       .sort((a, b) => a.daysAway - b.daysAway);
-  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender]);
+  }, [calendarHolidays, getPersonCustomHolidays, selectedPill?.gender]);
 
   const visibleHolidays = useMemo(() => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       return allHolidays;
     }
 
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter(
       (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
     );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   const archivedHolidays = useMemo(() => {
-    if (selectedPersonId === "for-you") {
+    if (selectedPillId === "for-you") {
       return [] as CalendarHoliday[];
     }
 
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter((holiday) =>
       archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
     );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
   // Animate holiday items with staggered entrance when holidays are available
   useEffect(() => {
-    if (selectedPerson && visibleHolidays.length > 0 && !holidaysLoading) {
+    if (selectedPill?.pillState === 'active' && visibleHolidays.length > 0 && !holidaysLoading) {
       // Reset all holiday animations
       holidayItemAnimations.forEach((anim) => {
         anim.opacity.setValue(0);
@@ -3021,7 +2898,7 @@ export default function DiscoverScreen({
         }, baseDelay + index * staggerDelay);
       });
     }
-  }, [selectedPerson, visibleHolidays, holidaysLoading, holidayItemAnimations]);
+  }, [selectedPill, visibleHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -3061,7 +2938,7 @@ export default function DiscoverScreen({
                 <TouchableOpacity
                   style={[
                     styles.personPill,
-                    selectedPersonId === "for-you" && styles.personPillSelectedGradient,
+                    selectedPillId === "for-you" && styles.personPillSelectedGradient,
                   ]}
                   onPress={handleForYouSelect}
                   activeOpacity={0.7}
@@ -3069,82 +2946,101 @@ export default function DiscoverScreen({
                   <Text
                     style={[
                       styles.personPillName,
-                      selectedPersonId === "for-you" && styles.personPillNameSelectedGradient,
+                      selectedPillId === "for-you" && styles.personPillNameSelectedGradient,
                     ]}
                   >
                     For You
                   </Text>
                 </TouchableOpacity>
 
-                {/* Add Person Button */}
+                {/* Add Pair Button */}
                 <TouchableOpacity
                   style={styles.addUserButtonPill}
-                  onPress={handleOpenAddPersonModal}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsPairModalVisible(true); }}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Saved People Pills */}
-                {savedPeople.map((person) => (
-                  <View
-                    key={person.id}
-                    style={[
-                      styles.personPill,
-                      selectedPersonId === person.id && styles.personPillSelectedGradient,
-                    ]}
-                  >
+                {/* Pairing Pills */}
+                {pairingPills.map((pill) => {
+                  const isSelected = selectedPillId === pill.id;
+                  const isGreyed = pill.pillState.startsWith('greyed');
+                  const isPending = pill.pillState === 'pending_active';
+
+                  return (
                     <TouchableOpacity
-                      style={styles.personPillTouchable}
-                      onPress={() => handlePersonSelect(person.id)}
-                      onLongPress={() => handleLongPressPerson(person)}
+                      key={pill.id}
+                      style={[
+                        styles.personPill,
+                        isSelected && !isGreyed && styles.personPillSelectedGradient,
+                        isGreyed && { opacity: 0.4 },
+                      ]}
+                      onPress={() => {
+                        if (pill.pillState === 'active') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedPillId(pill.id);
+                        } else {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setInfoPill(pill);
+                        }
+                      }}
+                      onLongPress={() => {
+                        if (pill.pillState === 'active') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          Alert.alert(
+                            "Unpair",
+                            `Unpair from ${pill.displayName}? Custom holidays and saved cards for them will be removed.`,
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              { text: "Unpair", style: "destructive", onPress: () => handleUnpair(pill.pairingId!) },
+                            ]
+                          );
+                        } else {
+                          setInfoPill(pill);
+                        }
+                      }}
                       activeOpacity={0.7}
                     >
                       <View
                         style={[
                           styles.personPillAvatar,
-                          selectedPersonId === person.id && styles.personPillAvatarSelectedGradient,
+                          isSelected && !isGreyed && styles.personPillAvatarSelectedGradient,
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.personPillInitials,
-                            selectedPersonId === person.id && styles.personPillInitialsSelected,
-                          ]}
-                        >
-                          {person.initials}
-                        </Text>
-                        {/* Link icon badge for linked persons */}
-                        {person.is_linked && (
-                          <View style={styles.linkedBadge}>
-                            <Ionicons name="link-outline" size={10} color="#eb7825" />
-                          </View>
+                        {pill.avatarUrl ? (
+                          <Image source={{ uri: pill.avatarUrl }} style={styles.pillAvatarImage} />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.personPillInitials,
+                              isSelected && styles.personPillInitialsSelected,
+                            ]}
+                          >
+                            {pill.initials}
+                          </Text>
                         )}
                       </View>
+                      {isPending && (
+                        <View style={styles.pendingPillBadge}>
+                          <View style={styles.pendingPillBadgeDot} />
+                        </View>
+                      )}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.personPillRemoveButton,
-                        selectedPersonId === person.id && styles.personPillRemoveButtonSelected,
-                      ]}
-                      onPress={() => handleConfirmRemovePerson(person)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name="close"
-                        size={14}
-                        color={selectedPersonId === person.id ? "white" : "#9ca3af"}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                  );
+                })}
               </ScrollView>
 
               {/* Person-specific view when a person is selected */}
-              {selectedPerson ? (
+              {selectedPill?.pillState === 'active' ? (
                 <PersonHolidayView
-                  person={selectedPerson}
+                  pairedUserId={selectedPill.pairedUserId!}
+                  pairingId={selectedPill.pairingId!}
+                  displayName={selectedPill.displayName}
+                  birthday={selectedPill.birthday}
+                  gender={selectedPill.gender}
                   location={userLocation ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : { latitude: 40.7128, longitude: -74.006 }}
+                  userId={user?.id ?? ""}
                 />
               ) : (
                 <>
@@ -3377,42 +3273,29 @@ export default function DiscoverScreen({
         accountPreferences={accountPreferences}
       />
 
-      {/* Add Person Modal (new multi-step component) */}
-      <AddPersonModal
-        visible={isAddPersonModalVisible}
-        onClose={handleCloseAddPersonModal}
-        onPersonCreated={(personId) => {
-          handleCloseAddPersonModal();
-          setSelectedPersonId(personId);
-        }}
-        onStartLinkFlow={() => {
-          handleCloseAddPersonModal();
-          setIsUserSearchVisible(true);
+      {/* Pair Request Modal */}
+      <PairRequestModal
+        visible={isPairModalVisible}
+        onClose={() => setIsPairModalVisible(false)}
+        onPairRequestSent={() => {
+          setIsPairModalVisible(false);
         }}
       />
 
-      {/* User Search Sheet (for friend linking) */}
-      <UserSearchSheet
-        visible={isUserSearchVisible}
-        onClose={() => setIsUserSearchVisible(false)}
-        onLinkSent={() => {
-          setIsUserSearchVisible(false);
+      {/* Pairing Info Card (tap on greyed/pending pill) */}
+      <PairingInfoCard
+        visible={!!infoPill}
+        pill={infoPill}
+        onCancel={() => {
+          if (infoPill?.type === 'pending_invite') {
+            cancelInviteMutation.mutate(infoPill.pendingInviteId!);
+          } else if (infoPill?.pairRequestId) {
+            cancelRequestMutation.mutate(infoPill.pairRequestId);
+          }
+          setInfoPill(null);
         }}
+        onClose={() => setInfoPill(null)}
       />
-
-      {/* Person Edit Sheet (long-press on person pill) */}
-      {editingPerson && (
-        <PersonEditSheet
-          visible={!!editingPerson}
-          person={editingPerson}
-          onClose={() => setEditingPerson(null)}
-          onUpdated={() => setEditingPerson(null)}
-          onUnlinked={() => {
-            setEditingPerson(null);
-            setSelectedPersonId("for-you");
-          }}
-        />
-      )}
 
       {/* Add Custom Day Modal */}
       <Modal
@@ -4584,6 +4467,28 @@ const styles = StyleSheet.create({
   },
   personPillRemoveButtonSelected: {
     backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  pillAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  pendingPillBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingPillBadgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f97316',
   },
   // Error styles
   errorText: {
