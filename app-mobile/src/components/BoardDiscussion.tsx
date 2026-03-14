@@ -1,14 +1,21 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  ScrollView,
+  FlatList,
+  Image,
+  ActionSheetIOS,
+  Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import SwipeableBoardCards from "./SwipeableBoardCards";
 import BoardMemberManagementModal from "./BoardMemberManagementModal";
 import { KeyboardAwareView } from "./ui/KeyboardAwareView";
@@ -19,22 +26,13 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
-
-interface Message {
-  id: string;
-  user: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
-  content: string;
-  timestamp: string;
-  mentions?: string[];
-  cardTags?: string[];
-  replies?: Message[];
-  likes?: number;
-  isLiked?: boolean;
-}
+import { useSessionDiscussion } from '../hooks/useSessionDiscussion';
+import { BoardMessage } from '../services/boardDiscussionService';
+import TypingIndicator from './discussion/TypingIndicator';
+import EmojiReactionPicker from './discussion/EmojiReactionPicker';
+import MessageBubble from './discussion/MessageBubble';
+import SuggestionPopup from './discussion/SuggestionPopup';
+import EmptyDiscussion from './discussion/EmptyDiscussion';
 
 interface Board {
   id: string;
@@ -81,40 +79,7 @@ interface BoardDiscussionProps {
   onLeaveBoard?: (boardId: string) => void;
 }
 
-const mockMessages: Message[] = [
-  {
-    id: "1",
-    user: { id: "1", name: "Sarah Chen" },
-    content:
-      "Hey everyone! What do you think about the coffee place? Should we lock it in?",
-    timestamp: "2 hours ago",
-    cardTags: ["Sightglass Coffee"],
-    likes: 2,
-    isLiked: false,
-  },
-  {
-    id: "2",
-    user: { id: "2", name: "Alex Rivera" },
-    content:
-      "I love that spot! @Sarah Chen the vibes are perfect for our group. ☕",
-    timestamp: "1 hour ago",
-    mentions: ["Sarah Chen"],
-    likes: 3,
-    isLiked: true,
-  },
-  {
-    id: "3",
-    user: { id: "3", name: "Jamie Park" },
-    content:
-      "Can we also discuss timing? I think 2pm works best for #Golden Gate Trail",
-    timestamp: "45 minutes ago",
-    cardTags: ["Golden Gate Trail"],
-    likes: 1,
-    isLiked: false,
-  },
-];
-
-// Mock board cards data
+// Mock board cards data (preserved from original for cards tab)
 const mockBoardCards = [
   {
     id: "board-card-1",
@@ -134,30 +99,13 @@ const mockBoardCards = [
     priceRange: "$15-40",
     description: "Intimate coffee experience with artisan vibes",
     fullDescription:
-      "Discover the art of coffee at Sightglass Coffee Roastery, where every cup tells a story. This intimate space combines industrial aesthetics with warm hospitality, featuring freshly roasted beans, expert baristas, and a cozy atmosphere perfect for conversations and connections.",
+      "Discover the art of coffee at Sightglass Coffee Roastery, where every cup tells a story.",
     address: "270 7th St, San Francisco, CA 94103",
-    highlights: [
-      "Artisan Coffee",
-      "Cozy Atmosphere",
-      "Fresh Roasted",
-      "WiFi Available",
-    ],
+    highlights: ["Artisan Coffee", "Cozy Atmosphere", "Fresh Roasted", "WiFi Available"],
     matchScore: 87,
-    socialStats: {
-      views: 892,
-      likes: 298,
-      saves: 156,
-    },
-    votes: {
-      yes: 3,
-      no: 1,
-      userVote: null,
-    },
-    rsvps: {
-      responded: 2,
-      total: 2,
-      userRSVP: null,
-    },
+    socialStats: { views: 892, likes: 298, saves: 156 },
+    votes: { yes: 3, no: 1, userVote: null },
+    rsvps: { responded: 2, total: 2, userRSVP: null },
     messages: 5,
     isLocked: false,
   },
@@ -178,25 +126,13 @@ const mockBoardCards = [
     priceRange: "Free",
     description: "Scenic walking adventure for nature lovers",
     fullDescription:
-      "Experience the beauty of Golden Gate Park on this scenic trail perfect for nature enthusiasts. This well-maintained path offers stunning views, peaceful surroundings, and photo opportunities at every turn. Ideal for couples, friends, or solo adventurers looking to connect with nature.",
+      "Experience the beauty of Golden Gate Park on this scenic trail perfect for nature enthusiasts.",
     address: "Golden Gate Park, San Francisco, CA",
     highlights: ["Scenic Views", "Photo Spots", "Pet Friendly", "Free Parking"],
     matchScore: 92,
-    socialStats: {
-      views: 1247,
-      likes: 342,
-      saves: 89,
-    },
-    votes: {
-      yes: 2,
-      no: 0,
-      userVote: "yes",
-    },
-    rsvps: {
-      responded: 2,
-      total: 2,
-      userRSVP: "yes",
-    },
+    socialStats: { views: 1247, likes: 342, saves: 89 },
+    votes: { yes: 2, no: 0, userVote: "yes" },
+    rsvps: { responded: 2, total: 2, userRSVP: "yes" },
     messages: 3,
     isLocked: true,
     lockedAt: "yesterday",
@@ -217,30 +153,13 @@ const mockBoardCards = [
     priceRange: "$75-95",
     description: "Learn to cook with fresh, local ingredients",
     fullDescription:
-      "Join us for an immersive farm-to-table cooking experience where you'll learn to create delicious dishes using the freshest local ingredients. Our expert chefs will guide you through techniques and recipes you can recreate at home.",
+      "Join us for an immersive farm-to-table cooking experience.",
     address: "456 Culinary Way, Mission District",
-    highlights: [
-      "Hands-on Learning",
-      "Local Ingredients",
-      "Take Home Recipes",
-      "Wine Pairing",
-    ],
+    highlights: ["Hands-on Learning", "Local Ingredients", "Take Home Recipes", "Wine Pairing"],
     matchScore: 89,
-    socialStats: {
-      views: 643,
-      likes: 201,
-      saves: 87,
-    },
-    votes: {
-      yes: 1,
-      no: 1,
-      userVote: null,
-    },
-    rsvps: {
-      responded: 1,
-      total: 2,
-      userRSVP: null,
-    },
+    socialStats: { views: 643, likes: 201, saves: 87 },
+    votes: { yes: 1, no: 1, userVote: null },
+    rsvps: { responded: 1, total: 2, userRSVP: null },
     messages: 2,
     isLocked: false,
   },
@@ -257,73 +176,207 @@ export default function BoardDiscussion({
   onRemoveMember,
   onLeaveBoard,
 }: BoardDiscussionProps) {
-  const [messages] = useState<Message[]>(mockMessages);
-  const [newMessage, setNewMessage] = useState("");
-  const [showMentions, setShowMentions] = useState(false);
-  const [showCardTags, setShowCardTags] = useState(false);
   const [activeView, setActiveView] = useState<"cards" | "discussion">(
     propActiveTab || "cards"
   );
   const [boardNotifications, setBoardNotifications] = useState(true);
   const [showMemberManagement, setShowMemberManagement] = useState(false);
-  const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
-  // Focus input when switching to discussion view
-  useEffect(() => {
-    if (activeView === "discussion" && inputRef.current) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+  // --- Discussion state ---
+  const [newMessage, setNewMessage] = useState('');
+  const [pendingImage, setPendingImage] = useState<{ uri: string; mimeType: string } | null>(null);
+  const [showMentions, setShowMentions] = useState(false);
+  const [showCardTags, setShowCardTags] = useState(false);
+  const [reactionPickerState, setReactionPickerState] = useState<{ visible: boolean; messageId: string; top: number }>({ visible: false, messageId: '', top: 0 });
+  const inputRef = useRef<TextInput>(null);
+  const flatListRef = useRef<FlatList>(null);
+
+  const sessionId = board.id;
+  const currentUserId = board.currentUserId;
+
+  const {
+    messages,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    sendMessage,
+    isSending,
+    toggleReaction,
+    typingUsers,
+    startTyping,
+    stopTyping,
+    refetch,
+  } = useSessionDiscussion(sessionId, currentUserId);
+
+  const canSend = !!newMessage.trim() || !!pendingImage;
+
+  // Map typing user IDs to names using board.participants
+  const typingUserNames = typingUsers
+    .map(uid => board.participants.find(p => p.id === uid)?.name)
+    .filter(Boolean) as string[];
+
+  // Participant names map for read receipts
+  const participantNames: Record<string, string> = {};
+  board.participants.forEach(p => { participantNames[p.id] = p.name; });
+
+  // Find last own message index for read receipts
+  const lastOwnMessageIndex = messages.findIndex(m => m.user_id === currentUserId);
+
+  // Mention items from participants
+  const mentionItems = board.participants.map(p => ({ id: p.id, name: p.name, avatar_url: null }));
+
+  // Card tag items from mock board cards (board prop doesn't carry cards data)
+  const cardTagItems = mockBoardCards.map(c => ({ id: c.id, name: c.title }));
+
+  // --- Handlers ---
+
+  const handleInputChange = (text: string) => {
+    setNewMessage(text);
+
+    // Detect @mention trigger
+    const lastAtIndex = text.lastIndexOf('@');
+    if (lastAtIndex >= 0 && (lastAtIndex === 0 || text[lastAtIndex - 1] === ' ')) {
+      const query = text.slice(lastAtIndex + 1);
+      if (!query.includes(' ')) {
+        setShowMentions(true);
+        setShowCardTags(false);
+        return;
+      }
     }
-  }, [activeView]);
 
-  // Use board participants as they are already in proper format
-  const participants = board.participants;
-
-  // Convert board cards for compatibility with CardTag system
-  const cards = mockBoardCards.map((card) => ({
-    id: card.id,
-    title: card.title,
-  }));
-
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      setNewMessage("");
+    // Detect #card-tag trigger
+    const lastHashIndex = text.lastIndexOf('#');
+    if (lastHashIndex >= 0 && (lastHashIndex === 0 || text[lastHashIndex - 1] === ' ')) {
+      const query = text.slice(lastHashIndex + 1);
+      if (!query.includes(' ')) {
+        setShowCardTags(true);
+        setShowMentions(false);
+        return;
+      }
     }
-  };
 
-  const handleInputChange = (value: string) => {
-    setNewMessage(value);
+    setShowMentions(false);
+    setShowCardTags(false);
 
-    if (value.endsWith("@")) {
-      setShowMentions(true);
-      setShowCardTags(false);
-    } else if (value.endsWith("#")) {
-      setShowCardTags(true);
-      setShowMentions(false);
+    // Typing indicator
+    if (text.trim()) {
+      startTyping();
     } else {
-      setShowMentions(false);
-      setShowCardTags(false);
+      stopTyping();
     }
   };
 
-  const insertMention = (user: { id: string; name: string }) => {
-    setNewMessage((prev) => prev.slice(0, -1) + `@${user.name} `);
+  const insertMention = (item: { id: string; name: string }) => {
+    const lastAtIndex = newMessage.lastIndexOf('@');
+    const before = newMessage.slice(0, lastAtIndex);
+    setNewMessage(`${before}@${item.name} `);
     setShowMentions(false);
   };
 
-  const insertCardTag = (card: { id: string; title: string }) => {
-    setNewMessage((prev) => prev.slice(0, -1) + `#${card.title} `);
+  const insertCardTag = (item: { id: string; name: string }) => {
+    const lastHashIndex = newMessage.lastIndexOf('#');
+    const before = newMessage.slice(0, lastHashIndex);
+    setNewMessage(`${before}#${item.name} `);
     setShowCardTags(false);
   };
 
+  const handleSendMessage = async () => {
+    if (!canSend) return;
+
+    const content = newMessage.trim();
+    const imageUri = pendingImage?.uri;
+    const imageMimeType = pendingImage?.mimeType;
+
+    // Extract mentioned user IDs
+    const mentionedIds = board.participants
+      .filter(p => content.includes(`@${p.name}`))
+      .map(p => p.id);
+
+    setNewMessage('');
+    setPendingImage(null);
+
+    try {
+      await sendMessage({
+        content,
+        imageUri,
+        imageMimeType,
+        mentions: mentionedIds.length > 0 ? mentionedIds : undefined,
+      });
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+  };
+
+  const handlePhotoPicker = () => {
+    const options = ['Take Photo', 'Choose from Library', 'Cancel'];
+    const cancelButtonIndex = 2;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex },
+        async (buttonIndex) => {
+          if (buttonIndex === 0) await pickImage('camera');
+          else if (buttonIndex === 1) await pickImage('library');
+        }
+      );
+    } else {
+      // Android: use Alert as action sheet
+      Alert.alert('Attach Photo', '', [
+        { text: 'Take Photo', onPress: () => pickImage('camera') },
+        { text: 'Choose from Library', onPress: () => pickImage('library') },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const pickImage = async (source: 'camera' | 'library') => {
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setPendingImage({ uri: asset.uri, mimeType: asset.mimeType || 'image/jpeg' });
+    }
+  };
+
+  const handleLongPress = (messageId: string, pageY: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setReactionPickerState({ visible: true, messageId, top: pageY - 60 });
+  };
+
+  const handleReaction = (messageId: string, emoji: string) => {
+    toggleReaction({ messageId, emoji });
+    setReactionPickerState({ visible: false, messageId: '', top: 0 });
+  };
+
+  const renderMessage = ({ item, index }: { item: BoardMessage; index: number }) => {
+    const isOwnMessage = item.user_id === currentUserId;
+    return (
+      <MessageBubble
+        message={item}
+        isOwnMessage={isOwnMessage}
+        currentUserId={currentUserId}
+        onLongPress={handleLongPress}
+        onReaction={handleReaction}
+        participantNames={participantNames}
+        isLastOwnMessage={isOwnMessage && index === lastOwnMessageIndex}
+      />
+    );
+  };
+
+  // --- Preserved handlers from original ---
+
   const handleVote = (cardId: string, vote: "yes" | "no") => {
-    // Update vote logic would go here
+    // Vote logic handled by cards tab
   };
 
   const handleRSVP = (cardId: string, rsvp: "yes" | "no") => {
-    // Update RSVP logic would go here
+    // RSVP logic handled by cards tab
   };
 
   const handleToggleNotifications = () => {
@@ -358,25 +411,6 @@ export default function BoardDiscussion({
     if (onLeaveBoard) {
       onLeaveBoard(board.id);
     }
-  };
-
-  const renderMessageContent = (content: string) => {
-    return content.split(/(@\w+\s*\w*|#[\w\s]+)/g).map((part, index) => {
-      if (part.startsWith("@")) {
-        return (
-          <Text key={index} style={styles.mentionText}>
-            {part}
-          </Text>
-        );
-      } else if (part.startsWith("#")) {
-        return (
-          <Text key={index} style={styles.cardTagText}>
-            {part}
-          </Text>
-        );
-      }
-      return <Text key={index}>{part}</Text>;
-    });
   };
 
   return (
@@ -503,186 +537,109 @@ export default function BoardDiscussion({
             />
           </View>
         ) : (
-          <KeyboardAwareView style={styles.discussionContainer} dismissOnTap={false}>
-            {/* Messages */}
-            <ScrollView
-              style={styles.messagesScroll}
-              contentContainerStyle={styles.messagesContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {messages.length > 0 ? (
-                messages.map((message) => (
-                  <View key={message.id} style={styles.messageRow}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>
-                        {message.user.name[0]}
-                      </Text>
-                    </View>
-
-                    <View style={styles.messageBubble}>
-                      <View style={styles.messageHeader}>
-                        <Text style={styles.messageName}>
-                          {message.user.name}
-                        </Text>
-                        <Text style={styles.messageTime}>
-                          {message.timestamp}
-                        </Text>
-                      </View>
-
-                      <Text style={styles.messageText}>
-                        {renderMessageContent(message.content)}
-                      </Text>
-
-                      {/* Tags */}
-                      {(message.mentions || message.cardTags) && (
-                        <View style={styles.tagsRow}>
-                          {message.mentions?.map((mention) => (
-                            <View key={mention} style={styles.mentionTag}>
-                              <Ionicons
-                                name="at"
-                                size={12}
-                                color="#eb7825"
-                              />
-                              <Text style={styles.mentionTagText}>
-                                {mention}
-                              </Text>
-                            </View>
-                          ))}
-                          {message.cardTags?.map((tag) => (
-                            <View key={tag} style={styles.cardTag}>
-                              <Ionicons
-                                name="hash"
-                                size={12}
-                                color={colors.primary[500]}
-                              />
-                              <Text style={styles.cardTagLabel}>
-                                {tag}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {/* Actions */}
-                      <View style={styles.messageActions}>
-                        <TouchableOpacity style={styles.actionButton}>
-                          <Ionicons
-                            name={
-                              message.isLiked ? "heart" : "heart-outline"
-                            }
-                            size={14}
-                            color={
-                              message.isLiked
-                                ? colors.error[500]
-                                : colors.gray[400]
-                            }
-                          />
-                          <Text style={styles.actionCount}>
-                            {message.likes}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionButton}>
-                          <Ionicons
-                            name="arrow-undo"
-                            size={14}
-                            color={colors.gray[400]}
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionButton}>
-                          <Ionicons
-                            name="ellipsis-horizontal"
-                            size={14}
-                            color={colors.gray[400]}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.emptyState}>
-                  <Ionicons
-                    name="chatbubble-outline"
-                    size={32}
-                    color={colors.gray[300]}
-                  />
-                  <Text style={styles.emptyText}>
-                    No messages yet. Start the conversation!
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-
-            {/* Input */}
-            <View style={[styles.inputArea, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-              {/* Mention Suggestions */}
-              {showMentions && (
-                <View style={styles.suggestionsPopup}>
-                  {participants.map((user) => (
-                    <TouchableOpacity
-                      key={user.id}
-                      onPress={() => insertMention(user)}
-                      style={styles.suggestionItem}
-                    >
-                      <View style={styles.suggestionAvatar}>
-                        <Text style={styles.suggestionAvatarText}>
-                          {user.name[0]}
-                        </Text>
-                      </View>
-                      <Text style={styles.suggestionText}>{user.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              {/* Card Tag Suggestions */}
-              {showCardTags && cards.length > 0 && (
-                <View style={styles.suggestionsPopup}>
-                  {cards.map((card) => (
-                    <TouchableOpacity
-                      key={card.id}
-                      onPress={() => insertCardTag(card)}
-                      style={styles.suggestionItem}
-                    >
-                      <Ionicons name="hash" size={16} color={colors.primary[500]} />
-                      <Text style={styles.suggestionText}>{card.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              <View style={styles.inputRow}>
-                <TextInput
-                  ref={inputRef}
-                  value={newMessage}
-                  onChangeText={handleInputChange}
-                  placeholder="Type @ to mention or # to tag a card..."
-                  placeholderTextColor={colors.gray[400]}
-                  style={styles.textInput}
-                  multiline
-                  onSubmitEditing={handleSendMessage}
-                />
-                <TouchableOpacity
-                  onPress={handleSendMessage}
-                  disabled={!newMessage.trim()}
-                  style={[
-                    styles.sendButton,
-                    !newMessage.trim() && styles.sendButtonDisabled,
-                  ]}
-                >
-                  <Ionicons
-                    name="send"
-                    size={16}
-                    color="#FFFFFF"
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.inputHint}>
-                Use @ to mention participants • Use # to reference cards
-              </Text>
+          /* Discussion Tab — iMessage-style chat */
+          isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#eb7825" />
             </View>
-          </KeyboardAwareView>
+          ) : isError ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={48} color={colors.error[500]} />
+              <Text style={styles.errorText}>
+                {error?.message || 'Failed to load discussion'}
+              </Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => refetch()}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <KeyboardAwareView style={styles.discussionContainer} dismissOnTap={true}>
+              {/* Messages */}
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                renderItem={renderMessage}
+                keyExtractor={(item) => item.id}
+                inverted={true}
+                contentContainerStyle={styles.messagesContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={<EmptyDiscussion />}
+                onEndReached={() => { if (hasNextPage) fetchNextPage(); }}
+                onEndReachedThreshold={0.3}
+              />
+
+              {/* Typing Indicator */}
+              {typingUserNames.length > 0 && (
+                <TypingIndicator userNames={typingUserNames} />
+              )}
+
+              {/* Mention/Tag Suggestions */}
+              {(showMentions || showCardTags) && (
+                <SuggestionPopup
+                  type={showMentions ? 'mention' : 'cardTag'}
+                  items={showMentions ? mentionItems : cardTagItems}
+                  onSelect={showMentions ? insertMention : insertCardTag}
+                />
+              )}
+
+              {/* Emoji Reaction Picker */}
+              <EmojiReactionPicker
+                visible={reactionPickerState.visible}
+                position={{ top: reactionPickerState.top }}
+                onSelect={(emoji) => handleReaction(reactionPickerState.messageId, emoji)}
+                onClose={() => setReactionPickerState({ visible: false, messageId: '', top: 0 })}
+                existingReactions={
+                  reactionPickerState.visible
+                    ? (messages.find(m => m.id === reactionPickerState.messageId)?.reactions ?? [])
+                        .filter(r => r.user_id === currentUserId)
+                        .map(r => r.emoji)
+                    : []
+                }
+              />
+
+              {/* Input Area */}
+              <View style={[styles.inputArea, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+                {/* Pending Image Preview */}
+                {pendingImage && (
+                  <View style={styles.pendingImageRow}>
+                    <Image source={{ uri: pendingImage.uri }} style={styles.pendingImagePreview} />
+                    <TouchableOpacity onPress={() => setPendingImage(null)}>
+                      <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={styles.inputRow}>
+                  <TouchableOpacity onPress={handlePhotoPicker} style={styles.photoButton}>
+                    <Ionicons name="camera" size={22} color={colors.gray[500]} />
+                  </TouchableOpacity>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      ref={inputRef}
+                      value={newMessage}
+                      onChangeText={handleInputChange}
+                      placeholder="Message..."
+                      placeholderTextColor={colors.gray[400]}
+                      style={styles.textInput}
+                      multiline
+                      maxLength={2000}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleSendMessage}
+                    disabled={!canSend}
+                    style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+                  >
+                    <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAwareView>
+          )
         )}
       </View>
 
@@ -796,189 +753,104 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
+  // Discussion styles
   discussionContainer: {
     flex: 1,
-  },
-  messagesScroll: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: '#FFFFFF',
   },
   messagesContent: {
-    padding: spacing.md,
-    gap: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  messageRow: {
-    flexDirection: "row",
-    gap: 12,
+  inputArea: {
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+    backgroundColor: '#FFFFFF',
+    paddingTop: 8,
+    paddingHorizontal: 12,
   },
-  avatar: {
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  photoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  inputWrapper: {
+    flex: 1,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.gray[50],
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    maxHeight: 100,
+  },
+  textInput: {
+    ...typography.sm,
+    color: colors.gray[900],
+    padding: 0,
+    maxHeight: 80,
+  },
+  sendButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  messageBubble: {
-    flex: 1,
-  },
-  messageHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
-  },
-  messageName: {
-    ...typography.sm,
-    fontWeight: "600",
-    color: colors.gray[900],
-  },
-  messageTime: {
-    ...typography.xs,
-    color: colors.gray[500],
-  },
-  messageText: {
-    ...typography.sm,
-    color: colors.gray[800],
-    marginBottom: 8,
-  },
-  mentionText: {
-    color: "#eb7825",
-    fontWeight: "500",
-  },
-  cardTagText: {
-    color: colors.primary[500],
-    fontWeight: "500",
-  },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-    marginBottom: 8,
-  },
-  mentionTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: colors.orange[50],
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  mentionTagText: {
-    ...typography.xs,
-    color: "#eb7825",
-  },
-  cardTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: colors.primary[50],
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  cardTagLabel: {
-    ...typography.xs,
-    color: colors.primary[500],
-  },
-  messageActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  actionCount: {
-    ...typography.xs,
-    color: colors.gray[500],
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 32,
-  },
-  emptyText: {
-    ...typography.sm,
-    color: colors.gray[500],
-    marginTop: 8,
-  },
-  inputArea: {
-    padding: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[100],
-    backgroundColor: "#FFFFFF",
-  },
-  suggestionsPopup: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: 12,
-    marginBottom: 8,
-    maxHeight: 128,
-    ...shadows.lg,
-  },
-  suggestionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 8,
-  },
-  suggestionAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  suggestionAvatarText: {
-    color: "#FFFFFF",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  suggestionText: {
-    ...typography.sm,
-    color: colors.gray[800],
-  },
-  inputRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "flex-end",
-  },
-  textInput: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    ...typography.md,
-    color: colors.gray[800],
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   sendButtonDisabled: {
-    opacity: 0.5,
+    backgroundColor: colors.gray[300],
   },
-  inputHint: {
-    ...typography.xs,
-    color: colors.gray[500],
-    marginTop: 8,
+  pendingImageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  pendingImagePreview: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+  },
+  // Loading & error states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    gap: 12,
+  },
+  errorText: {
+    ...typography.sm,
+    color: colors.error[500],
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  retryButtonText: {
+    ...typography.sm,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

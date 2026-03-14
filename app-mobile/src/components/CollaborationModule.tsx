@@ -13,7 +13,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 import SessionsTab from "./collaboration/SessionsTab";
 import InvitesTab from "./collaboration/InvitesTab";
 import { CreateSessionContent } from "./CreateSessionModal";
@@ -87,6 +86,7 @@ export default function CollaborationModule({
   onRefreshBoards,
 }: CollaborationModuleProps) {
   const insets = useSafeAreaInsets();
+  const SHEET_HEIGHT = SCREEN_HEIGHT - insets.top;
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
   );
@@ -973,7 +973,7 @@ export default function CollaborationModule({
           onPress={onClose}
         />
 
-        <View style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={[styles.sheetContent, { height: SHEET_HEIGHT, paddingBottom: Math.max(insets.bottom, 16) }]}>
           {/* Drag Handle */}
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
@@ -1106,16 +1106,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetContent: {
-    height: SHEET_HEIGHT,
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 30,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 24,
   },
   dragHandleContainer: {
     alignItems: "center",

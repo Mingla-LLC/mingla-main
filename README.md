@@ -42,6 +42,7 @@ Mingla/
 │   │   │   ├── expandedCard/           # Expanded card sub-components (ActionButtons, etc.)
 │   │   │   ├── profile/               # ProfileHeroSection, InterestsSection, Toggle, SettingsRow, EditProfileSheet, EditBioSheet, EditInterestsSheet
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
+│   │   │   ├── discussion/            # Board discussion components (MessageBubble, TypingIndicator, EmojiReactionPicker, SuggestionPopup, EmptyDiscussion)
 │   │   │   └── ui/                     # Shared UI primitives
 │   │   ├── hooks/                      # ~61 React Query hooks + realtime hooks
 │   │   ├── services/                   # ~74 service files
@@ -280,7 +281,7 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 - Shuffle mechanic on hero cards and holiday rows -- fade-out/fade-in animation, no-repeat guarantee via impression tracking
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
-- Boards with card voting, RSVP, threaded discussion, and @mentions
+- Boards with card voting, RSVP, iMessage-style discussion (inverted FlatList, emoji reactions, photo attachments, typing indicators, read receipts, @mentions, #card-tags)
 - Universal deep links via usemingla.com
 - Night Out section powered by Ticketmaster
 
@@ -337,6 +338,9 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `collaboration_invites` | Session invite records (canonical columns: `inviter_id`, `invited_user_id`, `pending_friendship` boolean default false -- controls invite visibility until friendship is established) |
 | `session_participants` | Session participant records |
 | `boards` | Collaboration boards |
+| `board_messages` | Discussion messages per session (content, image_url, mentions, reply_to_id) |
+| `board_message_reads` | Read receipts (message_id, user_id, read_at) |
+| `board_message_reactions` | Emoji reactions per message (message_id, user_id, emoji with unique constraint) |
 | `board_session_preferences` | Per-session preference settings (auto-seeded from solo preferences) |
 | `session_decks` | Canonical server-generated decks per session (JSONB cards, preferences hash, 24h expiry, RLS for participants) |
 
@@ -511,10 +515,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Collaboration Session UX Fix (4 critical bugs)** -- Fixed session voting (dropped NOT NULL constraints on `board_votes.board_id` and `board_votes.card_id` that blocked session-based votes), fixed @ mention popover not showing on bare `@` input, fixed card content clipping by reducing excessive padding in SessionViewModal, fixed Android keyboard covering discussion thread by reducing inputContainer and messagesContent padding.
-- **Critical Bug Batch (12 fixes + 1 bonus)** -- Scheduling error isolation, card data sanitization, board_votes unique constraint fix, keyboard handling in AddFriend and FriendsModal, iOS time picker overflow fix, mention display name priority with backward-compatible `@[Name]` format, mention popover keyboard-aware positioning, collaboration session race condition fix (3-layer defense), optimistic unschedule with instant UI feedback, tab text cutoff fix, friend request polling reduced to 60s.
-- **Solo/Collab Mode Switching Stability** -- Eliminated duplicate `fetchDeck` calls during mode transitions via `useRef`-based stability guard that defers React Query until params settle. Reduced `retry` from 2 to 1, cutting worst-case timeout from 90s to 30s.
-- **Realtime Channel Thrashing Fix** -- Debounced `useBoardSession` realtime subscription with 300ms `setTimeout` to absorb rapid `sessionId` flickers during mode transitions. Immediate unsubscribe on clear, delayed subscribe on set. Separate unmount cleanup via `stableSessionIdRef`.
+- **Luxurious Collaboration Discussion Redesign** -- Complete rewrite of the board discussion tab with iMessage-grade chat UX: inverted FlatList (no scroll-to-bottom hacks), cursor-based pagination, real-time updates via Supabase postgres_changes, emoji reactions (6-emoji long-press picker with haptics), photo attachments via camera/gallery with Supabase Storage, typing indicators, read receipts ("Seen by" labels), @mention and #card-tag suggestion popups, and polished empty state.
+- **Full-Height Collaboration Modal** -- CollaborationModule modal now extends to full screen height (safe-area aware) for maximum vertical real estate.
+- **Board Status Row Removed** -- Removed the voting/locking status badge and action buttons from BoardViewScreen for a cleaner board experience.
+- **New DB: board_message_reactions** -- Emoji reactions table with RLS policies for session participants. New image_url column on board_messages for photo attachments.
 
 ---
 

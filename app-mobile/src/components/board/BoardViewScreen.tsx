@@ -270,16 +270,9 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   } = useSessionVoting(sessionId, user?.id, activeParticipantsCount);
 
   // Phase 2: Session status hook
-  const {
-    status: sessionStatus,
-    isStatusLoaded,
-    canVote,
-    canRSVP,
-    isLocked: isSessionLocked,
-    advanceToVoting,
-    markCompleted,
-    isCreator,
-  } = useSessionStatus(sessionId, session?.created_by, user?.id);
+  // Phase 2: Session status hook — status row removed in discussion redesign,
+  // but hook kept for side effects and potential future use
+  useSessionStatus(sessionId, session?.created_by, user?.id);
 
   // Phase 2: Calendar hook for lock-in detection
   const {
@@ -597,50 +590,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         loading={loadingCards}
       />
 
-      {/* Phase 2: Session status controls — only render after status loaded */}
-      {isStatusLoaded && sessionStatus && (
-        <View style={styles.statusRow}>
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor:
-                  sessionStatus === 'locked'
-                    ? '#10B981'
-                    : sessionStatus === 'voting'
-                    ? '#F59E0B'
-                    : sessionStatus === 'completed'
-                    ? '#6B7280'
-                    : sessionStatus === 'pending'
-                    ? '#9CA3AF'
-                    : '#3B82F6',
-              },
-            ]}
-          >
-            <Text style={styles.statusBadgeText}>
-              {sessionStatus === 'active' ? 'Active' :
-               sessionStatus === 'voting' ? 'Voting' :
-               sessionStatus === 'locked' ? 'Locked In' :
-               sessionStatus === 'completed' ? 'Completed' :
-               sessionStatus === 'pending' ? 'Pending' :
-               sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
-            </Text>
-          </View>
-          {isCreator && sessionStatus === 'active' && (
-            <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
-              <Ionicons name="hand-left-outline" size={14} color="white" />
-              <Text style={styles.statusActionText}>Start Voting</Text>
-            </TouchableOpacity>
-          )}
-          {isCreator && sessionStatus === 'locked' && (
-            <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
-              <Ionicons name="checkmark-circle-outline" size={14} color="white" />
-              <Text style={styles.statusActionText}>Mark Complete</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
       <BoardTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -918,37 +867,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "white",
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  statusActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    gap: 4,
-  },
-  statusActionText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "white",
   },
   calendarPromptOverlay: {
     flex: 1,
