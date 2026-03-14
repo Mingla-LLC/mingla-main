@@ -76,6 +76,7 @@ import { inAppNotificationService, InAppNotification } from "../src/services/inA
 import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
+import { useSocialRealtime } from "../src/hooks/useSocialRealtime";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -142,14 +143,10 @@ function AppContent() {
     setSavedCards,
     removedCardIds,
     setRemovedCardIds,
-    friendsList,
-    setFriendsList,
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
     setIsLoadingBoards,
-    profileStats,
-    setProfileStats,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
     boardViewSessionId,
@@ -604,6 +601,11 @@ function AppContent() {
     refreshAllSessions();
     catchUpCollabNotifications();
   });
+
+  // Realtime: keep friends, pairings, calendar, and messages fresh on all screens.
+  // Previously scoped to ConnectionsPage — moved to app level so data stays fresh
+  // regardless of which tab the user is viewing.
+  useSocialRealtime(user?.id);
 
   // Process deferred deep links after auth + onboarding complete.
   // Links are deferred when they arrive while the user is unauthenticated (F-05).

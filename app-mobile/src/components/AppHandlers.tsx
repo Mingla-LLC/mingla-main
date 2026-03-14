@@ -31,10 +31,6 @@ export function useAppHandlers(state: any) {
     setNotifications,
     boardsSessions,
     updateBoardsSessions,
-    friendsList,
-    setFriendsList,
-    profileStats,
-    setProfileStats,
     userPreferences,
     calendarEntries,
     setCalendarEntries,
@@ -54,7 +50,6 @@ export function useAppHandlers(state: any) {
     setOnboardingData,
     setUserIdentity,
     setAccountPreferences,
-    safeLocalStorageSet,
     user,
     setPreferencesRefreshKey,
     unblockFriend,
@@ -485,51 +480,32 @@ export function useAppHandlers(state: any) {
     }
   };
 
+  // Toast-only handlers — the actual DB operations (removeFriend, blockFriend)
+  // are performed by ConnectionsPage via useFriends() which invalidates React Query.
+  // These callbacks exist solely to show toast notifications from the parent level.
   const handleRemoveFriend = (friend: any, suppressNotification?: boolean) => {
-    const updatedFriends = friendsList.filter((f: any) => f.id !== friend.id);
-    setFriendsList(updatedFriends);
-
-    safeLocalStorageSet("mingla_friends_list", updatedFriends);
-
-    setProfileStats((prev: any) => ({
-      ...prev,
-      connectionsCount: prev.connectionsCount - 1,
-    }));
-
     if (!suppressNotification) {
-      const notification = {
+      setNotifications((prev: any) => [...prev, {
         id: `remove-friend-${Date.now()}-${friend.id}`,
         type: "success" as const,
         title: "Friend Removed",
         message: `${friend.name} has been removed from your friends list`,
         autoHide: true,
         duration: 3000,
-      };
-      setNotifications((prev: any) => [...prev, notification]);
+      }]);
     }
   };
 
   const handleBlockUser = (friend: any, suppressNotification?: boolean) => {
-    const updatedFriends = friendsList.filter((f: any) => f.id !== friend.id);
-    setFriendsList(updatedFriends);
-
-    safeLocalStorageSet("mingla_friends_list", updatedFriends);
-
-    setProfileStats((prev: any) => ({
-      ...prev,
-      connectionsCount: prev.connectionsCount - 1,
-    }));
-
     if (!suppressNotification) {
-      const notification = {
+      setNotifications((prev: any) => [...prev, {
         id: `block-user-${Date.now()}-${friend.id}`,
         type: "success" as const,
         title: "User Blocked",
         message: `${friend.name} has been blocked and removed from your friends list`,
         autoHide: true,
         duration: 3000,
-      };
-      setNotifications((prev: any) => [...prev, notification]);
+      }]);
     }
   };
 

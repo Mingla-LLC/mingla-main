@@ -510,7 +510,7 @@ function MultiStopPlanView({
           const anim = stopAnims[idx];
           return (
             <Animated.View
-              key={stop.placeId}
+              key={`${stop.placeId}_${idx}`}
               style={{
                 opacity: anim,
                 transform: [{

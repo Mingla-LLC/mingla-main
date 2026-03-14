@@ -66,7 +66,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
       {/* Image strip — adapts to any number of stops */}
       <View style={styles.imageStrip}>
         {card.stops.map((stop, idx) => (
-          <View key={stop.placeId} style={styles.imageWrapper}>
+          <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
             {stop.imageUrl ? (
               <Image
                 source={{ uri: stop.imageUrl }}

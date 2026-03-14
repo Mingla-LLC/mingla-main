@@ -30,28 +30,8 @@ const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-const MONTHS_LIST = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const DAY_HEADERS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
-}
-
-function getFirstDayOfWeek(year: number, month: number): number {
-  return new Date(year, month, 1).getDay();
-}
-
-function isToday(year: number, month: number, day: number): boolean {
-  const now = new Date();
-  return (
-    now.getFullYear() === year &&
-    now.getMonth() === month &&
-    now.getDate() === day
-  );
 }
 
 function isFutureDate(year: number, month: number, day: number): boolean {
@@ -76,40 +56,40 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
-  const [viewYear, setViewYear] = useState(new Date().getFullYear());
-  const [viewMonth, setViewMonth] = useState(new Date().getMonth());
-  const [selectedDate, setSelectedDate] = useState<{
-    month: number;
-    day: number;
-    year: number;
-  } | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [errors, setErrors] = useState<{ name?: string; date?: string }>({});
 
   useEffect(() => {
     if (!visible) {
       setName("");
-      setViewYear(new Date().getFullYear());
-      setViewMonth(new Date().getMonth());
-      setSelectedDate(null);
+      setSelectedYear(null);
+      setSelectedMonth(null);
+      setSelectedDay(null);
       setErrors({});
     }
   }, [visible]);
 
-  // If the currently selected date doesn't exist in the new month/year (e.g., Feb 29 in non-leap year), clear it
-  const clearInvalidSelection = (yr: number, mo: number) => {
-    if (!selectedDate) return;
-    if (selectedDate.year === yr && selectedDate.month === mo + 1) {
-      const maxDay = getDaysInMonth(yr, mo);
-      if (selectedDate.day > maxDay) {
-        setSelectedDate(null);
-      }
+  // Days available for the selected year/month
+  const daysInMonth = useMemo(() => {
+    if (selectedYear === null || selectedMonth === null) return 0;
+    return getDaysInMonth(selectedYear, selectedMonth);
+  }, [selectedYear, selectedMonth]);
+
+  // Clamp selectedDay when month/year changes reduce available days
+  useEffect(() => {
+    if (selectedDay !== null && daysInMonth > 0 && selectedDay > daysInMonth) {
+      setSelectedDay(null);
     }
-  };
+  }, [daysInMonth, selectedDay]);
 
   const validate = (): boolean => {
     const newErrors: { name?: string; date?: string } = {};
     if (!name.trim()) newErrors.name = "Give this day a name";
-    if (!selectedDate) newErrors.date = "Pick a date";
+    if (selectedYear === null || selectedMonth === null || selectedDay === null) {
+      newErrors.date = "Pick a date";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -119,116 +99,48 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onSave({
       name: name.trim(),
-      month: selectedDate!.month,
-      day: selectedDate!.day,
-      year: selectedDate!.year,
+      month: selectedMonth! + 1, // 1-indexed for storage
+      day: selectedDay!,
+      year: selectedYear!,
     });
     onClose();
   };
 
-  const navigateMonth = (direction: -1 | 1) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    let newMonth = viewMonth + direction;
-    let newYear = viewYear;
-    if (newMonth < 0) {
-      newMonth = 11;
-      newYear -= 1;
-    } else if (newMonth > 11) {
-      newMonth = 0;
-      newYear += 1;
-    }
-    // Don't navigate past current month or below MIN_YEAR
-    const now = new Date();
-    if (newYear > now.getFullYear() || (newYear === now.getFullYear() && newMonth > now.getMonth())) {
-      return;
-    }
-    if (newYear < MIN_YEAR) return;
-    setViewMonth(newMonth);
-    setViewYear(newYear);
-    clearInvalidSelection(newYear, newMonth);
-  };
-
   const handleYearSelect = (year: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedYear(year);
+    // If selecting current year, clamp month if needed
     const now = new Date();
-    // If selecting current year and viewMonth is in the future, clamp to current month
-    const effectiveMonth = (year === now.getFullYear() && viewMonth > now.getMonth())
-      ? now.getMonth()
-      : viewMonth;
-    if (effectiveMonth !== viewMonth) setViewMonth(effectiveMonth);
-    setViewYear(year);
-    clearInvalidSelection(year, effectiveMonth);
+    if (selectedMonth !== null && year === now.getFullYear() && selectedMonth > now.getMonth()) {
+      setSelectedMonth(null);
+      setSelectedDay(null);
+    }
+    if (errors.date) setErrors((e) => ({ ...e, date: undefined }));
   };
 
   const handleMonthSelect = (monthIdx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const now = new Date();
-    // Don't allow selecting a future month in the current year
-    if (viewYear === now.getFullYear() && monthIdx > now.getMonth()) return;
-    setViewMonth(monthIdx);
-    clearInvalidSelection(viewYear, monthIdx);
-  };
-
-  const canGoBack = useMemo(() => {
-    if (viewYear > MIN_YEAR) return true;
-    if (viewYear === MIN_YEAR && viewMonth > 0) return true;
-    return false;
-  }, [viewYear, viewMonth]);
-
-  const canGoForward = useMemo(() => {
-    const now = new Date();
-    if (viewYear < now.getFullYear()) return true;
-    if (viewYear === now.getFullYear() && viewMonth < now.getMonth()) return true;
-    return false;
-  }, [viewYear, viewMonth]);
-
-  const calendarRows = useMemo(() => {
-    const daysInMonth = getDaysInMonth(viewYear, viewMonth);
-    const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
-
-    const rows: (number | null)[][] = [];
-    let currentRow: (number | null)[] = [];
-
-    for (let i = 0; i < firstDay; i++) {
-      currentRow.push(null);
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      currentRow.push(day);
-      if (currentRow.length === 7) {
-        rows.push(currentRow);
-        currentRow = [];
-      }
-    }
-
-    if (currentRow.length > 0) {
-      while (currentRow.length < 7) {
-        currentRow.push(null);
-      }
-      rows.push(currentRow);
-    }
-
-    return rows;
-  }, [viewYear, viewMonth]);
-
-  const isSelected = (day: number): boolean => {
-    if (!selectedDate) return false;
-    return (
-      selectedDate.year === viewYear &&
-      selectedDate.month === viewMonth + 1 &&
-      selectedDate.day === day
-    );
-  };
-
-  const handleDayPress = (day: number) => {
-    if (isFutureDate(viewYear, viewMonth, day)) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedDate({
-      month: viewMonth + 1,
-      day,
-      year: viewYear,
-    });
+    setSelectedMonth(monthIdx);
     if (errors.date) setErrors((e) => ({ ...e, date: undefined }));
+  };
+
+  const handleDaySelect = (day: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDay(day);
+    if (errors.date) setErrors((e) => ({ ...e, date: undefined }));
+  };
+
+  // Determine which months are disabled (future months in current year)
+  const isMonthDisabled = (monthIdx: number): boolean => {
+    if (selectedYear === null) return true;
+    const now = new Date();
+    return selectedYear === now.getFullYear() && monthIdx > now.getMonth();
+  };
+
+  // Determine which days are disabled (future days)
+  const isDayDisabled = (day: number): boolean => {
+    if (selectedYear === null || selectedMonth === null) return true;
+    return isFutureDate(selectedYear, selectedMonth, day);
   };
 
   return (
@@ -290,30 +202,30 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
               ) : null}
             </View>
 
-            {/* Date Picker */}
+            {/* Date Picker — 3 horizontal pill rows */}
             <View style={styles.field}>
-              <Text style={styles.label}>When is it?</Text>
+              <Text style={styles.label}>When did it happen?</Text>
 
-              {/* Year selector — horizontal scroll */}
+              {/* Year picker */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.yearScrollContent}
-                style={styles.yearScroll}
+                contentContainerStyle={styles.pillScrollContent}
+                style={styles.pillScroll}
               >
                 {YEAR_OPTIONS.map((yr) => (
                   <TouchableOpacity
                     key={yr}
                     style={[
-                      styles.yearPill,
-                      viewYear === yr && styles.yearPillSelected,
+                      styles.pill,
+                      selectedYear === yr && styles.pillSelected,
                     ]}
                     onPress={() => handleYearSelect(yr)}
                   >
                     <Text
                       style={[
-                        styles.yearPillText,
-                        viewYear === yr && styles.yearPillTextSelected,
+                        styles.pillText,
+                        selectedYear === yr && styles.pillTextSelected,
                       ]}
                     >
                       {yr}
@@ -322,32 +234,30 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                 ))}
               </ScrollView>
 
-              {/* Month selector — horizontal scroll */}
+              {/* Month picker */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.monthScrollContent}
-                style={styles.monthScroll}
+                contentContainerStyle={styles.pillScrollContent}
+                style={styles.pillScroll}
               >
                 {MONTHS_SHORT.map((m, i) => {
-                  const now = new Date();
-                  const isFutureMonth =
-                    viewYear === now.getFullYear() && i > now.getMonth();
+                  const disabled = isMonthDisabled(i);
                   return (
                     <TouchableOpacity
                       key={m}
                       style={[
-                        styles.monthPill,
-                        viewMonth === i && styles.monthPillSelected,
+                        styles.pill,
+                        selectedMonth === i && styles.pillSelected,
                       ]}
                       onPress={() => handleMonthSelect(i)}
-                      disabled={isFutureMonth}
+                      disabled={disabled}
                     >
                       <Text
                         style={[
-                          styles.monthPillText,
-                          viewMonth === i && styles.monthPillTextSelected,
-                          isFutureMonth && styles.monthPillDisabled,
+                          styles.pillText,
+                          selectedMonth === i && styles.pillTextSelected,
+                          disabled && styles.pillTextDisabled,
                         ]}
                       >
                         {m}
@@ -357,84 +267,43 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                 })}
               </ScrollView>
 
-              {/* Month/Year Navigation with arrows */}
-              <View style={styles.calendarNav}>
-                <TouchableOpacity
-                  onPress={() => navigateMonth(-1)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  disabled={!canGoBack}
+              {/* Day picker */}
+              {daysInMonth > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pillScrollContent}
+                  style={styles.pillScroll}
                 >
-                  <Ionicons
-                    name="chevron-back"
-                    size={s(20)}
-                    color={canGoBack ? colors.gray[700] : colors.gray[300]}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.calendarMonthYear}>
-                  {MONTHS_LIST[viewMonth]} {viewYear}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => navigateMonth(1)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  disabled={!canGoForward}
-                >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={s(20)}
-                    color={canGoForward ? colors.gray[700] : colors.gray[300]}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Day Headers */}
-              <View style={styles.calendarHeaderRow}>
-                {DAY_HEADERS.map((dh) => (
-                  <View key={dh} style={styles.calendarCell}>
-                    <Text style={styles.calendarDayHeader}>{dh}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Calendar Grid */}
-              {calendarRows.map((row, rowIdx) => (
-                <View key={rowIdx} style={styles.calendarRow}>
-                  {row.map((day, colIdx) => {
-                    if (day === null) {
-                      return <View key={`empty-${colIdx}`} style={styles.calendarCell} />;
-                    }
-                    const future = isFutureDate(viewYear, viewMonth, day);
-                    const selected = isSelected(day);
-                    const todayMark = isToday(viewYear, viewMonth, day);
-
-                    return (
-                      <View key={day} style={styles.calendarCell}>
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
+                    (day) => {
+                      const disabled = isDayDisabled(day);
+                      return (
                         <TouchableOpacity
+                          key={day}
                           style={[
-                            styles.calendarDayButton,
-                            selected && styles.calendarDaySelected,
+                            styles.pill,
+                            styles.dayPill,
+                            selectedDay === day && styles.pillSelected,
                           ]}
-                          onPress={() => handleDayPress(day)}
-                          disabled={future}
-                          activeOpacity={future ? 1 : 0.6}
+                          onPress={() => handleDaySelect(day)}
+                          disabled={disabled}
                         >
                           <Text
                             style={[
-                              styles.calendarDayText,
-                              future && styles.calendarDayDisabled,
-                              selected && styles.calendarDayTextSelected,
+                              styles.pillText,
+                              selectedDay === day && styles.pillTextSelected,
+                              disabled && styles.pillTextDisabled,
                             ]}
                           >
                             {day}
                           </Text>
                         </TouchableOpacity>
-                        {todayMark && !selected ? (
-                          <View style={styles.todayDot} />
-                        ) : null}
-                      </View>
-                    );
-                  })}
-                </View>
-              ))}
+                      );
+                    }
+                  )}
+                </ScrollView>
+              )}
 
               {errors.date ? (
                 <Text style={styles.errorText}>{errors.date}</Text>
@@ -518,120 +387,39 @@ const styles = StyleSheet.create({
     color: "#E53935",
     marginTop: vs(4),
   },
-  // Year selector
-  yearScroll: {
+  // Pill selectors
+  pillScroll: {
     marginBottom: vs(8),
   },
-  yearScrollContent: {
+  pillScrollContent: {
     gap: s(6),
     paddingRight: s(8),
   },
-  yearPill: {
+  pill: {
     paddingHorizontal: s(14),
     paddingVertical: vs(7),
     borderRadius: s(10),
     backgroundColor: colors.gray[100],
   },
-  yearPillSelected: {
-    backgroundColor: "#eb7825",
-  },
-  yearPillText: {
-    fontSize: s(13),
-    fontWeight: "500",
-    color: colors.gray[600],
-  },
-  yearPillTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  // Month selector
-  monthScroll: {
-    marginBottom: vs(12),
-  },
-  monthScrollContent: {
-    gap: s(6),
-    paddingRight: s(8),
-  },
-  monthPill: {
+  dayPill: {
     paddingHorizontal: s(12),
-    paddingVertical: vs(7),
-    borderRadius: s(10),
-    backgroundColor: colors.gray[100],
+    minWidth: s(40),
+    alignItems: "center",
   },
-  monthPillSelected: {
+  pillSelected: {
     backgroundColor: "#eb7825",
   },
-  monthPillText: {
+  pillText: {
     fontSize: s(13),
     fontWeight: "500",
     color: colors.gray[600],
   },
-  monthPillTextSelected: {
+  pillTextSelected: {
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  monthPillDisabled: {
+  pillTextDisabled: {
     color: colors.gray[300],
-  },
-  // Calendar
-  calendarNav: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: vs(8),
-    paddingHorizontal: s(4),
-  },
-  calendarMonthYear: {
-    fontSize: s(16),
-    fontWeight: "600",
-    color: colors.gray[800],
-  },
-  calendarHeaderRow: {
-    flexDirection: "row",
-    marginBottom: vs(4),
-  },
-  calendarRow: {
-    flexDirection: "row",
-  },
-  calendarCell: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    height: s(40),
-  },
-  calendarDayHeader: {
-    fontSize: s(12),
-    fontWeight: "600",
-    color: colors.gray[400],
-  },
-  calendarDayButton: {
-    width: s(34),
-    height: s(34),
-    borderRadius: s(17),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  calendarDaySelected: {
-    backgroundColor: "#eb7825",
-  },
-  calendarDayText: {
-    fontSize: s(14),
-    fontWeight: "500",
-    color: colors.gray[800],
-  },
-  calendarDayDisabled: {
-    color: colors.gray[300],
-  },
-  calendarDayTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  todayDot: {
-    width: s(4),
-    height: s(4),
-    borderRadius: s(2),
-    backgroundColor: "#eb7825",
-    marginTop: vs(1),
   },
   saveButton: {
     backgroundColor: "#eb7825",

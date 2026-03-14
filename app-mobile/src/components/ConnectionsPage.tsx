@@ -30,7 +30,6 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
-import { useSocialRealtime } from "../hooks/useSocialRealtime";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
@@ -68,7 +67,6 @@ interface ConnectionsPageProps {
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
-  friendsList?: any[];
   onUnreadCountChange?: (count: number) => void;
   onNavigateToFriendProfile?: (userId: string) => void;
   onFriendAccepted?: () => void;
@@ -148,12 +146,6 @@ export default function ConnectionsPageRefactored({
     requestsLoading,
     fetchBlockedUsers,
   } = useFriends();
-
-  // Realtime: instantly refresh friend requests and friends list on DB changes
-  useSocialRealtime(user?.id, {
-    onFriendRequestChange: loadFriendRequests,
-    onFriendListChange: () => { fetchFriends(); },
-  });
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);

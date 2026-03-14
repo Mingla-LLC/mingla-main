@@ -2,17 +2,22 @@ import { QueryClient, QueryCache, MutationCache, focusManager, onlineManager } f
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { AppState } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
 
-// Disable React Query's automatic refetch-on-focus. useForegroundRefresh is the
-// single authority for resume-triggered query work — it validates auth before
-// invalidating queries, preventing expired-token failures after long backgrounds.
-// Without this override, focusManager fires refetches BEFORE auth is validated.
-focusManager.setEventListener(() => {
-  // No-op listener: disables built-in focus detection.
-  // Return a cleanup function (required by the API).
-  return () => {};
+// Wire React Query's focusManager to React Native's AppState so that
+// refetchOnWindowFocus works on app resume. Queries whose data is older
+// than their staleTime will automatically refetch when the app returns
+// to foreground. For long backgrounds (≥ 30s), useForegroundRefresh
+// additionally handles auth refresh, WebSocket reconnection, and
+// force-invalidation of all critical queries.
+focusManager.setEventListener((handleFocus) => {
+  const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
+    handleFocus(state === 'active');
+  });
+  return () => subscription.remove();
 });
 
 // Wire React Query's online detection to NetInfo for React Native.
@@ -34,6 +39,17 @@ onlineManager.setEventListener(setOnline => {
 // authenticated but rejected by every server call.
 let auth401Count = 0;
 let auth401ResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Reset the 401 counter. Called by useForegroundRefresh at the start of
+ * every resume so that transient 401s from focusManager-triggered refetches
+ * (which fire before auth is refreshed) don't accumulate into a forced
+ * sign-out. The counter restarts cleanly after auth refresh completes.
+ */
+export function resetAuth401Counter(): void {
+  auth401Count = 0;
+  if (auth401ResetTimer) { clearTimeout(auth401ResetTimer); auth401ResetTimer = null; }
+}
 
 function handlePotentialAuthError(error: Error): void {
   const msg = error.message ?? '';

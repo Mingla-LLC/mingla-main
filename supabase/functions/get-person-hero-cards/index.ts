@@ -20,6 +20,7 @@ interface RequestBody {
   categorySlugs: string[];
   curatedExperienceType: string | null;
   location: { latitude: number; longitude: number };
+  mode?: "default" | "shuffle"; // default = use provided categories; shuffle = personalize if ≥10 swipes
 }
 
 interface Card {
@@ -117,6 +118,7 @@ const INTENT_CATEGORY_MAP: Record<string, string[]> = {
     "first_meet", "picnic", "watch", "wellness", "groceries_flowers",
     "work_business",
   ],
+  friendly: ["play", "casual_eats", "drink", "nature", "creative_arts", "picnic", "watch"],
 };
 
 // ── Main handler ────────────────────────────────────────────────────────────
@@ -159,11 +161,12 @@ serve(async (req: Request) => {
 
     // --- Parse & validate body ---
     const body: RequestBody = await req.json();
-    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location } = body;
+    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode } = body;
 
     // Accept either personId (deprecated) or pairedUserId (new pairing flow)
     const effectivePersonId = pairedUserId ?? personId;
     const usingPairedUser = !!pairedUserId;
+    const isShuffleMode = mode === "shuffle";
 
     if (!effectivePersonId || !UUID_RE.test(effectivePersonId)) {
       return new Response(
@@ -172,9 +175,51 @@ serve(async (req: Request) => {
       );
     }
 
-    // --- Blend learned preferences for paired users ---
+    // --- Shuffle mode: check swipe count and personalize if ≥10 ---
     let blendedCategories = categorySlugs;
-    if (usingPairedUser) {
+    if (isShuffleMode && usingPairedUser) {
+      try {
+        // Count total swipes for the paired person
+        const { count: totalSwipes } = await adminClient
+          .from("user_card_impressions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", pairedUserId);
+
+        const swipeCount = totalSwipes ?? 0;
+        console.log(
+          `[get-person-hero-cards] Shuffle mode: paired user ${pairedUserId} has ${swipeCount} swipes`,
+        );
+
+        if (swipeCount >= 10) {
+          // Personalized: use top-6 weighted categories
+          const { data: learnedPrefs } = await adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "category")
+            .gt("preference_value", 0)
+            .order("preference_value", { ascending: false })
+            .limit(6);
+
+          if (learnedPrefs && learnedPrefs.length > 0) {
+            blendedCategories = learnedPrefs.map(
+              (p: { preference_key: string }) => p.preference_key
+            );
+            console.log(
+              `[get-person-hero-cards] Personalized shuffle: using top ${blendedCategories.length} categories`,
+            );
+          }
+        } else {
+          // Not personalized: randomize within same category structure
+          // Shuffle the existing categories to get different results
+          blendedCategories = [...categorySlugs].sort(() => Math.random() - 0.5);
+          console.log("[get-person-hero-cards] Random shuffle: <10 swipes, randomizing categories");
+        }
+      } catch (shuffleError) {
+        console.warn("[get-person-hero-cards] Shuffle check failed, using defaults:", shuffleError);
+      }
+    } else if (usingPairedUser) {
+      // Default mode: blend learned preferences (existing behavior)
       try {
         const { data: learnedPrefs } = await adminClient
           .from("user_preference_learning")

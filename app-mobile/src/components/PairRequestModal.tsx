@@ -11,21 +11,31 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  ScrollView,
   ActivityIndicator,
   StyleSheet,
   Image,
   Alert,
-  Clipboard,
+  Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useQueryClient } from "@tanstack/react-query";
+import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { useFriends } from "../hooks/useFriends";
 import type { Friend } from "../hooks/useFriends";
 import { usePairingPills, useSendPairRequest } from "../hooks/usePairings";
 import type { PairingPill } from "../services/pairingService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
+import {
+  getDefaultCountryCode,
+  getCountryByCode,
+} from "../constants/countries";
+import type { CountryData } from "../types/onboarding";
+import { CountryPickerModal } from "./onboarding/CountryPickerModal";
+import { usePhoneLookup, useDebouncedValue } from "../hooks/usePhoneLookup";
+import { createPendingInvite } from "../services/phoneLookupService";
+import { phoneInviteKeys } from "../hooks/usePhoneInvite";
 import { colors, spacing, radius, shadows } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 
@@ -83,13 +93,41 @@ export default function PairRequestModal({
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const sendPairRequest = useSendPairRequest();
 
+  const queryClient = useQueryClient();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [countryCode, setCountryCode] = useState("+1");
+  const [selectedCountry, setSelectedCountry] = useState<CountryData>(
+    () =>
+      getCountryByCode(getDefaultCountryCode()) ?? {
+        code: "US",
+        name: "United States",
+        dialCode: "+1",
+        flag: "\u{1F1FA}\u{1F1F8}",
+      }
+  );
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
   const [sendingPhone, setSendingPhone] = useState(false);
   const [friendError, setFriendError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  // Build E.164 phone
+  const phoneRawDigits = phoneNumber.replace(/\D/g, "");
+  const phoneE164 = useMemo(() => {
+    if (!phoneRawDigits) return "";
+    return `${selectedCountry.dialCode}${phoneRawDigits}`;
+  }, [phoneRawDigits, selectedCountry]);
+
+  const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
+  const debouncedDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
+
+  const { data: phoneLookupResult, isLoading: phoneLookupLoading } =
+    usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
+
+  const isPhoneValid = useMemo(() => {
+    return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15;
+  }, [phoneRawDigits]);
 
   // Filter accepted friends
   const acceptedFriends = useMemo(() => {
@@ -128,8 +166,10 @@ export default function PairRequestModal({
         const name = getFriendDisplayName(friend);
         Alert.alert("Sent", `Pair request sent to ${name}`);
         onPairRequestSent();
-      } catch (err: any) {
-        setFriendError(err?.message || "Failed to send pair request");
+      } catch (err) {
+        setFriendError(
+          err instanceof Error ? err.message : "Failed to send pair request"
+        );
       } finally {
         setSendingFriendId(null);
       }
@@ -137,51 +177,109 @@ export default function PairRequestModal({
     [sendPairRequest, onPairRequestSent]
   );
 
-  const handleSendByPhone = useCallback(async () => {
+  const handlePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const cleaned = phoneNumber.replace(/[^0-9]/g, "");
-    if (cleaned.length < 7) {
-      setPhoneError("Enter a valid phone number");
-      return;
-    }
-
-    const phoneE164 = `${countryCode}${cleaned}`;
     setSendingPhone(true);
     setPhoneError(null);
 
     try {
-      const result = await sendPairRequest.mutateAsync({ phoneE164 });
-      // The edge function determines the tier
-      const tier = (result as any)?.tier;
-      if (tier === 3) {
-        Alert.alert("Sent", "Invite sent! They'll get your pair request when they join");
-      } else if (tier === 2) {
-        Alert.alert("Sent", `Friend request + pair request sent`);
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        // Self-lookup guard
+        if (phoneLookupResult.user.id === user?.id) {
+          Alert.alert("That's you!", "You can't send a pair request to yourself.");
+          setSendingPhone(false);
+          return;
+        }
+
+        // Person is on Mingla — send pair request via edge function
+        const result = await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
+        if (result.tier === 2) {
+          Alert.alert("Sent", "Friend request + pair request sent");
+        } else {
+          Alert.alert("Sent", "Pair request sent");
+        }
+        setPhoneNumber("");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onPairRequestSent();
       } else {
-        Alert.alert("Sent", "Pair request sent");
+        // Not on Mingla — create pending invite + open Share sheet
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+          queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
+        }
+        // Also fire the pair request so the edge function creates the Tier 3 invite
+        await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
+
+        // Share in its own try/catch — dismissal is not an error
+        try {
+          await Share.share({
+            message:
+              "Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com",
+          });
+        } catch {
+          // User dismissed share sheet — not an error
+        }
+
+        setPhoneNumber("");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onPairRequestSent();
       }
-      setPhoneNumber("");
-      onPairRequestSent();
-    } catch (err: any) {
-      setPhoneError(err?.message || "Failed to send pair request");
+    } catch (err) {
+      setPhoneError(
+        err instanceof Error ? err.message : "Failed to send pair request"
+      );
     } finally {
       setSendingPhone(false);
     }
-  }, [phoneNumber, countryCode, sendPairRequest, onPairRequestSent]);
+  }, [
+    isPhoneValid,
+    debouncedPhoneE164,
+    phoneLookupResult,
+    sendPairRequest,
+    user,
+    queryClient,
+    onPairRequestSent,
+  ]);
 
-  const handleCopyInviteLink = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Generate a simple invite link (deep link)
-    const link = `https://mingla.app/invite?ref=${user?.id || ""}`;
-    Clipboard.setString(link);
-    Alert.alert("Copied", "Invite link copied to clipboard");
-  }, [user?.id]);
+  // Check if found user already has a pending/active pairing
+  const foundUserPairStatus = useMemo(() => {
+    if (!phoneLookupResult?.found || !phoneLookupResult.user) return null;
+    const foundId = phoneLookupResult.user.id;
+    const pill = pairingPills.find((p) => p.pairedUserId === foundId);
+    if (!pill) return null;
+    if (pill.pillState === "active") return "paired";
+    return "pending";
+  }, [phoneLookupResult, pairingPills]);
+
+  const getActionLabel = (): string => {
+    if (phoneLookupLoading) return "Looking up...";
+    if (!isPhoneValid) return "Enter phone number";
+    if (phoneLookupResult?.found) {
+      if (foundUserPairStatus === "paired") return "Already paired";
+      if (foundUserPairStatus === "pending") return "Already pending";
+      return "Send pair request";
+    }
+    return "Invite to Mingla";
+  };
+
+  const isActionDisabled =
+    !isPhoneValid ||
+    phoneLookupLoading ||
+    sendingPhone ||
+    foundUserPairStatus !== null;
+
+  const handleCountrySelect = useCallback((code: string) => {
+    const country = getCountryByCode(code);
+    if (country) setSelectedCountry(country);
+  }, []);
 
   const handleClose = useCallback(() => {
     setSearchQuery("");
     setPhoneNumber("");
     setFriendError(null);
     setPhoneError(null);
+    setShowCountryPicker(false);
     onClose();
   }, [onClose]);
 
@@ -222,9 +320,8 @@ export default function PairRequestModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
           >
             {/* Section 1: Your Friends */}
@@ -371,10 +468,26 @@ export default function PairRequestModal({
               <Text style={styles.sectionHeader}>PAIR BY PHONE</Text>
 
               <View style={styles.phoneRow}>
-                {/* Country Code */}
-                <View style={styles.countryCodeContainer}>
-                  <Text style={styles.countryCodeText}>{countryCode}</Text>
-                </View>
+                {/* Country Picker */}
+                <TouchableOpacity
+                  style={styles.countryPicker}
+                  onPress={() => setShowCountryPicker(true)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.countryPickerFlag}>
+                    {selectedCountry.flag}
+                  </Text>
+                  <Text style={styles.countryPickerDial}>
+                    {selectedCountry.dialCode}
+                  </Text>
+                  <Ionicons
+                    name="chevron-down"
+                    size={14}
+                    color={colors.gray[400]}
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.phoneDivider} />
 
                 {/* Phone Input */}
                 <TextInput
@@ -387,9 +500,50 @@ export default function PairRequestModal({
                     setPhoneError(null);
                   }}
                   keyboardType="phone-pad"
-                  autoComplete="tel"
+                  autoCorrect={false}
+                  maxLength={15}
                 />
+
+                {phoneLookupLoading && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.primary[500]}
+                    style={styles.spinner}
+                  />
+                )}
               </View>
+
+              {/* Lookup result */}
+              {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+                <View style={styles.lookupResult}>
+                  {phoneLookupResult.found ? (
+                    <View style={styles.lookupRow}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={s(14)}
+                        color="#22c55e"
+                      />
+                      <Text style={styles.lookupTextGreen}>
+                        {phoneLookupResult.user?.display_name ||
+                          phoneLookupResult.user?.username ||
+                          "User"}{" "}
+                        is on Mingla
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.lookupRow}>
+                      <Ionicons
+                        name="person-add-outline"
+                        size={s(14)}
+                        color={colors.gray[500]}
+                      />
+                      <Text style={styles.lookupTextMuted}>
+                        Not on Mingla yet
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
 
               {phoneError && (
                 <Text style={styles.errorText}>{phoneError}</Text>
@@ -398,38 +552,43 @@ export default function PairRequestModal({
               <TouchableOpacity
                 style={[
                   styles.sendPhoneButton,
-                  (!phoneNumber.trim() || sendingPhone) &&
-                    styles.sendPhoneButtonDisabled,
+                  isActionDisabled && styles.sendPhoneButtonDisabled,
                 ]}
-                onPress={handleSendByPhone}
-                disabled={!phoneNumber.trim() || sendingPhone}
+                onPress={handlePhoneAction}
+                disabled={isActionDisabled}
                 activeOpacity={0.7}
               >
                 {sendingPhone ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <Text style={styles.sendPhoneButtonText}>
-                    Send pair request
-                  </Text>
+                  <View style={styles.sendPhoneButtonContent}>
+                    <Ionicons
+                      name={
+                        phoneLookupResult?.found
+                          ? "people"
+                          : "paper-plane-outline"
+                      }
+                      size={s(14)}
+                      color="white"
+                    />
+                    <Text style={styles.sendPhoneButtonText}>
+                      {getActionLabel()}
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.copyLinkButton}
-                onPress={handleCopyInviteLink}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="copy-outline"
-                  size={16}
-                  color={colors.primary[500]}
-                />
-                <Text style={styles.copyLinkText}>Copy invite link</Text>
-              </TouchableOpacity>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
+
+      {/* Country picker modal */}
+      <CountryPickerModal
+        visible={showCountryPicker}
+        selectedCode={selectedCountry.code}
+        onSelect={handleCountrySelect}
+        onClose={() => setShowCountryPicker(false)}
+      />
     </Modal>
   );
 }
@@ -614,34 +773,64 @@ const styles = StyleSheet.create({
   },
   phoneRow: {
     flexDirection: "row",
-    gap: s(8),
-    marginBottom: s(12),
-  },
-  countryCodeContainer: {
-    backgroundColor: colors.gray[50],
-    borderRadius: s(12),
-    paddingHorizontal: s(14),
-    justifyContent: "center",
     alignItems: "center",
+    backgroundColor: colors.gray[50],
     borderWidth: 1,
     borderColor: colors.gray[200],
-    minHeight: s(48),
+    borderRadius: s(12),
+    height: s(48),
+    overflow: "hidden",
+    marginBottom: s(12),
   },
-  countryCodeText: {
-    fontSize: s(15),
+  countryPicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: s(10),
+    paddingRight: s(6),
+    height: "100%",
+  },
+  countryPickerFlag: {
+    fontSize: 16,
+    marginRight: 3,
+  },
+  countryPickerDial: {
+    fontSize: s(13),
     fontWeight: "600",
     color: colors.text.primary,
+    marginRight: 3,
+  },
+  phoneDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: colors.gray[300],
   },
   phoneInput: {
     flex: 1,
-    backgroundColor: colors.gray[50],
-    borderRadius: s(12),
-    paddingHorizontal: s(14),
+    paddingHorizontal: s(10),
     fontSize: s(15),
     color: colors.text.primary,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    minHeight: s(48),
+    height: "100%",
+  },
+  spinner: {
+    marginRight: s(10),
+  },
+  lookupResult: {
+    marginTop: s(6),
+    marginBottom: s(4),
+  },
+  lookupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  lookupTextGreen: {
+    fontSize: s(12),
+    color: "#16a34a",
+    fontWeight: "500",
+  },
+  lookupTextMuted: {
+    fontSize: s(12),
+    color: colors.gray[500],
   },
   sendPhoneButton: {
     backgroundColor: "#eb7825",
@@ -655,21 +844,14 @@ const styles = StyleSheet.create({
   sendPhoneButtonDisabled: {
     opacity: 0.5,
   },
+  sendPhoneButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: s(6),
+  },
   sendPhoneButtonText: {
     fontSize: s(15),
     fontWeight: "600",
     color: "white",
-  },
-  copyLinkButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: s(6),
-    paddingVertical: s(10),
-  },
-  copyLinkText: {
-    fontSize: s(14),
-    fontWeight: "500",
-    color: colors.primary[500],
   },
 });

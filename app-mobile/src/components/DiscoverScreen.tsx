@@ -37,6 +37,7 @@ import type { PairingPill, PairRequest } from "../services/pairingService";
 import PairRequestModal from "./PairRequestModal";
 import PairingInfoCard from "./PairingInfoCard";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
+import PairedPeopleRow from "./PairedPeopleRow";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -250,6 +251,9 @@ interface DiscoverTabsProps {
   activeTab: DiscoverTab;
   onTabChange: (tab: DiscoverTab) => void;
 }
+
+// Extended calendar holiday with custom + categories fields
+type ExtendedHoliday = CalendarHoliday & { isCustom?: boolean; categories?: string[] };
 
 // Featured card data interface
 interface FeaturedCardData {
@@ -912,6 +916,20 @@ export default function DiscoverScreen({
       }, 200);
     }
   }, [selectedPill, birthdayHeroOpacity, birthdayHeroSlide]);
+
+  // Memoized birthday countdown for the selected paired person
+  const birthdayInfo = useMemo(() => {
+    if (!selectedPill?.birthday) return null;
+    const bDate = new Date(selectedPill.birthday);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const thisYear = today.getFullYear();
+    let nextBday = new Date(thisYear, bDate.getMonth(), bDate.getDate());
+    nextBday.setHours(0, 0, 0, 0);
+    if (nextBday < today) nextBday = new Date(thisYear + 1, bDate.getMonth(), bDate.getDate());
+    const daysAway = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return { daysAway, label: `${MONTH_NAMES[bDate.getMonth()]} ${bDate.getDate()}` };
+  }, [selectedPill?.birthday]);
 
   // Holiday detection helper - checks for upcoming holidays relevant to selected pill
   const getUpcomingHolidays = useCallback((pill: PairingPill | null): string[] => {
@@ -2617,7 +2635,7 @@ export default function DiscoverScreen({
   };
 
   const getHolidayArchiveKey = useCallback((holiday: CalendarHoliday & { isCustom?: boolean }): string => {
-    if ((holiday as any).isCustom) {
+    if ((holiday as ExtendedHoliday).isCustom) {
       return `custom:${holiday.id}`;
     }
 
@@ -2699,7 +2717,7 @@ export default function DiscoverScreen({
         categories: categories,
         isFromCalendar: false,
         isCustom: true, // Mark as custom holiday
-      } as CalendarHoliday & { isCustom: boolean; categories: string[] };
+      } as ExtendedHoliday;
     });
   }, [customHolidays, selectedPillId]);
 
@@ -2815,7 +2833,7 @@ export default function DiscoverScreen({
       date: new Date(h.date),
       daysAway: h.daysAway,
       category: h.category,
-      categories: (h as any).categories || [h.category],
+      categories: (h as ExtendedHoliday).categories || [h.category],
       isFromCalendar: false,
       isCustom: true,
     }));
@@ -2850,7 +2868,7 @@ export default function DiscoverScreen({
 
     const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter(
-      (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+      (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as ExtendedHoliday))
     );
   }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
@@ -2861,7 +2879,7 @@ export default function DiscoverScreen({
 
     const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
     return allHolidays.filter((holiday) =>
-      archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+      archivedKeys.has(getHolidayArchiveKey(holiday as ExtendedHoliday))
     );
   }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
 
@@ -3056,42 +3074,29 @@ export default function DiscoverScreen({
 
               {/* Person-specific view when a person is selected */}
               {selectedPill?.pillState === 'active' ? (
-                <View style={{ flex: 1 }}>
+                <View style={styles.personHolidayContainer}>
                   {/* Birthday Hero */}
-                  {selectedPill.birthday && (() => {
-                    const bDate = new Date(selectedPill.birthday!);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const thisYear = today.getFullYear();
-                    let nextBday = new Date(thisYear, bDate.getMonth(), bDate.getDate());
-                    nextBday.setHours(0, 0, 0, 0);
-                    if (nextBday < today) nextBday = new Date(thisYear + 1, bDate.getMonth(), bDate.getDate());
-                    const bdayDays = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                    const bdayLabel = `${monthNames[bDate.getMonth()]} ${bDate.getDate()}`;
-
-                    return (
-                      <Animated.View style={{ opacity: birthdayHeroOpacity, transform: [{ translateY: birthdayHeroSlide }], marginBottom: 24 }}>
-                        <View style={{ backgroundColor: "#eb7825", borderRadius: 20, padding: 20 }}>
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 22, fontWeight: "700", color: "white", marginBottom: 4 }}>
-                                {selectedPill.displayName}'s Birthday
-                              </Text>
-                              <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.9)" }}>{bdayLabel}</Text>
-                            </View>
-                            <View style={{ alignItems: "flex-end" }}>
-                              <Text style={{ fontSize: 36, fontWeight: "700", color: "white", lineHeight: 40 }}>{bdayDays}</Text>
-                              <Text style={{ fontSize: 16, fontWeight: "700", color: "white", lineHeight: 24, marginTop: 4 }}>
-                                {bdayDays === 1 ? "day" : "days"}
-                              </Text>
-                              <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.9)" }}>away</Text>
-                            </View>
+                  {birthdayInfo && (
+                    <Animated.View style={{ opacity: birthdayHeroOpacity, transform: [{ translateY: birthdayHeroSlide }] }}>
+                      <View style={styles.birthdayHeroCard}>
+                        <View style={styles.birthdayHeroContent}>
+                          <View style={styles.birthdayHeroLeft}>
+                            <Text style={styles.birthdayHeroTitle}>
+                              {selectedPill.displayName}'s Birthday
+                            </Text>
+                            <Text style={styles.birthdayHeroSubtitle}>{birthdayInfo.label}</Text>
+                          </View>
+                          <View style={styles.birthdayHeroDaysContainer}>
+                            <Text style={styles.birthdayHeroDaysNumber}>{birthdayInfo.daysAway}</Text>
+                            <Text style={styles.birthdayHeroDaysText}>
+                              {birthdayInfo.daysAway === 1 ? "day" : "days"}
+                            </Text>
+                            <Text style={styles.birthdayHeroDaysLabel}>away</Text>
                           </View>
                         </View>
-                      </Animated.View>
-                    );
-                  })()}
+                      </View>
+                    </Animated.View>
+                  )}
 
                   {/* Upcoming Holidays Header */}
                   <View style={styles.upcomingHolidaysSection}>
@@ -3116,11 +3121,11 @@ export default function DiscoverScreen({
 
                     {/* Visible Holidays */}
                     {!holidaysLoading && visibleHolidays.length === 0 && (
-                      <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                      <View style={styles.holidayEmptyState}>
                         <Ionicons name="calendar-outline" size={36} color="#d1d5db" />
-                        <Text style={{ fontSize: 14, color: "#6b7280", marginTop: 8 }}>No upcoming holidays</Text>
-                        <TouchableOpacity onPress={handleOpenAddCustomDayModal} style={{ marginTop: 12 }}>
-                          <Text style={{ fontSize: 14, fontWeight: "600", color: "#eb7825" }}>Add a custom day</Text>
+                        <Text style={styles.holidayEmptyStateText}>No upcoming holidays</Text>
+                        <TouchableOpacity onPress={handleOpenAddCustomDayModal} style={styles.holidayEmptyStateAction}>
+                          <Text style={styles.holidayEmptyStateActionText}>Add a custom day</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -3129,7 +3134,8 @@ export default function DiscoverScreen({
                       const isExpanded = expandedHolidayIds.has(holiday.id);
                       const cards = holidayCardsById[holiday.id];
                       const isLoadingCards = holidayCardsLoadingById[holiday.id];
-                      const isCustom = (holiday as any).isCustom === true;
+                      const extHoliday = holiday as ExtendedHoliday;
+                      const isCustom = extHoliday.isCustom === true;
                       const animIndex = Math.min(index, holidayItemAnimations.length - 1);
                       const anim = holidayItemAnimations[animIndex];
 
@@ -3153,7 +3159,7 @@ export default function DiscoverScreen({
                                     id: holiday.id,
                                     name: holiday.name,
                                     daysAway: holiday.daysAway,
-                                    categories: (holiday as any).categories,
+                                    categories: extHoliday.categories,
                                     category: holiday.category,
                                     isCustom,
                                   });
@@ -3166,7 +3172,7 @@ export default function DiscoverScreen({
                                   <View style={styles.holidayItemActions}>
                                     <TouchableOpacity
                                       style={styles.holidayArchiveButton}
-                                      onPress={() => handleArchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                      onPress={() => handleArchiveHoliday(extHoliday)}
                                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                     >
                                       <Ionicons name="archive-outline" size={16} color="#9ca3af" />
@@ -3239,7 +3245,7 @@ export default function DiscoverScreen({
                                           key={card.id}
                                           style={styles.holidayMiniCard}
                                           activeOpacity={0.8}
-                                          onPress={() => handleCardPress(card)}
+                                          onPress={() => handleGridCardPress(card)}
                                         >
                                           {card.image ? (
                                             <Image
@@ -3248,7 +3254,7 @@ export default function DiscoverScreen({
                                               resizeMode="cover"
                                             />
                                           ) : (
-                                            <View style={[styles.holidayMiniCardImage, { backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" }]}>
+                                            <View style={[styles.holidayMiniCardImage, styles.holidayMiniCardImagePlaceholder]}>
                                               <Ionicons name="image-outline" size={24} color="#d1d5db" />
                                             </View>
                                           )}
@@ -3280,8 +3286,8 @@ export default function DiscoverScreen({
                                     </TouchableOpacity>
                                   </>
                                 ) : (
-                                  <View style={{ paddingVertical: 16, alignItems: "center", flex: 1 }}>
-                                    <Text style={{ fontSize: 13, color: "#9ca3af" }}>No experiences found for this holiday</Text>
+                                  <View style={styles.holidayCardsEmptyState}>
+                                    <Text style={styles.holidayCardsEmptyText}>No experiences found for this holiday</Text>
                                   </View>
                                 )}
                               </View>
@@ -3328,7 +3334,7 @@ export default function DiscoverScreen({
                                 <View style={styles.archivedHolidayActions}>
                                   <TouchableOpacity
                                     style={styles.archivedHolidayActionButton}
-                                    onPress={() => handleUnarchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                    onPress={() => handleUnarchiveHoliday(holiday as ExtendedHoliday)}
                                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                   >
                                     <Ionicons name="arrow-undo-outline" size={14} color="#6b7280" />
@@ -3344,6 +3350,32 @@ export default function DiscoverScreen({
                 </View>
               ) : (
                 <>
+                  {/* Paired People Row — horizontal scroll of paired people cards */}
+                  <PairedPeopleRow
+                    people={pairingPills
+                      .filter((p) => p.pillState === "active" && p.pairedUserId)
+                      .map((p) => ({
+                        pairedUserId: p.pairedUserId!,
+                        pairingId: p.pairingId!,
+                        displayName: p.displayName,
+                        firstName: p.firstName,
+                        avatarUrl: p.avatarUrl,
+                        initials: p.initials,
+                        birthday: p.birthday,
+                        gender: p.gender,
+                      }))}
+                    onSelectPerson={(person) => {
+                      // Find the matching pill and select it
+                      const pill = pairingPills.find(
+                        (p) => p.pairedUserId === person.pairedUserId
+                      );
+                      if (pill) {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedPillId(pill.id);
+                      }
+                    }}
+                  />
+
                   {/* Loading State */}
                   {recommendationsLoading && !hasCompletedInitialFetch && (
                     <View style={styles.loadingContainer}>
@@ -5684,6 +5716,42 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  // Person holiday container
+  personHolidayContainer: {
+    flex: 1,
+  },
+  // Holiday empty states
+  holidayEmptyState: {
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  holidayEmptyStateText: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginTop: 8,
+  },
+  holidayEmptyStateAction: {
+    marginTop: 12,
+  },
+  holidayEmptyStateActionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  holidayCardsEmptyState: {
+    paddingVertical: 16,
+    alignItems: "center",
+    flex: 1,
+  },
+  holidayCardsEmptyText: {
+    fontSize: 13,
+    color: "#9ca3af",
+  },
+  holidayMiniCardImagePlaceholder: {
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
   },

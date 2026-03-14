@@ -112,7 +112,7 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["calendar"] });
+          queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
         }
       )
       // pair_requests: incoming pair requests

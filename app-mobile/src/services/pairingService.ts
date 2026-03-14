@@ -111,8 +111,9 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
       const partnerId =
         pairing.user_a_id === userId ? pairing.user_b_id : pairing.user_a_id;
       const profile = profileMap.get(partnerId);
-      const displayName = profile?.display_name ||
+      const displayName =
         [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+        profile?.display_name ||
         "Unknown";
 
       pills.push({
@@ -187,8 +188,9 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
 
     for (const request of outgoingRequests) {
       const profile = recProfileMap.get(request.receiver_id);
-      const displayName = profile?.display_name ||
+      const displayName =
         [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+        profile?.display_name ||
         "Unknown";
 
       let pillState: PairingPill["pillState"];
@@ -312,9 +314,9 @@ export async function fetchIncomingPairRequests(userId: string): Promise<PairReq
     (profiles || []).map((p) => [p.id, p])
   );
 
-  const getDisplayName = (profile: any): string =>
-    profile?.display_name ||
+  const getDisplayName = (profile: { first_name?: string | null; last_name?: string | null; display_name?: string | null } | undefined): string =>
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    profile?.display_name ||
     "Unknown";
 
   return requests.map((r) => {

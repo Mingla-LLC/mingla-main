@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings -- combining pool-first card 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 50 Deno serverless functions |
+| Edge Functions | 51 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -45,19 +45,19 @@ Mingla/
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   ├── discussion/            # Board discussion components (MessageBubble, TypingIndicator, EmojiReactionPicker, SuggestionPopup, EmptyDiscussion)
 │   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~62 React Query hooks + realtime hooks
-│   │   ├── services/                   # ~74 service files
+│   │   ├── hooks/                      # ~64 React Query hooks + realtime hooks
+│   │   ├── services/                   # ~75 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
 │   │   ├── constants/                  # Design tokens, config, categories, holidays
-│   │   └── utils/                      # ~25 utility files
+│   │   └── utils/                      # ~27 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 50 Deno edge functions
+│   ├── functions/                      # 51 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
@@ -140,8 +140,14 @@ Pairing replaces the manual Saved People system. Instead of recording voice desc
 **PairingInfoCard:** Tapping a greyed/pending pill shows a bottom sheet with status message + "Cancel Pair Request" button.
 
 **PersonHolidayView (for active pairings):**
-- Birthday hero card with countdown and days away
-- Holiday rows sorted by proximity, gender-filtered, with pool-first hero card fetching via `get-person-hero-cards` (now blends the paired user's learned preferences from `user_preference_learning` with holiday categories)
+- Birthday hero card with first name (never email), birthday date, turning age, and countdown ("Today!", "1 day", "X days")
+- "Add to calendar" button on birthday and every holiday with 7-tier reminder system (3 months, 1 month, 2 weeks, 1 week, 3 days, 1 day, day-of)
+- Deterministic 6-card layout per occasion: 3 curated (Romantic, Adventurous, Friendly) + 3 category (Fine Dining, Watch, Play), showing real places from the card pool
+- Shuffle button after the last card — fetches random cards if <10 swipes, personalized cards based on paired person's preferences if ≥10 swipes
+- Holiday sections with AI-generated categories (GPT-4o-mini) cached 30 days in AsyncStorage, each with its own 6-card row + shuffle + calendar button
+- Custom holidays with "Xth year" commemoration display, same hero layout as birthday
+- PairedPeopleRow on Discover "For You" tab — horizontal scrollable cards (avatar, name, birthday countdown) for quick access to paired people
+- Holiday rows sorted by proximity, gender-filtered, with pool-first hero card fetching via `get-person-hero-cards` (blends paired user's learned preferences with holiday categories)
 - Custom holidays tied to the pairing (CASCADE deleted on unpair)
 - Swipe-to-archive on holiday rows
 
@@ -227,7 +233,7 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - **Defense-in-depth friendship check:** Session creation checks both `friends` table (primary) and `friend_requests` table (fallback) to handle any historical desync.
 - Unified session creation flow via `CreateSessionContent` component (embedded in CollaborationModule's Create tab, also available standalone)
 - Named sessions with multi-friend selection via `FriendSelectionModal`
-- Phone number invites: invite friends by phone number, non-friends get a friend request first, non-platform users get an SMS invite via Share sheet with auto-conversion on signup (DB triggers handle the full pending -> converted pipeline for both friend invites AND session invites)
+- Phone number invites: invite friends by phone number using AddFriendView's proven CountryPickerModal + inline country picker row + debounced lookup feedback pattern. For on-Mingla users, the "Add to session" button auto-chains — sends a friend request (if needed, idempotent upsert) and adds them to the session in one tap. For off-Mingla users, creates a pending invite + opens Share sheet + tracks as phoneInvitee. Self-lookup and already-added guards prevent invalid additions. Non-platform users get SMS invite with auto-conversion on signup (DB triggers handle the full pending -> converted pipeline for both friend invites AND session invites)
 - **Phone invite catch-up push:** When a new user signs up and verifies their phone, freshly converted invites (< 60s old) trigger a system push notification in addition to the in-app notification.
 - JWT-validated invite edge function prevents impersonation
 - **Notification preferences enforced:** Both `send-collaboration-invite` and `notify-invite-response` edge functions check `notification_preferences.collaboration_invites` before sending push -- respects user opt-out settings.
@@ -245,12 +251,13 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
 - In-app notification catch-up mechanism: on foreground resume and after friend request acceptance, pending invites are queried and notifications are created for any missed while the app was in background/killed or newly revealed by the friend acceptance trigger, with deduplication via ref-tracked invite IDs
-- **Industry-standard foreground recovery:** Centralized `useForegroundRefresh` hook is the single authority for resume-triggered query work. React Query's `focusManager` is explicitly disabled to prevent uncontrolled, auth-unvalidated refetches. On resume: auth session is validated with 8-second timeout, Realtime WebSocket is force-reconnected, then all critical React Query caches are invalidated for background refresh. Short backgrounds (< 30 seconds) skip auth, Realtime reconnection, and query invalidation entirely. Cached data remains visible during refresh -- no spinner on resume when cached data exists. Network timeout is 12 seconds (industry standard), worst-case spinner capped at 25 seconds instead of permanent hang. Resume safety timeout re-arms on every background resume to cap spinner at 10 seconds.
+- **Zero-stale foreground recovery:** Two-layer resume system ensures every screen shows current data within ~1 second of returning from background. Layer 1: React Query's `focusManager` is wired to React Native's `AppState`, enabling automatic `refetchOnWindowFocus` for any query whose data exceeds its `staleTime`. Layer 2: `useForegroundRefresh` hook force-invalidates all critical query families on every resume (short or long background), plus handles auth session refresh (8s timeout) and Realtime WebSocket reconnection for long backgrounds (≥ 30s). Cached data remains visible during refresh -- no spinner on resume when cached data exists. The 500ms debounce collapses rapid background/foreground toggling.
 - **Network-aware query refetching:** React Query's `onlineManager` is wired to `expo-network`, enabling automatic refetch of all stale queries within seconds of network recovery (airplane mode, subway, elevator). `refetchOnReconnect: 'always'` is active and functional.
+- **App-level Realtime subscriptions:** `useSocialRealtime` subscribes to friends, pairings, calendar, and message table changes at the app root level, ensuring data stays fresh on every screen -- not just ConnectionsPage.
 - **Centralized 401 handler:** Consecutive auth failures (JWT expired, invalid token) are tracked globally across all queries and mutations. After 3 consecutive 401s within a 30-second window, the app auto-signs-out to escape the "zombie authenticated" state and shows the login screen cleanly.
 - **Navigation state persistence:** The user's current page (Connections, Discover, Saved, Profile) is persisted to AsyncStorage. After process death, the app restores the user's last page instead of always resetting to Home. Board view and modal pages are excluded (complex dependent state).
 - **Deep link deferral:** When a deep link arrives while the user is unauthenticated, it is stored in AsyncStorage and processed after login + onboarding complete. Links older than 24 hours are discarded. OAuth callbacks always process immediately.
-- **Infinity-staleTime safety net:** Friends, friend requests, and blocked users queries use `staleTime: Infinity` with a 5-minute `refetchInterval` fallback, ensuring data refreshes even if Realtime channels silently disconnect.
+- **Friends freshness strategy:** Friends, friend requests, and blocked users queries use `staleTime: 30s` so `refetchOnWindowFocus` triggers automatic refresh on resume. A 5-minute `refetchInterval` remains as a safety net if Realtime channels silently disconnect.
 - **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
 
 ### Subscription System
@@ -386,9 +393,10 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `send-pair-request` | Handles all 3 pairing tiers: friend (Tier 1), Mingla non-friend via phone (Tier 2), non-Mingla via SMS invite (Tier 3). Auto-detects tier from input. |
 | `notify-pair-request-visible` | Sends push + in-app notification when a hidden pair request becomes visible (after friend request acceptance) |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Now accepts `pairedUserId` to blend the paired user's learned preferences (`user_preference_learning`) with holiday categories. Queries `card_pool` directly by location + blended categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` (via `paired_user_id` column). Sub-second response time. |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Accepts `pairedUserId` to blend the paired user's learned preferences (`user_preference_learning`) with holiday categories. Supports `mode: "default" \| "shuffle"` — shuffle mode checks paired person's swipe count and returns personalized top-6 categories if ≥10 swipes, random cards if <10. Queries `card_pool` directly by location + blended categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` (via `paired_user_id` column). Sub-second response time. |
 | `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Uses shared `mapPoolCardToResponseCard` helper to build consistent card responses across all modes (replacing 3 previous inline card builders). Returns full `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` on every card. Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char). Extended with optional `customDayName`/`customDayYear` fields for occasion-aware suggestions that reference both the person and the special day |
+| `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini. Returns mix of curated experience types (romantic, adventurous, friendly) and single-place categories. Validates against known category slugs. Falls back to birthday defaults on failure. |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
 | `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions (aggregates preferences, calls discover-cards internally, caches in session_decks with SHA-256 hash deduplication) |
@@ -531,11 +539,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Incoming Pair Request UI** -- Receiver-side UI for incoming pair requests on the Discover screen. Incoming requests render as pills with orange border + red notification dot. Tapping opens IncomingPairRequestCard bottom sheet with Accept/Decline buttons, success/error states, and haptic feedback. NotificationsModal accept/decline now also invalidates the pill bar cache.
-- **New mutation hooks:** `useAcceptPairRequest()` and `useDeclinePairRequest()` with named mutation keys and `["pairings"]` prefix cache invalidation.
-- **New component:** `IncomingPairRequestCard.tsx` -- bottom sheet for accepting/declining incoming pair requests.
-- **Files modified:** `usePairings.ts`, `DiscoverScreen.tsx`, `HomePage.tsx`.
-- **Zero breaking changes** -- all changes are additive. Existing pairing flows (send, cancel, unpair) unchanged.
+- **Session phone lookup overhaul** -- Replaced the old `PhoneInput`-based phone section in `CreateSessionModal`'s friends step with AddFriendView's proven `CountryPickerModal` + inline country picker row + debounced `usePhoneLookup` + auto-chain action handler. On-Mingla users get friend request (if needed) + session add in one tap. Off-Mingla users get pending invite + Share sheet + phoneInvitee tracking. Self-lookup guard, already-added guard, and status state machine prevent all edge case issues.
+- **Files changed:** `CreateSessionModal.tsx` (1 file).
+- **Zero regressions** -- FriendSelectionModal, handleCreateSession, and all other flows untouched.
 
 ---
 

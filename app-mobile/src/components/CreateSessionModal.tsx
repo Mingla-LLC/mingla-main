@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Share,
+  Alert,
   Platform,
   useWindowDimensions,
 } from 'react-native';
@@ -29,7 +30,8 @@ import { InviteLinkShare } from './board/InviteLinkShare';
 import { QRCodeDisplay } from './board/QRCodeDisplay';
 import { InviteCodeDisplay } from './board/InviteCodeDisplay';
 import FriendSelectionModal from './FriendSelectionModal';
-import { PhoneInput } from './onboarding/PhoneInput';
+import { CountryPickerModal } from './onboarding/CountryPickerModal';
+import { CountryData } from '../types/onboarding';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite, createPendingSessionInvite } from '../services/phoneLookupService';
 import { getCountryByCode, getDefaultCountryCode } from '../constants/countries';
@@ -241,33 +243,52 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   const [loading, setLoading] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
   const isSubmittingRef = useRef(false); // re-entrancy guard for double-tap
+  const phoneResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [inviteLinkData, setInviteLinkData] = useState<{
     inviteCode: string;
     inviteLink: string;
   } | null>(null);
 
-  // ── Phone lookup ──────────────────────────────────────────────────
-  const [phoneDigits, setPhoneDigits] = useState('');
-  const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
+  // ── Phone lookup (AddFriendView pattern) ─────────────────────────
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryData>(
+    () =>
+      getCountryByCode(getDefaultCountryCode()) ?? {
+        code: 'US',
+        name: 'United States',
+        dialCode: '+1',
+        flag: '🇺🇸',
+      },
+  );
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [phoneActionStatus, setPhoneActionStatus] = useState<
+    'idle' | 'sending' | 'sent' | 'error'
+  >('idle');
+  const [phoneActionError, setPhoneActionError] = useState('');
   const [phoneInvitees, setPhoneInvitees] = useState<
     Array<{ type: 'phone'; phoneE164: string; displayName: string }>
   >([]);
-  const [phoneInviteLoading, setPhoneInviteLoading] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
-  // Build E.164 phone
-  const phoneCountryData = getCountryByCode(phoneCountry);
-  const phoneRawDigits = phoneDigits.replace(/\D/g, '');
-  const phoneE164 = phoneCountryData
-    ? phoneCountryData.dialCode + phoneRawDigits
-    : '+1' + phoneRawDigits;
+  // Build E.164 phone (AddFriendView pattern)
+  const phoneRawDigits = phoneNumber.replace(/\D/g, '');
+  const phoneE164 = useMemo(() => {
+    if (!phoneRawDigits) return '';
+    return `${selectedCountry.dialCode}${phoneRawDigits}`;
+  }, [phoneRawDigits, selectedCountry]);
+
   const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
   const debouncedPhoneDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
+
+  const isPhoneValid = useMemo(() => {
+    // Match usePhoneLookup's viability: E.164 must be >= 11 chars
+    const e164Length = selectedCountry.dialCode.length + phoneRawDigits.length;
+    return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15 && e164Length >= 11;
+  }, [phoneRawDigits, selectedCountry]);
 
   const {
     data: phoneLookupResult,
     isLoading: phoneLookupLoading,
-    error: phoneLookupError,
   } = usePhoneLookup(debouncedPhoneE164, debouncedPhoneDigitCount >= 7);
 
   const { createCollaborativeSession } = useSessionManagement();
@@ -292,6 +313,13 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     }
   }, [user]);
 
+  // Clean up phone reset timer on unmount
+  useEffect(() => {
+    return () => {
+      if (phoneResetTimerRef.current) clearTimeout(phoneResetTimerRef.current);
+    };
+  }, []);
+
   // ── Helpers ───────────────────────────────────────────────────────
   const resetState = useCallback(() => {
     setCurrentStep(isEmbedded ? 'basic' : 'type');
@@ -314,7 +342,14 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     setPreferences(null);
     setInviteMethod(isEmbedded ? 'friends_list' : null);
     setInviteLinkData(null);
-    setPhoneDigits('');
+    setPhoneNumber('');
+    setPhoneActionStatus('idle');
+    setPhoneActionError('');
+    setShowCountryPicker(false);
+    if (phoneResetTimerRef.current) {
+      clearTimeout(phoneResetTimerRef.current);
+      phoneResetTimerRef.current = null;
+    }
     setPhoneInvitees([]);
     setCreationError(null);
   }, [isEmbedded, preSelectedFriend]);
@@ -665,56 +700,155 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     setShowFriendModal(false);
   };
 
-  // ── Phone add handler ─────────────────────────────────────────────
-  const handlePhoneAdd = async () => {
-    const isAlreadyInvited = phoneInvitees.some(
-      (i) => i.phoneE164 === debouncedPhoneE164,
-    );
-    if (isAlreadyInvited) return;
-
-    if (phoneLookupResult?.found && phoneLookupResult.user) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const friendData: SelectedFriend = {
-        id: phoneLookupResult.user.id,
-        name:
-          phoneLookupResult.user.display_name ||
-          phoneLookupResult.user.username,
-        username: phoneLookupResult.user.username,
-        avatar_url: phoneLookupResult.user.avatar_url || undefined,
-      };
-      if (!selectedFriends.some((f) => f.id === friendData.id)) {
-        setSelectedFriends((prev) => [...prev, friendData]);
-      }
-      setPhoneDigits('');
-    } else {
-      setPhoneInviteLoading(true);
-      try {
-        if (user) {
-          await createPendingInvite(user.id, debouncedPhoneE164);
-        }
-        const inviteLink = referralCode
-          ? `https://usemingla.com/invite/${referralCode}`
-          : 'https://usemingla.com';
-        await Share.share({
-          message: `Hey! Join me on Mingla and let's find amazing experiences together. ${inviteLink}`,
-        });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setPhoneInvitees((prev) => [
-          ...prev,
-          {
-            type: 'phone',
-            phoneE164: debouncedPhoneE164,
-            displayName: debouncedPhoneE164,
-          },
-        ]);
-        setPhoneDigits('');
-      } catch (err) {
-        console.error('Error inviting by phone:', err);
-      } finally {
-        setPhoneInviteLoading(false);
-      }
+  // ── Phone action handler (AddFriendView auto-chain pattern) ──────
+  const handlePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164) return;
+    if (!user) {
+      setPhoneActionError('Not signed in');
+      setPhoneActionStatus('error');
+      return;
     }
+
+    setPhoneActionStatus('sending');
+    setPhoneActionError('');
+
+    try {
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        // Self-lookup guard
+        if (phoneLookupResult.user.id === user.id) {
+          Alert.alert("That's you!", "You can't add yourself to a session.");
+          setPhoneActionStatus('idle');
+          return;
+        }
+
+        // Already in selectedFriends guard
+        if (selectedFriends.some((f) => f.id === phoneLookupResult.user?.id)) {
+          Alert.alert('Already added', 'This person is already in your session.');
+          setPhoneActionStatus('idle');
+          return;
+        }
+
+        if (
+          phoneLookupResult.friendship_status === 'none' ||
+          phoneLookupResult.friendship_status === 'friends' ||
+          phoneLookupResult.friendship_status === 'pending_sent' ||
+          phoneLookupResult.friendship_status === 'pending_received'
+        ) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+          // Send friend request if not already friends or pending
+          if (phoneLookupResult.friendship_status === 'none') {
+            await supabase.from('friend_requests').upsert(
+              {
+                sender_id: user.id,
+                receiver_id: phoneLookupResult.user.id,
+                status: 'pending',
+              },
+              { onConflict: 'sender_id,receiver_id' },
+            );
+          }
+
+          // Add to selectedFriends for session creation
+          const friendData: SelectedFriend = {
+            id: phoneLookupResult.user.id,
+            name:
+              phoneLookupResult.user.display_name ||
+              phoneLookupResult.user.username,
+            username: phoneLookupResult.user.username,
+            avatar_url: phoneLookupResult.user.avatar_url || undefined,
+          };
+          setSelectedFriends((prev) => [...prev, friendData]);
+
+          setPhoneActionStatus('sent');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          phoneResetTimerRef.current = setTimeout(() => {
+            setPhoneNumber('');
+            setPhoneActionStatus('idle');
+          }, 2000);
+        }
+      } else {
+        // Not on Mingla — create pending invite + share
+        await createPendingInvite(user.id, debouncedPhoneE164);
+
+        // Share in its own try/catch — dismissal is not an error
+        try {
+          const inviteLink = referralCode
+            ? `https://usemingla.com/invite/${referralCode}`
+            : 'https://usemingla.com';
+          await Share.share({
+            message: `Hey! Join me on Mingla and let's find amazing experiences together. ${inviteLink}`,
+          });
+        } catch {
+          // User dismissed share sheet — not an error
+        }
+
+        // Track as phone invitee (skip duplicates)
+        setPhoneInvitees((prev) => {
+          if (prev.some((i) => i.phoneE164 === debouncedPhoneE164)) return prev;
+          return [
+            ...prev,
+            {
+              type: 'phone',
+              phoneE164: debouncedPhoneE164,
+              displayName: debouncedPhoneE164,
+            },
+          ];
+        });
+
+        setPhoneActionStatus('sent');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        phoneResetTimerRef.current = setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('[CreateSession] Phone action error:', err);
+      setPhoneActionError(
+        err instanceof Error ? err.message : 'Something went wrong',
+      );
+      setPhoneActionStatus('error');
+    }
+  }, [
+    isPhoneValid,
+    debouncedPhoneE164,
+    phoneLookupResult,
+    user,
+    selectedFriends,
+    referralCode,
+  ]);
+
+  // ── Phone action button label & disabled state ──────────────────
+  const getPhoneActionLabel = (): string => {
+    if (phoneLookupLoading) return 'Looking up...';
+    if (!isPhoneValid) return 'Enter phone number';
+    if (phoneLookupResult?.found) {
+      if (phoneLookupResult.user?.id === user?.id) return "That's you";
+      if (selectedFriends.some((f) => f.id === phoneLookupResult.user?.id))
+        return 'Already added';
+      return 'Add to session';
+    }
+    return 'Invite to Mingla';
   };
+
+  const isPhoneActionDisabled =
+    !isPhoneValid ||
+    phoneLookupLoading ||
+    phoneE164 !== debouncedPhoneE164 || // debounce hasn't settled
+    phoneActionStatus === 'sending' ||
+    phoneActionStatus === 'sent' ||
+    (phoneLookupResult?.found &&
+      phoneLookupResult.user?.id === user?.id) ||
+    (phoneLookupResult?.found &&
+      selectedFriends.some((f) => f.id === phoneLookupResult.user?.id));
+
+  // ── Country select handler ──────────────────────────────────────
+  const handleCountrySelect = useCallback((code: string) => {
+    const country = getCountryByCode(code);
+    if (country) {
+      setSelectedCountry(country);
+    }
+  }, []);
 
   // ── Back button visibility ────────────────────────────────────────
   const showBackButton = isEmbedded
@@ -1036,77 +1170,128 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Phone input */}
+            {/* Phone lookup — AddFriendView pattern */}
             <View style={styles.phoneSection}>
               <Text style={styles.phoneSectionLabel}>Know their number?</Text>
               <Text style={styles.phoneSectionHint}>
-                We'll send them an invite to join Mingla
+                {`We'll check if they're on Mingla`}
               </Text>
-              <View style={styles.phoneRow}>
-                <View style={styles.phoneInputWrap}>
-                  <PhoneInput
-                    value={phoneDigits}
-                    countryCode={phoneCountry}
-                    onChangePhone={setPhoneDigits}
-                    onChangeCountry={setPhoneCountry}
-                    error={null}
-                    disabled={false}
-                  />
-                </View>
-                {debouncedPhoneDigitCount >= 7 && (
-                  <TouchableOpacity
-                    style={styles.phoneAddBtn}
-                    disabled={phoneLookupLoading || phoneInviteLoading}
-                    onPress={handlePhoneAdd}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      phoneLookupResult?.found
-                        ? 'Add this person'
-                        : 'Invite by phone'
+
+              {/* Inline phone input row (AddFriendView pattern) */}
+              <View style={styles.phoneLookupRow}>
+                <TouchableOpacity
+                  style={styles.phoneLookupCountry}
+                  onPress={() => setShowCountryPicker(true)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.phoneLookupFlag}>{selectedCountry.flag}</Text>
+                  <Text style={styles.phoneLookupDial}>{selectedCountry.dialCode}</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.gray[400]} />
+                </TouchableOpacity>
+
+                <View style={styles.phoneLookupDivider} />
+
+                <TextInput
+                  style={styles.phoneLookupInput}
+                  value={phoneNumber}
+                  onChangeText={(text) => {
+                    setPhoneNumber(text);
+                    if (phoneActionStatus !== 'idle' && phoneActionStatus !== 'sending') {
+                      setPhoneActionStatus('idle');
+                      setPhoneActionError('');
                     }
-                  >
-                    {phoneLookupLoading || phoneInviteLoading ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.primary[500]}
-                      />
-                    ) : (
-                      <Ionicons
-                        name={
-                          phoneLookupResult?.found
-                            ? 'person-add'
-                            : 'paper-plane'
-                        }
-                        size={20}
-                        color={colors.primary[500]}
-                      />
-                    )}
-                  </TouchableOpacity>
+                  }}
+                  placeholder="Phone number"
+                  placeholderTextColor={colors.gray[400]}
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                  maxLength={15}
+                />
+
+                {phoneLookupLoading && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.primary[500]}
+                    style={styles.phoneLookupSpinner}
+                  />
                 )}
               </View>
-              {phoneLookupError && phoneRawDigits.length >= 7 && (
-                <Text style={styles.phoneLookupError}>
-                  {phoneLookupError instanceof Error
-                    ? phoneLookupError.message
-                    : 'Couldn\u2019t look up that number. Try again?'}
-                </Text>
+
+              {/* Lookup result feedback */}
+              {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+                <View style={styles.phoneLookupFeedback}>
+                  {phoneLookupResult.found ? (
+                    <View style={styles.phoneLookupFeedbackRow}>
+                      <Ionicons name="checkmark-circle" size={14} color={colors.success[500]} />
+                      <Text style={styles.phoneLookupFoundText}>
+                        {phoneLookupResult.user?.display_name ||
+                          phoneLookupResult.user?.username ||
+                          'User'}{' '}
+                        is on Mingla
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.phoneLookupFeedbackRow}>
+                      <Ionicons name="person-add-outline" size={14} color={colors.gray[500]} />
+                      <Text style={styles.phoneLookupNotFoundText}>
+                        Not on Mingla yet
+                      </Text>
+                    </View>
+                  )}
+                </View>
               )}
-              {phoneLookupResult?.found && phoneRawDigits.length >= 7 && (
-                <View style={styles.phoneLookupFound}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={14}
-                    color={colors.success[500]}
-                  />
-                  <Text style={styles.phoneLookupFoundText}>
-                    Found on Mingla! Tap{' '}
-                    <Ionicons name="person-add" size={12} color={colors.success[600]} />{' '}
-                    to add them.
+
+              {/* Status feedback */}
+              {phoneActionStatus === 'sent' && (
+                <View style={styles.phoneLookupFeedbackRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.success[500]} />
+                  <Text style={styles.phoneLookupSuccessText}>
+                    {phoneLookupResult?.found ? 'Added to session!' : 'Invite sent!'}
                   </Text>
                 </View>
               )}
+              {phoneActionStatus === 'error' && (
+                <View style={styles.phoneLookupFeedbackRow}>
+                  <Ionicons name="alert-circle" size={16} color={colors.error[500]} />
+                  <Text style={styles.phoneLookupErrorText}>{phoneActionError}</Text>
+                </View>
+              )}
+
+              {/* Action button */}
+              <TouchableOpacity
+                style={[
+                  styles.phoneLookupActionBtn,
+                  isPhoneActionDisabled && styles.phoneLookupActionBtnDisabled,
+                ]}
+                onPress={handlePhoneAction}
+                activeOpacity={0.7}
+                disabled={!!isPhoneActionDisabled}
+              >
+                {phoneActionStatus === 'sending' ? (
+                  <ActivityIndicator size="small" color={colors.text.inverse} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
+                      size={14}
+                      color={colors.text.inverse}
+                      style={styles.phoneLookupActionIcon}
+                    />
+                    <Text style={styles.phoneLookupActionBtnText}>
+                      {getPhoneActionLabel()}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
+
+            {/* Country picker modal */}
+            <CountryPickerModal
+              visible={showCountryPicker}
+              selectedCode={selectedCountry.code}
+              onSelect={handleCountrySelect}
+              onClose={() => setShowCountryPicker(false)}
+            />
 
             {/* Empty state */}
             {friends.length === 0 &&
@@ -1917,7 +2102,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // ── Phone section ─────────────────────────────────────────────────
+  // ── Phone section (AddFriendView pattern) ────────────────────────
   phoneSection: {
     marginBottom: spacing.md,
   },
@@ -1930,40 +2115,96 @@ const styles = StyleSheet.create({
   phoneSectionHint: {
     ...typography.xs,
     color: colors.text.tertiary,
-    marginBottom: spacing.md,
   },
-  phoneRow: {
+  phoneLookupRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  phoneInputWrap: {
-    flex: 1,
-  },
-  phoneAddBtn: {
-    width: touchTargets.large,
-    height: touchTargets.large,
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
     borderRadius: radius.md,
-    backgroundColor: colors.primary[50],
-    borderWidth: 1.5,
-    borderColor: colors.primary[200],
-  },
-  phoneLookupError: {
-    ...typography.xs,
-    color: colors.error[500],
+    height: 46,
+    overflow: 'hidden',
     marginTop: spacing.sm,
   },
-  phoneLookupFound: {
+  phoneLookupCountry: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xs,
+    height: '100%',
+  },
+  phoneLookupFlag: {
+    fontSize: 16,
+    marginRight: 3,
+  },
+  phoneLookupDial: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginRight: 3,
+  },
+  phoneLookupDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: colors.gray[300],
+  },
+  phoneLookupInput: {
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+    ...typography.md,
+    color: colors.text.primary,
+    height: '100%',
+  },
+  phoneLookupFeedback: {
+    marginTop: spacing.xs,
+  },
+  phoneLookupFeedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: spacing.xs,
   },
   phoneLookupFoundText: {
     ...typography.xs,
     color: colors.success[600],
+    fontWeight: fontWeights.medium,
+  },
+  phoneLookupNotFoundText: {
+    ...typography.xs,
+    color: colors.gray[500],
+  },
+  phoneLookupSuccessText: {
+    ...typography.sm,
+    color: colors.success[600],
+    fontWeight: fontWeights.medium,
+  },
+  phoneLookupErrorText: {
+    ...typography.sm,
+    color: colors.error[500],
+  },
+  phoneLookupActionBtn: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  phoneLookupActionBtnDisabled: {
+    opacity: 0.45,
+  },
+  phoneLookupActionBtnText: {
+    color: colors.text.inverse,
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+  },
+  phoneLookupSpinner: {
+    marginRight: spacing.sm,
+  },
+  phoneLookupActionIcon: {
+    marginRight: spacing.xs,
   },
 
   // ── Empty state ───────────────────────────────────────────────────

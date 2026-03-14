@@ -1638,7 +1638,7 @@ const SavedTab = ({
         {/* 3-image strip with numbered badges */}
         <View style={curatedSavedStyles.imageStrip}>
           {stops.slice(0, 3).map((stop, idx) => (
-            <View key={stop.placeId} style={curatedSavedStyles.imageContainer}>
+            <View key={`${stop.placeId}_${idx}`} style={curatedSavedStyles.imageContainer}>
               <ImageWithFallback
                 source={{ uri: stop.imageUrl }}
                 alt={stop.placeName}

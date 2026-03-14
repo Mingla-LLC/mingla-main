@@ -46,52 +46,6 @@ export interface PendingSessionEntry {
 // Union of all shapes that can live in boardsSessions state.
 export type BoardSessionEntry = BoardSessionData | PendingSessionEntry;
 
-// Default data constants moved to separate module to prevent re-creation
-const DEFAULT_FRIENDS = [
-  {
-    id: "1",
-    name: "Arifat Ola-dauda",
-    username: "Ari99",
-    status: "online",
-    isOnline: true,
-    mutualFriends: 12,
-  },
-  {
-    id: "2",
-    name: "Sethozia Testing",
-    username: "Sethozia",
-    status: "away",
-    isOnline: false,
-    lastSeen: "2 hours ago",
-    mutualFriends: 8,
-  },
-  {
-    id: "3",
-    name: "Marcus Chen",
-    username: "MarcusC",
-    status: "online",
-    isOnline: true,
-    mutualFriends: 15,
-  },
-  {
-    id: "4",
-    name: "Sarah Williams",
-    username: "SarahW",
-    status: "offline",
-    isOnline: false,
-    lastSeen: "1 day ago",
-    mutualFriends: 6,
-  },
-  {
-    id: "5",
-    name: "David Rodriguez",
-    username: "DavidR",
-    status: "online",
-    isOnline: true,
-    mutualFriends: 9,
-  },
-];
-
 const DEFAULT_BOARDS_SESSIONS: BoardSessionEntry[] = [];
 
 // Safe AsyncStorage operations
@@ -290,16 +244,9 @@ export function useAppState() {
     // Invalidate to ensure fresh data on next fetch
     queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
   };
-  const [friendsList, setFriendsList] = useState(DEFAULT_FRIENDS);
   const [boardsSessions, setBoardsSessions] = useState(DEFAULT_BOARDS_SESSIONS);
   const [isLoadingBoards, setIsLoadingBoards] = useState(false);
 
-  const [profileStats, setProfileStats] = useState({
-    savedExperiences: 0,
-    boardsCount: 3,
-    connectionsCount: 5,
-    placesVisited: 0,
-  });
 
   // Authentication state - now using Supabase authentication
   const isAuthenticated = !!user; // Use Supabase user state
@@ -395,9 +342,10 @@ export function useAppState() {
   }, [user, profile]);
 
   // Reset navigation/UI auth state when signed out to avoid stale page carryover.
-  // boardsSessions and friendsList MUST be cleared here — without this, a second
-  // user signing in on the same device session would briefly see the previous
-  // user's real session names/friend data until refreshAllSessions() completes.
+  // boardsSessions MUST be cleared here — without this, a second user signing in
+  // on the same device session would briefly see the previous user's real session
+  // names until refreshAllSessions() completes. Friends data is managed entirely
+  // by React Query (cleared via queryClient.clear() in handleSignOut).
   useEffect(() => {
     if (!user) {
       setCurrentPage("home");
@@ -415,11 +363,10 @@ export function useAppState() {
       setHasCompletedOnboarding(false);
       setOnboardingData(null);
       setViewingFriendProfileId(null);
-      // Clear session and friend data so the next authenticated user never sees
+      // Clear session data so the next authenticated user never sees
       // the previous user's real data during the brief window before fresh data loads.
       setBoardsSessions(DEFAULT_BOARDS_SESSIONS);
       setIsLoadingBoards(false);
-      setFriendsList(DEFAULT_FRIENDS);
     }
   }, [user]);
 
@@ -520,9 +467,7 @@ export function useAppState() {
           notificationsEnabledData,
           userIdentityData,
           accountPreferencesData,
-          /*  savedCardsData, */
           removedCardIdsData,
-          friendsListData,
           boardsSessionsData,
         ] = await Promise.all([
           safeAsyncStorageGet("mingla_notifications_enabled", true),
@@ -539,9 +484,7 @@ export function useAppState() {
             currency: "USD",
             measurementSystem: "Imperial",
           }),
-          /*  safeAsyncStorageGet("mingla_saved_cards", []), */
           safeAsyncStorageGet("mingla_removed_cards", []),
-          safeAsyncStorageGet("mingla_friends_list", DEFAULT_FRIENDS),
           safeAsyncStorageGet(
             "mingla_boards_sessions",
             DEFAULT_BOARDS_SESSIONS
@@ -554,23 +497,8 @@ export function useAppState() {
           setUserIdentity(userIdentityData);
         }
         setAccountPreferences(accountPreferencesData);
-        // Note: calendarEntries are now managed by TanStack Query via useCalendarEntries hook
-        // The query will handle fetching fresh data from Supabase
-        // Note: savedCards are now managed by TanStack Query, but we can set initial cache
-        // The query will handle fetching fresh data
-        /*  queryClient.setQueryData(["savedCards", user?.id], savedCardsData); */
         setRemovedCardIds(removedCardIdsData);
-        setFriendsList(friendsListData);
         setBoardsSessions(boardsSessionsData);
-
-        // Update profile stats based on loaded data
-        // Note: savedExperiences will be updated when savedCards query loads
-        setProfileStats({
-          savedExperiences: savedCards.length, // Use React Query data
-          boardsCount: boardsSessionsData.length,
-          connectionsCount: friendsListData.length,
-          placesVisited: 0,
-        });
       } catch (error) {
         console.error("Error loading stored data:", error);
       }
@@ -578,15 +506,6 @@ export function useAppState() {
 
     loadStoredData();
   }, []);
-
-  // Update profile stats when saved cards change
-  // Use savedCards.length instead of savedCards array reference to prevent infinite loops
-  useEffect(() => {
-    setProfileStats((prev) => ({
-      ...prev,
-      savedExperiences: savedCards.length,
-    }));
-  }, [savedCards.length]);
 
   // Normalize calendar entries from React Query into the shape used by CalendarTab
   const calendarEntries = useMemo(() => {
@@ -679,10 +598,6 @@ export function useAppState() {
   const updateBoardsSessions = (updatedBoards: any[]) => {
     setBoardsSessions(updatedBoards);
     safeAsyncStorageSet("mingla_boards_sessions", updatedBoards);
-    setProfileStats((prev) => ({
-      ...prev,
-      boardsCount: updatedBoards.length,
-    }));
   };
 
   const handleUserIdentityUpdate = async (updatedIdentity: any) => {
@@ -943,14 +858,10 @@ export function useAppState() {
     isLoadingSavedCards,
     removedCardIds,
     setRemovedCardIds,
-    friendsList,
-    setFriendsList,
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
     setIsLoadingBoards,
-    profileStats,
-    setProfileStats,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
     boardViewSessionId,
@@ -963,7 +874,6 @@ export function useAppState() {
     handleUserIdentityUpdate,
     handleAccountPreferencesUpdate,
     safeAsyncStorageSet,
-    safeLocalStorageSet: safeAsyncStorageSet,
     unblockFriend,
 
     // Authentication Handlers (OAuth only)

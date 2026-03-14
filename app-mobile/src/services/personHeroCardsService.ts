@@ -7,6 +7,7 @@ export async function fetchPersonHeroCards(params: {
   categorySlugs: string[];
   curatedExperienceType: string | null;
   location: { latitude: number; longitude: number };
+  mode?: "default" | "shuffle";
 }): Promise<HolidayCardsResponse> {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
@@ -26,6 +27,7 @@ export async function fetchPersonHeroCards(params: {
         categorySlugs: params.categorySlugs,
         curatedExperienceType: params.curatedExperienceType,
         location: params.location,
+        mode: params.mode ?? "default",
       }),
     }
   );

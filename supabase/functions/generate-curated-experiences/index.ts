@@ -1317,6 +1317,12 @@ async function generateFirstDateCards(
       const startId = startPlace.id || startPlace.name;
       const finishId = finishPlace.id || finishPlace.name;
 
+      // Ensure stops are different places
+      if (startId === finishId) {
+        globalUsedPlaceIds.add(startId);
+        continue;
+      }
+
       const stop1 = buildFirstDateStop(startPlace, 1, fallbackGroup, lat, lng, null, null, travelMode);
       const stop2 = buildFirstDateStop(finishPlace, 2, finishGroup, lat, lng, stop1.lat, stop1.lng, travelMode);
 
@@ -1359,6 +1365,12 @@ async function generateFirstDateCards(
     if (!finishPlace) break; // should never happen — we checked availableFinish.length > 0
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
+
+    // Ensure stops are different places
+    if (startId === finishId) {
+      globalUsedPlaceIds.add(startId);
+      continue;
+    }
 
     const stop1 = buildFirstDateStop(startPlace, 1, startingGroup, lat, lng, null, null, travelMode);
     const stop2 = buildFirstDateStop(finishPlace, 2, finishGroup, lat, lng, stop1.lat, stop1.lng, travelMode);
@@ -1515,6 +1527,12 @@ async function generateRomanticCards(
     if (!finishPlace) break;
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
+
+    // Ensure stops are different places
+    if (startId === finishId) {
+      globalUsedPlaceIds.add(startId);
+      continue;
+    }
 
     const stop1 = buildRomanticStop(startPlace, 1, ROMANTIC_START, lat, lng, null, null, travelMode);
     const stop2 = buildRomanticStop(finishPlace, 2, ROMANTIC_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
@@ -1739,6 +1757,12 @@ async function generateFriendlyCards(
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
 
+    // Ensure stops are different places
+    if (startId === finishId) {
+      globalUsedPlaceIds.add(startId);
+      continue;
+    }
+
     const stop1 = buildFriendlyStop(startPlace, 1, startingGroup, lat, lng, null, null, travelMode);
     const stop2 = buildFriendlyStop(finishPlace, 2, FRIENDLY_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
 
@@ -1911,6 +1935,12 @@ async function generateGroupFunCards(
     if (!finishPlace) break;
     const startId = startPlace.id || startPlace.name;
     const finishId = finishPlace.id || finishPlace.name;
+
+    // Ensure stops are different places
+    if (startId === finishId) {
+      globalUsedPlaceIds.add(startId); // Skip — same place in both groups
+      continue;
+    }
 
     const stop1 = buildGroupFunStop(startPlace, 1, startingGroup, lat, lng, null, null, travelMode);
     const stop2 = buildGroupFunStop(finishPlace, 2, GROUP_FUN_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
@@ -2206,6 +2236,10 @@ async function generatePicnicDatesCards(
     });
 
     const picnicSpot = picnicPlaces[0];
+
+    // Ensure stops are different places
+    const picnicSpotId = picnicSpot.id || picnicSpot.name;
+    if (groceryId === picnicSpotId) continue;
 
     // Build 2 stops
     const stop1 = buildPicnicStop(grocery, 1, PICNIC_START, lat, lng, null, null, travelMode);
