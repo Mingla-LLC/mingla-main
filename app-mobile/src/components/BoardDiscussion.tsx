@@ -460,6 +460,7 @@ export default function BoardDiscussion({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.tabText,
                 activeView === "cards" && styles.tabTextActive,
@@ -479,6 +480,7 @@ export default function BoardDiscussion({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.tabText,
                 activeView === "discussion" && styles.tabTextActive,
@@ -769,7 +771,7 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 8,
     alignItems: "center",
   },
@@ -781,6 +783,7 @@ const styles = StyleSheet.create({
     ...typography.sm,
     fontWeight: "500",
     color: colors.gray[600],
+    textAlign: "center",
   },
   tabTextActive: {
     color: "#eb7825",

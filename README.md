@@ -511,10 +511,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Critical Bug Batch (12 fixes + 1 bonus)** -- Scheduling error isolation, card data sanitization, board_votes unique constraint fix, keyboard handling in AddFriend and FriendsModal, iOS time picker overflow fix, mention display name priority with backward-compatible `@[Name]` format, mention popover keyboard-aware positioning, collaboration session race condition fix (3-layer defense), optimistic unschedule with instant UI feedback, tab text cutoff fix, friend request polling reduced to 60s.
 - **Solo/Collab Mode Switching Stability** -- Eliminated duplicate `fetchDeck` calls during mode transitions via `useRef`-based stability guard that defers React Query until params settle. Reduced `retry` from 2 to 1, cutting worst-case timeout from 90s to 30s.
 - **Realtime Channel Thrashing Fix** -- Debounced `useBoardSession` realtime subscription with 300ms `setTimeout` to absorb rapid `sessionId` flickers during mode transitions. Immediate unsubscribe on clear, delayed subscribe on set. Separate unmount cleanup via `stableSessionIdRef`.
 - **iOS Network Starvation Fix** -- Staggered warm pool call by 2s after home screen mount, preventing 4+ concurrent HTTP/2 requests from causing head-of-line blocking on iOS.
-- **Preferences Timeout Alignment** -- Increased PreferencesSheet save timeout from 15s to 25s to cover PreferencesService's 20s first-attempt timeout plus 5s buffer.
 
 ---
 

@@ -53,5 +53,8 @@ export const useSavedCards = (userId: string | undefined) => {
   return useQuery({
     queryKey: ["savedCards", userId],
     queryFn: async () => await fetchSavedCards(userId),
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 };

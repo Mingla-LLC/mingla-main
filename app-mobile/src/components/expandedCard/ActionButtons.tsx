@@ -513,16 +513,44 @@ export default function ActionButtons({
         }
       }
 
-      // Prepare card data with source
-      const cardWithSource = {
-        ...card,
+      // Explicitly construct a clean, JSON-serializable card object.
+      const sanitizedCard = {
+        id: card.id,
+        placeId: card.placeId ?? card.id,
+        title: card.title,
+        category: card.category,
+        categoryIcon: card.categoryIcon,
+        description: card.description,
+        fullDescription: card.fullDescription || card.description,
+        image: card.image,
+        images: card.images || (card.image ? [card.image] : []),
+        rating: card.rating || 0,
+        reviewCount: card.reviewCount || 0,
+        priceRange: card.priceRange || '',
+        distance: card.distance || '',
+        travelTime: card.travelTime || '',
+        address: card.address || '',
+        openingHours: card.openingHours,
+        highlights: card.highlights || [],
+        tags: card.tags || [],
+        matchScore: card.matchScore || 0,
+        matchFactors: card.matchFactors || {},
+        location: card.location
+          ? { lat: card.location.lat, lng: card.location.lng }
+          : undefined,
+        cardType: card.cardType,
+        tagline: card.tagline,
+        stops: card.stops,
+        totalPriceMin: card.totalPriceMin,
+        totalPriceMax: card.totalPriceMax,
+        estimatedDurationMinutes: card.estimatedDurationMinutes,
+        experienceType: card.experienceType,
         source,
       };
 
-      // Add to calendar in Supabase (lockedIn)
       const record = await CalendarService.addEntryFromSavedCard(
         user.id,
-        cardWithSource,
+        sanitizedCard,
         scheduledDateISO,
       );
 

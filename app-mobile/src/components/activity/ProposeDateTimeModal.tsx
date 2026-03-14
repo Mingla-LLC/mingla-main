@@ -1244,6 +1244,8 @@ const pickerModalStyles = StyleSheet.create({
     backgroundColor: "#1C1C1E",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    maxHeight: SCREEN_HEIGHT * 0.45,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: "row",
@@ -1253,6 +1255,7 @@ const pickerModalStyles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(255, 255, 255, 0.1)",
+    minHeight: 48,
   },
   headerButtons: {
     flexDirection: "row",
@@ -1274,6 +1277,6 @@ const pickerModalStyles = StyleSheet.create({
     color: "#F59E0B",
   },
   picker: {
-    height: 200,
+    height: Math.min(200, SCREEN_HEIGHT * 0.25),
   },
 });

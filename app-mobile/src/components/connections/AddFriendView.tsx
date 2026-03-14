@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 import {
   getDefaultCountryCode,
   getCountryByCode,
@@ -414,7 +415,11 @@ export function AddFriendView({
 
       {/* Add Friend tab */}
       {activeTab === "add" && (
-        <>
+        <KeyboardAwareScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Compact single-line phone input */}
           <View style={styles.phoneRow}>
             <TouchableOpacity
@@ -544,7 +549,7 @@ export function AddFriendView({
               </>
             )}
           </TouchableOpacity>
-        </>
+        </KeyboardAwareScrollView>
       )}
 
       {/* Sent Requests + Invites tab */}

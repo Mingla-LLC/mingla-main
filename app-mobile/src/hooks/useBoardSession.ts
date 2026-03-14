@@ -56,11 +56,15 @@ export const useBoardSession = (sessionId?: string) => {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+  const loadSessionIdRef = useRef<string | null>(null);
 
   // Load session data
   const loadSession = useCallback(
     async (id: string) => {
       if (!id || !user) return;
+
+      const loadId = `${id}-${Date.now()}`;
+      loadSessionIdRef.current = loadId;
 
       setLoading(true);
       setError(null);
@@ -74,6 +78,7 @@ export const useBoardSession = (sessionId?: string) => {
           .single();
 
         if (sessionError) throw sessionError;
+        if (loadSessionIdRef.current !== loadId) return;
 
         // Load preferences for the current user
         const { data: prefsData, error: prefsError } = await supabase
@@ -86,6 +91,7 @@ export const useBoardSession = (sessionId?: string) => {
         if (prefsError && prefsError.code !== "PGRST116") {
           console.error("Error loading preferences:", prefsError);
         }
+        if (loadSessionIdRef.current !== loadId) return;
 
         // Load ALL participants' preferences (for aggregation)
         const { data: allPrefsData, error: allPrefsError } = await supabase
@@ -96,6 +102,8 @@ export const useBoardSession = (sessionId?: string) => {
         if (allPrefsError) {
           console.warn("Error loading all participant preferences:", allPrefsError);
         }
+        if (loadSessionIdRef.current !== loadId) return;
+
         setAllParticipantPreferences(allPrefsData || []);
 
         // Load participants
@@ -120,6 +128,7 @@ export const useBoardSession = (sessionId?: string) => {
         if (participantsError) {
           console.error("Error loading participants:", participantsError);
         }
+        if (loadSessionIdRef.current !== loadId) return;
 
         setSession({
           ...sessionData,
@@ -130,10 +139,13 @@ export const useBoardSession = (sessionId?: string) => {
           setPreferences(prefsData as BoardSessionPreferences);
         }
       } catch (err: any) {
+        if (loadSessionIdRef.current !== loadId) return;
         setError(err.message || "Failed to load session");
         console.error("Error loading session:", err);
       } finally {
-        setLoading(false);
+        if (loadSessionIdRef.current === loadId) {
+          setLoading(false);
+        }
       }
     },
     [user]
@@ -228,17 +240,27 @@ export const useBoardSession = (sessionId?: string) => {
     if (stableSessionIdRef.current) {
       realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
       stableSessionIdRef.current = undefined;
+      setAllParticipantPreferences([]);
     }
 
     // Debounce: wait 300ms before subscribing to avoid thrashing
+    const capturedSessionId = sessionId;
     const timer = setTimeout(() => {
       stableSessionIdRef.current = sessionId;
 
       realtimeService.subscribeToBoardSession(sessionId, {
         onSessionUpdated: (updatedSession) => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
           setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
         },
         onParticipantJoined: (participant) => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
           setSession((prev) => {
             if (!prev) return null;
             const existing = prev.participants || [];
@@ -252,6 +274,10 @@ export const useBoardSession = (sessionId?: string) => {
           });
         },
         onParticipantLeft: (participant) => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
           setSession((prev) => {
             if (!prev) return null;
             return {
@@ -263,6 +289,10 @@ export const useBoardSession = (sessionId?: string) => {
           });
         },
         onPreferencesChanged: (newPrefs: any) => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
           if (sessionId) loadSession(sessionId);
           if (sessionId && newPrefs?.user_id === user?.id) {
             supabase.functions.invoke("generate-session-deck", {
@@ -273,6 +303,10 @@ export const useBoardSession = (sessionId?: string) => {
           }
         },
         onDeckRegenerated: () => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
           if (sessionId) {
             queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
           }

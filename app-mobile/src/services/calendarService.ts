@@ -108,21 +108,24 @@ export class CalendarService {
       metadata: { scheduled_at: scheduledAtIso },
     });
 
-    // Increment engagement counters (fire-and-forget)
-    supabase.rpc('increment_user_engagement', {
-      p_user_id: userId,
-      p_field: 'total_cards_scheduled',
-      p_amount: 1,
-    }).catch(() => {});
+    // Fire-and-forget engagement counters — must NEVER affect scheduling outcome.
+    Promise.resolve().then(() =>
+      supabase.rpc('increment_user_engagement', {
+        p_user_id: userId,
+        p_field: 'total_cards_scheduled',
+        p_amount: 1,
+      })
+    ).catch((err) => console.warn('[calendarService] engagement RPC failed:', err));
 
-    // Increment place-level schedules counter
     const placeId = card.placeId || card.id;
     if (placeId) {
-      supabase.rpc('increment_place_engagement', {
-        p_google_place_id: placeId,
-        p_field: 'total_schedules',
-        p_amount: 1,
-      }).catch(() => {});
+      Promise.resolve().then(() =>
+        supabase.rpc('increment_place_engagement', {
+          p_google_place_id: placeId,
+          p_field: 'total_schedules',
+          p_amount: 1,
+        })
+      ).catch((err) => console.warn('[calendarService] place engagement RPC failed:', err));
     }
 
     return data as CalendarEntryRecord;

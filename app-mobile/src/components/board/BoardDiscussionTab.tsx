@@ -23,6 +23,7 @@ import { BoardErrorHandler } from "../../services/boardErrorHandler";
 import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
+import { useKeyboard } from "../../hooks/useKeyboard";
 
 interface BoardDiscussionTabProps {
   sessionId: string;
@@ -39,6 +40,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
 }) => {
   const { user } = useAppStore();
   const networkState = useNetworkMonitor();
+  const { keyboardHeight } = useKeyboard();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -121,16 +123,18 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     setSending(true);
 
     try {
-      // Extract mentions from content
-      const mentionRegex = /@(\w+)/g;
+      // Extract mentions from content (supports @[Display Name] and @username)
+      const mentionRegex = /@\[([^\]]+)\]|@(\w+)/g;
       const mentions: string[] = [];
       let match;
       while ((match = mentionRegex.exec(content)) !== null) {
-        const username = match[1];
+        const mentionName = match[1] || match[2]; // [1] for bracket format, [2] for plain
         const participant = participants.find(
           (p) =>
-            p.profiles?.username === username ||
-            p.profiles?.display_name?.toLowerCase() === username.toLowerCase()
+            p.profiles?.username === mentionName ||
+            p.profiles?.display_name?.toLowerCase() === mentionName.toLowerCase() ||
+            (p.profiles?.first_name && p.profiles?.last_name &&
+              `${p.profiles.first_name} ${p.profiles.last_name}`.toLowerCase() === mentionName.toLowerCase())
         );
         if (participant) {
           mentions.push(participant.user_id);
@@ -301,8 +305,8 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     let lastIndex = 0;
     let key = 0;
 
-    // Combined regex for mentions (@username) and hashtags (#hashtag with spaces)
-    const combinedRegex = /(@\w+)|(#[\w\s]+)/g;
+    // Combined regex for mentions (@[Display Name], @username) and hashtags (#hashtag with spaces)
+    const combinedRegex = /(@\[[^\]]+\]|@\w+)|(#[\w\s]+)/g;
     let match;
 
     while ((match = combinedRegex.exec(content)) !== null) {
@@ -318,14 +322,19 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       // Check if it's a mention or hashtag
       if (match[0].startsWith("@")) {
         // Mention - always orange color
-        const username = match[1];
+        // Handle both @[Display Name] and @username formats
+        const mentionMatch = match[0].match(/^@\[([^\]]+)\]$/) || match[0].match(/^@(\w+)$/);
+        const mentionName = mentionMatch ? mentionMatch[1] : match[0].substring(1);
         const mentionedUser = participants.find(
           (p) =>
-            p.profiles?.username === username ||
-            p.profiles?.display_name?.toLowerCase() === username.toLowerCase()
+            p.profiles?.username === mentionName ||
+            p.profiles?.display_name?.toLowerCase() === mentionName.toLowerCase() ||
+            (p.profiles?.first_name && p.profiles?.last_name &&
+              `${p.profiles.first_name} ${p.profiles.last_name}`.toLowerCase() === mentionName.toLowerCase())
         );
 
         // Always apply orange color to mentions, even if user not found
+        // Display as @Name without brackets (strip @[...] wrapper)
         parts.push(
           <Text
             key={key++}
@@ -336,7 +345,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                 : undefined
             }
           >
-            {match[0]}
+            @{mentionName}
           </Text>
         );
       } else if (match[0].startsWith("#")) {
@@ -587,13 +596,14 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             const lastAtIndex = messageText.lastIndexOf("@");
             if (lastAtIndex !== -1) {
               const beforeAt = messageText.substring(0, lastAtIndex);
-              const username =
+              const displayName =
+                participant.profiles?.display_name ||
+                (participant.profiles?.first_name && participant.profiles?.last_name
+                  ? `${participant.profiles.first_name} ${participant.profiles.last_name}`
+                  : null) ||
                 participant.profiles?.username ||
-                participant.profiles?.display_name
-                  ?.toLowerCase()
-                  .replace(/\s+/g, "") ||
-                "user";
-              const newText = `${beforeAt}@${username} `;
+                'user';
+              const newText = `${beforeAt}@[${displayName}] `;
               setMessageText(newText);
             }
             setShowMentionPopover(false);
@@ -604,6 +614,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             setMentionSearchText("");
           }}
           visible={showMentionPopover}
+          keyboardHeight={keyboardHeight}
         />
       </View>
     </KeyboardAwareView>

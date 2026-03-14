@@ -611,8 +611,8 @@ function AppContent() {
     // Check immediately on mount
     checkFriendRequests();
 
-    // Then check every 15 seconds
-    const interval = setInterval(checkFriendRequests, 15000);
+    // Then check every 60 seconds
+    const interval = setInterval(checkFriendRequests, 60000);
     return () => clearInterval(interval);
   }, [user?.id, isAuthenticated, loadFriendRequests]);
 

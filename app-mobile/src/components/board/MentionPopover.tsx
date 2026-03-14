@@ -14,6 +14,7 @@ interface MentionPopoverProps {
   onSelectParticipant: (participant: Participant) => void;
   onClose: () => void;
   visible: boolean;
+  keyboardHeight?: number;
 }
 
 export const MentionPopover: React.FC<MentionPopoverProps> = ({
@@ -21,10 +22,15 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
   onSelectParticipant,
   onClose,
   visible,
+  keyboardHeight,
 }) => {
   if (!visible || participants.length === 0) {
     return null;
   }
+
+  const INPUT_BAR_HEIGHT = 56;
+  const POPOVER_MARGIN = 8;
+  const bottomOffset = (keyboardHeight || 0) + INPUT_BAR_HEIGHT + POPOVER_MARGIN;
 
   const getParticipantDisplayName = (participant: Participant): string => {
     if (participant.profiles?.display_name) {
@@ -42,7 +48,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { bottom: bottomOffset }]}>
       <View style={styles.popover}>
         <View style={styles.header}>
           <Text style={styles.headerText}>Mention someone</Text>
@@ -88,7 +94,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 80, // Position above input field
+    bottom: 64, // Default fallback — overridden by dynamic inline style
     left: 0,
     right: 0,
     zIndex: 1000,

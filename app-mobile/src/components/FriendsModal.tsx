@@ -13,6 +13,7 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  Platform,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -738,6 +739,21 @@ export default function FriendsModal({
     dismiss: dismissKeyboard,
   } = useKeyboard({ disableLayoutAnimation: true });
 
+  // Animated keyboard padding for the friends tab FlatList
+  const animatedPadding = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const adjustedHeight = Platform.OS === 'ios'
+      ? Math.max(0, keyboardHeight - insets.bottom)
+      : keyboardHeight;
+
+    Animated.timing(animatedPadding, {
+      toValue: adjustedHeight,
+      duration: Platform.OS === 'ios' ? 250 : 220,
+      useNativeDriver: false,
+    }).start();
+  }, [keyboardHeight, insets.bottom]);
+
   // Capture the window height BEFORE the keyboard opens so we have a
   // stable reference that doesn't shift on Android (adjustResize).
   const stableHeightRef = useRef(windowHeight);
@@ -1069,7 +1085,7 @@ export default function FriendsModal({
 
     return (
       <>
-        {/* Search bar */}
+        {/* Search bar — rendered above the FlatList so it stays visible */}
         <View style={styles.searchContainer}>
           <View style={styles.searchBar}>
             <Feather name="search" size={16} color={colors.gray[400]} />
@@ -1090,36 +1106,38 @@ export default function FriendsModal({
           </View>
         </View>
 
-        <FlatList
-          data={filteredFriends}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <SwipeableFriendRow
-              friend={item}
-              onMessage={onMessageFriend}
-              onMute={handleMute}
-              onBlock={handleBlock}
-              onReport={handleReport}
-              onRemove={handleRemove}
-              isMuted={mutedIds.has(item.friend_user_id)}
-            />
-          )}
-          ItemSeparatorComponent={ItemSeparator}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.flatListContent}
-          ListEmptyComponent={
-            searchQuery.length > 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No results</Text>
-                <Text style={styles.emptySubtitle}>
-                  No friends match "{searchQuery}"
-                </Text>
-              </View>
-            ) : null
-          }
-        />
+        <Animated.View style={{ flex: 1, paddingBottom: animatedPadding }}>
+          <FlatList
+            data={filteredFriends}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <SwipeableFriendRow
+                friend={item}
+                onMessage={onMessageFriend}
+                onMute={handleMute}
+                onBlock={handleBlock}
+                onReport={handleReport}
+                onRemove={handleRemove}
+                isMuted={mutedIds.has(item.friend_user_id)}
+              />
+            )}
+            ItemSeparatorComponent={ItemSeparator}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.flatListContent}
+            ListEmptyComponent={
+              searchQuery.length > 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyTitle}>No results</Text>
+                  <Text style={styles.emptySubtitle}>
+                    No friends match "{searchQuery}"
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        </Animated.View>
       </>
     );
   };

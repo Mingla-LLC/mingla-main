@@ -1185,6 +1185,30 @@ export function useAppHandlers(state: any) {
       return;
     }
 
+    // --- Snapshot cache for rollback ---
+    const calendarCacheKey = ["calendarEntries", user.id];
+    const savedCacheKey = ["savedCards", user.id];
+    const prevCalendar = queryClient.getQueryData(calendarCacheKey);
+    const prevSaved = queryClient.getQueryData(savedCacheKey);
+
+    const cardData = entry.experience || entry.card_data || entry;
+    const source = entry.source || "solo";
+
+    // --- Optimistic cache updates (immediate) ---
+    queryClient.setQueryData(calendarCacheKey, (old: any[] | undefined) =>
+      (old ?? []).filter((e: any) => e.id !== entry.id)
+    );
+    setCalendarEntries((prev: any[]) =>
+      prev.filter((e: any) => e.id !== entry.id)
+    );
+
+    // Show success toast immediately
+    toastManager.success(
+      `${entry.title || "Experience"} moved back to Saved`,
+      3000
+    );
+
+    // --- Background mutations (parallel) ---
     try {
       const { CalendarService } = await import("../services/calendarService");
       const { DeviceCalendarService } = await import(
@@ -1192,65 +1216,44 @@ export function useAppHandlers(state: any) {
       );
       const { savedCardsService } = await import("../services/savedCardsService");
 
-      // Get the card data from the entry to re-save it
-      const cardData = entry.experience || entry.card_data || entry;
       const scheduledDate = entry.suggestedDates?.[0]
         ? new Date(entry.suggestedDates[0])
         : entry.date && entry.time
         ? new Date(`${entry.date}T${entry.time}`)
         : null;
 
-      // 1. Remove from device calendar (best effort - don't fail if this doesn't work)
-      if (scheduledDate && cardData.title) {
-        try {
-          await DeviceCalendarService.removeEventByTitleAndDate(
-            cardData.title,
-            scheduledDate
-          );
-        } catch (deviceCalendarError) {
-          // Log but don't fail - device calendar removal is best effort
-          console.warn(
-            "Failed to remove from device calendar:",
-            deviceCalendarError
-          );
-        }
+      const results = await Promise.allSettled([
+        // Critical: delete from Supabase calendar
+        CalendarService.deleteEntry(entry.id, user.id),
+        // Best-effort: re-save card
+        savedCardsService.saveCard(user.id, cardData, source).catch((err: any) => {
+          if (err?.code !== "23505") console.warn("Failed to re-save card:", err);
+        }),
+        // Best-effort: remove from device calendar
+        scheduledDate && cardData.title
+          ? DeviceCalendarService.removeEventByTitleAndDate(cardData.title, scheduledDate).catch(
+              (err: any) => console.warn("Failed to remove from device calendar:", err)
+            )
+          : Promise.resolve(),
+      ]);
+
+      // Check critical failure (deleteEntry is index 0)
+      if (results[0].status === "rejected") {
+        throw results[0].reason;
       }
 
-      // 2. Re-save the card back to Saved (using the original source)
-      try {
-        const source = entry.source || "solo";
-        await savedCardsService.saveCard(user.id, cardData, source);
-        
-        // Invalidate saved cards query to refresh the Saved tab
-        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
-      } catch (saveError: any) {
-        // Log but don't fail - the card might already be saved
-        console.warn("Failed to re-save card to Saved:", saveError);
-        // If it's a duplicate error, that's fine - card is already saved
-        if (saveError?.code !== "23505") {
-          // Only show error if it's not a duplicate
-          console.error("Error re-saving card:", saveError);
-        }
-      }
-
-      // 3. Delete from Supabase calendar
-      await CalendarService.deleteEntry(entry.id, user.id);
-
-      // 4. Remove from local state
-      setCalendarEntries((prev: any[]) =>
-        prev.filter((e: any) => e.id !== entry.id)
-      );
-
-      // 5. Invalidate calendar entries query to refresh React Query cache
-      queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
-
-      // 6. Show success message
-      toastManager.success(
-        `${entry.title || "Experience"} moved back to Saved`,
-        3000
-      );
+      // Invalidate queries after completion
+      queryClient.invalidateQueries({ queryKey: calendarCacheKey });
+      queryClient.invalidateQueries({ queryKey: savedCacheKey });
     } catch (error: any) {
+      // --- Rollback on critical failure ---
       console.error("Error removing from calendar:", error);
+      queryClient.setQueryData(calendarCacheKey, prevCalendar);
+      queryClient.setQueryData(savedCacheKey, prevSaved);
+      // Re-sync local state from cache
+      if (prevCalendar) {
+        setCalendarEntries(prevCalendar as any[]);
+      }
       Alert.alert(
         "Remove Failed",
         error.message ||
