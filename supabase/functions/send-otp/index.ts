@@ -73,10 +73,30 @@ serve(async (req) => {
       .maybeSingle()
 
     if (existingProfile) {
-      return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
-        status: 409,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      // Defense: check if the other profile's auth user still exists.
+      // If the user deleted their account but profile deletion failed,
+      // the phone is orphaned — free it and let the new user proceed.
+      const { data: authCheck } = await serviceClient.auth.admin.getUserById(existingProfile.id)
+      if (!authCheck?.user) {
+        console.warn(`Orphaned profile ${existingProfile.id} claims phone ${phone.slice(0, 4)}**** — clearing`)
+        const { error: clearError } = await serviceClient
+          .from('profiles')
+          .update({ phone: null })
+          .eq('id', existingProfile.id)
+        if (clearError) {
+          console.error('Failed to clear orphaned phone:', clearError.message)
+          return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+        // Phone is now free — fall through to send OTP
+      } else {
+        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')!

@@ -39,66 +39,131 @@ async function cleanupCollaborationSessions(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  // 1. Fetch all sessions where user is creator — single query
+  // ── Phase 1: Transfer ownership for sessions the user created ──
   const { data: ownedSessions } = await supabase
     .from("collaboration_sessions")
-    .select("id, created_by")
+    .select("id")
     .eq("created_by", userId)
     .not("status", "eq", "completed");
 
-  if (!ownedSessions || ownedSessions.length === 0) return;
+  if (ownedSessions && ownedSessions.length > 0) {
+    const ownedIds = ownedSessions.map((s: { id: string }) => s.id);
 
-  const ownedIds = ownedSessions.map((s: { id: string }) => s.id);
+    // Fetch other participants for owned sessions
+    const { data: otherParticipants } = await supabase
+      .from("session_participants")
+      .select("session_id, user_id, has_accepted")
+      .in("session_id", ownedIds)
+      .neq("user_id", userId);
 
-  // 2. Fetch all participants for all owned sessions — single query
-  const { data: allParticipants } = await supabase
-    .from("session_participants")
-    .select("session_id, user_id, has_accepted")
-    .in("session_id", ownedIds)
-    .neq("user_id", userId);
+    if (otherParticipants) {
+      const bySession = new Map<string, typeof otherParticipants>();
+      otherParticipants.forEach((p: { session_id: string; user_id: string; has_accepted: boolean }) => {
+        const arr = bySession.get(p.session_id) ?? [];
+        arr.push(p);
+        bySession.set(p.session_id, arr);
+      });
 
-  if (!allParticipants) return;
+      const transferable: Array<{ sessionId: string; newOwner: string }> = [];
 
-  // 3. Group participants by session in memory
-  const bySession = new Map<string, typeof allParticipants>();
-  allParticipants.forEach((p: { session_id: string; user_id: string; has_accepted: boolean }) => {
-    const arr = bySession.get(p.session_id) ?? [];
-    arr.push(p);
-    bySession.set(p.session_id, arr);
-  });
+      ownedIds.forEach((sessionId: string) => {
+        const participants = bySession.get(sessionId) ?? [];
+        const accepted = participants.filter((p) => p.has_accepted);
+        if (accepted.length > 0) {
+          transferable.push({ sessionId, newOwner: accepted[0].user_id });
+        }
+      });
 
-  // 4. Determine which sessions have other accepted participants (can be transferred)
-  const transferable: Array<{ sessionId: string; newOwner: string }> = [];
-  const toDelete: string[] = [];
+      if (transferable.length > 0) {
+        const transferResults = await Promise.allSettled(
+          transferable.map(({ sessionId, newOwner }) =>
+            supabase
+              .from("collaboration_sessions")
+              .update({ created_by: newOwner })
+              .eq("id", sessionId)
+              .then((res) => {
+                if (res.error) throw { sessionId, error: res.error };
+                return sessionId;
+              })
+          )
+        );
 
-  ownedIds.forEach((sessionId: string) => {
-    const participants = bySession.get(sessionId) ?? [];
-    const accepted = participants.filter((p) => p.has_accepted);
-    if (accepted.length > 0) {
-      transferable.push({ sessionId, newOwner: accepted[0].user_id });
-    } else {
-      toDelete.push(sessionId);
+        // Any failed transfers → force-delete those sessions to prevent ghost creators
+        const failedTransfers = transferResults
+          .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+          .map((r) => r.reason?.sessionId as string)
+          .filter(Boolean);
+
+        if (failedTransfers.length > 0) {
+          console.warn(`[delete-user] ${failedTransfers.length} ownership transfer(s) failed — deleting those sessions`);
+          await supabase
+            .from("collaboration_sessions")
+            .delete()
+            .in("id", failedTransfers);
+        }
+      }
     }
-  });
-
-  // 5. Transfer ownership for sessions with remaining members — Promise.allSettled
-  if (transferable.length > 0) {
-    await Promise.allSettled(
-      transferable.map(({ sessionId, newOwner }) =>
-        supabase
-          .from("collaboration_sessions")
-          .update({ created_by: newOwner })
-          .eq("id", sessionId)
-      )
-    );
   }
 
-  // 6. Delete under-populated sessions with IN clause — single query
-  if (toDelete.length > 0) {
-    await supabase
+  // ── Phase 2: Capture user's session IDs, then remove them from all sessions ──
+  // Must capture BEFORE deleting so we know which sessions to check in Phase 3.
+  const { data: userSessions } = await supabase
+    .from("session_participants")
+    .select("session_id")
+    .eq("user_id", userId);
+
+  const affectedSessionIds = userSessions
+    ? [...new Set(userSessions.map((s: { session_id: string }) => s.session_id))]
+    : [];
+
+  // Now remove the user from all sessions — don't rely on CASCADE + triggers
+  // because delete_user_profile disables triggers before deleting the profile.
+  await supabase
+    .from("session_participants")
+    .delete()
+    .eq("user_id", userId);
+
+  // ── Phase 3: Delete affected sessions now under-populated (< 2 accepted members) ──
+  // Covers ALL statuses (not just 'active') since the DB trigger only handles active.
+  // completed sessions are excluded — they're historical records.
+  if (affectedSessionIds.length > 0) {
+    const { data: affectedSessions } = await supabase
       .from("collaboration_sessions")
-      .delete()
-      .in("id", toDelete);
+      .select("id")
+      .in("id", affectedSessionIds)
+      .not("status", "eq", "completed");
+
+    if (affectedSessions && affectedSessions.length > 0) {
+      const sessionIds = affectedSessions.map((s: { id: string }) => s.id);
+
+      // Count accepted participants per session
+      const { data: acceptedCounts } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .in("session_id", sessionIds)
+        .eq("has_accepted", true);
+
+      // Build set of sessions that still have >= 2 accepted participants
+      const healthySessions = new Set<string>();
+      if (acceptedCounts) {
+        const countMap = new Map<string, number>();
+        acceptedCounts.forEach((p: { session_id: string }) => {
+          countMap.set(p.session_id, (countMap.get(p.session_id) ?? 0) + 1);
+        });
+        countMap.forEach((count, sessionId) => {
+          if (count >= 2) healthySessions.add(sessionId);
+        });
+      }
+
+      const underPopulated = sessionIds.filter((id) => !healthySessions.has(id));
+      if (underPopulated.length > 0) {
+        await supabase
+          .from("collaboration_sessions")
+          .delete()
+          .in("id", underPopulated);
+        console.log(`[delete-user] Deleted ${underPopulated.length} under-populated session(s)`);
+      }
+    }
   }
 }
 
@@ -326,6 +391,27 @@ serve(async (req) => {
     if (!cleanupResult.success) {
       console.warn("Warning: Some data cleanup failed:", cleanupResult.error);
       // Continue with deletion - don't block on non-critical errors
+    }
+
+    // Step 2.5: Clear phone number BEFORE deleting anything — defensive measure.
+    // The profiles table has a UNIQUE constraint on phone. If profile deletion fails
+    // (Step 4), the orphaned row would still claim the phone number, blocking the user
+    // from re-signing up with the same number. NULLing it first guarantees the phone
+    // is freed regardless of what happens downstream.
+    if (userPhone) {
+      console.log("Step 2.5: Clearing phone number to free UNIQUE constraint...");
+      try {
+        const { error: phoneClearError } = await adminClient
+          .from("profiles")
+          .update({ phone: null })
+          .eq("id", userId);
+        if (phoneClearError) {
+          console.error("Failed to clear phone:", phoneClearError.message);
+        }
+      } catch (err) {
+        console.warn("Warning: Could not clear phone before deletion:", err);
+        // Continue — non-critical, profile delete in Step 4 will remove it anyway
+      }
     }
 
     // Step 3: Delete from Supabase Auth FIRST — this immediately invalidates the JWT,

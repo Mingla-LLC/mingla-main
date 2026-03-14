@@ -100,10 +100,29 @@ serve(async (req) => {
         .maybeSingle()
 
       if (existingProfile) {
-        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
-          status: 409,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        // Check if the claiming user's auth account still exists —
+        // if not, the profile is orphaned from a failed account deletion
+        const { data: authCheck } = await serviceClient.auth.admin.getUserById(existingProfile.id)
+        if (!authCheck?.user) {
+          console.warn(`[verify-otp] Orphaned profile ${existingProfile.id} claims phone — clearing`)
+          const { error: clearError } = await serviceClient
+            .from('profiles')
+            .update({ phone: null })
+            .eq('id', existingProfile.id)
+          if (clearError) {
+            console.error('[verify-otp] Failed to clear orphaned phone:', clearError.message)
+            return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+          // Phone freed — fall through to save it for the current user
+        } else {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
       }
 
       const { error: updateError } = await serviceClient
