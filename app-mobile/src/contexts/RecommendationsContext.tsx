@@ -701,9 +701,10 @@ export const RecommendationsProvider: React.FC<
         if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
           setIsExhausted(false);
         }
-      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad) {
+      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad && !isModeTransitioning) {
         // Genuinely empty — no cards available. All guards must be false
-        // to avoid clearing recommendations while a slow batch is still loading.
+        // to avoid clearing recommendations while a slow batch is still loading
+        // or while a mode transition is settling (new mode's data may not have arrived yet).
         // Use stable EMPTY_CARDS and guard against no-op to prevent infinite re-renders
         // (Object.is([], []) is false — a new [] always triggers a re-render).
         setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
@@ -711,16 +712,17 @@ export const RecommendationsProvider: React.FC<
       // During batch transition with 0 cards from new query,
       // keep previous recommendations visible (no else branch needed)
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, isCollaborationMode, batchSeed]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    const prevMode = previousModeRef.current;
     const modeChanged =
-      previousModeRef.current !== undefined &&
-      previousModeRef.current !== currentMode;
+      prevMode !== undefined &&
+      prevMode !== currentMode;
 
     if (modeChanged) {
       if (completionTimeoutRef.current) {
@@ -729,9 +731,16 @@ export const RecommendationsProvider: React.FC<
       }
 
       setIsModeTransitioning(true);
-      setRecommendations(EMPTY_CARDS);
       setHasCompletedFetchForCurrentMode(false);
       previousDeckIdsRef.current = '';
+
+      // Don't wipe recommendations here — let the sync effect (line ~683)
+      // replace them when the target mode's deck data arrives. If the data
+      // is cached (e.g. session deck with 30min staleTime), the sync effect
+      // populates recommendations in the same React batch, so the user never
+      // sees a loader flash. Only clear if genuinely switching away from
+      // existing data that shouldn't persist (handled by the sync effect
+      // naturally producing new data or EMPTY_CARDS).
 
       completionTimeoutRef.current = setTimeout(() => {
         console.warn("Recommendations fetch timeout - forcing completion");
@@ -739,8 +748,11 @@ export const RecommendationsProvider: React.FC<
         setIsModeTransitioning(false);
       }, 5000);
 
-      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+      // No query invalidation on mode switch. Each mode's queries have their
+      // own cache lifecycle (staleTime 30min). The query keys include all
+      // preference params, so stale prefs = different key = automatic refetch.
+      // Invalidating here races with the query re-enabling (causes duplicate
+      // fetches: enable triggers fetch #1, invalidation cancels + triggers #2).
     }
 
     previousModeRef.current = currentMode;

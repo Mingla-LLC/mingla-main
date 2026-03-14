@@ -86,14 +86,18 @@ export function useAppHandlers(state: any) {
 
           if (session) {
             const sessionId = session.id || (session as any).session_id;
+            // Use session.name (not the raw mode input) so currentMode matches
+            // what the verification effect in AppStateManager expects. Without this,
+            // mode flips UUID → name across two renders, causing double mode transitions,
+            // recommendation wipes, and the "Pulling up more for you" loader flash.
+            const sessionName = session.name ?? mode;
             const result = await SessionService.switchToSession(
               user.id,
               sessionId
             );
 
             if (result.success) {
-              // Pass sessionId to setCurrentMode for proper tracking
-              setCurrentMode(mode, sessionId);
+              setCurrentMode(sessionName, sessionId);
             } else {
               console.error("Error switching to session:", result.error);
               // Fallback to solo if switch fails
