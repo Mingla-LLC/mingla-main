@@ -36,9 +36,7 @@ import { usePairingPills, useSendPairRequest, useCancelPairRequest, useCancelPai
 import type { PairingPill } from "../services/pairingService";
 import PairRequestModal from "./PairRequestModal";
 import PairingInfoCard from "./PairingInfoCard";
-import LinkRequestBanner from "./LinkRequestBanner";
 import PersonHolidayView from "./PersonHolidayView";
-import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -874,10 +872,6 @@ export default function DiscoverScreen({
       },
     });
   };
-
-  // Friend link requests
-  const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
-  const respondToLinkMutation = useRespondToFriendLink();
 
   // Get the currently selected pill (null if "for-you" is selected)
   const selectedPill = useMemo(() => {
@@ -2915,15 +2909,6 @@ export default function DiscoverScreen({
         >
           {activeTab === "for-you" && (
             <>
-              {/* Link Request Banner */}
-              {pendingLinkRequests.length > 0 && (
-                <LinkRequestBanner
-                  requests={pendingLinkRequests}
-                  onAccept={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'accept' })}
-                  onDecline={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'decline' })}
-                />
-              )}
-
               {/* For You Tab Header with People Pills */}
               <ScrollView
                 horizontal

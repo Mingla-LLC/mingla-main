@@ -3,8 +3,6 @@ import {
   fetchPairingPills,
   fetchIncomingPairRequests,
   sendPairRequest,
-  acceptPairRequest,
-  declinePairRequest,
   cancelPairRequest,
   cancelPairInvite,
   unpair,
@@ -59,33 +57,6 @@ export function useSendPairRequest() {
     onSuccess: () => {
       // Invalidate pills — the new request will appear there
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
-    },
-  });
-}
-
-export function useAcceptPairRequest() {
-  const queryClient = useQueryClient();
-  return useMutation<
-    { pairingId: string; pairedWithUserId: string },
-    Error,
-    string
-  >({
-    mutationFn: acceptPairRequest,
-    onSuccess: () => {
-      // Invalidate all pairing queries (pills + incoming)
-      queryClient.invalidateQueries({ queryKey: ["pairings"] });
-      // Also invalidate friends in case friendship was created
-      queryClient.invalidateQueries({ queryKey: ["friends"] });
-    },
-  });
-}
-
-export function useDeclinePairRequest() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: declinePairRequest,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pairings", "incoming"] });
     },
   });
 }
