@@ -529,7 +529,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
               if (lastAtIndex !== -1) {
                 const afterAt = text.substring(lastAtIndex + 1);
                 // Check if there's a space after @ (meaning @ is complete)
-                if (afterAt.includes(" ") || afterAt.length === 0) {
+                if (afterAt.includes(" ")) {
                   setShowMentionPopover(false);
                   setMentionSearchText("");
                 } else {
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     paddingTop: 16,
-    paddingBottom: 28,
+    paddingBottom: 12,
   },
   emptyState: {
     flex: 1,
@@ -743,8 +743,8 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 24,
+    paddingTop: 10,
+    paddingBottom: 8,
     backgroundColor: "#ffffff",
     borderTopWidth: 1,
     borderTopColor: "#F0F1F3",

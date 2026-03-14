@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     justifyContent: "flex-start",
     overflow: "hidden",
-    paddingVertical: 12,
+    paddingVertical: 0,
   },
   header: {
     flexDirection: "row",
@@ -1044,8 +1044,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 16,
-    paddingBottom: 28,
+    paddingTop: 4,
+    paddingBottom: 0,
     paddingHorizontal: 8,
     backgroundColor: "white",
     overflow: "visible",
@@ -1054,7 +1054,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 0,
     paddingHorizontal: 8,
-    paddingBottom: 28,
+    paddingBottom: 8,
     backgroundColor: "white",
     overflow: "visible",
   },

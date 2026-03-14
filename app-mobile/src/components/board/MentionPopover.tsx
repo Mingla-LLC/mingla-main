@@ -28,7 +28,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
     return null;
   }
 
-  const INPUT_BAR_HEIGHT = 56;
+  const INPUT_BAR_HEIGHT = 48;
   const POPOVER_MARGIN = 8;
   const bottomOffset = (keyboardHeight || 0) + INPUT_BAR_HEIGHT + POPOVER_MARGIN;
 
