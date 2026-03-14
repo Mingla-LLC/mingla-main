@@ -37,8 +37,9 @@ const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
  * flows through this hook:
  *
  *   1. (Skip if background < 30s) Validates the Supabase auth session with 8s timeout
- *   2. Invalidates all critical React Query caches (triggers background refetch)
- *   3. Calls the provided onResume callback (for non-React-Query refreshes)
+ *   2. Forces Supabase Realtime WebSocket reconnection (channels re-subscribe automatically)
+ *   3. Invalidates all critical React Query caches (triggers background refetch)
+ *   4. Calls the provided onResume callback (for non-React-Query refreshes)
  *
  * Cached data remains visible during the refresh — no loading flash.
  *
@@ -140,14 +141,27 @@ export function useForegroundRefresh(
           console.warn('[RESUME] Session refresh unavailable:', e?.message ?? e);
         }
 
-        // Step 2: Invalidate all critical queries.
+        // Step 2: Force Realtime WebSocket reconnection after long background.
+        // After ≥30s backgrounded, the OS may have killed the TCP connection.
+        // Supabase's internal reconnect uses exponential backoff that may not fire
+        // immediately on resume. disconnect() + connect() forces an immediate
+        // reconnection. The SDK automatically re-subscribes all existing channels.
+        try {
+          supabase.realtime.disconnect();
+          supabase.realtime.connect();
+          if (__DEV__) logger.lifecycle('[RESUME] Realtime WebSocket reconnected');
+        } catch (e) {
+          console.warn('[RESUME] Realtime reconnect failed:', e);
+        }
+
+        // Step 3: Invalidate all critical queries.
         // invalidateQueries() marks them as stale AND triggers background refetch.
         // Cached data stays visible — isLoading stays false when data exists in cache.
         for (const key of CRITICAL_QUERY_KEYS) {
           queryClient.invalidateQueries({ queryKey: key });
         }
 
-        // Step 3: Fire the callback for non-React-Query refreshes
+        // Step 4: Fire the callback for non-React-Query refreshes
         onResumeRef.current?.();
       }, DEBOUNCE_MS);
     };

@@ -146,7 +146,7 @@ export function useAppState() {
   const [showOnboardingFlow, setShowOnboardingFlow] = useState(false);
 
   // UI state
-  const [currentPage, setCurrentPage] = useState<
+  type PageName =
     | "home"
     | "discover"
     | "connections"
@@ -158,12 +158,29 @@ export function useAppState() {
     | "account-settings"
     | "privacy-policy"
     | "terms-of-service"
-    | "board-view"
-  >("home");
+    | "board-view";
+
+  // Pages safe to restore after process death. Board-view and modal-like pages
+  // (settings, legal) are excluded — they depend on complex state that won't
+  // survive process death, so restoring them would show broken screens.
+  const PERSISTED_PAGES: readonly PageName[] = ['connections', 'discover', 'saved', 'profile'] as const;
+
+  const [currentPage, setCurrentPage] = useState<PageName>("home");
   const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(
     null
   );
   const [viewingFriendProfileId, setViewingFriendProfileId] = useState<string | null>(null);
+
+  // Persist currentPage to AsyncStorage so the user returns to their last page
+  // after process death. Only safe top-level pages are persisted (no modals,
+  // no board-view). Home is the default — removing the key restores it.
+  useEffect(() => {
+    if ((PERSISTED_PAGES as readonly string[]).includes(currentPage)) {
+      AsyncStorage.setItem('mingla_last_page', currentPage);
+    } else {
+      AsyncStorage.removeItem('mingla_last_page');
+    }
+  }, [currentPage]);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
@@ -313,6 +330,23 @@ export function useAppState() {
     setIsLoadingOnboarding(false);
   }, [profile, user]);
 
+  // Restore persisted page after auth + profile are confirmed and onboarding
+  // is resolved. Runs once per sign-in cycle. If the user completed onboarding,
+  // restore their last page. If they're in onboarding, skip (Home is correct).
+  const hasRestoredPageRef = useRef(false);
+  useEffect(() => {
+    if (!user || !profile || hasRestoredPageRef.current) return;
+    const hasCompleted = profile.has_completed_onboarding === true;
+    if (!hasCompleted) return; // Onboarding overrides — don't restore
+
+    hasRestoredPageRef.current = true;
+    AsyncStorage.getItem('mingla_last_page').then(savedPage => {
+      if (savedPage && (PERSISTED_PAGES as readonly string[]).includes(savedPage)) {
+        setCurrentPage(savedPage as PageName);
+      }
+    });
+  }, [user, profile]);
+
   // Update userIdentity when Supabase authentication changes
   useEffect(() => {
     if (user && profile) {
@@ -367,6 +401,8 @@ export function useAppState() {
   useEffect(() => {
     if (!user) {
       setCurrentPage("home");
+      // Reset page restoration guard so the next sign-in can restore again
+      hasRestoredPageRef.current = false;
 
       setShowAccountSettings(false);
       setShowPreferences(false);

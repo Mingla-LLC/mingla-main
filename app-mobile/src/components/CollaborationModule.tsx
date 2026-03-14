@@ -1048,6 +1048,7 @@ export default function CollaborationModule({
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
             bounces={true}
+            keyboardShouldPersistTaps="handled"
           >
             {activeTab === "sessions" && (
               <SessionsTab

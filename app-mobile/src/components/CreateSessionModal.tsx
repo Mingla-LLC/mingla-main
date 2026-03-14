@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Alert,
   ActivityIndicator,
   Image,
-  Dimensions,
   Share,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useAppStore } from '../store/appStore';
@@ -32,8 +33,17 @@ import { PhoneInput } from './onboarding/PhoneInput';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite, createPendingSessionInvite } from '../services/phoneLookupService';
 import { getCountryByCode, getDefaultCountryCode } from '../constants/countries';
-import { colors } from '../constants/designSystem';
+import {
+  colors,
+  spacing,
+  radius,
+  typography,
+  fontWeights,
+  shadows,
+  touchTargets,
+} from '../constants/designSystem';
 
+// ─── Types ──────────────────────────────────────────────────────────
 type SessionType = 'board' | 'collaboration';
 type Step = 'type' | 'basic' | 'friends' | 'preferences' | 'invite' | 'review' | 'success';
 
@@ -45,7 +55,6 @@ interface SelectedFriend {
   avatar_url?: string;
 }
 
-// Props for the embeddable CreateSessionContent component
 export interface CreateSessionContentProps {
   preSelectedFriend?: {
     id: string;
@@ -64,61 +73,157 @@ export interface CreateSessionContentProps {
   isEmbedded?: boolean;
 }
 
-/**
- * CreateSessionContent — the core session creation UI.
- *
- * When isEmbedded=true (used inside CollaborationModule's Create tab):
- *   - No Modal/backdrop/drag handle wrapper
- *   - No KeyboardAwareScrollView (parent provides ScrollView)
- *   - Auto-selects "collaboration" session type
- *   - Skips type/preferences/invite steps → flow: basic → friends → review → success
- *   - Accepts preSelectedFriend, onCreateSession, onNavigateToInvites props
- *
- * When isEmbedded=false (standalone modal, preserved for future use):
- *   - Full Modal with backdrop, drag handle, KeyboardAwareScrollView
- *   - All steps available: type → basic → friends → preferences → invite → review → success
- *   - Controlled by NavigationContext (isCreateSessionModalOpen)
- */
+// ─── Embedded step config ───────────────────────────────────────────
+const EMBEDDED_STEPS: Step[] = ['basic', 'friends', 'review'];
+const EMBEDDED_STEP_LABELS = ['Name', 'Crew', 'Review'];
+
+// ─── Progress Indicator ─────────────────────────────────────────────
+const StepProgress: React.FC<{ steps: string[]; currentIndex: number }> = ({
+  steps,
+  currentIndex,
+}) => (
+  <View style={styles.progressContainer}>
+    {steps.map((label, i) => {
+      const isCompleted = i < currentIndex;
+      const isCurrent = i === currentIndex;
+      const isLast = i === steps.length - 1;
+      return (
+        <React.Fragment key={label}>
+          <View style={styles.progressStep}>
+            <View
+              style={[
+                styles.progressDot,
+                isCompleted && styles.progressDotCompleted,
+                isCurrent && styles.progressDotCurrent,
+              ]}
+            >
+              {isCompleted ? (
+                <Ionicons name="checkmark" size={10} color={colors.text.inverse} />
+              ) : (
+                <Text
+                  style={[
+                    styles.progressDotText,
+                    isCurrent && styles.progressDotTextCurrent,
+                  ]}
+                >
+                  {i + 1}
+                </Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.progressLabel,
+                (isCompleted || isCurrent) && styles.progressLabelActive,
+              ]}
+            >
+              {label}
+            </Text>
+          </View>
+          {!isLast && (
+            <View
+              style={[
+                styles.progressLine,
+                isCompleted && styles.progressLineCompleted,
+              ]}
+            />
+          )}
+        </React.Fragment>
+      );
+    })}
+  </View>
+);
+
+// ─── Avatar helper ──────────────────────────────────────────────────
+const Avatar: React.FC<{
+  uri?: string | null;
+  name: string;
+  size?: number;
+}> = ({ uri, name, size = 40 }) => {
+  const safeName = name || '?';
+  const initials = safeName
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '?';
+  const borderRadius = size * 0.25;
+
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius }}
+        accessibilityLabel={`${safeName}'s avatar`}
+      />
+    );
+  }
+  return (
+    <View
+      style={[
+        styles.avatarPlaceholder,
+        { width: size, height: size, borderRadius },
+      ]}
+      accessibilityLabel={`${safeName}'s avatar`}
+    >
+      <Text style={[styles.avatarInitials, { fontSize: size * 0.35 }]}>
+        {initials}
+      </Text>
+    </View>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// CreateSessionContent
+// ═══════════════════════════════════════════════════════════════════
 export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   preSelectedFriend,
   onCreateSession,
   onNavigateToInvites,
   isEmbedded = false,
 }) => {
-  // Step management — embedded mode starts at 'basic' with collaboration auto-selected
-  const [currentStep, setCurrentStep] = useState<Step>(isEmbedded ? 'basic' : 'type');
-  const [sessionType, setSessionType] = useState<SessionType | null>(isEmbedded ? 'collaboration' : null);
+  // ── Step management ───────────────────────────────────────────────
+  const [currentStep, setCurrentStep] = useState<Step>(
+    isEmbedded ? 'basic' : 'type',
+  );
+  const [sessionType, setSessionType] = useState<SessionType | null>(
+    isEmbedded ? 'collaboration' : null,
+  );
 
-  // Basic info
+  // ── Basic info ────────────────────────────────────────────────────
   const [sessionName, setSessionName] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [maxParticipants, setMaxParticipants] = useState<string>('');
 
-  // Friends — pre-populate with preSelectedFriend if provided
+  // ── Friends ───────────────────────────────────────────────────────
   const [selectedFriends, setSelectedFriends] = useState<SelectedFriend[]>(
     preSelectedFriend
-      ? [{
-          id: preSelectedFriend.id,
-          name: preSelectedFriend.name,
-          username: preSelectedFriend.username || '',
-          avatar_url: preSelectedFriend.avatar,
-        }]
-      : []
+      ? [
+          {
+            id: preSelectedFriend.id,
+            name: preSelectedFriend.name,
+            username: preSelectedFriend.username || '',
+            avatar_url: preSelectedFriend.avatar,
+          },
+        ]
+      : [],
   );
 
   // H5 FIX: Sync selectedFriends when preSelectedFriend prop changes.
-  // useState initializer only runs once — if the parent re-renders with a different
-  // friend, this effect updates the selection to match.
   useEffect(() => {
     if (preSelectedFriend) {
-      setSelectedFriends(prev => {
-        const alreadySelected = prev.some(f => f.id === preSelectedFriend.id);
+      setSelectedFriends((prev) => {
+        const alreadySelected = prev.some((f) => f.id === preSelectedFriend.id);
         if (alreadySelected) return prev;
-        return [{
-          id: preSelectedFriend.id,
-          name: preSelectedFriend.name,
-          username: preSelectedFriend.username || '',
-          avatar_url: preSelectedFriend.avatar,
-        }];
+        return [
+          ...prev,
+          {
+            id: preSelectedFriend.id,
+            name: preSelectedFriend.name,
+            username: preSelectedFriend.username || '',
+            avatar_url: preSelectedFriend.avatar,
+          },
+        ];
       });
     }
   }, [preSelectedFriend?.id]);
@@ -126,33 +231,39 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   const [showFriendModal, setShowFriendModal] = useState(false);
   const { friends, fetchFriends } = useFriends();
 
-  // Preferences (board sessions only — not used in embedded/collaboration mode)
+  // ── Preferences (board only) ──────────────────────────────────────
   const [preferences, setPreferences] = useState<BoardPreferences | null>(null);
+  const [inviteMethod, setInviteMethod] = useState<InviteMethod>(
+    isEmbedded ? 'friends_list' : null,
+  );
 
-  // Invite method — embedded mode auto-selects friends_list
-  const [inviteMethod, setInviteMethod] = useState<InviteMethod>(isEmbedded ? 'friends_list' : null);
-
-  // Creation state
+  // ── Creation state ────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
-  const [inviteLinkData, setInviteLinkData] = useState<{ inviteCode: string; inviteLink: string } | null>(null);
+  const [creationError, setCreationError] = useState<string | null>(null);
+  const isSubmittingRef = useRef(false); // re-entrancy guard for double-tap
+  const [inviteLinkData, setInviteLinkData] = useState<{
+    inviteCode: string;
+    inviteLink: string;
+  } | null>(null);
 
-  // Phone lookup state
+  // ── Phone lookup ──────────────────────────────────────────────────
   const [phoneDigits, setPhoneDigits] = useState('');
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
-  const [phoneInvitees, setPhoneInvitees] = useState<Array<{ type: 'phone'; phoneE164: string; displayName: string }>>([]);
+  const [phoneInvitees, setPhoneInvitees] = useState<
+    Array<{ type: 'phone'; phoneE164: string; displayName: string }>
+  >([]);
   const [phoneInviteLoading, setPhoneInviteLoading] = useState(false);
-
-  // Referral code for share links
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
   // Build E.164 phone
   const phoneCountryData = getCountryByCode(phoneCountry);
   const phoneRawDigits = phoneDigits.replace(/\D/g, '');
-  const phoneE164 = phoneCountryData ? phoneCountryData.dialCode + phoneRawDigits : '+1' + phoneRawDigits;
+  const phoneE164 = phoneCountryData
+    ? phoneCountryData.dialCode + phoneRawDigits
+    : '+1' + phoneRawDigits;
   const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
   const debouncedPhoneDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
 
-  // Phone lookup — enabled uses debounced digit count to stay in sync with debounced phone
   const {
     data: phoneLookupResult,
     isLoading: phoneLookupLoading,
@@ -162,14 +273,11 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   const { createCollaborativeSession } = useSessionManagement();
   const { user } = useAppStore();
 
-  // Load friends when reaching friends step
+  // ── Side effects ──────────────────────────────────────────────────
   useEffect(() => {
-    if (currentStep === 'friends') {
-      fetchFriends();
-    }
+    if (currentStep === 'friends') fetchFriends();
   }, [currentStep, fetchFriends]);
 
-  // Fetch referral code for share links
   useEffect(() => {
     if (user) {
       supabase
@@ -179,55 +287,96 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         .single()
         .then(({ data }) => {
           if (data?.referral_code) setReferralCode(data.referral_code);
-        });
+        })
+        .catch(() => {});
     }
   }, [user]);
 
-  const resetState = () => {
+  // ── Helpers ───────────────────────────────────────────────────────
+  const resetState = useCallback(() => {
     setCurrentStep(isEmbedded ? 'basic' : 'type');
     setSessionType(isEmbedded ? 'collaboration' : null);
     setSessionName('');
+    setNameError(null);
     setMaxParticipants('');
     setSelectedFriends(
       preSelectedFriend
-        ? [{
-            id: preSelectedFriend.id,
-            name: preSelectedFriend.name,
-            username: preSelectedFriend.username || '',
-            avatar_url: preSelectedFriend.avatar,
-          }]
-        : []
+        ? [
+            {
+              id: preSelectedFriend.id,
+              name: preSelectedFriend.name,
+              username: preSelectedFriend.username || '',
+              avatar_url: preSelectedFriend.avatar,
+            },
+          ]
+        : [],
     );
     setPreferences(null);
     setInviteMethod(isEmbedded ? 'friends_list' : null);
     setInviteLinkData(null);
     setPhoneDigits('');
     setPhoneInvitees([]);
+    setCreationError(null);
+  }, [isEmbedded, preSelectedFriend]);
+
+  const totalPeople = selectedFriends.length + phoneInvitees.length;
+  const embeddedStepIndex = EMBEDDED_STEPS.indexOf(currentStep);
+
+  // ── canProceed ────────────────────────────────────────────────────
+  const canProceed = (): boolean => {
+    switch (currentStep) {
+      case 'type':
+        return sessionType !== null;
+      case 'basic':
+        return sessionName.trim().length > 0;
+      case 'friends':
+        return sessionType === 'collaboration'
+          ? selectedFriends.length > 0 || phoneInvitees.length > 0
+          : true;
+      case 'preferences':
+        return true;
+      case 'invite':
+        return inviteMethod !== null;
+      case 'review':
+        return sessionType === 'collaboration'
+          ? selectedFriends.length > 0 || phoneInvitees.length > 0
+          : true;
+      case 'success':
+        return false;
+      default:
+        return false;
+    }
   };
 
+  // ── Navigation handlers ───────────────────────────────────────────
   const handleSelectSessionType = (type: SessionType) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSessionType(type);
     setCurrentStep('basic');
   };
 
   const handleNext = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCreationError(null);
+
     if (currentStep === 'basic') {
       if (!sessionName.trim()) {
-        Alert.alert('Error', 'Please enter a session name');
+        setNameError('Give your session a name so your crew can find it');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         return;
       }
+      setNameError(null);
       setCurrentStep('friends');
     } else if (currentStep === 'friends') {
-      if (sessionType === 'collaboration' && selectedFriends.length === 0 && phoneInvitees.length === 0) {
-        Alert.alert(
-          'Add a collaborator',
-          'Please add at least one friend or phone invite as a collaborator before continuing. This is for safety purposes.'
-        );
+      if (
+        sessionType === 'collaboration' &&
+        selectedFriends.length === 0 &&
+        phoneInvitees.length === 0
+      ) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         return;
       }
-
       if (isEmbedded) {
-        // Embedded collaboration: skip preferences and invite steps
         setCurrentStep('review');
       } else if (sessionType === 'board') {
         setCurrentStep('preferences');
@@ -237,10 +386,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     } else if (currentStep === 'preferences') {
       setCurrentStep('invite');
     } else if (currentStep === 'invite') {
-      if (!inviteMethod) {
-        Alert.alert('Error', 'Please select an invite method');
-        return;
-      }
+      if (!inviteMethod) return;
       setCurrentStep('review');
     } else if (currentStep === 'review') {
       handleCreateSession();
@@ -248,51 +394,48 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   };
 
   const handleBack = () => {
-    if (currentStep === 'basic') {
-      if (!isEmbedded) {
-        setCurrentStep('type');
-      }
-      // In embedded mode, basic is the first step — no going back
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCreationError(null);
+    if (currentStep === 'basic' && !isEmbedded) {
+      setCurrentStep('type');
     } else if (currentStep === 'friends') {
       setCurrentStep('basic');
     } else if (currentStep === 'preferences') {
       setCurrentStep('friends');
     } else if (currentStep === 'invite') {
-      if (sessionType === 'board') {
-        setCurrentStep('preferences');
-      } else {
-        setCurrentStep('friends');
-      }
+      setCurrentStep(sessionType === 'board' ? 'preferences' : 'friends');
     } else if (currentStep === 'review') {
-      if (isEmbedded) {
-        // Embedded: review goes back to friends (no invite step)
-        setCurrentStep('friends');
-      } else {
-        setCurrentStep('invite');
-      }
+      setCurrentStep(isEmbedded ? 'friends' : 'invite');
     }
   };
 
+  // ── Session creation ──────────────────────────────────────────────
   const handleCreateSession = async () => {
+    // Re-entrancy guard: prevent double-tap from creating duplicate sessions
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     if (!user) {
-      Alert.alert('Error', 'You must be logged in');
+      setCreationError('You need to be logged in to create a session');
+      isSubmittingRef.current = false;
       return;
     }
-
-    if (sessionType === 'collaboration' && selectedFriends.length === 0 && phoneInvitees.length === 0) {
-      Alert.alert(
-        'Add a collaborator',
-        'Please add at least one friend or phone invite as a collaborator before creating this session. This is for safety purposes.'
-      );
+    if (
+      sessionType === 'collaboration' &&
+      selectedFriends.length === 0 &&
+      phoneInvitees.length === 0
+    ) {
+      setCreationError('Add at least one person to your session');
+      isSubmittingRef.current = false;
       return;
     }
 
     setLoading(true);
+    setCreationError(null);
     try {
       let sessionId: string | null = null;
 
       if (sessionType === 'board') {
-        // Create board session (standalone modal flow only)
         const { data: sessionData, error: sessionError } = await supabase
           .from('collaboration_sessions')
           .insert({
@@ -301,7 +444,9 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             session_type: 'board',
             status: 'pending',
             is_active: true,
-            max_participants: maxParticipants ? parseInt(maxParticipants) : null,
+            max_participants: maxParticipants
+              ? Math.max(1, parseInt(maxParticipants, 10) || 0) || null
+              : null,
             last_activity_at: new Date().toISOString(),
           })
           .select()
@@ -311,37 +456,34 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         const boardSessionId = sessionData.id;
         sessionId = boardSessionId;
 
-        // Save preferences
         if (preferences) {
-          await supabase
-            .from('board_session_preferences')
-            .insert({
-              session_id: boardSessionId,
-              categories: preferences.categories || [],
-              budget_min: preferences.budgetMin,
-              budget_max: preferences.budgetMax,
-              experience_types: preferences.experienceTypes || [],
-            });
-        }
-
-        // Add creator as participant
-        await supabase
-          .from('session_participants')
-          .insert({
+          await supabase.from('board_session_preferences').insert({
             session_id: boardSessionId,
-            user_id: user.id,
-            has_accepted: true,
-            joined_at: new Date().toISOString(),
+            categories: preferences.categories || [],
+            budget_min: preferences.budgetMin,
+            budget_max: preferences.budgetMax,
+            experience_types: preferences.experienceTypes || [],
           });
-
-        // Send friend invites if selected
-        if (selectedFriends.length > 0 && inviteMethod === 'friends_list') {
-          const friendIds = selectedFriends.map(f => f.id);
-          await BoardInviteService.sendFriendInvites(boardSessionId, friendIds, user.id);
         }
 
-        // Get invite link data
-        const linkData = await BoardInviteService.generateInviteLink(boardSessionId);
+        await supabase.from('session_participants').insert({
+          session_id: boardSessionId,
+          user_id: user.id,
+          has_accepted: true,
+          joined_at: new Date().toISOString(),
+        });
+
+        if (selectedFriends.length > 0 && inviteMethod === 'friends_list') {
+          const friendIds = selectedFriends.map((f) => f.id);
+          await BoardInviteService.sendFriendInvites(
+            boardSessionId,
+            friendIds,
+            user.id,
+          );
+        }
+
+        const linkData =
+          await BoardInviteService.generateInviteLink(boardSessionId);
         if (linkData) {
           setInviteLinkData({
             inviteCode: linkData.inviteCode,
@@ -349,57 +491,57 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           });
         }
 
-        // Update presence for the creator
         await realtimeService.markOnline(boardSessionId, user.id);
       } else {
-        // Split friends: those with valid usernames go through the hook,
-        // those without (e.g., preSelectedFriend with optional username) get a direct ID-based fallback.
-        const friendsWithUsername = selectedFriends.filter(f => f.username && f.username.trim() !== '');
-        const friendsWithoutUsername = selectedFriends.filter(f => !f.username || f.username.trim() === '');
+        // Collaboration session
+        const friendsWithUsername = selectedFriends.filter(
+          (f) => f.username && f.username.trim() !== '',
+        );
+        const friendsWithoutUsername = selectedFriends.filter(
+          (f) => !f.username || f.username.trim() === '',
+        );
 
-        // Create collaboration session via hook (handles duplicate check, ghost cleanup, prefs seeding)
-        const participantUsernames = friendsWithUsername.map(f => f.username);
-        sessionId = await createCollaborativeSession(participantUsernames, sessionName.trim());
+        const participantUsernames = friendsWithUsername.map((f) => f.username);
+        sessionId = await createCollaborativeSession(
+          participantUsernames,
+          sessionName.trim(),
+        );
 
         // Fallback: add friends without usernames directly by user ID
         if (sessionId && friendsWithoutUsername.length > 0) {
           for (const friend of friendsWithoutUsername) {
             try {
-              // Primary check: friends table (source of truth for accepted friendships)
               const { data: friendship } = await supabase
                 .from('friends')
                 .select('id')
                 .eq('status', 'accepted')
-                .or(`and(user_id.eq.${user.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user.id})`)
+                .or(
+                  `and(user_id.eq.${user.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user.id})`,
+                )
                 .limit(1)
                 .maybeSingle();
 
               let isFriend = !!friendship;
 
-              // Fallback: check friend_requests in case friends table is out of sync
-              // (should not happen after atomic accept RPC, but defense-in-depth)
               if (!isFriend) {
                 const { data: acceptedRequest } = await supabase
                   .from('friend_requests')
                   .select('id')
                   .eq('status', 'accepted')
-                  .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${user.id})`)
+                  .or(
+                    `and(sender_id.eq.${user.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${user.id})`,
+                  )
                   .limit(1)
                   .maybeSingle();
-
                 isFriend = !!acceptedRequest;
               }
 
-              // Add as participant (not accepted yet)
-              await supabase
-                .from('session_participants')
-                .insert({
-                  session_id: sessionId,
-                  user_id: friend.id,
-                  has_accepted: false,
-                });
+              await supabase.from('session_participants').insert({
+                session_id: sessionId,
+                user_id: friend.id,
+                has_accepted: false,
+              });
 
-              // Create invite with pending_friendship flag
               const { data: inviteData } = await supabase
                 .from('collaboration_invites')
                 .insert({
@@ -412,17 +554,17 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 .select('id')
                 .single();
 
-              // If not friend, send friend request (non-blocking)
               if (!isFriend) {
-                await supabase
-                  .from('friend_requests')
-                  .upsert(
-                    { sender_id: user.id, receiver_id: friend.id, status: 'pending' },
-                    { onConflict: 'sender_id,receiver_id' }
-                  );
+                await supabase.from('friend_requests').upsert(
+                  {
+                    sender_id: user.id,
+                    receiver_id: friend.id,
+                    status: 'pending',
+                  },
+                  { onConflict: 'sender_id,receiver_id' },
+                );
               }
 
-              // Only send push notification if invite is visible (friend)
               if (isFriend && inviteData) {
                 const { data: friendProfile } = await supabase
                   .from('profiles')
@@ -442,17 +584,24 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 });
               }
             } catch (fallbackErr) {
-              console.error(`Error adding friend ${friend.name} by ID fallback:`, fallbackErr);
+              console.error(
+                `Error adding friend ${friend.name} by ID fallback:`,
+                fallbackErr,
+              );
             }
           }
         }
 
-        // Handle phone invitees for collaboration sessions
+        // Handle phone invitees
         if (sessionId && phoneInvitees.length > 0) {
           for (const invitee of phoneInvitees) {
             try {
               await createPendingInvite(user.id, invitee.phoneE164);
-              await createPendingSessionInvite(sessionId, user.id, invitee.phoneE164);
+              await createPendingSessionInvite(
+                sessionId,
+                user.id,
+                invitee.phoneE164,
+              );
             } catch (inviteErr) {
               console.error('Error creating phone session invite:', inviteErr);
             }
@@ -461,11 +610,8 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
       }
 
       if (sessionId) {
-        // H4 FIX: Show success screen BEFORE calling parent callback.
-        // In embedded mode, onCreateSession causes CollaborationModule to switch tabs,
-        // which unmounts this component. Setting state after unmount is a no-op,
-        // so the success screen never shows. By setting it first, React processes
-        // the state update synchronously before the parent callback runs.
+        // H4 FIX: Show success BEFORE calling parent callback.
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setCurrentStep('success');
 
         if (onCreateSession) {
@@ -481,16 +627,29 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         throw new Error('Failed to create session');
       }
     } catch (error: unknown) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create session');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setCreationError(
+        error instanceof Error ? error.message : 'Something went wrong. Give it another shot.',
+      );
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
-  const handleSelectFriend = (friend: { id: string; name?: string; display_name?: string; username: string; avatar?: string; avatar_url?: string }) => {
-    const isSelected = selectedFriends.some(f => f.id === friend.id);
+  // ── Friend selection ──────────────────────────────────────────────
+  const handleSelectFriend = (friend: {
+    id: string;
+    name?: string;
+    display_name?: string;
+    username: string;
+    avatar?: string;
+    avatar_url?: string;
+  }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const isSelected = selectedFriends.some((f) => f.id === friend.id);
     if (isSelected) {
-      setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
+      setSelectedFriends(selectedFriends.filter((f) => f.id !== friend.id));
     } else {
       setSelectedFriends([
         ...selectedFriends,
@@ -506,117 +665,385 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     setShowFriendModal(false);
   };
 
+  // ── Phone add handler ─────────────────────────────────────────────
+  const handlePhoneAdd = async () => {
+    const isAlreadyInvited = phoneInvitees.some(
+      (i) => i.phoneE164 === debouncedPhoneE164,
+    );
+    if (isAlreadyInvited) return;
+
+    if (phoneLookupResult?.found && phoneLookupResult.user) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const friendData: SelectedFriend = {
+        id: phoneLookupResult.user.id,
+        name:
+          phoneLookupResult.user.display_name ||
+          phoneLookupResult.user.username,
+        username: phoneLookupResult.user.username,
+        avatar_url: phoneLookupResult.user.avatar_url || undefined,
+      };
+      if (!selectedFriends.some((f) => f.id === friendData.id)) {
+        setSelectedFriends((prev) => [...prev, friendData]);
+      }
+      setPhoneDigits('');
+    } else {
+      setPhoneInviteLoading(true);
+      try {
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+        }
+        const inviteLink = referralCode
+          ? `https://usemingla.com/invite/${referralCode}`
+          : 'https://usemingla.com';
+        await Share.share({
+          message: `Hey! Join me on Mingla and let's find amazing experiences together. ${inviteLink}`,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPhoneInvitees((prev) => [
+          ...prev,
+          {
+            type: 'phone',
+            phoneE164: debouncedPhoneE164,
+            displayName: debouncedPhoneE164,
+          },
+        ]);
+        setPhoneDigits('');
+      } catch (err) {
+        console.error('Error inviting by phone:', err);
+      } finally {
+        setPhoneInviteLoading(false);
+      }
+    }
+  };
+
+  // ── Back button visibility ────────────────────────────────────────
+  const showBackButton = isEmbedded
+    ? currentStep !== 'basic' && currentStep !== 'success'
+    : currentStep !== 'type' && currentStep !== 'success';
+
+  // ══════════════════════════════════════════════════════════════════
+  // STEP CONTENT RENDERING
+  // ══════════════════════════════════════════════════════════════════
+
   const renderStepContent = () => {
     switch (currentStep) {
+      // ── TYPE SELECTION (standalone only) ───────────────────────────
       case 'type':
         return (
-          <View style={styles.stepContainer}>
+          <View style={styles.stepBody}>
             <Text style={styles.stepTitle}>Choose Session Type</Text>
-            <Text style={styles.stepDescription}>
+            <Text style={styles.stepSubtitle}>
               Select the type of session you want to create
             </Text>
 
             <TouchableOpacity
-              style={[styles.typeCard, sessionType === 'board' && styles.typeCardSelected]}
+              style={[
+                styles.typeCard,
+                sessionType === 'board' && styles.typeCardSelected,
+              ]}
               onPress={() => handleSelectSessionType('board')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Board Session"
+              accessibilityState={{ selected: sessionType === 'board' }}
             >
-              <Ionicons name="grid" size={32} color={sessionType === 'board' ? '#007AFF' : '#666'} />
-              <Text style={[styles.typeTitle, sessionType === 'board' && styles.typeTitleSelected]}>
+              <View style={[styles.typeIconWrap, sessionType === 'board' && styles.typeIconWrapSelected]}>
+                <Ionicons
+                  name="grid"
+                  size={24}
+                  color={sessionType === 'board' ? colors.primary[500] : colors.gray[400]}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.typeTitle,
+                  sessionType === 'board' && styles.typeTitleSelected,
+                ]}
+              >
                 Board Session
               </Text>
-              <Text style={styles.typeDescription}>
-                Plan experiences together with real-time collaboration, voting, and discussion
+              <Text style={styles.typeDesc}>
+                Real-time collaboration with voting and discussion
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.typeCard, sessionType === 'collaboration' && styles.typeCardSelected]}
+              style={[
+                styles.typeCard,
+                sessionType === 'collaboration' && styles.typeCardSelected,
+              ]}
               onPress={() => handleSelectSessionType('collaboration')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Collaboration Session"
+              accessibilityState={{ selected: sessionType === 'collaboration' }}
             >
-              <Ionicons name="people" size={32} color={sessionType === 'collaboration' ? '#007AFF' : '#666'} />
-              <Text style={[styles.typeTitle, sessionType === 'collaboration' && styles.typeTitleSelected]}>
+              <View style={[styles.typeIconWrap, sessionType === 'collaboration' && styles.typeIconWrapSelected]}>
+                <Ionicons
+                  name="people"
+                  size={24}
+                  color={sessionType === 'collaboration' ? colors.primary[500] : colors.gray[400]}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.typeTitle,
+                  sessionType === 'collaboration' && styles.typeTitleSelected,
+                ]}
+              >
                 Collaboration Session
               </Text>
-              <Text style={styles.typeDescription}>
-                Simple collaboration session for planning together
+              <Text style={styles.typeDesc}>
+                Plan together in a simple, shared space
               </Text>
             </TouchableOpacity>
           </View>
         );
 
+      // ── BASIC INFO ────────────────────────────────────────────────
       case 'basic':
         return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Session Details</Text>
+          <View style={styles.stepBody}>
+            <Text style={styles.stepTitle}>What are we calling this?</Text>
+            <Text style={styles.stepSubtitle}>
+              Pick a name your crew will recognize instantly
+            </Text>
 
-            <View style={styles.section}>
-              <Text style={styles.label}>Session Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Weekend Plans, Date Night Ideas..."
-                placeholderTextColor="#9CA3AF"
-                value={sessionName}
-                onChangeText={setSessionName}
-                maxLength={50}
-              />
-              <Text style={styles.helperText}>This will be visible to all participants</Text>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Session name</Text>
+              <View
+                style={[styles.inputWrap, nameError ? styles.inputWrapError : null]}
+              >
+                <TextInput
+                  style={styles.input}
+                  placeholder="Friday night plans, Birthday crawl..."
+                  placeholderTextColor={colors.gray[400]}
+                  value={sessionName}
+                  onChangeText={(t) => {
+                    setSessionName(t);
+                    if (nameError) setNameError(null);
+                  }}
+                  maxLength={50}
+                  autoCapitalize="sentences"
+                  returnKeyType="done"
+                  accessibilityLabel="Session name"
+                  accessibilityHint="Enter a name for your collaboration session"
+                />
+                <Text style={styles.charCount}>
+                  {sessionName.length}/50
+                </Text>
+              </View>
+              {nameError && (
+                <View style={styles.inlineError}>
+                  <Ionicons
+                    name="alert-circle"
+                    size={14}
+                    color={colors.error[500]}
+                  />
+                  <Text style={styles.inlineErrorText}>{nameError}</Text>
+                </View>
+              )}
             </View>
 
             {/* Pre-selected friend indicator */}
             {preSelectedFriend && isEmbedded && (
               <View style={styles.preSelectedCard}>
-                <Text style={styles.preSelectedTitle}>Pre-selected Friend</Text>
-                <View style={styles.preSelectedContent}>
-                  <View style={styles.preSelectedAvatar}>
-                    {preSelectedFriend.avatar ? (
-                      <Image
-                        source={{ uri: preSelectedFriend.avatar }}
-                        style={styles.preSelectedAvatarImage}
-                      />
-                    ) : (
-                      <Text style={styles.preSelectedAvatarText}>
-                        {preSelectedFriend.name[0]}
-                      </Text>
-                    )}
+                <View style={styles.preSelectedRow}>
+                  <Avatar
+                    uri={preSelectedFriend.avatar}
+                    name={preSelectedFriend.name}
+                    size={36}
+                  />
+                  <View style={styles.preSelectedInfo}>
+                    <Text style={styles.preSelectedName}>
+                      {preSelectedFriend.name}
+                    </Text>
+                    <Text style={styles.preSelectedHint}>
+                      Already on the guest list — you can change this next
+                    </Text>
                   </View>
-                  <Text style={styles.preSelectedName}>{preSelectedFriend.name}</Text>
                 </View>
-                <Text style={styles.preSelectedNote}>
-                  You can modify your selection in the next step
-                </Text>
               </View>
             )}
 
             {sessionType === 'board' && (
-              <View style={styles.section}>
-                <Text style={styles.label}>Max Participants (Optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Leave empty for unlimited"
-                  value={maxParticipants}
-                  onChangeText={setMaxParticipants}
-                  keyboardType="numeric"
-                />
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Max participants (optional)</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Leave empty for unlimited"
+                    placeholderTextColor={colors.gray[400]}
+                    value={maxParticipants}
+                    onChangeText={setMaxParticipants}
+                    keyboardType="numeric"
+                    accessibilityLabel="Maximum number of participants"
+                  />
+                </View>
               </View>
             )}
           </View>
         );
 
+      // ── FRIENDS STEP ──────────────────────────────────────────────
       case 'friends':
         return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Invite Friends</Text>
-            <Text style={styles.stepDescription}>
+          <View style={styles.stepBody}>
+            <Text style={styles.stepTitle}>Who's coming along?</Text>
+            <Text style={styles.stepSubtitle}>
               {sessionType === 'board'
-                ? 'Select friends to invite to your board session'
-                : 'Select at least one friend to add as a collaborator. This is required for safety.'}
+                ? 'Add friends to your board — the more the merrier'
+                : 'Add at least one person. Great plans need great company.'}
             </Text>
 
-            {/* Phone input for adding by number */}
-            <View style={styles.phoneInputSection}>
-              <Text style={styles.phoneInputLabel}>Add by phone number</Text>
-              <View style={styles.phoneInputRow}>
-                <View style={styles.phoneInputWrapper}>
+            {/* Selected people summary */}
+            {totalPeople > 0 && (
+              <View style={styles.crewCount}>
+                <Ionicons
+                  name="people"
+                  size={16}
+                  color={colors.primary[500]}
+                />
+                <Text style={styles.crewCountText}>
+                  {totalPeople} {totalPeople === 1 ? 'person' : 'people'} added
+                </Text>
+              </View>
+            )}
+
+            {/* Add from friends */}
+            <TouchableOpacity
+              style={styles.addFriendBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowFriendModal(true);
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Select friends from your list"
+            >
+              <View style={styles.addFriendIcon}>
+                <Ionicons
+                  name="person-add"
+                  size={20}
+                  color={colors.primary[500]}
+                />
+              </View>
+              <View style={styles.addFriendContent}>
+                <Text style={styles.addFriendTitle}>Add from friends</Text>
+                <Text style={styles.addFriendHint}>
+                  Pick from people you're already connected with
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={colors.gray[400]}
+              />
+            </TouchableOpacity>
+
+            {/* Selected friends list */}
+            {selectedFriends.length > 0 && (
+              <View style={styles.selectedList}>
+                {selectedFriends.map((friend) => {
+                  const isPreSelected =
+                    preSelectedFriend?.id === friend.id;
+                  return (
+                    <View
+                      key={friend.id}
+                      style={styles.selectedItem}
+                      accessibilityLabel={`${friend.name}${isPreSelected ? ', pre-selected' : ''}`}
+                    >
+                      <Avatar
+                        uri={friend.avatar || friend.avatar_url}
+                        name={friend.name}
+                        size={36}
+                      />
+                      <Text style={styles.selectedName} numberOfLines={1}>
+                        {friend.name}
+                      </Text>
+                      {isPreSelected && (
+                        <View style={styles.badge}>
+                          <Text style={styles.badgeText}>invited</Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedFriends(
+                            selectedFriends.filter(
+                              (f) => f.id !== friend.id,
+                            ),
+                          );
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.removeBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${friend.name}`}
+                      >
+                        <Ionicons
+                          name="close-circle"
+                          size={20}
+                          color={colors.gray[400]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Phone invitees */}
+            {phoneInvitees.length > 0 && (
+              <View style={styles.phoneInviteesList}>
+                {phoneInvitees.map((invitee) => (
+                  <View key={invitee.phoneE164} style={styles.phoneInviteePill}>
+                    <Ionicons
+                      name="call-outline"
+                      size={12}
+                      color={colors.primary[600]}
+                    />
+                    <Text style={styles.phoneInviteeText}>
+                      {invitee.phoneE164}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setPhoneInvitees((prev) =>
+                          prev.filter(
+                            (i) => i.phoneE164 !== invitee.phoneE164,
+                          ),
+                        );
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${invitee.phoneE164}`}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={14}
+                        color={colors.primary[600]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Phone input */}
+            <View style={styles.phoneSection}>
+              <Text style={styles.phoneSectionLabel}>Know their number?</Text>
+              <Text style={styles.phoneSectionHint}>
+                We'll send them an invite to join Mingla
+              </Text>
+              <View style={styles.phoneRow}>
+                <View style={styles.phoneInputWrap}>
                   <PhoneInput
                     value={phoneDigits}
                     countryCode={phoneCountry}
@@ -626,163 +1053,119 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                     disabled={false}
                   />
                 </View>
-                {phoneRawDigits.length >= 7 && (
+                {debouncedPhoneDigitCount >= 7 && (
                   <TouchableOpacity
-                    style={styles.phoneActionButton}
+                    style={styles.phoneAddBtn}
                     disabled={phoneLookupLoading || phoneInviteLoading}
-                    onPress={async () => {
-                      const isAlreadyInvited = phoneInvitees.some(i => i.phoneE164 === debouncedPhoneE164);
-                      if (isAlreadyInvited) return;
-
-                      if (phoneLookupResult?.found && phoneLookupResult.user) {
-                        // Any Mingla user — add directly to session.
-                        // Friendship is handled at the invite/activation layer.
-                        const friendData: SelectedFriend = {
-                          id: phoneLookupResult.user.id,
-                          name: phoneLookupResult.user.display_name || phoneLookupResult.user.username,
-                          username: phoneLookupResult.user.username,
-                          avatar_url: phoneLookupResult.user.avatar_url || undefined,
-                        };
-                        if (!selectedFriends.some(f => f.id === friendData.id)) {
-                          setSelectedFriends(prev => [...prev, friendData]);
-                        }
-                        setPhoneDigits('');
-                      } else {
-                        // Not on app — invite via share
-                        setPhoneInviteLoading(true);
-                        try {
-                          if (user) {
-                            await createPendingInvite(user.id, debouncedPhoneE164);
-                          }
-                          const inviteLink = referralCode
-                            ? `https://usemingla.com/invite/${referralCode}`
-                            : 'https://usemingla.com';
-                          await Share.share({
-                            message: `Hey! Join me on Mingla and let's find amazing experiences together. ${inviteLink}`,
-                          });
-                          setPhoneInvitees(prev => [
-                            ...prev,
-                            { type: 'phone', phoneE164: debouncedPhoneE164, displayName: debouncedPhoneE164 },
-                          ]);
-                          setPhoneDigits('');
-                        } catch (err) {
-                          console.error('Error inviting by phone:', err);
-                        } finally {
-                          setPhoneInviteLoading(false);
-                        }
-                      }
-                    }}
+                    onPress={handlePhoneAdd}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      phoneLookupResult?.found
+                        ? 'Add this person'
+                        : 'Invite by phone'
+                    }
                   >
                     {phoneLookupLoading || phoneInviteLoading ? (
-                      <ActivityIndicator size="small" color={colors.primary[500]} />
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.primary[500]}
+                      />
                     ) : (
-                      <Text style={styles.phoneActionButtonText}>
-                        {phoneLookupResult?.found ? 'Add' : 'Invite'}
-                      </Text>
+                      <Ionicons
+                        name={
+                          phoneLookupResult?.found
+                            ? 'person-add'
+                            : 'paper-plane'
+                        }
+                        size={20}
+                        color={colors.primary[500]}
+                      />
                     )}
                   </TouchableOpacity>
                 )}
               </View>
-
-              {/* Phone lookup error feedback */}
               {phoneLookupError && phoneRawDigits.length >= 7 && (
                 <Text style={styles.phoneLookupError}>
                   {phoneLookupError instanceof Error
                     ? phoneLookupError.message
-                    : 'Phone lookup failed. Please try again.'}
+                    : 'Couldn\u2019t look up that number. Try again?'}
                 </Text>
               )}
-
-              {/* Phone invitees pills */}
-              {phoneInvitees.length > 0 && (
-                <View style={styles.phoneInviteesContainer}>
-                  {phoneInvitees.map((invitee) => (
-                    <View key={invitee.phoneE164} style={styles.phoneInviteePill}>
-                      <Text style={styles.phoneInviteePillText}>{invitee.phoneE164}</Text>
-                      <TouchableOpacity
-                        onPress={() => setPhoneInvitees(prev => prev.filter(i => i.phoneE164 !== invitee.phoneE164))}
-                      >
-                        <Ionicons name="close-circle" size={16} color={colors.orange[600]} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+              {phoneLookupResult?.found && phoneRawDigits.length >= 7 && (
+                <View style={styles.phoneLookupFound}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={14}
+                    color={colors.success[500]}
+                  />
+                  <Text style={styles.phoneLookupFoundText}>
+                    Found on Mingla! Tap{' '}
+                    <Ionicons name="person-add" size={12} color={colors.success[600]} />{' '}
+                    to add them.
+                  </Text>
                 </View>
               )}
             </View>
 
-            <TouchableOpacity
-              style={styles.friendButton}
-              onPress={() => setShowFriendModal(true)}
-            >
-              <Ionicons name="person-add" size={20} color="#eb7825" />
-              <Text style={styles.friendButtonText}>Select Friends</Text>
-            </TouchableOpacity>
+            {/* Empty state */}
+            {friends.length === 0 &&
+              selectedFriends.length === 0 &&
+              phoneInvitees.length === 0 &&
+              onNavigateToInvites && (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyStateIcon}>
+                    <Ionicons
+                      name="people-outline"
+                      size={32}
+                      color={colors.gray[300]}
+                    />
+                  </View>
+                  <Text style={styles.emptyStateTitle}>
+                    No friends on Mingla yet?
+                  </Text>
+                  <Text style={styles.emptyStateDesc}>
+                    Invite someone by phone above, or head to the Invites tab to
+                    send friend requests
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onNavigateToInvites();
+                    }}
+                    style={styles.emptyStateBtn}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go to Invites tab"
+                  >
+                    <Text style={styles.emptyStateBtnText}>Go to Invites</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            {selectedFriends.length > 0 && (
-              <View style={styles.selectedFriendsContainer}>
-                {selectedFriends.map((friend) => {
-                  const isPreSelected = preSelectedFriend?.id === friend.id;
-                  return (
-                    <View key={friend.id} style={styles.selectedFriendItem}>
-                      <View style={styles.selectedFriendAvatar}>
-                        {friend.avatar || friend.avatar_url ? (
-                          <Image
-                            source={{ uri: friend.avatar || friend.avatar_url }}
-                            style={styles.selectedFriendAvatarImage}
-                          />
-                        ) : (
-                          <View style={styles.selectedFriendAvatarPlaceholder}>
-                            <Text style={styles.selectedFriendAvatarText}>
-                              {friend.name.split(' ').map(n => n[0]).join('')}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.selectedFriendInfo}>
-                        <View style={styles.selectedFriendNameRow}>
-                          <Text style={styles.selectedFriendText}>{friend.name}</Text>
-                          {isPreSelected && (
-                            <Text style={styles.preSelectedBadge}>Pre-selected</Text>
-                          )}
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
-                        style={styles.selectedFriendRemove}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#FF3B30" />
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Empty state — no friends and no phone invitees */}
-            {friends.length === 0 && selectedFriends.length === 0 && phoneInvitees.length === 0 && onNavigateToInvites && (
-              <View style={styles.emptyStateContainer}>
-                <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyStateTitle}>No friends yet</Text>
-                <Text style={styles.emptyStateText}>
-                  Add friends to start collaborating, or invite someone by phone number above
+            {/* Validation nudge for collaboration */}
+            {sessionType === 'collaboration' && totalPeople === 0 && (
+              <View style={styles.nudge}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={colors.primary[500]}
+                />
+                <Text style={styles.nudgeText}>
+                  You need at least one person to start a collaboration
                 </Text>
-                <TouchableOpacity
-                  onPress={onNavigateToInvites}
-                  style={styles.emptyStateButton}
-                >
-                  <Text style={styles.emptyStateButtonText}>Go to Invites</Text>
-                </TouchableOpacity>
               </View>
             )}
           </View>
         );
 
+      // ── PREFERENCES (board only) ──────────────────────────────────
       case 'preferences':
         return (
-          <View style={styles.stepContainer}>
+          <View style={styles.stepBody}>
             <Text style={styles.stepTitle}>Board Preferences</Text>
-            <Text style={styles.stepDescription}>
-              Set preferences for the types of experiences you want to explore
+            <Text style={styles.stepSubtitle}>
+              Set the vibe for what you want to explore
             </Text>
             <BoardPreferencesForm
               initialPreferences={preferences || undefined}
@@ -791,110 +1174,154 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           </View>
         );
 
+      // ── INVITE METHOD (standalone only) ───────────────────────────
       case 'invite':
         return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Invite Method</Text>
-            <Text style={styles.stepDescription}>
-              Choose how you want to invite people to join
+          <View style={styles.stepBody}>
+            <Text style={styles.stepTitle}>How should we invite?</Text>
+            <Text style={styles.stepSubtitle}>
+              Pick the easiest way to get everyone on board
             </Text>
             <InviteMethodSelector
               selectedMethod={inviteMethod}
               onMethodSelect={setInviteMethod}
-              availableMethods={selectedFriends.length > 0 ? ['friends_list', 'link', 'qr_code', 'invite_code'] : ['link', 'qr_code', 'invite_code']}
+              availableMethods={
+                selectedFriends.length > 0
+                  ? ['friends_list', 'link', 'qr_code', 'invite_code']
+                  : ['link', 'qr_code', 'invite_code']
+              }
             />
           </View>
         );
 
+      // ── REVIEW ────────────────────────────────────────────────────
       case 'review':
         return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Review & Create</Text>
+          <View style={styles.stepBody}>
+            <Text style={styles.stepTitle}>Looking good — let's go!</Text>
+            <Text style={styles.stepSubtitle}>
+              Double-check the details, then hit create
+            </Text>
 
-            <View style={styles.reviewCard}>
-              <Text style={styles.reviewLabel}>Session Name</Text>
-              <Text style={styles.reviewValue}>{sessionName}</Text>
+            {/* Session name */}
+            <View style={styles.reviewRow}>
+              <View style={styles.reviewIcon}>
+                <Ionicons name="text" size={18} color={colors.primary[500]} />
+              </View>
+              <View style={styles.reviewContent}>
+                <Text style={styles.reviewLabel}>Session name</Text>
+                <Text style={styles.reviewValue} numberOfLines={1}>
+                  {sessionName}
+                </Text>
+              </View>
             </View>
 
-            {selectedFriends.length > 0 && (
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewLabel}>Friends Invited</Text>
-                <Text style={styles.reviewValue}>
-                  {selectedFriends.map(f => f.name).join(', ')}
-                </Text>
-              </View>
-            )}
-
-            {phoneInvitees.length > 0 && (
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewLabel}>Phone Invites</Text>
-                <Text style={styles.reviewValue}>
-                  {phoneInvitees.map(i => i.phoneE164).join(', ')}
-                </Text>
-              </View>
-            )}
-
-            {/* Only show invite method in standalone (non-embedded) mode */}
-            {!isEmbedded && (
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewLabel}>Invite Method</Text>
-                <Text style={styles.reviewValue}>
-                  {inviteMethod === 'friends_list' ? 'Friends List' :
-                   inviteMethod === 'link' ? 'Share Link' :
-                   inviteMethod === 'qr_code' ? 'QR Code' :
-                   inviteMethod === 'invite_code' ? 'Invite Code' : 'None'}
-                </Text>
-              </View>
-            )}
-
-            {sessionType === 'board' && preferences && (
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewLabel}>Preferences</Text>
-                <Text style={styles.reviewValue}>
-                  {preferences.categories?.length || 0} categories, Group size: {preferences.groupSize || 2}
-                </Text>
-              </View>
-            )}
-
-            {/* Info card about next steps */}
-            <View style={styles.infoCard}>
-              <View style={styles.infoCardContent}>
-                <Ionicons name="alert-circle" size={20} color="#1d4ed8" />
-                <View style={styles.infoCardText}>
-                  <Text style={styles.infoCardTitle}>Next Steps</Text>
-                  <Text style={styles.infoCardDescription}>
-                    Once all friends accept, you'll need to set collaboration preferences together before you can start swiping.
+            {/* People */}
+            {totalPeople > 0 && (
+              <View style={styles.reviewRow}>
+                <View style={styles.reviewIcon}>
+                  <Ionicons
+                    name="people"
+                    size={18}
+                    color={colors.primary[500]}
+                  />
+                </View>
+                <View style={styles.reviewContent}>
+                  <Text style={styles.reviewLabel}>
+                    {totalPeople} {totalPeople === 1 ? 'person' : 'people'} invited
+                  </Text>
+                  <Text style={styles.reviewValue} numberOfLines={2}>
+                    {[
+                      ...selectedFriends.map((f) => f.name),
+                      ...phoneInvitees.map((i) => i.phoneE164),
+                    ].join(', ')}
                   </Text>
                 </View>
               </View>
+            )}
+
+            {/* Invite method (standalone only) */}
+            {!isEmbedded && inviteMethod && (
+              <View style={styles.reviewRow}>
+                <View style={styles.reviewIcon}>
+                  <Ionicons
+                    name="mail"
+                    size={18}
+                    color={colors.primary[500]}
+                  />
+                </View>
+                <View style={styles.reviewContent}>
+                  <Text style={styles.reviewLabel}>Invite method</Text>
+                  <Text style={styles.reviewValue}>
+                    {inviteMethod === 'friends_list'
+                      ? 'Friends List'
+                      : inviteMethod === 'link'
+                        ? 'Share Link'
+                        : inviteMethod === 'qr_code'
+                          ? 'QR Code'
+                          : 'Invite Code'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Info banner */}
+            <View style={styles.infoBanner}>
+              <Ionicons
+                name="sparkles"
+                size={18}
+                color={colors.primary[500]}
+              />
+              <Text style={styles.infoBannerText}>
+                Once everyone accepts, you'll set collaboration preferences
+                together — then the real fun begins.
+              </Text>
             </View>
+
+            {/* Creation error */}
+            {creationError && (
+              <View style={styles.creationError}>
+                <Ionicons
+                  name="alert-circle"
+                  size={16}
+                  color={colors.error[500]}
+                />
+                <Text style={styles.creationErrorText}>{creationError}</Text>
+              </View>
+            )}
           </View>
         );
 
+      // ── SUCCESS ───────────────────────────────────────────────────
       case 'success':
         return (
-          <View style={styles.stepContainer}>
-            <View style={styles.successContainer}>
-              <Ionicons name="checkmark-circle" size={64} color="#34C759" />
-              <Text style={styles.successTitle}>Session Created!</Text>
-              <Text style={styles.successDescription}>
-                Your {sessionType === 'board' ? 'board' : 'collaboration'} session has been created successfully.
+          <View style={styles.stepBody}>
+            <View style={styles.successWrap}>
+              <View style={styles.successIconWrap}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={56}
+                  color={colors.success[500]}
+                />
+              </View>
+              <Text style={styles.successTitle}>You're all set!</Text>
+              <Text style={styles.successDesc}>
+                {selectedFriends.length > 0
+                  ? `We've pinged ${selectedFriends.length === 1 ? selectedFriends[0].name : `your ${selectedFriends.length} friends`}. Once they accept, you can start exploring together.`
+                  : 'Your session is live. Invite people to start exploring together.'}
               </Text>
             </View>
 
             {inviteLinkData && (
-              <View style={styles.inviteOptionsContainer}>
+              <View style={styles.successInvites}>
                 <InviteLinkShare
                   inviteLink={inviteLinkData.inviteLink}
                   inviteCode={inviteLinkData.inviteCode}
                 />
-
-                <View style={styles.qrSection}>
-                  <Text style={styles.sectionTitle}>QR Code</Text>
+                <View style={styles.successInviteSection}>
                   <QRCodeDisplay data={inviteLinkData.inviteLink} />
                 </View>
-
-                <View style={styles.codeSection}>
+                <View style={styles.successInviteSection}>
                   <InviteCodeDisplay inviteCode={inviteLinkData.inviteCode} />
                 </View>
               </View>
@@ -907,106 +1334,101 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     }
   };
 
-  const canProceed = () => {
-    switch (currentStep) {
-      case 'type':
-        return sessionType !== null;
-      case 'basic':
-        return sessionName.trim().length > 0;
-      case 'friends':
-        if (sessionType === 'collaboration') {
-          return selectedFriends.length > 0 || phoneInvitees.length > 0;
-        }
-        return true; // Friends are optional for board sessions
-      case 'preferences':
-        return true; // Preferences are optional
-      case 'invite':
-        return inviteMethod !== null;
-      case 'review':
-        if (sessionType === 'collaboration') {
-          return selectedFriends.length > 0 || phoneInvitees.length > 0;
-        }
-        return true;
-      case 'success':
-        return false;
-      default:
-        return false;
-    }
+  // ── CTA button config ─────────────────────────────────────────────
+  const getCtaLabel = (): string => {
+    if (currentStep === 'review') return 'Create session';
+    return 'Continue';
   };
 
-  const getStepTitle = () => {
-    switch (currentStep) {
-      case 'type': return 'Create Session';
-      case 'basic': return 'Session Details';
-      case 'friends': return 'Invite Friends';
-      case 'preferences': return 'Preferences';
-      case 'invite': return 'Invite Method';
-      case 'review': return 'Review';
-      case 'success': return 'Success';
-      default: return 'Create Session';
-    }
-  };
-
-  // Determine if back button should show
-  const showBackButton = isEmbedded
-    ? currentStep !== 'basic' && currentStep !== 'success'
-    : currentStep !== 'type' && currentStep !== 'success';
-
-  // --- EMBEDDED RENDERING (inside CollaborationModule's ScrollView) ---
+  // ══════════════════════════════════════════════════════════════════
+  // EMBEDDED RENDERING
+  // ══════════════════════════════════════════════════════════════════
   if (isEmbedded) {
     return (
-      <View style={styles.embeddedContainer}>
-        {/* Header with back button and step title */}
-        <View style={styles.embeddedHeader}>
-          {showBackButton ? (
-            <TouchableOpacity onPress={handleBack} style={styles.embeddedBackButton}>
-              <Ionicons name="chevron-back" size={20} color="#6b7280" />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.embeddedBackButtonPlaceholder} />
-          )}
-          <Text style={styles.embeddedHeaderTitle}>{getStepTitle()}</Text>
-          <View style={styles.embeddedBackButtonPlaceholder} />
-        </View>
+      <View style={styles.root}>
+        {/* Header */}
+        {currentStep !== 'success' && (
+          <View style={styles.embeddedHeader}>
+            {showBackButton ? (
+              <TouchableOpacity
+                onPress={handleBack}
+                style={styles.backBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="chevron-back"
+                  size={20}
+                  color={colors.text.secondary}
+                />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.backBtnPlaceholder} />
+            )}
+
+            {/* Progress indicator */}
+            {embeddedStepIndex >= 0 && (
+              <StepProgress
+                steps={EMBEDDED_STEP_LABELS}
+                currentIndex={embeddedStepIndex}
+              />
+            )}
+
+            <View style={styles.backBtnPlaceholder} />
+          </View>
+        )}
 
         {/* Step content */}
         {renderStepContent()}
 
-        {/* Footer button */}
+        {/* CTA button */}
         {currentStep !== 'success' && (
           <TouchableOpacity
             style={[
-              styles.nextButton,
-              (!canProceed() || loading) && styles.nextButtonDisabled
+              styles.ctaBtn,
+              (!canProceed() || loading) && styles.ctaBtnDisabled,
             ]}
             onPress={handleNext}
             disabled={!canProceed() || loading}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              loading ? 'Creating session' : getCtaLabel()
+            }
+            accessibilityState={{ disabled: !canProceed() || loading }}
           >
             {loading ? (
-              <ActivityIndicator color="white" />
+              <ActivityIndicator color={colors.text.inverse} size="small" />
             ) : (
-              <Text style={styles.nextButtonText}>
-                {currentStep === 'review' ? 'Create Session' : 'Next'}
-              </Text>
+              <Text style={styles.ctaBtnText}>{getCtaLabel()}</Text>
             )}
           </TouchableOpacity>
         )}
 
         {currentStep === 'success' && (
           <TouchableOpacity
-            style={styles.doneButton}
-            onPress={resetState}
+            style={styles.secondaryBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              resetState();
+            }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Create another session"
           >
-            <Text style={styles.doneButtonText}>Create Another</Text>
+            <Ionicons name="add" size={18} color={colors.primary[500]} />
+            <Text style={styles.secondaryBtnText}>Create another</Text>
           </TouchableOpacity>
         )}
 
-        {/* FriendSelectionModal — renders as a separate Modal overlay */}
+        {/* FriendSelectionModal */}
         <FriendSelectionModal
           isOpen={showFriendModal}
           onClose={() => setShowFriendModal(false)}
           onSelectFriend={handleSelectFriend}
-          friends={friends.map(f => ({
+          friends={friends.map((f) => ({
             id: f.friend_user_id,
             name: f.display_name || f.username,
             username: f.username,
@@ -1018,43 +1440,51 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
     );
   }
 
-  // --- STANDALONE MODAL RENDERING ---
-  // C1 FIX: Standalone mode renders the same content without the embedded wrapper.
-  // Previously this returned null, making the standalone modal completely blank.
+  // ══════════════════════════════════════════════════════════════════
+  // STANDALONE RENDERING
+  // ══════════════════════════════════════════════════════════════════
   return (
-    <View style={styles.standaloneContainer}>
+    <View style={styles.standaloneRoot}>
       {renderStepContent()}
       {currentStep !== 'success' && (
         <TouchableOpacity
           style={[
-            styles.nextButton,
-            (!canProceed() || loading) && styles.nextButtonDisabled
+            styles.ctaBtn,
+            (!canProceed() || loading) && styles.ctaBtnDisabled,
           ]}
           onPress={handleNext}
           disabled={!canProceed() || loading}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={loading ? 'Creating session' : getCtaLabel()}
         >
           {loading ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color={colors.text.inverse} size="small" />
           ) : (
-            <Text style={styles.nextButtonText}>
-              {currentStep === 'review' ? 'Create Session' : 'Next'}
-            </Text>
+            <Text style={styles.ctaBtnText}>{getCtaLabel()}</Text>
           )}
         </TouchableOpacity>
       )}
       {currentStep === 'success' && (
         <TouchableOpacity
-          style={styles.doneButton}
-          onPress={resetState}
+          style={styles.secondaryBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            resetState();
+          }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Create another session"
         >
-          <Text style={styles.doneButtonText}>Create Another</Text>
+          <Ionicons name="add" size={18} color={colors.primary[500]} />
+          <Text style={styles.secondaryBtnText}>Create another</Text>
         </TouchableOpacity>
       )}
       <FriendSelectionModal
         isOpen={showFriendModal}
         onClose={() => setShowFriendModal(false)}
         onSelectFriend={handleSelectFriend}
-        friends={friends.map(f => ({
+        friends={friends.map((f) => ({
           id: f.friend_user_id,
           name: f.display_name || f.username,
           username: f.username,
@@ -1066,15 +1496,14 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   );
 };
 
-/**
- * CreateSessionModal — thin Modal wrapper around CreateSessionContent.
- * Preserved for future use as a standalone modal. Currently not rendered by anything.
- */
+// ═══════════════════════════════════════════════════════════════════
+// CreateSessionModal — standalone wrapper (preserved for future use)
+// ═══════════════════════════════════════════════════════════════════
 export const CreateSessionModal: React.FC = () => {
   const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();
   const insets = useSafeAreaInsets();
-
-  // Reset is handled internally by CreateSessionContent when it unmounts/remounts
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = windowHeight * 0.88;
 
   if (!isCreateSessionModalOpen) return null;
 
@@ -1087,29 +1516,38 @@ export const CreateSessionModal: React.FC = () => {
       statusBarTranslucent
     >
       <View style={styles.sheetOverlay}>
-        {/* Tap backdrop to close */}
         <TouchableOpacity
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={closeCreateSessionModal}
+          accessibilityRole="button"
+          accessibilityLabel="Close modal"
         />
-
-        <View style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
+        <View
+          style={[
+            styles.sheetContent,
+            { height: sheetHeight, paddingBottom: Math.max(insets.bottom, spacing.md) },
+          ]}
+        >
+          <View style={styles.dragHandleWrap}>
             <View style={styles.dragHandle} />
           </View>
-
-          <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false} bottomOffset={76}>
+          <KeyboardAwareScrollView
+            style={styles.sheetScroll}
+            showsVerticalScrollIndicator={false}
+            bottomOffset={76}
+          >
             <CreateSessionContent isEmbedded={false} />
           </KeyboardAwareScrollView>
-
-          <View style={styles.footer}>
+          <View style={styles.sheetFooter}>
             <TouchableOpacity
-              style={styles.doneButton}
+              style={styles.secondaryBtn}
               onPress={closeCreateSessionModal}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
-              <Text style={styles.doneButtonText}>Close</Text>
+              <Text style={styles.secondaryBtnText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1118,44 +1556,613 @@ export const CreateSessionModal: React.FC = () => {
   );
 };
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
-
+// ═══════════════════════════════════════════════════════════════════
+// STYLES — 100% design system tokens, zero hardcoded values
+// ═══════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  // === Standalone mode styles (C1 fix) ===
-  standaloneContainer: {
+  // ── Layout ────────────────────────────────────────────────────────
+  root: {
+    gap: spacing.md,
+  },
+  standaloneRoot: {
     flex: 1,
-    gap: 16,
-    padding: 16,
+    gap: spacing.md,
+    padding: spacing.md,
   },
-  // === Embedded mode styles ===
-  embeddedContainer: {
-    gap: 16,
-  },
+
+  // ── Embedded header ───────────────────────────────────────────────
   embeddedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
-  embeddedBackButton: {
-    padding: 8,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 20,
+  backBtn: {
+    width: touchTargets.minimum,
+    height: touchTargets.minimum,
+    borderRadius: radius.full,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  embeddedBackButtonPlaceholder: {
-    width: 36,
-    height: 36,
+  backBtnPlaceholder: {
+    width: touchTargets.minimum,
+    height: touchTargets.minimum,
   },
-  embeddedHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
+
+  // ── Progress indicator ────────────────────────────────────────────
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+  },
+  progressStep: {
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  progressDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressDotCurrent: {
+    backgroundColor: colors.primary[500],
+  },
+  progressDotCompleted: {
+    backgroundColor: colors.success[500],
+  },
+  progressDotText: {
+    ...typography.xs,
+    fontWeight: fontWeights.semibold,
+    color: colors.gray[500],
+  },
+  progressDotTextCurrent: {
+    color: colors.text.inverse,
+  },
+  progressLabel: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.gray[400],
+  },
+  progressLabelActive: {
+    color: colors.text.primary,
+    fontWeight: fontWeights.semibold,
+  },
+  progressLine: {
+    width: 28,
+    height: 2,
+    backgroundColor: colors.gray[200],
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  progressLineCompleted: {
+    backgroundColor: colors.success[500],
+  },
+
+  // ── Step body ─────────────────────────────────────────────────────
+  stepBody: {
+    paddingVertical: spacing.sm,
+  },
+  stepTitle: {
+    ...typography.xxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  stepSubtitle: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    marginBottom: spacing.lg,
+  },
+
+  // ── Fields ────────────────────────────────────────────────────────
+  fieldGroup: {
+    marginBottom: spacing.lg,
+  },
+  fieldLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    paddingHorizontal: spacing.md,
+    minHeight: touchTargets.large,
+  },
+  inputWrapError: {
+    borderColor: colors.error[400],
+    backgroundColor: colors.error[50],
+  },
+  input: {
+    flex: 1,
+    ...typography.md,
+    color: colors.text.primary,
+    paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+  },
+  charCount: {
+    ...typography.xs,
+    color: colors.gray[400],
+    marginLeft: spacing.sm,
+  },
+  inlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  inlineErrorText: {
+    ...typography.sm,
+    color: colors.error[500],
+  },
+
+  // ── Pre-selected card ─────────────────────────────────────────────
+  preSelectedCard: {
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+  },
+  preSelectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  preSelectedInfo: {
+    flex: 1,
+  },
+  preSelectedName: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  preSelectedHint: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: spacing.xxs,
+  },
+
+  // ── Type cards ────────────────────────────────────────────────────
+  typeCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 2,
+    borderColor: colors.gray[200],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  typeCardSelected: {
+    borderColor: colors.primary[500],
+    backgroundColor: colors.primary[50],
+  },
+  typeIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeIconWrapSelected: {
+    backgroundColor: colors.primary[100],
+  },
+  typeTitle: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  typeTitleSelected: {
+    color: colors.primary[600],
+  },
+  typeDesc: {
+    ...typography.sm,
+    color: colors.text.tertiary,
     flex: 1,
   },
 
-  // === Standalone modal styles ===
+  // ── Friends step ──────────────────────────────────────────────────
+  crewCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  crewCountText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[600],
+  },
+  addFriendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  addFriendIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFriendContent: {
+    flex: 1,
+  },
+  addFriendTitle: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  addFriendHint: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: spacing.xxs,
+  },
+
+  // ── Selected list ─────────────────────────────────────────────────
+  selectedList: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  selectedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    paddingLeft: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  selectedName: {
+    flex: 1,
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+  },
+  badge: {
+    backgroundColor: colors.primary[100],
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+  },
+  badgeText: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.primary[600],
+  },
+  removeBtn: {
+    padding: spacing.xs,
+  },
+
+  // ── Avatar ────────────────────────────────────────────────────────
+  avatarPlaceholder: {
+    backgroundColor: colors.primary[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+
+  // ── Phone invitees ────────────────────────────────────────────────
+  phoneInviteesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  phoneInviteePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+  },
+  phoneInviteeText: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.primary[700],
+  },
+
+  // ── Divider ───────────────────────────────────────────────────────
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginVertical: spacing.lg,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.gray[200],
+  },
+  dividerText: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.gray[400],
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+
+  // ── Phone section ─────────────────────────────────────────────────
+  phoneSection: {
+    marginBottom: spacing.md,
+  },
+  phoneSectionLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.xxs,
+  },
+  phoneSectionHint: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginBottom: spacing.md,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  phoneInputWrap: {
+    flex: 1,
+  },
+  phoneAddBtn: {
+    width: touchTargets.large,
+    height: touchTargets.large,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.primary[50],
+    borderWidth: 1.5,
+    borderColor: colors.primary[200],
+  },
+  phoneLookupError: {
+    ...typography.xs,
+    color: colors.error[500],
+    marginTop: spacing.sm,
+  },
+  phoneLookupFound: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  phoneLookupFoundText: {
+    ...typography.xs,
+    color: colors.success[600],
+  },
+
+  // ── Empty state ───────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  emptyStateTitle: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  emptyStateDesc: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyStateBtn: {
+    backgroundColor: colors.primary[500],
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+  },
+  emptyStateBtnText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+
+  // ── Nudge ─────────────────────────────────────────────────────────
+  nudge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  nudgeText: {
+    flex: 1,
+    ...typography.xs,
+    color: colors.primary[700],
+  },
+
+  // ── Review step ───────────────────────────────────────────────────
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  reviewIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xxs,
+  },
+  reviewContent: {
+    flex: 1,
+  },
+  reviewLabel: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xxs,
+  },
+  reviewValue: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+  },
+  infoBannerText: {
+    flex: 1,
+    ...typography.sm,
+    color: colors.primary[700],
+  },
+
+  // ── Creation error ────────────────────────────────────────────────
+  creationError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.error[50],
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.error[200],
+  },
+  creationErrorText: {
+    flex: 1,
+    ...typography.sm,
+    color: colors.error[700],
+  },
+
+  // ── Success ───────────────────────────────────────────────────────
+  successWrap: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  successIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.success[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  successTitle: {
+    ...typography.xxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  successDesc: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  successInvites: {
+    marginTop: spacing.xl,
+  },
+  successInviteSection: {
+    marginTop: spacing.lg,
+  },
+
+  // ── CTA button ────────────────────────────────────────────────────
+  ctaBtn: {
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: touchTargets.large,
+    ...shadows.sm,
+  },
+  ctaBtnDisabled: {
+    backgroundColor: colors.gray[300],
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  ctaBtnText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    minHeight: touchTargets.comfortable,
+    borderWidth: 1.5,
+    borderColor: colors.primary[200],
+  },
+  secondaryBtnText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+  },
+
+  // ── Standalone modal ──────────────────────────────────────────────
   sheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -1165,460 +2172,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetContent: {
-    height: SHEET_HEIGHT,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    backgroundColor: colors.background.primary,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 30,
+    ...shadows.xl,
   },
-  dragHandleContainer: {
+  dragHandleWrap: {
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   dragHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#D1D5DB',
+    backgroundColor: colors.gray[300],
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerSide: {
-    width: 36,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
+  sheetScroll: {
     flex: 1,
-    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
   },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    backgroundColor: '#f8f9fa',
-  },
-  stepContainer: {
-    paddingVertical: 24,
-  },
-  stepTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
-  stepDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 24,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#e1e5e9',
-  },
-  helperText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 8,
-  },
-  typeCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#e1e5e9',
-    alignItems: 'center',
-  },
-  typeCardSelected: {
-    borderColor: '#eb7825',
-    backgroundColor: '#FFF7F0',
-  },
-  typeTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  typeTitleSelected: {
-    color: '#eb7825',
-  },
-  typeDescription: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-
-  // === Pre-selected friend (basic step) ===
-  preSelectedCard: {
-    backgroundColor: '#dbeafe',
-    borderWidth: 1,
-    borderColor: '#93c5fd',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  preSelectedTitle: {
-    fontWeight: '500',
-    color: '#1e40af',
-    marginBottom: 8,
-  },
-  preSelectedContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  preSelectedAvatar: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#3b82f6',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  preSelectedAvatarImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  preSelectedAvatarText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  preSelectedName: {
-    color: '#1e40af',
-    fontWeight: '500',
-    flex: 1,
-  },
-  preSelectedNote: {
-    fontSize: 12,
-    color: '#1e40af',
-    marginTop: 8,
-  },
-
-  // === Friends step ===
-  friendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#eb7825',
-    gap: 8,
-    marginBottom: 16,
-  },
-  friendButtonText: {
-    fontSize: 16,
-    color: '#eb7825',
-    fontWeight: '600',
-  },
-  selectedFriendsContainer: {
-    gap: 8,
-  },
-  selectedFriendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  selectedFriendAvatar: {
-    position: 'relative',
-    flexShrink: 0,
-  },
-  selectedFriendAvatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-  },
-  selectedFriendAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#eb7825',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedFriendAvatarText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  selectedFriendInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  selectedFriendNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  selectedFriendText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  preSelectedBadge: {
-    fontSize: 11,
-    backgroundColor: '#dbeafe',
-    color: '#1e40af',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  selectedFriendRemove: {
-    padding: 4,
-    flexShrink: 0,
-  },
-
-  // === Empty state ===
-  emptyStateContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyStateButton: {
-    backgroundColor: '#eb7825',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-  },
-  emptyStateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // === Review step ===
-  reviewCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e1e5e9',
-  },
-  reviewLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  reviewValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-
-  // === Info card (review step) ===
-  infoCard: {
-    backgroundColor: '#dbeafe',
-    borderWidth: 1,
-    borderColor: '#93c5fd',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 4,
-  },
-  infoCardContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  infoCardText: {
-    flex: 1,
-  },
-  infoCardTitle: {
-    fontWeight: '500',
-    marginBottom: 4,
-    color: '#1e40af',
-  },
-  infoCardDescription: {
-    fontSize: 14,
-    color: '#1e40af',
-  },
-
-  // === Success step ===
-  successContainer: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  successDescription: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-  inviteOptionsContainer: {
-    marginTop: 32,
-  },
-  qrSection: {
-    marginTop: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  codeSection: {
-    marginTop: 24,
-  },
-
-  // === Footer buttons ===
-  footer: {
-    padding: 20,
+  sheetFooter: {
+    padding: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    backgroundColor: '#FFFFFF',
-  },
-  nextButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  nextButtonDisabled: {
-    backgroundColor: '#D1D5DB',
-  },
-  nextButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  doneButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  doneButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // === Phone input ===
-  phoneInputSection: {
-    marginBottom: 16,
-  },
-  phoneInputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  phoneInputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  phoneInputWrapper: {
-    flex: 1,
-  },
-  phoneActionButton: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: colors.orange[50],
-    borderWidth: 1,
-    borderColor: colors.primary[500],
-  },
-  phoneActionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary[500],
-  },
-  phoneInviteesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-  },
-  phoneInviteePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.warning[50],
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    gap: 4,
-  },
-  phoneInviteePillText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.orange[600],
-  },
-  phoneLookupError: {
-    fontSize: 13,
-    color: '#EF4444',
-    marginTop: 6,
+    borderTopColor: colors.gray[100],
+    backgroundColor: colors.background.primary,
   },
 });

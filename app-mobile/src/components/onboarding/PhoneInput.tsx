@@ -9,6 +9,7 @@ import {
   Keyboard,
   Platform,
   InputAccessoryView,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -89,6 +90,21 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
     [onChangeCountry],
   );
 
+  const handleOpenPicker = useCallback(() => {
+    if (disabled) return;
+
+    // Dismiss keyboard first — on Android, simultaneous keyboard
+    // dismissal + Modal Dialog creation causes severe jank.
+    Keyboard.dismiss();
+
+    // Wait for any running interactions (keyboard animation) to finish
+    // before opening the modal. This eliminates the race condition
+    // between keyboard dismissal and Dialog creation on Android.
+    InteractionManager.runAfterInteractions(() => {
+      setPickerVisible(true);
+    });
+  }, [disabled]);
+
   const containerBorderStyle = error
     ? styles.containerError
     : focused
@@ -108,9 +124,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         {/* Country code section */}
         <TouchableOpacity
           style={styles.countrySection}
-          onPress={() => {
-            if (!disabled) setPickerVisible(true);
-          }}
+          onPress={handleOpenPicker}
           activeOpacity={0.6}
           disabled={disabled}
           accessibilityRole="button"
@@ -151,13 +165,18 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
       {/* Error text */}
       {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {/* Country picker modal */}
-      <CountryPickerModal
-        visible={pickerVisible}
-        selectedCode={countryCode}
-        onSelect={handleCountrySelect}
-        onClose={() => setPickerVisible(false)}
-      />
+      {/* Country picker modal — conditionally mounted so the Modal
+          component, FlatList, and all hooks are NOT in the React tree
+          when hidden. This eliminates phantom render overhead and
+          avoids keeping an invisible Android Dialog in memory. */}
+      {pickerVisible && (
+        <CountryPickerModal
+          visible={pickerVisible}
+          selectedCode={countryCode}
+          onSelect={handleCountrySelect}
+          onClose={() => setPickerVisible(false)}
+        />
+      )}
 
       {/* iOS Done toolbar — phone-pad keyboard has no return key */}
       {Platform.OS === 'ios' && (

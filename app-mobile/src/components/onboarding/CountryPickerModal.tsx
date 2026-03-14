@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,13 @@ import {
   Modal,
   StyleSheet,
   Platform,
-  Keyboard,
-  KeyboardEvent,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COUNTRIES } from '../../constants/countries';
 import { CountryData } from '../../types/onboarding';
+import { useKeyboard } from '../../hooks/useKeyboard';
 import {
   colors,
   typography,
@@ -49,47 +42,14 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const listRef = useRef<FlatList<CountryData>>(null);
 
-  // ── Keyboard spacer ──────────────────────────────────────────────
-  // Animate a spacer View at the bottom of the flex column.
-  // FlatList (flex:1) naturally shrinks to accommodate the spacer.
-  // Uses reanimated (native thread) — no LayoutAnimation dependency,
-  // works reliably inside nested Modals on both platforms.
-  const spacerHeight = useSharedValue(0);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent =
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const onShow = (e: KeyboardEvent) => {
-      const duration = Platform.OS === 'ios' ? (e.duration || 250) : 150;
-      spacerHeight.value = withTiming(e.endCoordinates.height, {
-        duration,
-        easing: Easing.out(Easing.cubic),
-      });
-    };
-
-    const onHide = (e: KeyboardEvent) => {
-      const duration = Platform.OS === 'ios' ? (e.duration || 250) : 150;
-      spacerHeight.value = withTiming(0, {
-        duration,
-        easing: Easing.out(Easing.cubic),
-      });
-    };
-
-    const showSub = Keyboard.addListener(showEvent, onShow);
-    const hideSub = Keyboard.addListener(hideEvent, onHide);
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [spacerHeight]);
-
-  const spacerStyle = useAnimatedStyle(() => ({
-    height: spacerHeight.value,
-  }));
+  // ── Keyboard awareness ─────────────────────────────────────────
+  // Uses the project's own useKeyboard hook which works reliably
+  // inside Modals on both platforms (unlike KeyboardAvoidingView).
+  // The spacer height = keyboard height when open, bottom inset when closed.
+  const { keyboardHeight } = useKeyboard();
+  const bottomSpacer = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
 
   // ── Data ─────────────────────────────────────────────────────────
   const filteredCountries = useMemo(() => {
@@ -104,6 +64,12 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   }, [search]);
 
   // ── Handlers ─────────────────────────────────────────────────────
+  const handleSearch = useCallback((text: string) => {
+    setSearch(text);
+    // Reset scroll to top when search changes so results are always visible
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
+
   const handleSelect = useCallback(
     (code: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -121,7 +87,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
 
   // ── FlatList optimizations ───────────────────────────────────────
   const getItemLayout = useCallback(
-    (_data: CountryData[] | null | undefined, index: number) => ({
+    (_data: ArrayLike<CountryData> | null | undefined, index: number) => ({
       length: ROW_HEIGHT,
       offset: ROW_HEIGHT * index,
       index,
@@ -168,12 +134,12 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType={Platform.OS === 'ios' ? 'slide' : 'fade'}
       presentationStyle="fullScreen"
       statusBarTranslucent
     >
       <SafeAreaView
-        style={[styles.container, { paddingBottom: insets.bottom }]}
+        style={styles.container}
         edges={['top', 'left', 'right']}
       >
         {/* Header */}
@@ -203,15 +169,16 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
             placeholder="Search by name, code, or dial code"
             placeholderTextColor={colors.gray[400]}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={handleSearch}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
           />
         </View>
 
-        {/* Country list — flex:1 shrinks to accommodate the spacer */}
+        {/* Country list — flex:1 shrinks when spacer grows */}
         <FlatList
+          ref={listRef}
           data={filteredCountries}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -220,10 +187,18 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={true}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={5}
         />
 
-        {/* Keyboard spacer — animated height pushes FlatList up */}
-        <Animated.View style={spacerStyle} />
+        {/* Bottom spacer: keyboard height when open, safe area when closed.
+            Uses useKeyboard hook (state-driven) — triggers a real React
+            re-render so the flex parent recalculates the FlatList height.
+            This is reliable inside Modals on both platforms, unlike
+            KeyboardAvoidingView (broken on Android) or Reanimated
+            useAnimatedStyle (UI-thread-only, may skip layout recalc). */}
+        <View style={{ height: bottomSpacer }} />
       </SafeAreaView>
     </Modal>
   );

@@ -86,7 +86,7 @@ serve(async (req) => {
         return jsonResponse({ error: "Cannot pair with yourself" }, 400);
       }
 
-      // Verify friendship
+      // Verify friendship (limit 1: accept_friend_request_atomic creates bidirectional rows)
       const { data: friendship } = await adminClient
         .from("friends")
         .select("id")
@@ -94,6 +94,7 @@ serve(async (req) => {
           `and(user_id.eq.${senderId},friend_user_id.eq.${friendUserId}),and(user_id.eq.${friendUserId},friend_user_id.eq.${senderId})`
         )
         .eq("status", "accepted")
+        .limit(1)
         .maybeSingle();
 
       if (!friendship) {
@@ -219,7 +220,7 @@ serve(async (req) => {
           return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
         }
 
-        // Check if already friends
+        // Check if already friends (limit 1: bidirectional rows)
         const { data: friendship } = await adminClient
           .from("friends")
           .select("id")
@@ -227,6 +228,7 @@ serve(async (req) => {
             `and(user_id.eq.${senderId},friend_user_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_user_id.eq.${senderId})`
           )
           .eq("status", "accepted")
+          .limit(1)
           .maybeSingle();
 
         if (friendship) {

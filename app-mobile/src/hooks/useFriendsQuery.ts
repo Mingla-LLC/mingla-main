@@ -14,9 +14,15 @@ export const friendsKeys = {
 
 // ─── Query Hooks ─────────────────────────────────────────
 
+// Safety-net polling interval for Infinity-staleTime queries.
+// Primary freshness comes from Supabase Realtime events. If the Realtime channel
+// silently dies (network glitch, long background, Supabase maintenance), this
+// ensures data refreshes within 5 minutes even without a Realtime event.
+const FALLBACK_REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Cached friend list. staleTime = Infinity — data is never "stale" on its own.
- * Invalidation happens ONLY via Supabase Realtime events.
+ * Invalidation happens via Supabase Realtime events + 5-minute fallback poll.
  */
 export function useFriendsList(userId: string | undefined) {
   return useQuery({
@@ -24,6 +30,7 @@ export function useFriendsList(userId: string | undefined) {
     queryFn: () => friendsService.fetchFriends(userId!),
     enabled: !!userId,
     staleTime: Infinity,
+    refetchInterval: FALLBACK_REFETCH_INTERVAL,
   });
 }
 
@@ -36,6 +43,7 @@ export function useFriendRequests(userId: string | undefined) {
     queryFn: () => friendsService.fetchFriendRequests(userId!),
     enabled: !!userId,
     staleTime: Infinity,
+    refetchInterval: FALLBACK_REFETCH_INTERVAL,
   });
 }
 
@@ -48,6 +56,7 @@ export function useBlockedUsers(userId: string | undefined, enabled = true) {
     queryFn: () => friendsService.fetchBlockedUsers(),
     enabled: !!userId && enabled,
     staleTime: Infinity,
+    refetchInterval: FALLBACK_REFETCH_INTERVAL,
   });
 }
 

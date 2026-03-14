@@ -6,6 +6,8 @@ import {
   cancelPairRequest,
   cancelPairInvite,
   unpair,
+  acceptPairRequest,
+  declinePairRequest,
 } from "../services/pairingService";
 import type {
   PairingPill,
@@ -91,3 +93,32 @@ export function useUnpair() {
     },
   });
 }
+
+export function useAcceptPairRequest() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { pairingId: string; pairedWithUserId: string },
+    Error,
+    string
+  >({
+    mutationKey: ["pairings", "accept"],
+    mutationFn: acceptPairRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pairings"] });
+    },
+  });
+}
+
+export function useDeclinePairRequest() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationKey: ["pairings", "decline"],
+    mutationFn: declinePairRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pairings"] });
+    },
+  });
+}
+
+// Re-export raw service functions for callback-based usage (e.g. HomePage handlers)
+export { acceptPairRequest, declinePairRequest } from "../services/pairingService";

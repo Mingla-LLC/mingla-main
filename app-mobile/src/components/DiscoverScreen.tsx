@@ -32,10 +32,11 @@ import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolida
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
 import { mixpanelService } from "../services/mixpanelService";
-import { usePairingPills, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useUnpair, pairingKeys } from "../hooks/usePairings";
-import type { PairingPill } from "../services/pairingService";
+import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useUnpair, pairingKeys } from "../hooks/usePairings";
+import type { PairingPill, PairRequest } from "../services/pairingService";
 import PairRequestModal from "./PairRequestModal";
 import PairingInfoCard from "./PairingInfoCard";
+import IncomingPairRequestCard from "./IncomingPairRequestCard";
 import PersonHolidayView from "./PersonHolidayView";
 
 // Storage key for custom holidays
@@ -781,6 +782,14 @@ export default function DiscoverScreen({
   // Pairing modal state
   const [isPairModalVisible, setIsPairModalVisible] = useState(false);
   const [infoPill, setInfoPill] = useState<PairingPill | null>(null);
+  const [incomingRequestPill, setIncomingRequestPill] = useState<PairRequest | null>(null);
+
+  // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled)
+  useEffect(() => {
+    if (incomingRequestPill && !incomingPairRequests.some((r) => r.id === incomingRequestPill.id)) {
+      setIncomingRequestPill(null);
+    }
+  }, [incomingPairRequests, incomingRequestPill]);
 
   // Pairing selector
   const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
@@ -859,6 +868,7 @@ export default function DiscoverScreen({
   // Get auth for Discover features
   const { user } = useAuthSimple();
   const { data: pairingPills = [] } = usePairingPills(user?.id);
+  const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
 
   // Pairing mutation hooks
   const cancelRequestMutation = useCancelPairRequest();
@@ -2944,6 +2954,38 @@ export default function DiscoverScreen({
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
+                {/* Incoming Pair Request Pills */}
+                {incomingPairRequests.map((request) => {
+                  const initials = request.senderName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2);
+
+                  return (
+                    <TouchableOpacity
+                      key={`incoming-${request.id}`}
+                      style={[styles.personPill, styles.incomingRequestPill]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setIncomingRequestPill(request);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.personPillAvatar}>
+                        {request.senderAvatar ? (
+                          <Image source={{ uri: request.senderAvatar }} style={styles.pillAvatarImage} />
+                        ) : (
+                          <Text style={styles.personPillInitials}>{initials}</Text>
+                        )}
+                      </View>
+                      {/* Notification dot */}
+                      <View style={styles.incomingDot} />
+                    </TouchableOpacity>
+                  );
+                })}
+
                 {/* Pairing Pills */}
                 {pairingPills.map((pill) => {
                   const isSelected = selectedPillId === pill.id;
@@ -3262,6 +3304,15 @@ export default function DiscoverScreen({
         onPairRequestSent={() => {
           setIsPairModalVisible(false);
         }}
+      />
+
+      {/* Incoming Pair Request Card (tap on incoming request pill) */}
+      <IncomingPairRequestCard
+        visible={!!incomingRequestPill}
+        request={incomingRequestPill}
+        onAccept={() => setIncomingRequestPill(null)}
+        onDecline={() => setIncomingRequestPill(null)}
+        onClose={() => setIncomingRequestPill(null)}
       />
 
       {/* Pairing Info Card (tap on greyed/pending pill) */}
@@ -4471,6 +4522,21 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#f97316',
+  },
+  incomingRequestPill: {
+    borderWidth: 2,
+    borderColor: '#fb923c',
+  },
+  incomingDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: s(10),
+    height: s(10),
+    borderRadius: s(5),
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   // Error styles
   errorText: {

@@ -19,7 +19,8 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
-import { acceptPairRequest, declinePairRequest } from "../services/pairingService";
+import { acceptPairRequest, declinePairRequest } from "../hooks/usePairings";
+import { useQueryClient } from "@tanstack/react-query";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -109,6 +110,7 @@ export default function HomePage({
 
   // Get friend request handlers from useFriends hook
   const { acceptFriendRequest, declineFriendRequest } = useFriends({ autoFetchBlockedUsers: false });
+  const queryClient = useQueryClient();
 
   const noop = useMemo(() => () => {}, []);
 
@@ -180,6 +182,7 @@ export default function HomePage({
   const handleAcceptPairRequest = async (requestId: string, notificationId: string) => {
     try {
       await acceptPairRequest(requestId);
+      queryClient.invalidateQueries({ queryKey: ["pairings"] });
     } catch (error) {
       console.error("Error accepting pair request:", error);
     } finally {
@@ -190,6 +193,7 @@ export default function HomePage({
   const handleDeclinePairRequest = async (requestId: string, notificationId: string) => {
     try {
       await declinePairRequest(requestId);
+      queryClient.invalidateQueries({ queryKey: ["pairings"] });
     } catch (error) {
       console.error("Error declining pair request:", error);
     } finally {

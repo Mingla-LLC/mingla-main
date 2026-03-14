@@ -605,6 +605,41 @@ function AppContent() {
     catchUpCollabNotifications();
   });
 
+  // Process deferred deep links after auth + onboarding complete.
+  // Links are deferred when they arrive while the user is unauthenticated (F-05).
+  // Stale links (>24 hours old) are discarded to prevent confusing navigation.
+  const hasProcessedDeferredLinkRef = useRef(false);
+  // Reset the guard when user signs out so the next sign-in can process links.
+  // AppContent is never unmounted, so the ref persists across auth transitions.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasProcessedDeferredLinkRef.current = false;
+    }
+  }, [isAuthenticated]);
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || showOnboardingFlow) return;
+    if (hasProcessedDeferredLinkRef.current) return;
+    hasProcessedDeferredLinkRef.current = true;
+
+    AsyncStorage.getItem('mingla_deferred_deeplink').then(raw => {
+      if (!raw) return;
+      AsyncStorage.removeItem('mingla_deferred_deeplink');
+      try {
+        const { url, ts } = JSON.parse(raw);
+        const ageMs = Date.now() - (ts ?? 0);
+        const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        if (ageMs > MAX_AGE_MS) {
+          console.log('[DEEPLINK] Discarded stale deferred link:', url);
+          return;
+        }
+        console.log('[DEEPLINK] Processing deferred link:', url);
+        handleDeepLink(url);
+      } catch (e) {
+        console.warn('[DEEPLINK] Failed to parse deferred link:', e);
+      }
+    });
+  }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
+
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
@@ -1469,6 +1504,23 @@ function AppContent() {
 
   const handleDeepLink = async (url: string) => {
     console.log("Deep link received:", url);
+
+    // OAuth callbacks MUST run immediately — they ARE the auth flow.
+    // All other deep links: if the user isn't authenticated, defer to
+    // AsyncStorage and process after login completes. This prevents
+    // invite/navigation links from being silently discarded.
+    const isOAuthCallback = url.includes("auth/callback");
+    if (!isOAuthCallback && !user) {
+      try {
+        // Store the link with a timestamp so we can discard stale links (>24h)
+        const deferred = JSON.stringify({ url, ts: Date.now() });
+        await AsyncStorage.setItem('mingla_deferred_deeplink', deferred);
+        console.log('[DEEPLINK] Deferred (unauthenticated):', url);
+      } catch (err) {
+        console.error('[DEEPLINK] Failed to defer:', err);
+      }
+      return;
+    }
 
     // Handle invite deep links
     if (url.includes('/invite/') || url.includes('invite/')) {
