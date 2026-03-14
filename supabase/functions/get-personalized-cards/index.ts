@@ -32,7 +32,8 @@ const FIELD_MASK =
 // ── Interfaces ───────────────────────────────────────────────────────────────
 
 interface RequestBody {
-  linkedUserId: string;
+  linkedUserId?: string;
+  pairedUserId?: string;
   occasion: string;
   location: { latitude: number; longitude: number };
   radius?: number;
@@ -77,9 +78,23 @@ serve(async (req: Request) => {
   try {
     // Parse body
     const body: RequestBody = await req.json();
-    const { linkedUserId, occasion, location, radius: rawRadius = 10000, isBirthday: rawIsBirthday = false } = body;
+    const { linkedUserId, pairedUserId, occasion, location, radius: rawRadius = 10000, isBirthday: rawIsBirthday = false } = body;
 
     // ── Validation ─────────────────────────────────────────────────────────
+
+    // Must provide either linkedUserId or pairedUserId
+    const targetUserId = pairedUserId || linkedUserId;
+    const isPairedMode = !!pairedUserId;
+
+    if (!targetUserId || typeof targetUserId !== "string" || !UUID_REGEX.test(targetUserId)) {
+      return new Response(
+        JSON.stringify({ error: "Must provide either linkedUserId or pairedUserId" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Occasion
     if (!occasion || typeof occasion !== "string" || occasion.length > 100) {
@@ -131,18 +146,7 @@ serve(async (req: Request) => {
 
     const currentUserId = user.id;
 
-    // Validate linkedUserId
-    if (!linkedUserId || typeof linkedUserId !== "string" || !UUID_REGEX.test(linkedUserId)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid linked user ID" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (linkedUserId === currentUserId) {
+    if (targetUserId === currentUserId) {
       return new Response(
         JSON.stringify({ error: "Cannot get personalized cards for yourself" }),
         {
@@ -177,25 +181,70 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Verify accepted link ───────────────────────────────────────────────
+    // ── Verify relationship ────────────────────────────────────────────────
 
-    const { data: acceptedLink, error: linkError } = await supabaseAdmin
-      .from("friend_links")
-      .select("id")
-      .or(
-        `and(requester_id.eq.${currentUserId},target_id.eq.${linkedUserId}),and(requester_id.eq.${linkedUserId},target_id.eq.${currentUserId})`
-      )
-      .eq("status", "accepted")
-      .maybeSingle();
+    if (isPairedMode) {
+      // Verify active pairing exists
+      const uA = currentUserId < targetUserId ? currentUserId : targetUserId;
+      const uB = currentUserId < targetUserId ? targetUserId : currentUserId;
 
-    if (linkError || !acceptedLink) {
-      return new Response(
-        JSON.stringify({ error: "No accepted link found between these users" }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      const { data: pairing, error: pairingError } = await supabaseAdmin
+        .from("pairings")
+        .select("id")
+        .eq("user_a_id", uA)
+        .eq("user_b_id", uB)
+        .maybeSingle();
+
+      if (pairingError || !pairing) {
+        return new Response(
+          JSON.stringify({ error: "No active pairing found between these users" }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    } else {
+      // Legacy: verify accepted friend link
+      const { data: acceptedLink, error: linkError } = await supabaseAdmin
+        .from("friend_links")
+        .select("id")
+        .or(
+          `and(requester_id.eq.${currentUserId},target_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},target_id.eq.${currentUserId})`
+        )
+        .eq("status", "accepted")
+        .maybeSingle();
+
+      if (linkError || !acceptedLink) {
+        return new Response(
+          JSON.stringify({ error: "No accepted link found between these users" }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
+    // ── Blend learned preferences (pairedUserId mode) ──────────────────────
+
+    let learnedPreferenceCategories: string[] = [];
+
+    if (isPairedMode) {
+      const { data: learnedPrefs } = await supabaseAdmin
+        .from("user_preference_learning")
+        .select("preference_key, preference_value")
+        .eq("user_id", targetUserId)
+        .eq("preference_type", "category")
+        .gt("preference_value", 0)
+        .order("preference_value", { ascending: false })
+        .limit(10);
+
+      if (learnedPrefs && learnedPrefs.length > 0) {
+        learnedPreferenceCategories = learnedPrefs.map(
+          (p: { preference_key: string }) => p.preference_key
+        );
+      }
     }
 
     // ── Count total swipes ─────────────────────────────────────────────────
@@ -203,7 +252,7 @@ serve(async (req: Request) => {
     const { count: totalSwipes, error: swipeCountError } = await supabaseAdmin
       .from("user_card_impressions")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", linkedUserId)
+      .eq("user_id", targetUserId)
       .in("impression_type", ["swiped_left", "swiped_right"]);
 
     if (swipeCountError) {
@@ -244,7 +293,7 @@ serve(async (req: Request) => {
     const { data: impressions, error: impError } = await supabaseAdmin
       .from("user_card_impressions")
       .select("card_pool_id, impression_type")
-      .eq("user_id", linkedUserId);
+      .eq("user_id", targetUserId);
 
     if (!impError && impressions && impressions.length > 0) {
       // Get card_pool categories for these impression card IDs
@@ -293,7 +342,7 @@ serve(async (req: Request) => {
     const { data: savedCards, error: savedError } = await supabaseAdmin
       .from("saved_card")
       .select("category")
-      .eq("profile_id", linkedUserId);
+      .eq("profile_id", targetUserId);
 
     if (!savedError && savedCards) {
       for (const sc of savedCards) {
@@ -307,7 +356,7 @@ serve(async (req: Request) => {
     const { data: calEntries, error: calError } = await supabaseAdmin
       .from("calendar_entries")
       .select("card_data")
-      .eq("user_id", linkedUserId)
+      .eq("user_id", targetUserId)
       .neq("status", "cancelled");
 
     if (!calError && calEntries) {
@@ -323,7 +372,7 @@ serve(async (req: Request) => {
     const { data: reviews, error: reviewError } = await supabaseAdmin
       .from("place_reviews")
       .select("place_category, rating")
-      .eq("user_id", linkedUserId);
+      .eq("user_id", targetUserId);
 
     if (!reviewError && reviews) {
       for (const review of reviews) {
@@ -352,6 +401,19 @@ serve(async (req: Request) => {
       .filter((c) => c.score > 0)
       .slice(0, 4)
       .map((c) => c.category);
+
+    // Blend learned preference categories (pairedUserId mode):
+    // add top 3 learned categories if not already present
+    if (isPairedMode && learnedPreferenceCategories.length > 0) {
+      let added = 0;
+      for (const cat of learnedPreferenceCategories) {
+        if (added >= 3) break;
+        if (!topCategories.includes(cat)) {
+          topCategories.push(cat);
+          added++;
+        }
+      }
+    }
 
     // Pad with Fine Dining if fewer than 4
     while (topCategories.length < 4) {
