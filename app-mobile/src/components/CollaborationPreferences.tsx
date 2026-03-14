@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Text,
   View,
@@ -132,6 +132,12 @@ export default function CollaborationPreferences({
 
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  // Refs for synchronous access in toggle callbacks (avoids stale closure bug)
+  const selectedIntentsRef = useRef(selectedIntents);
+  selectedIntentsRef.current = selectedIntents;
+  const selectedCategoriesRef = useRef(selectedCategories);
+  selectedCategoriesRef.current = selectedCategories;
 
   // Date & Time
   const [selectedDateOption, setSelectedDateOption] =
@@ -281,6 +287,71 @@ export default function CollaborationPreferences({
   // All categories always visible (matching solo mode behavior)
   const filteredCategories = categories;
 
+  // Memoized callbacks — defined before early returns (hooks rule), side effects outside updaters (StrictMode-safe)
+  const handleIntentToggle = useCallback((intentId: string) => {
+    let blocked = false;
+    setSelectedIntents((prev) => {
+      if (prev.includes(intentId)) {
+        // Deselecting — read categories from ref to avoid stale closure
+        if (prev.length === 1 && selectedCategoriesRef.current.length === 0) {
+          blocked = true;
+          return prev;
+        }
+        return [];  // Radio: deselect
+      }
+      return [intentId];  // Radio: replace with only this one
+    });
+    if (blocked) {
+      setMinSelectionMessage(true);
+      setTimeout(() => setMinSelectionMessage(false), 2500);
+    }
+  }, []);
+
+  const handleCategoryToggle = useCallback((categoryId: string) => {
+    let blocked = false;
+    let capped = false;
+    setSelectedCategories((prev) => {
+      if (prev.includes(categoryId)) {
+        // Deselecting — read intents from ref to avoid stale closure
+        if (prev.length === 1 && selectedIntentsRef.current.length === 0) {
+          blocked = true;
+          return prev;
+        }
+        return prev.filter((id) => id !== categoryId);
+      }
+      if (prev.length >= 3) {
+        capped = true;
+        return prev;
+      }
+      return [...prev, categoryId];
+    });
+    if (blocked) {
+      setMinSelectionMessage(true);
+      setTimeout(() => setMinSelectionMessage(false), 2500);
+    }
+    if (capped) {
+      setCategoryCapMessage(true);
+      setTimeout(() => setCategoryCapMessage(false), 2000);
+    }
+  }, []);
+
+  const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
+    setSelectedPriceTiers((prev) => {
+      const next = prev.includes(slug)
+        ? prev.filter((s) => s !== slug)
+        : [...prev, slug];
+      return next.length === 0 ? prev : next;
+    });
+  }, []);
+
+  const handleDateOptionSelect = useCallback((option: DateOption) => {
+    setSelectedDateOption(option);
+    if (option === "Now") {
+      setSelectedTimeSlot(null);
+      setExactTime("");
+    }
+  }, []);
+
   if (!isOpen) return null;
 
   // Show loading spinner when fetching preferences
@@ -291,58 +362,6 @@ export default function CollaborationPreferences({
       </View>
     );
   }
-
-  const handleIntentToggle = (intentId: string) => {
-    setSelectedIntents((prev) => {
-      if (prev.includes(intentId)) {
-        // Deselecting — check combined minimum
-        if (prev.length === 1 && selectedCategories.length === 0) {
-          setMinSelectionMessage(true);
-          setTimeout(() => setMinSelectionMessage(false), 2500);
-          return prev;
-        }
-        return [];  // Radio: deselect
-      }
-      return [intentId];  // Radio: replace with only this one
-    });
-  };
-
-  const handleCategoryToggle = (categoryId: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(categoryId)) {
-        // Deselecting — check combined minimum
-        if (prev.length === 1 && selectedIntents.length === 0) {
-          setMinSelectionMessage(true);
-          setTimeout(() => setMinSelectionMessage(false), 2500);
-          return prev;
-        }
-        return prev.filter((id) => id !== categoryId);
-      }
-      if (prev.length >= 3) {
-        setCategoryCapMessage(true);
-        setTimeout(() => setCategoryCapMessage(false), 2000);
-        return prev;
-      }
-      return [...prev, categoryId];
-    });
-  };
-
-  const handlePriceTierToggle = (slug: PriceTierSlug) => {
-    setSelectedPriceTiers((prev) => {
-      const next = prev.includes(slug)
-        ? prev.filter((s) => s !== slug)
-        : [...prev, slug];
-      return next.length === 0 ? prev : next;
-    });
-  };
-
-  const handleDateOptionSelect = (option: DateOption) => {
-    setSelectedDateOption(option);
-    if (option === "Now") {
-      setSelectedTimeSlot(null);
-      setExactTime("");
-    }
-  };
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
     setSelectedTimeSlot(slot);

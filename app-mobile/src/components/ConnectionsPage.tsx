@@ -11,7 +11,6 @@ import {
   Clipboard,
   Modal,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   useWindowDimensions,
@@ -32,6 +31,7 @@ import { Conversation } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSocialRealtime } from "../hooks/useSocialRealtime";
+import { useKeyboard } from "../hooks/useKeyboard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -101,6 +101,26 @@ export default function ConnectionsPageRefactored({
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 
+  // ── Keyboard-aware sheet height ────────────────────────────
+  // Replaces KeyboardAvoidingView which conflicts with fixed-height sheets.
+  // Captures the window height BEFORE the keyboard opens so Android's
+  // adjustResize doesn't pollute the baseline, then subtracts keyboard height.
+  const {
+    isVisible: keyboardVisible,
+    keyboardHeight,
+    dismiss: dismissKeyboard,
+  } = useKeyboard({ disableLayoutAnimation: true });
+
+  const stableHeightRef = useRef(screenHeight);
+  useEffect(() => {
+    if (!keyboardVisible) {
+      stableHeightRef.current = screenHeight;
+    }
+  }, [screenHeight, keyboardVisible]);
+
+  const sheetHeight = keyboardVisible
+    ? Math.max(200, stableHeightRef.current - keyboardHeight - 44)
+    : stableHeightRef.current * 0.88;
 
   // ── UI state ─────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState<PanelId>(null);
@@ -369,6 +389,7 @@ export default function ConnectionsPageRefactored({
   // ── Panel handler ────────────────────────────────────────
   const handleActionPress = (id: PanelId | "invite") => {
     HapticFeedback.light();
+    dismissKeyboard();
     if (id === "invite") {
       try {
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
@@ -1267,113 +1288,108 @@ export default function ConnectionsPageRefactored({
 
         {/* Action Panel Bottom Sheet (accessible even in error state) */}
         <Modal
-  visible={activePanel !== null}
-  animationType="slide"
-  transparent
-  onRequestClose={() => setActivePanel(null)}
->
-  <KeyboardAvoidingView
-    style={styles.modalRoot}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={0}
-  >
-    <View style={styles.sheetOverlay}>
-      <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
-        <View style={styles.backdropFill} />
-      </TouchableWithoutFeedback>
-
-      <View
-        style={[styles.sheetContainer, { height: screenHeight * 0.88 }]}
-        onStartShouldSetResponder={() => true}
-      >
-        <View style={styles.sheetHandle} />
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>
-            {activePanel === "add" ? "Add Friend" : "Friends"}
-          </Text>
-          <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
-            <Ionicons name="close" size={24} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={styles.sheetBody}
-          contentContainerStyle={styles.sheetBodyContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+          visible={activePanel !== null}
+          animationType="slide"
+          transparent
+          onRequestClose={() => { dismissKeyboard(); setActivePanel(null); }}
         >
-          {activePanel === "add" && (
-            <AddFriendView
-              currentUserId={user?.id || ""}
-              onRequestSent={() => loadFriendRequests()}
-              outgoingRequests={outgoingRequests}
-              outgoingRequestsLoading={requestsLoading}
-              onCancelRequest={cancelFriendRequest}
-              onAddFriend={addFriend}
-            />
-          )}
-          {activePanel === "friends" && (
-            <>
-              {/* Tab Bar */}
-              <View style={styles.tabBar}>
-                <TouchableOpacity
-                  onPress={() => setFriendsModalTab("friends")}
-                  style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
-                    Friends
-                  </Text>
-                </TouchableOpacity>
+          <View style={styles.sheetOverlay}>
+            <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setActivePanel(null); }}>
+              <View style={styles.backdropFill} />
+            </TouchableWithoutFeedback>
 
-                <TouchableOpacity
-                  onPress={() => setFriendsModalTab("requests")}
-                  style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                    Requests
-                  </Text>
-                  {incomingRequests.length > 0 && (
-                    <View style={styles.tabBadge}>
-                      <Text style={styles.tabBadgeText}>
-                        {incomingRequests.length}
-                      </Text>
-                    </View>
-                  )}
+            <View
+              style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32 }]}
+              onStartShouldSetResponder={() => true}
+            >
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>
+                  {activePanel === "add" ? "Add Friend" : "Friends"}
+                </Text>
+                <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
+                  <Ionicons name="close" size={24} color="#6b7280" />
                 </TouchableOpacity>
               </View>
 
-              {/* Tab Content */}
-              {friendsModalTab === "friends" ? (
-                <FriendsManagementList
-                  friends={dbFriends}
-                  loading={friendsLoading}
-                  onRemoveFriend={handleRemoveFriendFromModal}
-                  onBlockUser={handleBlockFromModal}
-                  onReportUser={handleReportFromModal}
-                  onMuteUser={handleMuteUserFromModal}
-                  muteLoadingFriendId={muteLoadingFriendId}
-                  mutedUserIds={mutedUserIds}
-                  currentUserId={user?.id || ""}
-                />
-              ) : (
-                <View>
-                  <RequestsView
-                    requests={incomingRequests}
-                    loading={friendsLoading || requestsLoading}
-                    onAccept={handleAcceptRequest}
-                    onDecline={handleDeclineRequest}
+              <ScrollView
+                style={styles.sheetBody}
+                contentContainerStyle={styles.sheetBodyContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+                {activePanel === "add" && (
+                  <AddFriendView
+                    currentUserId={user?.id || ""}
+                    onRequestSent={() => loadFriendRequests()}
+                    outgoingRequests={outgoingRequests}
+                    outgoingRequestsLoading={requestsLoading}
+                    onCancelRequest={cancelFriendRequest}
+                    onAddFriend={addFriend}
                   />
-                </View>
-              )}
-            </>
-          )}
-        </ScrollView>
-      </View>
-    </View>
-  </KeyboardAvoidingView>
-</Modal>
+                )}
+                {activePanel === "friends" && (
+                  <>
+                    {/* Tab Bar */}
+                    <View style={styles.tabBar}>
+                      <TouchableOpacity
+                        onPress={() => setFriendsModalTab("friends")}
+                        style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
+                          Friends
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setFriendsModalTab("requests")}
+                        style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
+                          Requests
+                        </Text>
+                        {incomingRequests.length > 0 && (
+                          <View style={styles.tabBadge}>
+                            <Text style={styles.tabBadgeText}>
+                              {incomingRequests.length}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Tab Content */}
+                    {friendsModalTab === "friends" ? (
+                      <FriendsManagementList
+                        friends={dbFriends}
+                        loading={friendsLoading}
+                        onRemoveFriend={handleRemoveFriendFromModal}
+                        onBlockUser={handleBlockFromModal}
+                        onReportUser={handleReportFromModal}
+                        onMuteUser={handleMuteUserFromModal}
+                        muteLoadingFriendId={muteLoadingFriendId}
+                        mutedUserIds={mutedUserIds}
+                        currentUserId={user?.id || ""}
+                      />
+                    ) : (
+                      <View>
+                        <RequestsView
+                          requests={incomingRequests}
+                          loading={friendsLoading || requestsLoading}
+                          onAccept={handleAcceptRequest}
+                          onDecline={handleDeclineRequest}
+                        />
+                      </View>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         <ReportUserModal
           isOpen={showReportModal}
@@ -1612,125 +1628,121 @@ export default function ConnectionsPageRefactored({
       </View>
 
       {/* Action Panel Bottom Sheet */}
+      {/* Action Panel Bottom Sheet */}
       <Modal
-  visible={activePanel !== null}
-  animationType="slide"
-  transparent
-  onRequestClose={() => setActivePanel(null)}
->
-  <KeyboardAvoidingView
-    style={styles.modalRoot}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={0}
-  >
-    <View style={styles.sheetOverlay}>
-      <TouchableWithoutFeedback onPress={() => setActivePanel(null)}>
-        <View style={styles.backdropFill} />
-      </TouchableWithoutFeedback>
-
-      <View
-        style={[styles.sheetContainer, { height: screenHeight * 0.88 }]}
-        onStartShouldSetResponder={() => true}
+        visible={activePanel !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { dismissKeyboard(); setActivePanel(null); }}
       >
-        <View style={styles.sheetHandle} />
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>
-            {activePanel === "add"
-              ? "Add Friend"
-              : activePanel === "friends"
-              ? "Friends"
-              : "Blocked Users"}
-          </Text>
-          <TouchableOpacity onPress={() => setActivePanel(null)} activeOpacity={0.7}>
-            <Ionicons name="close" size={24} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.sheetOverlay}>
+          <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setActivePanel(null); }}>
+            <View style={styles.backdropFill} />
+          </TouchableWithoutFeedback>
 
-        <ScrollView
-          style={styles.sheetBody}
-          contentContainerStyle={styles.sheetBodyContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {activePanel === "add" && (
-            <AddFriendView
-              currentUserId={user?.id || ""}
-              onRequestSent={() => loadFriendRequests()}
-              outgoingRequests={outgoingRequests}
-              outgoingRequestsLoading={requestsLoading}
-              onCancelRequest={cancelFriendRequest}
-              onAddFriend={addFriend}
-            />
-          )}
-          {activePanel === "friends" && (
-            <>
-              {/* Tab Bar */}
-              <View style={styles.tabBar}>
-                <TouchableOpacity
-                  onPress={() => setFriendsModalTab("friends")}
-                  style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
-                    Friends
-                  </Text>
-                </TouchableOpacity>
+          <View
+            style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32 }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>
+                {activePanel === "add"
+                  ? "Add Friend"
+                  : activePanel === "friends"
+                  ? "Friends"
+                  : "Blocked Users"}
+              </Text>
+              <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
 
-                <TouchableOpacity
-                  onPress={() => setFriendsModalTab("requests")}
-                  style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                    Requests
-                  </Text>
-                  {incomingRequests.length > 0 && (
-                    <View style={styles.tabBadge}>
-                      <Text style={styles.tabBadgeText}>
-                        {incomingRequests.length}
+            <ScrollView
+              style={styles.sheetBody}
+              contentContainerStyle={styles.sheetBodyContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              {activePanel === "add" && (
+                <AddFriendView
+                  currentUserId={user?.id || ""}
+                  onRequestSent={() => loadFriendRequests()}
+                  outgoingRequests={outgoingRequests}
+                  outgoingRequestsLoading={requestsLoading}
+                  onCancelRequest={cancelFriendRequest}
+                  onAddFriend={addFriend}
+                />
+              )}
+              {activePanel === "friends" && (
+                <>
+                  {/* Tab Bar */}
+                  <View style={styles.tabBar}>
+                    <TouchableOpacity
+                      onPress={() => setFriendsModalTab("friends")}
+                      style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
+                        Friends
                       </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setFriendsModalTab("requests")}
+                      style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
+                        Requests
+                      </Text>
+                      {incomingRequests.length > 0 && (
+                        <View style={styles.tabBadge}>
+                          <Text style={styles.tabBadgeText}>
+                            {incomingRequests.length}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Tab Content */}
+                  {friendsModalTab === "friends" ? (
+                    <FriendsManagementList
+                      friends={dbFriends}
+                      loading={friendsLoading}
+                      onRemoveFriend={handleRemoveFriendFromModal}
+                      onBlockUser={handleBlockFromModal}
+                      onReportUser={handleReportFromModal}
+                      onMuteUser={handleMuteUserFromModal}
+                      muteLoadingFriendId={muteLoadingFriendId}
+                      mutedUserIds={mutedUserIds}
+                      currentUserId={user?.id || ""}
+                    />
+                  ) : (
+                    <View>
+                      <RequestsView
+                        requests={incomingRequests}
+                        loading={friendsLoading || requestsLoading}
+                        onAccept={handleAcceptRequest}
+                        onDecline={handleDeclineRequest}
+                      />
                     </View>
                   )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Tab Content */}
-              {friendsModalTab === "friends" ? (
-                <FriendsManagementList
-                  friends={dbFriends}
-                  loading={friendsLoading}
-                  onRemoveFriend={handleRemoveFriendFromModal}
-                  onBlockUser={handleBlockFromModal}
-                  onReportUser={handleReportFromModal}
-                  onMuteUser={handleMuteUserFromModal}
-                  muteLoadingFriendId={muteLoadingFriendId}
-                  mutedUserIds={mutedUserIds}
-                  currentUserId={user?.id || ""}
-                />
-              ) : (
-                <View>
-                  <RequestsView
-                    requests={incomingRequests}
-                    loading={friendsLoading || requestsLoading}
-                    onAccept={handleAcceptRequest}
-                    onDecline={handleDeclineRequest}
-                  />
-                </View>
+                </>
               )}
-            </>
-          )}
-          {activePanel === "blocked" && (
-            <BlockedUsersView
-              blockedUsers={blockedUsers}
-              loading={friendsLoading}
-              onUnblock={handleUnblock}
-            />
-          )}
-        </ScrollView>
-      </View>
-    </View>
-  </KeyboardAvoidingView>
-</Modal>
+              {activePanel === "blocked" && (
+                <BlockedUsersView
+                  blockedUsers={blockedUsers}
+                  loading={friendsLoading}
+                  onUnblock={handleUnblock}
+                />
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Friend Picker Sheet */}
       <FriendPickerSheet
@@ -1778,9 +1790,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  modalRoot: {
-  flex: 1,
-},
 backdropFill: {
   ...StyleSheet.absoluteFillObject,
 },
@@ -1950,7 +1959,6 @@ backdropFill: {
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 32,
   },
   sheetHandle: {
     width: 36,

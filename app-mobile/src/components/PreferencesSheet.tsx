@@ -162,6 +162,12 @@ export default function PreferencesSheet({
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
+  // Refs for synchronous access in toggle callbacks (avoids stale closure bug)
+  const selectedIntentsRef = useRef(selectedIntents);
+  selectedIntentsRef.current = selectedIntents;
+  const selectedCategoriesRef = useRef(selectedCategories);
+  selectedCategoriesRef.current = selectedCategories;
+
   // Selection limit messages
   const [minSelectionMessage, setMinSelectionMessage] = useState(false);
   const [categoryCapMessage, setCategoryCapMessage] = useState(false);
@@ -394,41 +400,53 @@ export default function PreferencesSheet({
   // All categories always visible — curated pills are independent of category pills
   const filteredCategories = categories;
 
-  // Memoized callbacks
+  // Memoized callbacks — side effects kept outside updater to stay StrictMode-safe
   const handleIntentToggle = useCallback((id: string) => {
+    let blocked = false;
     setSelectedIntents((prev) => {
       if (prev.includes(id)) {
-        // Deselecting — check combined minimum
-        if (prev.length === 1 && selectedCategories.length === 0) {
-          setMinSelectionMessage(true);
-          setTimeout(() => setMinSelectionMessage(false), 2500);
+        // Deselecting — read categories from ref to avoid stale closure
+        if (prev.length === 1 && selectedCategoriesRef.current.length === 0) {
+          blocked = true;
           return prev;
         }
         return [];  // Radio: goes to 0
       }
       return [id];  // Radio: replace with only this one
     });
-  }, [selectedCategories.length]);
+    if (blocked) {
+      setMinSelectionMessage(true);
+      setTimeout(() => setMinSelectionMessage(false), 2500);
+    }
+  }, []);
 
   const handleCategoryToggle = useCallback((id: string) => {
+    let blocked = false;
+    let capped = false;
     setSelectedCategories((prev) => {
       if (prev.includes(id)) {
-        // Deselecting — check combined minimum
-        if (prev.length === 1 && selectedIntents.length === 0) {
-          setMinSelectionMessage(true);
-          setTimeout(() => setMinSelectionMessage(false), 2500);
+        // Deselecting — read intents from ref to avoid stale closure
+        if (prev.length === 1 && selectedIntentsRef.current.length === 0) {
+          blocked = true;
           return prev;
         }
         return prev.filter((c) => c !== id);
       }
       if (prev.length >= 3) {
-        setCategoryCapMessage(true);
-        setTimeout(() => setCategoryCapMessage(false), 2000);
+        capped = true;
         return prev;
       }
       return [...prev, id];
     });
-  }, [selectedIntents.length]);
+    if (blocked) {
+      setMinSelectionMessage(true);
+      setTimeout(() => setMinSelectionMessage(false), 2500);
+    }
+    if (capped) {
+      setCategoryCapMessage(true);
+      setTimeout(() => setCategoryCapMessage(false), 2000);
+    }
+  }, []);
 
   const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
     setSelectedPriceTiers((prev) => {

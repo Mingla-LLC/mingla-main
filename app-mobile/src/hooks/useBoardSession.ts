@@ -52,7 +52,7 @@ export const useBoardSession = (sessionId?: string) => {
   const [preferences, setPreferences] =
     useState<BoardSessionPreferences | null>(null);
   const [allParticipantPreferences, setAllParticipantPreferences] = useState<BoardSessionPreferences[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!sessionId);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
