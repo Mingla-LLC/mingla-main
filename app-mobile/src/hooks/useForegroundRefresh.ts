@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
@@ -26,12 +26,17 @@ const CRITICAL_QUERY_KEYS = [
 ] as const;
 
 const DEBOUNCE_MS = 500;
+const AUTH_TIMEOUT_MS = 8000;
+const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
 
 /**
  * Centralized foreground resume handler.
  *
- * On every background → active transition:
- *   1. Validates the Supabase auth session (forces JWT refresh if expired)
+ * This is the SINGLE AUTHORITY for resume-triggered query work. React Query's
+ * focusManager is explicitly disabled (see queryClient.ts). All resume logic
+ * flows through this hook:
+ *
+ *   1. (Skip if background < 30s) Validates the Supabase auth session with 8s timeout
  *   2. Invalidates all critical React Query caches (triggers background refetch)
  *   3. Calls the provided onResume callback (for non-React-Query refreshes)
  *
@@ -39,15 +44,20 @@ const DEBOUNCE_MS = 500;
  *
  * @param userId - Current authenticated user ID. Hook is inert when null/undefined.
  * @param onResume - Optional callback for non-React-Query work (e.g., refreshAllSessions).
+ * @returns resumeCount - Increments on each resume. Consumers can observe this to
+ *          re-arm safety timeouts.
  */
 export function useForegroundRefresh(
   userId: string | undefined,
   onResume?: () => void,
-) {
+): number {
   const queryClient = useQueryClient();
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const backgroundTimestampRef = useRef<number | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // useState (not useRef) because the parent must re-render to pass the new
+  // value as a prop to RecommendationsProvider.
+  const [resumeCount, setResumeCount] = useState(0);
 
   // Use refs for callback to avoid re-subscribing on every render
   const onResumeRef = useRef(onResume);
@@ -59,15 +69,13 @@ export function useForegroundRefresh(
     const handleAppStateChange = (nextState: AppStateStatus) => {
       const prevState = appStateRef.current;
 
-      // Track when we enter background (for duration logging)
+      // Track when we enter background (for duration logging + skip logic)
       if (nextState === 'background') {
         backgroundTimestampRef.current = Date.now();
       }
 
       // Only background → active is a genuine resume. iOS inactive → active
       // (Control Center, notification shade, Siri) must NOT trigger refresh.
-      // All real resume paths (home button, app switcher, lock screen) transition
-      // through 'background' on both iOS and Android.
       const wasBackground = prevState === 'background';
       const isNowActive = nextState === 'active';
 
@@ -80,43 +88,66 @@ export function useForegroundRefresh(
       }
 
       debounceTimerRef.current = setTimeout(async () => {
-        const bgDuration = backgroundTimestampRef.current
-          ? Math.round((Date.now() - backgroundTimestampRef.current) / 1000)
-          : null;
-        const bgLabel = bgDuration !== null ? `${bgDuration}s` : 'unknown';
+        const bgTimestamp = backgroundTimestampRef.current;
+        const bgDurationMs = bgTimestamp ? Date.now() - bgTimestamp : null;
+        const bgLabel = bgDurationMs !== null ? `${Math.round(bgDurationMs / 1000)}s` : 'unknown';
+        const isShortBackground = bgDurationMs !== null && bgDurationMs < SHORT_BACKGROUND_THRESHOLD_MS;
+
+        // Increment resume counter so consumers (RecommendationsContext) can
+        // detect resume events and re-arm safety timeouts.
+        setResumeCount(c => c + 1);
 
         if (__DEV__) {
           logger.lifecycle(
-            `[RESUME] Foreground refresh | backgroundDuration=${bgLabel} | queries=${CRITICAL_QUERY_KEYS.length} families`,
+            `[RESUME] Foreground refresh | backgroundDuration=${bgLabel} | queries=${CRITICAL_QUERY_KEYS.length} families | shortSkip=${isShortBackground}`,
           );
         }
 
-        // Step 1: Validate/refresh auth session BEFORE any query work.
-        // supabase.auth.getSession() reads the stored session and triggers a
-        // token refresh if the JWT is expired. This is a local-first check —
-        // fast when the token is still valid, network call only when expired.
+        if (isShortBackground) {
+          // Short background (< 30s): skip auth refresh and query invalidation.
+          // Data is still within staleTime (5min), sockets are alive, JWT is valid.
+          // Only fire the onResume callback for collaboration state catch-up.
+          onResumeRef.current?.();
+          return;
+        }
+
+        // Step 1: Validate/refresh auth session with hard timeout.
+        // supabase.auth.getSession() reads stored session and triggers JWT refresh
+        // if expired. Cap at 8 seconds — if it hangs (dead socket after long background),
+        // proceed with the existing token. Supabase's auto-retry on 401 handles renewal
+        // transparently when individual queries fire.
         try {
-          const { error } = await supabase.auth.getSession();
-          if (error) {
-            console.warn('[RESUME] Session refresh failed:', error.message);
-            // Don't bail — stale token might still work for some queries,
-            // and the Supabase client will auto-retry token refresh on next call.
+          let authTimeoutId: ReturnType<typeof setTimeout>;
+          const sessionPromise = supabase.auth.getSession();
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            authTimeoutId = setTimeout(
+              () => reject(new Error('Auth session refresh timed out')),
+              AUTH_TIMEOUT_MS,
+            );
+          });
+          try {
+            const { error } = await Promise.race([sessionPromise, timeoutPromise]);
+            if (error) {
+              console.warn('[RESUME] Session refresh failed:', error.message);
+            }
+          } finally {
+            // Always clear the timer — prevents a dangling 8s timer when
+            // getSession() resolves before the timeout fires.
+            clearTimeout(authTimeoutId!);
           }
-        } catch (e) {
-          console.warn('[RESUME] Session refresh threw:', e);
+        } catch (e: any) {
+          // Timeout or network error — proceed with existing token
+          console.warn('[RESUME] Session refresh unavailable:', e?.message ?? e);
         }
 
         // Step 2: Invalidate all critical queries.
-        // invalidateQueries() marks them as stale AND triggers a background refetch
-        // if any component is currently subscribed. Cached data stays visible —
-        // no loading flash. Components using useQuery see isFetching=true briefly,
-        // but isLoading stays false (data is still in cache).
+        // invalidateQueries() marks them as stale AND triggers background refetch.
+        // Cached data stays visible — isLoading stays false when data exists in cache.
         for (const key of CRITICAL_QUERY_KEYS) {
           queryClient.invalidateQueries({ queryKey: key });
         }
 
         // Step 3: Fire the callback for non-React-Query refreshes
-        // (e.g., refreshAllSessions which updates Zustand state)
         onResumeRef.current?.();
       }, DEBOUNCE_MS);
     };
@@ -130,4 +161,6 @@ export function useForegroundRefresh(
       }
     };
   }, [userId, queryClient]);
+
+  return resumeCount;
 }

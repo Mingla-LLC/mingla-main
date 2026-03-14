@@ -242,7 +242,7 @@ The Friends Management Modal (accessible from the Chats page header via the peop
 - Consensus lock-in with auto calendar entries
 - Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
 - In-app notification catch-up mechanism: on foreground resume and after friend request acceptance, pending invites are queried and notifications are created for any missed while the app was in background/killed or newly revealed by the friend acceptance trigger, with deduplication via ref-tracked invite IDs
-- **Automatic foreground resume refresh:** Centralized `useForegroundRefresh` hook refreshes auth session and invalidates all critical React Query caches on background → active transition. 500ms debounce, no loading flash, expensive API queries excluded
+- **Industry-standard foreground recovery:** Centralized `useForegroundRefresh` hook is the single authority for resume-triggered query work. React Query's `focusManager` is explicitly disabled to prevent uncontrolled, auth-unvalidated refetches. On resume: auth session is validated with 8-second timeout, then all critical React Query caches are invalidated for background refresh. Short backgrounds (< 30 seconds) skip auth and query invalidation entirely. Cached data remains visible during refresh -- no spinner on resume when cached data exists. Network timeout is 12 seconds (industry standard), worst-case spinner capped at 25 seconds instead of permanent hang. Resume safety timeout re-arms on every background resume to cap spinner at 10 seconds.
 - **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
 
 ### Subscription System
@@ -515,11 +515,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Open/Closed Badge Fix** -- Replaced stale `openNow`/`isOpenNow` values from Google Places with live client-side computation using `weekday_text` data and the user's local clock. Badges now re-check every 60 seconds. When hours data is missing or unparseable, the badge is hidden entirely instead of lying. Affects ActionButtons, ProposeDateTimeModal, and ExpandedCardModal (curated stops).
-- **Luxurious Collaboration Discussion Redesign** -- Complete rewrite of the board discussion tab with iMessage-grade chat UX: inverted FlatList (no scroll-to-bottom hacks), cursor-based pagination, real-time updates via Supabase postgres_changes, emoji reactions (6-emoji long-press picker with haptics), photo attachments via camera/gallery with Supabase Storage, typing indicators, read receipts ("Seen by" labels), @mention and #card-tag suggestion popups, and polished empty state.
-- **Full-Height Collaboration Modal** -- CollaborationModule modal now extends to full screen height (safe-area aware) for maximum vertical real estate.
-- **Board Status Row Removed** -- Removed the voting/locking status badge and action buttons from BoardViewScreen for a cleaner board experience.
-- **New DB: board_message_reactions** -- Emoji reactions table with RLS policies for session participants. New image_url column on board_messages for photo attachments.
+- **Industry-Standard Foreground Recovery** -- Fixed 5 compounding flaws that caused permanent spinner after backgrounding: disabled competing focusManager (single-authority resume via useForegroundRefresh), added 8-second auth timeout, aligned network timeout to 12 seconds (industry standard), added re-armable resume safety timeout, and enabled cached-data-first behavior. Cached data now shows instantly on resume; worst-case spinner capped at 25 seconds instead of permanent hang.
+- **Open/Closed Badge Fix** -- Replaced stale `openNow`/`isOpenNow` values from Google Places with live client-side computation using `weekday_text` data and the user's local clock.
+- **Luxurious Collaboration Discussion Redesign** -- Complete rewrite of the board discussion tab with iMessage-grade chat UX.
+- **Full-Height Collaboration Modal** -- CollaborationModule modal now extends to full screen height.
+- **Board Status Row Removed** -- Removed the voting/locking status badge and action buttons from BoardViewScreen.
 
 ---
 

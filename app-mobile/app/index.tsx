@@ -581,7 +581,7 @@ function AppContent() {
   // Centralized foreground resume: refreshes auth session, invalidates all critical
   // React Query caches, and runs non-RQ refreshes (sessions + notifications).
   // See useForegroundRefresh for the full list of invalidated query families.
-  useForegroundRefresh(user?.id, () => {
+  const resumeCount = useForegroundRefresh(user?.id, () => {
     refreshAllSessions();
     catchUpCollabNotifications();
   });
@@ -2043,6 +2043,7 @@ function AppContent() {
           <RecommendationsProvider
             currentMode={currentMode ?? "solo"}
             refreshKey={preferencesRefreshKey}
+            resumeCount={resumeCount}
           >
             <MobileFeaturesProvider>
               <NavigationProvider>

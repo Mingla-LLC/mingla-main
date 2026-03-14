@@ -1,21 +1,17 @@
 import { QueryClient, QueryCache, MutationCache, focusManager } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Platform } from 'react-native';
-import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
 
-// Refetch stale queries when the app returns to the foreground.
-// React Query's focusManager doesn't work in React Native out of the box —
-// this wires it up to AppState so stale caches refresh on resume.
-focusManager.setEventListener((handleFocus) => {
-  const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
-    if (Platform.OS !== 'web') {
-      handleFocus(state === 'active');
-    }
-  });
-  return () => subscription.remove();
+// Disable React Query's automatic refetch-on-focus. useForegroundRefresh is the
+// single authority for resume-triggered query work — it validates auth before
+// invalidating queries, preventing expired-token failures after long backgrounds.
+// Without this override, focusManager fires refetches BEFORE auth is validated.
+focusManager.setEventListener(() => {
+  // No-op listener: disables built-in focus detection.
+  // Return a cleanup function (required by the API).
+  return () => {};
 });
 
 export const queryClient = new QueryClient({

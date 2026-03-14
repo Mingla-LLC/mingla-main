@@ -93,6 +93,7 @@ interface RecommendationsProviderProps {
   children: React.ReactNode;
   currentMode?: string;
   refreshKey?: number | string;
+  resumeCount?: number;
 }
 
 export const RecommendationsProvider: React.FC<
@@ -101,6 +102,7 @@ export const RecommendationsProvider: React.FC<
   children,
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
+  resumeCount: propResumeCount = 0,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [batchSeed, setBatchSeed] = useState(0);
@@ -563,6 +565,32 @@ export const RecommendationsProvider: React.FC<
 
     return () => clearTimeout(safetyTimer);
   }, []); // Empty deps — mount only
+
+  // Resume safety timeout: re-armable 10-second guarantee that the spinner clears
+  // after the app resumes from background. Unlike the mount-only nuclear timeout,
+  // this fires on EVERY resume event (tracked by resumeCount from useForegroundRefresh).
+  //
+  // Scenario: app backgrounded before initial load completed, then resumed.
+  // The mount-only nuclear timeout already fired. All queries re-start but might
+  // hang again. This timeout ensures the spinner clears within 10 seconds of resume.
+  const prevResumeCountRef = useRef(propResumeCount);
+  useEffect(() => {
+    if (propResumeCount === prevResumeCountRef.current) return; // Not a resume event
+    prevResumeCountRef.current = propResumeCount;
+
+    // Only arm the timeout if loading is actually true. If the UI is already showing
+    // content, no rescue is needed.
+    if (!loading) return;
+
+    const resumeTimer = setTimeout(() => {
+      if (__DEV__) {
+        console.warn('[RecommendationsContext] Resume safety timeout (10s) — forcing complete');
+      }
+      setHasCompletedFetchForCurrentMode(true);
+    }, 10000);
+
+    return () => clearTimeout(resumeTimer);
+  }, [propResumeCount, loading]);
 
   // ── Deck batch history: detect pref changes → reset ──────────────────
   useEffect(() => {

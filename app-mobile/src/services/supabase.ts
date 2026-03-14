@@ -20,7 +20,11 @@ const createAbortError = (message: string): Error => {
 };
 
 const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-  const TIMEOUT_MS = 30000;
+  // 12-second hard cap. Aligned with mobile industry standard (10-15s).
+  // Previously 30s — caused 15s useUserPreferences wrapper to fire prematurely,
+  // and stacked to 60s+ worst-case via retries. At 12s with retry:1, worst case
+  // is 25s (12s + 1s delay + 12s) which is acceptable for mobile.
+  const TIMEOUT_MS = 12000;
   const controller = new AbortController();
 
   // If the caller already provided a signal, respect it
@@ -34,10 +38,18 @@ const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promis
   const fetchPromise = fetch(url, {
     ...options,
     signal: controller.signal,
-  }).then((response) => {
-    clearTimeout(timeoutId);
-    return response;
-  });
+  }).then(
+    (response) => {
+      clearTimeout(timeoutId);
+      return response;
+    },
+    (error) => {
+      // Clear timeout on fetch rejection too (offline, DNS failure, abort).
+      // Without this, the 12s timer leaks until it fires and rejects into the void.
+      clearTimeout(timeoutId);
+      throw error;
+    },
+  );
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
