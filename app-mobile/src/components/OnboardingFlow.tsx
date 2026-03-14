@@ -31,9 +31,19 @@ import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
-import { createSavedPerson, SavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
-import { uploadOnboardingAudio, deleteFromStorage, createAudioClipRecord } from '../services/personAudioService'
+
+// Inline type + function for legacy saved_people creation during onboarding.
+// The savedPeopleService was removed (replaced by pairing). The table still exists
+// for backward compat — it will be dropped in a future migration.
+type SavedPersonGender = "man" | "woman" | "non-binary" | "transgender_man" | "transgender_woman" | "genderqueer" | "agender" | "prefer_not_to_say" | null;
+async function createSavedPerson(person: { user_id: string; name: string; initials: string; birthday: string | null; gender: SavedPersonGender; description: string | null }) {
+  const { supabase } = await import('../services/supabase');
+  const { data, error } = await supabase.from('saved_people').insert(person).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+// Audio services removed — pairing uses real behavior data instead of voice recordings.
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
@@ -43,12 +53,11 @@ import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
 import { CategoryTile } from './ui/CategoryTile'
-import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
 import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
 import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
 import { useFriends } from '../hooks/useFriends'
-import { processPersonAudio } from '../services/personAudioProcessingService'
+// processPersonAudio removed — pairing uses real behavior data
 import { PulseDotLoader } from './ui/PulseDotLoader'
 
 import {
@@ -1181,27 +1190,11 @@ const OnboardingFlow = ({
         name: data.personName || 'Friend',
         initials: (data.personName || 'F').slice(0, 2).toUpperCase(),
         birthday: data.personBirthday?.toISOString().split('T')[0] || null,
-        gender: data.personGender as SavedPerson['gender'],
+        gender: data.personGender as SavedPersonGender,
         description: null as string | null,
       }
-      const person = await createSavedPerson(personData)
-
-      if (data.audioClipStoragePath && person?.id) {
-        const fileName = data.audioClipStoragePath.split('/').pop() || `onboarding_${Date.now()}.m4a`
-        // Audio was eagerly uploaded to staging — just create the DB record
-        await createAudioClipRecord(user.id, person.id, data.audioClipStoragePath, fileName, data.audioClipDuration || 0, 0)
-
-        // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
-        const coords = data.coordinates
-        if (coords) {
-          processPersonAudio({
-            personId: person.id,
-            audioStoragePath: data.audioClipStoragePath,
-            location: { latitude: coords.lat, longitude: coords.lng },
-            occasions: buildOccasions(data.personBirthday),
-          }).catch((err) => console.info('[Onboarding] Audio processing (fire-and-forget):', err?.message))
-        }
-      }
+      await createSavedPerson(personData)
+      // Audio recording pipeline removed — pairing uses real behavior data
       setSaving(false)
       goNext()
     } catch (e) {
@@ -1223,30 +1216,11 @@ const OnboardingFlow = ({
           name: friend.displayName || 'Friend',
           initials: (friend.displayName || 'F').slice(0, 2).toUpperCase(),
           birthday: null as string | null,
-          gender: null as SavedPerson['gender'],
+          gender: null as SavedPersonGender,
           description: null as string | null,
         }
-        const person = await createSavedPerson(personData)
-
-        // 3. Create audio clip record if audio was recorded
-        const friendKey = friend.userId || friend.phoneE164
-        const clip = audioClipsByFriend[friendKey]
-        if (clip && clip.storagePath && person?.id) {
-          const fileName = clip.storagePath.split('/').pop() || `onboarding_sync_${Date.now()}.m4a`
-          await createAudioClipRecord(user.id, person.id, clip.storagePath, fileName, clip.duration, 0)
-
-          // Fire-and-forget: process audio
-          const coords = data.coordinates
-          if (coords) {
-            processPersonAudio({
-              personId: person.id,
-              audioStoragePath: clip.storagePath,
-              location: { latitude: coords.lat, longitude: coords.lng },
-              occasions: buildOccasions(null),
-            }).catch((err) => console.info('[Onboarding] Sync audio processing (fire-and-forget):', err?.message))
-          }
-        }
-
+        await createSavedPerson(personData)
+        // Audio recording pipeline removed — pairing uses real behavior data
       }
       setSaving(false)
       goNext() // This triggers launch (end of Path A sequence)
@@ -2562,13 +2536,6 @@ const OnboardingFlow = ({
           addedFriends={data.addedFriends}
           initialSelectedIds={data.selectedSyncFriends.map(f => f.userId || f.phoneE164)}
           onContinue={(selectedFriends, newFriends) => {
-            // Clean up any previously uploaded staging audio for friends no longer selected
-            const prevClips = data.audioClipsByFriend
-            for (const key of Object.keys(prevClips)) {
-              if (prevClips[key]?.storagePath) {
-                deleteFromStorage(prevClips[key].storagePath).catch(() => {})
-              }
-            }
             setData(prev => ({
               ...prev,
               selectedSyncFriends: selectedFriends,
@@ -2582,53 +2549,7 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'pathA_audio') {
-      const friend = data.selectedSyncFriends[currentAudioFriendIndex]
-      const friendKey = friend?.userId || friend?.phoneE164
-      const total = data.selectedSyncFriends.length
-      const current = currentAudioFriendIndex + 1
-
-      return (
-        <View>
-          <Text style={styles.headline}>Tell us about {friend?.displayName || 'them'}</Text>
-          <Text style={styles.body}>
-            What do they love? What makes them tick?{total > 1 ? ` (${current}/${total})` : ''}
-          </Text>
-          <Text style={styles.caption}>
-            Record at least 10 seconds. Talk like you would to a friend.
-          </Text>
-          <OnboardingAudioRecorder
-            key={friendKey}
-            initialClip={friendKey && audioClipsByFriend[friendKey] ? audioClipsByFriend[friendKey] : undefined}
-            onClipReady={(uri, duration) => {
-              if (!friendKey || !user?.id) return
-              // Eager upload to Supabase Storage so it survives app restart
-              uploadOnboardingAudio(user.id, friendKey, uri)
-                .then(storagePath => {
-                  setAudioClipsByFriend(prev => ({ ...prev, [friendKey]: { storagePath, duration } }))
-                })
-                .catch(err => {
-                  console.error('[Onboarding] Eager audio upload failed — clip not saved:', err?.message)
-                  // Do NOT store a clip with empty storagePath — leave button disabled so user re-records
-                })
-            }}
-            onClipCleared={() => {
-              if (!friendKey) return
-              const existing = audioClipsByFriend[friendKey]
-              if (existing?.storagePath) {
-                deleteFromStorage(existing.storagePath).catch(() => {})
-              }
-              setAudioClipsByFriend(prev => {
-                const next = { ...prev }
-                delete next[friendKey]
-                return next
-              })
-            }}
-            minDuration={10}
-          />
-        </View>
-      )
-    }
+    // pathA_audio step removed — audio recording pipeline replaced by pairing system
 
     if (subStep === 'pathB_name') {
       return (
@@ -2701,39 +2622,7 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'pathB_audio') {
-      return (
-        <View>
-          <Text style={styles.headline}>Tell us about {data.personName || 'them'}</Text>
-          <Text style={styles.body}>What do they love? What's their vibe?</Text>
-          <Text style={styles.caption}>
-            Record at least 10 seconds. Talk like you would to a friend.
-          </Text>
-          <OnboardingAudioRecorder
-            initialClip={data.audioClipStoragePath ? { storagePath: data.audioClipStoragePath, duration: data.audioClipDuration || 0 } : undefined}
-            onClipReady={(uri, duration) => {
-              if (!user?.id) return
-              setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))
-              // Eager upload to Supabase Storage
-              uploadOnboardingAudio(user.id, 'pathB', uri)
-                .then(storagePath => {
-                  setData((p) => ({ ...p, audioClipStoragePath: storagePath }))
-                })
-                .catch(err => {
-                  console.error('[Onboarding] Eager pathB audio upload failed:', err?.message)
-                })
-            }}
-            onClipCleared={() => {
-              if (data.audioClipStoragePath) {
-                deleteFromStorage(data.audioClipStoragePath).catch(() => {})
-              }
-              setData((p) => ({ ...p, audioClipUri: null, audioClipDuration: null, audioClipStoragePath: null }))
-            }}
-            minDuration={10}
-          />
-        </View>
-      )
-    }
+    // pathB_audio step removed — audio recording pipeline replaced by pairing system
 
     return null
   }

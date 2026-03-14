@@ -1,6 +1,6 @@
 /**
  * Shared utilities for custom day calculations.
- * Used by both PersonHolidayView and CustomDayHero.
+ * Used by PersonHolidayView.
  */
 
 const MONTHS = [

@@ -75,7 +75,7 @@ async function getCurrentUserId(): Promise<string> {
 export async function fetchPairingPills(userId: string): Promise<PairingPill[]> {
   const pills: PairingPill[] = [];
 
-  // 1. Query active pairings
+  // 1. Query active pairings (a row existing in pairings IS the active state — no status column)
   const { data: pairings, error: pairingsError } = await supabase
     .from("pairings")
     .select(`
@@ -83,11 +83,9 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
       user_a_id,
       user_b_id,
       pair_request_id,
-      status_message,
       created_at
     `)
-    .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`)
-    .eq("status", "active");
+    .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`);
 
   if (pairingsError) throw new Error(pairingsError.message);
 
@@ -125,7 +123,7 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
         avatarUrl: profile?.avatar_url ?? null,
         initials: generateInitials(displayName),
         pillState: "active",
-        statusMessage: pairing.status_message ?? null,
+        statusMessage: null,
         pairedUserId: partnerId,
         birthday: profile?.birthday ?? null,
         gender: profile?.gender ?? null,

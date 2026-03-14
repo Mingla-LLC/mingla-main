@@ -40,9 +40,6 @@ import LinkRequestBanner from "./LinkRequestBanner";
 import PersonHolidayView from "./PersonHolidayView";
 import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 
-// Storage key for saved people
-const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
-
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 

@@ -19,6 +19,8 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import { useFriends } from "../hooks/useFriends";
+import { useAcceptPairRequest, useDeclinePairRequest } from "../hooks/usePairings";
+import { acceptPairRequest, declinePairRequest } from "../services/pairingService";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -178,9 +180,7 @@ export default function HomePage({
 
   const handleAcceptPairRequest = async (requestId: string, notificationId: string) => {
     try {
-      // Pair request acceptance is handled by the pairing hooks in the Discover tab
-      // For now, just remove the notification — the user can accept via the Discover tab
-      console.log("[HomePage] Pair request accept:", requestId);
+      await acceptPairRequest(requestId);
     } catch (error) {
       console.error("Error accepting pair request:", error);
     } finally {
@@ -190,7 +190,7 @@ export default function HomePage({
 
   const handleDeclinePairRequest = async (requestId: string, notificationId: string) => {
     try {
-      console.log("[HomePage] Pair request decline:", requestId);
+      await declinePairRequest(requestId);
     } catch (error) {
       console.error("Error declining pair request:", error);
     } finally {

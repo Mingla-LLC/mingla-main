@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
 import { saveKeys } from './useSaveQueries';
-import { savedPeopleKeys } from './useSavedPeople';
+import { pairingKeys } from './usePairings';
 import { phoneInviteKeys } from './usePhoneInvite';
 import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
@@ -17,7 +17,7 @@ const CRITICAL_QUERY_KEYS = [
   friendsKeys.all,                // friends list, requests, blocked, muted
   boardKeys.all,                  // collaboration boards
   saveKeys.all,                   // saved experiences
-  savedPeopleKeys.all,            // saved people
+  pairingKeys.prefix,              // pairings and pair requests
   phoneInviteKeys.all,            // pending phone invites
   subscriptionKeys.all,           // subscription status
   ['savedCards'],                  // saved cards

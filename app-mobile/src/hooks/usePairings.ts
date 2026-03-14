@@ -19,6 +19,7 @@ import { customHolidayKeys } from "./useCustomHolidays";
 // ── Query Keys ──────────────────────────────────────────────────────────────
 
 export const pairingKeys = {
+  prefix: ["pairings"] as const,
   all: (userId: string) => ["pairings", userId] as const,
   pills: (userId: string) => ["pairings", "pills", userId] as const,
   incomingRequests: (userId: string) =>
