@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +15,27 @@ function jsonResponse(body: object, status = 200) {
 }
 
 const E164_REGEX = /^\+[1-9]\d{1,14}$/;
+
+/** Call notify-dispatch edge function instead of sendPush directly */
+async function callNotifyDispatch(payload: Record<string, unknown>): Promise<void> {
+  const notifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`;
+  try {
+    const resp = await fetch(notifyUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "unknown");
+      console.warn("[send-pair-request] notify-dispatch returned", resp.status, text);
+    }
+  } catch (err) {
+    console.warn("[send-pair-request] notify-dispatch call failed:", err);
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -211,11 +231,27 @@ serve(async (req) => {
 
         // Only send push if we created a NEW friend request (not reused an existing one)
         if (createdNewFriendRequest) {
-          await sendPush({
-            targetUserId: friendUserId,
-            title: `${senderName} sent you a friend request`,
-            body: "Accept to connect on Mingla.",
-            data: { type: "friend_request", senderId },
+          await callNotifyDispatch({
+            userId: friendUserId,
+            type: "friend_request_received",
+            title: `${senderName} wants to connect`,
+            body: "Tap to accept or pass.",
+            data: {
+              deepLink: "mingla://connections?tab=requests",
+              type: "friend_request",
+              senderId,
+            },
+            actorId: senderId,
+            relatedId: friendRequestId,
+            relatedType: "friend_request",
+            idempotencyKey: `friend_request_received:${senderId}:${friendRequestId}`,
+            pushOverrides: {
+              androidChannelId: "social",
+              buttons: [
+                { id: "accept", text: "Accept" },
+                { id: "decline", text: "Decline" },
+              ],
+            },
           });
         }
 
@@ -274,12 +310,29 @@ serve(async (req) => {
         return jsonResponse({ error: "Failed to create pair request" }, 500);
       }
 
-      // Send push notification
-      await sendPush({
-        targetUserId: friendUserId,
+      // Send push notification via notify-dispatch
+      await callNotifyDispatch({
+        userId: friendUserId,
+        type: "pair_request_received",
         title: `${senderName} wants to pair with you`,
-        body: "Accept to start discovering experiences for each other.",
-        data: { type: "pair_request", requestId: pairRequest.id, senderId },
+        body: "Accept to discover experiences for each other.",
+        data: {
+          deepLink: `mingla://discover?pairRequest=${pairRequest.id}`,
+          type: "pair_request",
+          requestId: pairRequest.id,
+          senderId,
+        },
+        actorId: senderId,
+        relatedId: pairRequest.id,
+        relatedType: "pair_request",
+        idempotencyKey: `pair_request_received:${senderId}:${pairRequest.id}`,
+        pushOverrides: {
+          androidChannelId: "social",
+          buttons: [
+            { id: "accept", text: "Accept" },
+            { id: "decline", text: "Decline" },
+          ],
+        },
       });
 
       return jsonResponse({
@@ -378,11 +431,28 @@ serve(async (req) => {
             return jsonResponse({ error: "Failed to create pair request" }, 500);
           }
 
-          await sendPush({
-            targetUserId,
+          await callNotifyDispatch({
+            userId: targetUserId,
+            type: "pair_request_received",
             title: `${senderName} wants to pair with you`,
-            body: "Accept to start discovering experiences for each other.",
-            data: { type: "pair_request", requestId: pairRequest.id, senderId },
+            body: "Accept to discover experiences for each other.",
+            data: {
+              deepLink: `mingla://discover?pairRequest=${pairRequest.id}`,
+              type: "pair_request",
+              requestId: pairRequest.id,
+              senderId,
+            },
+            actorId: senderId,
+            relatedId: pairRequest.id,
+            relatedType: "pair_request",
+            idempotencyKey: `pair_request_received:${senderId}:${pairRequest.id}`,
+            pushOverrides: {
+              androidChannelId: "social",
+              buttons: [
+                { id: "accept", text: "Accept" },
+                { id: "decline", text: "Decline" },
+              ],
+            },
           });
 
           return jsonResponse({
@@ -460,11 +530,27 @@ serve(async (req) => {
 
         // Only send push if we created a NEW friend request (not reused an existing one)
         if (createdNewFR) {
-          await sendPush({
-            targetUserId,
-            title: `${senderName} sent you a friend request`,
-            body: "Accept to connect on Mingla.",
-            data: { type: "friend_request", senderId },
+          await callNotifyDispatch({
+            userId: targetUserId,
+            type: "friend_request_received",
+            title: `${senderName} wants to connect`,
+            body: "Tap to accept or pass.",
+            data: {
+              deepLink: "mingla://connections?tab=requests",
+              type: "friend_request",
+              senderId,
+            },
+            actorId: senderId,
+            relatedId: friendRequestId,
+            relatedType: "friend_request",
+            idempotencyKey: `friend_request_received:${senderId}:${friendRequestId}`,
+            pushOverrides: {
+              androidChannelId: "social",
+              buttons: [
+                { id: "accept", text: "Accept" },
+                { id: "decline", text: "Decline" },
+              ],
+            },
           });
         }
 

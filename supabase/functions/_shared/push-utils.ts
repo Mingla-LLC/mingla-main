@@ -13,6 +13,11 @@ interface PushPayload {
   body: string;
   data?: Record<string, unknown>;
   androidChannelId?: string;      // Android notification channel
+  buttons?: Array<{ id: string; text: string }>;  // Action buttons (max 3)
+  collapseId?: string;            // Replaces previous notification with same collapse ID
+  threadId?: string;              // iOS thread grouping / Android group key
+  iosBadgeType?: string;          // "SetTo" | "Increase"
+  iosBadgeCount?: number;         // Badge count value
 }
 
 interface OneSignalResponse {
@@ -48,6 +53,21 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     large_icon: "ic_onesignal_large_icon_default",
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
+    }),
+    ...(payload.buttons && payload.buttons.length > 0 && {
+      buttons: payload.buttons,
+    }),
+    ...(payload.collapseId && {
+      collapse_id: payload.collapseId,
+    }),
+    ...(payload.threadId && {
+      thread_id: payload.threadId,            // iOS grouping
+      android_group: payload.threadId,        // Android grouping
+      android_group_message: { en: "$[notif_count] new notifications" },
+    }),
+    ...(payload.iosBadgeType && {
+      ios_badgeType: payload.iosBadgeType,
+      ios_badgeCount: payload.iosBadgeCount ?? 0,
     }),
   };
 

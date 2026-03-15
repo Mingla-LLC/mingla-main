@@ -72,12 +72,16 @@ import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
-import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
+// V2: inAppNotificationService is no longer imported — server-synced notifications
+// are handled by useNotifications hook + Supabase Realtime. The old service file
+// stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useSocialRealtime } from "../src/hooks/useSocialRealtime";
 import * as friendsService from "../src/services/friendsService";
+import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService";
+import type { ServerNotification } from "../src/hooks/useNotifications";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -176,12 +180,8 @@ function AppContent() {
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
-  const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
-  const notifiedFriendAcceptedIdsRef = useRef<Set<string>>(new Set()); // Track which friend acceptances we've notified about
-  // Tracks collaboration invite IDs that have already generated in-app notifications.
-  // Prevents duplicates when the same invite is seen by both the push handler and
-  // the foreground catch-up mechanism.
-  const notifiedCollabInviteIdsRef = useRef<Set<string>>(new Set());
+  // V2: pending deep link from push notification received before auth
+  const pendingDeepLinkRef = useRef<string | null>(null);
   // Ref that always holds the current user ID. Allows notification listeners
   // (registered once with [] deps) to read the latest auth state without
   // stale closures — setters from useState are stable, but derived values
@@ -262,117 +262,167 @@ function AppContent() {
   }, [user?.id, isLoadingAuth]);
   // ───────────────────────────────────────────────────────────────────────────
 
-  // Initialize in-app notification service on mount
+  // V2: Update user timezone on authentication for server-side quiet hours
   useEffect(() => {
-    inAppNotificationService.initialize().then(async () => {
-      // Clean up old notifications with "New Connection Request" title
-      const all = inAppNotificationService.getAll();
-      for (const notif of all) {
-        if (notif.title === "New Connection Request") {
-          console.warn(`[AppInit] Removing old notification: ${notif.id} - "${notif.title}"`);
-          await inAppNotificationService.remove(notif.id);
-        }
-      }
-    });
-  }, []);
+    if (user?.id) {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      supabase
+        .from('profiles')
+        .update({ timezone })
+        .eq('id', user.id)
+        .then(() => {});
+    }
+  }, [user?.id]);
 
-  // Push notification listeners — convert pushes to in-app notifications.
-  // Registered once on mount. Uses userIdRef (not closure-captured isAuthenticated)
-  // to check current auth state, avoiding stale-closure bugs.
+  // V2 Push notification listeners — server-synced notifications.
+  // The server creates notification rows via triggers/edge functions.
+  // Push payloads now include notificationId and deepLink.
+  // Registered once on mount. Uses userIdRef for current auth state.
   useEffect(() => {
-    /** Shared handler: route notification data to the in-app service. */
-    const processNotification = (data: Record<string, unknown>, navigateTo?: string) => {
-      // Auth guard: ignore notifications if the user isn't logged in.
-      // This prevents navigation to app pages while on the WelcomeScreen.
+    /**
+     * V2 processNotification: handles push data from OneSignal.
+     * Server already created the notification row — we just mark as read and navigate.
+     */
+    function processNotification(
+      data: Record<string, unknown>,
+      navigationTarget?: string
+    ) {
       if (!userIdRef.current) {
-        console.log('[OneSignal] Notification ignored — user not authenticated')
-        return
+        // Stash the deep link for after auth
+        if (data.deepLink) {
+          pendingDeepLinkRef.current = data.deepLink as string;
+        }
+        return;
       }
 
-      switch (data.type) {
-        case "collaboration_invite_received":
-          // Record this invite ID to prevent duplicate notification on foreground catch-up
-          if (data.inviteId) {
-            notifiedCollabInviteIdsRef.current.add(data.inviteId as string);
-          }
-          inAppNotificationService.notifyCollaborationInvite(
-            (data.sessionName as string) || "a session",
-            (data.inviterName as string) || "Someone",
-            data.sessionId as string,
-            data.inviteId as string,
-            data.inviterAvatarUrl as string | undefined
-          );
-          break;
-        case "collaboration_invite_response":
-          inAppNotificationService.add(
-            "collaboration_invite",
-            (data.title as string) || "Collaboration update",
-            (data.body as string) || "Someone responded to your invite.",
-            { page: "home" },
-            { sessionId: data.sessionId, inviteId: data.inviteId, response: data.response }
-          );
-          break;
-        case "collaboration_invite_sent":
-          inAppNotificationService.add(
-            "system",
-            (data.title as string) || "Invite sent",
-            (data.body as string) || "Your collaboration invite was sent.",
-            { page: "home" },
-            { sessionId: data.sessionId }
-          );
-          break;
-        case "friend_request": {
-          const requestId = data.requestId as string | undefined;
-          const senderName = (data.senderUsername as string) || "Someone";
-          const senderId = data.senderId as string | undefined;
+      const notificationId = data.notificationId as string | undefined;
+      const deepLink = data.deepLink as string | undefined;
+      const actionId = data.actionId as string | undefined;
 
-          // Guard: skip if request ID is missing (malformed push payload)
-          if (!requestId) {
-            console.warn('[OneSignal] friend_request push missing requestId, skipping');
+      // Handle push action buttons (Accept/Decline from system tray)
+      if (actionId === 'accept') {
+        handlePushAccept(data);
+        return;
+      }
+      if (actionId === 'decline') {
+        handlePushDecline(data);
+        return;
+      }
+
+      // Mark as read on server (fire-and-forget)
+      if (notificationId) {
+        supabase
+          .from('notifications')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq('id', notificationId)
+          .then(() => {});
+      }
+
+      // Navigate via deep link
+      if (deepLink) {
+        const action = parseDeepLink(deepLink);
+        executeDeepLink(action, {
+          setCurrentPage: setCurrentPage as (page: string) => void,
+          setBoardViewSessionId,
+          setShowPaywall: (show: boolean) => setShowPaywall(show),
+        });
+      } else if (navigationTarget) {
+        // Fallback for old push format
+        setCurrentPage(navigationTarget as any);
+      }
+    }
+
+    /** Handle push accept button (from system tray action) */
+    async function handlePushAccept(data: Record<string, unknown>) {
+      const type = data.type as string;
+      const notificationId = data.notificationId as string | undefined;
+
+      try {
+        switch (type) {
+          case 'friend_request_received': {
+            const requestId = data.requestId as string;
+            if (requestId) {
+              await supabase.rpc('accept_friend_request_atomic', {
+                p_request_id: requestId,
+              });
+            }
             break;
           }
-
-          // Deduplicate: mark as notified so the polling loop (line ~634) skips it
-          notifiedFriendRequestIdsRef.current.add(requestId);
-
-          inAppNotificationService.notifyFriendRequest(
-            senderName,
-            senderId,
-            undefined,   // avatar_url — not included in push payload
-            undefined,   // email — not included in push payload
-            requestId
-          );
-          break;
-        }
-        case "friend_accepted": {
-          const accepterName = (data.accepterName as string) || "Someone";
-          const accepterId = data.accepterId as string | undefined;
-          const acceptRequestId = data.requestId as string | undefined;
-
-          // Deduplicate: use requestId (or accepterId as fallback) to prevent duplicate notifications
-          const dedupeKey = acceptRequestId || accepterId || "";
-          if (dedupeKey && notifiedFriendAcceptedIdsRef.current.has(dedupeKey)) {
+          case 'pair_request_received': {
+            const { acceptPairRequest: acceptPairSvc } = await import('../src/services/pairingService');
+            await acceptPairSvc(data.requestId as string);
             break;
           }
-          if (dedupeKey) {
-            notifiedFriendAcceptedIdsRef.current.add(dedupeKey);
+          case 'collaboration_invite_received': {
+            await supabase
+              .from('collaboration_invites')
+              .update({ status: 'accepted' })
+              .eq('id', data.inviteId as string);
+            break;
           }
-
-          inAppNotificationService.notifyFriendAccepted(accepterName, accepterId);
-          break;
+          case 'link_request_received': {
+            await supabase
+              .from('link_requests')
+              .update({ status: 'accepted' })
+              .eq('id', data.linkId as string);
+            break;
+          }
         }
-        default:
-          console.log('[OneSignal] Unknown notification type:', data.type)
-          return; // Don't navigate for unknown types
+        // Delete the notification after successful action
+        if (notificationId) {
+          await supabase.from('notifications').delete().eq('id', notificationId);
+        }
+      } catch (err) {
+        console.warn('[processNotification] Push accept failed:', err);
       }
+    }
 
-      // Navigate only if a target was specified (click handler only)
-      if (navigateTo) {
-        setCurrentPage(navigateTo as any);
+    /** Handle push decline button (from system tray action) */
+    async function handlePushDecline(data: Record<string, unknown>) {
+      const type = data.type as string;
+      const notificationId = data.notificationId as string | undefined;
+
+      try {
+        switch (type) {
+          case 'friend_request_received': {
+            const requestId = data.requestId as string;
+            if (requestId) {
+              await supabase
+                .from('friend_requests')
+                .update({ status: 'declined' })
+                .eq('id', requestId);
+            }
+            break;
+          }
+          case 'pair_request_received': {
+            const { declinePairRequest: declinePairSvc } = await import('../src/services/pairingService');
+            await declinePairSvc(data.requestId as string);
+            break;
+          }
+          case 'collaboration_invite_received': {
+            await supabase
+              .from('collaboration_invites')
+              .update({ status: 'declined' })
+              .eq('id', data.inviteId as string);
+            break;
+          }
+          case 'link_request_received': {
+            await supabase
+              .from('link_requests')
+              .update({ status: 'declined' })
+              .eq('id', data.linkId as string);
+            break;
+          }
+        }
+        if (notificationId) {
+          await supabase.from('notifications').delete().eq('id', notificationId);
+        }
+      } catch (err) {
+        console.warn('[processNotification] Push decline failed:', err);
       }
-    };
+    }
 
-    // Navigation targets per notification type (used by click handler only)
+    // Navigation targets per notification type (fallback for old push format)
     const NAV_TARGETS: Record<string, string> = {
       collaboration_invite_received: "home",
       collaboration_invite_response: "home",
@@ -381,18 +431,13 @@ function AppContent() {
       friend_accepted: "connections",
     };
 
-    // Foreground: push arrives while app is open
-    const removeForeground = onForegroundNotification((data, prevent) => {
-      if (!data?.type) return;
-
-      // Only suppress system tray if the user is authenticated and the
-      // in-app service can handle it. If not authenticated, let the system
-      // notification show — it's the only way the user will see it.
+    // Foreground: push arrives while app is open — suppress system tray.
+    // Do NOT navigate — Realtime delivers the in-app notification.
+    // Navigation only happens via onNotificationClicked (background/killed tap).
+    const removeForeground = onForegroundNotification((_data, prevent) => {
       if (userIdRef.current) {
-        prevent();
+        prevent(); // Suppress system tray — Realtime delivers in-app
       }
-
-      processNotification(data);
     });
 
     // Background: user taps a push notification
@@ -519,88 +564,24 @@ function AppContent() {
     };
   }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
 
-  // Collaboration invite notification catch-up helper.
-  // When the app returns from background (or on initial mount), pending invites
-  // may exist in the DB that never generated an in-app notification (push arrived
-  // while app was killed, or push was missed entirely). This queries pending
-  // invites and creates notifications for any not yet tracked.
-  const catchUpCollabNotifications = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const { data: pendingInvites } = await supabase
-        .from('collaboration_invites')
-        .select(`
-          id,
-          session_id,
-          inviter_id,
-          status,
-          created_at,
-          collaboration_sessions!inner(name),
-          profiles!collaboration_invites_inviter_id_fkey(display_name, first_name, username, avatar_url)
-        `)
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending')
-        .eq('pending_friendship', false);
-
-      if (!pendingInvites || pendingInvites.length === 0) return;
-
-      for (const invite of pendingInvites) {
-        if (notifiedCollabInviteIdsRef.current.has(invite.id)) continue;
-
-        const session = invite.collaboration_sessions as any;
-        const inviterProfile = invite.profiles as any;
-        const sessionName = session?.name || 'a session';
-        const inviterName =
-          inviterProfile?.display_name ||
-          inviterProfile?.first_name ||
-          inviterProfile?.username ||
-          'Someone';
-
-        await inAppNotificationService.notifyCollaborationInvite(
-          sessionName,
-          inviterName,
-          invite.session_id,
-          invite.id,
-          inviterProfile?.avatar_url
-        );
-        notifiedCollabInviteIdsRef.current.add(invite.id);
-
-        // For freshly converted phone invites (created in last 60s),
-        // also trigger a push notification so it appears in the system tray.
-        const inviteAge = Date.now() - new Date(invite.created_at).getTime();
-        if (inviteAge < 60_000) {
-          try {
-            await supabase.functions.invoke('send-collaboration-invite', {
-              body: {
-                inviterId: invite.inviter_id,
-                invitedUserId: user.id,
-                sessionId: invite.session_id,
-                sessionName: sessionName || 'Collaboration Session',
-                inviteId: invite.id,
-              },
-            });
-          } catch {
-            // Push is best-effort
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[CollabCatchUp] Failed to catch up notifications:', err);
+  // V2: Process pending deep link after auth resolves
+  useEffect(() => {
+    if (user?.id && pendingDeepLinkRef.current) {
+      const action = parseDeepLink(pendingDeepLinkRef.current);
+      executeDeepLink(action, {
+        setCurrentPage: setCurrentPage as (page: string) => void,
+        setBoardViewSessionId,
+        setShowPaywall: (show: boolean) => setShowPaywall(show),
+      });
+      pendingDeepLinkRef.current = null;
     }
   }, [user?.id]);
-
-  // Run catch-up once on mount (covers app launch after receiving pushes while killed)
-  useEffect(() => {
-    if (!user?.id) return;
-    catchUpCollabNotifications();
-  }, [user?.id, catchUpCollabNotifications]);
 
   // Centralized foreground resume: refreshes auth session, invalidates all critical
   // React Query caches, and runs non-RQ refreshes (sessions + notifications).
   // See useForegroundRefresh for the full list of invalidated query families.
   const resumeCount = useForegroundRefresh(user?.id, () => {
     refreshAllSessions();
-    catchUpCollabNotifications();
   });
 
   // Realtime: keep friends, pairings, calendar, and messages fresh on all screens.
@@ -695,46 +676,10 @@ function AppContent() {
     return () => clearInterval(interval);
   }, [user?.id, isAuthenticated, loadFriendRequests]);
 
-  // Fire notifications for new incoming friend requests
-  useEffect(() => {
-    if (!friendRequests || friendRequests.length === 0) return;
-
-    // Filter for incoming pending requests
-    const incomingRequests = friendRequests.filter(
-      (req: any) => req.type === "incoming" && req.status === "pending"
-    );
-
-    // For each request, check if we've already notified about it
-    incomingRequests.forEach((request: any) => {
-      if (!notifiedFriendRequestIdsRef.current.has(request.id)) {
-        // Fire notification for this new friend request
-        const senderName =
-          request.sender?.display_name ||
-          request.sender?.first_name ||
-          request.sender?.username ||
-          "Someone";
-
-        console.log(`[FriendRequest Notification] Sender data:`, {
-          id: request.sender_id,
-          name: senderName,
-          avatar_url: request.sender?.avatar_url,
-          email: request.sender?.email,
-          fullSender: request.sender
-        });
-
-        inAppNotificationService.notifyFriendRequest(
-          senderName,
-          request.sender_id,
-          request.sender?.avatar_url,
-          request.sender?.email,
-          request.id
-        );
-        
-        // Mark as notified
-        notifiedFriendRequestIdsRef.current.add(request.id);
-      }
-    });
-  }, [friendRequests]);
+  // V2: Friend request notifications are now server-created.
+  // The polling loop above (loadFriendRequests) still fetches request data
+  // for the FriendRequestsModal, but we no longer create local notifications.
+  // The server-side notification trigger handles it.
 
   // Check if user needs onboarding (for authenticated users)
   // Show onboarding if user is authenticated but hasn't completed onboarding
@@ -808,44 +753,46 @@ function AppContent() {
     status: 'offline' as const,
   }));
 
-  // Handle notification tap → navigate to the relevant page
-  const handleNotificationNavigate = (notification: InAppNotification) => {
-    const nav = notification.navigation;
-    logger.action('Notification tapped', { page: nav.page, type: notification.type });
-    switch (nav.page) {
-      case "home":
-        setCurrentPage("home");
-        break;
-      case "saved":
-        setCurrentPage("saved");
-        break;
-      case "connections":
-        setCurrentPage("connections");
-        break;
-      case "likes":
-        setCurrentPage("likes");
-        break;
-      case "profile":
-        setCurrentPage("profile");
-        break;
-      case "discover":
-        setCurrentPage("discover");
-        break;
-      case "activity":
-        setCurrentPage("likes");
-        break;
-      case "board-view":
-        if ((nav as any).sessionId) {
-          setBoardViewSessionId((nav as any).sessionId);
-          setCurrentPage("board-view");
-        }
-        break;
-      case "preferences":
-        setShowPreferences(true);
-        break;
-      case "none":
-      default:
-        break;
+  // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
+  const handleNotificationNavigate = (notification: ServerNotification) => {
+    const deepLink = notification.data?.deepLink as string | undefined;
+    logger.action('Notification tapped', { type: notification.type, deepLink });
+
+    // Try deep link first
+    if (deepLink) {
+      const action = parseDeepLink(deepLink);
+      executeDeepLink(action, {
+        setCurrentPage: setCurrentPage as (page: string) => void,
+        setBoardViewSessionId,
+        setShowPaywall: (show: boolean) => setShowPaywall(show),
+      });
+      return;
+    }
+
+    // Fallback: map notification type to page
+    const type = notification.type;
+    if (type.startsWith('friend_') || type.startsWith('pair_') || type.startsWith('link_')) {
+      setCurrentPage('connections');
+    } else if (type.startsWith('collaboration_') || type.startsWith('session_')) {
+      setCurrentPage('home');
+    } else if (type.startsWith('direct_message_')) {
+      setCurrentPage('connections');
+    } else if (type.startsWith('board_message_') || type.startsWith('board_card_')) {
+      const sessionId = notification.data?.sessionId as string;
+      if (sessionId) {
+        setBoardViewSessionId(sessionId);
+        setCurrentPage('board-view');
+      } else {
+        setCurrentPage('likes');
+      }
+    } else if (type.startsWith('calendar_')) {
+      setCurrentPage('likes');
+    } else if (type === 'welcome' || type === 'weekly_digest') {
+      setCurrentPage('home');
+    } else if (type === 'trial_ending') {
+      setShowPaywall(true);
+    } else {
+      setCurrentPage('home');
     }
   };
 
@@ -1176,9 +1123,6 @@ function AppContent() {
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
 
-      // Log in-app notification
-      inAppNotificationService.notifySessionCreated(sessionName, session.id);
-      
       // Switch to the new session
       handlers.handleModeChange(sessionName);
       setCurrentSessionId(session.id);
@@ -1401,24 +1345,7 @@ function AppContent() {
       await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${sessionName}" successfully!`);
 
-      const inviteNotifications = inAppNotificationService
-        .getAll()
-        .filter(
-          (notification) =>
-            notification.type === "board_invite" &&
-            notification.data?.sessionId === sessionId
-        );
-
-      if (inviteNotifications.length > 0) {
-        await Promise.all(
-          inviteNotifications.map((notification) =>
-            inAppNotificationService.remove(notification.id)
-          )
-        );
-      }
-
-      // Log in-app notification
-      inAppNotificationService.notifyBoardJoined(sessionName, sessionId);
+      // V2: Server-side notification system handles invite acceptance notifications
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
@@ -1858,7 +1785,6 @@ function AppContent() {
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
-            onFriendAccepted={catchUpCollabNotifications}
           />
         );
       case "discover":
@@ -1921,7 +1847,7 @@ function AppContent() {
             }}
             onUnreadCountChange={setTotalUnreadMessages}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-            onFriendAccepted={catchUpCollabNotifications}
+            onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
           />
         );
       case "likes":
@@ -2105,7 +2031,6 @@ function AppContent() {
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
-            onFriendAccepted={catchUpCollabNotifications}
           />
         );
     }

@@ -12,7 +12,7 @@ A mobile app for planning social outings — combining pool-first card serving, 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 54 Deno serverless functions |
+| Edge Functions | 60 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -44,13 +44,13 @@ Mingla/
 │   │   │   ├── connections/            # RequestsView, FriendsManagementList, PillFilters, AddFriendView
 │   │   │   ├── board/                  # BoardViewScreen, BoardDiscussionTab, SwipeableSessionCards
 │   │   │   ├── expandedCard/           # ActionButtons, ImageGallery, TimelineSection, WeatherSection
-│   │   │   ├── profile/               # ProfileHeroSection, EditProfileSheet, EditBioSheet,
+│   │   │   ├── profile/               # ProfileHeroSection, EditBioSheet,
 │   │   │   │                           # EditInterestsSheet, ViewFriendProfileScreen, Toggle, SettingsRow
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   ├── discussion/            # EmojiReactionPicker, SuggestionPopup, EmptyDiscussion
 │   │   │   └── ui/                     # Design system primitives (Button, Toast, CategoryTile, etc.)
 │   │   ├── hooks/                      # ~67 React Query hooks + realtime hooks
-│   │   ├── services/                   # ~75 service files
+│   │   ├── services/                   # ~75 service files (including deepLinkService.ts)
 │   │   ├── contexts/                   # 3 React contexts (Navigation, CardCache, Recommendations)
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
@@ -61,10 +61,10 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 54 Deno edge functions
+│   ├── functions/                      # 60 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 198 SQL migration files
+│   ├── migrations/                    # 221 SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -75,6 +75,20 @@ Mingla/
 ---
 
 ## Features
+
+### Notifications System V2
+
+Server-side authoritative notification system replacing the previous AsyncStorage-based approach. All notification state lives in the `notifications` database table with Supabase Realtime subscriptions for instant in-app delivery.
+
+- **30+ notification types** covering social, collaboration, messaging, calendar, pairing, content, and lifecycle domains
+- **Unified dispatch** through the `notify-dispatch` edge function with preference enforcement, quiet hours, rate limiting, and idempotency
+- **Redesigned notification center** with filter tabs (All, Social, Sessions, Messages), action buttons, date grouping
+- **Supabase Realtime subscription** for instant in-app delivery via `useNotifications` hook
+- **Deep link navigation** from notification tap and push tap via `deepLinkService.ts`
+- **Push action buttons** (Accept/Decline) directly from system tray
+- **Notification preferences UI** with granular per-type toggles and quiet hours configuration
+- **Cron-driven automation**: calendar reminders (tomorrow, today, feedback prompts), lifecycle nudges (onboarding incomplete, trial ending, re-engagement), weekly digest, and notification cleanup
+- **Timezone-aware quiet hours** (10 PM - 8 AM in user's local timezone)
 
 ### Subscription Tiers & Feature Gating
 
@@ -130,7 +144,7 @@ A single-scroll experience with 5 sections and inline editing via bottom sheets:
 - **ProfileInterestsSection** — intents (filled orange pills) and categories (outlined pills) with edit via EditInterestsSheet
 - **ProfileStatsRow** — 3-column tappable stats: Saved, Friends, Boards
 - **Settings Section** — notifications toggle, profile visibility cycling, show activity toggle
-- **Account Section** — edit profile (EditProfileSheet), replay tips, account settings
+- **Account Section** — edit profile, replay tips, account settings
 - Legal links (Privacy Policy, Terms of Service) and sign out
 
 ### View Friend Profile
@@ -241,7 +255,7 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 - Pull-to-refresh on SavedTab, CalendarTab, DiscoverScreen, ConnectionsPage
 - Haptic feedback on all interactive buttons
 - Duplicate mutation guards via isPending checks
-- Push notifications via OneSignal (FCM v1 + APNs)
+- Push notifications via OneSignal (FCM v1 + APNs) routed through notify-dispatch
 
 ### Additional Features
 
@@ -250,7 +264,7 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
 - Boards with card voting, RSVP, iMessage-style discussion (emoji reactions, photo attachments, typing indicators, read receipts, @mentions, #card-tags)
-- Universal deep links via usemingla.com
+- Universal deep links via usemingla.com with unified deep link parser (`deepLinkService.ts`)
 - Night Out section powered by Ticketmaster
 - Navigation state persistence across process death
 - **Stale-while-revalidate caching** — deck cards, saved cards, and calendar entries persist to AsyncStorage for instant-on startup (returning users see cached data in <100ms, background refetch updates silently)
@@ -274,7 +288,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, visibility_mode |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, visibility_mode, timezone |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 | `daily_swipe_counts` | Per-user daily swipe tracking for free-tier rate limiting. Atomic upsert via `increment_daily_swipe_count()` |
@@ -314,6 +328,14 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 |-------|---------|
 | `conversation_presence` | Per-user, per-conversation online status with heartbeat timestamps |
 
+### Notification Tables
+
+| Table | Purpose |
+|-------|---------|
+| `notifications` | Server-side authoritative notification storage. Columns include user_id, type (30+ types), title, body, data (JSONB for deep links and metadata), read status, action state (pending/accepted/declined), idempotency_key, created_at. Synced to clients via Supabase Realtime subscription. This is the single source of truth for all in-app notifications. |
+| `notification_preferences` | Per-user granular notification toggles by type, quiet hours enabled/start/end, and `dm_bypass_quiet_hours` column for allowing DM notifications to bypass quiet hours |
+| `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally) |
+
 ### Collaboration Tables
 
 | Table | Purpose |
@@ -340,12 +362,6 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `discover_daily_cache` | Cached discover feed results |
 | `curated_places_cache` | Cached curated experience places |
 
-### Push Notifications
-
-| Table | Purpose |
-|-------|---------|
-| `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally) |
-
 ### Key SQL Functions (Tier Gating)
 
 | Function | Purpose |
@@ -358,6 +374,15 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `check_pairing_allowed(user_id)` | Returns whether user can pair (Elite only) |
 | `get_session_member_limit(user_id)` | Returns max participants for new sessions |
 | `update_user_preferences_from_interaction()` | Trigger: extracts category, price_tier, time_of_day, distance_bucket from user_interactions. Weighted by interaction type (visit=0.35 highest). |
+
+### Cron Jobs (pg_cron)
+
+| Job | Purpose |
+|-----|---------|
+| `keep-warm` | Pings 6 critical edge function isolates every 5 minutes to eliminate cold starts |
+| `notify-calendar-reminder` | Fires calendar reminders: tomorrow previews, day-of reminders, and post-event feedback prompts |
+| `notify-lifecycle` | Fires lifecycle notifications: onboarding incomplete nudges, trial ending warnings, re-engagement after inactivity, weekly digest |
+| Notification cleanup | Purges read notifications older than 90 days to keep the table lean |
 
 ---
 
@@ -391,14 +416,20 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
-| `send-friend-request-email` | Push notification for friend requests (via OneSignal) |
-| `send-friend-accepted-notification` | Push notification when a friend request is accepted |
-| `send-collaboration-invite` | Push notification for session invites |
-| `notify-invite-response` | Push notification for invite responses |
+| `send-friend-request-email` | Friend request notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
+| `send-friend-accepted-notification` | Friend acceptance notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
+| `send-collaboration-invite` | Session invite notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
+| `notify-invite-response` | Invite response notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `send-message-email` | Push notification for new direct messages |
-| `send-pair-request` | Handles all 3 pairing tiers with Elite-only tier gating |
-| `notify-pair-request-visible` | Push + in-app notification when hidden pair request becomes visible |
+| `send-pair-request` | Handles all 3 pairing tiers with Elite-only tier gating — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
+| `notify-pair-request-visible` | Hidden pair request revealed notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `process-referral` | Referral credit reconciliation + push notification |
+| `notify-dispatch` | Unified notification dispatch: preference checks, quiet hours (timezone-aware 10 PM - 8 AM), rate limiting, idempotency, push delivery via OneSignal, and server-side `notifications` table insert for Realtime sync |
+| `notify-message` | DM and board message notifications with rate-limited batching to prevent notification storms during active conversations |
+| `notify-calendar-reminder` | Cron-driven calendar reminders: tomorrow preview, day-of reminder, and post-event feedback prompt |
+| `notify-lifecycle` | Cron-driven lifecycle notifications: onboarding incomplete nudge, trial ending warning, re-engagement after inactivity, weekly digest |
+| `notify-pair-activity` | Paired user activity notifications: partner saved a card, partner visited a place |
+| `notify-referral-credited` | Referral reward notification fired via pg_net trigger when a referral credit is recorded |
 
 ### Authentication
 
@@ -529,10 +560,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Preference Intelligence System** — Multi-dimensional preference learning (category, price tier, time of day, distance), visit confirmation ("I went here"), paired saves/visits sharing, bilateral matching toggle, learning indicator toasts, and personalized badge. 6 migrations, 2 new edge functions, 1 major edge function modification, 2 new services, 2 new hooks, 5 new components, 3 modified components.
+- **Notifications System V2** — Server-side authoritative notification system with 30+ types, unified `notify-dispatch` edge function (preference enforcement, quiet hours, rate limiting, idempotency), redesigned notification center with filter tabs and action buttons, Supabase Realtime subscription for instant delivery, deep link navigation from push and in-app taps, and cron-driven calendar reminders and lifecycle nudges. 6 new edge functions, 3 new migrations, `useNotifications` hook, `deepLinkService`, and `notifications` + `notification_preferences` tables.
+- **Preference Intelligence System** — Multi-dimensional preference learning (category, price tier, time of day, distance), visit confirmation ("I went here"), paired saves/visits sharing, bilateral matching toggle, learning indicator toasts, and personalized badge.
 - **Monetization tier gating** — Full feature gating across Free/Pro/Elite tiers for curated cards, starting point, swipes, pairing, and collaboration sessions with dual-layer enforcement (client + server), custom branded paywall, and RevenueCat integration
 - **Performance overhaul** — Zero-wait app experience via stale-while-revalidate caching, adjacent-screen prefetching, image prefetching, edge function warming, 3-tier resume debounce, server-side realtime filtering, and 40-60% smaller card payloads
-- **Google Places cache elimination** — Removed the redundant `google_places_cache` table and 271 lines of cache management code
 
 ---
 

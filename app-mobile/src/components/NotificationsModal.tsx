@@ -1,16 +1,15 @@
 /**
- * NotificationsModal — Premium Bottom Sheet Design
+ * NotificationsModal — V2 Server-Synced Notification Center
  *
- * Matches the design language of PreferencesSheet and SessionViewModal:
- * - 88% height bottom sheet with rounded top corners
- * - Semi-transparent overlay backdrop
- * - Slide-up animation
- * - Scrollable notification list with sections (Today, Earlier, This Week)
- * - Premium compact card design with avatars and user info
- *
- * Each notification is tappable and navigates to the relevant page/action.
+ * Complete redesign with:
+ * - Filter tabs (All, Social, Sessions, Messages)
+ * - Icon mapping per notification type
+ * - Action buttons for actionable notifications
+ * - Date grouping (Today, Yesterday, This Week, Earlier)
+ * - Loading / empty / error / offline states
+ * - Deep link navigation on card tap
  */
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,241 +18,422 @@ import {
   TouchableOpacity,
   Dimensions,
   SectionList,
-  Image,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import {
-  InAppNotification,
-  NavigationTarget,
-} from "../services/inAppNotificationService";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
+  ActivityIndicator,
+  ScrollView,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useNetInfo } from 'expo-network';
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import { colors, spacing, radius, shadows } from '../constants/designSystem';
+import type { ServerNotification } from '../hooks/useNotifications';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+const EMPTY_PENDING_SET = new Set<string>();
 
-// Re-export the type under the old name for backward compat
-export type { InAppNotification as Notification };
+// ── Filter categories ────────────────────────────────────────────────────────
 
-// Keep the old NotificationType alias so existing imports still work
-export type NotificationType =
-  | "card_saved"
-  | "card_removed"
-  | "card_shared"
-  | "friend_request"
-  | "friend_accepted"
-  | "board_invite"
-  | "board_joined"
-  | "board_message"
-  | "session_created"
-  | "session_joined"
-  | "preferences_updated"
-  | "calendar_added"
-  | "purchase_complete"
-  | "profile_updated"
-  | "welcome"
-  | "system";
+type FilterTab = 'all' | 'social' | 'sessions' | 'messages';
 
-interface NotificationsModalProps {
-  visible: boolean;
-  onClose: () => void;
-  notifications: InAppNotification[];
-  unreadCount: number;
-  onNotificationPress: (notification: InAppNotification) => void;
-  onMarkAllRead: () => void;
-  onClearAll: () => void;
-  onOpenRequestsModal?: () => void;
-  onAcceptFriendRequest?: (userId: string, notificationId: string) => void;
-  onRejectFriendRequest?: (userId: string, notificationId: string) => void;
-  onAcceptPairRequest?: (requestId: string, notificationId: string) => void;
-  onDeclinePairRequest?: (requestId: string, notificationId: string) => void;
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'social', label: 'Social' },
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'messages', label: 'Messages' },
+];
+
+function getFilterCategory(type: string): FilterTab {
+  if (
+    type.startsWith('friend_request_') ||
+    type.startsWith('pair_request_') ||
+    type.startsWith('link_request_') ||
+    type.startsWith('friend_joined_')
+  ) {
+    return 'social';
+  }
+  if (
+    type.startsWith('collaboration_') ||
+    type.startsWith('session_') ||
+    type.startsWith('board_card_')
+  ) {
+    return 'sessions';
+  }
+  if (
+    type.startsWith('direct_message_') ||
+    type.startsWith('board_message_')
+  ) {
+    return 'messages';
+  }
+  return 'all';
 }
 
-// ── Section grouping helpers ──
+// ── Icon mapping ─────────────────────────────────────────────────────────────
+
+interface IconConfig {
+  name: string;
+  color: string;
+}
+
+const NOTIFICATION_ICONS: Record<string, IconConfig> = {
+  friend_request_received: { name: 'person-add-outline', color: '#3B82F6' },
+  friend_request_accepted: { name: 'people', color: '#10B981' },
+  pair_request_received: { name: 'people-outline', color: '#EF4444' },
+  pair_request_accepted: { name: 'heart', color: '#EF4444' },
+  link_request_received: { name: 'link-outline', color: '#8B5CF6' },
+  link_request_accepted: { name: 'link', color: '#10B981' },
+  collaboration_invite_received: { name: 'calendar-outline', color: '#eb7825' },
+  collaboration_invite_accepted: { name: 'checkmark-circle', color: '#10B981' },
+  collaboration_invite_declined: { name: 'close-circle-outline', color: '#9CA3AF' },
+  session_member_joined: { name: 'person-add', color: '#3B82F6' },
+  session_member_left: { name: 'person-remove-outline', color: '#9CA3AF' },
+  direct_message_received: { name: 'chatbubble', color: '#3B82F6' },
+  board_message_received: { name: 'chatbubbles-outline', color: '#8B5CF6' },
+  board_message_mention: { name: 'at-outline', color: '#eb7825' },
+  board_card_message: { name: 'chatbubble-ellipses-outline', color: '#8B5CF6' },
+  board_card_saved: { name: 'heart', color: '#EF4444' },
+  board_card_voted: { name: 'thumbs-up-outline', color: '#10B981' },
+  board_card_rsvp: { name: 'calendar-outline', color: '#0EA5E9' },
+  calendar_reminder_tomorrow: { name: 'calendar', color: '#0EA5E9' },
+  calendar_reminder_today: { name: 'sunny-outline', color: '#F59E0B' },
+  visit_feedback_prompt: { name: 'star-outline', color: '#F59E0B' },
+  paired_user_saved_card: { name: 'heart-outline', color: '#EF4444' },
+  paired_user_visited: { name: 'location-outline', color: '#10B981' },
+  person_experiences_ready: { name: 'gift-outline', color: '#eb7825' },
+  voice_review_processed: { name: 'mic-outline', color: '#8B5CF6' },
+  welcome: { name: 'sparkles', color: '#eb7825' },
+  trial_ending: { name: 'time-outline', color: '#F59E0B' },
+  referral_credited: { name: 'gift', color: '#10B981' },
+  weekly_digest: { name: 'bar-chart-outline', color: '#eb7825' },
+  friend_joined_mingla: { name: 'sparkles', color: '#F59E0B' },
+};
+
+function getIconConfig(type: string): IconConfig {
+  return NOTIFICATION_ICONS[type] ?? { name: 'notifications-outline', color: '#6B7280' };
+}
+
+// ── Actionable notification types ────────────────────────────────────────────
+
+const ACTIONABLE_TYPES: Record<string, { acceptLabel: string; declineLabel?: string }> = {
+  friend_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
+  pair_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
+  collaboration_invite_received: { acceptLabel: 'Join', declineLabel: 'Decline' },
+  link_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
+  friend_joined_mingla: { acceptLabel: 'Add Friend' },
+  trial_ending: { acceptLabel: 'Upgrade' },
+  visit_feedback_prompt: { acceptLabel: 'Review' },
+};
+
+// ── Time formatting ──────────────────────────────────────────────────────────
+
+function formatTimeAgo(isoTimestamp: string): string {
+  const now = Date.now();
+  const then = new Date(isoTimestamp).getTime();
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+
+  if (diffSec < 60) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m`;
+  if (diffHr < 24) return `${diffHr}h`;
+  if (diffDay < 7) return `${diffDay}d`;
+  if (diffWeek < 5) return `${diffWeek}w`;
+  return new Date(isoTimestamp).toLocaleDateString();
+}
+
+// ── Section grouping ─────────────────────────────────────────────────────────
 
 function groupNotificationsByDate(
-  notifications: InAppNotification[]
-): { title: string; data: InAppNotification[] }[] {
+  notifications: ServerNotification[]
+): { title: string; data: ServerNotification[] }[] {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const yesterdayStart = todayStart - 86_400_000;
   const weekStart = todayStart - 7 * 86_400_000;
 
-  const today: InAppNotification[] = [];
-  const yesterday: InAppNotification[] = [];
-  const thisWeek: InAppNotification[] = [];
-  const older: InAppNotification[] = [];
+  const today: ServerNotification[] = [];
+  const yesterday: ServerNotification[] = [];
+  const thisWeek: ServerNotification[] = [];
+  const older: ServerNotification[] = [];
 
   notifications.forEach((n) => {
-    const ts = new Date(n.timestamp).getTime();
+    const ts = new Date(n.created_at).getTime();
     if (ts >= todayStart) today.push(n);
     else if (ts >= yesterdayStart) yesterday.push(n);
     else if (ts >= weekStart) thisWeek.push(n);
     else older.push(n);
   });
 
-  const sections: { title: string; data: InAppNotification[] }[] = [];
-  if (today.length > 0) sections.push({ title: "Today", data: today });
-  if (yesterday.length > 0) sections.push({ title: "Yesterday", data: yesterday });
-  if (thisWeek.length > 0) sections.push({ title: "This Week", data: thisWeek });
-  if (older.length > 0) sections.push({ title: "Earlier", data: older });
+  const sections: { title: string; data: ServerNotification[] }[] = [];
+  if (today.length > 0) sections.push({ title: 'Today', data: today });
+  if (yesterday.length > 0) sections.push({ title: 'Yesterday', data: yesterday });
+  if (thisWeek.length > 0) sections.push({ title: 'This Week', data: thisWeek });
+  if (older.length > 0) sections.push({ title: 'Earlier', data: older });
 
   return sections;
 }
 
-// ── Navigation label helpers ──
+// ── Avatar helpers ───────────────────────────────────────────────────────────
 
-function getNavigationLabel(nav: NavigationTarget): string | null {
-  switch (nav.page) {
-    case "home":
-      return "Go to Explore";
-    case "saved":
-      return "View Saved";
-    case "connections":
-      return "View Connections";
-    case "likes":
-      return "View Likes";
-    case "profile":
-      return "View Profile";
-    case "activity":
-      return nav.tab ? `View ${nav.tab.charAt(0).toUpperCase() + nav.tab.slice(1)}` : "View Activity";
-    case "board-view":
-      return "Accept Invite";
-    case "discover":
-      return "Discover";
-    case "preferences":
-      return "Update Preferences";
-    case "none":
-      return null;
-    default:
-      return null;
-  }
+function getAvatarUrl(data: Record<string, unknown>): string | null {
+  return (
+    (data?.senderAvatarUrl as string) ||
+    (data?.inviterAvatarUrl as string) ||
+    (data?.avatar_url as string) ||
+    null
+  );
 }
 
-// ── Component ──
+function getInitials(data: Record<string, unknown>): string {
+  const name =
+    (data?.senderName as string) ||
+    (data?.inviterName as string) ||
+    (data?.userName as string) ||
+    (data?.fromUserName as string) ||
+    '';
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+// ── Props ────────────────────────────────────────────────────────────────────
+
+interface NotificationsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  notifications: ServerNotification[];
+  unreadCount: number;
+  isLoading: boolean;
+  isError: boolean;
+  onMarkAllRead: () => void;
+  onClearAll: () => void;
+  onMarkAsRead: (notificationId: string) => void;
+  onDeleteNotification: (notificationId: string) => void;
+  onNotificationTap: (notification: ServerNotification) => void;
+  // Action handlers
+  onAcceptFriendRequest?: (requestId: string, notificationId: string) => Promise<void>;
+  onDeclineFriendRequest?: (requestId: string, notificationId: string) => Promise<void>;
+  onAcceptPairRequest?: (requestId: string, notificationId: string) => Promise<void>;
+  onDeclinePairRequest?: (requestId: string, notificationId: string) => Promise<void>;
+  onAcceptCollaborationInvite?: (inviteId: string, notificationId: string) => Promise<void>;
+  onDeclineCollaborationInvite?: (inviteId: string, notificationId: string) => Promise<void>;
+  onAcceptLinkRequest?: (linkId: string, notificationId: string) => Promise<void>;
+  onDeclineLinkRequest?: (linkId: string, notificationId: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
+  onLoadMore?: () => Promise<void>;
+  hasMore?: boolean;
+  pendingActions?: Set<string>;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function NotificationsModal({
   visible,
   onClose,
   notifications,
   unreadCount,
-  onNotificationPress,
+  isLoading,
+  isError,
   onMarkAllRead,
   onClearAll,
-  onOpenRequestsModal,
+  onMarkAsRead,
+  onDeleteNotification,
+  onNotificationTap,
   onAcceptFriendRequest,
-  onRejectFriendRequest,
+  onDeclineFriendRequest,
   onAcceptPairRequest,
   onDeclinePairRequest,
+  onAcceptCollaborationInvite,
+  onDeclineCollaborationInvite,
+  onAcceptLinkRequest,
+  onDeclineLinkRequest,
+  onRefresh,
+  onLoadMore,
+  hasMore = false,
+  pendingActions = EMPTY_PENDING_SET,
 }: NotificationsModalProps) {
   const insets = useSafeAreaInsets();
-  const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
+  const netInfo = useNetInfo();
+  const isOffline = netInfo.isConnected === false;
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
+  const [actionErrors, setActionErrors] = useState<Set<string>>(new Set());
+
+  // ── Filtered + grouped notifications ──
+  const filteredNotifications = useMemo(() => {
+    if (activeFilter === 'all') return notifications;
+    return notifications.filter((n) => getFilterCategory(n.type) === activeFilter);
+  }, [notifications, activeFilter]);
 
   const sections = useMemo(
-    () => groupNotificationsByDate(notifications),
-    [notifications]
+    () => groupNotificationsByDate(filteredNotifications),
+    [filteredNotifications]
   );
 
-  const handleImageError = (notificationId: string) => {
+  const handleImageError = useCallback((notificationId: string) => {
     setFailedImageIds((prev) => new Set(prev).add(notificationId));
-  };
+  }, []);
 
-  const renderNotification = ({
-    item,
-  }: {
-    item: InAppNotification;
-  }) => {
-    // DEBUG: Log the notification data on each render
-    if (item.type === "friend_request") {
-      console.log(`[NotificationsModal] Rendering Friend Request notification:`, {
-        id: item.id,
-        title: item.title,
-        hasData: !!item.data,
-        avatarUrl: item.data?.avatar_url,
-        userName: item.data?.userName,
-        failedIds: Array.from(failedImageIds),
+  // ── Action handlers ──
+
+  const handleAccept = useCallback(
+    async (notification: ServerNotification) => {
+      const { type, id, data } = notification;
+      setActionErrors((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
       });
-    }
 
-    const navLabel = getNavigationLabel(item.navigation);
-    const showAvatar =
-      item.type === "friend_request" ||
-      item.type === "friend_accepted" ||
-      item.type === "board_invite" ||
-      item.type === "pair_request";
-
-    const isFriendRequest = item.type === "friend_request";
-    const isPairRequest = item.type === "pair_request";
-    const isActionable = isFriendRequest || isPairRequest;
-
-    // For friend requests, try to show initials or avatar
-    const initials = item.data?.userName
-      ? item.data.userName
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-      : "?";
-
-    const handleCardPress = () => {
-      if (isFriendRequest) {
-        // Open the friend requests modal instead of navigating
-        onOpenRequestsModal?.();
-      } else if (isPairRequest) {
-        // Navigate to discover tab (pair requests are handled there)
-        onNotificationPress(item);
-      } else {
-        onNotificationPress(item);
+      try {
+        switch (type) {
+          case 'friend_request_received':
+            await onAcceptFriendRequest?.(
+              (data?.requestId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'pair_request_received':
+            await onAcceptPairRequest?.(
+              (data?.requestId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'collaboration_invite_received':
+            await onAcceptCollaborationInvite?.(
+              (data?.inviteId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'link_request_received':
+            await onAcceptLinkRequest?.(
+              (data?.linkId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          default:
+            // For single-action types, tap navigates
+            onNotificationTap(notification);
+            break;
+        }
+      } catch (err) {
+        setActionErrors((prev) => new Set(prev).add(id));
       }
-    };
+    },
+    [
+      onAcceptFriendRequest,
+      onAcceptPairRequest,
+      onAcceptCollaborationInvite,
+      onAcceptLinkRequest,
+      onNotificationTap,
+    ]
+  );
 
-    const handleAccept = (e: any) => {
-      e.stopPropagation();
-      if (isPairRequest) {
-        onAcceptPairRequest?.(item.data?.requestId, item.id);
-      } else {
-        onAcceptFriendRequest?.(item.data?.requestId, item.id);
-      }
-    };
+  const handleDecline = useCallback(
+    async (notification: ServerNotification) => {
+      const { type, id, data } = notification;
+      setActionErrors((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
 
-    const handleReject = (e: any) => {
-      e.stopPropagation();
-      if (isPairRequest) {
-        onDeclinePairRequest?.(item.data?.requestId, item.id);
-      } else {
-        onRejectFriendRequest?.(item.data?.requestId, item.id);
+      try {
+        switch (type) {
+          case 'friend_request_received':
+            await onDeclineFriendRequest?.(
+              (data?.requestId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'pair_request_received':
+            await onDeclinePairRequest?.(
+              (data?.requestId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'collaboration_invite_received':
+            await onDeclineCollaborationInvite?.(
+              (data?.inviteId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+          case 'link_request_received':
+            await onDeclineLinkRequest?.(
+              (data?.linkId as string) || (data?.related_id as string) || '',
+              id
+            );
+            break;
+        }
+      } catch (err) {
+        setActionErrors((prev) => new Set(prev).add(id));
       }
-    };
+    },
+    [
+      onDeclineFriendRequest,
+      onDeclinePairRequest,
+      onDeclineCollaborationInvite,
+      onDeclineLinkRequest,
+    ]
+  );
+
+  // ── Card tap ──
+
+  const handleCardPress = useCallback(
+    (notification: ServerNotification) => {
+      // Mark as read optimistically
+      if (!notification.is_read) {
+        onMarkAsRead(notification.id);
+      }
+      // Close modal + navigate
+      onClose();
+      onNotificationTap(notification);
+    },
+    [onMarkAsRead, onClose, onNotificationTap]
+  );
+
+  // ── Render notification card ──
+
+  const renderNotification = ({ item }: { item: ServerNotification }) => {
+    const iconConfig = getIconConfig(item.type);
+    const actionConfig = ACTIONABLE_TYPES[item.type];
+    const isActionable = !!actionConfig;
+    const isPending = pendingActions.has(item.id);
+    const hasError = actionErrors.has(item.id);
+    const avatarUrl = getAvatarUrl(item.data || {});
+    const initials = getInitials(item.data || {});
+    const showAvatar = !!avatarUrl || item.actor_id != null;
 
     return (
       <View style={styles.notificationCardWrapper}>
         <TouchableOpacity
           style={[
             styles.notificationCard,
-            !item.isRead && styles.notificationCardUnread,
-            isActionable && styles.notificationCardWithActions,
+            !item.is_read && styles.notificationCardUnread,
           ]}
-          onPress={handleCardPress}
+          onPress={() => handleCardPress(item)}
           activeOpacity={0.7}
+          disabled={isPending}
         >
+          {/* Left border for unread */}
+          {!item.is_read && <View style={styles.unreadLeftBorder} />}
+
           {/* Avatar / Icon Section */}
           <View style={styles.avatarSection}>
             {showAvatar ? (
               <View style={styles.avatarCircle}>
-                {item.data?.avatar_url && !failedImageIds.has(item.id) ? (
+                {avatarUrl && !failedImageIds.has(item.id) ? (
                   <ImageWithFallback
-                    source={{ uri: String(item.data.avatar_url).trim() }}
+                    source={{ uri: String(avatarUrl).trim() }}
                     style={styles.avatarImage}
-                    onError={() => {
-                      console.warn(`Avatar load failed for notification ${item.id}: ${item.data?.avatar_url}`);
-                      handleImageError(item.id);
-                    }}
-                    onLoadStart={() => {
-                      console.log(`Avatar loading for notification ${item.id}: ${item.data?.avatar_url}`);
-                    }}
-                    onLoad={() => {
-                      console.log(`Avatar loaded successfully for notification ${item.id}`);
-                    }}
+                    onError={() => handleImageError(item.id)}
                     resizeMode="cover"
                   />
                 ) : (
@@ -261,95 +441,112 @@ export default function NotificationsModal({
                 )}
               </View>
             ) : (
-              <View style={[styles.iconCircle, { borderColor: item.iconColor + "40" }]}>
+              <View style={[styles.iconCircle, { backgroundColor: iconConfig.color + '15' }]}>
                 <Ionicons
-                  name={item.icon as any}
+                  name={iconConfig.name as any}
                   size={20}
-                  color={item.iconColor}
+                  color={iconConfig.color}
                 />
               </View>
             )}
-            {!item.isRead && <View style={styles.unreadIndicator} />}
+            {!item.is_read && <View style={styles.unreadDot} />}
           </View>
 
-          {/* Main Content Section - Center */}
+          {/* Main Content */}
           <View style={styles.mainContent}>
-            {/* Title and notification type */}
-            <View style={styles.titleSection}>
+            <View style={styles.titleRow}>
               <Text style={styles.notificationTitle} numberOfLines={1}>
                 {item.title}
               </Text>
+              <Text style={styles.notificationTime}>
+                {formatTimeAgo(item.created_at)}
+              </Text>
             </View>
 
-            {/* User info for social notifications */}
-            {showAvatar && item.data?.userName && (
-              <View style={styles.userInfoSection}>
-                <Text style={styles.userName} numberOfLines={1}>
-                  {item.data.userName}
-                </Text>
-              </View>
-            )}
-
-            {/* Description - properly wrapped */}
-            <Text 
-              style={styles.notificationDescription}
-              numberOfLines={isActionable ? 2 : 2}
-            >
-              {item.description}
+            <Text style={styles.notificationBody} numberOfLines={2}>
+              {item.body}
             </Text>
 
-            {/* Meta information - not shown for actionable notifications */}
-            {!isActionable && (
-              <View style={styles.metaSection}>
-                <Text style={styles.notificationTime}>{item.timeAgo}</Text>
-                {navLabel && (
-                  <View style={styles.navLabelContainer}>
-                    <Text style={styles.navLabel}>{navLabel}</Text>
-                    <MaterialCommunityIcons 
-                      name="chevron-right" 
-                      size={14} 
-                      color="#eb7825" 
-                    />
-                  </View>
+            {/* Action buttons */}
+            {isActionable && !isPending && (
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={styles.acceptButton}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    handleAccept(item);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.acceptButtonText}>
+                    {actionConfig.acceptLabel}
+                  </Text>
+                </TouchableOpacity>
+                {actionConfig.declineLabel && (
+                  <TouchableOpacity
+                    style={styles.declineButton}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleDecline(item);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.declineButtonText}>
+                      {actionConfig.declineLabel}
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
             )}
-          </View>
 
-          {/* Quick Action Buttons for Friend/Pair Requests - Right side, integrated */}
-          {isActionable && (
-            <View style={styles.actionsRight}>
-              <TouchableOpacity
-                style={styles.acceptButtonCompact}
-                onPress={handleAccept}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="checkmark" size={12} color="white" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.rejectButtonCompact}
-                onPress={handleReject}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={12} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
-          )}
+            {/* Pending spinner */}
+            {isPending && (
+              <View style={styles.actionButtons}>
+                <ActivityIndicator size="small" color="#eb7825" />
+              </View>
+            )}
+
+            {/* Error state */}
+            {hasError && !isPending && (
+              <Text style={styles.actionError}>Action failed. Tap to retry.</Text>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     );
   };
 
+  // ── Section header ──
+
   const renderSectionHeader = ({
     section,
   }: {
-    section: { title: string; data: InAppNotification[] };
+    section: { title: string; data: ServerNotification[] };
   }) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionHeaderText}>{section.title}</Text>
       <View style={styles.sectionHeaderLine} />
     </View>
   );
+
+  // ── Skeleton loader ──
+
+  const renderSkeleton = () => (
+    <View style={styles.skeletonContainer}>
+      {[1, 2, 3].map((i) => (
+        <View key={i} style={styles.skeletonCard}>
+          <View style={styles.skeletonAvatar} />
+          <View style={styles.skeletonContent}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonBody} />
+            <View style={styles.skeletonBodyShort} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  // ── Render ──
 
   return (
     <Modal
@@ -367,7 +564,9 @@ export default function NotificationsModal({
           onPress={onClose}
         />
 
-        <View style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View
+          style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}
+        >
           {/* Drag Handle */}
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
@@ -375,52 +574,102 @@ export default function NotificationsModal({
 
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerSidePlaceholder} />
-            <View style={styles.headerCenter}>
+            <View style={styles.headerLeft}>
               <Text style={styles.headerTitle}>Notifications</Text>
               {unreadCount > 0 && (
-                <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
+                <Text style={styles.headerUnreadBadge}>{unreadCount} unread</Text>
               )}
             </View>
-            <View style={styles.headerSidePlaceholder} />
-          </View>
-
-          {/* Action Buttons */}
-          {notifications.length > 0 && (
-            <View style={styles.actionBar}>
+            <View style={styles.headerActions}>
               {unreadCount > 0 && (
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={styles.headerActionButton}
                   onPress={onMarkAllRead}
                 >
                   <Ionicons name="checkmark-done-outline" size={16} color="#eb7825" />
-                  <Text style={styles.actionButtonText}>Mark all read</Text>
+                  <Text style={styles.headerActionText}>Mark all read</Text>
                 </TouchableOpacity>
               )}
+              {notifications.length > 0 && (
+                <TouchableOpacity
+                  style={styles.headerActionButton}
+                  onPress={onClearAll}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.gray[400]} />
+                  <Text style={[styles.headerActionText, { color: colors.gray[400] }]}>
+                    Clear all
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Filter Tabs */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterTabsContainer}
+            style={styles.filterTabsScroll}
+          >
+            {FILTER_TABS.map((tab) => (
               <TouchableOpacity
-                style={styles.actionButton}
-                onPress={onClearAll}
+                key={tab.key}
+                style={[
+                  styles.filterTab,
+                  activeFilter === tab.key && styles.filterTabActive,
+                ]}
+                onPress={() => setActiveFilter(tab.key)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
-                <Text style={[styles.actionButtonText, { color: "#9CA3AF" }]}>
-                  Clear all
+                <Text
+                  style={[
+                    styles.filterTabText,
+                    activeFilter === tab.key && styles.filterTabTextActive,
+                  ]}
+                >
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
-            </View>
-          )}
+            ))}
+          </ScrollView>
 
-          {/* Notification List */}
-          {notifications.length === 0 ? (
+          {/* Content */}
+          {isLoading ? (
+            renderSkeleton()
+          ) : isError ? (
+            <View style={styles.errorState}>
+              <Ionicons name="alert-circle-outline" size={48} color={colors.gray[300]} />
+              <Text style={styles.errorTitle}>Something went wrong</Text>
+              <Text style={styles.errorSubtext}>
+                Couldn't load notifications.
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filteredNotifications.length === 0 && !isOffline ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIconCircle}>
-                <Ionicons name="notifications-off-outline" size={40} color="#D1D5DB" />
+                <Ionicons
+                  name="notifications-outline"
+                  size={40}
+                  color={colors.gray[300]}
+                />
               </View>
-              <Text style={styles.emptyStateTitle}>You're all caught up!</Text>
+              <Text style={styles.emptyStateTitle}>You're all caught up</Text>
               <Text style={styles.emptyStateSubtext}>
-                Notifications about your experiences, connections, and boards will appear here
+                New activity will show up here.
               </Text>
             </View>
           ) : (
+            {isOffline && (
+              <View style={styles.offlineBanner}>
+                <Ionicons name="cloud-offline-outline" size={14} color="#6B7280" />
+                <Text style={styles.offlineBannerText}>
+                  You're offline — showing cached notifications
+                </Text>
+              </View>
+            )}
             <SectionList
               sections={sections}
               keyExtractor={(item) => item.id}
@@ -429,6 +678,12 @@ export default function NotificationsModal({
               stickySectionHeadersEnabled={false}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
+              onEndReached={() => {
+                if (hasMore) onLoadMore?.();
+              }}
+              onEndReachedThreshold={0.3}
+              refreshing={false}
+              onRefresh={onRefresh}
             />
           )}
         </View>
@@ -437,31 +692,27 @@ export default function NotificationsModal({
   );
 }
 
-// ── Styles ──
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "flex-end",
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
   },
   backdropTouch: {
     flex: 1,
   },
   sheetContent: {
     height: SHEET_HEIGHT,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background.primary,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 30,
+    overflow: 'hidden',
+    ...shadows.xl,
   },
   dragHandleContainer: {
-    alignItems: "center",
+    alignItems: 'center',
     paddingTop: 12,
     paddingBottom: 4,
   },
@@ -469,94 +720,86 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#D1D5DB",
+    backgroundColor: colors.gray[300],
   },
 
   // ── Header ──
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: colors.gray[100],
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   headerTitle: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#1e293b",
-    textAlign: "center",
+    fontWeight: '700',
+    color: colors.text.primary,
   },
-  headerSubtitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 2,
-    textAlign: "center",
-  },
-  badge: {
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: {
+  headerUnreadBadge: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "white",
+    fontWeight: '600',
+    color: '#eb7825',
   },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  closeButtonPlaceholder: {
-    width: 36,
-    height: 36,
+  headerActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  headerSidePlaceholder: {
-    width: 36,
-    height: 36,
+  headerActionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#eb7825',
   },
 
-  // ── Action Bar ──
-  actionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    gap: 16,
+  // ── Filter Tabs ──
+  filterTabsScroll: {
+    maxHeight: 48,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: colors.gray[100],
   },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  filterTabsContainer: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  actionButtonText: {
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    backgroundColor: 'transparent',
+  },
+  filterTabActive: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+  },
+  filterTabText: {
     fontSize: 13,
-    fontWeight: "500",
-    color: "#eb7825",
+    fontWeight: '500',
+    color: colors.gray[500],
+  },
+  filterTabTextActive: {
+    color: colors.text.inverse,
+    fontWeight: '600',
   },
 
   // ── Section Header ──
   sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 6,
@@ -564,254 +807,276 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#9CA3AF",
-    textTransform: "uppercase",
+    fontWeight: '700',
+    color: colors.gray[400],
+    textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   sectionHeaderLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: colors.gray[100],
   },
 
-  // ── Notification Cards (Premium Design) ──
+  // ── Notification Cards ──
   listContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 12,
     paddingBottom: 24,
   },
-  
   notificationCardWrapper: {
-    marginVertical: 6,
+    marginVertical: 4,
   },
-  
   notificationCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background.primary,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
+    borderColor: colors.gray[100],
     gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    overflow: 'hidden',
   },
-
-  notificationCardWithActions: {
-    paddingRight: 8,
-  },
-  
   notificationCardUnread: {
-    backgroundColor: "#FEF3C7",
-    borderColor: "#FCD34D",
+    backgroundColor: colors.background.primary,
+  },
+  unreadLeftBorder: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: '#eb7825',
+    borderTopLeftRadius: 14,
+    borderBottomLeftRadius: 14,
   },
 
-  // ── Avatar / Icon Section ──
+  // ── Avatar / Icon ──
   avatarSection: {
-    position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  
   avatarCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: "#FED7AA",
-    backgroundColor: "#FEF3C7",
-    overflow: "hidden",
+    borderColor: colors.primary[200],
+    backgroundColor: colors.primary[50],
+    overflow: 'hidden',
   },
-
   avatarImage: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 24,
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
   },
-  
   avatarInitials: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#ea6317",
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ea6317',
   },
-
   iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FAFAFA",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  unreadIndicator: {
-    position: "absolute",
+  unreadDot: {
+    position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#eb7825",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#eb7825',
     borderWidth: 2,
-    borderColor: "white",
+    borderColor: colors.background.primary,
   },
 
-  // ── Content Section ──
+  // ── Content ──
   mainContent: {
     flex: 1,
-    marginRight: 4,
   },
-
-  notificationContent: {
-    flex: 1,
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
   },
-
-  titleSection: {
-    marginBottom: 3,
-  },
-
   notificationTitle: {
     fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
+    fontWeight: '700',
+    color: colors.text.primary,
+    flex: 1,
+    marginRight: spacing.sm,
   },
-
-  // ── User Info (for social notifications) ──
-  userInfoSection: {
-    marginBottom: 4,
-  },
-
-  userName: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#374151",
-    flexWrap: "wrap",
-  },
-
-  userEmail: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    marginTop: 1,
-    flexWrap: "wrap",
-  },
-
-  // ── Description ──
-  notificationDescription: {
-    fontSize: 11,
-    color: "#6B7280",
-    lineHeight: 15,
-    marginBottom: 4,
-    flexWrap: "wrap",
-  },
-
-  // ── Meta Section ──
-  metaSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
   notificationTime: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    fontWeight: "500",
+    fontSize: 11,
+    color: colors.gray[400],
+    fontWeight: '500',
+  },
+  notificationBody: {
+    fontSize: 12,
+    color: colors.gray[500],
+    lineHeight: 16,
+    marginBottom: 4,
   },
 
-  navLabelContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
+  // ── Action Buttons ──
+  actionButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
-
-  navLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#eb7825",
+  acceptButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: '#eb7825',
   },
-
-  // ── Quick Actions (Friend Request Buttons - Right side, compact) ──
-  actionsRight: {
-    flexDirection: "column",
-    gap: 6,
-    justifyContent: "center",
+  acceptButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.inverse,
   },
-
-  acceptButtonCompact: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#ea6317",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+  declineButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.gray[100],
   },
-
-  rejectButtonCompact: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+  declineButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[500],
   },
-
-  quickActionsContainer: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-    marginLeft: 60,
-  },
-
-  quickActionsSection: {
-    flexDirection: "row",
-    gap: 8,
-    paddingLeft: 8,
+  actionError: {
+    fontSize: 11,
+    color: colors.error[500],
+    marginTop: 4,
   },
 
   // ── Empty State ──
   emptyState: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 40,
   },
-  
   emptyIconCircle: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#F9FAFB",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 20,
   },
-  
   emptyStateTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
+    fontWeight: '600',
+    color: colors.gray[700],
+    marginBottom: spacing.sm,
   },
-  
   emptyStateSubtext: {
     fontSize: 14,
-    color: "#9CA3AF",
-    textAlign: "center",
+    color: colors.gray[400],
+    textAlign: 'center',
     lineHeight: 20,
+  },
+
+  // ── Error State ──
+  errorState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.gray[700],
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: colors.gray[400],
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: '#eb7825',
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.inverse,
+  },
+
+  // ── Offline Banner ──
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    backgroundColor: '#F3F4F6',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+
+  // ── Skeleton Loader ──
+  skeletonContainer: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    gap: 12,
+  },
+  skeletonCard: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  skeletonAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.gray[100],
+  },
+  skeletonContent: {
+    flex: 1,
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '60%',
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: colors.gray[100],
+  },
+  skeletonBody: {
+    width: '90%',
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: colors.gray[100],
+  },
+  skeletonBodyShort: {
+    width: '50%',
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: colors.gray[100],
   },
 });

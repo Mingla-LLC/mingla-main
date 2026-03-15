@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,7 +36,9 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
       "SUPABASE_SERVICE_ROLE_KEY"
     )!;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
 
     // Create a user-scoped client to extract the authenticated user from the JWT
     const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -93,47 +94,52 @@ serve(async (req) => {
         ? `${accepterProfile.first_name} ${accepterProfile.last_name}`
         : accepterProfile?.username || "Someone");
 
-    // Check notification preferences for the SENDER (person receiving the push)
-    const { data: prefs } = await supabase
-      .from("notification_preferences")
-      .select("friend_requests, push_enabled")
-      .eq("user_id", senderId)
-      .maybeSingle();
-
-    if (prefs && (prefs.push_enabled === false || prefs.friend_requests === false)) {
-      console.log("Sender has disabled friend request notifications, skipping push");
-      return new Response(
-        JSON.stringify({ success: true, method: "none", reason: "user_disabled_notifications" }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Send push notification via OneSignal to the original sender
+    // Send notification via notify-dispatch (handles preference checks, quiet hours, etc.)
+    const notifyUrl = `${SUPABASE_URL}/functions/v1/notify-dispatch`;
     let pushSent = false;
     try {
-      pushSent = await sendPush({
-        targetUserId: senderId,
-        title: `${accepterName} accepted your request`,
-        body: "You're now connected \u2014 start planning together!",
-        data: {
-          type: "friend_accepted",
-          accepterId: accepterId,
-          accepterName: accepterName,
-          requestId: requestId,
+      const notifyResponse = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        androidChannelId: "friend-requests",
+        body: JSON.stringify({
+          userId: senderId,
+          type: "friend_request_accepted",
+          title: `${accepterName} accepted your request`,
+          body: "You're now connected \u2014 start planning together!",
+          data: {
+            deepLink: `mingla://connections?userId=${accepterId}`,
+            type: "friend_accepted",
+            accepterId: accepterId,
+            accepterName: accepterName,
+            requestId: requestId,
+          },
+          actorId: accepterId,
+          relatedId: requestId || null,
+          relatedType: "friend_request",
+          idempotencyKey: `friend_request_accepted:${accepterId}:${requestId || senderId}`,
+          pushOverrides: {
+            androidChannelId: "social",
+          },
+        }),
       });
+      if (notifyResponse.ok) {
+        const result = await notifyResponse.json();
+        pushSent = result.pushSent === true;
+      } else {
+        const errText = await notifyResponse.text().catch(() => "unknown");
+        console.warn("[send-friend-accepted-notification] notify-dispatch returned", notifyResponse.status, errText);
+      }
     } catch (err: unknown) {
-      console.warn('[send-friend-accepted-notification] Push failed:', err);
+      console.warn('[send-friend-accepted-notification] notify-dispatch call failed:', err);
     }
 
     console.log("Friend accepted notification processed, push sent:", pushSent);
 
     return new Response(
-      JSON.stringify({ success: true, method: pushSent ? "push" : "push_failed" }),
+      JSON.stringify({ success: true, method: pushSent ? "push" : "push_skipped" }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

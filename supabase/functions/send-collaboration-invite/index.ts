@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,8 +128,6 @@ serve(async (req) => {
         ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
         : inviterProfile?.username || "Someone");
 
-    const inviterUsername = inviterProfile?.username || "user";
-
     // Get invited user's profile to check if they exist
     const { data: invitedUserProfile } = await supabase
       .from("profiles")
@@ -139,34 +136,6 @@ serve(async (req) => {
       .maybeSingle();
 
     const userExists = !!invitedUserProfile;
-    const invitedUsername = invitedUserProfile?.username;
-    const invitedDisplayName = invitedUserProfile?.display_name || invitedUsername;
-
-    // Check if the invited user has opted out of collaboration invite notifications
-    if (userExists) {
-      const { data: notifPrefs } = await supabase
-        .from("notification_preferences")
-        .select("collaboration_invites")
-        .eq("user_id", invitedUserId)
-        .maybeSingle();
-
-      // If the user has explicitly disabled collaboration invite notifications, skip push
-      // but still return success (the invite record exists, they'll see it in-app)
-      if (notifPrefs && notifPrefs.collaboration_invites === false) {
-        console.log("User has disabled collaboration invite notifications, skipping push");
-        return new Response(
-          JSON.stringify({
-            success: true,
-            method: "none",
-            reason: "user_disabled_collaboration_notifications",
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
 
     // NEW: Handle phone-only invites for non-platform users
     if (phone_e164 && !userExists) {
@@ -194,54 +163,55 @@ serve(async (req) => {
       );
     }
 
-    // HIGH-003 FIX: Single error handling strategy — try/catch only, no .catch() chain.
-    // Push is best-effort; failures are logged but don't fail the invite.
-
-    // Send push notification to the INVITED USER (receiver)
+    // Send push notification to the INVITED USER (receiver) via notify-dispatch
+    // (notify-dispatch handles preference checks, quiet hours, rate limiting)
+    const notifyUrl = `${SUPABASE_URL}/functions/v1/notify-dispatch`;
     try {
-      await sendPush({
-        targetUserId: invitedUserId,
-        title: "New Collaboration Invite",
-        body: `${inviterName} invited you to join "${sessionName}"`,
-        data: {
-          type: "collaboration_invite_received",
-          sessionId: sessionId,
-          sessionName: sessionName,
-          inviteId: inviteId,
-          inviterId: inviterId,
-          inviterName: inviterName,
-          inviterUsername: inviterUsername,
-          inviterAvatarUrl: inviterProfile?.avatar_url || null,
+      const notifyResponse = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        androidChannelId: "collaboration-invites",
-      });
-      console.log("Push notification sent to invitee successfully");
-    } catch (pushError: unknown) {
-      console.warn("[send-collaboration-invite] Push to invitee failed:", pushError);
-    }
-
-    // Send notification to the INVITER (sender)
-    try {
-      if (invitedDisplayName) {
-        await sendPush({
-          targetUserId: inviterId,
-          title: "Collaboration Invite Sent",
-          body: `You invited ${invitedDisplayName} to join "${sessionName}"`,
+        body: JSON.stringify({
+          userId: invitedUserId,
+          type: "collaboration_invite_received",
+          title: `${inviterName} invited you to plan`,
+          body: `Join "${sessionName}" and start swiping together.`,
           data: {
-            type: "collaboration_invite_sent",
+            deepLink: `mingla://session/${sessionId}`,
+            type: "collaboration_invite_received",
             sessionId: sessionId,
             sessionName: sessionName,
             inviteId: inviteId,
-            invitedUserId: invitedUserId,
-            invitedUsername: invitedUsername,
+            inviterId: inviterId,
+            inviterName: inviterName,
+            inviterAvatarUrl: inviterProfile?.avatar_url || null,
           },
-          androidChannelId: "collaboration-invites",
-        });
-        console.log("Push notification sent to inviter successfully");
+          actorId: inviterId,
+          relatedId: inviteId || sessionId,
+          relatedType: "collaboration_invite",
+          idempotencyKey: `collaboration_invite_received:${inviterId}:${inviteId || sessionId}`,
+          pushOverrides: {
+            androidChannelId: "collaboration",
+            buttons: [
+              { id: "accept", text: "Join" },
+              { id: "decline", text: "Decline" },
+            ],
+          },
+        }),
+      });
+      if (!notifyResponse.ok) {
+        const errText = await notifyResponse.text().catch(() => "unknown");
+        console.warn("[send-collaboration-invite] notify-dispatch returned", notifyResponse.status, errText);
+      } else {
+        console.log("Push notification sent to invitee via notify-dispatch");
       }
-    } catch (inviterPushError: unknown) {
-      console.warn("[send-collaboration-invite] Push to inviter failed:", inviterPushError);
+    } catch (pushError: unknown) {
+      console.warn("[send-collaboration-invite] notify-dispatch call failed:", pushError);
     }
+
+    // NOTE: Inviter confirmation push REMOVED per V2 spec — inviter gets a toast instead
 
     return new Response(
       JSON.stringify({

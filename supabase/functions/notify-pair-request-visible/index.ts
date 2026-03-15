@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,17 +83,50 @@ serve(async (req) => {
       [senderProfile?.first_name, senderProfile?.last_name].filter(Boolean).join(" ") ||
       "Someone";
 
-    // ── Send push to receiver ─────────────────────────────────────────────
-    const pushSent = await sendPush({
-      targetUserId: pairRequest.receiver_id,
-      title: `${senderName} wants to pair with you`,
-      body: "Accept to start discovering experiences for them.",
-      data: {
-        type: "pair_request",
-        requestId: pairRequest.id,
-        senderId: pairRequest.sender_id,
-      },
-    });
+    // ── Send push to receiver via notify-dispatch ───────────────────────
+    const notifyUrl = `${SUPABASE_URL}/functions/v1/notify-dispatch`;
+    let pushSent = false;
+    try {
+      const notifyResponse = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          userId: pairRequest.receiver_id,
+          type: "pair_request_received",
+          title: `${senderName} wants to pair with you`,
+          body: "Accept to discover experiences for each other.",
+          data: {
+            deepLink: `mingla://discover?pairRequest=${pairRequest.id}`,
+            type: "pair_request",
+            requestId: pairRequest.id,
+            senderId: pairRequest.sender_id,
+          },
+          actorId: pairRequest.sender_id,
+          relatedId: pairRequest.id,
+          relatedType: "pair_request",
+          idempotencyKey: `pair_request_received:${pairRequest.sender_id}:${pairRequest.id}`,
+          pushOverrides: {
+            androidChannelId: "social",
+            buttons: [
+              { id: "accept", text: "Accept" },
+              { id: "decline", text: "Decline" },
+            ],
+          },
+        }),
+      });
+      if (notifyResponse.ok) {
+        const result = await notifyResponse.json();
+        pushSent = result.pushSent === true;
+      } else {
+        const errText = await notifyResponse.text().catch(() => "unknown");
+        console.warn("[notify-pair-request-visible] notify-dispatch returned", notifyResponse.status, errText);
+      }
+    } catch (err) {
+      console.warn("[notify-pair-request-visible] notify-dispatch call failed:", err);
+    }
 
     return jsonResponse({
       success: true,

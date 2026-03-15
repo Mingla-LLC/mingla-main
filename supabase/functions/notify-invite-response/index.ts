@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -134,63 +133,63 @@ serve(async (req) => {
 
     const isAccepted = response === "accepted";
 
-    // Check if the inviter has opted out of collaboration invite notifications
-    const { data: notifPrefs } = await supabase
-      .from("notification_preferences")
-      .select("collaboration_invites")
-      .eq("user_id", inviterId)
-      .maybeSingle();
-
-    if (notifPrefs && notifPrefs.collaboration_invites === false) {
-      console.log("Inviter has disabled collaboration invite notifications, skipping push");
-      return new Response(
-        JSON.stringify({
-          success: true,
-          method: "none",
-          reason: "user_disabled_collaboration_notifications",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Build push notification copy
+    // Build notification copy
     const title = isAccepted
       ? `${invitedName} is in!`
       : `${invitedName} can't make it`;
     const body = isAccepted
       ? `They joined "${sessionName}." Time to plan.`
-      : `They passed on "${sessionName}." You can invite someone else.`;
+      : `They passed on "${sessionName}." Invite someone else?`;
 
-    // Generate deep link for the app
-    const deepLink = `mingla://collaboration/session/${sessionId}`;
-
-    // Send push notification to inviter (best-effort — failures logged, not propagated)
+    // Send notification via notify-dispatch
+    // (handles preference checks, quiet hours, rate limiting)
+    const notifyUrl = `${SUPABASE_URL}/functions/v1/notify-dispatch`;
     try {
-      await sendPush({
-        targetUserId: inviterId,
-        title: title,
-        body: body,
-        data: {
-          type: "collaboration_invite_response",
-          inviteId: inviteId,
-          sessionId: sessionId,
-          response: response,
-          deepLink: deepLink,
+      const notifyResponse = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        androidChannelId: "collaboration-invites",
+        body: JSON.stringify({
+          userId: inviterId,
+          type: isAccepted ? "collaboration_invite_accepted" : "collaboration_invite_declined",
+          title,
+          body,
+          data: {
+            deepLink: `mingla://session/${sessionId}`,
+            type: "collaboration_invite_response",
+            inviteId: inviteId,
+            sessionId: sessionId,
+            response: response,
+          },
+          actorId: invitedUserId,
+          relatedId: inviteId,
+          relatedType: "collaboration_invite",
+          idempotencyKey: isAccepted
+            ? `collaboration_invite_accepted:${invitedUserId}:${inviteId}`
+            : `collaboration_invite_declined:${invitedUserId}:${inviteId}`,
+          pushOverrides: {
+            androidChannelId: "collaboration",
+          },
+          // Declined invites are in-app only (no push)
+          skipPush: !isAccepted,
+        }),
       });
-      console.log("Push notification sent to inviter for invite response");
+      if (!notifyResponse.ok) {
+        const errText = await notifyResponse.text().catch(() => "unknown");
+        console.warn("[notify-invite-response] notify-dispatch returned", notifyResponse.status, errText);
+      } else {
+        console.log("Invite response notification sent via notify-dispatch");
+      }
     } catch (pushError) {
-      console.warn("[notify-invite-response] Push to inviter failed:", pushError);
+      console.warn("[notify-invite-response] notify-dispatch call failed:", pushError);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        method: "push",
+        method: isAccepted ? "push" : "in_app_only",
       }),
       {
         status: 200,

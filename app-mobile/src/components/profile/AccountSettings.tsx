@@ -24,6 +24,7 @@ import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
 import Toggle from "./Toggle";
 import * as Haptics from "expo-haptics";
+import type { NotificationPreferences } from "../../services/smartNotificationService";
 
 // --- Gender & Language options ---
 const GENDER_OPTIONS = [
@@ -95,6 +96,75 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
   // Saving states for individual fields
   const [savingField, setSavingField] = useState<string | null>(null);
+
+  // ── Notification Preferences (V2) ──
+  const [notifPrefs, setNotifPrefs] = useState<Partial<NotificationPreferences>>({
+    push_enabled: true,
+    friend_requests: true,
+    link_requests: true,
+    messages: true,
+    collaboration_invites: true,
+    marketing: true,
+  });
+  const [dmBypassQuietHours, setDmBypassQuietHours] = useState(false);
+  const [isLoadingNotifPrefs, setIsLoadingNotifPrefs] = useState(false);
+
+  // Fetch notification preferences on mount
+  useEffect(() => {
+    if (!visible || !user?.id) return;
+    setIsLoadingNotifPrefs(true);
+    supabase
+      .from('notification_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (data && !error) {
+          setNotifPrefs({
+            push_enabled: data.push_enabled ?? true,
+            friend_requests: data.friend_requests ?? true,
+            link_requests: data.link_requests ?? true,
+            messages: data.messages ?? true,
+            collaboration_invites: data.collaboration_invites ?? true,
+            marketing: data.marketing ?? true,
+          });
+          setDmBypassQuietHours((data as any).dm_bypass_quiet_hours ?? false);
+        }
+      })
+      .finally(() => setIsLoadingNotifPrefs(false));
+  }, [visible, user?.id]);
+
+  const updateNotifPref = async (key: string, value: boolean) => {
+    if (!user?.id) return;
+    // Optimistic update
+    const prev = { ...notifPrefs };
+    setNotifPrefs((p) => ({ ...p, [key]: value }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error } = await supabase
+      .from('notification_preferences')
+      .update({ [key]: value, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id);
+    if (error) {
+      // Rollback
+      setNotifPrefs(prev);
+      Alert.alert("Error", "Failed to update notification setting.");
+    }
+  };
+
+  const updateDmBypass = async (value: boolean) => {
+    if (!user?.id) return;
+    const prev = dmBypassQuietHours;
+    setDmBypassQuietHours(value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error } = await supabase
+      .from('notification_preferences')
+      .update({ dm_bypass_quiet_hours: value, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id);
+    if (error) {
+      setDmBypassQuietHours(prev);
+      Alert.alert("Error", "Failed to update quiet hours setting.");
+    }
+  };
 
   // Sync local state from store when sheet opens or profile changes externally
   useEffect(() => {
@@ -425,7 +495,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
               <View style={styles.rowDivider} />
 
-              {/* Notifications */}
+              {/* Notifications - legacy toggle kept for backward compat */}
               <View style={[styles.row, styles.rowLast]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Notifications</Text>
@@ -438,7 +508,121 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               </View>
             </View>
 
-            {/* Card 3: App Information */}
+            {/* Card 3: Notification Settings (V2) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="notifications" size={20} color="#eb7825" />
+                <Text style={styles.cardTitle}>Notification Settings</Text>
+              </View>
+
+              {/* Master toggle */}
+              <View style={styles.row}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Push Notifications</Text>
+                  <Text style={styles.rowHint}>Receive push notifications on your device</Text>
+                </View>
+                <Toggle
+                  value={notifPrefs.push_enabled ?? true}
+                  onToggle={() => updateNotifPref('push_enabled', !notifPrefs.push_enabled)}
+                />
+              </View>
+
+              {/* Sub-toggles — only shown when master is enabled */}
+              {notifPrefs.push_enabled && (
+                <>
+                  <View style={styles.rowDivider} />
+                  <View style={styles.row}>
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>Friends & Pairing</Text>
+                      <Text style={styles.rowHint}>Friend requests, pair requests, and social updates</Text>
+                    </View>
+                    <Toggle
+                      value={notifPrefs.friend_requests ?? true}
+                      onToggle={() => updateNotifPref('friend_requests', !notifPrefs.friend_requests)}
+                    />
+                  </View>
+
+                  <View style={styles.rowDivider} />
+                  <View style={styles.row}>
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>Link Requests</Text>
+                      <Text style={styles.rowHint}>When someone wants to link profiles with you</Text>
+                    </View>
+                    <Toggle
+                      value={notifPrefs.link_requests ?? true}
+                      onToggle={() => updateNotifPref('link_requests', !notifPrefs.link_requests)}
+                    />
+                  </View>
+
+                  <View style={styles.rowDivider} />
+                  <View style={styles.row}>
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>Messages</Text>
+                      <Text style={styles.rowHint}>Direct messages and session chat</Text>
+                    </View>
+                    <Toggle
+                      value={notifPrefs.messages ?? true}
+                      onToggle={() => updateNotifPref('messages', !notifPrefs.messages)}
+                    />
+                  </View>
+
+                  <View style={styles.rowDivider} />
+                  <View style={styles.row}>
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>Sessions</Text>
+                      <Text style={styles.rowHint}>Invites, member updates, and board activity</Text>
+                    </View>
+                    <Toggle
+                      value={notifPrefs.collaboration_invites ?? true}
+                      onToggle={() => updateNotifPref('collaboration_invites', !notifPrefs.collaboration_invites)}
+                    />
+                  </View>
+
+                  <View style={styles.rowDivider} />
+                  <View style={[styles.row, styles.rowLast]}>
+                    <View style={styles.rowLabelWrap}>
+                      <Text style={styles.rowLabel}>Tips & Re-engagement</Text>
+                      <Text style={styles.rowHint}>Occasional nudges, weekly digest, and recommendations</Text>
+                    </View>
+                    <Toggle
+                      value={notifPrefs.marketing ?? true}
+                      onToggle={() => updateNotifPref('marketing', !notifPrefs.marketing)}
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+
+            {/* Quiet Hours */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="moon" size={20} color="#eb7825" />
+                <Text style={styles.cardTitle}>Quiet Hours</Text>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Quiet Hours</Text>
+                  <Text style={styles.rowHint}>10 PM - 8 AM</Text>
+                </View>
+                <Text style={styles.rowValueMuted}>Active</Text>
+              </View>
+
+              <View style={styles.rowDivider} />
+
+              <View style={[styles.row, styles.rowLast]}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Messages during quiet hours</Text>
+                  <Text style={styles.rowHint}>Allow DMs between 10 PM - 8 AM</Text>
+                </View>
+                <Toggle
+                  value={dmBypassQuietHours}
+                  onToggle={() => updateDmBypass(!dmBypassQuietHours)}
+                />
+              </View>
+            </View>
+
+            {/* Card: App Information */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons name="information-circle" size={20} color="#eb7825" />

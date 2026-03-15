@@ -16,11 +16,8 @@ import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
-import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
-import { useInAppNotifications } from "../hooks/useInAppNotifications";
-import { useFriends } from "../hooks/useFriends";
-import { acceptPairRequest, declinePairRequest } from "../hooks/usePairings";
-import { useQueryClient } from "@tanstack/react-query";
+import { useNotifications, ServerNotification } from "../hooks/useNotifications";
+import { parseDeepLink, executeDeepLink, NavigationHandlers } from "../services/deepLinkService";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -59,7 +56,10 @@ interface HomePageProps {
   onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
-  onNotificationNavigate?: (notification: InAppNotification) => void;
+  onNotificationNavigate?: (notification: ServerNotification) => void;
+  // New V2 props
+  userId?: string;
+  onFriendAccepted?: () => void;
 }
 
 export default function HomePage({
@@ -92,6 +92,8 @@ export default function HomePage({
   availableFriends = [],
   isCreatingSession = false,
   onNotificationNavigate,
+  userId,
+  onFriendAccepted,
 }: HomePageProps) {
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -100,17 +102,30 @@ export default function HomePage({
     sessionId: string;
     nonce: number;
   } | null>(null);
+
+  // V2 server-synced notifications hook
   const {
     notifications,
     unreadCount: unreadNotificationCount,
+    isLoading: isLoadingNotifications,
+    isError: isErrorNotifications,
     markAsRead,
     markAllAsRead,
     clearAll,
-  } = useInAppNotifications();
-
-  // Get friend request handlers from useFriends hook
-  const { acceptFriendRequest, declineFriendRequest } = useFriends({ autoFetchBlockedUsers: false });
-  const queryClient = useQueryClient();
+    deleteNotification,
+    refresh: refreshNotifications,
+    loadMore: loadMoreNotifications,
+    hasMore: hasMoreNotifications,
+    acceptFriendRequest,
+    declineFriendRequest,
+    acceptPairRequest,
+    declinePairRequest,
+    acceptCollaborationInvite,
+    declineCollaborationInvite,
+    acceptLinkRequest,
+    declineLinkRequest,
+    pendingActions,
+  } = useNotifications(userId);
 
   const noop = useMemo(() => () => {}, []);
 
@@ -122,88 +137,28 @@ export default function HomePage({
     setShowNotificationsModal(false);
   }, []);
 
-  const handleMarkAllRead = () => {
-    markAllAsRead();
-  };
+  // Handle notification tap — navigate via deep link or fallback
+  const handleNotificationTap = useCallback(
+    (notification: ServerNotification) => {
+      const deepLink = notification.data?.deepLink as string | undefined;
+      if (deepLink) {
+        const action = parseDeepLink(deepLink);
+        if (action) {
+          // Build navigation handlers from the parent callback
+          if (onNotificationNavigate) {
+            onNotificationNavigate(notification);
+          }
+          return;
+        }
+      }
 
-  const handleNotificationPress = (notification: InAppNotification) => {
-    // Mark as read
-    markAsRead(notification.id);
-
-    if (notification.type === "board_invite" && notification.data?.sessionId) {
-      setShowNotificationsModal(false);
-      setInviteModalTrigger({
-        sessionId: String(notification.data.sessionId),
-        nonce: Date.now(),
-      });
-      return;
-    }
-
-    // For friend requests, don't close or navigate - just mark as read
-    // The modal will be opened via callback
-    if (notification.type !== "friend_request") {
-      // Close modal
-      setShowNotificationsModal(false);
-      // Navigate to the relevant page
+      // Fallback: use onNotificationNavigate with the notification data
       if (onNotificationNavigate) {
         onNotificationNavigate(notification);
       }
-    }
-  };
-
-  const handleOpenFriendRequestsModal = () => {
-    setShowFriendRequestsModal(true);
-  };
-
-  const handleAcceptFriendRequest = async (requestId: string, notificationId: string) => {
-    try {
-      if (requestId) {
-        await acceptFriendRequest(requestId);
-      }
-    } catch (error) {
-      console.error("Error accepting friend request:", error);
-    } finally {
-      await inAppNotificationService.remove(notificationId);
-    }
-  };
-
-  const handleRejectFriendRequest = async (requestId: string, notificationId: string) => {
-    try {
-      if (requestId) {
-        await declineFriendRequest(requestId);
-      }
-    } catch (error) {
-      console.error("Error rejecting friend request:", error);
-    } finally {
-      await inAppNotificationService.remove(notificationId);
-    }
-  };
-
-  const handleAcceptPairRequest = async (requestId: string, notificationId: string) => {
-    try {
-      await acceptPairRequest(requestId);
-      queryClient.invalidateQueries({ queryKey: ["pairings"] });
-    } catch (error) {
-      console.error("Error accepting pair request:", error);
-    } finally {
-      await inAppNotificationService.remove(notificationId);
-    }
-  };
-
-  const handleDeclinePairRequest = async (requestId: string, notificationId: string) => {
-    try {
-      await declinePairRequest(requestId);
-      queryClient.invalidateQueries({ queryKey: ["pairings"] });
-    } catch (error) {
-      console.error("Error declining pair request:", error);
-    } finally {
-      await inAppNotificationService.remove(notificationId);
-    }
-  };
-
-  const handleClearAll = () => {
-    clearAll();
-  };
+    },
+    [onNotificationNavigate]
+  );
 
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
@@ -287,7 +242,6 @@ export default function HomePage({
           </View>
         </Animated.View>
 
-          
 
 
         <View style={styles.mainContent}>
@@ -342,20 +296,31 @@ export default function HomePage({
           />
         </View>
 
-        {/* Notifications Modal */}
+        {/* V2 Notifications Modal — server-synced */}
         <NotificationsModal
           visible={showNotificationsModal}
           onClose={handleCloseNotifications}
           notifications={notifications}
           unreadCount={unreadNotificationCount}
-          onNotificationPress={handleNotificationPress}
-          onMarkAllRead={handleMarkAllRead}
-          onClearAll={handleClearAll}
-          onOpenRequestsModal={handleOpenFriendRequestsModal}
-          onAcceptFriendRequest={handleAcceptFriendRequest}
-          onRejectFriendRequest={handleRejectFriendRequest}
-          onAcceptPairRequest={handleAcceptPairRequest}
-          onDeclinePairRequest={handleDeclinePairRequest}
+          isLoading={isLoadingNotifications}
+          isError={isErrorNotifications}
+          onMarkAllRead={markAllAsRead}
+          onClearAll={clearAll}
+          onMarkAsRead={markAsRead}
+          onDeleteNotification={deleteNotification}
+          onNotificationTap={handleNotificationTap}
+          onAcceptFriendRequest={acceptFriendRequest}
+          onDeclineFriendRequest={declineFriendRequest}
+          onAcceptPairRequest={acceptPairRequest}
+          onDeclinePairRequest={declinePairRequest}
+          onAcceptCollaborationInvite={acceptCollaborationInvite}
+          onDeclineCollaborationInvite={declineCollaborationInvite}
+          onAcceptLinkRequest={acceptLinkRequest}
+          onDeclineLinkRequest={declineLinkRequest}
+          onRefresh={refreshNotifications}
+          onLoadMore={loadMoreNotifications}
+          hasMore={hasMoreNotifications}
+          pendingActions={pendingActions}
         />
 
         {/* Friend Requests Modal - Opens on top of Notifications Modal */}
@@ -379,8 +344,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
-    // borderWidth: 1,
-    // borderColor: 'blue'
   },
   header: {
     backgroundColor: "#ffffff",
@@ -432,7 +395,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    /*  aspectRatio: 3.4, */
   },
   logoContainer: {
     height: vs(46),
@@ -481,21 +443,18 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff",
   },
   pillsAndCardsContainer: {
-    // paddingHorizontal: 30,
     flex: 1,
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
   },
   mainContent: {
-    // paddingHorizontal: 10,
     flex: 1,
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
     overflow: "hidden",
-    // marginHorizontal: 10
   },
   sessionsAnimatedWrapper: {
     width: '100%',
