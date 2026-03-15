@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PurchasesPackage } from 'react-native-purchases';
@@ -170,20 +169,21 @@ export function CustomPaywallScreen({
     <Modal
       visible={isVisible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
+        {/* Swipe-down handle */}
+        <TouchableOpacity style={styles.handleBar} onPress={onClose} activeOpacity={0.8}>
+          <View style={styles.handle} />
+        </TouchableOpacity>
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Close button */}
-          <TouchableOpacity style={styles.closeButton} onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-
           {/* Header */}
           <Text style={styles.header}>{headerText}</Text>
           <Text style={styles.subheader}>
@@ -204,11 +204,9 @@ export function CustomPaywallScreen({
               style={[styles.tierTab, selectedTier === 'elite' && styles.tierTabActiveElite]}
               onPress={() => setSelectedTier('elite')}
             >
-              {selectedTier === 'elite' && (
-                <View style={styles.bestValueBadge}>
-                  <Text style={styles.bestValueText}>Best Value</Text>
-                </View>
-              )}
+              <View style={styles.bestValueBadge}>
+                <Text style={styles.bestValueText}>Best Value</Text>
+              </View>
               <Text style={[styles.tierTabText, selectedTier === 'elite' && styles.tierTabTextActive]}>
                 Elite
               </Text>
@@ -302,7 +300,7 @@ export function CustomPaywallScreen({
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -316,19 +314,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1C1C1E',
   },
+  handleBar: {
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  handle: {
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
-  },
-
-  // Close
-  closeButton: {
-    alignSelf: 'flex-end',
-    marginTop: spacing.sm,
-    padding: spacing.xs,
   },
 
   // Header
@@ -338,7 +342,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.xxl.lineHeight,
     fontWeight: fontWeights.bold,
     textAlign: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
   },
   subheader: {
     color: '#9CA3AF',

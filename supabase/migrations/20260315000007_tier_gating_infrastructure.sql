@@ -68,7 +68,7 @@ BEGIN
 
   new_count := v_count;
   daily_limit := v_limit;
-  is_limited := (v_limit > 0 AND v_count > v_limit);
+  is_limited := (v_limit > 0 AND v_count >= v_limit);
   RETURN NEXT;
 END;
 $$;
@@ -117,7 +117,7 @@ $$;
 -- ============================================================
 CREATE OR REPLACE FUNCTION get_tier_limits(p_tier TEXT)
 RETURNS JSONB
-LANGUAGE plpgsql IMMUTABLE AS $$
+LANGUAGE plpgsql STABLE AS $$
 BEGIN
   CASE p_tier
     WHEN 'free' THEN

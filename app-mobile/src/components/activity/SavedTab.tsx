@@ -34,6 +34,9 @@ import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/pr
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { useFeatureGate } from "../../hooks/useFeatureGate";
+import { CustomPaywallScreen } from "../CustomPaywallScreen";
+import type { GatedFeature } from "../../hooks/useFeatureGate";
 
 interface SavedCard {
   id: string;
@@ -109,6 +112,11 @@ const SavedTab = ({
   const effectiveIsLoading = isLoading || contextIsLoadingSavedCards;
   // Use boardSavedCards if provided, otherwise use savedCards from context
   const savedCards = boardSavedCards ?? contextSavedCards;
+
+  // Feature gating for locked curated cards
+  const { canAccess } = useFeatureGate();
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('curated_cards');
   const [selectedCardForModal, setSelectedCardForModal] =
     useState<ExpandedCardData | null>(null);
   const [originalSavedCard, setOriginalSavedCard] = useState<SavedCard | null>(
@@ -938,6 +946,45 @@ const SavedTab = ({
       alignItems: 'center',
       justifyContent: 'center',
     },
+    lockedCardOverflow: {
+      overflow: 'hidden',
+    },
+    lockedBody: {
+      backgroundColor: '#1C1C1E',
+      padding: 24,
+      alignItems: 'center',
+      gap: 12,
+    },
+    lockedTeaserText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    lockedSubtext: {
+      color: '#9CA3AF',
+      fontSize: 12,
+      textAlign: 'center',
+    },
+    lockedUpgradeButton: {
+      backgroundColor: '#f97316',
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 10,
+      marginTop: 4,
+    },
+    lockedUpgradeText: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    lockedRemoveButton: {
+      marginTop: 4,
+    },
+    lockedRemoveText: {
+      color: '#6B7280',
+      fontSize: 12,
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -1602,8 +1649,41 @@ const SavedTab = ({
 
   const renderCuratedCard = (card: SavedCard) => {
     const stops = (card as any).stops as CuratedStop[];
-    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
     const isRemoving = removingCardIds.has(card.id);
+
+    // Locked curated card — show blurred teaser
+    if (!canAccess('curated_cards')) {
+      const categoryLabel = (card as any).categoryLabel || (card as any).experienceType || 'Curated';
+      const teaserText = (card as any).teaserText || `A ${categoryLabel.toLowerCase()} experience with ${stops?.length ?? 0} curated stops`;
+      return (
+        <View style={[curatedSavedStyles.card, curatedSavedStyles.lockedCardOverflow]}>
+          <View style={curatedSavedStyles.lockedBody}>
+            <Ionicons name="lock-closed" size={32} color="rgba(255,255,255,0.5)" />
+            <Text style={curatedSavedStyles.lockedTeaserText} numberOfLines={2}>
+              {teaserText}
+            </Text>
+            <Text style={curatedSavedStyles.lockedSubtext}>
+              {stops?.length ?? 0} stops · Curated experience
+            </Text>
+            <TouchableOpacity
+              onPress={() => { setPaywallFeature('curated_cards'); setShowPaywall(true); }}
+              style={curatedSavedStyles.lockedUpgradeButton}
+            >
+              <Text style={curatedSavedStyles.lockedUpgradeText}>Unlock with Pro</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleRemoveSaved(card)}
+              style={curatedSavedStyles.lockedRemoveButton}
+              disabled={isRemoving}
+            >
+              <Text style={curatedSavedStyles.lockedRemoveText}>{isRemoving ? 'Removing...' : 'Remove'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
 
     // Computed display values
     const avgRating = stops.length > 0
@@ -2133,6 +2213,14 @@ const SavedTab = ({
           onPicnicDataFetched={handlePicnicDataFetched}
         />
       )}
+
+      <CustomPaywallScreen
+        isVisible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        userId={user?.id ?? ''}
+        feature={paywallFeature}
+        initialTier="pro"
+      />
     </View>
   );
 };

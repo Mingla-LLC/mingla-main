@@ -59,25 +59,49 @@ export function useSwipeLimit() {
 
   const countRef = useRef(0);
 
-  // Hydrate from local storage on mount / tier change
+  // Hydrate from local storage, then reconcile with server
   useEffect(() => {
     if (!user?.id || isUnlimited) return;
 
     const today = new Date().toISOString().split('T')[0];
     const key = `${STORAGE_KEY_PREFIX}${user.id}_${today}`;
 
+    // Step 1: Read from local storage (instant)
     AsyncStorage.getItem(key).then((val) => {
-      const used = val ? parseInt(val, 10) : 0;
-      countRef.current = used;
+      const localUsed = val ? parseInt(val, 10) : 0;
+      countRef.current = localUsed;
       setState({
-        remaining: Math.max(limit - used, 0),
+        remaining: Math.max(limit - localUsed, 0),
         limit,
-        used,
-        isLimited: used >= limit,
+        used: localUsed,
+        isLimited: localUsed >= limit,
         isUnlimited: false,
         resetsAt: getNextMidnight(),
       });
     });
+
+    // Step 2: Reconcile with server (takes Math.max of local vs server)
+    Promise.resolve(supabase.rpc('get_remaining_swipes', { p_user_id: user.id }))
+      .then(({ data }) => {
+        if (!data?.[0] || data[0].remaining < 0) return; // unlimited or error
+        const serverUsed = data[0].used as number;
+        const effectiveUsed = Math.max(countRef.current, serverUsed);
+        if (effectiveUsed !== countRef.current) {
+          countRef.current = effectiveUsed;
+          // Persist the reconciled count to local storage
+          const todayKey = `${STORAGE_KEY_PREFIX}${user.id}_${new Date().toISOString().split('T')[0]}`;
+          AsyncStorage.setItem(todayKey, String(effectiveUsed)).catch(() => {});
+          setState({
+            remaining: Math.max(limit - effectiveUsed, 0),
+            limit,
+            used: effectiveUsed,
+            isLimited: effectiveUsed >= limit,
+            isUnlimited: false,
+            resetsAt: getNextMidnight(),
+          });
+        }
+      })
+      .catch(() => {}); // best-effort reconciliation
   }, [user?.id, limit, isUnlimited]);
 
   const recordSwipe = useCallback(async () => {
@@ -91,7 +115,9 @@ export function useSwipeLimit() {
     AsyncStorage.setItem(key, String(newCount)).catch(() => {});
 
     // Best-effort server sync — don't block on it
-    supabase.rpc('increment_daily_swipe_count', { p_user_id: user.id }).catch(() => {});
+    // Supabase .rpc() returns a thenable (not a full Promise), so .catch() is unavailable.
+    // Wrap in Promise.resolve() to get a real Promise with .catch().
+    Promise.resolve(supabase.rpc('increment_daily_swipe_count', { p_user_id: user.id })).catch(() => {});
 
     const hitLimit = newCount >= limit;
     setState({

@@ -404,20 +404,20 @@ serve(async (req: Request) => {
       }
     }
 
-    // --- TIER GATING: Swipe limit + tier check (single RPC) ---
-    // get_remaining_swipes internally calls get_effective_tier, so we derive
-    // the tier from its response: remaining === -1 means pro/elite (unlimited).
+    // --- TIER GATING: Swipe limit check + effective tier ---
     let swipeData: { remaining: number; daily_limit: number; used: number; resets_at: string } | null = null;
     let effectiveTier = 'free';
     if (userId) {
-      const { data: _swipeData } = await supabaseAdmin
-        .rpc('get_remaining_swipes', { p_user_id: userId });
+      // Fetch swipe data and effective tier in parallel
+      const [swipeResult, tierResult] = await Promise.all([
+        supabaseAdmin.rpc('get_remaining_swipes', { p_user_id: userId }),
+        supabaseAdmin.rpc('get_effective_tier', { p_user_id: userId }),
+      ]);
 
-      if (_swipeData?.[0]) {
-        swipeData = _swipeData[0];
-        // remaining === -1 means pro/elite (unlimited swipes)
-        effectiveTier = swipeData.remaining === -1 ? 'pro' : 'free';
+      if (swipeResult.data?.[0]) {
+        swipeData = swipeResult.data[0];
       }
+      effectiveTier = tierResult.data ?? 'free';
 
       if (swipeData && swipeData.remaining === 0) {
         return new Response(
@@ -436,16 +436,16 @@ serve(async (req: Request) => {
     // --- TIER GATING: Helper to strip curated card details for free users ---
     function applyTierGating(cards: any[]): any[] {
       return cards.map(card => {
-        if (card.card_type === 'curated' && effectiveTier === 'free') {
+        if (card.cardType === 'curated' && effectiveTier === 'free') {
           return {
             ...card,
-            stops: card.stops?.map((stop: any, i: number) => ({
+            stops: card.stops?.map((_stop: any, i: number) => ({
               stopNumber: i + 1,
             })),
-            title: card.teaser_text || 'A curated experience awaits...',
+            title: card.teaserText || 'A curated experience awaits...',
             tagline: card.tagline,
-            stop_place_pool_ids: [],
-            stop_google_place_ids: [],
+            stopPlacePoolIds: [],
+            stopGooglePlaceIds: [],
             _locked: true,
           };
         }

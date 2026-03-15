@@ -34,6 +34,8 @@ interface PostExperienceModalProps {
   visible: boolean;
   review: PendingExperienceReview;
   onComplete: () => void;
+  dismissible?: boolean;
+  calendarEntryId?: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -50,6 +52,8 @@ export default function PostExperienceModal({
   visible,
   review,
   onComplete,
+  dismissible = false,
+  calendarEntryId,
 }: PostExperienceModalProps) {
   const { user } = useAppStore();
   const insets = useSafeAreaInsets();
@@ -260,13 +264,17 @@ export default function PostExperienceModal({
 
   // ── Submit handlers ────────────────────────────────────────────────────
 
+  // Resolve the calendar entry ID: prop override takes precedence
+  const resolvedCalendarEntryId =
+    calendarEntryId !== undefined ? calendarEntryId : review.calendarEntryId;
+
   const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
     setStep("submitting");
     setSubmitError(null);
     try {
       await voiceReviewService.submitVoiceReview(user.id, {
-        calendarEntryId: review.calendarEntryId,
+        calendarEntryId: resolvedCalendarEntryId as string,
         cardId: review.cardId,
         placeName: review.placeName,
         placeAddress: review.placeAddress,
@@ -282,7 +290,7 @@ export default function PostExperienceModal({
       console.error("[PostExperienceModal] Submit failed:", error);
       setSubmitError("Something went wrong. Please try again.");
     }
-  }, [user, review, rating, clips]);
+  }, [user, review, rating, clips, resolvedCalendarEntryId]);
 
   const handleSubmitWithoutAudio = useCallback(async () => {
     if (!user?.id) return;
@@ -290,7 +298,7 @@ export default function PostExperienceModal({
     setSubmitError(null);
     try {
       await voiceReviewService.submitVoiceReview(user.id, {
-        calendarEntryId: review.calendarEntryId,
+        calendarEntryId: resolvedCalendarEntryId as string,
         cardId: review.cardId,
         placeName: review.placeName,
         placeAddress: review.placeAddress,
@@ -306,7 +314,7 @@ export default function PostExperienceModal({
       console.error("[PostExperienceModal] Submit failed:", error);
       setSubmitError("Something went wrong. Please try again.");
     }
-  }, [user, review, rating]);
+  }, [user, review, rating, resolvedCalendarEntryId]);
 
   // ── Reschedule ─────────────────────────────────────────────────────────
 
@@ -748,6 +756,17 @@ export default function PostExperienceModal({
       onRequestClose={() => {}}
     >
       <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
+        {dismissible && (
+          <TouchableOpacity
+            style={styles.dismissButton}
+            onPress={onComplete}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={24} color={colors.gray800} />
+          </TouchableOpacity>
+        )}
         {step === "prompt" && renderPromptStep()}
         {step === "rate" && renderRateStep()}
         {step === "record" && renderRecordStep()}
@@ -765,6 +784,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+  dismissButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   // -- Prompt Step --
   promptImage: {

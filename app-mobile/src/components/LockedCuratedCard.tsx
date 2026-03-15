@@ -40,11 +40,12 @@ interface LockedCuratedCardProps {
 export function LockedCuratedCard({ card, onUpgrade }: LockedCuratedCardProps) {
   const categoryLabel = card.categoryLabel || 'Adventurous';
   const categoryIcon = CURATED_ICON_MAP[categoryLabel] || 'compass-outline';
-  const stopCount = card.stops.length;
-  const priceText =
-    card.totalPriceMin === 0 && card.totalPriceMax === 0
-      ? 'Free'
-      : `$${card.totalPriceMin}\u2013$${card.totalPriceMax}`;
+  const stopCount = card.stops?.length ?? 0;
+
+  // Use teaser text (set by server for free users), never reveal the real title
+  const teaserText = card.teaserText
+    || (card._locked && card.title) // server already replaced title with teaser
+    || `A ${categoryLabel.toLowerCase()} experience with ${stopCount} curated stops`;
 
   return (
     <TouchableOpacity
@@ -74,15 +75,10 @@ export function LockedCuratedCard({ card, onUpgrade }: LockedCuratedCardProps) {
           </Text>
         </View>
 
-        {/* Teaser title */}
+        {/* Teaser title — never the real itinerary name */}
         <Text style={styles.teaserText} numberOfLines={2}>
-          {card.title}
+          {teaserText}
         </Text>
-
-        {/* Price pill */}
-        <View style={styles.pricePill}>
-          <Text style={styles.pricePillText}>{priceText}</Text>
-        </View>
 
         {/* Lock icon */}
         <Ionicons
@@ -160,17 +156,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: typography.md.lineHeight,
     marginVertical: spacing.xs,
-  },
-  pricePill: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  pricePillText: {
-    color: '#fff',
-    fontSize: typography.sm.fontSize,
-    fontWeight: fontWeights.semibold,
   },
   lockIcon: {
     marginVertical: spacing.sm,

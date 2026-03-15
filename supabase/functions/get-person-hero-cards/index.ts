@@ -16,11 +16,13 @@ const UUID_RE =
 interface RequestBody {
   personId?: string;         // DEPRECATED — saved_people.id
   pairedUserId?: string;     // NEW — auth.users.id of paired user
+  viewerUserId?: string;     // For custom holidays: the creator's user ID
   holidayKey: string;
   categorySlugs: string[];
   curatedExperienceType: string | null;
   location: { latitude: number; longitude: number };
-  mode?: "default" | "shuffle"; // default = use provided categories; shuffle = personalize if ≥10 swipes
+  mode?: "default" | "shuffle" | "bilateral"; // default = use provided categories; shuffle = personalize if ≥10 swipes; bilateral = blend both users' prefs
+  isCustomHoliday?: boolean;
 }
 
 interface Card {
@@ -109,6 +111,15 @@ function mapPoolCardToCard(raw: Record<string, unknown>, rowCardType?: string): 
   };
 }
 
+// ── Distance preference → radius mapping ────────────────────────────────────
+
+const DISTANCE_RADIUS_MAP: Record<string, { initial: number; max: number }> = {
+  walking: { initial: 5000, max: 15000 },
+  near:    { initial: 15000, max: 30000 },
+  medium:  { initial: 25000, max: 50000 },
+  far:     { initial: 40000, max: 100000 },
+};
+
 // ── Intent → category mapping (matches mobile holidays.ts) ─────────────────
 
 const INTENT_CATEGORY_MAP: Record<string, string[]> = {
@@ -168,12 +179,13 @@ serve(async (req: Request) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // --- Parse & validate body ---
-    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode } = rawBody as RequestBody;
+    const { personId, pairedUserId, viewerUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode, isCustomHoliday } = rawBody as RequestBody;
 
     // Accept either personId (deprecated) or pairedUserId (new pairing flow)
     const effectivePersonId = pairedUserId ?? personId;
     const usingPairedUser = !!pairedUserId;
     const isShuffleMode = mode === "shuffle";
+    const isBilateralMode = mode === "bilateral";
 
     if (!effectivePersonId || !UUID_RE.test(effectivePersonId)) {
       return new Response(
@@ -182,15 +194,178 @@ serve(async (req: Request) => {
       );
     }
 
+    // --- Multi-dimension preference variables ---
+    let priceTierFilter: string[] | null = null;
+    let initialRadius = 15000;
+    let maxRadius = 100000;
+
     // --- Shuffle mode: check swipe count and personalize if ≥10 ---
     let blendedCategories = categorySlugs;
-    if (isShuffleMode && usingPairedUser) {
+
+    if (isBilateralMode && usingPairedUser) {
+      // ── Bilateral mode: blend BOTH users' preferences ──
       try {
-        // Count total swipes for the paired person
+        const [{ data: pairedPrefs }, { data: viewerPrefs }] = await Promise.all([
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "category")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.4)
+            .order("preference_value", { ascending: false })
+            .limit(10),
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", userId)
+            .eq("preference_type", "category")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.4)
+            .order("preference_value", { ascending: false })
+            .limit(10),
+        ]);
+
+        const pairedMap = new Map<string, number>();
+        (pairedPrefs ?? []).forEach((p: { preference_key: string; preference_value: number }) => {
+          pairedMap.set(p.preference_key, p.preference_value);
+        });
+
+        const viewerMap = new Map<string, number>();
+        (viewerPrefs ?? []).forEach((p: { preference_key: string; preference_value: number }) => {
+          viewerMap.set(p.preference_key, p.preference_value);
+        });
+
+        // Find intersection: categories both users like
+        const intersection: { key: string; combined: number }[] = [];
+        for (const [key, pairedVal] of pairedMap) {
+          const viewerVal = viewerMap.get(key);
+          if (viewerVal !== undefined) {
+            intersection.push({ key, combined: (pairedVal + viewerVal) / 2 });
+          }
+        }
+        intersection.sort((a, b) => b.combined - a.combined);
+
+        if (intersection.length >= 3) {
+          blendedCategories = intersection.slice(0, 6).map((i) => i.key);
+          console.log(
+            `[get-person-hero-cards] Bilateral mode: ${intersection.length} overlapping categories, using top ${blendedCategories.length}`,
+          );
+        } else {
+          // Fallback: pad with paired user's top prefs
+          const used = new Set(intersection.map((i) => i.key));
+          const pairedExtra = (pairedPrefs ?? [])
+            .filter((p: { preference_key: string }) => !used.has(p.preference_key))
+            .slice(0, 6 - intersection.length)
+            .map((p: { preference_key: string }) => p.preference_key);
+          blendedCategories = [
+            ...intersection.map((i) => i.key),
+            ...pairedExtra,
+          ];
+          console.log(
+            `[get-person-hero-cards] Bilateral mode: < 3 overlap, padded with paired user prefs. Total: ${blendedCategories.length}`,
+          );
+        }
+      } catch (bilateralError) {
+        console.warn("[get-person-hero-cards] Bilateral mode failed, using defaults:", bilateralError);
+      }
+    } else if (isCustomHoliday && usingPairedUser && viewerUserId) {
+      // ── Custom holiday blending: merge both users' preferences ──
+      try {
+        const [{ data: pairedPrefs }, { data: creatorPrefs }] = await Promise.all([
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "category")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.4)
+            .order("preference_value", { ascending: false })
+            .limit(5),
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", viewerUserId)
+            .eq("preference_type", "category")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.4)
+            .order("preference_value", { ascending: false })
+            .limit(5),
+        ]);
+
+        // Build blended list: paired user's categories + creator's (no duplicates)
+        const seen = new Set<string>();
+        const blended: string[] = [];
+        for (const p of (pairedPrefs ?? [])) {
+          if (!seen.has(p.preference_key)) {
+            seen.add(p.preference_key);
+            blended.push(p.preference_key);
+          }
+        }
+        for (const p of (creatorPrefs ?? [])) {
+          if (!seen.has(p.preference_key) && blended.length < 10) {
+            seen.add(p.preference_key);
+            blended.push(p.preference_key);
+          }
+        }
+
+        // Pad with holiday defaults if < 10
+        if (blended.length < 10) {
+          for (const slug of categorySlugs) {
+            if (!seen.has(slug) && blended.length < 10) {
+              seen.add(slug);
+              blended.push(slug);
+            }
+          }
+        }
+
+        if (blended.length > 0) {
+          blendedCategories = blended;
+          console.log(
+            `[get-person-hero-cards] Custom holiday blending: ${blendedCategories.length} categories from both users`,
+          );
+        }
+
+        // Also fetch both users' price tier prefs — use UNION (not intersection)
+        const [{ data: pairedPricePrefs }, { data: creatorPricePrefs }] = await Promise.all([
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "price_tier")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", viewerUserId)
+            .eq("preference_type", "price_tier")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+        ]);
+
+        const priceSet = new Set<string>();
+        for (const p of (pairedPricePrefs ?? [])) priceSet.add(p.preference_key);
+        for (const p of (creatorPricePrefs ?? [])) priceSet.add(p.preference_key);
+        if (priceSet.size > 0) {
+          priceTierFilter = [...priceSet];
+          console.log(`[get-person-hero-cards] Custom holiday price tiers: [${priceTierFilter}]`);
+        }
+      } catch (customError) {
+        console.warn("[get-person-hero-cards] Custom holiday blending failed:", customError);
+      }
+    } else if (isShuffleMode && usingPairedUser) {
+      try {
+        // Count total swipes for the paired person (D5 fix: use user_interactions, not user_card_impressions)
         const { count: totalSwipes } = await adminClient
-          .from("user_card_impressions")
+          .from("user_interactions")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", pairedUserId);
+          .eq("user_id", pairedUserId)
+          .in("interaction_type", ["swipe_left", "swipe_right"]);
 
         const swipeCount = totalSwipes ?? 0;
         console.log(
@@ -198,12 +373,13 @@ serve(async (req: Request) => {
         );
 
         if (swipeCount >= 10) {
-          // Personalized: use top-6 weighted categories
+          // Personalized: use top-6 weighted categories (D3: confidence threshold)
           const { data: learnedPrefs } = await adminClient
             .from("user_preference_learning")
             .select("preference_key, preference_value")
             .eq("user_id", pairedUserId)
             .eq("preference_type", "category")
+            .gte("confidence", 0.15)
             .gt("preference_value", 0)
             .order("preference_value", { ascending: false })
             .limit(6);
@@ -218,7 +394,6 @@ serve(async (req: Request) => {
           }
         } else {
           // Not personalized: randomize within same category structure
-          // Shuffle the existing categories to get different results
           blendedCategories = [...categorySlugs].sort(() => Math.random() - 0.5);
           console.log("[get-person-hero-cards] Random shuffle: <10 swipes, randomizing categories");
         }
@@ -226,13 +401,14 @@ serve(async (req: Request) => {
         console.warn("[get-person-hero-cards] Shuffle check failed, using defaults:", shuffleError);
       }
     } else if (usingPairedUser) {
-      // Default mode: blend learned preferences (existing behavior)
+      // Default mode: blend learned preferences (D3: confidence threshold)
       try {
         const { data: learnedPrefs } = await adminClient
           .from("user_preference_learning")
           .select("preference_key, preference_value")
           .eq("user_id", pairedUserId)
           .eq("preference_type", "category")
+          .gte("confidence", 0.15)
           .gt("preference_value", 0)
           .order("preference_value", { ascending: false })
           .limit(10);
@@ -254,6 +430,69 @@ serve(async (req: Request) => {
         }
       } catch (prefError) {
         console.warn("[get-person-hero-cards] Failed to fetch learned preferences:", prefError);
+      }
+    }
+
+    // ── Fetch multi-dimension preferences (price, time, distance) for paired user ──
+    if (usingPairedUser && !isCustomHoliday) {
+      try {
+        const [{ data: pricePrefs }, { data: timePrefs }, { data: distancePrefs }] = await Promise.all([
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "price_tier")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "time_of_day")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          adminClient
+            .from("user_preference_learning")
+            .select("preference_key, preference_value")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "distance")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(1),
+        ]);
+
+        // Apply price tier filter
+        if (pricePrefs && pricePrefs.length > 0 && !priceTierFilter) {
+          priceTierFilter = pricePrefs.map((p: { preference_key: string }) => p.preference_key);
+          console.log(`[get-person-hero-cards] Price tier filter: [${priceTierFilter}]`);
+        }
+
+        // Log time prefs (used for future ranking, not filtering)
+        if (timePrefs && timePrefs.length > 0) {
+          console.log(
+            `[get-person-hero-cards] Time preferences: [${timePrefs.map((p: { preference_key: string }) => p.preference_key)}]`,
+          );
+        }
+
+        // Apply distance preference to radius
+        if (distancePrefs && distancePrefs.length > 0) {
+          const distBucket = distancePrefs[0].preference_key;
+          const radiusConfig = DISTANCE_RADIUS_MAP[distBucket];
+          if (radiusConfig) {
+            initialRadius = radiusConfig.initial;
+            maxRadius = radiusConfig.max;
+            console.log(
+              `[get-person-hero-cards] Distance pref '${distBucket}': initial=${initialRadius}m, max=${maxRadius}m`,
+            );
+          }
+        }
+      } catch (dimError) {
+        console.warn("[get-person-hero-cards] Multi-dimension pref fetch failed:", dimError);
       }
     }
 
@@ -324,8 +563,8 @@ serve(async (req: Request) => {
         p_lng: location.longitude,
         p_categories: resolvedCategories,
         p_curated_experience_type: effectiveCuratedType,
-        p_initial_radius_meters: 15000,
-        p_max_radius_meters: 100000,
+        p_initial_radius_meters: initialRadius,
+        p_max_radius_meters: maxRadius,
       },
     );
 
@@ -342,7 +581,21 @@ serve(async (req: Request) => {
     let cards: Card[] = rows.map((row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
       mapPoolCardToCard(row.card, row.card_type),
     );
-    const totalAvailable = rows.length > 0 ? Number(rows[0].total_available) : 0;
+    let totalAvailable = rows.length > 0 ? Number(rows[0].total_available) : 0;
+
+    // --- Apply price tier filter if set ---
+    if (priceTierFilter && priceTierFilter.length > 0) {
+      const beforeCount = cards.length;
+      cards = cards.filter(
+        (c) => c.cardType === "curated" || !c.priceTier || priceTierFilter!.includes(c.priceTier),
+      );
+      if (cards.length < beforeCount) {
+        console.log(
+          `[get-person-hero-cards] Price tier filter removed ${beforeCount - cards.length} cards`,
+        );
+        totalAvailable = Math.max(0, totalAvailable - (beforeCount - cards.length));
+      }
+    }
 
     console.log(
       `[get-person-hero-cards] Mapped ${cards.length} cards — types: [${cards.map(c => c.cardType).join(", ")}]`,
@@ -392,8 +645,8 @@ serve(async (req: Request) => {
                 p_lng: location.longitude,
                 p_categories: resolvedCategories,
                 p_curated_experience_type: effectiveCuratedType,
-                p_initial_radius_meters: 15000,
-                p_max_radius_meters: 100000,
+                p_initial_radius_meters: initialRadius,
+                p_max_radius_meters: maxRadius,
               },
             );
 

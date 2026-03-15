@@ -30,11 +30,15 @@ export const ExperienceTypesSection = memo(
     selectedIntents,
     onIntentToggle,
     minMessage,
+    isCuratedLocked,
+    onLockedTap,
   }: {
     experienceTypes: any[];
     selectedIntents: string[];
     onIntentToggle: (id: string) => void;
     minMessage?: boolean;
+    isCuratedLocked?: boolean;
+    onLockedTap?: () => void;
   }) => {
     const [lastTappedIntent, setLastTappedIntent] = useState<string | null>(null);
 
@@ -53,6 +57,18 @@ export const ExperienceTypesSection = memo(
         <Text style={styles.sectionSubtitle}>
           What kind of outing are you feeling?
         </Text>
+        {isCuratedLocked && (
+          <TouchableOpacity
+            onPress={onLockedTap}
+            activeOpacity={0.7}
+            style={styles.curatedLockedBanner}
+          >
+            <Ionicons name="lock-closed" size={14} color="#f97316" />
+            <Text style={styles.curatedLockedText}>
+              Curated cards are locked on Free — upgrade to explore them
+            </Text>
+          </TouchableOpacity>
+        )}
         <View style={styles.experienceTypesContainer}>
           {experienceTypes.map((type) => {
             const isSelected = selectedIntents.includes(type.id);
@@ -100,6 +116,7 @@ export const ExperienceTypesSection = memo(
   (prev, next) =>
     prev.selectedIntents.length === next.selectedIntents.length &&
     prev.minMessage === next.minMessage &&
+    prev.isCuratedLocked === next.isCuratedLocked &&
     prev.selectedIntents.every((id: string) =>
       next.selectedIntents.includes(id)
     )
@@ -414,6 +431,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6b7280",
     marginBottom: 10,
+  },
+  curatedLockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  curatedLockedText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#c2410c',
+    fontWeight: '500',
   },
   experienceTypesContainer: {
     flexDirection: "row",

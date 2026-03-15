@@ -585,6 +585,7 @@ function poolCardToApiCard(
       oneLiner: card.one_liner || null,
       tip: card.tip || null,
       scoringFactors: card.scoring_factors || null,
+      teaserText: card.teaser_text || null,
       _poolCardId: card.id,
     };
   }

@@ -12,7 +12,7 @@ A mobile app for planning social outings — combining pool-first card serving, 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 52 Deno serverless functions |
+| Edge Functions | 54 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -49,8 +49,8 @@ Mingla/
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   ├── discussion/            # EmojiReactionPicker, SuggestionPopup, EmptyDiscussion
 │   │   │   └── ui/                     # Design system primitives (Button, Toast, CategoryTile, etc.)
-│   │   ├── hooks/                      # ~65 React Query hooks + realtime hooks
-│   │   ├── services/                   # ~73 service files
+│   │   ├── hooks/                      # ~67 React Query hooks + realtime hooks
+│   │   ├── services/                   # ~75 service files
 │   │   ├── contexts/                   # 3 React contexts (Navigation, CardCache, Recommendations)
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
@@ -61,7 +61,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 52 Deno edge functions
+│   ├── functions/                      # 54 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   └── [function-name]/           # Individual edge functions
 │   ├── migrations/                    # 198 SQL migration files
@@ -135,11 +135,22 @@ A single-scroll experience with 5 sections and inline editing via bottom sheets:
 
 ### View Friend Profile
 
-Tapping a friend's avatar opens their full profile as an overlay. Access controlled by 3 RLS policies based on `visibility_mode`. Private profiles show an error state.
+Tapping a friend's avatar opens their full profile as an overlay. Access controlled by 3 RLS policies based on `visibility_mode`. Private profiles show an error state. Paired friends' profiles include saves and visits sections with horizontal card strips, a bilateral toggle for "For both of you" preference matching, and a "Tuned to [Name]" personalization badge.
+
+### Preference Intelligence System
+
+Multi-dimensional preference learning from swipe behavior (category, price tier, time of day, distance willingness). Paired users can see each other's saved places and visits. Features include:
+
+- **Visit confirmation** — "I went here" button on saved cards opens optional voice review flow. Visit signals carry highest learning weight (0.35).
+- **Paired saves/visits** — Read-only view of partner's saved and visited places via horizontal card strips and full-page grid views.
+- **Bilateral matching** — "For both of you" toggle finds preference overlap between paired users, showing places they'd both enjoy.
+- **Multi-dimension learning** — Trigger extracts category, price tier, time of day, and distance bucket from every interaction.
+- **Confidence thresholds** — Preferences below 0.15 confidence (~2 interactions) are excluded from paired view queries.
+- **Learning indicators** — Subtle toasts for new users at 5 and 10 swipe milestones.
 
 ### Pairing System (Elite Only)
 
-Pairing replaces the legacy Saved People system. Real behavior data (swipes, saves, visits) drives personalization instead of audio descriptions. Pairing is exclusively available to Elite tier users — Free and Pro users see a paywall on any pairing attempt. Server-side enforcement via `check_pairing_allowed()` SQL function.
+Pairing replaces the legacy Saved People system. Real behavior data (swipes, saves, visits) drives multi-dimensional personalization (category, price, time, distance). Custom holidays generate a 50/50 blend of both users' preferences. Pairing is exclusively available to Elite tier users — Free and Pro users see a paywall on any pairing attempt. Server-side enforcement via `check_pairing_allowed()` SQL function.
 
 **3-Tier Pairing:**
 - **Tier 1 (Friend):** Direct pair request to any Mingla friend
@@ -295,6 +306,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `custom_holidays` | User-created holidays linked to pairings via `pairing_id` and `paired_user_id` |
 | `archived_holidays` | Tracks archived holidays per user. Supports `pairing_id` and `paired_user_id` |
 | `person_card_impressions` | Tracks shown cards per paired person for no-repeat shuffle |
+| `user_visits` | Confirmed place visits with card snapshot, source tracking, and paired-user read access |
 
 ### Chat & Presence Tables
 
@@ -345,6 +357,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `check_session_creation_allowed(user_id)` | Returns whether user can create another session |
 | `check_pairing_allowed(user_id)` | Returns whether user can pair (Elite only) |
 | `get_session_member_limit(user_id)` | Returns max participants for new sessions |
+| `update_user_preferences_from_interaction()` | Trigger: extracts category, price_tier, time_of_day, distance_bucket from user_interactions. Weighted by interaction type (visit=0.35 highest). |
 
 ---
 
@@ -358,7 +371,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation with AI teaser text for locked display |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Supports `mode: "default" \| "shuffle"` with paired user preference blending |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Supports `mode: "default" \| "shuffle" \| "bilateral"` with multi-dimension preference blending (category, price tier, distance), confidence thresholds, and custom holiday 50/50 blend |
 | `get-holiday-cards` | Holiday card sourcing, primarily for "Generate More" requests via GPT-4o-mini |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) with occasion-aware suggestions |
 | `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini |
@@ -413,6 +426,8 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 |----------|---------|
 | `ai-reason` | AI reasoning endpoint |
 | `weather` | Weather forecast data |
+| `get-paired-saves` | Paginated paired user's saved cards with category filtering and pairing verification |
+| `record-visit` | Records visit + triggers preference learning (weight 0.35). Upserts user_visits, inserts user_interactions |
 | `process-voice-review` | Voice review transcription |
 | `delete-user` | Account deletion |
 | `backfill-place-websites` | Backfill missing place websites in card pool |
@@ -514,10 +529,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Preference Intelligence System** — Multi-dimensional preference learning (category, price tier, time of day, distance), visit confirmation ("I went here"), paired saves/visits sharing, bilateral matching toggle, learning indicator toasts, and personalized badge. 6 migrations, 2 new edge functions, 1 major edge function modification, 2 new services, 2 new hooks, 5 new components, 3 modified components.
 - **Monetization tier gating** — Full feature gating across Free/Pro/Elite tiers for curated cards, starting point, swipes, pairing, and collaboration sessions with dual-layer enforcement (client + server), custom branded paywall, and RevenueCat integration
 - **Performance overhaul** — Zero-wait app experience via stale-while-revalidate caching, adjacent-screen prefetching, image prefetching, edge function warming, 3-tier resume debounce, server-side realtime filtering, and 40-60% smaller card payloads
 - **Google Places cache elimination** — Removed the redundant `google_places_cache` table and 271 lines of cache management code
-- **NULL price_tier fix** — Cards with NULL `price_tier` are no longer silently excluded from tier-filtered queries
 
 ---
 

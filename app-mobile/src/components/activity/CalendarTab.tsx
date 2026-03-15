@@ -26,6 +26,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import { formatCurrency } from "../utils/formatters";
+import { useFeatureGate } from "../../hooks/useFeatureGate";
+import { CustomPaywallScreen } from "../CustomPaywallScreen";
 
 interface CalendarEntry {
   id: string;
@@ -85,6 +87,8 @@ const CalendarTab = ({
   userPreferences,
   accountPreferences,
 }: CalendarTabProps) => {
+  const { canAccess } = useFeatureGate();
+  const [showLockedPaywall, setShowLockedPaywall] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{
     [cardId: string]: number;
@@ -432,6 +436,40 @@ const CalendarTab = ({
       shadowRadius: 16,
       elevation: 1,
       overflow: "hidden",
+    },
+    lockedCardOverflow: {
+      overflow: 'hidden',
+    },
+    lockedCalendarBody: {
+      backgroundColor: '#1C1C1E',
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      gap: 12,
+    },
+    lockedCalendarInfo: {
+      flex: 1,
+    },
+    lockedCalendarTitle: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    lockedCalendarSubtext: {
+      color: '#9CA3AF',
+      fontSize: 12,
+      marginTop: 2,
+    },
+    lockedCalendarUpgrade: {
+      backgroundColor: '#f97316',
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    lockedCalendarUpgradeText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '600',
     },
     cardContent: {
       padding: 16,
@@ -1247,6 +1285,35 @@ const CalendarTab = ({
       entry.category ||
       "Experience";
 
+    // Detect curated + locked
+    const entryData = entry.experience || entry;
+    const isEntryCurated = Array.isArray((entryData as any).stops) && (entryData as any).stops.length > 0;
+    const isEntryLocked = isEntryCurated && !canAccess('curated_cards');
+
+    // Locked curated card on calendar — show minimal info with upgrade CTA
+    if (isEntryLocked) {
+      const stopCount = (entryData as any).stops?.length ?? 0;
+      return (
+        <View style={[styles.calendarCard, styles.lockedCardOverflow]}>
+          <View style={styles.lockedCalendarBody}>
+            <Ionicons name="lock-closed" size={24} color="rgba(255,255,255,0.5)" />
+            <View style={styles.lockedCalendarInfo}>
+              <Text style={styles.lockedCalendarTitle}>Locked Curated Experience</Text>
+              <Text style={styles.lockedCalendarSubtext}>
+                {stopCount} stops · {formattedDate}{formattedTime ? ` at ${formattedTime}` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => { setShowLockedPaywall(true); }}
+              style={styles.lockedCalendarUpgrade}
+            >
+              <Text style={styles.lockedCalendarUpgradeText}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.calendarCard}>
         <TouchableOpacity
@@ -1962,6 +2029,14 @@ const CalendarTab = ({
           }
         />
       )}
+
+      <CustomPaywallScreen
+        isVisible={showLockedPaywall}
+        onClose={() => setShowLockedPaywall(false)}
+        userId={user?.id ?? ''}
+        feature="curated_cards"
+        initialTier="pro"
+      />
     </View>
   );
 };

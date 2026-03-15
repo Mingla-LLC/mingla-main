@@ -3047,7 +3047,10 @@ export default function DiscoverScreen({
 
                 {/* Add Pair Button */}
                 <TouchableOpacity
-                  style={styles.addUserButtonPill}
+                  style={[
+                    styles.addUserButtonPill,
+                    !canAccess('pairing') && styles.addUserButtonPillLocked,
+                  ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     if (!canAccess('pairing')) {
@@ -3059,7 +3062,11 @@ export default function DiscoverScreen({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="person-add-outline" size={18} color="#eb7825" />
+                  <Ionicons
+                    name={canAccess('pairing') ? "person-add-outline" : "lock-closed"}
+                    size={canAccess('pairing') ? 18 : 16}
+                    color={canAccess('pairing') ? "#eb7825" : "#9CA3AF"}
+                  />
                 </TouchableOpacity>
 
                 {/* Incoming Pair Request Pills */}
@@ -4366,6 +4373,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginLeft: 4,
     marginRight: 4,
+  },
+  addUserButtonPillLocked: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
+    borderStyle: 'solid',
   },
   personPillTouchable: {
     flexDirection: "row",

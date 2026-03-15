@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Animated,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -37,6 +39,11 @@ interface ActionButtonsProps {
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
   onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
   onOpenBrowser?: (url: string, title: string) => void; // Opens in-app browser (for Policies & Reservations)
+  isVisited?: boolean;
+  isVisitLoading?: boolean;
+  onVisitPress?: () => void;
+  onRemoveVisitPress?: () => void;
+  hasCalendarEntry?: boolean;
 }
 
 export default function ActionButtons({
@@ -52,6 +59,11 @@ export default function ActionButtons({
   onCardRemoved,
   onScheduleSuccess,
   onOpenBrowser,
+  isVisited = false,
+  isVisitLoading = false,
+  onVisitPress,
+  onRemoveVisitPress,
+  hasCalendarEntry = false,
 }: ActionButtonsProps) {
   const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
@@ -68,6 +80,8 @@ export default function ActionButtons({
   } | null>(null);
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
   const [showAllHours, setShowAllHours] = useState(false);
+  const visitScaleAnim = useRef(new Animated.Value(1)).current;
+
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const { data: calendarEntries = [] } = useCalendarEntries(user?.id);
@@ -342,6 +356,33 @@ export default function ActionButtons({
 
     return suggestions;
   };
+
+  const handleVisitPress = () => {
+    if (isVisitLoading) return;
+    if (isVisited) {
+      onRemoveVisitPress?.();
+    } else {
+      // Scale down → color transition → scale back + haptic
+      Animated.sequence([
+        Animated.timing(visitScaleAnim, {
+          toValue: 0.95,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(visitScaleAnim, {
+          toValue: 1.0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      });
+      onVisitPress?.();
+    }
+  };
+
+  // Show visit button when card is saved and has no calendar entry
+  const showVisitButton = isSaved && !hasCalendarEntry && (onVisitPress || onRemoveVisitPress);
 
   const handleSave = async () => {
     if (isSaving) return; // Prevent multiple saves
@@ -827,6 +868,59 @@ export default function ActionButtons({
         </TouchableOpacity>
       )}
 
+      {/* Visit Button */}
+      {showVisitButton && (
+        <Animated.View style={{ transform: [{ scale: visitScaleAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.visitButton,
+              isVisited && styles.visitButtonVisited,
+              isVisitLoading && styles.visitButtonLoading,
+            ]}
+            onPress={handleVisitPress}
+            activeOpacity={0.7}
+            disabled={isVisitLoading}
+            accessibilityLabel={
+              isVisited
+                ? "You visited this place"
+                : "Mark this place as visited"
+            }
+            accessibilityHint={
+              isVisited
+                ? "Tap to remove your visit marker"
+                : "Records your visit and opens the review flow"
+            }
+          >
+            {isVisitLoading ? (
+              <>
+                <ActivityIndicator size="small" color="#9ca3af" />
+                <Text style={styles.visitButtonTextLoading}>On it...</Text>
+              </>
+            ) : isVisited ? (
+              <>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={20}
+                  color="#16a34a"
+                />
+                <Text style={styles.visitButtonTextVisited}>
+                  Been there ✓
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color="#9ca3af"
+                />
+                <Text style={styles.visitButtonTextDefault}>I went here</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
       {/* Availability Messages */}
       {hasCheckedAvailability &&
         availabilityCheck &&
@@ -1016,6 +1110,39 @@ const styles = StyleSheet.create({
     color: "#9a3412",
     fontWeight: "500",
     lineHeight: 18,
+  },
+  visitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: "#d1d5db",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  visitButtonVisited: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#22c55e",
+  },
+  visitButtonLoading: {
+    borderColor: "#e5e7eb",
+  },
+  visitButtonTextDefault: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#4b5563",
+  },
+  visitButtonTextLoading: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#9ca3af",
+  },
+  visitButtonTextVisited: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#15803d",
   },
   openingHoursSection: {
     backgroundColor: "#eb78251a",

@@ -209,6 +209,15 @@ export default function PreferencesSheet({
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
+  // Auto-reset to GPS if user no longer has custom starting point access (downgrade)
+  useEffect(() => {
+    if (!canAccess('custom_starting_point') && !useGpsLocation) {
+      setUseGpsLocation(true);
+      setSearchLocation('');
+      setSelectedCoords(null);
+    }
+  }, [canAccess, useGpsLocation]);
+
   // Location autocomplete suggestions
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -868,6 +877,11 @@ export default function PreferencesSheet({
             selectedIntents={selectedIntents}
             onIntentToggle={handleIntentToggle}
             minMessage={minSelectionMessage}
+            isCuratedLocked={!canAccess('curated_cards')}
+            onLockedTap={() => {
+              setPaywallFeature('curated_cards');
+              setShowPaywall(true);
+            }}
           />
 
           {/* Categories Section */}

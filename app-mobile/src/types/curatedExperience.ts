@@ -41,4 +41,6 @@ export interface CuratedExperienceCard {
   estimatedDurationMinutes: number;
   matchScore: number;
   shoppingList?: string[];  // AI-generated picnic shopping checklist (picnic-dates only)
+  teaserText?: string | null;  // AI-generated teaser for locked display (free users)
+  _locked?: boolean;           // Server-set flag when card is gated for free users
 }

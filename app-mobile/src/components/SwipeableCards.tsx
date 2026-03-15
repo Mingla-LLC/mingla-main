@@ -50,9 +50,30 @@ import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH } from "../utils/responsive";
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { useSwipeLimit } from '../hooks/useSwipeLimit';
+import { getTierLimits } from '../constants/tierLimits';
+import { useCreatorTier } from '../hooks/useCreatorTier';
 import { LockedCuratedCard } from './LockedCuratedCard';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
+
+function getTimeOfDay(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'night';
+}
+
+function parseDistanceToKm(distanceStr: string): number | null {
+  const match = distanceStr.match(/([\d.]+)\s*(km|mi|m)/i);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit === 'km') return value;
+  if (unit === 'mi') return value * 1.60934;
+  if (unit === 'm') return value / 1000;
+  return null;
+}
 
 const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
@@ -445,14 +466,38 @@ export default function SwipeableCards({
   const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 
   // Feature gating hooks
-  const { canAccess } = useFeatureGate();
-  const { remaining, isLimited, isUnlimited, recordSwipe } = useSwipeLimit();
+  const { canAccess: userCanAccess } = useFeatureGate();
+  const { remaining, limit: swipeLimit, isLimited, isUnlimited: userIsUnlimited, recordSwipe } = useSwipeLimit();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('unlimited_swipes');
 
-  // Ref for canAccess so PanResponder (created once) can read fresh values
+  // Collab tier inheritance: when in a session, use the creator's tier for gating
+  const creatorId = !isInSolo ? (currentSession as any)?.created_by ?? null : null;
+  const creatorTier = useCreatorTier(creatorId ?? undefined);
+  const creatorLimits = creatorId ? getTierLimits(creatorTier) : null;
+  const isInCollab = !isInSolo && !!currentSession;
+
+  // Effective gate: in collab mode, inherit creator's tier; in solo, use user's own
+  const canAccess = useCallback(
+    (feature: GatedFeature): boolean => {
+      if (isInCollab && creatorLimits) {
+        switch (feature) {
+          case 'curated_cards': return creatorLimits.curatedCardsAccess;
+          case 'unlimited_swipes': return creatorLimits.dailySwipes === -1;
+          default: return userCanAccess(feature);
+        }
+      }
+      return userCanAccess(feature);
+    },
+    [isInCollab, creatorLimits, userCanAccess],
+  );
+  const isUnlimited = isInCollab && creatorLimits ? creatorLimits.dailySwipes === -1 : userIsUnlimited;
+
+  // Refs for PanResponder (created once) to read fresh values
   const canAccessRef = useRef(canAccess);
   useEffect(() => { canAccessRef.current = canAccess; });
+  const swipeLimitRef = useRef({ isLimited, isUnlimited, remaining });
+  useEffect(() => { swipeLimitRef.current = { isLimited, isUnlimited, remaining }; });
 
   // Storage keys for persisting card state
   const getStorageKeys = () => {
@@ -936,9 +981,12 @@ export default function SwipeableCards({
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
 
-        // Check for swipe up (expand card)
+        // Check for swipe up (expand card) — block for locked curated cards
         if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
-          if (cardToRemove) {
+          if (cardToRemove && !(
+            (cardToRemove as any)?.cardType === 'curated' &&
+            !canAccessRef.current('curated_cards')
+          )) {
             handleCardExpandRef.current?.();
           }
           Animated.spring(position, {
@@ -952,11 +1000,9 @@ export default function SwipeableCards({
         if (Math.abs(gestureState.dx) > 120) {
           const direction = gestureState.dx > 0 ? "right" : "left";
 
-          // Block swiping locked curated cards
-          if (
-            (cardToRemove as any)?.cardType === 'curated' &&
-            !canAccessRef.current('curated_cards')
-          ) {
+          // Block swiping if at daily swipe limit (sync check from ref)
+          const sl = swipeLimitRef.current;
+          if (!sl.isUnlimited && sl.remaining <= 0) {
             Animated.spring(position, {
               toValue: { x: 0, y: 0 },
               useNativeDriver: false,
@@ -1019,6 +1065,12 @@ export default function SwipeableCards({
     const currentX = (position.x as any)._value || 0;
     const currentY = (position.y as any)._value || 0;
     if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
+      // Block expand for locked curated cards — open paywall instead
+      if ((currentRec as any).cardType === 'curated' && !canAccess('curated_cards')) {
+        setPaywallFeature('curated_cards');
+        setShowPaywall(true);
+        return;
+      }
       handleCardExpand();
     }
   };
@@ -1094,14 +1146,10 @@ export default function SwipeableCards({
   ) => {
     if (!card) return;
 
-    // --- SWIPE LIMIT CHECK ---
+    // Record swipe count — await so state updates before render
+    // The PanResponder ref check blocks swipes 21+ synchronously before animation.
     if (!isUnlimited) {
-      const { allowed } = await recordSwipe();
-      if (!allowed) {
-        setPaywallFeature('unlimited_swipes');
-        setShowPaywall(true);
-        return;
-      }
+      await recordSwipe();
     }
 
     try {
@@ -1119,6 +1167,14 @@ export default function SwipeableCards({
               {
                 category: card.category,
                 cardType: 'curated',
+                priceTier: card.priceTier || null,
+                timeOfDay: getTimeOfDay(),
+                lat: card.lat || null,
+                lng: card.lng || null,
+                rating: card.rating || null,
+                totalPriceMin: (card as { totalPriceMin?: number }).totalPriceMin || null,
+                totalPriceMax: (card as { totalPriceMax?: number }).totalPriceMax || null,
+                estimatedDurationMinutes: (card as { estimatedDurationMinutes?: number }).estimatedDurationMinutes || null,
               }
             ).catch(err => console.warn('[SwipeableCards] Curated interaction tracking failed:', err));
           } catch {}
@@ -1139,9 +1195,13 @@ export default function SwipeableCards({
             interactionType,
             {
               category: card.category,
-              time_of_day: userPreferences?.timeOfDay || "Afternoon",
-              budget_range: `${card.priceRange}`,
-              location: userPreferences?.location || "San Francisco",
+              priceTier: card.priceTier || null,
+              timeOfDay: getTimeOfDay(),
+              lat: card.lat || null,
+              lng: card.lng || null,
+              distanceKm: card.distance ? parseDistanceToKm(card.distance) : null,
+              rating: card.rating || null,
+              reviewCount: card.reviewCount || null,
             }
           );
         } catch (trackingError) {
@@ -1241,6 +1301,12 @@ export default function SwipeableCards({
     // availableRecommendations still includes the card being swiped (state not committed yet)
     // currentCardIndex is always 0 in the removed-cards pattern, so remaining = length - 1
     handleDeckCardProgress(0, availableRecommendations.length);
+
+    // Show paywall after the 20th swipe (all tracking complete, card already gone)
+    if (!isUnlimited && swipeLimitRef.current.remaining <= 0) {
+      setPaywallFeature('unlimited_swipes');
+      setShowPaywall(true);
+    }
 
     // When last card is swiped, let the exhaustion screen handle next steps.
     // The user explicitly chooses: review a previous deck, load a new deck, or change preferences.
@@ -1543,7 +1609,7 @@ export default function SwipeableCards({
           {!isUnlimited && (
             <View style={styles.swipeCounterPill}>
               <Text style={styles.swipeCounterText}>
-                {remaining}/20 swipes left
+                {remaining}/{swipeLimit} swipes left
               </Text>
             </View>
           )}

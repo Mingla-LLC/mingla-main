@@ -19,6 +19,7 @@ import { CreateSessionContent } from "./CreateSessionModal";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
+import { useQueryClient } from '@tanstack/react-query';
 import { useSessionCreationGate } from '../hooks/useSessionCreationGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
@@ -98,6 +99,7 @@ export default function CollaborationModule({
     "received"
   );
   const { user } = useAppStore();
+  const queryClient = useQueryClient();
   const { canCreateSession, currentSessionCount, maxSessions, isUnlimited } = useSessionCreationGate();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('session_creation');
@@ -943,8 +945,9 @@ export default function CollaborationModule({
       await onCreateSession(sessionData);
     }
 
-    // Reload sessions and invites in parallel
+    // Reload sessions and invites in parallel, invalidate session gate cache
     await Promise.all([loadUserSessions(false), loadInvites()]);
+    queryClient.invalidateQueries({ queryKey: ['session-creation-gate'] });
 
     // Don't close the modal - let user continue working
     // Switch to invites tab and show the "Sent" tab
