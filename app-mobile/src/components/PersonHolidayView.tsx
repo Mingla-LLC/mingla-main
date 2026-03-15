@@ -4,10 +4,12 @@ import {
   Text,
   Image,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import {
   GenderOption,
@@ -20,11 +22,27 @@ import {
 } from "../constants/holidays";
 import { usePairedCards, useShufflePairedCards } from "../hooks/usePairedCards";
 import { useHolidayCategories } from "../hooks/useHolidayCategories";
+import { usePairedSaves } from "../hooks/usePairedSaves";
+import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
+import { PriceTierSlug } from "../constants/priceTiers";
 import { ordinal } from "../utils/ordinalSuffix";
-import { s, SCREEN_WIDTH } from "../utils/responsive";
+import { s, vs, ms, SCREEN_WIDTH } from "../utils/responsive";
+import { colors } from "../constants/designSystem";
 import CalendarButton from "./CalendarButton";
 import ShuffleButton from "./ShuffleButton";
+import PersonTabBar from "./PersonTabBar";
+import PersonGridCard from "./PersonGridCard";
+import BilateralToggle from "./BilateralToggle";
+import VisitBadge from "./VisitBadge";
+import PairedProfileSection from "./profile/PairedProfileSection";
+import PairedSavesListScreen from "./PairedSavesListScreen";
+
+// ── Price tier helper ───────────────────────────────────────────────────────
+const VALID_TIERS: Set<string> = new Set(["chill", "comfy", "bougie", "lavish"]);
+function asPriceTier(v: string | null | undefined): PriceTierSlug | null {
+  return v && VALID_TIERS.has(v) ? (v as PriceTierSlug) : null;
+}
 
 // ── Shared card data shape ──────────────────────────────────────────────────
 
@@ -526,58 +544,6 @@ function CustomHolidaySectionView({
   );
 }
 
-// ── Birthday Section ────────────────────────────────────────────────────────
-
-function BirthdaySection({
-  birthday, displayName, pairedUserId, pairingId, location,
-  fallbackCards, onCardPress,
-}: {
-  birthday: string | null; displayName: string;
-  pairedUserId: string; pairingId: string;
-  location: { latitude: number; longitude: number };
-  fallbackCards?: FallbackCard[];
-  onCardPress?: PersonHolidayViewProps["onCardPress"];
-}) {
-  if (!birthday) return null;
-  const fn = getFirstName(displayName);
-  const { month: bm, day: bd } = parseDateOnly(birthday);
-  const da = getDaysUntil(bm, bd);
-  const ta = turningAge(birthday);
-  const cd = countdownText(da);
-  const nd = getNextOccurrenceDate(bm, bd);
-
-  return (
-    <View style={styles.birthdaySection}>
-      <View style={styles.heroCard}>
-        <View style={styles.heroContent}>
-          <View style={styles.heroLeft}>
-            <Text style={styles.heroTitle}>{fn}</Text>
-            <Text style={styles.heroSubtitle}>Birthday · {fmtBirthdayMD(birthday)}</Text>
-            <Text style={styles.heroAge}>Turning {ta}</Text>
-          </View>
-          <View style={styles.heroDaysWrap}>
-            <Text style={styles.heroDaysNum}>{cd.big}</Text>
-            {cd.small !== "" && <Text style={styles.heroDaysLabel}>{cd.small}</Text>}
-          </View>
-        </View>
-        <CalendarButton
-          holidayKey="birthday" pairingId={pairingId}
-          eventTitle={`${fn}'s Birthday`} nextOccurrence={nd}
-          notes={`Reminder from Mingla — ${fn}'s Birthday`}
-          personName={fn} occasionLabel="Birthday"
-        />
-      </View>
-
-      {/* Cards scroll — visually part of hero */}
-      <CardRow
-        pairedUserId={pairedUserId} holidayKey="birthday"
-        sections={DEFAULT_PERSON_SECTIONS} location={location}
-        fallbackCards={fallbackCards} onCardPress={onCardPress}
-      />
-    </View>
-  );
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function PersonHolidayView({
@@ -590,6 +556,30 @@ export default function PersonHolidayView({
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [showArchived, setShowArchived] = useState(false);
+
+  // ── Preference Intelligence state ──────────────────────────────────────
+  const [activeTab, setActiveTab] = useState(0); // 0=Picks, 1=Saves, 2=Visits
+  const [bilateralMode, setBilateralMode] = useState<"individual" | "bilateral">("individual");
+  const [showSavesList, setShowSavesList] = useState(false);
+  const [showVisitsList, setShowVisitsList] = useState(false);
+
+  // Load bilateral mode from AsyncStorage per paired person
+  useEffect(() => {
+    AsyncStorage.getItem(`bilateral_mode_${pairedUserId}`).then((stored) => {
+      if (stored === "bilateral") setBilateralMode("bilateral");
+    }).catch(() => {});
+  }, [pairedUserId]);
+
+  const handleModeChange = useCallback((mode: "individual" | "bilateral") => {
+    setBilateralMode(mode);
+    AsyncStorage.setItem(`bilateral_mode_${pairedUserId}`, mode).catch(() => {});
+  }, [pairedUserId]);
+
+  // Paired saves & visits
+  const { data: savesData, isLoading: savesLoading } = usePairedSaves(pairedUserId);
+  const { data: visitsData, isLoading: visitsLoading } = usePairedUserVisits(userId, pairedUserId);
+  const saves = savesData?.saves ?? [];
+  const visits = visitsData ?? [];
 
   // Derive archived set from persisted prop (parent owns state + AsyncStorage)
   const archivedSet = useMemo(
@@ -644,15 +634,127 @@ export default function PersonHolidayView({
     [sortedHolidays, archivedSet]
   );
 
+  // ── Sub-screen handling (must come before main return) ─────────────────
+  if (showSavesList) {
+    return (
+      <PairedSavesListScreen
+        title={`${firstName}'s saves`}
+        items={saves.map((sv) => ({
+          id: sv.id,
+          title: sv.title,
+          category: sv.category,
+          imageUrl: sv.imageUrl,
+          priceTier: asPriceTier(sv.priceTier),
+          rating: sv.rating,
+          timestamp: sv.savedAt,
+          timestampLabel: "Saved",
+        }))}
+        isLoading={savesLoading}
+        onBack={() => setShowSavesList(false)}
+        onCardPress={() => {}}
+      />
+    );
+  }
+
+  if (showVisitsList) {
+    return (
+      <PairedSavesListScreen
+        title={`${firstName}'s visits`}
+        items={visits.map((v) => ({
+          id: v.id,
+          title: v.cardData?.title || "Unknown place",
+          category: v.cardData?.category || "",
+          imageUrl: v.cardData?.imageUrl || "",
+          priceTier: asPriceTier(v.cardData?.priceTier),
+          timestamp: v.visitedAt,
+          timestampLabel: "Visited",
+          isVisited: true,
+        }))}
+        isLoading={visitsLoading}
+        onBack={() => setShowVisitsList(false)}
+        onCardPress={() => {}}
+      />
+    );
+  }
+
   return (
     <View style={styles.root}>
-      <BirthdaySection
-        birthday={birthday} displayName={displayName}
-        pairedUserId={pairedUserId} pairingId={pairingId}
-        location={location} fallbackCards={fallbackCards}
-        onCardPress={onCardPress}
-      />
+      {/* ── 1. Birthday Hero Card + Card Row (always visible) ──── */}
+      {birthday && (() => {
+        const fn = getFirstName(displayName);
+        const { month: bm, day: bd } = parseDateOnly(birthday);
+        const da = getDaysUntil(bm, bd);
+        const ta = turningAge(birthday);
+        const cd = countdownText(da);
+        const nd = getNextOccurrenceDate(bm, bd);
+        return (
+          <View style={styles.birthdaySection}>
+            <View style={styles.heroCard}>
+              <View style={styles.heroContent}>
+                <View style={styles.heroLeft}>
+                  <Text style={styles.heroTitle}>{fn}</Text>
+                  <Text style={styles.heroSubtitle}>Birthday · {fmtBirthdayMD(birthday)}</Text>
+                  <Text style={styles.heroAge}>Turning {ta}</Text>
+                </View>
+                <View style={styles.heroDaysWrap}>
+                  <Text style={styles.heroDaysNum}>{cd.big}</Text>
+                  {cd.small !== "" && <Text style={styles.heroDaysLabel}>{cd.small}</Text>}
+                </View>
+              </View>
+              <CalendarButton
+                holidayKey="birthday" pairingId={pairingId}
+                eventTitle={`${fn}'s Birthday`} nextOccurrence={nd}
+                notes={`Reminder from Mingla — ${fn}'s Birthday`}
+                personName={fn} occasionLabel="Birthday"
+              />
+            </View>
+            {/* Birthday card row — always visible beneath hero */}
+            <CardRow
+              pairedUserId={pairedUserId} holidayKey="birthday"
+              sections={DEFAULT_PERSON_SECTIONS} location={location}
+              fallbackCards={fallbackCards} onCardPress={onCardPress}
+            />
+          </View>
+        );
+      })()}
 
+      {/* ── 2. Your Special Days (custom holidays) ────────────────── */}
+      <View style={styles.sectionWrap}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Your Special Days</Text>
+          {onAddCustomDay && (
+            <TouchableOpacity onPress={onAddCustomDay} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="add-circle-outline" size={s(24)} color="#eb7825" />
+            </TouchableOpacity>
+          )}
+        </View>
+        {customHolidays && customHolidays.length > 0 ? (
+          customHolidays.map((ch) => (
+            <CustomHolidaySectionView
+              key={ch.id} holiday={ch}
+              pairedUserId={pairedUserId} pairingId={pairingId}
+              firstName={firstName} location={location}
+              fallbackCards={fallbackCards} onCardPress={onCardPress}
+              isExpanded={expandedIds.has(`custom_${ch.id}`)}
+              onToggle={() => toggle(`custom_${ch.id}`)}
+            />
+          ))
+        ) : (
+          <TouchableOpacity style={styles.emptyCustom} onPress={onAddCustomDay} activeOpacity={0.7}>
+            <Ionicons name="calendar-outline" size={s(28)} color="#d1d5db" />
+            <Text style={styles.emptyCustomText}>Mark a day that matters</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* ── Preference Intelligence UI (hidden — backend active) ── */}
+      {/* Tab bar (Picks/Saves/Visits) and bilateral toggle are built but
+          hidden until saves/visits have real user data. The backend
+          preference learning, visit tracking, paired saves sharing, and
+          bilateral matching are all active and influencing holiday card
+          generation via get-person-hero-cards. */}
+
+      {/* ── 5. Upcoming Holidays (moved to bottom) ────────────────── */}
       {sortedHolidays.length > 0 && (
         <View style={styles.sectionWrap}>
           <Text style={styles.sectionTitleStandalone}>Upcoming Holidays</Text>
@@ -697,35 +799,6 @@ export default function PersonHolidayView({
           )}
         </View>
       )}
-
-      {/* Custom holidays */}
-      <View style={styles.sectionWrap}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Your Special Days</Text>
-          {onAddCustomDay && (
-            <TouchableOpacity onPress={onAddCustomDay} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="add-circle-outline" size={s(24)} color="#eb7825" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {customHolidays && customHolidays.length > 0 ? (
-          customHolidays.map((ch) => (
-            <CustomHolidaySectionView
-              key={ch.id} holiday={ch}
-              pairedUserId={pairedUserId} pairingId={pairingId}
-              firstName={firstName} location={location}
-              fallbackCards={fallbackCards} onCardPress={onCardPress}
-              isExpanded={expandedIds.has(`custom_${ch.id}`)}
-              onToggle={() => toggle(`custom_${ch.id}`)}
-            />
-          ))
-        ) : (
-          <TouchableOpacity style={styles.emptyCustom} onPress={onAddCustomDay} activeOpacity={0.7}>
-            <Ionicons name="calendar-outline" size={s(28)} color="#d1d5db" />
-            <Text style={styles.emptyCustomText}>Mark a day that matters</Text>
-          </TouchableOpacity>
-        )}
-      </View>
     </View>
   );
 }
@@ -905,5 +978,78 @@ const styles = StyleSheet.create({
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
+  },
+});
+
+// ── Preference Intelligence Styles ──────────────────────────────────────────
+
+const piStyles = StyleSheet.create({
+  tabContentWrapper: {
+    minHeight: vs(200),
+  },
+  emptyTabContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: vs(40),
+    paddingHorizontal: s(32),
+  },
+  emptyTabTitle: {
+    fontSize: ms(15),
+    fontWeight: "600",
+    color: colors.gray[600],
+    marginTop: vs(10),
+    textAlign: "center",
+  },
+  emptyTabBody: {
+    fontSize: ms(13),
+    color: colors.gray[400],
+    marginTop: vs(4),
+    textAlign: "center",
+    lineHeight: ms(18),
+  },
+  bilateralEmptyContainer: {
+    alignItems: "center",
+    paddingHorizontal: s(24),
+    paddingVertical: vs(32),
+    marginTop: vs(16),
+    backgroundColor: colors.gray[50],
+    borderRadius: s(16),
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  bilateralEmptyTitle: {
+    fontSize: ms(16),
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+    marginTop: vs(12),
+  },
+  bilateralEmptyBody: {
+    fontSize: ms(13),
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: vs(6),
+    lineHeight: ms(18),
+    marginBottom: vs(16),
+  },
+  bilateralFallbackButton: {
+    backgroundColor: "#eb7825",
+    borderRadius: s(12),
+    paddingVertical: vs(10),
+    paddingHorizontal: s(20),
+  },
+  bilateralFallbackText: {
+    fontSize: ms(14),
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  horizontalListContent: {
+    paddingRight: s(16),
+  },
+  cardSeparator: {
+    width: s(12),
+  },
+  visitCardContainer: {
+    position: "relative",
   },
 });

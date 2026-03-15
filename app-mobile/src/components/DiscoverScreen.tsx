@@ -44,6 +44,11 @@ import type { GatedFeature } from '../hooks/useFeatureGate';
 import PersonHolidayView from "./PersonHolidayView";
 import CustomHolidayModal from "./CustomHolidayModal";
 import { STANDARD_HOLIDAYS } from "../constants/holidays";
+import {
+  getSharedCustomHolidaysByPairing,
+  createCustomHolidayForPairing,
+  deleteCustomHoliday as deleteCustomHolidayFromDb,
+} from "../services/customHolidayService";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -1106,24 +1111,71 @@ export default function DiscoverScreen({
     }
   };
 
-  // Load custom holidays from AsyncStorage
-  const loadCustomHolidaysFromStorage = async () => {
+  // Load custom holidays — Supabase is source of truth, AsyncStorage is cache
+  const loadCustomHolidays = async () => {
     if (!user?.id) {
       setCustomHolidays([]);
       return;
     }
+
+    // 1. Load AsyncStorage cache first for instant display
+    const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
     try {
-      const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
       const stored = await AsyncStorage.getItem(userStorageKey);
       if (stored) {
-        const holidays = JSON.parse(stored) as CustomHoliday[];
-        setCustomHolidays(holidays);
-      } else {
-        setCustomHolidays([]);
+        setCustomHolidays(JSON.parse(stored) as CustomHoliday[]);
+      }
+    } catch {
+      // Cache miss is fine — Supabase will provide
+    }
+
+    // 2. Fetch from Supabase (all pairings, shared holidays from both users)
+    try {
+      const allPairingHolidays: CustomHoliday[] = [];
+      const pills = pairingPills?.filter((p) => p.pillState === "active" && p.pairingId) ?? [];
+
+      // Fetch holidays for each active pairing in parallel
+      const results = await Promise.all(
+        pills.map((pill) => getSharedCustomHolidaysByPairing(pill.pairingId!).catch(() => []))
+      );
+
+      for (let i = 0; i < pills.length; i++) {
+        const pill = pills[i];
+        const dbHolidays = results[i];
+        for (const h of dbHolidays) {
+          allPairingHolidays.push({
+            id: h.id,
+            personId: `pairing-${pill.pairingId}`,
+            name: h.name,
+            date: `${String(h.month).padStart(2, "0")}-${String(h.day).padStart(2, "0")}`,
+            description: h.description || "",
+            category: (h.categories?.[0]) || "Fine Dining",
+            categories: h.categories || ["Fine Dining"],
+            createdAt: h.created_at,
+            year: h.year,
+          });
+        }
+      }
+
+      if (allPairingHolidays.length > 0 || pills.length > 0) {
+        // Merge: keep local-only holidays (no pairing) + replace pairing holidays with DB
+        const localOnly = (await (async () => {
+          try {
+            const stored = await AsyncStorage.getItem(userStorageKey);
+            if (!stored) return [];
+            return (JSON.parse(stored) as CustomHoliday[]).filter(
+              (h) => !h.personId.startsWith("pairing-")
+            );
+          } catch { return []; }
+        })());
+
+        const merged = [...localOnly, ...allPairingHolidays];
+        setCustomHolidays(merged);
+        await AsyncStorage.setItem(userStorageKey, JSON.stringify(merged)).catch(() => {});
       }
     } catch (error) {
-      console.error("Error loading custom holidays from storage:", error);
-      setCustomHolidays([]);
+      console.warn("[DiscoverScreen] Failed to load shared holidays from Supabase:", error);
+      // AsyncStorage cache already displayed above — graceful degradation
     }
   };
 
@@ -1162,11 +1214,11 @@ export default function DiscoverScreen({
     }
   };
 
-  // Load custom holidays on mount or when user changes
+  // Load custom holidays on mount, when user changes, or when pairings load
   useEffect(() => {
-    loadCustomHolidaysFromStorage();
+    loadCustomHolidays();
     loadArchivedHolidaysFromStorage();
-  }, [user?.id]);
+  }, [user?.id, pairingPills]);
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -2510,14 +2562,43 @@ export default function DiscoverScreen({
     setIsAddCustomDayModalVisible(false);
   };
 
-  // Handle save from CustomHolidayModal
+  // Handle save from CustomHolidayModal — write to Supabase + local state
   const handleCustomHolidaySave = useCallback(
     async (holiday: { name: string; month: number; day: number; year: number }) => {
-      if (selectedPillId === "for-you") return; // Guard: no person selected
+      if (selectedPillId === "for-you" || !user?.id) return;
       const dateStr = `${String(holiday.month).padStart(2, "0")}-${String(holiday.day).padStart(2, "0")}`;
 
+      // Find the pairingId and pairedUserId for the selected pill
+      const pill = pairingPills?.find((p) => `pairing-${p.pairingId}` === selectedPillId);
+      const pairingId = pill?.pairingId;
+      const pairedUserId = pill?.pairedUserId;
+
+      let newId: string;
+
+      if (pairingId && pairedUserId) {
+        // Write to Supabase — shared with paired user
+        try {
+          const created = await createCustomHolidayForPairing({
+            user_id: user.id,
+            pairing_id: pairingId,
+            paired_user_id: pairedUserId,
+            name: holiday.name,
+            month: holiday.month,
+            day: holiday.day,
+            year: holiday.year,
+          });
+          newId = created.id;
+        } catch (error) {
+          console.error("[DiscoverScreen] Failed to save custom holiday to Supabase:", error);
+          // Fall back to local-only ID
+          newId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        }
+      } else {
+        newId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      }
+
       const newCustomHoliday: CustomHoliday = {
-        id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: newId,
         personId: selectedPillId,
         name: holiday.name,
         date: dateStr,
@@ -2538,9 +2619,8 @@ export default function DiscoverScreen({
         categories: ["Fine Dining"],
         personId: selectedPillId,
       });
-      // Note: CustomHolidayModal calls onClose() after onSave(), so no manual close needed
     },
-    [customHolidays, selectedPillId, saveCustomHolidaysToStorage]
+    [customHolidays, selectedPillId, user?.id, pairingPills, saveCustomHolidaysToStorage]
   );
 
   // Location for PersonHolidayView — use GPS first, fall back to saved preference
@@ -2679,12 +2759,19 @@ export default function DiscoverScreen({
     }));
   }, [discoverRecommendations]);
 
-  // Delete a custom holiday
+  // Delete a custom holiday — from Supabase + local state
   const handleDeleteCustomHoliday = async (holidayId: string) => {
     const deletedHoliday = customHolidays.find((h) => h.id === holidayId);
     const updatedHolidays = customHolidays.filter((h) => h.id !== holidayId);
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
+
+    // Delete from Supabase if it's a real UUID (not a local-only ID)
+    if (holidayId && !holidayId.startsWith("custom-")) {
+      deleteCustomHolidayFromDb(holidayId).catch((err) =>
+        console.warn("[DiscoverScreen] Failed to delete holiday from Supabase:", err)
+      );
+    }
 
     if (deletedHoliday) {
       const archiveKeyToRemove = `custom:${holidayId}`;

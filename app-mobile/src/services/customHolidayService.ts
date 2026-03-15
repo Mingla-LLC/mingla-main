@@ -141,6 +141,24 @@ export async function getCustomHolidaysByPairing(
   return data ?? [];
 }
 
+/**
+ * Fetch ALL custom holidays for a pairing — from BOTH users.
+ * RLS policy allows paired users to read each other's rows.
+ */
+export async function getSharedCustomHolidaysByPairing(
+  pairingId: string
+): Promise<CustomHoliday[]> {
+  const { data, error } = await supabase
+    .from("custom_holidays")
+    .select("*")
+    .eq("pairing_id", pairingId)
+    .order("month", { ascending: true })
+    .order("day", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 export async function createCustomHolidayForPairing(holiday: {
   user_id: string;
   pairing_id: string;
