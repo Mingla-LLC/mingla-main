@@ -149,7 +149,7 @@ export default function PairRequestModal({
     return (
       friend.display_name ||
       `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
-      friend.username
+      "Unknown"
     );
   };
 
@@ -525,8 +525,7 @@ export default function PairRequestModal({
                       />
                       <Text style={styles.lookupTextGreen}>
                         {phoneLookupResult.user?.display_name ||
-                          phoneLookupResult.user?.username ||
-                          "User"}{" "}
+                          "Someone"}{" "}
                         is on Mingla
                       </Text>
                     </View>

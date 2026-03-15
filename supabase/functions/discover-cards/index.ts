@@ -104,6 +104,7 @@ const SPEED_KMH: Record<string, number> = {
   walking: 4.5,
   driving: 35,
   transit: 20,
+  public_transit: 20,
   bicycling: 14,
   biking: 14,
 };

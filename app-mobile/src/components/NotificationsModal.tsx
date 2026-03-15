@@ -171,7 +171,6 @@ export default function NotificationsModal({
         hasData: !!item.data,
         avatarUrl: item.data?.avatar_url,
         userName: item.data?.userName,
-        email: item.data?.email,
         failedIds: Array.from(failedImageIds),
       });
     }
@@ -288,11 +287,6 @@ export default function NotificationsModal({
                 <Text style={styles.userName} numberOfLines={1}>
                   {item.data.userName}
                 </Text>
-                {item.data?.email && (
-                  <Text style={styles.userEmail} numberOfLines={1}>
-                    {item.data.email}
-                  </Text>
-                )}
               </View>
             )}
 

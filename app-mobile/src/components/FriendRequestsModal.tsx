@@ -79,12 +79,11 @@ export default function FriendRequestsModal({
           request.sender.display_name ||
           (request.sender.first_name && request.sender.last_name
             ? `${request.sender.first_name} ${request.sender.last_name}`
-            : request.sender.username) ||
+            : null) ||
           "Unknown";
         mixpanelService.trackFriendRequestAccepted({
           requestId,
           senderName,
-          senderUsername: request.sender.username,
         });
       }
 
@@ -128,12 +127,11 @@ export default function FriendRequestsModal({
           request.sender.display_name ||
           (request.sender.first_name && request.sender.last_name
             ? `${request.sender.first_name} ${request.sender.last_name}`
-            : request.sender.username) ||
+            : null) ||
           "Unknown";
         mixpanelService.trackFriendRequestDeclined({
           requestId,
           senderName,
-          senderUsername: request.sender.username,
         });
       }
 
@@ -248,7 +246,7 @@ export default function FriendRequestsModal({
                           request.sender.display_name ||
                           (request.sender.first_name && request.sender.last_name
                             ? `${request.sender.first_name} ${request.sender.last_name}`
-                            : request.sender.username) ||
+                            : null) ||
                           "Unknown";
                         const initials = senderName
                           .split(" ")
@@ -286,11 +284,6 @@ export default function FriendRequestsModal({
                               {/* User Info */}
                               <View style={styles.userInfo}>
                                 <Text style={styles.userName} numberOfLines={1}>{senderName}</Text>
-                                {request.sender.email && (
-                                  <Text style={styles.userEmail} numberOfLines={1}>
-                                    {request.sender.email}
-                                  </Text>
-                                )}
                                 <Text style={styles.requestTime}>
                                   {formatTimestamp(request.created_at)}
                                 </Text>
@@ -316,7 +309,7 @@ export default function FriendRequestsModal({
                                       size={16}
                                       color="#dc2626"
                                     />
-                                    <Text style={styles.statusText}>
+                                    <Text style={styles.statusTextDeclined}>
                                       Declined
                                     </Text>
                                   </View>
@@ -575,14 +568,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
   },
-  userUsername: {
-    fontSize: 13,
-    color: "#9ca3af",
-  },
-  userEmail: {
-    fontSize: 12,
-    color: "#d1d5db",
-  },
   requestTime: {
     fontSize: 12,
     color: "#9ca3af",
@@ -616,6 +601,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: "#059669",
+  },
+  statusTextDeclined: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#dc2626",
   },
   declineButton: {
     padding: 10,

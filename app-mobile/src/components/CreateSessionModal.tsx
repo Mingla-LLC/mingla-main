@@ -75,6 +75,15 @@ export interface CreateSessionContentProps {
   }) => void;
   onNavigateToInvites?: () => void;
   isEmbedded?: boolean;
+  /**
+   * When provided, the country picker opens as an overlay rendered by the
+   * PARENT (outside overflow:hidden, no nested Dialog) instead of its own
+   * <Modal>. Required when isEmbedded=true inside another Modal.
+   */
+  onOpenCountryPicker?: (config: {
+    selectedCode: string;
+    onSelect: (code: string) => void;
+  }) => void;
 }
 
 // ─── Embedded step config ───────────────────────────────────────────
@@ -185,6 +194,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
   onCreateSession,
   onNavigateToInvites,
   isEmbedded = false,
+  onOpenCountryPicker,
 }) => {
   // ── Step management ───────────────────────────────────────────────
   const [currentStep, setCurrentStep] = useState<Step>(
@@ -1184,16 +1194,20 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 <TouchableOpacity
                   style={styles.phoneLookupCountry}
                   onPress={() => {
-                    // Dismiss keyboard first — on Android, simultaneous keyboard
-                    // dismissal + Modal Dialog creation causes severe jank.
-                    // On iOS, this prevents keyboard-type-change flicker when the
-                    // picker's search TextInput gets focus.
                     Keyboard.dismiss();
-                    // Wait for running interactions (keyboard animation) to finish
-                    // before mounting the modal. Matches the PhoneInput pattern.
-                    InteractionManager.runAfterInteractions(() => {
-                      setShowCountryPicker(true);
-                    });
+                    if (onOpenCountryPicker) {
+                      // Embedded: parent renders the picker as an overlay
+                      // (no nested Dialog, no overflow:hidden clipping).
+                      onOpenCountryPicker({
+                        selectedCode: selectedCountry.code,
+                        onSelect: handleCountrySelect,
+                      });
+                    } else {
+                      // Standalone: use <Modal> directly (no parent Modal).
+                      InteractionManager.runAfterInteractions(() => {
+                        setShowCountryPicker(true);
+                      });
+                    }
                   }}
                   activeOpacity={0.6}
                 >
@@ -1298,12 +1312,10 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Country picker modal — conditionally mounted so the Modal
-                component, FlatList, and all hooks are NOT in the React tree
-                when hidden. This eliminates phantom render overhead and
-                avoids keeping an invisible Android Dialog in memory.
-                Matches the PhoneInput pattern. */}
-            {showCountryPicker && (
+            {/* Country picker — Modal version for standalone mode only.
+                When onOpenCountryPicker is provided (embedded), the parent
+                renders the picker as an overlay instead of a nested Dialog. */}
+            {!onOpenCountryPicker && showCountryPicker && (
               <CountryPickerModal
                 visible={showCountryPicker}
                 selectedCode={selectedCountry.code}

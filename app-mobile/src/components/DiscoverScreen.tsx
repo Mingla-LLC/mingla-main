@@ -174,8 +174,9 @@ discoverSessionCache.clear();
 const getDiscoverExactCacheKey = (
   userId: string,
   lat: number | null,
-  lng: number | null
-): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}`;
+  lng: number | null,
+  fingerprint?: string
+): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}${fingerprint ? `_${fingerprint}` : ''}`;
 
 const getDiscoverDailyCacheKey = (userId: string, prefsFingerprint?: string): string =>
   `${DISCOVER_DAILY_CACHE_KEY}_${userId}${prefsFingerprint ? `_${prefsFingerprint}` : ''}`;
@@ -1009,13 +1010,17 @@ export default function DiscoverScreen({
 
   // ── User preference categories (drives which categories the Discover API fetches) ──
   const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
+  const [userTravelMode, setUserTravelMode] = useState<string | undefined>(undefined);
   const prevRefreshKeyRef = useRef<number | undefined>(undefined);
 
-  // Stable fingerprint of user's selected categories — used to partition caches per preference set
+  // Stable fingerprint of user's preferences — used to partition caches per preference set
   const prefsFingerprint = useMemo(() => {
-    if (!userSelectedCategories || userSelectedCategories.length === 0) return 'all';
-    return [...userSelectedCategories].sort().join(',');
-  }, [userSelectedCategories]);
+    const catPart = (!userSelectedCategories || userSelectedCategories.length === 0)
+      ? 'all'
+      : [...userSelectedCategories].sort().join(',');
+    const modePart = userTravelMode || 'walking';
+    return `${catPart}_${modePart}`;
+  }, [userSelectedCategories, userTravelMode]);
 
   useEffect(() => {
     const loadUserCategories = async () => {
@@ -1033,9 +1038,14 @@ export default function DiscoverScreen({
         } else {
           setUserSelectedCategories(null);
         }
+        // Extract travel mode for travel time computation
+        if (prefs?.travel_mode) {
+          setUserTravelMode(prefs.travel_mode);
+        }
       } catch (err) {
-        console.warn("[Discover] Failed to load user categories:", err);
+        console.warn("[Discover] Failed to load user preferences:", err);
         setUserSelectedCategories(null);
+        setUserTravelMode(undefined);
       }
     };
     loadUserCategories();
@@ -1328,7 +1338,7 @@ export default function DiscoverScreen({
         gridCards,
         heroCards,
       };
-      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng, prefsFingerprint);
       const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
       const serialized = JSON.stringify(cacheData);
 
@@ -1351,7 +1361,7 @@ export default function DiscoverScreen({
       return null;
     }
     try {
-      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng, prefsFingerprint);
       const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
       const cachedExactInMemory = discoverSessionCache.get(exactCacheKey);
@@ -1391,7 +1401,7 @@ export default function DiscoverScreen({
       return null;
     }
 
-    const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+    const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng, prefsFingerprint);
     const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
     return discoverSessionCache.get(exactCacheKey) || discoverSessionCache.get(dailyCacheKey) || null;
@@ -1430,6 +1440,8 @@ export default function DiscoverScreen({
     tags: card.tags || [],
     location: card.location,
     openingHours: card.openingHours || null,
+    website: card.website || null,
+    phone: card.phone || null,
   });
 
   const featuredFromRecommendation = (rec: Recommendation): FeaturedCardData => ({
@@ -1449,6 +1461,8 @@ export default function DiscoverScreen({
     tags: rec.tags || [],
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   const gridFromRecommendation = (rec: Recommendation): GridCardData => ({
@@ -1639,6 +1653,7 @@ export default function DiscoverScreen({
           10000, // 10km radius
           undefined,              // For You: always ALL categories (never filtered by user prefs)
           ["Fine Dining", "Play"], // For You: always these 2 hero categories
+          userTravelMode,         // User's preferred travel mode (driving/walking/transit/bicycling)
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1718,6 +1733,8 @@ export default function DiscoverScreen({
           tags: hc.highlights || [],
           location: hc.lat && hc.lng ? { lat: hc.lat, lng: hc.lng } : undefined,
           openingHours: hc.openingHours || null,
+          website: hc.website || null,
+          phone: hc.phone || null,
         }));
 
         // CLIENT-SIDE FALLBACK: If server returned < 2 hero cards, extract from grid cards
@@ -1753,6 +1770,8 @@ export default function DiscoverScreen({
                 tags: candidate.highlights || [],
                 location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
+                website: candidate.website || null,
+                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               existingHeroCats.add(heroCategory);
@@ -1787,6 +1806,8 @@ export default function DiscoverScreen({
                 tags: candidate.highlights || [],
                 location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
                 openingHours: candidate.openingHours || null,
+                website: candidate.website || null,
+                phone: candidate.phone || null,
               });
               existingHeroIds.add(candidate.id);
               console.log(`[For You] Filled hero slot with "${candidate.title}" (${candidate.category})`);
@@ -1853,7 +1874,7 @@ export default function DiscoverScreen({
     };
 
     fetchDiscoverRecommendations();
-  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady, userSelectedCategories, preferencesRefreshKey]);
+  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady, userSelectedCategories, userTravelMode, preferencesRefreshKey]);
 
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
@@ -2220,8 +2241,9 @@ export default function DiscoverScreen({
     setIsExpandedModalVisible(true);
   };
 
-  // Transform GridCardData to ExpandedCardData
+  // Transform GridCardData to ExpandedCardData — For You grid cards
   const handleGridCardPress = (card: GridCardData) => {
+    console.log(`[Discover] Grid card pressed: "${card.title}" | website=${card.website || 'NULL'} | phone=${card.phone || 'NULL'}`);
     // Fallback: look up openingHours from recommendations if card doesn't have it
     const openingHours = card.openingHours || (
       recommendations.find(r => r.id === card.id)?.openingHours

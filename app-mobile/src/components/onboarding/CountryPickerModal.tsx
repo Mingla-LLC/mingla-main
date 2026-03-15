@@ -25,17 +25,26 @@ import {
   touchTargets,
 } from '../../constants/designSystem';
 
-interface CountryPickerModalProps {
-  visible: boolean;
+// ─── Shared props for the inner content ──────────────────────────────
+interface CountryPickerContentProps {
   selectedCode: string;
   onSelect: (code: string) => void;
   onClose: () => void;
 }
 
+// ─── Modal-specific props ────────────────────────────────────────────
+interface CountryPickerModalProps extends CountryPickerContentProps {
+  visible: boolean;
+}
+
 const ROW_HEIGHT = 48;
 
-export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
-  visible,
+// ═════════════════════════════════════════════════════════════════════
+// CountryPickerContent — shared inner UI
+// Used by both the Modal wrapper (standalone/onboarding) and the
+// Overlay wrapper (embedded inside another Modal).
+// ═════════════════════════════════════════════════════════════════════
+const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   selectedCode,
   onSelect,
   onClose,
@@ -45,10 +54,10 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   const listRef = useRef<FlatList<CountryData>>(null);
 
   // ── Keyboard awareness ─────────────────────────────────────────
-  // Uses the project's own useKeyboard hook which works reliably
-  // inside Modals on both platforms (unlike KeyboardAvoidingView).
-  // The spacer height = keyboard height when open, bottom inset when closed.
-  const { keyboardHeight } = useKeyboard();
+  // disableLayoutAnimation: true — prevents the global LayoutAnimation
+  // side-effect that leaks into other components (KeyboardAwareScrollView,
+  // parent modals) and causes cascading keyboard show/hide cycles.
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const bottomSpacer = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
 
   // ── Data ─────────────────────────────────────────────────────────
@@ -66,7 +75,6 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   // ── Handlers ─────────────────────────────────────────────────────
   const handleSearch = useCallback((text: string) => {
     setSearch(text);
-    // Reset scroll to top when search changes so results are always visible
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, []);
 
@@ -130,7 +138,79 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
     [selectedCode, handleSelect],
   );
 
-  // ── Render ───────────────────────────────────────────────────────
+  return (
+    <SafeAreaView
+      style={styles.container}
+      edges={['top', 'left', 'right']}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Select Country</Text>
+        <TouchableOpacity
+          onPress={handleClose}
+          style={styles.closeButton}
+          accessibilityRole="button"
+          accessibilityLabel="Close country picker"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="close" size={24} color={colors.text.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Ionicons
+          name="search-outline"
+          size={20}
+          color={colors.gray[400]}
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name, code, or dial code"
+          placeholderTextColor={colors.gray[400]}
+          value={search}
+          onChangeText={handleSearch}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+        />
+      </View>
+
+      {/* Country list — flex:1 shrinks when spacer grows */}
+      <FlatList
+        ref={listRef}
+        data={filteredCountries}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
+        style={styles.list}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={true}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+      />
+
+      {/* Bottom spacer: keyboard height when open, safe area when closed. */}
+      <View style={{ height: bottomSpacer }} />
+    </SafeAreaView>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════
+// CountryPickerModal — wraps content in a native <Modal>.
+// Use this in standalone contexts (onboarding, AddFriendView) where
+// there is NO parent Modal. Do NOT use inside another Modal — use
+// CountryPickerOverlay instead to avoid nested Android Dialogs.
+// ═════════════════════════════════════════════════════════════════════
+export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
+  visible,
+  selectedCode,
+  onSelect,
+  onClose,
+}) => {
   return (
     <Modal
       visible={visible}
@@ -138,73 +218,48 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
       presentationStyle="fullScreen"
       statusBarTranslucent
     >
-      <SafeAreaView
-        style={styles.container}
-        edges={['top', 'left', 'right']}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Select Country</Text>
-          <TouchableOpacity
-            onPress={handleClose}
-            style={styles.closeButton}
-            accessibilityRole="button"
-            accessibilityLabel="Close country picker"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="close" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color={colors.gray[400]}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, code, or dial code"
-            placeholderTextColor={colors.gray[400]}
-            value={search}
-            onChangeText={handleSearch}
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* Country list — flex:1 shrinks when spacer grows */}
-        <FlatList
-          ref={listRef}
-          data={filteredCountries}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          getItemLayout={getItemLayout}
-          style={styles.list}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={true}
-          initialNumToRender={15}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-        />
-
-        {/* Bottom spacer: keyboard height when open, safe area when closed.
-            Uses useKeyboard hook (state-driven) — triggers a real React
-            re-render so the flex parent recalculates the FlatList height.
-            This is reliable inside Modals on both platforms, unlike
-            KeyboardAvoidingView (broken on Android) or Reanimated
-            useAnimatedStyle (UI-thread-only, may skip layout recalc). */}
-        <View style={{ height: bottomSpacer }} />
-      </SafeAreaView>
+      <CountryPickerContent
+        selectedCode={selectedCode}
+        onSelect={onSelect}
+        onClose={onClose}
+      />
     </Modal>
   );
 };
 
+// ═════════════════════════════════════════════════════════════════════
+// CountryPickerOverlay — renders content as an absolute-fill View.
+// Use this when the picker must appear inside an EXISTING Modal
+// (e.g. CollaborationModule's bottom sheet). Avoids creating a nested
+// Android Dialog, which is slow to create and can cause keyboard
+// show/hide cascades. The overlay fills the entire parent Modal window
+// and renders above all other content via zIndex / elevation.
+// ═════════════════════════════════════════════════════════════════════
+export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = ({
+  selectedCode,
+  onSelect,
+  onClose,
+}) => {
+  return (
+    <View style={styles.overlayContainer}>
+      <CountryPickerContent
+        selectedCode={selectedCode}
+        onSelect={onSelect}
+        onClose={onClose}
+      />
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
+  // ── Overlay wrapper ──────────────────────────────────────────────
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    backgroundColor: colors.background.primary,
+  },
+  // ── Shared content styles ────────────────────────────────────────
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

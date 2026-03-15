@@ -14,7 +14,8 @@ import { pairingKeys } from "./usePairings";
  *   - conversation_participants (user_id = userId)
  *   - friends (user_id = userId)
  *   - calendar_entries (user_id = userId)
- *   - pair_requests (receiver_id = userId)
+ *   - pair_requests (receiver_id = userId — incoming requests)
+ *   - pair_requests (sender_id = userId, UPDATE only — outgoing status changes)
  *   - pairings (user_a_id = userId OR user_b_id = userId, via 2 listeners)
  */
 export function useSocialRealtime(
@@ -116,7 +117,7 @@ export function useSocialRealtime(
           queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
         }
       )
-      // pair_requests: incoming pair requests
+      // pair_requests: incoming pair requests (receiver sees new/changed requests)
       .on(
         "postgres_changes",
         {
@@ -129,6 +130,22 @@ export function useSocialRealtime(
           queryClient.invalidateQueries({
             queryKey: pairingKeys.incomingRequests(userId),
           });
+          queryClient.invalidateQueries({
+            queryKey: pairingKeys.pills(userId),
+          });
+          callbacksRef.current?.onPairRequestChange?.();
+        }
+      )
+      // pair_requests: outgoing pair requests (sender sees accept/decline/visibility changes)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "pair_requests",
+          filter: `sender_id=eq.${userId}`,
+        },
+        () => {
           queryClient.invalidateQueries({
             queryKey: pairingKeys.pills(userId),
           });

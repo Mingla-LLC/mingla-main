@@ -546,7 +546,7 @@ export default function CollaborationSessions({
                       <View style={styles.csLookupRow}>
                         <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
                         <Text style={styles.csLookupTextGreen}>
-                          {phoneLookupResult.user?.display_name || phoneLookupResult.user?.username || 'User'} is on Mingla
+                          {phoneLookupResult.user?.display_name || 'Someone'} is on Mingla
                         </Text>
                       </View>
                     ) : (

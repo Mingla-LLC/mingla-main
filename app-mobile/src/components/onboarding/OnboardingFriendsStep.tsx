@@ -221,9 +221,8 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
               request.sender?.display_name ||
               (request.sender?.first_name && request.sender?.last_name
                 ? `${request.sender.first_name} ${request.sender.last_name}`
-                : request.sender?.username) ||
+                : null) ||
               'Someone'
-            const senderUsername = request.sender?.username
             const initials = senderName
               .split(' ')
               .map((n) => n[0])
@@ -268,9 +267,6 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 {/* Info */}
                 <View style={styles.requestInfo}>
                   <Text style={styles.requestName} numberOfLines={1}>{senderName}</Text>
-                  {senderUsername && (
-                    <Text style={styles.requestUsername} numberOfLines={1}>@{senderUsername}</Text>
-                  )}
                 </View>
 
                 {/* Buttons */}
@@ -334,7 +330,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 </View>
               )}
               <Text style={styles.lookupName} numberOfLines={1}>
-                {phoneLookupResult.user.display_name || phoneLookupResult.user.username}
+                {phoneLookupResult.user.display_name || 'Someone'}
               </Text>
             </View>
           ) : null}

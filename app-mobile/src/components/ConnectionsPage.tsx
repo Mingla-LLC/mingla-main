@@ -189,9 +189,8 @@ export default function ConnectionsPageRefactored({
     if (profile?.display_name) return profile.display_name;
     if (profile?.first_name && profile?.last_name)
       return `${profile.first_name} ${profile.last_name}`;
-    if (profile?.username) return profile.username;
-    return user?.email || "Unknown";
-  }, [profile, user]);
+    return "Unknown";
+  }, [profile]);
 
   // ── Modal state (for MessageInterface actions) ───────────
   const [showAddToBoardModal, setShowAddToBoardModal] = useState(false);

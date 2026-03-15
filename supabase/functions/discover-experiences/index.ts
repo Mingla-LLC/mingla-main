@@ -418,7 +418,7 @@ serve(async (req) => {
           };
 
           // Helper: convert pool DB row to API card format
-          const POOL_SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, bicycling: 15, biking: 15 };
+          const POOL_SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, public_transit: 25, bicycling: 15, biking: 15 };
           const poolRowToApiCard = (card: any): any => {
             const distKm = (card.lat != null && card.lng != null)
               ? Math.round(haversineDistance(location.lat, location.lng, card.lat, card.lng) * 100) / 100
@@ -673,7 +673,7 @@ serve(async (req) => {
             ppServedPlaceIds.add(gpid);
 
             const distKm = haversineDistance(location.lat, location.lng, place.lat, place.lng);
-            const SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, bicycling: 15, biking: 15 };
+            const SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, public_transit: 25, bicycling: 15, biking: 15 };
             const speed = SPEED_KMH[travelMode] || 4.5;
             const travelMin = Math.max(1, Math.round((distKm / speed) * 60));
 
@@ -1354,6 +1354,7 @@ async function annotateWithTravel(
     walking: 4.5,
     driving: 40,
     transit: 25,
+    public_transit: 25,
     bicycling: 15,
     biking: 15,
   };

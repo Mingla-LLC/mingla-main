@@ -57,7 +57,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
 
   const getParticipantName = (senderId: string) => {
     const participant = participants.find(p => p.user_id === senderId);
-    return participant?.profiles?.display_name || participant?.profiles?.email || 'Unknown';
+    return participant?.profiles?.display_name || 'Unknown';
   };
 
   return (

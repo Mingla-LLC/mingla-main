@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Text,
   View,
@@ -7,6 +7,7 @@ import {
   Modal,
   Dimensions,
   Alert,
+  Keyboard,
 } from "react-native";
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +17,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 import SessionsTab from "./collaboration/SessionsTab";
 import InvitesTab from "./collaboration/InvitesTab";
 import { CreateSessionContent } from "./CreateSessionModal";
+import { CountryPickerOverlay } from "./onboarding/CountryPickerModal";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
@@ -115,12 +117,50 @@ export default function CollaborationModule({
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
 
-  // Reset create flow when tab changes
+  // ── Country picker overlay ──────────────────────────────────────
+  // Rendered as an absolute-fill View INSIDE our Modal but OUTSIDE
+  // sheetContent (overflow:hidden). This avoids creating a nested
+  // Android Dialog (slow, causes keyboard cascades) while still
+  // covering the entire screen.
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const countryPickerCallbackRef = useRef<{
+    selectedCode: string;
+    onSelect: (code: string) => void;
+  } | null>(null);
+
+  const handleOpenCountryPicker = useCallback(
+    (config: { selectedCode: string; onSelect: (code: string) => void }) => {
+      Keyboard.dismiss();
+      countryPickerCallbackRef.current = config;
+      setCountryPickerOpen(true);
+    },
+    [],
+  );
+
+  const handleCountryPickerSelect = useCallback((code: string) => {
+    countryPickerCallbackRef.current?.onSelect(code);
+    setCountryPickerOpen(false);
+    countryPickerCallbackRef.current = null;
+  }, []);
+
+  const handleCountryPickerClose = useCallback(() => {
+    setCountryPickerOpen(false);
+    countryPickerCallbackRef.current = null;
+  }, []);
+
+  // MED-003: Close country picker when user switches away from Create tab.
   React.useEffect(() => {
-    if (activeTab !== "create") {
-      // Reset create flow state if needed
+    if (activeTab !== "create" && countryPickerOpen) {
+      handleCountryPickerClose();
     }
-  }, [activeTab]);
+  }, [activeTab, countryPickerOpen, handleCountryPickerClose]);
+
+  // MED-002: Close country picker when the module itself closes.
+  React.useEffect(() => {
+    if (!isOpen && countryPickerOpen) {
+      handleCountryPickerClose();
+    }
+  }, [isOpen, countryPickerOpen, handleCountryPickerClose]);
 
   // Auto-navigate to create tab if pre-selected friend
   React.useEffect(() => {
@@ -311,13 +351,13 @@ export default function CollaborationModule({
             fromUser: {
               id: profileData?.id || invite.inviter_id,
               name:
-                profileData?.display_name || profileData?.email || "Unknown",
+                profileData?.display_name || "Unknown",
               avatar: profileData?.avatar_url,
               status: "online" as const,
             },
             toUser: {
               id: user.id,
-              name: user.email || "You",
+              name: "You",
               status: "online" as const,
             },
             status: invite.status,
@@ -350,14 +390,13 @@ export default function CollaborationModule({
           sessionName: invite.collaboration_sessions?.name || "Session",
           fromUser: {
             id: user.id,
-            name: user.email || "You",
+            name: "You",
             status: "online" as const,
           },
           toUser: {
             id: invite.profiles?.id || invite.invited_user_id,
             name:
               invite.profiles?.display_name ||
-              invite.profiles?.email ||
               "Unknown",
             avatar: invite.profiles?.avatar_url,
             status: "online" as const,
@@ -487,7 +526,7 @@ export default function CollaborationModule({
         const acceptedParticipants = sessionParticipants.filter((p) => p.has_accepted);
         const participants = acceptedParticipants.map((p) => ({
           id: p.user_id,
-          name: p.profiles?.display_name || p.profiles?.email || "Unknown",
+          name: p.profiles?.display_name || "Unknown",
           avatar: p.profiles?.avatar_url,
           status: "online" as const,
         }));
@@ -971,7 +1010,15 @@ export default function CollaborationModule({
       visible={isOpen}
       animationType="slide"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // HIGH-001: Android hardware back button must close the country
+        // picker overlay first, not the entire module.
+        if (countryPickerOpen) {
+          handleCountryPickerClose();
+          return;
+        }
+        onClose();
+      }}
       statusBarTranslucent
     >
       <View style={styles.sheetOverlay}>
@@ -1099,6 +1146,7 @@ export default function CollaborationModule({
                   } : null}
                   onCreateSession={handleCreateSession}
                   onNavigateToInvites={() => setActiveTab("invites")}
+                  onOpenCountryPicker={handleOpenCountryPicker}
                 />
               ) : (
                 <View style={styles.lockedCreateSection}>
@@ -1131,6 +1179,17 @@ export default function CollaborationModule({
             initialTier="pro"
           />
         </View>
+
+        {/* Country picker overlay — rendered INSIDE sheetOverlay (fills
+            the entire Modal window) but OUTSIDE sheetContent (bypasses
+            overflow:hidden). No nested Android Dialog. Instant open. */}
+        {countryPickerOpen && (
+          <CountryPickerOverlay
+            selectedCode={countryPickerCallbackRef.current?.selectedCode ?? 'US'}
+            onSelect={handleCountryPickerSelect}
+            onClose={handleCountryPickerClose}
+          />
+        )}
       </View>
     </Modal>
   );

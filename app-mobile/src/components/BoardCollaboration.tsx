@@ -154,7 +154,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
                   .insert({
                     board_id: boardId,
                     user_id: invitedUser.id,
-                    role: 'member',
+                    role: 'collaborator',
                   });
 
                 if (collaboratorError) {
@@ -218,7 +218,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
                 </View>
                 <View style={styles.collaboratorInfo}>
                   <Text style={styles.collaboratorName}>
-                    {collaborator.profiles?.display_name || collaborator.profiles?.email}
+                    {collaborator.profiles?.display_name || 'Unknown'}
                   </Text>
                   <Text style={styles.collaboratorRole}>
                     {collaborator.role}

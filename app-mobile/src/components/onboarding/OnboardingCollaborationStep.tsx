@@ -314,9 +314,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                 ]}
                 numberOfLines={1}
               >
-                {friend.type === 'existing'
-                  ? friend.displayName
-                  : friend.phoneE164}
+                {friend.displayName}
               </Text>
             </Pressable>
           )
@@ -451,32 +449,42 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             </View>
           )}
 
-          {pendingCollabInvites.map((invite) => (
-            <View key={invite.id} style={styles.inviteRow}>
-              <View style={styles.inviteInfo}>
-                <Text style={styles.inviteName} numberOfLines={1}>
-                  {invite.sessionName || 'Session'}
-                </Text>
-                <Text style={styles.inviteFrom} numberOfLines={1}>
-                  From {invite.invitedBy?.name || 'Unknown'}
-                </Text>
+          {pendingCollabInvites.map((invite) => {
+            const inviterName = invite.invitedBy?.displayName
+              || invite.invitedBy?.name
+              || 'Someone'
+            return (
+              <View key={invite.id} style={styles.inviteCard}>
+                <View style={styles.inviteCardHeader}>
+                  <View style={styles.inviteIconContainer}>
+                    <Ionicons name="people" size={20} color={colors.primary[500]} />
+                  </View>
+                  <View style={styles.inviteCardInfo}>
+                    <Text style={styles.inviteCardName} numberOfLines={1}>
+                      {invite.sessionName || 'Session'}
+                    </Text>
+                    <Text style={styles.inviteCardFrom} numberOfLines={1}>
+                      {inviterName} invited you
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.inviteCardActions}>
+                  <Pressable
+                    style={styles.inviteJoinButton}
+                    onPress={() => handleAcceptInvite(invite.id)}
+                  >
+                    <Text style={styles.inviteJoinButtonText}>Join</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.inviteDeclineButton}
+                    onPress={() => handleDeclineInvite(invite.id)}
+                  >
+                    <Text style={styles.inviteDeclineButtonText}>Decline</Text>
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.inviteActions}>
-                <Pressable
-                  style={styles.acceptButton}
-                  onPress={() => handleAcceptInvite(invite.id)}
-                >
-                  <Text style={styles.acceptButtonText}>Join</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.declineButton}
-                  onPress={() => handleDeclineInvite(invite.id)}
-                >
-                  <Text style={styles.declineButtonText}>Decline</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))}
+            )
+          })}
         </View>
       )}
 
@@ -489,7 +497,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             color={colors.gray[300]}
           />
           <Text style={styles.emptyStateText}>
-            Pair with friends first — then you can start planning together.
+            Add friends first — then you can start planning together.
           </Text>
         </View>
       )}
@@ -713,54 +721,72 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.semibold,
     color: colors.error[500],
   },
-  inviteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.primary,
-    borderRadius: radius.md,
+  inviteCard: {
+    backgroundColor: colors.primary[50],
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: colors.primary[200],
     padding: spacing.md,
     marginBottom: spacing.sm,
+    ...shadows.sm,
   },
-  inviteInfo: {
+  inviteCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  inviteIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteCardInfo: {
     flex: 1,
-    marginRight: spacing.sm,
   },
-  inviteName: {
-    ...typography.sm,
+  inviteCardName: {
+    ...typography.md,
     fontWeight: fontWeights.semibold,
     color: colors.text.primary,
   },
-  inviteFrom: {
-    fontSize: 13,
-    color: colors.gray[400],
+  inviteCardFrom: {
+    ...typography.sm,
+    color: colors.primary[600],
     marginTop: 2,
   },
-  inviteActions: {
+  inviteCardActions: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
-  acceptButton: {
+  inviteJoinButton: {
+    flex: 1,
     backgroundColor: colors.primary[500],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  acceptButtonText: {
-    ...typography.xs,
+  inviteJoinButtonText: {
+    ...typography.sm,
     fontWeight: fontWeights.semibold,
     color: colors.text.inverse,
   },
-  declineButton: {
-    backgroundColor: colors.gray[100],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
+  inviteDeclineButton: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  declineButtonText: {
-    ...typography.xs,
-    fontWeight: fontWeights.semibold,
+  inviteDeclineButtonText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
     color: colors.text.secondary,
   },
   emptyState: {

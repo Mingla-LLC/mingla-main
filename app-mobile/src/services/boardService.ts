@@ -166,7 +166,7 @@ export async function deleteBoard(boardId: string): Promise<void> {
 export async function addCollaboratorByEmail(
   boardId: string,
   userEmail: string,
-  role: string = 'member',
+  role: string = 'collaborator',
 ): Promise<BoardCollaborator> {
   const { data: invitedUser, error: userError } = await supabase
     .from('profiles')

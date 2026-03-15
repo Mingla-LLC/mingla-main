@@ -329,12 +329,10 @@ class MixpanelService {
   trackFriendRequestAccepted(props: {
     requestId: string;
     senderName: string;
-    senderUsername: string;
   }): void {
     this.track("Friend Request Accepted", {
       request_id: props.requestId,
       sender_name: props.senderName,
-      sender_username: props.senderUsername,
     });
   }
 
@@ -344,12 +342,10 @@ class MixpanelService {
   trackFriendRequestDeclined(props: {
     requestId: string;
     senderName: string;
-    senderUsername: string;
   }): void {
     this.track("Friend Request Declined", {
       request_id: props.requestId,
       sender_name: props.senderName,
-      sender_username: props.senderUsername,
     });
   }
 

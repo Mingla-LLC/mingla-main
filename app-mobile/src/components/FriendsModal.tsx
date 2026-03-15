@@ -448,7 +448,7 @@ function RequestItem({
     request.sender.display_name ||
     (request.sender.first_name && request.sender.last_name
       ? `${request.sender.first_name} ${request.sender.last_name}`
-      : request.sender.username) ||
+      : null) ||
     "Unknown";
   const initials = getInitials(senderName);
   const avatarColor = hashColor(request.sender_id);
@@ -484,11 +484,6 @@ function RequestItem({
         <Text style={requestStyles.name} numberOfLines={1}>
           {senderName}
         </Text>
-        {request.sender.username && (
-          <Text style={requestStyles.username} numberOfLines={1}>
-            @{request.sender.username}
-          </Text>
-        )}
       </View>
 
       {/* Timestamp */}
@@ -848,12 +843,11 @@ export default function FriendsModal({
             request.sender.display_name ||
             (request.sender.first_name && request.sender.last_name
               ? `${request.sender.first_name} ${request.sender.last_name}`
-              : request.sender.username) ||
+              : null) ||
             "Unknown";
           mixpanelService.trackFriendRequestAccepted({
             requestId,
             senderName,
-            senderUsername: request.sender.username,
           });
         }
 
@@ -895,12 +889,11 @@ export default function FriendsModal({
             request.sender.display_name ||
             (request.sender.first_name && request.sender.last_name
               ? `${request.sender.first_name} ${request.sender.last_name}`
-              : request.sender.username) ||
+              : null) ||
             "Unknown";
           mixpanelService.trackFriendRequestDeclined({
             requestId,
             senderName,
-            senderUsername: request.sender.username,
           });
         }
 

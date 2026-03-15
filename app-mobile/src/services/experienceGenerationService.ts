@@ -170,9 +170,9 @@ export class ExperienceGenerationService {
     try {
       console.log("Fetching discover experiences for location:", location, "categories:", selectedCategories);
 
-      const body: any = {
+      const body: Record<string, unknown> = {
         location,
-        radius: radius || 10000, // Default 10km radius
+        radius: radius || 10000,
       };
       if (selectedCategories && selectedCategories.length > 0) {
         body.selectedCategories = selectedCategories;

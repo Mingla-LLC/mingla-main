@@ -1956,7 +1956,7 @@ const OnboardingFlow = ({
               <DateTimePicker
                 value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
-                display="spinner"
+                display={Platform.OS === 'android' ? 'default' : 'spinner'}
                 minimumDate={MIN_BIRTHDAY_DATE}
                 maximumDate={new Date()}
                 onChange={(_event, selectedDate) => {

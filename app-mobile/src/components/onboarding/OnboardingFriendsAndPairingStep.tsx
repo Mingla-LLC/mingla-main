@@ -403,7 +403,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       {/* Header */}
       <Text style={styles.headline}>Your inner circle</Text>
       <Text style={styles.subtitle}>
-        Pair with your closest people. You'll discover things to do together, see what they love, and plan the good stuff side by side.
+        Add your closest people, then pair up. You'll discover things to do together, see what they love, and plan the good stuff side by side.
       </Text>
 
       {/* Section 1: Incoming Friend Requests */}
@@ -417,9 +417,8 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
               request.sender?.display_name ||
               (request.sender?.first_name && request.sender?.last_name
                 ? `${request.sender.first_name} ${request.sender.last_name}`
-                : request.sender?.username) ||
+                : null) ||
               'Someone'
-            const senderUsername = request.sender?.username
             const initials = getInitials(senderName)
 
             if (status === 'accepted') {
@@ -451,9 +450,6 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                 )}
                 <View style={styles.requestInfo}>
                   <Text style={styles.requestName} numberOfLines={1}>{senderName}</Text>
-                  {senderUsername && (
-                    <Text style={styles.requestUsername} numberOfLines={1}>@{senderUsername}</Text>
-                  )}
                 </View>
                 <View style={styles.requestButtons}>
                   <TouchableOpacity
@@ -513,7 +509,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   </View>
                 )}
                 <Text style={styles.lookupName} numberOfLines={1}>
-                  {phoneLookupResult.user.display_name || phoneLookupResult.user.username}
+                  {phoneLookupResult.user.display_name || 'Someone'}
                 </Text>
               </View>
             ) : null}
@@ -666,24 +662,29 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
             return (
               <View key={request.id} style={styles.pairRequestCard}>
-                {request.senderAvatar ? (
-                  <Image source={{ uri: request.senderAvatar }} style={styles.avatar40} />
-                ) : (
-                  <View style={styles.avatarPlaceholder40}>
-                    <Text style={styles.avatarInitials}>{getInitials(request.senderName)}</Text>
+                <View style={styles.pairRequestHeader}>
+                  {request.senderAvatar ? (
+                    <Image source={{ uri: request.senderAvatar }} style={styles.avatar48} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder48}>
+                      <Text style={styles.avatarInitials48}>{getInitials(request.senderName)}</Text>
+                    </View>
+                  )}
+                  <View style={styles.pairRequestInfo}>
+                    <Text style={styles.pairRequestName} numberOfLines={1}>
+                      {request.senderName}
+                    </Text>
+                    <Text style={styles.pairRequestSubtitle}>
+                      Wants to pair with you
+                    </Text>
                   </View>
-                )}
-                <View style={styles.pairRequestInfo}>
-                  <Text style={styles.pairRequestTitle} numberOfLines={1}>
-                    {request.senderName} wants to pair with you
-                  </Text>
-                  <Text style={styles.pairRequestSubtitle}>
-                    See experiences made for both of you.
-                  </Text>
                 </View>
-                <View style={styles.requestButtons}>
+                <Text style={styles.pairRequestBody}>
+                  See experiences curated for both of you.
+                </Text>
+                <View style={styles.pairRequestActions}>
                   <TouchableOpacity
-                    style={styles.acceptButton}
+                    style={styles.pairAcceptButton}
                     onPress={() => handleAcceptPairRequest(request)}
                     disabled={!!processingPairRequestId}
                     activeOpacity={0.7}
@@ -691,16 +692,16 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     {isProcessing ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.acceptButtonText}>Accept</Text>
+                      <Text style={styles.pairAcceptButtonText}>Accept</Text>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.declineButton}
+                    style={styles.pairDeclineButton}
                     onPress={() => handleDeclinePairRequest(request)}
                     disabled={!!processingPairRequestId}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.declineButtonText}>Decline</Text>
+                    <Text style={styles.pairDeclineButtonText}>Decline</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -818,11 +819,6 @@ const styles = StyleSheet.create({
     fontSize: typography.sm.fontSize,
     fontWeight: fontWeights.semibold as any,
     color: colors.text?.primary ?? colors.gray[900],
-  },
-  requestUsername: {
-    fontSize: typography.xs.fontSize,
-    color: colors.text?.tertiary ?? colors.gray[400],
-    marginTop: 1,
   },
   requestButtons: { flexDirection: 'row', gap: spacing.xs },
   acceptButton: {
@@ -964,34 +960,85 @@ const styles = StyleSheet.create({
     color: colors.gray[400],
   },
 
-  // ─── Pair Request Cards (warm treatment) ───
+  // ─── Pair Request Cards (premium warm treatment) ───
   pairRequestCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.primary[200],
     backgroundColor: colors.primary[50],
-    gap: spacing.sm,
     marginBottom: spacing.sm,
-    ...shadows.sm,
+    ...shadows.md,
   },
   pairRequestCardAccepted: {
     backgroundColor: colors.success[50],
     borderColor: colors.success[200],
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
   },
+  pairRequestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  avatar48: { width: 48, height: 48, borderRadius: 24 },
+  avatarPlaceholder48: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: colors.primary[500],
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarInitials48: { color: '#ffffff', fontSize: 18, fontWeight: '700' as any },
   pairRequestInfo: { flex: 1 },
-  pairRequestTitle: {
-    fontSize: typography.sm.fontSize,
+  pairRequestName: {
+    fontSize: typography.md.fontSize,
     fontWeight: fontWeights.semibold as any,
     color: colors.text?.primary ?? colors.gray[900],
   },
   pairRequestSubtitle: {
-    fontSize: typography.xs.fontSize,
-    color: colors.text?.tertiary ?? colors.gray[400],
+    fontSize: typography.sm.fontSize,
+    color: colors.primary[600] ?? colors.primary[500],
     marginTop: 2,
+  },
+  pairRequestBody: {
+    fontSize: typography.sm.fontSize,
+    lineHeight: typography.sm.lineHeight,
+    color: colors.text?.secondary ?? colors.gray[600],
+    marginBottom: spacing.md,
+  },
+  pairRequestActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  pairAcceptButton: {
+    flex: 1,
+    backgroundColor: colors.primary[500],
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pairAcceptButtonText: {
+    color: '#ffffff',
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.semibold as any,
+  },
+  pairDeclineButton: {
+    flex: 1,
+    backgroundColor: colors.background?.primary ?? '#ffffff',
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pairDeclineButtonText: {
+    color: colors.gray[600],
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.medium as any,
   },
   pairedFeedbackText: {
     fontSize: typography.sm.fontSize,
