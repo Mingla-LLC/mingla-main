@@ -161,7 +161,16 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { sessionId, batchSeed = 0 } = await req.json();
+    const body = await req.json();
+
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    if (body.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { sessionId, batchSeed = 0 } = body;
 
     if (!sessionId) {
       return new Response(

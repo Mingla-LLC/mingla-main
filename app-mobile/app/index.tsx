@@ -77,6 +77,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useSocialRealtime } from "../src/hooks/useSocialRealtime";
+import * as friendsService from "../src/services/friendsService";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -606,6 +607,28 @@ function AppContent() {
   // Previously scoped to ConnectionsPage — moved to app level so data stays fresh
   // regardless of which tab the user is viewing.
   useSocialRealtime(user?.id);
+
+  // ── Prefetch friends list while user is idle on Home ──
+  // After 3 seconds on Home, prefetch the friends list so the Connect tab
+  // switch feels instant. The 3s delay avoids competing with deck card fetch
+  // (highest-priority request). Failures are silently ignored — normal fetch
+  // handles it on tab mount.
+  // NOTE: Discover prefetch was removed because DiscoverScreen manages its own
+  // state outside React Query — the prefetch data was never read. The keep-warm
+  // cron handles edge function warming instead.
+  useEffect(() => {
+    if (currentPage !== 'home' || !user?.id) return;
+
+    const prefetchTimer = setTimeout(() => {
+      queryClient.prefetchQuery({
+        queryKey: ['friends', 'list', user.id],
+        queryFn: () => friendsService.fetchFriends(user.id),
+        staleTime: 30_000, // 30s (matches useFriendsList)
+      });
+    }, 3000);
+
+    return () => clearTimeout(prefetchTimer);
+  }, [currentPage, user?.id]);
 
   // Process deferred deep links after auth + onboarding complete.
   // Links are deferred when they arrive while the user is unauthenticated (F-05).
@@ -2649,15 +2672,14 @@ export default function App() {
                 if (Array.isArray(queryKey)) {
                   const firstKey = queryKey[0];
                   // Never persist these heavy/transient queries:
-                  // - savedCards, calendarEntries: refetched on mount
                   // - curated-experiences: very large payload (20 cards × 3 stops)
-                  // - deck-cards: 20 Recommendation[] with strollData/stops — too large
-                  // - recommendations: large + stale quickly
+                  // - recommendations: deprecated/redundant key
+                  // - phone-lookup: ephemeral keystroke-driven
+                  // - link-consent: transient
+                  // NOTE: deck-cards, savedCards, calendarEntries are now PERSISTED
+                  // to enable instant-on stale-while-revalidate UX.
                   if (
-                    firstKey === "savedCards" ||
-                    firstKey === "calendarEntries" ||
                     firstKey === "curated-experiences" ||
-                    firstKey === "deck-cards" ||
                     firstKey === "recommendations" ||
                     firstKey === "phone-lookup" ||
                     firstKey === "link-consent"

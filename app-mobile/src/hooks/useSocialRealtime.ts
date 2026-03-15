@@ -7,15 +7,15 @@ import { pairingKeys } from "./usePairings";
  * Subscribes to realtime changes on social tables and invalidates
  * the appropriate React Query caches.
  *
- * Tables subscribed:
+ * Tables subscribed (all server-side filtered):
  *   - friend_requests (receiver_id = userId)
  *   - pending_invites (inviter_id = userId)
- *   - messages (all, filtered in callback)
+ *   - messages (receiver_id = userId)
  *   - conversation_participants (user_id = userId)
- *   - friends (user_id = userId and friend_user_id = userId)
+ *   - friends (user_id = userId)
  *   - calendar_entries (user_id = userId)
  *   - pair_requests (receiver_id = userId)
- *   - pairings (all, filtered in callback for user_a_id or user_b_id)
+ *   - pairings (user_a_id = userId OR user_b_id = userId, via 2 listeners)
  */
 export function useSocialRealtime(
   userId: string | undefined,
@@ -62,13 +62,14 @@ export function useSocialRealtime(
           queryClient.invalidateQueries({ queryKey: ["friends"] });
         }
       )
-      // messages
+      // messages — filtered to receiver only (sender already has the message)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
+          filter: `receiver_id=eq.${userId}`,
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["messages"] });
@@ -134,25 +135,35 @@ export function useSocialRealtime(
           callbacksRef.current?.onPairRequestChange?.();
         }
       )
-      // pairings: subscribe to all changes, filter in callback
-      // (Supabase realtime only supports single filter per subscription)
+      // pairings: two server-side filtered subscriptions instead of
+      // one unfiltered subscription with client-side filtering.
+      // Supabase realtime supports single-column eq filters per listener.
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "pairings",
+          filter: `user_a_id=eq.${userId}`,
         },
-        (payload) => {
-          const record = (payload.new as any) || (payload.old as any);
-          if (
-            record &&
-            (record.user_a_id === userId || record.user_b_id === userId)
-          ) {
-            queryClient.invalidateQueries({
-              queryKey: pairingKeys.pills(userId),
-            });
-          }
+        () => {
+          queryClient.invalidateQueries({
+            queryKey: pairingKeys.pills(userId),
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pairings",
+          filter: `user_b_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({
+            queryKey: pairingKeys.pills(userId),
+          });
         }
       )
       .subscribe();

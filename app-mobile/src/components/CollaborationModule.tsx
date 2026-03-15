@@ -19,6 +19,9 @@ import { CreateSessionContent } from "./CreateSessionModal";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
+import { useSessionCreationGate } from '../hooks/useSessionCreationGate';
+import { CustomPaywallScreen } from './CustomPaywallScreen';
+import type { GatedFeature } from '../hooks/useFeatureGate';
 
 interface Friend {
   id: string;
@@ -95,6 +98,9 @@ export default function CollaborationModule({
     "received"
   );
   const { user } = useAppStore();
+  const { canCreateSession, currentSessionCount, maxSessions, isUnlimited } = useSessionCreationGate();
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('session_creation');
   const {
     fetchFriends,
     friendRequests,
@@ -1078,19 +1084,48 @@ export default function CollaborationModule({
               />
             )}
             {activeTab === "create" && (
-              <CreateSessionContent
-                isEmbedded={true}
-                preSelectedFriend={preSelectedFriend ? {
-                  id: preSelectedFriend.id,
-                  name: preSelectedFriend.name,
-                  username: preSelectedFriend.username,
-                  avatar: preSelectedFriend.avatar,
-                } : null}
-                onCreateSession={handleCreateSession}
-                onNavigateToInvites={() => setActiveTab("invites")}
-              />
+              canCreateSession ? (
+                <CreateSessionContent
+                  isEmbedded={true}
+                  preSelectedFriend={preSelectedFriend ? {
+                    id: preSelectedFriend.id,
+                    name: preSelectedFriend.name,
+                    username: preSelectedFriend.username,
+                    avatar: preSelectedFriend.avatar,
+                  } : null}
+                  onCreateSession={handleCreateSession}
+                  onNavigateToInvites={() => setActiveTab("invites")}
+                />
+              ) : (
+                <View style={styles.lockedCreateSection}>
+                  <Ionicons name="lock-closed" size={48} color="#9CA3AF" />
+                  <Text style={styles.lockedTitle}>
+                    Session Limit Reached
+                  </Text>
+                  <Text style={styles.lockedSubtitle}>
+                    You've used {currentSessionCount} of {maxSessions} session{maxSessions === 1 ? '' : 's'} on your plan.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.upgradeButton}
+                    onPress={() => {
+                      setPaywallFeature('session_creation');
+                      setShowPaywall(true);
+                    }}
+                  >
+                    <Text style={styles.upgradeButtonText}>Upgrade for More Sessions</Text>
+                  </TouchableOpacity>
+                </View>
+              )
             )}
           </ScrollView>
+
+          <CustomPaywallScreen
+            isVisible={showPaywall}
+            onClose={() => setShowPaywall(false)}
+            userId={user?.id ?? ''}
+            feature={paywallFeature}
+            initialTier="pro"
+          />
         </View>
       </View>
     </Modal>
@@ -1208,5 +1243,37 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingVertical: 16,
     paddingBottom: 40,
+  },
+  lockedCreateSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+  },
+  lockedTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  lockedSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  upgradeButton: {
+    backgroundColor: '#f97316',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  upgradeButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

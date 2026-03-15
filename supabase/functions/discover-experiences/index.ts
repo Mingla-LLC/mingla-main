@@ -91,7 +91,16 @@ serve(async (req) => {
   }
 
   try {
-    const request: DiscoverRequest = await req.json();
+    const body = await req.json();
+
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    if (body.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const request: DiscoverRequest = body;
     const { location, radius = 10000, selectedCategories, travelMode = 'walking' } = request;
     const usDateKey = getUsDateKey();
 

@@ -38,6 +38,9 @@ import PairRequestModal from "./PairRequestModal";
 import PairingInfoCard from "./PairingInfoCard";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
 import PairedPeopleRow from "./PairedPeopleRow";
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import { CustomPaywallScreen } from './CustomPaywallScreen';
+import type { GatedFeature } from '../hooks/useFeatureGate';
 import PersonHolidayView from "./PersonHolidayView";
 import CustomHolidayModal from "./CustomHolidayModal";
 import { STANDARD_HOLIDAYS } from "../constants/holidays";
@@ -864,6 +867,9 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const { user } = useAuthSimple();
+  const { canAccess } = useFeatureGate();
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
 
@@ -3042,7 +3048,15 @@ export default function DiscoverScreen({
                 {/* Add Pair Button */}
                 <TouchableOpacity
                   style={styles.addUserButtonPill}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsPairModalVisible(true); }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (!canAccess('pairing')) {
+                      setPaywallFeature('pairing');
+                      setShowPaywall(true);
+                      return;
+                    }
+                    setIsPairModalVisible(true);
+                  }}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
@@ -3170,30 +3184,47 @@ export default function DiscoverScreen({
               ) : (
                 <>
                   {/* Paired People Row — horizontal scroll of paired people cards */}
-                  <PairedPeopleRow
-                    people={pairingPills
-                      .filter((p) => p.pillState === "active" && p.pairedUserId)
-                      .map((p) => ({
-                        pairedUserId: p.pairedUserId!,
-                        pairingId: p.pairingId!,
-                        displayName: p.displayName,
-                        firstName: p.firstName,
-                        avatarUrl: p.avatarUrl,
-                        initials: p.initials,
-                        birthday: p.birthday,
-                        gender: p.gender,
-                      }))}
-                    onSelectPerson={(person) => {
-                      // Find the matching pill and select it
-                      const pill = pairingPills.find(
-                        (p) => p.pairedUserId === person.pairedUserId
-                      );
-                      if (pill) {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setSelectedPillId(pill.id);
-                      }
-                    }}
-                  />
+                  {canAccess('pairing') ? (
+                    <PairedPeopleRow
+                      people={pairingPills
+                        .filter((p) => p.pillState === "active" && p.pairedUserId)
+                        .map((p) => ({
+                          pairedUserId: p.pairedUserId!,
+                          pairingId: p.pairingId!,
+                          displayName: p.displayName,
+                          firstName: p.firstName,
+                          avatarUrl: p.avatarUrl,
+                          initials: p.initials,
+                          birthday: p.birthday,
+                          gender: p.gender,
+                        }))}
+                      onSelectPerson={(person) => {
+                        // Find the matching pill and select it
+                        const pill = pairingPills.find(
+                          (p) => p.pairedUserId === person.pairedUserId
+                        );
+                        if (pill) {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedPillId(pill.id);
+                        }
+                      }}
+                    />
+                  ) : (
+                    pairingPills.filter((p) => p.pillState === "active").length > 0 && (
+                      <TouchableOpacity
+                        style={styles.frozenPairingBanner}
+                        onPress={() => {
+                          setPaywallFeature('pairing');
+                          setShowPaywall(true);
+                        }}
+                      >
+                        <Ionicons name="lock-closed" size={16} color="#F59E0B" />
+                        <Text style={styles.frozenPairingText}>
+                          {pairingPills.filter((p) => p.pillState === "active").length} pairing{pairingPills.filter((p) => p.pillState === "active").length > 1 ? 's' : ''} — upgrade to Elite to reconnect
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  )}
 
                   {/* Loading State */}
                   {recommendationsLoading && !hasCompletedInitialFetch && (
@@ -3455,6 +3486,14 @@ export default function DiscoverScreen({
           setInfoPill(null);
         }}
         onClose={() => setInfoPill(null)}
+      />
+
+      <CustomPaywallScreen
+        isVisible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        userId={user?.id ?? ''}
+        feature={paywallFeature}
+        initialTier={paywallFeature === 'pairing' ? 'elite' : 'pro'}
       />
 
       {/* Add Custom Day Modal */}
@@ -5290,6 +5329,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
+  },
+  frozenPairingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  frozenPairingText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#F59E0B',
+    fontWeight: '500',
   },
 });
 function generateUniqueId(): string {

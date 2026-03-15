@@ -53,6 +53,19 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
 
+    // --- TIER GATING: Pairing is Elite-only ---
+    const { data: pairingAllowed } = await adminClient
+      .rpc('check_pairing_allowed', { p_user_id: senderId });
+
+    if (!pairingAllowed?.[0]?.allowed) {
+      return jsonResponse({
+        error: 'elite_required',
+        feature: 'pairing',
+        message: 'Pairing is an Elite feature. Upgrade to connect with people.',
+        currentTier: pairingAllowed?.[0]?.tier ?? 'free',
+      }, 403);
+    }
+
     // ── Get sender profile ────────────────────────────────────────────────
     const { data: senderProfile } = await adminClient
       .from("profiles")

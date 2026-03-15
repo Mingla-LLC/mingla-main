@@ -2761,6 +2761,14 @@ serve(async (req) => {
   supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   try {
     const body = await req.json();
+
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    if (body.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     let {
       experienceType = 'adventurous',
       location,
@@ -3005,8 +3013,46 @@ serve(async (req) => {
             }
           }
 
+          // 2b. Generate teaser texts for locked curated card display
+          const teaserTexts: string[] = [];
+          if (OPENAI_API_KEY) {
+            try {
+              const teaserPrompts = cards.map((card: any) => {
+                const stops = card.stops || [];
+                return `Write a 1-sentence teaser (max 20 words) for a ${experienceType} experience with ${stops.length} stops. Make it intriguing without revealing any place names, addresses, or specific locations. Focus on the vibe, emotion, or activity type.`;
+              });
+              // Batch all teasers in one OpenAI call
+              const batchPrompt = `Generate ${cards.length} unique teaser sentences for curated experiences. Each must be max 20 words, intriguing, and must NOT reveal place names or addresses. Focus on vibe/emotion/activity.\n\nExamples:\n- "An evening of art and fine dining that'll make your heart skip"\n- "Three stops of pure adrenaline — ending with a meal you won't forget"\n\nGenerate exactly ${cards.length} teasers for "${experienceType}" experiences. Output ONLY a JSON array of ${cards.length} strings.`;
+
+              const teaserRes = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${OPENAI_API_KEY}`,
+                },
+                body: JSON.stringify({
+                  model: 'gpt-4o-mini',
+                  messages: [{ role: 'user', content: batchPrompt }],
+                  max_tokens: 50 * cards.length,
+                  temperature: 0.8,
+                }),
+                timeoutMs: 10000,
+              });
+              const teaserJson = await teaserRes.json();
+              const teaserContent = teaserJson.choices?.[0]?.message?.content?.trim() ?? '[]';
+              // Strip markdown code fences if present
+              const cleanContent = teaserContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+              const parsed = JSON.parse(cleanContent);
+              if (Array.isArray(parsed)) {
+                teaserTexts.push(...parsed);
+              }
+            } catch (teaserErr) {
+              console.warn('[curated-v2] Teaser generation failed:', teaserErr);
+            }
+          }
+
           // 3. Collect ALL card rows
-          const cardRows = cards.map(card => {
+          const cardRows = cards.map((card: any, cardIndex: number) => {
             const stops = card.stops || [];
             const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
             const stopPlacePoolIds = stopGooglePlaceIds.map((gpid: string) => placePoolIdMap[gpid]).filter(Boolean);
@@ -3045,6 +3091,7 @@ serve(async (req) => {
               total_price_max: card.totalPriceMax || 0,
               estimated_duration_minutes: card.estimatedDurationMinutes || 0,
               shopping_list: card.shoppingList || null,
+              teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${stops.length} curated stops`,
             };
           });
 

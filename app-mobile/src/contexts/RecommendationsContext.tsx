@@ -131,6 +131,10 @@ export const RecommendationsProvider: React.FC<
   const [isSlowBatchLoad, setIsSlowBatchLoad] = useState(false);
   const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
+  // Session-scoped dedup: tracks all card IDs served in the current session.
+  // Cleared on preference change and mode switch. Catches the prefetch race
+  // condition where batch 2 starts before batch 1's impressions are committed.
+  const sessionServedIdsRef = useRef<Set<string>>(new Set());
   // hasStartedRef: used by the 15-second nuclear safety timeout (mount-only, never resets)
   const hasStartedRef = useRef(false);
   const currentMode = propCurrentMode;
@@ -159,10 +163,11 @@ export const RecommendationsProvider: React.FC<
     loading: sessionsLoading,
   } = useSessionManagement();
 
-  // HF-003 fix: Load dismissed cards from AsyncStorage on mount
+  // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
+  // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
   useEffect(() => {
     if (!user?.id) return;
-    const key = `dismissed_cards_${user.id}`;
+    const key = `dismissed_cards_${user.id}_${currentMode}`;
     AsyncStorage.getItem(key).then(stored => {
       if (stored) {
         try {
@@ -173,7 +178,7 @@ export const RecommendationsProvider: React.FC<
         } catch {}
       }
     }).catch(() => {});
-  }, [user?.id]);
+  }, [user?.id, currentMode]);
 
   // ── Session Resolution ──────────────────────────────────────────────────
   const resolvedSessionId = React.useMemo(() => {
@@ -490,16 +495,16 @@ export const RecommendationsProvider: React.FC<
   const addDismissedCard = useCallback((card: Recommendation) => {
     setDismissedCards(prev => {
       const updated = [...prev, card];
-      // HF-003 fix: persist to AsyncStorage
+      // HF-003 fix: persist to AsyncStorage (mode-specific key)
       if (user?.id) {
         AsyncStorage.setItem(
-          `dismissed_cards_${user.id}`,
+          `dismissed_cards_${user.id}_${currentMode}`,
           JSON.stringify(updated)
         ).catch(() => {});
       }
       return updated;
     });
-  }, [user?.id]);
+  }, [user?.id, currentMode]);
 
   const clearDismissedCards = useCallback(() => {
     setDismissedCards([]);
@@ -555,11 +560,12 @@ export const RecommendationsProvider: React.FC<
       lastSyncedBatchIndexRef.current = -1;
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
-        AsyncStorage.removeItem(`dismissed_cards_${user.id}`).catch(() => {});
+        AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
       }
       setIsSlowBatchLoad(false);
       // Reset warm pool so it re-fires with new preferences
       warmPoolFired.current = false;
+      sessionServedIdsRef.current.clear();
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
     }
@@ -738,9 +744,13 @@ export const RecommendationsProvider: React.FC<
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
           // ALWAYS replace — never append. Each batch is a fresh set of cards.
-          // The SwipeableCards component manages its own removedCards set
-          // which resets on batch change via the batchKey mechanism.
-          setRecommendations(deckCards);
+          // Filter out cards already served in this session (catches prefetch race).
+          const dedupedCards = deckCards.filter(c => !sessionServedIdsRef.current.has(c.id));
+          for (const c of dedupedCards) sessionServedIdsRef.current.add(c.id);
+          if (dedupedCards.length === 0 && deckCards.length > 0) {
+            console.warn(`[RecommendationsContext] All ${deckCards.length} cards in batch already served this session — showing anyway to avoid empty deck`);
+          }
+          setRecommendations(dedupedCards.length > 0 ? dedupedCards : deckCards);
         }
 
         if (isDeckBatchLoaded && (isBatchTransitioning || isSlowBatchLoad)) {
@@ -781,29 +791,34 @@ export const RecommendationsProvider: React.FC<
         completionTimeoutRef.current = null;
       }
 
+      // ── Full state reset on mode change ────────────────────────────────
+      // Every mode starts with a clean slate. No stale batch positions,
+      // exhaustion flags, or prefetch state carrying over.
       setIsModeTransitioning(true);
       setHasCompletedFetchForCurrentMode(false);
       previousDeckIdsRef.current = '';
+      setBatchSeed(0);
+      prefetchFiredRef.current = false;
+      setIsExhausted(false);
+      setHasMoreCards(true);
+      setIsSlowBatchLoad(false);
+      setDismissedCards([]);
+      warmPoolFired.current = false;
+      sessionServedIdsRef.current.clear();
 
-      // Don't wipe recommendations here — let the sync effect (line ~683)
-      // replace them when the target mode's deck data arrives. If the data
-      // is cached (e.g. session deck with 30min staleTime), the sync effect
-      // populates recommendations in the same React batch, so the user never
-      // sees a loader flash. Only clear if genuinely switching away from
-      // existing data that shouldn't persist (handled by the sync effect
-      // naturally producing new data or EMPTY_CARDS).
+      // Clear deck history — each mode builds its own rounds
+      const { resetDeckHistory } = useAppStore.getState();
+      resetDeckHistory('');
+
+      // No need to wipe persisted dismissed cards — the storage key is
+      // mode-specific (`dismissed_cards_${userId}_${mode}`), so each mode's
+      // dismissed cards persist independently and don't cross-contaminate.
 
       completionTimeoutRef.current = setTimeout(() => {
         console.warn("Recommendations fetch timeout - forcing completion");
         setHasCompletedFetchForCurrentMode(true);
         setIsModeTransitioning(false);
       }, 5000);
-
-      // No query invalidation on mode switch. Each mode's queries have their
-      // own cache lifecycle (staleTime 30min). The query keys include all
-      // preference params, so stale prefs = different key = automatic refetch.
-      // Invalidating here races with the query re-enabling (causes duplicate
-      // fetches: enable triggers fetch #1, invalidation cancels + triggers #2).
     }
 
     previousModeRef.current = currentMode;

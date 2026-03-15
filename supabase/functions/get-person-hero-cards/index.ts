@@ -129,6 +129,14 @@ serve(async (req: Request) => {
   }
 
   try {
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    const rawBody = await req.json();
+    if (rawBody.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // --- Auth ---
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -160,8 +168,7 @@ serve(async (req: Request) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // --- Parse & validate body ---
-    const body: RequestBody = await req.json();
-    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode } = body;
+    const { personId, pairedUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode } = rawBody as RequestBody;
 
     // Accept either personId (deprecated) or pairedUserId (new pairing flow)
     const effectivePersonId = pairedUserId ?? personId;

@@ -330,6 +330,14 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json();
+
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    if (body.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const {
       categories: rawCategories = [],
       location,
@@ -394,6 +402,67 @@ serve(async (req: Request) => {
       } else {
         userId = userData?.user?.id;
       }
+    }
+
+    // --- TIER GATING: Swipe limit + tier check (single RPC) ---
+    // get_remaining_swipes internally calls get_effective_tier, so we derive
+    // the tier from its response: remaining === -1 means pro/elite (unlimited).
+    let swipeData: { remaining: number; daily_limit: number; used: number; resets_at: string } | null = null;
+    let effectiveTier = 'free';
+    if (userId) {
+      const { data: _swipeData } = await supabaseAdmin
+        .rpc('get_remaining_swipes', { p_user_id: userId });
+
+      if (_swipeData?.[0]) {
+        swipeData = _swipeData[0];
+        // remaining === -1 means pro/elite (unlimited swipes)
+        effectiveTier = swipeData.remaining === -1 ? 'pro' : 'free';
+      }
+
+      if (swipeData && swipeData.remaining === 0) {
+        return new Response(
+          JSON.stringify({
+            limited: true,
+            remaining: 0,
+            dailyLimit: swipeData.daily_limit,
+            resetsAt: swipeData.resets_at,
+            cards: [],
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // --- TIER GATING: Helper to strip curated card details for free users ---
+    function applyTierGating(cards: any[]): any[] {
+      return cards.map(card => {
+        if (card.card_type === 'curated' && effectiveTier === 'free') {
+          return {
+            ...card,
+            stops: card.stops?.map((stop: any, i: number) => ({
+              stopNumber: i + 1,
+            })),
+            title: card.teaser_text || 'A curated experience awaits...',
+            tagline: card.tagline,
+            stop_place_pool_ids: [],
+            stop_google_place_ids: [],
+            _locked: true,
+          };
+        }
+        return card;
+      });
+    }
+
+    // --- TIER GATING: Helper to add swipe info to response for free users ---
+    function swipeInfoPayload(): Record<string, unknown> {
+      if (effectiveTier === 'free' && swipeData) {
+        return {
+          remainingSwipes: swipeData.remaining,
+          dailyLimit: swipeData.daily_limit,
+          resetsAt: swipeData.resets_at,
+        };
+      }
+      return {};
     }
 
     // ── Calculate search radius from travel constraint ────────────────────
@@ -498,9 +567,10 @@ serve(async (req: Request) => {
 
           // RC-003 fix: use the pipeline's hasMore (based on unseen count), not raw totalPoolSize
           return new Response(JSON.stringify({
-            cards: scoredPoolCards,
+            cards: applyTierGating(scoredPoolCards),
             total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
+            ...swipeInfoPayload(),
             metadata: {
               hasMore: poolResult.hasMore,
               poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
@@ -528,9 +598,10 @@ serve(async (req: Request) => {
           console.log(`[discover-cards] Pipeline returned ${scoredMixedCards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
 
           return new Response(JSON.stringify({
-            cards: scoredMixedCards,
+            cards: applyTierGating(scoredMixedCards),
             total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: 'mixed',
+            ...swipeInfoPayload(),
             metadata: {
               hasMore: poolResult.hasMore,
               poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
@@ -561,9 +632,36 @@ serve(async (req: Request) => {
         const ppLatDelta = radiusMeters / 111320;
         const ppLngDelta = radiusMeters / (111320 * Math.cos(location.lat * Math.PI / 180));
 
+        // Fetch user's recent impressions to exclude already-served cards
+        const prefUpdatedAt = await supabaseAdmin
+          .from('preferences')
+          .select('updated_at')
+          .eq('profile_id', userId)
+          .maybeSingle()
+          .then(r => r.data?.updated_at || new Date(0).toISOString());
+
+        const { data: recentImpressions } = await supabaseAdmin
+          .from('user_card_impressions')
+          .select('card_pool_id')
+          .eq('user_id', userId)
+          .gte('created_at', prefUpdatedAt);
+
+        const seenCardPoolIds = new Set((recentImpressions || []).map((i: any) => i.card_pool_id));
+
+        // Look up which google_place_ids are already seen (via card_pool join)
+        let seenGooglePlaceIds = new Set<string>();
+        if (seenCardPoolIds.size > 0) {
+          const { data: seenCards } = await supabaseAdmin
+            .from('card_pool')
+            .select('google_place_id')
+            .in('id', Array.from(seenCardPoolIds).slice(0, 1000));
+          seenGooglePlaceIds = new Set((seenCards || []).map((c: any) => c.google_place_id).filter(Boolean));
+        }
+
         // For each requested category, get its Google place types and query place_pool
         const placePoolCards: any[] = [];
         const servedPlaceIds = new Set<string>();
+        const newCardPoolIds: string[] = []; // Track for impression recording
 
         await Promise.all(categories.map(async (category) => {
           const placeTypes = getPlaceTypesForCategory(category);
@@ -583,9 +681,14 @@ serve(async (req: Request) => {
 
           if (!places || places.length === 0) return;
 
+          // Collect insert promises to batch-await (avoid sequential awaits per place)
+          const insertPromises: Promise<string | null>[] = [];
+
           for (const place of places) {
             const gpid = place.google_place_id;
             if (!gpid || servedPlaceIds.has(gpid)) continue;
+            // Skip places already served in previous batches (impression dedup)
+            if (seenGooglePlaceIds.has(gpid)) continue;
 
             // Price tier filter — respect user's selected tiers
             if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
@@ -645,29 +748,37 @@ serve(async (req: Request) => {
               matchFactors: {},
             });
 
-            // Insert into card_pool so future requests find it (fire-and-forget)
-            insertCardToPool(supabaseAdmin, {
-              placePoolId: place.id,
-              googlePlaceId: gpid,
-              cardType: 'single',
-              title: place.name,
-              category,
-              categories: [category],
-              description: getFallbackDescription(category, place.primary_type || 'place'),
-              imageUrl: imageUrl || undefined,
-              images: images as string[],
-              address: place.address || '',
-              lat: place.lat,
-              lng: place.lng,
-              rating: place.rating || 0,
-              reviewCount: place.review_count || 0,
-              priceMin: place.price_min ?? 0,
-              priceMax: place.price_max ?? 0,
-              openingHours: place.opening_hours,
-              website: place.website,
-              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
-              priceLevel: place.price_level,
-            }).catch(() => {});
+            // Insert into card_pool in parallel (collected, batch-awaited below)
+            insertPromises.push(
+              insertCardToPool(supabaseAdmin, {
+                placePoolId: place.id,
+                googlePlaceId: gpid,
+                cardType: 'single',
+                title: place.name,
+                category,
+                categories: [category],
+                description: getFallbackDescription(category, place.primary_type || 'place'),
+                imageUrl: imageUrl || undefined,
+                images: images as string[],
+                address: place.address || '',
+                lat: place.lat,
+                lng: place.lng,
+                rating: place.rating || 0,
+                reviewCount: place.review_count || 0,
+                priceMin: place.price_min ?? 0,
+                priceMax: place.price_max ?? 0,
+                openingHours: place.opening_hours,
+                website: place.website,
+                priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+                priceLevel: place.price_level,
+              }).catch(() => null)
+            );
+          }
+
+          // Batch-await all inserts for this category (parallel, not sequential)
+          const ids = await Promise.all(insertPromises);
+          for (const id of ids) {
+            if (id) newCardPoolIds.push(id);
           }
         }));
 
@@ -677,13 +788,19 @@ serve(async (req: Request) => {
           const scored = scorePoolCards(timeFiltered);
 
           if (scored.length > 0) {
+            // Record impressions so next batch excludes these cards
+            if (newCardPoolIds.length > 0 && !body.warmPool) {
+              await recordImpressions(supabaseAdmin, userId, newCardPoolIds);
+            }
+
             const elapsed = Date.now() - t0;
             console.log(`[discover-cards] Place pool fallback: ${scored.length} cards from place_pool (0 Google calls) in ${elapsed}ms`);
 
             return new Response(JSON.stringify({
-              cards: scored.slice(0, limit),
+              cards: applyTierGating(scored.slice(0, limit)),
               total: scored.length,
               source: 'place_pool',
+              ...swipeInfoPayload(),
               metadata: { hasMore: placePoolCards.length > limit, poolSize: placePoolCards.length, batchSeed },
               sourceBreakdown: {
                 fromPool: scored.length,
@@ -977,7 +1094,8 @@ serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        cards: scoredCards, total: totalAvailable, source,
+        cards: applyTierGating(scoredCards), total: totalAvailable, source,
+        ...swipeInfoPayload(),
         metadata: { hasMore, poolSize: totalAvailable, batchSeed },
         sourceBreakdown: {
           fromPool: 0,
@@ -1113,10 +1231,31 @@ function storeResultsInPoolBatched(
         console.warn('[discover-cards] Batch card insert error (may be duplicates):', cardError.message);
       }
 
-      // ── Step 3: Record impressions for served cards (SKIP for warmPool — RC-005 fix)
-      if (!isWarmPool && userId && insertedCards && insertedCards.length > 0) {
-        const cardPoolIds = insertedCards.map((c: any) => c.id);
-        await recordImpressions(supabaseAdmin, userId, cardPoolIds);
+      // ── Step 3: Record impressions for ALL served cards (SKIP for warmPool — RC-005 fix)
+      // insertedCards only contains newly inserted rows (ignoreDuplicates skips existing).
+      // For complete impression coverage, also look up existing card_pool IDs.
+      if (!isWarmPool && userId) {
+        const servedGpids = cards.map((c: any) => c.placeId).filter(Boolean);
+        let allCardPoolIds: string[] = insertedCards
+          ? insertedCards.map((c: any) => c.id)
+          : [];
+
+        // Find card_pool IDs for cards that already existed (not in insertedCards)
+        const insertedGpids = new Set(insertedCards?.map((c: any) => c.google_place_id) || []);
+        const missingGpids = servedGpids.filter((gpid: string) => !insertedGpids.has(gpid));
+        if (missingGpids.length > 0) {
+          const { data: existingCards } = await supabaseAdmin
+            .from('card_pool')
+            .select('id')
+            .in('google_place_id', missingGpids);
+          if (existingCards) {
+            allCardPoolIds = [...allCardPoolIds, ...existingCards.map((c: any) => c.id)];
+          }
+        }
+
+        if (allCardPoolIds.length > 0) {
+          await recordImpressions(supabaseAdmin, userId, allCardPoolIds);
+        }
       }
 
       // ── Step 4: Build cardPoolIdMap for subsequent enrichments ─────────

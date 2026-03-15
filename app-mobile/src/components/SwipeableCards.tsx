@@ -48,6 +48,11 @@ import { DeckHistorySheet } from "./DeckHistorySheet";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH } from "../utils/responsive";
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import { useSwipeLimit } from '../hooks/useSwipeLimit';
+import { LockedCuratedCard } from './LockedCuratedCard';
+import { CustomPaywallScreen } from './CustomPaywallScreen';
+import type { GatedFeature } from '../hooks/useFeatureGate';
 
 const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
@@ -439,6 +444,16 @@ export default function SwipeableCards({
   const { data: cachedPreferences } = useUserPreferences(user?.id);
   const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 
+  // Feature gating hooks
+  const { canAccess } = useFeatureGate();
+  const { remaining, isLimited, isUnlimited, recordSwipe } = useSwipeLimit();
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('unlimited_swipes');
+
+  // Ref for canAccess so PanResponder (created once) can read fresh values
+  const canAccessRef = useRef(canAccess);
+  useEffect(() => { canAccessRef.current = canAccess; });
+
   // Storage keys for persisting card state
   const getStorageKeys = () => {
     const baseKey = `mingla_card_state_${currentMode}_${refreshKey || 0}`;
@@ -564,6 +579,23 @@ export default function SwipeableCards({
     }
     return deckUIState;
   }, [deckUIState, availableRecommendations.length, isExhausted, isBatchTransitioning]);
+
+  // ── Prefetch next 2 card images for instant swipe transitions ──
+  // When the current card changes, prefetch the images for the next 2 cards.
+  // Image.prefetch downloads to the native image cache (OkHttp on Android,
+  // NSURLCache on iOS). Failures are silently ignored — the image will load
+  // normally when the card becomes visible.
+  const currentCardId = availableRecommendations[0]?.id;
+  useEffect(() => {
+    const nextCard = availableRecommendations[1];
+    if (nextCard?.image) {
+      Image.prefetch(nextCard.image).catch(() => {});
+    }
+    const cardAfterNext = availableRecommendations[2];
+    if (cardAfterNext?.image) {
+      Image.prefetch(cardAfterNext.image).catch(() => {});
+    }
+  }, [currentCardId]);
 
   // Auto-recovery: detect dead "Pulling up more for you" state.
   // When recommendations exist but ALL are filtered by removedCards (stale persistence),
@@ -717,7 +749,7 @@ export default function SwipeableCards({
       const modeChanged = previousModeRef.current !== currentMode;
 
       if (preferencesChanged || modeChanged) {
-        // Preferences or mode changed - reset state and clear old storage
+        // Preferences or mode changed - full state reset
         console.log(
           "🔄 State reset - Preferences changed:",
           preferencesChanged,
@@ -726,6 +758,17 @@ export default function SwipeableCards({
         );
         setRemovedCards(new Set());
         setCurrentCardIndex(0);
+
+        // Close any open modals on preference/mode change. Without this,
+        // an expanded card modal or dismissed history sheet from the previous
+        // mode/preferences stays visible over the new deck, showing stale data.
+        // The swipe animation position is also zeroed to prevent a partially-
+        // swiped card from carrying its offset into the fresh deck.
+        setIsExpandedModalVisible(false);
+        setSelectedCardForExpansion(null);
+        setHistoryVisible(false);
+        setDismissedSheetVisible(false);
+        position.setValue({ x: 0, y: 0 });
 
         // Clear old storage keys (from previous refreshKey/mode) before updating the refs
         if (
@@ -909,6 +952,18 @@ export default function SwipeableCards({
         if (Math.abs(gestureState.dx) > 120) {
           const direction = gestureState.dx > 0 ? "right" : "left";
 
+          // Block swiping locked curated cards
+          if (
+            (cardToRemove as any)?.cardType === 'curated' &&
+            !canAccessRef.current('curated_cards')
+          ) {
+            Animated.spring(position, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+            }).start();
+            return;
+          }
+
           // Check if card exists
           if (!cardToRemove) {
             console.warn("No card to swipe");
@@ -1038,6 +1093,16 @@ export default function SwipeableCards({
     card: Recommendation
   ) => {
     if (!card) return;
+
+    // --- SWIPE LIMIT CHECK ---
+    if (!isUnlimited) {
+      const { allowed } = await recordSwipe();
+      if (!allowed) {
+        setPaywallFeature('unlimited_swipes');
+        setShowPaywall(true);
+        return;
+      }
+    }
 
     try {
       // Track interaction in Supabase (only if user is authenticated)
@@ -1474,6 +1539,14 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
+          {/* Swipe counter pill for free users */}
+          {!isUnlimited && (
+            <View style={styles.swipeCounterPill}>
+              <Text style={styles.swipeCounterText}>
+                {remaining}/20 swipes left
+              </Text>
+            </View>
+          )}
           {/* Batch chip overlay — only when multiple decks exist */}
           {deckBatches.length > 1 && (
             <TouchableOpacity
@@ -1641,12 +1714,22 @@ export default function SwipeableCards({
               style={StyleSheet.absoluteFill}
             >
               {(currentRec as any).cardType === 'curated' ? (
-                <CuratedExperienceSwipeCard
-                  card={currentRec as unknown as CuratedExperienceCard}
-                  onSeePlan={handleCardExpand}
-                  travelMode={cachedPreferences?.travel_mode ?? userPreferences?.travelMode}
-                  measurementSystem={accountPreferences?.measurementSystem}
-                />
+                canAccess('curated_cards') ? (
+                  <CuratedExperienceSwipeCard
+                    card={currentRec as unknown as CuratedExperienceCard}
+                    onSeePlan={handleCardExpand}
+                    travelMode={cachedPreferences?.travel_mode ?? userPreferences?.travelMode}
+                    measurementSystem={accountPreferences?.measurementSystem}
+                  />
+                ) : (
+                  <LockedCuratedCard
+                    card={currentRec as unknown as CuratedExperienceCard}
+                    onUpgrade={() => {
+                      setPaywallFeature('curated_cards');
+                      setShowPaywall(true);
+                    }}
+                  />
+                )
               ) : (
                 <>
                   {/* Hero Image Section - 60-65% of card */}
@@ -1830,6 +1913,14 @@ export default function SwipeableCards({
         onReconsider={handleReconsiderCard}
         onSave={handleSaveDismissedCard}
         onCardPress={handleDismissedCardPress}
+      />
+
+      <CustomPaywallScreen
+        isVisible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        userId={user?.id ?? ''}
+        feature={paywallFeature}
+        initialTier={paywallFeature === 'pairing' ? 'elite' : 'pro'}
       />
     </View>
   );
@@ -2429,5 +2520,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",
+  },
+  swipeCounterPill: {
+    position: 'absolute',
+    top: 4,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    zIndex: 10,
+  },
+  swipeCounterText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

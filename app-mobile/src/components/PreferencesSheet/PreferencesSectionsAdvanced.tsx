@@ -133,6 +133,8 @@ export const LocationInputSection = memo(
     isInputFocused,
     useGpsLocation,
     onToggleGps,
+    isLocked,
+    onLockedTap,
   }: {
     searchLocation: string;
     onLocationInputChange: (text: string) => void;
@@ -145,6 +147,8 @@ export const LocationInputSection = memo(
     isInputFocused: boolean;
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
+    isLocked?: boolean;
+    onLockedTap?: () => void;
   }) => (
     <View>
       <View style={styles.gpsSwitchRow}>
@@ -154,15 +158,24 @@ export const LocationInputSection = memo(
           color={useGpsLocation ? "#eb7825" : "#6b7280"}
         />
         <Text style={styles.gpsSwitchLabel}>Use my current location</Text>
+        {isLocked && (
+          <Ionicons name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
+        )}
         <Switch
           value={useGpsLocation}
-          onValueChange={onToggleGps}
+          onValueChange={(val) => {
+            if (isLocked && !val) {
+              onLockedTap?.();
+              return;
+            }
+            onToggleGps(val);
+          }}
           trackColor={{ false: '#d1d5db', true: '#eb7825' }}
           thumbColor="#ffffff"
         />
       </View>
 
-      {!useGpsLocation && (
+      {!useGpsLocation && !isLocked && (
         <>
           <View
             style={[
@@ -205,6 +218,18 @@ export const LocationInputSection = memo(
             : "Drop a pin anywhere. Or toggle back for GPS."}
         </Text>
       </View>
+
+      {/* Locked hint for free users */}
+      {isLocked && (
+        <TouchableOpacity onPress={onLockedTap} activeOpacity={0.7}>
+          <View style={styles.lockedHintContainer}>
+            <Ionicons name="sparkles" size={14} color="#f97316" />
+            <Text style={styles.lockedHintText}>
+              Pro feature — explore from anywhere
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Suggestions Dropdown */}
       {showSuggestions &&
@@ -439,5 +464,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#6b7280",
     marginTop: 2,
+  },
+  lockedHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  lockedHintText: {
+    fontSize: 12,
+    color: '#f97316',
+    fontWeight: '500',
   },
 });

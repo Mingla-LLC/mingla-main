@@ -88,6 +88,13 @@ serve(async (req) => {
       );
     }
 
+    // --- TIER GATING NOTE ---
+    // Session creation limits (check_session_creation_allowed) and member limits
+    // (get_session_member_limit) are enforced client-side and via the DB functions
+    // in migration 20260315000008_session_creation_limits.sql.
+    // This edge function only handles push notifications for invites —
+    // it does NOT create sessions or add participants.
+
     // Validate required fields — email is only required when userId is absent
     if (!inviterId || !sessionId || !sessionName) {
       return new Response(

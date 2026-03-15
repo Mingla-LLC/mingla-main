@@ -12,12 +12,12 @@ A mobile app for planning social outings — combining pool-first card serving, 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 51 Deno serverless functions |
+| Edge Functions | 52 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
-| Payments | Stripe Connect |
+| Payments | RevenueCat (subscription management) + Stripe Connect |
 | Push Notifications | OneSignal (FCM v1 + APNs) |
 | Analytics | Mixpanel (event tracking, user identification) |
 | Navigation | Custom state-driven (no React Navigation) |
@@ -49,22 +49,22 @@ Mingla/
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
 │   │   │   ├── discussion/            # EmojiReactionPicker, SuggestionPopup, EmptyDiscussion
 │   │   │   └── ui/                     # Design system primitives (Button, Toast, CategoryTile, etc.)
-│   │   ├── hooks/                      # ~62 React Query hooks + realtime hooks
+│   │   ├── hooks/                      # ~65 React Query hooks + realtime hooks
 │   │   ├── services/                   # ~73 service files
 │   │   ├── contexts/                   # 3 React contexts (Navigation, CardCache, Recommendations)
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
-│   │   ├── constants/                  # Design tokens, config, categories, holidays, countries, languages
+│   │   ├── constants/                  # Design tokens, config, categories, holidays, countries, languages, tier limits
 │   │   └── utils/                      # ~27 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 51 Deno edge functions
+│   ├── functions/                      # 52 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 196 SQL migration files
+│   ├── migrations/                    # 198 SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -75,6 +75,25 @@ Mingla/
 ---
 
 ## Features
+
+### Subscription Tiers & Feature Gating
+
+Mingla operates on a 3-tier subscription model: Free, Pro, and Elite. Feature gating is enforced at both client-side (instant UX feedback) and server-side (tamper-proof enforcement via SQL functions).
+
+| Feature | Free | Pro | Elite |
+|---------|------|-----|-------|
+| Regular Cards | Full access | Full access | Full access |
+| Curated Cards | Blurred + AI teaser overlay | Full access | Full access + priority pool |
+| Starting Point | GPS only (toggle locked) | Custom location | Custom + saved locations |
+| Swipes | 20/day (counter visible) | Unlimited | Unlimited |
+| Pairing | None (paywall on tap) | None (paywall on tap) | Unlimited |
+| Collaboration Sessions | 1 session, 5 members | 3 sessions, 5 members | Unlimited, 15 members |
+| 7-Day Trial | Full Elite access on signup | — | — |
+| Referral Bonus | +1 month Elite per referral | — | — |
+
+**Pricing:** Pro ($2/wk, $5/mo, $50/yr) · Elite ($3/wk, $9.99/mo, $80/yr)
+
+A custom branded paywall (CustomPaywallScreen) shows tier comparison, contextual headers based on the triggering feature, and handles RevenueCat purchases with Supabase sync.
 
 ### Onboarding Flow (7-Step State Machine)
 
@@ -118,9 +137,9 @@ A single-scroll experience with 5 sections and inline editing via bottom sheets:
 
 Tapping a friend's avatar opens their full profile as an overlay. Access controlled by 3 RLS policies based on `visibility_mode`. Private profiles show an error state.
 
-### Pairing System
+### Pairing System (Elite Only)
 
-Pairing replaces the legacy Saved People system. Real behavior data (swipes, saves, visits) drives personalization instead of audio descriptions.
+Pairing replaces the legacy Saved People system. Real behavior data (swipes, saves, visits) drives personalization instead of audio descriptions. Pairing is exclusively available to Elite tier users — Free and Pro users see a paywall on any pairing attempt. Server-side enforcement via `check_pairing_allowed()` SQL function.
 
 **3-Tier Pairing:**
 - **Tier 1 (Friend):** Direct pair request to any Mingla friend
@@ -141,6 +160,8 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 
 ### Collaboration Sessions
 
+- Session creation is tier-gated: Free (1 active session, 5 members), Pro (3, 5 members), Elite (unlimited, 15 members). Server-side enforcement via `check_session_creation_allowed()` SQL function.
+- All tiers can join sessions created by others (viral loop).
 - Friendship prerequisite for activation (not creation). Non-friends get hidden invites that auto-reveal on friend acceptance.
 - Atomic friend operations via PostgreSQL RPC (`accept_friend_request_atomic`, `remove_friend_atomic`)
 - Phone number invites with auto-chain (friend request + session add in one tap)
@@ -153,9 +174,12 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 
 - Swipe right to save, left to skip, up to expand
 - Curated multi-stop itinerary experiences interleaved with single-place cards
+- Free users see curated cards fully blurred with AI teaser overlays (LockedCuratedCard) — unswipeable, unexpandable, with upgrade CTA
+- Free users have a 20-swipe daily limit with visible counter pill and hard paywall at limit
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown
 - Dismissed cards review sheet
 - Batch auto-advance with unified pulsing-dot loading states
+- **Image prefetching** — next 2 card images prefetched during swipe for instant photo transitions
 - **DeckUIState state machine** — explicit discriminated union (`INITIAL_LOADING`, `LOADED`, `BATCH_LOADING`, `BATCH_SLOW`, `MODE_TRANSITIONING`, `EXHAUSTED`, `EMPTY`, `ERROR`) replaces ad-hoc boolean composition for deterministic render branching
 
 ### AI-Powered Recommendations
@@ -173,6 +197,7 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 - 5-factor scoring algorithm (category match, tag overlap, popularity, quality, text relevance)
 - Proximity-optimized stop pairing for curated cards (3km/5km/closest)
 - AI summary generation for birthday hero cards
+- AI-generated teaser text for locked curated cards (no place names revealed)
 
 ### 12-Category System
 
@@ -209,8 +234,7 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 
 ### Additional Features
 
-- Subscription system (Free, Pro, Elite) with Stripe Connect
-- GPS and manual location with travel time preferences
+- GPS and manual location with travel time preferences (custom location is a Pro+ feature)
 - Holiday planning with custom holidays, archiving, and pool-first card sourcing with shuffle
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
@@ -218,6 +242,11 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 - Universal deep links via usemingla.com
 - Night Out section powered by Ticketmaster
 - Navigation state persistence across process death
+- **Stale-while-revalidate caching** — deck cards, saved cards, and calendar entries persist to AsyncStorage for instant-on startup (returning users see cached data in <100ms, background refetch updates silently)
+- **Adjacent-screen prefetching** — Discover data and friends list prefetched while idle on Home tab; tab switches feel instant
+- **Edge function warming** — `keep-warm` cron job pings 6 critical functions every 5 minutes, eliminating 5-10s cold starts
+- **3-tier resume optimization** — trivial backgrounds (<5s) skip query invalidation entirely; short backgrounds (5-30s) invalidate critical queries; long backgrounds (>=30s) add auth refresh + WebSocket reconnection
+- **Server-side realtime filtering** — social subscriptions filter at database level (messages by receiver_id, pairings by user_a_id/user_b_id) instead of receiving all events and filtering client-side
 - Deep link deferral for unauthenticated users (24-hour TTL)
 - Centralized 401 handler with auto-sign-out after 3 consecutive failures
 - Network-aware query refetching via expo-network + React Query onlineManager
@@ -237,6 +266,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, visibility_mode |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
+| `daily_swipe_counts` | Per-user daily swipe tracking for free-tier rate limiting. Atomic upsert via `increment_daily_swipe_count()` |
 
 ### Social Tables
 
@@ -290,7 +320,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 
 | Table | Purpose |
 |-------|---------|
-| `card_pool` | Enriched place cards with curated `stopsData` JSONB |
+| `card_pool` | Enriched place cards with curated `stopsData` JSONB and `teaser_text` for locked card overlays |
 | `place_pool` | Place data pool from Google Places |
 | `user_card_impressions` | Tracks which cards users have seen (discover/swipe) |
 | `person_card_impressions` | Tracks shown cards per saved person (hero cards + holiday rows) |
@@ -304,6 +334,18 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 |-------|---------|
 | `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally) |
 
+### Key SQL Functions (Tier Gating)
+
+| Function | Purpose |
+|----------|---------|
+| `get_effective_tier(user_id)` | Returns 'free', 'pro', or 'elite' based on RC sync + trial + referral |
+| `get_tier_limits(tier)` | Returns JSONB with all tier limit constants |
+| `increment_daily_swipe_count(user_id)` | Atomic upsert of daily swipe counter |
+| `get_remaining_swipes(user_id)` | Returns remaining swipes, limit, used count, reset time |
+| `check_session_creation_allowed(user_id)` | Returns whether user can create another session |
+| `check_pairing_allowed(user_id)` | Returns whether user can pair (Elite only) |
+| `get_session_member_limit(user_id)` | Returns max participants for new sessions |
+
 ---
 
 ## Edge Functions
@@ -314,19 +356,20 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 |----------|---------|
 | `generate-experiences` | AI-powered place recommendations |
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
-| `generate-curated-experiences` | Multi-stop itinerary generation |
+| `generate-curated-experiences` | Multi-stop itinerary generation with AI teaser text for locked display |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
 | `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Supports `mode: "default" \| "shuffle"` with paired user preference blending |
 | `get-holiday-cards` | Holiday card sourcing, primarily for "Generate More" requests via GPT-4o-mini |
 | `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) with occasion-aware suggestions |
 | `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini |
 | `discover-experiences` | Explore/discover tab |
-| `discover-cards` | Discover card generation |
+| `discover-cards` | Discover card generation with swipe limit enforcement and curated card stripping for free users |
 | `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions |
 | `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
 | `warm-cache` | Pre-stocks place_pool + card_pool for frequently accessed locations |
+| `keep-warm` | Cron-driven ping to keep 6 critical function isolates warm (every 5 min) |
 
 ### Social and Notifications
 
@@ -340,7 +383,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `send-collaboration-invite` | Push notification for session invites |
 | `notify-invite-response` | Push notification for invite responses |
 | `send-message-email` | Push notification for new direct messages |
-| `send-pair-request` | Handles all 3 pairing tiers with auto-detection |
+| `send-pair-request` | Handles all 3 pairing tiers with Elite-only tier gating |
 | `notify-pair-request-visible` | Push + in-app notification when hidden pair request becomes visible |
 | `process-referral` | Referral credit reconciliation + push notification |
 
@@ -405,6 +448,10 @@ ONESIGNAL_APP_ID
 ONESIGNAL_REST_API_KEY
 ```
 
+### RevenueCat (configured in-code)
+
+The RevenueCat API key is configured directly in `app-mobile/src/services/revenueCatService.ts`. Replace the test key with production keys before launch. Product IDs (`mingla_pro_weekly`, `mingla_pro_monthly`, `mingla_pro_annual`, `mingla_elite_weekly`, `mingla_elite_monthly`, `mingla_elite_annual`) must be configured in the RevenueCat dashboard and linked to App Store Connect / Google Play Console products.
+
 ---
 
 ## Setup and Running
@@ -439,10 +486,13 @@ supabase functions deploy
 # 6. Configure Twilio env vars in Supabase dashboard
 #    TWILIO_FROM_PHONE or TWILIO_MESSAGING_SERVICE_SID
 
-# 7. Start Expo
+# 7. Configure RevenueCat products in dashboard
+#    Create 6 products, map to entitlements, set up offerings
+
+# 8. Start Expo
 npx expo start
 
-# 8. Test on physical device (Android/iPhone)
+# 9. Test on physical device (Android/iPhone)
 ```
 
 ### EAS Build
@@ -464,9 +514,10 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Google Places cache elimination** — Removed the redundant `google_places_cache` table and 271 lines of cache management code from `placesCache.ts`. All Google API calls now go directly to Google with results stored in `place_pool` + `card_pool`. `warm-cache` now pre-stocks pools directly instead of populating an intermediate cache. Pagination expansion path removed from `discover-cards` (impression rotation handles the same scenario). Space leak from never-cleaned expired cache entries is eliminated. ~$2.70/month cost increase, offset by reduced complexity and DB operations
-- **NULL price_tier fix** — Cards with NULL `price_tier` are no longer silently excluded from tier-filtered queries. Existing NULLs backfilled to 'comfy', column DEFAULT set to 'comfy'
-- **Discover GPS race fix** — `lastDiscoverFetchDateRef` set before async fetch to close the double-fetch window. GPS-first location resolution eliminates set-twice coordinate pattern
+- **Monetization tier gating** — Full feature gating across Free/Pro/Elite tiers for curated cards, starting point, swipes, pairing, and collaboration sessions with dual-layer enforcement (client + server), custom branded paywall, and RevenueCat integration
+- **Performance overhaul** — Zero-wait app experience via stale-while-revalidate caching, adjacent-screen prefetching, image prefetching, edge function warming, 3-tier resume debounce, server-side realtime filtering, and 40-60% smaller card payloads
+- **Google Places cache elimination** — Removed the redundant `google_places_cache` table and 271 lines of cache management code
+- **NULL price_tier fix** — Cards with NULL `price_tier` are no longer silently excluded from tier-filtered queries
 
 ---
 

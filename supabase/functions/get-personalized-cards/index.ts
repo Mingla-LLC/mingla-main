@@ -76,7 +76,16 @@ serve(async (req: Request) => {
 
   try {
     // Parse body
-    const body: RequestBody = await req.json();
+    const rawBody = await req.json();
+
+    // ── Keep-warm ping: boot the isolate without running business logic ──
+    if (rawBody.warmPing) {
+      return new Response(JSON.stringify({ status: 'warm' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const body: RequestBody = rawBody;
     const { linkedUserId, occasion, location, radius: rawRadius = 10000, isBirthday: rawIsBirthday = false } = body;
 
     // ── Validation ─────────────────────────────────────────────────────────

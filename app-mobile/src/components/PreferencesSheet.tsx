@@ -52,6 +52,9 @@ import {
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import { CustomPaywallScreen } from './CustomPaywallScreen';
+import type { GatedFeature } from '../hooks/useFeatureGate';
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -143,6 +146,11 @@ export default function PreferencesSheet({
   const user = useAppStore((state) => state.user);
   const { profile, setProfile } = useAppStore();
   const queryClient = useQueryClient();
+
+  // Feature gating
+  const { canAccess } = useFeatureGate();
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('custom_starting_point');
   const insets = useSafeAreaInsets();
   const appLayout = useAppLayout();
   // Only load preferences data if modal is visible
@@ -972,6 +980,11 @@ export default function PreferencesSheet({
               isInputFocused={isInputFocused}
               useGpsLocation={useGpsLocation}
               onToggleGps={handleGpsToggle}
+              isLocked={!canAccess('custom_starting_point')}
+              onLockedTap={() => {
+                setPaywallFeature('custom_starting_point');
+                setShowPaywall(true);
+              }}
             />
           </View>
 
@@ -1076,6 +1089,14 @@ export default function PreferencesSheet({
           />
         ))}
       </SafeAreaView>
+
+      <CustomPaywallScreen
+        isVisible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        userId={user?.id ?? ''}
+        feature={paywallFeature}
+        initialTier="pro"
+      />
     </>
   );
 

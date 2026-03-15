@@ -28,6 +28,7 @@ const CRITICAL_QUERY_KEYS = [
 
 const DEBOUNCE_MS = 500;
 const AUTH_TIMEOUT_MS = 8000;
+const MIN_BACKGROUND_FOR_INVALIDATION_MS = 5000;
 const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
 
 /**
@@ -38,7 +39,12 @@ const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
  * This hook adds force-invalidation of all critical queries, plus auth
  * refresh and WebSocket reconnection for long backgrounds (≥ 30s):
  *
- *   Short background (< 30s):
+ *   Trivial background (< 5s):
+ *     - Fires onResume callback only
+ *     - Skips all query invalidation (real-time handles live updates)
+ *     - Avoids wasting bandwidth on quick notification checks / app switcher
+ *
+ *   Short background (5-30s):
  *     - Invalidates all CRITICAL_QUERY_KEYS (forces background refetch)
  *     - Fires onResume callback
  *     - Skips auth refresh + WebSocket reconnect (token valid, socket alive)
@@ -101,6 +107,7 @@ export function useForegroundRefresh(
         const bgDurationMs = bgTimestamp ? Date.now() - bgTimestamp : null;
         const bgLabel = bgDurationMs !== null ? `${Math.round(bgDurationMs / 1000)}s` : 'unknown';
         const isShortBackground = bgDurationMs !== null && bgDurationMs < SHORT_BACKGROUND_THRESHOLD_MS;
+        const isTrivialBackground = bgDurationMs !== null && bgDurationMs < MIN_BACKGROUND_FOR_INVALIDATION_MS;
 
         // Reset the 401 counter BEFORE any queries fire. focusManager triggers
         // refetches immediately on resume (before this debounced handler). After
@@ -115,8 +122,20 @@ export function useForegroundRefresh(
 
         if (__DEV__) {
           logger.lifecycle(
-            `[RESUME] Foreground refresh | backgroundDuration=${bgLabel} | queries=${CRITICAL_QUERY_KEYS.length} families | longBackground=${!isShortBackground}`,
+            `[RESUME] Foreground refresh | backgroundDuration=${bgLabel} | queries=${CRITICAL_QUERY_KEYS.length} families | longBackground=${!isShortBackground} | trivial=${isTrivialBackground}`,
           );
+        }
+
+        // ── Trivial background (< 5s): skip invalidation entirely ──
+        // Quick notification check, screenshot, app switcher peek — nothing
+        // meaningful changed. Real-time subscriptions handle live updates.
+        // Still fire onResume callback (collaboration sessions may need it).
+        if (isTrivialBackground) {
+          if (__DEV__) {
+            logger.lifecycle(`[RESUME] Trivial background (${bgLabel}) — skipping query invalidation`);
+          }
+          onResumeRef.current?.();
+          return;
         }
 
         if (!isShortBackground) {
@@ -165,11 +184,11 @@ export function useForegroundRefresh(
           }
         }
 
-        // ── ALL backgrounds: invalidate critical queries + fire callback ──
+        // ── 5-30s and ≥30s backgrounds: invalidate critical queries + fire callback ──
         // invalidateQueries() marks caches as stale AND triggers background refetch.
         // Cached data stays visible — isLoading stays false when data exists in cache.
-        // For short backgrounds this is the only refresh mechanism; for long backgrounds
-        // it runs after auth + WebSocket reconnection above.
+        // For short backgrounds (5-30s) this is the only refresh mechanism; for long
+        // backgrounds it runs after auth + WebSocket reconnection above.
         for (const key of CRITICAL_QUERY_KEYS) {
           queryClient.invalidateQueries({ queryKey: key });
         }
