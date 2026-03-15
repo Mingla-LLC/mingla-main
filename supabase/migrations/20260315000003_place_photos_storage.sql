@@ -26,15 +26,18 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- Allow public read access (photos are not sensitive)
-CREATE POLICY IF NOT EXISTS "Public read access for place photos"
+DROP POLICY IF EXISTS "Public read access for place photos" ON storage.objects;
+CREATE POLICY "Public read access for place photos"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'place-photos');
 
 -- Allow service role to upload (edge functions use service role key)
-CREATE POLICY IF NOT EXISTS "Service role upload for place photos"
+DROP POLICY IF EXISTS "Service role upload for place photos" ON storage.objects;
+CREATE POLICY "Service role upload for place photos"
 ON storage.objects FOR INSERT
 WITH CHECK (bucket_id = 'place-photos' AND auth.role() = 'service_role');
 
-CREATE POLICY IF NOT EXISTS "Service role update for place photos"
+DROP POLICY IF EXISTS "Service role update for place photos" ON storage.objects;
+CREATE POLICY "Service role update for place photos"
 ON storage.objects FOR UPDATE
 USING (bucket_id = 'place-photos' AND auth.role() = 'service_role');
