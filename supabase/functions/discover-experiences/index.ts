@@ -642,7 +642,7 @@ serve(async (req) => {
 
           const { data: places } = await adminClient
             .from('place_pool')
-            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website, stored_photo_urls')
             .eq('is_active', true)
             .gte('lat', location.lat - ppLatDelta)
             .lte('lat', location.lat + ppLatDelta)
@@ -664,10 +664,12 @@ serve(async (req) => {
             const speed = SPEED_KMH[travelMode] || 4.5;
             const travelMin = Math.max(1, Math.round((distKm / speed) * 60));
 
-            const primaryPhoto = place.photos?.[0];
-            const imageUrl = primaryPhoto?.name
-              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-              : null;
+            const storedUrls = place.stored_photo_urls;
+            const imageUrl = (storedUrls && storedUrls.length > 0)
+              ? storedUrls[0]
+              : (place.photos?.[0]?.name
+                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+                : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80');
 
             const parsedOH = place.opening_hours || null;
             const isOpenNow = parsedOH?._isOpenNow ?? null;

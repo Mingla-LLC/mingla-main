@@ -18,6 +18,7 @@ import {
   GLOBAL_EXCLUDED_PLACE_TYPES,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
+import { downloadAndStorePhotos, resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -125,9 +126,10 @@ export async function checkPoolMaturity(
   };
 }
 
-// ── Helper: Google Places photo URL ─────────────────────────────────────────
+// ── Helper: Photo URL construction (prefers stored Supabase URLs) ────────────
 
 function buildPhotoUrl(photoName: string, apiKey: string): string {
+  if (!photoName) return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
   return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&key=${apiKey}`;
 }
 
@@ -263,6 +265,11 @@ export async function upsertPlaceToPool(
       .eq('google_place_id', googlePlaceId)
       .maybeSingle();
     return existing?.id || null;
+  }
+
+  // Fire-and-forget: download photos to Supabase Storage (never blocks card serving)
+  if (photos.length > 0 && apiKey) {
+    downloadAndStorePhotos(supabaseAdmin, googlePlaceId, photos, apiKey).catch(() => {});
   }
 
   return data?.id || null;
@@ -410,15 +417,18 @@ function buildSingleCardFromPlace(
   userLng?: number,
   travelMode?: string,
 ): any {
-  const primaryPhoto = place.photos?.[0];
-  const imageUrl = primaryPhoto?.name
-    ? buildPhotoUrl(primaryPhoto.name, apiKey)
-    : null;
+  // Prefer stored Supabase URLs over Google photo references
+  const imageUrl = resolvePhotoUrl(
+    place.stored_photo_urls,
+    place.photos?.[0]?.name,
+    apiKey,
+  );
 
-  const images = (place.photos || [])
-    .slice(0, 5)
-    .map((p: any) => p.name ? buildPhotoUrl(p.name, apiKey) : null)
-    .filter((img: string | null) => img !== null);
+  const images = resolveAllPhotoUrls(
+    place.stored_photo_urls,
+    place.photos,
+    apiKey,
+  );
 
   const { hours: parsedHours, isOpenNow } = resolveOpeningHours(place.opening_hours);
 
@@ -907,16 +917,19 @@ export async function serveCardsFromPipeline(
     }
 
     // ── Phase 3: Batch upsert all cards to card_pool (1 DB call) ────────
+    // Fire-and-forget: download photos to Supabase Storage for all new places
+    for (const { place } of pendingPlaces) {
+      if (place.photos?.length > 0 && googleApiKey) {
+        downloadAndStorePhotos(supabaseAdmin, place.id, place.photos, googleApiKey).catch(() => {});
+      }
+    }
+
     const cardRows = pendingPlaces.map(({ place, category }) => {
       const priceRange = priceLevelToRange(place.priceLevel);
-      const primaryPhoto = place.photos?.[0];
-      const imageUrl = primaryPhoto?.name
-        ? buildPhotoUrl(primaryPhoto.name, googleApiKey)
-        : null;
-      const images = (place.photos || [])
-        .slice(0, 5)
-        .map((p: any) => p.name ? buildPhotoUrl(p.name, googleApiKey) : null)
-        .filter((img: string | null) => img !== null);
+      // Use Google URLs for now — Supabase URLs will be available on next serve
+      // after downloadAndStorePhotos completes in background
+      const imageUrl = resolvePhotoUrl(null, place.photos?.[0]?.name, googleApiKey);
+      const images = resolveAllPhotoUrls(null, place.photos, googleApiKey);
       const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
       const popularityScore = (place.rating || 0) * Math.log10((place.userRatingCount || 0) + 1);
 
@@ -967,14 +980,8 @@ export async function serveCardsFromPipeline(
     for (const { place, category } of pendingPlaces) {
       const googlePlaceId = place.id;
       const priceRange = priceLevelToRange(place.priceLevel);
-      const primaryPhoto = place.photos?.[0];
-      const imageUrl = primaryPhoto?.name
-        ? buildPhotoUrl(primaryPhoto.name, googleApiKey)
-        : null;
-      const images = (place.photos || [])
-        .slice(0, 5)
-        .map((p: any) => p.name ? buildPhotoUrl(p.name, googleApiKey) : null)
-        .filter((img: string | null) => img !== null);
+      const imageUrl = resolvePhotoUrl(null, place.photos?.[0]?.name, googleApiKey);
+      const images = resolveAllPhotoUrls(null, place.photos, googleApiKey);
       const title = place.displayName?.text || 'Unknown Place';
       const rating = place.rating || 0;
       const reviewCount = place.userRatingCount || 0;

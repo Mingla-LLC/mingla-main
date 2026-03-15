@@ -53,6 +53,26 @@ const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 const CARD_ANIMATION_DURATION = 400;
 
+const CARD_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+
+/** Card hero image with automatic fallback on load failure */
+function CardHeroImage({ uri, style }: { uri: string; style: any }) {
+  const [src, setSrc] = React.useState(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
+  React.useEffect(() => {
+    setSrc(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
+  }, [uri]);
+  return (
+    <Image
+      source={{ uri: src }}
+      style={style}
+      resizeMode="cover"
+      onError={() => {
+        if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
+      }}
+    />
+  );
+}
+
 /** Map travel mode preference to an Ionicons icon name */
 function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
   switch (mode) {
@@ -1470,12 +1490,8 @@ export default function SwipeableCards({
                 >
                   <View style={styles.cardInner}>
                   {/* Hero Image Section */}
-                  <View style={styles.imageContainer}>
-                    <Image
-                      source={{ uri: nextCard.image }}
-                      style={styles.cardImage}
-                      resizeMode="cover"
-                    />
+                  <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
+                    <CardHeroImage uri={nextCard.image} style={styles.cardImage} />
 
                     {/* Gallery Indicator if multiple images */}
                     {nextCard.images && nextCard.images.length > 1 && (
@@ -1611,12 +1627,8 @@ export default function SwipeableCards({
               ) : (
                 <>
                   {/* Hero Image Section - 60-65% of card */}
-                  <View style={styles.imageContainer}>
-                    <Image
-                      source={{ uri: currentRec.image }}
-                      style={styles.cardImage}
-                      resizeMode="cover"
-                    />
+                  <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
+                    <CardHeroImage uri={currentRec.image} style={styles.cardImage} />
 
                     {/* Gallery Indicator if multiple images */}
                     {currentRec.images && currentRec.images.length > 1 && (

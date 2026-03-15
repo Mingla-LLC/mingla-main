@@ -124,9 +124,11 @@ function estimateTravelMin(distKm: number, mode: string): number {
   return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
 }
 
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+
 function getPhotoUrl(place: any): string {
   const photo = place.photos?.[0];
-  if (!photo?.name) return '';
+  if (!photo?.name) return FALLBACK_IMAGE;
   return `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`;
 }
 
@@ -659,7 +661,7 @@ serve(async (req: Request) => {
 
           const { data: places } = await supabaseAdmin
             .from('place_pool')
-            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website, stored_photo_urls')
             .eq('is_active', true)
             .gte('lat', location.lat - ppLatDelta)
             .lte('lat', location.lat + ppLatDelta)
@@ -683,15 +685,19 @@ serve(async (req: Request) => {
 
             servedPlaceIds.add(gpid);
 
-            // Build card using existing cardPoolService helper format
-            const primaryPhoto = place.photos?.[0];
-            const imageUrl = primaryPhoto?.name
-              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
-              : null;
-            const images = (place.photos || [])
-              .slice(0, 5)
-              .map((p: any) => p.name ? `https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}` : null)
-              .filter(Boolean);
+            // Build card — prefer stored Supabase photos over Google references
+            const storedUrls = place.stored_photo_urls;
+            const imageUrl = (storedUrls && storedUrls.length > 0)
+              ? storedUrls[0]
+              : (place.photos?.[0]?.name
+                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
+                : FALLBACK_IMAGE);
+            const images = (storedUrls && storedUrls.length > 0)
+              ? storedUrls.slice(0, 5)
+              : (place.photos || [])
+                .slice(0, 5)
+                .map((p: any) => p.name ? `https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}` : null)
+                .filter(Boolean);
 
             const distKm = haversine(location.lat, location.lng, place.lat, place.lng);
             const travelMin = estimateTravelMin(distKm, travelMode);

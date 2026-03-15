@@ -435,7 +435,7 @@ serve(async (req: Request) => {
 
           const { data: places } = await adminClient
             .from('place_pool')
-            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website, stored_photo_urls')
             .eq('is_active', true)
             .gte('lat', location.latitude - ppLatDelta)
             .lte('lat', location.latitude + ppLatDelta)
@@ -454,10 +454,12 @@ serve(async (req: Request) => {
             existingIds.add(gpid);
             existingGpids.add(gpid);
 
-            const primaryPhoto = place.photos?.[0];
-            const imageUrl = primaryPhoto?.name
-              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${Deno.env.get("GOOGLE_MAPS_API_KEY") || ""}`
-              : null;
+            const storedUrls = place.stored_photo_urls;
+            const imageUrl = (storedUrls && storedUrls.length > 0)
+              ? storedUrls[0]
+              : (place.photos?.[0]?.name
+                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${Deno.env.get("GOOGLE_MAPS_API_KEY") || ""}`
+                : null);
 
             ppCards.push({
               id: gpid,
