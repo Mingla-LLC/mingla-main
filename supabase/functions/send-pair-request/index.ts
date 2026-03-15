@@ -98,7 +98,121 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!friendship) {
-        return jsonResponse({ error: "User is not your friend" }, 403);
+        // ── TIER 2 FALLTHROUGH: Not friends yet — create hidden pair request ──
+        // Reuse the Tier 2 logic but skip the phone lookup since we already
+        // have the target user ID.
+
+        // Check for existing pending pair request (either direction)
+        const { data: existingRequest2 } = await adminClient
+          .from("pair_requests")
+          .select("id, status")
+          .or(
+            `and(sender_id.eq.${senderId},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${senderId})`
+          )
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (existingRequest2) {
+          return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
+        }
+
+        // Check for existing pairing
+        const uA2 = senderId < friendUserId ? senderId : friendUserId;
+        const uB2 = senderId < friendUserId ? friendUserId : senderId;
+
+        const { data: existingPairing2 } = await adminClient
+          .from("pairings")
+          .select("id")
+          .eq("user_a_id", uA2)
+          .eq("user_b_id", uB2)
+          .maybeSingle();
+
+        if (existingPairing2) {
+          return jsonResponse({ error: "Already paired with this user" }, 400);
+        }
+
+        // Find or create the friend_request to gate the pair_request
+        let friendRequestId: string | null = null;
+        let createdNewFriendRequest = false;
+
+        const { data: existingFR } = await adminClient
+          .from("friend_requests")
+          .select("id, status")
+          .eq("sender_id", senderId)
+          .eq("receiver_id", friendUserId)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (existingFR) {
+          friendRequestId = existingFR.id;
+        } else {
+          // Check reverse direction
+          const { data: reverseFR } = await adminClient
+            .from("friend_requests")
+            .select("id, status")
+            .eq("sender_id", friendUserId)
+            .eq("receiver_id", senderId)
+            .eq("status", "pending")
+            .maybeSingle();
+
+          if (reverseFR) {
+            friendRequestId = reverseFR.id;
+          } else {
+            // Create new friend request
+            const { data: newFR, error: frError } = await adminClient
+              .from("friend_requests")
+              .insert({
+                sender_id: senderId,
+                receiver_id: friendUserId,
+                status: "pending",
+              })
+              .select("id")
+              .single();
+
+            if (frError) {
+              console.error("[send-pair-request] Friend request error:", frError);
+              return jsonResponse({ error: "Failed to create friend request" }, 500);
+            }
+            friendRequestId = newFR.id;
+            createdNewFriendRequest = true;
+          }
+        }
+
+        // Create hidden pair request gated by the friend request
+        const { data: pairRequest2, error: prError2 } = await adminClient
+          .from("pair_requests")
+          .insert({
+            sender_id: senderId,
+            receiver_id: friendUserId,
+            status: "pending",
+            visibility: "hidden_until_friend",
+            gated_by_friend_request_id: friendRequestId,
+          })
+          .select("id")
+          .single();
+
+        if (prError2) {
+          console.error("[send-pair-request] Pair request error:", prError2);
+          return jsonResponse({ error: "Failed to create pair request" }, 500);
+        }
+
+        // Only send push if we created a NEW friend request (not reused an existing one)
+        if (createdNewFriendRequest) {
+          await sendPush({
+            targetUserId: friendUserId,
+            title: `${senderName} sent you a friend request`,
+            body: "Accept to connect on Mingla.",
+            data: { type: "friend_request", senderId },
+          });
+        }
+
+        return jsonResponse({
+          success: true,
+          tier: 2,
+          requestId: pairRequest2.id,
+          pillState: "greyed_waiting_friend",
+          message: "Pair request created (hidden until friend request accepted)",
+        });
       }
 
       // Check for existing pairing
@@ -156,6 +270,7 @@ serve(async (req) => {
       });
 
       return jsonResponse({
+        success: true,
         tier: 1,
         requestId: pairRequest.id,
         pillState: "pending_active",
@@ -258,6 +373,7 @@ serve(async (req) => {
           });
 
           return jsonResponse({
+            success: true,
             tier: 1,
             requestId: pairRequest.id,
             pillState: "pending_active",
@@ -267,6 +383,7 @@ serve(async (req) => {
         // Not friends — create friend request + hidden pair request
         // Check/create friend_request
         let friendRequestId: string | null = null;
+        let createdNewFR = false;
 
         const { data: existingFR } = await adminClient
           .from("friend_requests")
@@ -305,6 +422,7 @@ serve(async (req) => {
               return jsonResponse({ error: "Failed to create friend request" }, 500);
             }
             friendRequestId = newFR.id;
+            createdNewFR = true;
           }
         }
 
@@ -327,15 +445,18 @@ serve(async (req) => {
           return jsonResponse({ error: "Failed to create pair request" }, 500);
         }
 
-        // Send push for FRIEND request only (pair request is hidden)
-        await sendPush({
-          targetUserId,
-          title: `${senderName} sent you a friend request`,
-          body: "Accept to connect on Mingla.",
-          data: { type: "friend_request", senderId },
-        });
+        // Only send push if we created a NEW friend request (not reused an existing one)
+        if (createdNewFR) {
+          await sendPush({
+            targetUserId,
+            title: `${senderName} sent you a friend request`,
+            body: "Accept to connect on Mingla.",
+            data: { type: "friend_request", senderId },
+          });
+        }
 
         return jsonResponse({
+          success: true,
           tier: 2,
           requestId: pairRequest.id,
           pillState: "greyed_waiting_friend",

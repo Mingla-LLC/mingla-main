@@ -90,6 +90,37 @@ export function cardMatchesTiers(cardTier: PriceTierSlug, userTiers: PriceTierSl
   return userTiers.includes(cardTier);
 }
 
+// Ordered cheapest → most expensive for rank comparisons.
+const TIER_ORDER: readonly PriceTierSlug[] = ['chill', 'comfy', 'bougie', 'lavish'];
+
+/**
+ * Returns true if a Google priceLevel meets or exceeds the given minimum tier.
+ * Returns false for null/undefined priceLevel — unknown price never qualifies
+ * for price-gated categories (e.g. Fine Dining requires at least 'bougie').
+ */
+export function tierMeetsMinimum(
+  priceLevel: string | number | null | undefined,
+  minTier: PriceTierSlug,
+): boolean {
+  if (priceLevel === null || priceLevel === undefined) return false;
+  const slug = googleLevelToTierSlug(priceLevel);
+  return TIER_ORDER.indexOf(slug) >= TIER_ORDER.indexOf(minTier);
+}
+
+/**
+ * Returns true if a stored price tier slug meets or exceeds the given minimum.
+ * Used for pool cards which already have tier slugs (not raw Google levels).
+ */
+export function slugMeetsMinimum(
+  tierSlug: PriceTierSlug | string | null | undefined,
+  minTier: PriceTierSlug,
+): boolean {
+  if (!tierSlug) return false;
+  const idx = TIER_ORDER.indexOf(tierSlug as PriceTierSlug);
+  if (idx === -1) return false;
+  return idx >= TIER_ORDER.indexOf(minTier);
+}
+
 /**
  * Derive a price tier from a dollar amount (uses the upper bound of the range).
  * Used when we have price_min/price_max but no Google priceLevel.

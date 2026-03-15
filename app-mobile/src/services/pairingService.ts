@@ -441,7 +441,7 @@ export async function cancelPairRequest(requestId: string): Promise<void> {
   if (request.gated_by_friend_request_id) {
     const { error: frError } = await supabase
       .from("friend_requests")
-      .update({ status: "rejected" })
+      .update({ status: "declined" })
       .eq("id", request.gated_by_friend_request_id)
       .eq("sender_id", request.sender_id);
 

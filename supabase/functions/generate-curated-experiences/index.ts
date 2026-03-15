@@ -6,8 +6,10 @@ import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 import {
   GLOBAL_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
+  CATEGORY_TEXT_KEYWORDS,
+  getExcludedTypesForCategory,
 } from '../_shared/categoryPlaceTypes.ts';
-import { priceLevelToRange, priceLevelToLabel, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+import { priceLevelToRange, priceLevelToLabel, googleLevelToTierSlug, tierMeetsMinimum } from '../_shared/priceTiers.ts';
 
 
 const corsHeaders = {
@@ -301,10 +303,10 @@ const FIRST_DATE_FINISH: FirstDateGroup = {
   id: 'fine_dining',
   label: 'Fine Dining',
   types: [
-    'italian_restaurant', 'fine_dining_restaurant', 'french_restaurant',
-    'steak_house', 'seafood_restaurant', 'spanish_restaurant',
-    'tapas_restaurant', 'oyster_bar_restaurant', 'wine_bar',
-    'bistro', 'gastropub',
+    'fine_dining_restaurant', 'french_restaurant', 'steak_house',
+    'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
+    'tapas_restaurant', 'oyster_bar_restaurant', 'italian_restaurant',
+    'japanese_restaurant', 'greek_restaurant',
   ],
 };
 
@@ -753,10 +755,10 @@ const STROLL_FINISH: StrollGroup = {
   id: 'finish',
   label: 'Finish',
   types: [
-    'italian_restaurant', 'fine_dining_restaurant', 'french_restaurant',
-    'steak_house', 'seafood_restaurant', 'spanish_restaurant',
-    'tapas_restaurant', 'oyster_bar_restaurant', 'wine_bar',
-    'bistro', 'gastropub',
+    'fine_dining_restaurant', 'french_restaurant', 'steak_house',
+    'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
+    'tapas_restaurant', 'oyster_bar_restaurant', 'italian_restaurant',
+    'japanese_restaurant', 'greek_restaurant',
   ],
 };
 
@@ -788,10 +790,10 @@ const STROLL_STOP_DURATIONS: Record<string, number> = {
   nature_preserve: 90, wildlife_refuge: 90, scenic_spot: 45, state_park: 90,
   campground: 60, island: 120, zoo: 120, park: 60,
   // Finish
-  italian_restaurant: 75, fine_dining_restaurant: 90, french_restaurant: 90,
-  steak_house: 90, seafood_restaurant: 75, spanish_restaurant: 75,
-  tapas_restaurant: 75, oyster_bar_restaurant: 75, wine_bar: 60,
-  bistro: 75, gastropub: 60,
+  fine_dining_restaurant: 90, french_restaurant: 90,
+  steak_house: 90, seafood_restaurant: 75, mediterranean_restaurant: 75,
+  spanish_restaurant: 75, tapas_restaurant: 75, oyster_bar_restaurant: 75,
+  italian_restaurant: 75, japanese_restaurant: 90, greek_restaurant: 75,
 };
 
 // ── Curated Type -> Mingla Category Pools ─────────────────────────
@@ -997,6 +999,57 @@ async function fetchPlacesForGroup(
   const filtered = filterExcludedPlaces(deduped, excludedTypes);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Fetch Fine Dining places using Text Search + price floor.
+ * Used for first-date finish and stroll finish stops.
+ * Returns only PRICE_LEVEL_EXPENSIVE+ places, sorted by quality.
+ */
+async function fetchFineDiningPlaces(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  excludedTypes: string[],
+): Promise<any[]> {
+  const keywords = CATEGORY_TEXT_KEYWORDS['Fine Dining'] || ['fine dining restaurant'];
+  const fineDiningExcluded = [...excludedTypes, ...getExcludedTypesForCategory('Fine Dining')];
+
+  const allPlaces: any[] = [];
+  const seen = new Set<string>();
+
+  for (const keyword of keywords) {
+    const { places } = await searchPlacesWithCache({
+      supabaseAdmin,
+      apiKey: GOOGLE_PLACES_API_KEY,
+      placeType: `text:fine_dining:${keyword.replace(/\s+/g, '_')}`,
+      lat,
+      lng,
+      radiusMeters,
+      maxResults: 20,
+      strategy: 'text',
+      textQuery: keyword,
+      ttlHours: 24,
+    });
+    for (const p of places) {
+      const id = p.id || p.name;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        allPlaces.push(p);
+      }
+    }
+  }
+
+  // Post-fetch filter: Text Search ignores excludedTypes at the API level,
+  // so we must filter here (e.g. hamburger_restaurant tagged as EXPENSIVE)
+  const filtered = filterExcludedPlaces(allPlaces, fineDiningExcluded) as any[];
+
+  // Price floor: only bougie+ places qualify as Fine Dining
+  const qualified = filtered.filter(p => tierMeetsMinimum(p.priceLevel, 'bougie'));
+
+  console.log(`[fetchFineDiningPlaces] ${keywords.length} keywords → ${allPlaces.length} total → ${qualified.length} after price floor`);
+
+  return qualified.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
 
 /**
@@ -1247,7 +1300,7 @@ async function generateFirstDateCards(
     })(),
     (async () => {
       groupPlaces[FIRST_DATE_FINISH.id] =
-        await fetchPlacesForGroup(FIRST_DATE_FINISH.id, FIRST_DATE_FINISH.types, FIRST_DATE_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
+        await fetchFineDiningPlaces(lat, lng, clampedRadius, FIRST_DATE_EXCLUDED_PLACE_TYPES);
     })(),
   ]);
 
@@ -1283,10 +1336,11 @@ async function generateFirstDateCards(
       return true;
     });
 
-    // Select finish place
+    // Select finish place — must meet Fine Dining price floor (bougie+)
     const availableFinish = (groupPlaces[finishGroup.id] || []).filter(p => {
       const id = p.id || p.name;
       if (globalUsedPlaceIds.has(id)) return false;
+      if (!tierMeetsMinimum(p.priceLevel, 'bougie')) return false;
       const price = priceLevelToRange(p.priceLevel);
       if (price.min > perStopBudget) return false;
       return true;
@@ -2462,16 +2516,13 @@ async function generateStrollCards(
     const startLat = startPlace.location?.latitude ?? 0;
     const startLng = startPlace.location?.longitude ?? 0;
 
-    // Step 3: Find FINISH (restaurant) near the stroll place
-    const finishPlaces = await fetchPlacesForGroup(
-      `stroll_${STROLL_FINISH.id}`, STROLL_FINISH.types, STROLL_EXCLUDED_TYPES,
-      strollLat, strollLng, finishSearchRadius,
+    // Step 3: Find FINISH (fine dining) near the stroll place — text search + price floor
+    const qualifiedFinish = await fetchFineDiningPlaces(
+      strollLat, strollLng, finishSearchRadius, STROLL_EXCLUDED_TYPES,
     );
-    if (finishPlaces.length === 0) continue;
+    if (qualifiedFinish.length === 0) continue;
 
-    // Sort finish places by score (best rated first)
-    finishPlaces.sort((a, b) => scorePlace(b) - scorePlace(a));
-    const finishPlace = finishPlaces[0];
+    const finishPlace = qualifiedFinish[0];
 
     // Build 3 stops
     const stop1 = buildStrollStop(
@@ -2725,6 +2776,11 @@ serve(async (req) => {
     } = body;
     const warmPool = body.warmPool ?? false;
 
+    // Force skipDescriptions for warm pool to cut latency (descriptions generated lazily on serve)
+    if (warmPool && !body.skipDescriptions) {
+      skipDescriptions = true;
+    }
+
     // Validate experience type
     if (!CURATED_TYPE_CATEGORIES[experienceType]) {
       return new Response(
@@ -2871,7 +2927,7 @@ serve(async (req) => {
 
     // Route to the appropriate generator
     let cards: any[];
-    const generateLimit = warmPool ? 50 : limit;
+    const generateLimit = warmPool ? Math.min(limit, 15) : limit;
 
     if (experienceType === 'picnic-dates') {
       cards = await generatePicnicDatesCards(

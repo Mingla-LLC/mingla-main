@@ -138,7 +138,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'pair_requests',
           filter: `receiver_id=eq.${userId}`,
@@ -240,6 +240,11 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       await onAcceptRequest(requestId)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       setProcessedRequests(prev => ({ ...prev, [requestId]: 'accepted' }))
+
+      // Refetch pair requests — accepting a friend request may reveal
+      // a hidden pair request via the DB trigger
+      refetchPairRequests()
+
       setTimeout(() => {
         setProcessedRequests(prev => {
           const next = { ...prev }
@@ -252,7 +257,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
     } finally {
       setProcessingRequestId(null)
     }
-  }, [processingRequestId, onAcceptRequest])
+  }, [processingRequestId, onAcceptRequest, refetchPairRequests])
 
   const handleDeclineFriendRequest = useCallback(async (requestId: string) => {
     if (processingRequestId) return

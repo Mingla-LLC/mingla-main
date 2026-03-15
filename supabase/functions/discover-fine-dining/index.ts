@@ -1,14 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { searchPlacesWithCache } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
-import { getPlaceTypesForCategory, filterExcludedPlaces, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
-import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+import { filterExcludedPlaces, getExcludedTypesForCategory, CATEGORY_MIN_PRICE_TIER, CATEGORY_TEXT_KEYWORDS } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug, tierMeetsMinimum, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-fine-dining  –  Standalone Fine Dining Card System
@@ -33,8 +33,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Fine Dining Place Types (from canonical source) ─────────────────────────
-const FINE_DINING_TYPES = getPlaceTypesForCategory('Fine Dining');
+// ── Fine Dining Text Search Keywords ─────────────────────────────────────────
+const FINE_DINING_KEYWORDS = CATEGORY_TEXT_KEYWORDS['Fine Dining'] || ['fine dining restaurant'];
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
 const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {
@@ -303,10 +303,16 @@ serve(async (req: Request) => {
           GOOGLE_PLACES_API_KEY,
         );
 
-        if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
-          console.log(`[discover-fine-dining] Served ${poolResult.cards.length} from pool (0 API calls)`);
+        // Post-filter: remove stale pool cards that don't meet Fine Dining price floor
+        const minTierPool = CATEGORY_MIN_PRICE_TIER['Fine Dining'];
+        const qualifiedPoolCards = minTierPool
+          ? poolResult.cards.filter((c: any) => slugMeetsMinimum(c.priceTier, minTierPool))
+          : poolResult.cards;
+
+        if (qualifiedPoolCards.length >= Math.ceil(limit * 0.75)) {
+          console.log(`[discover-fine-dining] Served ${qualifiedPoolCards.length} from pool (0 API calls, filtered ${poolResult.cards.length - qualifiedPoolCards.length} below price floor)`);
           return new Response(JSON.stringify({
-            cards: poolResult.cards,
+            cards: qualifiedPoolCards,
             source: 'pool',
             total: poolResult.totalPoolSize,
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -319,36 +325,46 @@ serve(async (req: Request) => {
     // ── Handle warmPool request ─────────────────────────────────────────
     const isWarmPool = !!body.warmPool;
 
-    // ── Search all Fine Dining types using shared cache ─────────────────
-    const { results, apiCallsMade, cacheHits } = await batchSearchPlaces(
-      supabaseAdmin,
-      GOOGLE_PLACES_API_KEY,
-      FINE_DINING_TYPES,
-      location.lat,
-      location.lng,
-      radiusMeters,
-      {
-        maxResultsPerType: 20,
-        rankPreference: 'POPULARITY',
-      }
+    // ── Text Search for Fine Dining (3 keyword queries vs 11 type queries) ──
+    let apiCallsMade = 0;
+    let cacheHits = 0;
+    const keywordResults = await Promise.all(
+      FINE_DINING_KEYWORDS.map(keyword =>
+        searchPlacesWithCache({
+          supabaseAdmin,
+          apiKey: GOOGLE_PLACES_API_KEY,
+          placeType: `text:fine_dining:${keyword.replace(/\s+/g, '_')}`,
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters,
+          maxResults: 20,
+          strategy: 'text',
+          textQuery: keyword,
+        })
+      )
     );
 
-    console.log(`[discover-fine-dining] Places search: ${cacheHits} cache hits, ${apiCallsMade} API calls`);
+    for (const r of keywordResults) {
+      if (r.cacheHit) cacheHits++;
+      else apiCallsMade++;
+    }
 
-    // ── Merge & deduplicate across all types ─────────────────────────────
+    console.log(`[discover-fine-dining] Text search: ${cacheHits} cache hits, ${apiCallsMade} API calls (${FINE_DINING_KEYWORDS.length} keywords)`);
+
+    // ── Merge & deduplicate across all keywords ──────────────────────────
     const seen = new Set<string>();
     let allPlaces: any[] = [];
 
-    for (const [type, places] of Object.entries(results)) {
-      for (const p of places) {
+    for (let i = 0; i < keywordResults.length; i++) {
+      for (const p of keywordResults[i].places) {
         if (p.id && !seen.has(p.id)) {
           seen.add(p.id);
-          allPlaces.push({ ...p, _matchedType: type });
+          allPlaces.push({ ...p, _matchedType: p.primaryType || p.types?.[0] || 'fine_dining_restaurant' });
         }
       }
     }
 
-    console.log(`[discover-fine-dining] ${allPlaces.length} unique places across ${Object.keys(results).length} types`);
+    console.log(`[discover-fine-dining] ${allPlaces.length} unique places across ${FINE_DINING_KEYWORDS.length} keywords`);
 
     // ── Filter out excluded place types ──────────────────────────────────
     const fineDiningExcluded = getExcludedTypesForCategory('Fine Dining');
@@ -368,6 +384,16 @@ serve(async (req: Request) => {
       const range = priceLevelToRange(p.priceLevel);
       return range.min <= budgetMax;
     });
+
+    // ── Filter by price floor (Fine Dining = bougie or above) ────────
+    // A french_restaurant with PRICE_LEVEL_INEXPENSIVE is casual, not fine dining.
+    // Places with unknown priceLevel are excluded — unknown ≠ upscale.
+    const minTier = CATEGORY_MIN_PRICE_TIER['Fine Dining'];
+    if (minTier) {
+      const beforeCount = allPlaces.length;
+      allPlaces = allPlaces.filter(p => tierMeetsMinimum(p.priceLevel, minTier));
+      console.log(`[discover-fine-dining] ${allPlaces.length} places after price floor (${minTier}+), filtered ${beforeCount - allPlaces.length}`);
+    }
 
     // ── Filter by datetime preference ───────────────────────────────────
     allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot);

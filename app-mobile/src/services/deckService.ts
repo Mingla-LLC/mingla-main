@@ -20,6 +20,13 @@ import { getCategoryIcon } from '../utils/categoryUtils';
 import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
 
+// ── Warm pool deduplication timestamp ────────────────────────────────────────
+let lastWarmPoolTimestamp: number = 0;
+
+export function getLastWarmPoolTimestamp(): number {
+  return lastWarmPoolTimestamp;
+}
+
 export interface DeckParams {
   location: { lat: number; lng: number };
   categories: string[];
@@ -287,6 +294,7 @@ class DeckService {
             return cards;
           } else {
             if (__DEV__) console.warn('[DeckService] discover-cards error:', error);
+            hasMoreFromEdge = false;
             return [];
           }
         } catch (err) {
@@ -295,12 +303,14 @@ class DeckService {
           } else {
             console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
           }
+          hasMoreFromEdge = false;
           return [];
         } finally {
           clearTimeout(fetchTimer);
         }
       } catch (err) {
         console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
+        hasMoreFromEdge = false;
         return [];
       }
     })();
@@ -411,6 +421,7 @@ class DeckService {
 
   /** Pre-warm ALL active pill pools — ONE call for categories, individual for curated */
   async warmDeckPool(params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
+    lastWarmPoolTimestamp = Date.now();
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const categoryPills = pills.filter(p => p.type === 'category');
     const curatedPills = pills.filter(p => p.type === 'curated');

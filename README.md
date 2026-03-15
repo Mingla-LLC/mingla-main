@@ -156,10 +156,19 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown
 - Dismissed cards review sheet
 - Batch auto-advance with unified pulsing-dot loading states
+- **DeckUIState state machine** — explicit discriminated union (`INITIAL_LOADING`, `LOADED`, `BATCH_LOADING`, `BATCH_SLOW`, `MODE_TRANSITIONING`, `EXHAUSTED`, `EMPTY`, `ERROR`) replaces ad-hoc boolean composition for deterministic render branching
 
 ### AI-Powered Recommendations
 
-- Pool-first card serving from the `card_pool` table (sub-second)
+- Pool-first card serving from the `card_pool` table (sub-second) with `skipGapFill` fast path
+- **Pool maturity gate** — `checkPoolMaturity()` short-circuits warm pool and Google API calls when the pool already has sufficient cards at the user's location
+- **Pool-only Discover page** — `discover-experiences` serves exclusively from pool with zero Google API calls when any category coverage exists. Missing categories are omitted from the grid rather than triggering expensive API calls
+- **Per-category pool queries** — prevents popularity starvation by querying 50 cards per category instead of a single `.limit(500)` blob
+- **Impression rotation** — when all matching cards have been seen, `query_pool_cards` falls back to serving least-recently-seen cards instead of returning empty and triggering Google API fallback
+- **Haversine travel estimation** — Discover page uses haversine distance + speed-based estimation instead of Google Distance Matrix API for travel time hints
+- **Warm pool deduplication** — module-level timestamp prevents redundant warm pool calls when onboarding fires one within 30 seconds of RecommendationsContext mount
+- Background gap-fill populates pool asynchronously after pool-serve responses
+- 12-second server-side response deadline prevents client timeout cascade
 - "Generate More" fallback via GPT-4o-mini + Google Places API
 - 5-factor scoring algorithm (category match, tag overlap, popularity, quality, text relevance)
 - Proximity-optimized stop pairing for curated cards (3km/5km/closest)
@@ -454,13 +463,12 @@ npx eas build --platform ios --profile production
 
 ---
 
-## Recent Changes (Onboarding Overhaul)
+## Recent Changes
 
-- **7-step onboarding replaces 5-step flow** — Steps 1-4 unchanged; Step 5 is now Friends & Pairing (unified), Step 6 is Collaborations, Step 7 is Consent + Getting Experiences. Progress bar updated to 7 segments.
-- **Path A/B/C branching removed** — The old sync path (audio recording, Whisper transcription, AI analysis), add-person path (name/birthday/gender entry), and skip path have all been deleted. `OnboardingSyncStep.tsx` removed entirely.
-- **New `OnboardingFriendsAndPairingStep` component** — combines friend addition and pair requests into a single unified screen using real production services (`friendsService`, `pairingService`, `useFriends`, `usePairings`). New `OnboardingPairAction` type tracks pair requests sent/accepted during onboarding.
-- **New `GettingExperiencesScreen` inline component** — animated loading/ready state with compass spinner animation and checkmark reveal, replacing the old immediate launch.
-- **`OnboardingData` simplified** — removed `invitePath`, `personName`, `personBirthday`, `personGender`, audio fields, and `selectedSyncFriends`. Added `pairActions: OnboardingPairAction[]` and `createdSessions: CreatedSession[]`.
+- **Google API cost elimination** — 8 surgical fixes eliminate nearly all Google Places API and Distance Matrix API calls for users with mature pools. Discover page now serves exclusively from pool, warm pool calls short-circuit when pool is mature, impression-saturated users get rotated cards instead of empty states, and curated warm pool is capped at 15 cards with skipped descriptions
+- **NULL price_tier fix** — Cards with NULL `price_tier` are no longer silently excluded from tier-filtered queries. Existing NULLs backfilled to 'comfy', column DEFAULT set to 'comfy'
+- **Discover GPS race fix** — `lastDiscoverFetchDateRef` set before async fetch to close the double-fetch window. GPS-first location resolution eliminates set-twice coordinate pattern
+- **Warm pool deduplication** — Module-level timestamp in `deckService` prevents redundant warm pool calls from RecommendationsContext within 30 seconds of onboarding warm pool
 
 ---
 

@@ -63,8 +63,8 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
   'Fine Dining': [
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
-    'tapas_restaurant', 'oyster_bar_restaurant', 'bistro',
-    'gastropub', 'wine_bar',
+    'tapas_restaurant', 'oyster_bar_restaurant', 'italian_restaurant',
+    'japanese_restaurant', 'greek_restaurant',
   ],
   'Watch': [
     'movie_theater', 'performing_arts_theater', 'concert_hall',
@@ -408,6 +408,41 @@ export function filterOutIntents(categories: string[]): string[] {
 // ── All canonical category display names ──────────────────────────────────────
 export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
 
+// ── Per-category minimum price tier ───────────────────────────────────────────
+// Categories listed here require places to meet a minimum Google price level.
+// Places with null/unknown priceLevel are excluded from these categories.
+import type { PriceTierSlug } from './priceTiers.ts';
+
+export const CATEGORY_MIN_PRICE_TIER: Partial<Record<string, PriceTierSlug>> = {
+  'Fine Dining': 'bougie', // Only PRICE_LEVEL_EXPENSIVE ($150–$300) and above
+};
+
+// ── Per-category search strategy override ─────────────────────────────────────
+// Categories listed here use Text Search instead of Nearby Search.
+// Text Search finds places by concept/intent rather than rigid type tags,
+// which is critical for quality-dependent categories like Fine Dining.
+export const CATEGORY_TEXT_KEYWORDS: Partial<Record<string, string[]>> = {
+  'Fine Dining': [
+    'fine dining restaurant',
+    'upscale restaurant',
+    'tasting menu restaurant',
+  ],
+  'Wellness': [
+    'day spa',
+    'resort hotel spa',
+    'hot spring spa',
+  ],
+};
+
+/**
+ * Returns text search keywords for a category, or null if it uses Nearby Search.
+ */
+export function getTextKeywords(category: string): string[] | null {
+  const canonical = resolveCategory(category);
+  if (!canonical) return null;
+  return CATEGORY_TEXT_KEYWORDS[canonical] ?? null;
+}
+
 // ── Per-category excluded types ───────────────────────────────────────────────
 
 /**
@@ -512,6 +547,12 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   'Fine Dining': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
     'amusement_park', 'water_park', 'video_arcade', 'night_club',
+    // Casual dining types that should never appear in Fine Dining
+    'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant',
+    'sandwich_shop', 'diner', 'buffet_restaurant', 'breakfast_restaurant',
+    'brunch_restaurant', 'donut_shop', 'ice_cream_shop',
+    // Pub / casual bar types
+    'bistro', 'gastropub', 'pub', 'brewpub', 'beer_garden',
     // Romantic exclusions (fine dining is often romantic context)
     'indoor_playground', 'amusement_center', 'playground',
     'children_store', 'child_care_agency', 'preschool',

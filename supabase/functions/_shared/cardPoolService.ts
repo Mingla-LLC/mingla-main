@@ -15,6 +15,7 @@ import {
   resolveCategories,
   filterExcludedPlaces,
   getExcludedTypesForIntent,
+  GLOBAL_EXCLUDED_PLACE_TYPES,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 
@@ -50,6 +51,77 @@ export interface PoolQueryResult {
     apiCallsMade: number;          // number of Google API calls made
     poolQueried: number;           // how many came from pool before gap analysis
     limitRequested: number;        // the limit that was requested
+  };
+}
+
+// ── Pool Maturity Check ─────────────────────────────────────────────────────
+
+export interface PoolMaturityResult {
+  isMature: boolean;
+  totalCards: number;
+  categoryCoverage: number;
+  totalCategories: number;
+  categoryBreakdown: Record<string, number>;
+}
+
+export async function checkPoolMaturity(
+  supabaseAdmin: SupabaseClient,
+  params: {
+    lat: number;
+    lng: number;
+    radiusMeters: number;
+    categories: string[];
+    cardType?: 'single' | 'curated';
+    minCardsPerCategory?: number;
+    minTotalCards?: number;
+  }
+): Promise<PoolMaturityResult> {
+  const { lat, lng, radiusMeters, categories, cardType = 'single' } = params;
+  const minCardsPerCategory = params.minCardsPerCategory ?? 3;
+  const minTotalCards = params.minTotalCards ?? 50;
+
+  const latDelta = radiusMeters / 111320;
+  const lngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
+
+  const { data, error } = await supabaseAdmin
+    .from('card_pool')
+    .select('category')
+    .eq('is_active', true)
+    .eq('card_type', cardType)
+    .gte('lat', lat - latDelta)
+    .lte('lat', lat + latDelta)
+    .gte('lng', lng - lngDelta)
+    .lte('lng', lng + lngDelta)
+    .in('category', categories);
+
+  if (error || !data) {
+    console.warn('[checkPoolMaturity] Query error:', error?.message);
+    return {
+      isMature: false,
+      totalCards: 0,
+      categoryCoverage: 0,
+      totalCategories: categories.length,
+      categoryBreakdown: {},
+    };
+  }
+
+  // Build category breakdown
+  const categoryBreakdown: Record<string, number> = {};
+  for (const row of data) {
+    categoryBreakdown[row.category] = (categoryBreakdown[row.category] || 0) + 1;
+  }
+
+  const totalCards = data.length;
+  const categoryCoverage = categories.filter(
+    cat => (categoryBreakdown[cat] || 0) >= minCardsPerCategory
+  ).length;
+
+  return {
+    isMature: categoryCoverage >= categories.length && totalCards >= minTotalCards,
+    totalCards,
+    categoryCoverage,
+    totalCategories: categories.length,
+    categoryBreakdown,
   };
 }
 
@@ -601,6 +673,7 @@ export async function serveCardsFromPipeline(
     travelMode?: string;
     travelConstraintValue?: number;
     datetimePref?: string;
+    skipGapFill?: boolean;
   }
 ): Promise<PoolQueryResult> {
   const {
@@ -623,11 +696,19 @@ export async function serveCardsFromPipeline(
 
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
 
-  // Filter excluded place types from pool results
+  // Filter excluded place types from pool results.
+  // Belt-and-suspenders: the SQL query_pool_cards already excludes globally
+  // banned types, but pool cards lack a full `types` array — only `primary_type`
+  // is available. This filter catches any card whose primary_type is banned
+  // (e.g. gym, fitness_center) even if the SQL-level filter was bypassed.
   const excludedTypes = getExcludedTypesForIntent(experienceType);
+  const globalSet = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
   const excludedSet = new Set(excludedTypes);
 
   poolCards = poolCards.filter((card: any) => {
+    // Check primary_type against global exclusions (works on pool cards)
+    if (card.primary_type && globalSet.has(card.primary_type)) return false;
+
     if (card.card_type === 'curated' && card.stops) {
       return !card.stops.some((stop: any) => {
         const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
@@ -667,6 +748,44 @@ export async function serveCardsFromPipeline(
       hasMore: remainingUnseen > 0,
       diagnostics: {
         reason: `Pool had ${poolCards.length} unseen cards (needed ${limit}) — sufficient, no Google query`,
+        gapCategories: [],
+        apiCallsMade: 0,
+        poolQueried: poolCards.length,
+        limitRequested: limit,
+      },
+    };
+  }
+
+  // ── skipGapFill: return pool-only results immediately ────────────────
+  if (options?.skipGapFill) {
+    const served = poolCards.slice(0, limit);
+    const servedIds = served.map((c: any) => c.id);
+    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+
+    // Record impressions for pool cards we're serving
+    if (servedIds.length > 0) {
+      await recordImpressions(supabaseAdmin, userId, servedIds);
+      updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
+      supabaseAdmin.rpc('increment_user_engagement', {
+        p_user_id: userId,
+        p_field: 'total_cards_seen',
+        p_amount: servedIds.length,
+      }).catch(() => {});
+      incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
+    }
+
+    const remainingUnseen = Math.max(0, totalUnseenCount - served.length);
+
+    console.log(`[card-pool] skipGapFill: served ${apiCards.length} from pool (0 API calls) in ${Date.now() - startTime}ms`);
+    return {
+      cards: apiCards,
+      fromPool: apiCards.length,
+      fromApi: 0,
+      totalPoolSize,
+      totalUnseenCount: remainingUnseen,
+      hasMore: remainingUnseen > 0,
+      diagnostics: {
+        reason: `skipGapFill=true — served ${apiCards.length} from pool (${poolCards.length} available, needed ${limit})`,
         gapCategories: [],
         apiCallsMade: 0,
         poolQueried: poolCards.length,

@@ -42,6 +42,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useRecommendations,
   Recommendation,
+  DeckUIState,
 } from "../contexts/RecommendationsContext";
 import { DeckHistorySheet } from "./DeckHistorySheet";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
@@ -373,6 +374,7 @@ export default function SwipeableCards({
     addCardToFront,
     isExhausted,
     isSlowBatchLoad,
+    deckUIState,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -529,6 +531,18 @@ export default function SwipeableCards({
   const shouldShowLoader =
     isAnyLoading ||
     (!hasCompletedInitialFetch && availableRecommendations.length === 0);
+
+  // ── Effective UI State: refines context-level deckUIState with local card availability ──
+  // Context computes deckUIState from recommendations array, but SwipeableCards filters
+  // out removedCards locally. effectiveUIState accounts for that local filtering.
+  const effectiveUIState: DeckUIState = React.useMemo(() => {
+    if (deckUIState.type === 'LOADED' && availableRecommendations.length === 0) {
+      if (isExhausted) return { type: 'EXHAUSTED' };
+      if (isBatchTransitioning) return { type: 'BATCH_LOADING', previousCards: [] };
+      return { type: 'EMPTY' };
+    }
+    return deckUIState;
+  }, [deckUIState, availableRecommendations.length, isExhausted, isBatchTransitioning]);
 
   // Auto-recovery: detect dead "Pulling up more for you" state.
   // When recommendations exist but ALL are filtered by removedCards (stale persistence),
@@ -1257,160 +1271,153 @@ export default function SwipeableCards({
     onResetCards?.();
   };
 
-  // Loading state — primary loader with brand mark and pulse dots
-  if (shouldShowLoader) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
-          <View style={styles.brandMark}>
-            <Ionicons name="compass-outline" size={28} color="#eb7825" />
-          </View>
-          <PulseDots size={8} speed={600} />
-          <View style={styles.loaderTextGroup}>
-            <Text style={styles.loadingTitle}>Curating your lineup</Text>
-            <Text style={styles.loaderSubtitle}>
-              Finding experiences that match your energy
-            </Text>
-          </View>
-        </Animated.View>
-      </View>
-    );
-  }
+  // ── State-machine-driven render branches ────────────────────────────────
+  // Single switch on effectiveUIState replaces 5 independent conditional branches.
+  // Each DeckUIState maps to exactly one render path — no ambiguity, no overlap.
+  switch (effectiveUIState.type) {
+    case 'INITIAL_LOADING':
+    case 'MODE_TRANSITIONING':
+      return (
+        <View style={styles.loadingContainer}>
+          <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
+            <View style={styles.brandMark}>
+              <Ionicons name="compass-outline" size={28} color="#eb7825" />
+            </View>
+            <PulseDots size={8} speed={600} />
+            <View style={styles.loaderTextGroup}>
+              <Text style={styles.loadingTitle}>Curating your lineup</Text>
+              <Text style={styles.loaderSubtitle}>
+                Finding experiences that match your energy
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+      );
 
-  // Unified empty state — no matches OR all decks exhausted
-  // Fuses the old "We looked everywhere" + "All decks explored" into one compact card-sized view
-  if (
-    !isModeTransitioning &&
-    !isWaitingForSessionResolution &&
-    (
-      (error === "no_matches" || (error && availableRecommendations.length === 0)) ||
-      (isExhausted && hasCompletedInitialFetch && availableRecommendations.length === 0 && !loading)
-    )
-  ) {
-    const hasMultipleBatches = deckBatches.length > 1;
-
-    return (
-      <View style={styles.emptyDeckContainer}>
-        <View style={styles.emptyDeckContent}>
-          <View style={styles.emptyDeckIconCircle}>
-            <Ionicons name="earth-outline" size={24} color="#eb7825" />
-          </View>
-          <Text style={styles.emptyDeckTitle}>
-            {hasMultipleBatches
-              ? `All ${deckBatches.length} decks explored`
-              : "That's everything nearby"}
-          </Text>
-          <Text style={styles.emptyDeckSubtitle}>
-            Tweak your preferences, revisit a deck, or review dismissed cards.
-          </Text>
-
-          <View style={styles.emptyDeckActions}>
-            {/* Deck navigation buttons (if multiple batches) */}
-            {hasMultipleBatches && deckBatches.map((batch, idx) => (
-              <TouchableOpacity
-                key={batch.batchSeed}
-                style={[
-                  styles.emptyDeckButton,
-                  idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
-                ]}
-                onPress={() => navigateToDeckBatch(idx)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="albums-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.emptyDeckButtonText}>
-                  Deck {idx + 1} — {batch.cards.length} places
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            {/* Review dismissed cards */}
-            {dismissedCards.length > 0 && (
-              <TouchableOpacity
-                style={styles.emptyDeckOutlineButton}
-                onPress={() => setDismissedSheetVisible(true)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="refresh-outline" size={16} color="#eb7825" />
-                <Text style={styles.emptyDeckOutlineButtonText}>
-                  Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Change Preferences — always available */}
+    case 'ERROR':
+      return (
+        <View style={styles.noCardsContainer}>
+          <View style={styles.noCardsContent}>
+            <View style={styles.noCardsIcon}>
+              <Ionicons name="alert-circle" size={48} color="#ef4444" />
+            </View>
+            <Text style={styles.noCardsTitle}>That didn't land</Text>
+            <Text style={styles.noCardsSubtitle}>{effectiveUIState.message}</Text>
             <TouchableOpacity
-              style={styles.emptyDeckButton}
-              onPress={handleOpenPreferences}
+              onPress={() => {
+                refreshRecommendations(refreshKey);
+              }}
+              style={styles.startOverButton}
               activeOpacity={0.7}
             >
-              <Ionicons name="options-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.emptyDeckButtonText}>Change Preferences</Text>
+              <Text style={styles.startOverButtonText}>Try Again</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
-    );
-  }
+      );
 
-  // General error state (non-"no_matches" errors)
-  if (error && error !== "no_matches") {
-    return (
-      <View style={styles.noCardsContainer}>
-        <View style={styles.noCardsContent}>
-          <View style={styles.noCardsIcon}>
-            <Ionicons name="alert-circle" size={48} color="#ef4444" />
-          </View>
-          <Text style={styles.noCardsTitle}>That didn't land</Text>
-          <Text style={styles.noCardsSubtitle}>{error}</Text>
-          <TouchableOpacity
-            onPress={() => {
-              refreshRecommendations(refreshKey);
-            }}
-            style={styles.startOverButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.startOverButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  // Slow batch load — reassuring state with progress hint
-  if (isSlowBatchLoad && !isExhausted) {
-    return (
-      <View style={styles.loadingContainer}>
-        <View style={styles.loadingContent}>
-          <PulseDots size={10} speed={600} />
-          <View style={styles.loaderTextGroup}>
-            <Text style={styles.loadingTitle}>Digging a little deeper</Text>
-            <Text style={styles.loaderSubtitle}>
-              The best spots don't always surface first
+    case 'EMPTY':
+    case 'EXHAUSTED': {
+      const hasMultipleBatches = deckBatches.length > 1;
+      return (
+        <View style={styles.emptyDeckContainer}>
+          <View style={styles.emptyDeckContent}>
+            <View style={styles.emptyDeckIconCircle}>
+              <Ionicons name="earth-outline" size={24} color="#eb7825" />
+            </View>
+            <Text style={styles.emptyDeckTitle}>
+              {hasMultipleBatches
+                ? `All ${deckBatches.length} decks explored`
+                : "That's everything nearby"}
             </Text>
-          </View>
-          <IndeterminateBar />
-        </View>
-      </View>
-    );
-  }
+            <Text style={styles.emptyDeckSubtitle}>
+              Tweak your preferences, revisit a deck, or review dismissed cards.
+            </Text>
 
-  // End of current batch — more available, brief transition
-  if (
-    !isExhausted &&
-    hasCompletedInitialFetch &&
-    availableRecommendations.length === 0 &&
-    !loading &&
-    !isModeTransitioning &&
-    !isWaitingForSessionResolution
-  ) {
-    return (
-      <View style={styles.loadingContainer}>
-        <View style={styles.loadingContent}>
-          <PulseDots size={8} speed={400} />
-          <Text style={styles.batchTransitionText}>Pulling up more for you</Text>
+            <View style={styles.emptyDeckActions}>
+              {/* Deck navigation buttons (if multiple batches) */}
+              {hasMultipleBatches && deckBatches.map((batch, idx) => (
+                <TouchableOpacity
+                  key={batch.batchSeed}
+                  style={[
+                    styles.emptyDeckButton,
+                    idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
+                  ]}
+                  onPress={() => navigateToDeckBatch(idx)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="albums-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyDeckButtonText}>
+                    Deck {idx + 1} — {batch.cards.length} places
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              {/* Review dismissed cards */}
+              {dismissedCards.length > 0 && (
+                <TouchableOpacity
+                  style={styles.emptyDeckOutlineButton}
+                  onPress={() => setDismissedSheetVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="refresh-outline" size={16} color="#eb7825" />
+                  <Text style={styles.emptyDeckOutlineButtonText}>
+                    Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Change Preferences — always available */}
+              <TouchableOpacity
+                style={styles.emptyDeckButton}
+                onPress={handleOpenPreferences}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="options-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>Change Preferences</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
-    );
+      );
+    }
+
+    case 'BATCH_SLOW':
+      return (
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingContent}>
+            <PulseDots size={10} speed={600} />
+            <View style={styles.loaderTextGroup}>
+              <Text style={styles.loadingTitle}>Digging a little deeper</Text>
+              <Text style={styles.loaderSubtitle}>
+                The best spots don't always surface first
+              </Text>
+            </View>
+            <IndeterminateBar />
+          </View>
+        </View>
+      );
+
+    case 'BATCH_LOADING':
+      return (
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingContent}>
+            <PulseDots size={8} speed={400} />
+            <Text style={styles.batchTransitionText}>Pulling up more for you</Text>
+          </View>
+        </View>
+      );
+
+    case 'LOADED':
+      // Falls through to the main card render below
+      break;
+
+    default: {
+      // Compile-time exhaustiveness guard: if a new DeckUIState variant is added
+      // and not handled above, TypeScript will error here.
+      const _exhaustive: never = effectiveUIState;
+      return _exhaustive;
+    }
   }
 
   if (!currentRec) {

@@ -1,15 +1,17 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { batchSearchByCategory, searchPlacesWithCache } from '../_shared/placesCache.ts';
 import { upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   getPlaceTypesForCategory,
   getExcludedTypesForCategory,
   ALL_CATEGORY_NAMES,
   DISCOVER_EXCLUDED_PLACE_TYPES,
+  CATEGORY_MIN_PRICE_TIER,
+  getTextKeywords,
 } from '../_shared/categoryPlaceTypes.ts';
-import { priceLevelToRange, googleLevelToTierSlug, priceTierFromAmount } from '../_shared/priceTiers.ts';
+import { priceLevelToRange, googleLevelToTierSlug, priceTierFromAmount, tierMeetsMinimum, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 // resolveCategories no longer used — per-category selection handles this directly
 
 const corsHeaders = {
@@ -326,20 +328,30 @@ serve(async (req) => {
         const latDelta = radius / 111320;
         const lngDelta = radius / (111320 * Math.cos(location.lat * Math.PI / 180));
 
-        // Single query: fetch ALL active single cards in the user's geo area (cap 500)
-        const { data: allPoolCards, error: poolErr } = await adminClient
-          .from('card_pool')
-          .select('*')
-          .eq('is_active', true)
-          .eq('card_type', 'single')
-          .gte('lat', location.lat - latDelta)
-          .lte('lat', location.lat + latDelta)
-          .gte('lng', location.lng - lngDelta)
-          .lte('lng', location.lng + lngDelta)
-          .order('popularity_score', { ascending: false })
-          .limit(500);
+        // Per-category queries to prevent popularity starvation (Fix 3A)
+        const CARDS_PER_CATEGORY = 50;
+        let allPoolCards: any[] = [];
 
-        if (poolErr) throw poolErr;
+        await Promise.all(
+          categoriesToFetch.map(async (cat) => {
+            const { data } = await adminClient!
+              .from('card_pool')
+              .select('id, google_place_id, title, category, image_url, images, rating, review_count, price_min, price_max, price_tier, lat, lng, opening_hours, address, website, description, highlights, base_match_score, popularity_score')
+              .eq('is_active', true)
+              .eq('card_type', 'single')
+              .eq('category', cat)
+              .gte('lat', location.lat - latDelta)
+              .lte('lat', location.lat + latDelta)
+              .gte('lng', location.lng - lngDelta)
+              .lte('lng', location.lng + lngDelta)
+              .order('popularity_score', { ascending: false })
+              .limit(CARDS_PER_CATEGORY);
+
+            if (data && data.length > 0) {
+              allPoolCards = allPoolCards.concat(data);
+            }
+          })
+        );
 
         if (allPoolCards && allPoolCards.length > 0) {
           // Fetch preference timestamp for session-scoped filtering
@@ -375,14 +387,18 @@ serve(async (req) => {
           // Helper: find best pool card for a specific category
           const usedIds = new Set<string>();
           const findBestForCategory = (category: string): any | null => {
+            // Per-category price floor (e.g. Fine Dining = bougie+)
+            const minTier = CATEGORY_MIN_PRICE_TIER[category];
+            const priceFilter = (c: any) => !minTier || slugMeetsMinimum(c.price_tier, minTier);
+
             // Prefer cards NOT in previous batch (24h rotation)
             let candidates = availableCards.filter(
-              (c: any) => c.category === category && !usedIds.has(c.id) && !prevExclude.has(c.google_place_id || c.id)
+              (c: any) => c.category === category && !usedIds.has(c.id) && !prevExclude.has(c.google_place_id || c.id) && priceFilter(c)
             );
             if (candidates.length === 0) {
               // Category exhaustion fallback: allow previous batch cards
               candidates = availableCards.filter(
-                (c: any) => c.category === category && !usedIds.has(c.id)
+                (c: any) => c.category === category && !usedIds.has(c.id) && priceFilter(c)
               );
               if (candidates.length > 0) {
                 console.log(`⚠ [pool-first] "${category}" exhausted fresh places — reusing from previous batch`);
@@ -393,11 +409,13 @@ serve(async (req) => {
           };
 
           // Helper: convert pool DB row to API card format
+          const POOL_SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, bicycling: 15, biking: 15 };
           const poolRowToApiCard = (card: any): any => {
             const distKm = (card.lat != null && card.lng != null)
               ? Math.round(haversineDistance(location.lat, location.lng, card.lat, card.lng) * 100) / 100
               : 0;
-            const travelMin = Math.round(distKm / 5 * 60); // ~5 km/h walking default
+            const poolSpeed = POOL_SPEED_KMH[travelMode] || 4.5;
+            const travelMin = Math.max(1, Math.round((distKm / poolSpeed) * 60));
 
             const parsedOH = card.opening_hours || null;
             const isOpenNow = parsedOH?._isOpenNow ?? parsedOH?.open_now ?? null;
@@ -468,8 +486,71 @@ serve(async (req) => {
           poolMissedCategories = categoriesToFetch.filter((c) => !poolCoveredCategories.has(c));
           console.log(`[pool-first] Per-category coverage: ${poolCoveredCategories.size}/${categoriesToFetch.length} | missed: [${poolMissedCategories.join(', ')}]`);
 
-          // If ALL 12 categories covered → serve entirely from pool (0 API calls)
-          if (poolMissedCategories.length === 0) {
+          // ── TIER DECISION: Pool-only, rotation, or cold-start ────────────
+          const servedCardsCount = poolHeroCards.length + poolGridCards.length;
+
+          // Impression rotation: if pool has cards but all are seen, re-pick
+          // from least-recently-seen (mirrors query_pool_cards Change 8)
+          if (servedCardsCount === 0 && allPoolCards.length > 0) {
+            console.log(`[pool-first] Impression saturation — rotating least-recently-seen cards`);
+
+            // Fetch impression timestamps for rotation ordering
+            const { data: impTimestamps } = await adminClient
+              .from('user_card_impressions')
+              .select('card_pool_id, created_at')
+              .eq('user_id', userId)
+              .in('card_pool_id', allPoolCards.map((c: any) => c.id));
+
+            const impMap = new Map((impTimestamps || []).map((i: any) => [i.card_pool_id, i.created_at]));
+
+            // Dedup by google_place_id, sort by oldest impression first
+            const rotationPlaces = new Set<string>();
+            const rotationCards = allPoolCards
+              .filter((card: any) => {
+                const placeKey = card.google_place_id || card.id;
+                if (rotationPlaces.has(placeKey)) return false;
+                rotationPlaces.add(placeKey);
+                return true;
+              })
+              .sort((a: any, b: any) => {
+                const aTime = impMap.get(a.id) || '1970-01-01';
+                const bTime = impMap.get(b.id) || '1970-01-01';
+                return (aTime as string).localeCompare(bTime as string);
+              });
+
+            // Re-pick hero + grid from rotated cards
+            const rotationUsedIds = new Set<string>();
+            const rotationFindBest = (category: string): any | null => {
+              const candidates = rotationCards.filter(
+                (c: any) => c.category === category && !rotationUsedIds.has(c.id)
+              );
+              return candidates.length > 0 ? candidates[0] : null;
+            };
+
+            for (const heroCategory of HERO_CATEGORIES_RESOLVED) {
+              const card = rotationFindBest(heroCategory);
+              if (card) {
+                poolHeroCards.push(poolRowToApiCard(card));
+                rotationUsedIds.add(card.id);
+                poolCoveredCategories.add(heroCategory);
+              }
+            }
+            for (const category of categoriesToFetch) {
+              if (HERO_CATEGORIES_RESOLVED.includes(category)) continue;
+              if (poolCoveredCategories.has(category)) continue;
+              const card = rotationFindBest(category);
+              if (card) {
+                poolGridCards.push(poolRowToApiCard(card));
+                rotationUsedIds.add(card.id);
+                poolCoveredCategories.add(category);
+              }
+            }
+
+            console.log(`[pool-first] Rotation serve: ${poolCoveredCategories.size}/${categoriesToFetch.length} categories, ${poolHeroCards.length} heroes + ${poolGridCards.length} grid`);
+          }
+
+          if (poolHeroCards.length + poolGridCards.length > 0) {
+            // Pool has coverage — serve from pool, zero Google calls.
             const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
             const poolExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
             const poolAllPlaceIds = [
@@ -513,126 +594,7 @@ serve(async (req) => {
               )
               .catch((e: any) => console.warn("[pool-first] Cache write error:", e));
 
-            console.log(`[pool-first] Serving all 12 categories from pool (0 API calls): ${poolHeroCards.length} heroes + ${poolGridCards.length} grid`);
-
-            return new Response(
-              JSON.stringify({
-                cards: poolGridCards,
-                heroCards: poolHeroCards,
-                featuredCard: poolFeaturedCard,
-                expiresAt: poolExpiresAt,
-                meta: {
-                  totalResults: poolGridCards.length,
-                  heroCount: poolHeroCards.length,
-                  categories: categoriesToFetch,
-                  successfulCategories: Array.from(poolCoveredCategories),
-                  failedCategories: [],
-                  poolFirst: true,
-                  fromPool: poolHeroCards.length + poolGridCards.length,
-                  fromApi: 0,
-                },
-              }),
-              {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
-            );
-          }
-
-          // If >= 8 categories covered, fetch the missing ones from Google and combine
-          if (poolCoveredCategories.size >= 8) {
-            console.log(`[pool-first] ${poolCoveredCategories.size}/12 from pool, fetching ${poolMissedCategories.length} from Google API`);
-
-            const missedPromises = poolMissedCategories.map((category) =>
-              fetchCandidatesForCategory(category, location, radius, adminClient)
-            );
-            const missedResults = await Promise.all(missedPromises);
-
-            const usedPlaceIds = new Set([
-              ...poolHeroCards.map((c: any) => c.placeId || c.id),
-              ...poolGridCards.map((c: any) => c.placeId || c.id),
-            ].filter(Boolean));
-            const previousBatchExcludeSet = new Set(previousBatchPlaceIds);
-
-            const missedPlaces: DiscoverPlace[] = [];
-            for (let i = 0; i < poolMissedCategories.length; i++) {
-              const category = poolMissedCategories[i];
-              const candidates = missedResults[i];
-              if (!candidates || candidates.length === 0) continue;
-
-              let available = candidates.filter(
-                (c) => !usedPlaceIds.has(c.placeId) && !previousBatchExcludeSet.has(c.placeId)
-              );
-              if (available.length === 0) {
-                available = candidates.filter((c) => !usedPlaceIds.has(c.placeId));
-              }
-              if (available.length > 0) {
-                usedPlaceIds.add(available[0].placeId);
-                missedPlaces.push(available[0]);
-                poolCoveredCategories.add(category);
-              }
-            }
-
-            // Annotate missed places with travel + AI
-            let enrichedMissedCards: any[] = [];
-            if (missedPlaces.length > 0) {
-              const withTravel = await annotateWithTravel(missedPlaces, location, travelMode);
-              const enriched = await enrichWithAI(withTravel);
-              enrichedMissedCards = enriched.map((place) => convertToCard(place));
-            }
-
-            // Split enriched missed cards into hero vs grid
-            for (const card of enrichedMissedCards) {
-              if (HERO_CATEGORIES_RESOLVED.includes(card.category) && poolHeroCards.length < 2) {
-                poolHeroCards.push(card);
-              } else {
-                poolGridCards.push(card);
-              }
-            }
-
-            const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
-            const poolExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-            const poolAllPlaceIds = [
-              ...poolHeroCards.map((c: any) => c.placeId || c.id),
-              ...poolGridCards.map((c: any) => c.placeId || c.id),
-            ].filter(Boolean);
-
-            // Record impressions for pool-served cards
-            const servedPoolCardIds = [...poolHeroCards, ...poolGridCards]
-              .map((c: any) => allPoolCards.find((pc: any) => (pc.google_place_id || pc.id) === (c.placeId || c.id))?.id)
-              .filter(Boolean);
-            if (servedPoolCardIds.length > 0) {
-              recordImpressions(adminClient, userId, servedPoolCardIds).catch(() => {});
-            }
-
-            // Persist to daily cache
-            adminClient
-              .from("discover_daily_cache")
-              .delete()
-              .eq("user_id", userId)
-              .filter("generated_location->>categoryHash", "eq", categoryHash)
-              .then(() =>
-                adminClient!
-                  .from("discover_daily_cache")
-                  .insert({
-                    user_id: userId,
-                    us_date_key: usDateKey,
-                    cards: poolGridCards,
-                    featured_card: poolFeaturedCard,
-                    expires_at: poolExpiresAt,
-                    all_place_ids: poolAllPlaceIds,
-                    previous_batch_place_ids: previousBatchPlaceIds,
-                    generated_location: {
-                      lat: location.lat,
-                      lng: location.lng,
-                      radius,
-                      categoryHash,
-                      heroCards: poolHeroCards,
-                    },
-                  })
-              )
-              .catch((e: any) => console.warn("[pool-first] Cache write error:", e));
-
-            console.log(`[pool-first] Hybrid serve: ${poolCoveredCategories.size} categories (${poolHeroCards.length} heroes + ${poolGridCards.length} grid), ${enrichedMissedCards.length} from Google API`);
+            console.log(`[pool-first] Pool-only serve: ${poolCoveredCategories.size}/${categoriesToFetch.length} categories, ${poolHeroCards.length} heroes + ${poolGridCards.length} grid (0 Google API calls)`);
 
             return new Response(
               JSON.stringify({
@@ -647,8 +609,8 @@ serve(async (req) => {
                   successfulCategories: Array.from(poolCoveredCategories),
                   failedCategories: categoriesToFetch.filter((c) => !poolCoveredCategories.has(c)),
                   poolFirst: true,
-                  fromPool: poolHeroCards.length + poolGridCards.length - enrichedMissedCards.length,
-                  fromApi: enrichedMissedCards.length,
+                  fromPool: poolHeroCards.length + poolGridCards.length,
+                  fromApi: 0,
                 },
               }),
               {
@@ -657,10 +619,7 @@ serve(async (req) => {
             );
           }
 
-          console.log(`[pool-first] Only ${poolCoveredCategories.size}/12 categories in pool, need >= 8. Falling back to full Google API.`);
-        } else {
-          console.log(`[pool-first] No pool cards in geo area. Falling back to Google API.`);
-        }
+          console.log(`[pool-first] Pool completely empty at this location. Cold-start API fallback.`);
       } catch (poolError) {
         console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
       }
@@ -982,30 +941,59 @@ async function fetchCandidatesForCategory(
   radius: number,
   adminClient: any
 ): Promise<DiscoverPlace[]> {
+  const textKeywords = getTextKeywords(category);
   const placeTypes = getPlaceTypesForCategory(category);
-  if (!placeTypes || placeTypes.length === 0) {
-    console.warn(`No place types defined for category: ${category}`);
+
+  if (!textKeywords && (!placeTypes || placeTypes.length === 0)) {
+    console.warn(`No place types or text keywords defined for category: ${category}`);
     return [];
   }
 
   try {
-    // Use batchSearchPlaces (each type searched separately for better caching)
     let allPlaces: any[] = [];
+    const seenIds = new Set<string>();
 
-    if (adminClient) {
-      const { results: typeResults } = await batchSearchPlaces(
+    if (textKeywords && adminClient) {
+      // ── Text Search path (e.g. Fine Dining) ──────────────────────────
+      const keywordResults = await Promise.all(
+        textKeywords.map(keyword =>
+          searchPlacesWithCache({
+            supabaseAdmin: adminClient,
+            apiKey: GOOGLE_API_KEY!,
+            placeType: `text:${category.toLowerCase().replace(/\s+/g, '_')}:${keyword.replace(/\s+/g, '_')}`,
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters: radius,
+            maxResults: 20,
+            strategy: 'text',
+            textQuery: keyword,
+          })
+        )
+      );
+
+      for (const result of keywordResults) {
+        for (const place of result.places) {
+          if (place.id && !seenIds.has(place.id)) {
+            seenIds.add(place.id);
+            allPlaces.push(place);
+          }
+        }
+      }
+      console.log(`[${category}] Text search: ${textKeywords.length} keywords → ${allPlaces.length} unique places`);
+    } else if (adminClient) {
+      // ── Nearby Search path (all other categories) ─────────────────────
+      const categoryTypeMap = { [category]: placeTypes! };
+      const { results: catResults } = await batchSearchByCategory(
         adminClient,
         GOOGLE_API_KEY!,
-        placeTypes,
+        categoryTypeMap,
         location.lat,
         location.lng,
         radius,
-        { maxResultsPerType: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
+        { maxResultsPerCategory: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
       );
 
-      // Merge and deduplicate results by place.id
-      const seenIds = new Set<string>();
-      for (const places of Object.values(typeResults)) {
+      for (const places of Object.values(catResults)) {
         for (const place of places) {
           if (!seenIds.has(place.id)) {
             seenIds.add(place.id);
@@ -1014,7 +1002,7 @@ async function fetchCandidatesForCategory(
         }
       }
     } else {
-      // Fallback: direct API call if no admin client available
+      // Fallback: direct Nearby Search API call if no admin client
       const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
       const fieldMask = [
         "places.id","places.displayName","places.location","places.formattedAddress",
@@ -1070,8 +1058,23 @@ async function fetchCandidatesForCategory(
       return [];
     }
 
+    // Apply per-category price floor (e.g. Fine Dining = bougie+)
+    const minTier = CATEGORY_MIN_PRICE_TIER[category];
+    const pricedPlaces = minTier
+      ? validPlaces.filter((p: any) => tierMeetsMinimum(p.priceLevel, minTier))
+      : validPlaces;
+
+    if (minTier && pricedPlaces.length < validPlaces.length) {
+      console.log(`[${category}] Price floor (${minTier}+): ${validPlaces.length} → ${pricedPlaces.length} places`);
+    }
+
+    if (pricedPlaces.length === 0) {
+      console.log(`All places below price floor for category: ${category}`);
+      return [];
+    }
+
     // Sort by best (highest rating with enough reviews)
-    const sortedPlaces = validPlaces.sort((a: any, b: any) => {
+    const sortedPlaces = pricedPlaces.sort((a: any, b: any) => {
       const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 100);
       const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 100);
       return bScore - aScore;
@@ -1142,96 +1145,35 @@ function transformPlaceToDiscoverPlace(
 }
 
 /**
- * Add travel time and distance to places
+ * Add travel time and distance to places (haversine-based estimation)
  */
 async function annotateWithTravel(
   places: DiscoverPlace[],
   origin: { lat: number; lng: number },
   travelMode: string = 'walking',
 ): Promise<(DiscoverPlace & { distance: string; travelTime: string; distanceKm: number; travelTimeMin: number })[]> {
-  // Map Mingla travel modes to Google Distance Matrix API modes
-  const GOOGLE_MODE_MAP: Record<string, string> = {
-    walking: 'walking',
-    driving: 'driving',
-    transit: 'transit',
-    bicycling: 'bicycling',
-    biking: 'bicycling',
+  // Speed estimates in km/h for haversine-based travel time estimation
+  const SPEED_KMH: Record<string, number> = {
+    walking: 4.5,
+    driving: 40,
+    transit: 25,
+    bicycling: 15,
+    biking: 15,
   };
-  const googleMode = GOOGLE_MODE_MAP[travelMode] || 'walking';
 
-  if (!GOOGLE_API_KEY || places.length === 0) {
-    return places.map((p) => ({
+  return places.map((p) => {
+    const distKm = haversineDistance(origin.lat, origin.lng, p.location.lat, p.location.lng);
+    const speedKmh = SPEED_KMH[travelMode] || 4.5;
+    const travelMin = Math.max(1, Math.round((distKm / speedKmh) * 60));
+
+    return {
       ...p,
-      distance: "Unknown",
-      travelTime: "Unknown",
-      distanceKm: 0,
-      travelTimeMin: 0,
-    }));
-  }
-
-  try {
-    const destinations = places
-      .map((p) => `${p.location.lat},${p.location.lng}`)
-      .join("|");
-
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destinations}&mode=${googleMode}&key=${GOOGLE_API_KEY}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error("Distance Matrix API error:", response.status);
-      return places.map((p) => ({
-        ...p,
-        distance: "Unknown",
-        travelTime: "Unknown",
-        distanceKm: 0,
-        travelTimeMin: 0,
-      }));
-    }
-
-    const data = await response.json();
-
-    if (data.status !== "OK") {
-      console.error("Distance Matrix API status:", data.status);
-      return places.map((p) => ({
-        ...p,
-        distance: "Unknown",
-        travelTime: "Unknown",
-        distanceKm: 0,
-        travelTimeMin: 0,
-      }));
-    }
-
-    return places.map((place, index) => {
-      const element = data.rows[0]?.elements[index];
-      if (element?.status === "OK") {
-        const distanceKm = element.distance.value / 1000;
-        const travelTimeMin = Math.round(element.duration.value / 60);
-        return {
-          ...place,
-          distance: `${distanceKm.toFixed(1)} km`,
-          travelTime: `${travelTimeMin} min`,
-          distanceKm,
-          travelTimeMin,
-        };
-      }
-      return {
-        ...place,
-        distance: "Unknown",
-        travelTime: "Unknown",
-        distanceKm: 0,
-        travelTimeMin: 0,
-      };
-    });
-  } catch (error) {
-    console.error("Error getting travel times:", error);
-    return places.map((p) => ({
-      ...p,
-      distance: "Unknown",
-      travelTime: "Unknown",
-      distanceKm: 0,
-      travelTimeMin: 0,
-    }));
-  }
+      distance: `${Math.round(distKm * 10) / 10} km`,
+      travelTime: `${travelMin} min`,
+      distanceKm: Math.round(distKm * 100) / 100,
+      travelTimeMin: travelMin,
+    };
+  });
 }
 
 /**

@@ -1052,38 +1052,32 @@ export default function DiscoverScreen({
   const deviceGpsFetchedRef = useRef(false);
 
   useEffect(() => {
-    const fetchDeviceGps = async () => {
-      if (deviceGpsFetchedRef.current) return;
-      deviceGpsFetchedRef.current = true;
+    if (deviceGpsFetchedRef.current) return;
+    deviceGpsFetchedRef.current = true;
 
-      // Fast path: use saved/fallback location immediately so Discover can load without waiting for GPS
-      if (fallbackLat && fallbackLng) {
-        setDeviceGpsLat(fallbackLat);
-        setDeviceGpsLng(fallbackLng);
-      }
-
+    const resolveLocation = async () => {
+      // Try real GPS first (cached by OS — typically <200ms)
       try {
         const loc = await enhancedLocationService.getCurrentLocation();
-        if (loc) {
+        if (loc?.latitude && loc?.longitude) {
           setDeviceGpsLat(loc.latitude);
           setDeviceGpsLng(loc.longitude);
           console.log("[Discover] Device GPS:", loc.latitude, loc.longitude);
-        } else {
-          console.log("[Discover] GPS unavailable, falling back to preference location");
-          if (fallbackLat && fallbackLng) {
-            setDeviceGpsLat(fallbackLat);
-            setDeviceGpsLng(fallbackLng);
-          }
+          return;
         }
-      } catch (err) {
-        console.error("[Discover] GPS error, falling back:", err);
-        if (fallbackLat && fallbackLng) {
-          setDeviceGpsLat(fallbackLat);
-          setDeviceGpsLng(fallbackLng);
-        }
+      } catch {
+        /* fall through to fallback */
+      }
+
+      // Fall back to saved preference location
+      if (fallbackLat && fallbackLng) {
+        console.log("[Discover] GPS unavailable, using preference location");
+        setDeviceGpsLat(fallbackLat);
+        setDeviceGpsLng(fallbackLng);
       }
     };
-    fetchDeviceGps();
+
+    resolveLocation();
   }, [fallbackLat, fallbackLng]);
 
   // locationLat/locationLng now come from device GPS (not saved preference)
@@ -1574,6 +1568,7 @@ export default function DiscoverScreen({
         }
 
         hasFetchedRef.current = true;
+        lastDiscoverFetchDateRef.current = today;  // MOVED: closes GPS race window
 
         // For You: always fetch ALL 12 categories with Fine Dining + Play heroes
         // User preferences do NOT filter the For You view — it shows best-of-the-best across ALL categories
@@ -1774,8 +1769,7 @@ export default function DiscoverScreen({
 
         setDiscoverRecommendations(transformed);
         setHasCompletedDiscoverFetch(true);
-        lastDiscoverFetchDateRef.current = today;
-        
+
         // Save to cache for 24-hour persistence
         saveDiscoverCache(transformed, finalFeatured, gridCards, transformedHeroes, serverExpiresAt);
         

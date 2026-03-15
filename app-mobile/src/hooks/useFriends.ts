@@ -277,6 +277,11 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             invited_user_id: string;
             session_name: string;
           }>;
+          revealed_pair_request_ids?: Array<{
+            id: string;
+            sender_id: string;
+            receiver_id: string;
+          }>;
         };
 
         if (!result.success) {
@@ -320,6 +325,29 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             }
           }
         }
+
+        // Send push notifications for revealed pair requests.
+        // When a friend request is accepted, any hidden pair requests gated by it
+        // become visible. Only send push when the receiver is someone OTHER than the
+        // current user — if we ARE the receiver, we're already in the app and will see
+        // the pair request via query invalidation / realtime. Sending a push to ourselves
+        // while actively looking at the screen is noisy.
+        if (result.revealed_pair_request_ids && result.revealed_pair_request_ids.length > 0) {
+          for (const pr of result.revealed_pair_request_ids) {
+            if (pr.receiver_id === userId) continue;
+            try {
+              await trackedInvoke('notify-pair-request-visible', {
+                body: { pairRequestId: pr.id },
+              });
+            } catch (notifyErr) {
+              // Push is best-effort; log but don't fail the accept
+              console.warn('[useFriends] Failed to notify for revealed pair request:', notifyErr);
+            }
+          }
+        }
+
+        // Invalidate pairing queries so pills and incoming requests update immediately
+        await queryClient.invalidateQueries({ queryKey: ["pairings"] });
 
         // Invalidate all friends caches (friends list + requests)
         await queryClient.invalidateQueries({ queryKey: friendsKeys.all });

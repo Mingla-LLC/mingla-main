@@ -17,7 +17,7 @@ import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useDeckCards } from "../hooks/useDeckCards";
-import { deckService } from "../services/deckService";
+import { deckService, getLastWarmPoolTimestamp } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
@@ -29,6 +29,19 @@ import { fetchSessionDeck } from '../services/sessionDeckService';
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
+
+// ── Deck UI State Machine ────────────────────────────────────────────────────
+// Replaces ad-hoc boolean composition with a single discriminated union.
+// Each state maps to exactly one render branch in SwipeableCards.
+export type DeckUIState =
+  | { type: 'INITIAL_LOADING' }
+  | { type: 'LOADED'; cards: Recommendation[] }
+  | { type: 'BATCH_LOADING'; previousCards: Recommendation[] }
+  | { type: 'BATCH_SLOW'; previousCards: Recommendation[] }
+  | { type: 'MODE_TRANSITIONING' }
+  | { type: 'EXHAUSTED' }
+  | { type: 'EMPTY' }
+  | { type: 'ERROR'; message: string };
 
 const MAX_BATCHES = 3;
 
@@ -83,6 +96,7 @@ interface RecommendationsContextType {
   addCardToFront: (card: Recommendation) => void;
   isExhausted: boolean;
   isSlowBatchLoad: boolean;
+  deckUIState: DeckUIState;
 }
 
 const RecommendationsContext = createContext<
@@ -236,6 +250,13 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     if (userLocation && userPrefs && !warmPoolFired.current) {
       warmPoolFired.current = true;
+
+      // Skip if warm pool was already fired recently (e.g., by onboarding)
+      const lastWarm = getLastWarmPoolTimestamp();
+      if (Date.now() - lastWarm < 30_000) {
+        console.log('[RecommendationsContext] Warm pool skipped — already fired within 30s');
+        return;
+      }
 
       // Stagger warm pool 2s after initial load. The warm pool is fire-and-forget
       // (UI doesn't wait for it), so delaying it costs nothing. But it prevents
@@ -436,16 +457,17 @@ export const RecommendationsProvider: React.FC<
       }
     }, 3000);
 
+    // 16s = DeckService client timeout (15s) + 1s buffer
     const hardTimer = setTimeout(() => {
       if (isBatchTransitioning) {
-        console.warn('[RecommendationsContext] Batch transition timed out after 20s — clearing transition state');
+        console.warn('[RecommendationsContext] Batch transition timed out after 16s — clearing transition state');
         setIsBatchTransitioning(false);
         setIsSlowBatchLoad(false);
         // Do NOT setIsExhausted(true) here. A slow batch is not an exhausted
-        // batch. The query result effect (line ~629) handles actual exhaustion
+        // batch. The query result effect handles actual exhaustion
         // when isDeckBatchLoaded && deckCards.length === 0.
       }
-    }, 20000);
+    }, 16000);
 
     return () => {
       clearTimeout(softTimer);
@@ -553,15 +575,9 @@ export const RecommendationsProvider: React.FC<
     }
   }, [isRefreshingAfterPrefChange, isDeckBatchLoaded, isDeckFetching]);
 
-  // Safety timeout: prevent infinite spinner if deck hangs
-  useEffect(() => {
-    if (!isRefreshingAfterPrefChange) return;
-    const timeout = setTimeout(() => {
-      console.warn('[RecommendationsContext] Preference refresh safety timeout — clearing spinner');
-      setIsRefreshingAfterPrefChange(false);
-    }, 8_000);
-    return () => clearTimeout(timeout);
-  }, [isRefreshingAfterPrefChange]);
+  // Pref refresh safety timeout REMOVED — state machine handles this:
+  // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
+  // The settle effect above (isDeckBatchLoaded && !isDeckFetching) clears the flag.
 
   // Nuclear safety timeout: mount-only 15-second guarantee that the fetch completes.
   // Fires once when the component mounts, regardless of any state change.
@@ -579,31 +595,9 @@ export const RecommendationsProvider: React.FC<
     return () => clearTimeout(safetyTimer);
   }, []); // Empty deps — mount only
 
-  // Resume safety timeout: re-armable 10-second guarantee that the spinner clears
-  // after the app resumes from background. Unlike the mount-only nuclear timeout,
-  // this fires on EVERY resume event (tracked by resumeCount from useForegroundRefresh).
-  //
-  // Scenario: app backgrounded before initial load completed, then resumed.
-  // The mount-only nuclear timeout already fired. All queries re-start but might
-  // hang again. This timeout ensures the spinner clears within 10 seconds of resume.
-  const prevResumeCountRef = useRef(propResumeCount);
-  useEffect(() => {
-    if (propResumeCount === prevResumeCountRef.current) return; // Not a resume event
-    prevResumeCountRef.current = propResumeCount;
-
-    // Only arm the timeout if loading is actually true. If the UI is already showing
-    // content, no rescue is needed.
-    if (!loading) return;
-
-    const resumeTimer = setTimeout(() => {
-      if (__DEV__) {
-        console.warn('[RecommendationsContext] Resume safety timeout (10s) — forcing complete');
-      }
-      setHasCompletedFetchForCurrentMode(true);
-    }, 10000);
-
-    return () => clearTimeout(resumeTimer);
-  }, [propResumeCount, loading]);
+  // Resume safety timeout REMOVED — state machine rule: app resume never changes state.
+  // If state is LOADED, it stays LOADED. No loader re-shown. The nuclear mount timeout
+  // (15s) handles the case where the app hangs on first load.
 
   // ── Deck batch history: detect pref changes → reset ──────────────────
   useEffect(() => {
@@ -952,6 +946,86 @@ export const RecommendationsProvider: React.FC<
     prevCollabParamsRef.current = paramsKey;
   }, [isCollaborationMode, collabDeckParams, queryClient]);
 
+  // ── Computed UI State Machine ────────────────────────────────────────────
+  // Single source of truth for what the UI should render. Derived from existing
+  // booleans — additive and non-breaking. SwipeableCards switches on this.
+  const deckUIState: DeckUIState = useMemo(() => {
+    // ERROR takes highest priority
+    if (locationError) {
+      return { type: 'ERROR', message: 'Failed to load location' };
+    }
+
+    // MODE_TRANSITIONING
+    if (isModeTransitioning || isWaitingForSessionResolution) {
+      return { type: 'MODE_TRANSITIONING' };
+    }
+
+    // INITIAL_LOADING (first load or pref change — no cards yet)
+    if (!hasCompletedFetchForCurrentMode && recommendations.length === 0) {
+      return { type: 'INITIAL_LOADING' };
+    }
+
+    // BATCH_SLOW (soft timer fired, batch still in flight)
+    if (isSlowBatchLoad && !isExhausted) {
+      return { type: 'BATCH_SLOW', previousCards: recommendations };
+    }
+
+    // BATCH_LOADING (transition in progress, not yet slow)
+    if (isBatchTransitioning) {
+      return { type: 'BATCH_LOADING', previousCards: recommendations };
+    }
+
+    // EXHAUSTED (all batches viewed, 0 cards remain)
+    if (isExhausted && recommendations.length === 0) {
+      return { type: 'EXHAUSTED' };
+    }
+
+    // EMPTY (server returned 0 cards for location/prefs)
+    if (
+      hasCompletedFetchForCurrentMode &&
+      recommendations.length === 0 &&
+      !loading &&
+      !isBatchTransitioning
+    ) {
+      return { type: 'EMPTY' };
+    }
+
+    // LOADED (default: cards are available)
+    if (recommendations.length > 0) {
+      return { type: 'LOADED', cards: recommendations };
+    }
+
+    // Fallback: still loading (between batch seed change and query key update)
+    return { type: 'INITIAL_LOADING' };
+  }, [
+    locationError, isModeTransitioning, isWaitingForSessionResolution,
+    hasCompletedFetchForCurrentMode, recommendations, isSlowBatchLoad,
+    isExhausted, isBatchTransitioning, loading,
+  ]);
+
+  // __DEV__ assertion: verify deckUIState agrees with legacy shouldShowLoader
+  if (__DEV__) {
+    const legacyShouldShowLoader =
+      loading || isModeTransitioning || isWaitingForSessionResolution ||
+      (!hasCompletedFetchForCurrentMode && recommendations.length === 0);
+    const stateMachineShowsLoader =
+      deckUIState.type === 'INITIAL_LOADING' || deckUIState.type === 'MODE_TRANSITIONING';
+
+    // Only warn on meaningful disagreements (exclude BATCH states and ERROR)
+    if (
+      legacyShouldShowLoader !== stateMachineShowsLoader &&
+      deckUIState.type !== 'BATCH_LOADING' &&
+      deckUIState.type !== 'BATCH_SLOW' &&
+      deckUIState.type !== 'ERROR'
+    ) {
+      console.warn(
+        `[RecommendationsContext] State machine disagreement: legacy shouldShowLoader=${legacyShouldShowLoader}, ` +
+        `deckUIState=${deckUIState.type}, loading=${loading}, isModeTransitioning=${isModeTransitioning}, ` +
+        `hasCompletedFetch=${hasCompletedFetchForCurrentMode}, recs=${recommendations.length}`
+      );
+    }
+  }
+
   // ── Context Value ───────────────────────────────────────────────────────
   const value: RecommendationsContextType = {
     recommendations,
@@ -983,6 +1057,7 @@ export const RecommendationsProvider: React.FC<
     addCardToFront,
     isExhausted,
     isSlowBatchLoad,
+    deckUIState,
   };
 
   return (

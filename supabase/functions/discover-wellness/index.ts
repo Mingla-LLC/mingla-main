@@ -1,25 +1,22 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
-import { textSearchPlaces } from '../_shared/textSearchHelper.ts';
+import { searchPlacesWithCache } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
-import { getPlaceTypesForCategory, getExcludedTypesForCategory, filterExcludedPlaces } from '../_shared/categoryPlaceTypes.ts';
+import { getExcludedTypesForCategory, filterExcludedPlaces, CATEGORY_TEXT_KEYWORDS } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-wellness  –  Standalone Wellness Card System
  *
  * A dedicated, self-contained edge function for Wellness venue discovery.
- * Modeled identically on discover-first-meet with text search fallback.
  *
- * • Searches 5 valid Google Place types via shared canonical source.
- * • Falls back to text search for 7 non-Google keywords (hot spring, turkish bath, etc.).
- * • Merges and deduplicates results from both sources.
+ * • Uses Text Search with 3 intent-based keywords (day spa, resort hotel spa, hot spring spa).
+ * • Results are cached via searchPlacesWithCache (24h TTL).
  * • Deduplicates, filters by travel constraint, sorts by quality.
  * • Offset-based batching for "Generate Another 20".
  * • Single batch OpenAI call for AI-generated descriptions (~$0.001/batch).
@@ -36,19 +33,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Wellness Valid Google Place Types (from canonical source) ────────────────
-const VALID_TYPES = getPlaceTypesForCategory('Wellness');
-
-// ── Text Search Keywords (venues without Table A types) ─────────────────────
-const TEXT_SEARCH_KEYWORDS = [
-  'hot spring',
-  'turkish bath',
-  'float tank',
-  'public bath',
-  'cold plunge',
-  'bathhouse',
-  'thermal bath',
-];
+// ── Wellness Text Search Keywords (from canonical source) ────────────────────
+const WELLNESS_KEYWORDS = CATEGORY_TEXT_KEYWORDS['Wellness'] || ['day spa'];
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
 const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {
@@ -333,64 +319,46 @@ serve(async (req: Request) => {
     // ── Handle warmPool request ─────────────────────────────────────────
     const isWarmPool = !!body.warmPool;
 
-    // ── Search valid Google Place types using shared cache ───────────────
-    const { results, apiCallsMade, cacheHits } = await batchSearchPlaces(
-      supabaseAdmin,
-      GOOGLE_PLACES_API_KEY,
-      VALID_TYPES,
-      location.lat,
-      location.lng,
-      radiusMeters,
-      {
-        maxResultsPerType: 20,
-        rankPreference: 'POPULARITY',
-      }
+    // ── Text Search for Wellness (3 keyword queries vs 5+7 old calls) ───
+    let apiCallsMade = 0;
+    let cacheHits = 0;
+    const keywordResults = await Promise.all(
+      WELLNESS_KEYWORDS.map(keyword =>
+        searchPlacesWithCache({
+          supabaseAdmin,
+          apiKey: GOOGLE_PLACES_API_KEY,
+          placeType: `text:wellness:${keyword.replace(/\s+/g, '_')}`,
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters,
+          maxResults: 20,
+          strategy: 'text',
+          textQuery: keyword,
+        })
+      )
     );
 
-    console.log(`[discover-wellness] Places search: ${cacheHits} cache hits, ${apiCallsMade} API calls`);
-
-    // ── Text search for non-Google types ────────────────────────────────
-    let textSearchResults: Record<string, any[]> = {};
-    if (TEXT_SEARCH_KEYWORDS.length > 0) {
-      try {
-        textSearchResults = await textSearchPlaces(
-          GOOGLE_PLACES_API_KEY,
-          TEXT_SEARCH_KEYWORDS,
-          location.lat,
-          location.lng,
-          radiusMeters,
-        );
-        const textCount = Object.values(textSearchResults).reduce((s, a) => s + a.length, 0);
-        console.log(`[discover-wellness] Text search: ${textCount} additional places from ${TEXT_SEARCH_KEYWORDS.length} keywords`);
-      } catch (err) {
-        console.warn(`[discover-wellness] Text search failed (non-critical):`, err);
-      }
+    for (const r of keywordResults) {
+      if (r.cacheHit) cacheHits++;
+      else apiCallsMade++;
     }
 
-    // ── Merge & deduplicate across all types ─────────────────────────────
+    console.log(`[discover-wellness] Text search: ${cacheHits} cache hits, ${apiCallsMade} API calls (${WELLNESS_KEYWORDS.length} keywords)`);
+
+    // ── Merge & deduplicate across all keywords ──────────────────────────
     const seen = new Set<string>();
     let allPlaces: any[] = [];
 
-    for (const [type, places] of Object.entries(results)) {
-      for (const p of places) {
+    for (let i = 0; i < keywordResults.length; i++) {
+      for (const p of keywordResults[i].places) {
         if (p.id && !seen.has(p.id)) {
           seen.add(p.id);
-          allPlaces.push({ ...p, _matchedType: type });
+          allPlaces.push({ ...p, _matchedType: p.primaryType || p.types?.[0] || 'spa' });
         }
       }
     }
 
-    // Merge text search results
-    for (const [keyword, places] of Object.entries(textSearchResults)) {
-      for (const p of places) {
-        if (p.id && !seen.has(p.id)) {
-          seen.add(p.id);
-          allPlaces.push({ ...p, _matchedType: keyword });
-        }
-      }
-    }
-
-    console.log(`[discover-wellness] ${allPlaces.length} unique places after merge`);
+    console.log(`[discover-wellness] ${allPlaces.length} unique places across ${WELLNESS_KEYWORDS.length} keywords`);
 
     // ── Filter out excluded types (medical, retail, sports, etc.) ────────
     const wellnessExcluded = getExcludedTypesForCategory('Wellness');
