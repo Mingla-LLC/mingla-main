@@ -350,7 +350,7 @@ serve(async (req: Request) => {
       try {
         // Import and use serveCardsFromPipeline for gap-fill
         const { serveCardsFromPipeline } = await import("../_shared/cardPoolService.ts");
-        const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY") ?? "";
+        const googleApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
 
         if (googleApiKey) {
           const gapCount = 6 - cards.length;
@@ -408,6 +408,117 @@ serve(async (req: Request) => {
       } catch (gapFillError) {
         // Gap-fill failure is non-fatal — return pool-only results
         console.warn("[get-person-hero-cards] Gap-fill failed:", gapFillError);
+      }
+    }
+
+    // ── Place pool fallback — fill remaining gaps from existing places ──
+    if (cards.length < 6 && adminClient) {
+      try {
+        const { getPlaceTypesForCategory } = await import("../_shared/categoryPlaceTypes.ts");
+        const { insertCardToPool } = await import("../_shared/cardPoolService.ts");
+
+        const ppRadiusMeters = 50000; // Match the gap-fill radius
+        const ppLatDelta = ppRadiusMeters / 111320;
+        const ppLngDelta = ppRadiusMeters / (111320 * Math.cos(location.latitude * Math.PI / 180));
+        const existingIds = new Set(cards.map(c => c.id));
+        const existingGpids = new Set(cards.map(c => c.googlePlaceId).filter(Boolean));
+        const needed = 6 - cards.length;
+
+        console.log(`[get-person-hero-cards] Place pool fallback: need ${needed} more cards`);
+
+        const ppCards: Card[] = [];
+
+        for (const category of resolvedCategories) {
+          if (ppCards.length >= needed) break;
+          const placeTypes = getPlaceTypesForCategory(category);
+          if (placeTypes.length === 0) continue;
+
+          const { data: places } = await adminClient
+            .from('place_pool')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .eq('is_active', true)
+            .gte('lat', location.latitude - ppLatDelta)
+            .lte('lat', location.latitude + ppLatDelta)
+            .gte('lng', location.longitude - ppLngDelta)
+            .lte('lng', location.longitude + ppLngDelta)
+            .overlaps('types', placeTypes)
+            .order('rating', { ascending: false })
+            .limit(5);
+
+          if (!places || places.length === 0) continue;
+
+          for (const place of places) {
+            if (ppCards.length >= needed) break;
+            const gpid = place.google_place_id;
+            if (!gpid || existingIds.has(gpid) || existingGpids.has(gpid)) continue;
+            existingIds.add(gpid);
+            existingGpids.add(gpid);
+
+            const primaryPhoto = place.photos?.[0];
+            const imageUrl = primaryPhoto?.name
+              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${Deno.env.get("GOOGLE_MAPS_API_KEY") || ""}`
+              : null;
+
+            ppCards.push({
+              id: gpid,
+              title: place.name || "Unknown",
+              category,
+              categorySlug: category.toLowerCase().replace(/\s+/g, "_"),
+              imageUrl: imageUrl,
+              rating: place.rating || null,
+              priceLevel: place.price_level || null,
+              address: place.address || null,
+              googlePlaceId: gpid,
+              lat: place.lat,
+              lng: place.lng,
+              priceTier: derivePriceTier(place.price_tier, place.price_level),
+              description: null,
+              cardType: "single",
+              tagline: null,
+              stops: 0,
+              stopsData: null,
+              totalPriceMin: null,
+              totalPriceMax: null,
+              website: place.website || null,
+              estimatedDurationMinutes: null,
+              experienceType: null,
+              categories: [category],
+              shoppingList: null,
+            });
+
+            // Insert into card_pool for future RPC queries (fire-and-forget)
+            insertCardToPool(adminClient, {
+              placePoolId: place.id,
+              googlePlaceId: gpid,
+              cardType: 'single',
+              title: place.name || "Unknown",
+              category,
+              categories: [category],
+              imageUrl: imageUrl || undefined,
+              images: [],
+              address: place.address || '',
+              lat: place.lat,
+              lng: place.lng,
+              rating: place.rating || 0,
+              reviewCount: place.review_count || 0,
+              priceMin: place.price_min ?? 0,
+              priceMax: place.price_max ?? 0,
+              openingHours: place.opening_hours,
+              website: place.website,
+              priceTier: place.price_tier || null,
+              priceLevel: place.price_level,
+            }).catch(() => {});
+          }
+        }
+
+        if (ppCards.length > 0) {
+          cards = [...cards, ...ppCards];
+          console.log(`[get-person-hero-cards] Place pool fallback added ${ppCards.length} cards (0 Google calls)`);
+        } else {
+          console.log(`[get-person-hero-cards] Place pool fallback: no matching places found`);
+        }
+      } catch (ppErr) {
+        console.warn("[get-person-hero-cards] Place pool fallback failed:", ppErr);
       }
     }
 

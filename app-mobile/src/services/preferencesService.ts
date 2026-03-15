@@ -73,57 +73,28 @@ export class PreferencesService {
     userId: string,
     preferences: Partial<UserPreferences>
   ): Promise<boolean> {
-    const SERVICE_TIMEOUT_MS = 20000; // 20s for mobile networks (was 12s)
-    const MAX_RETRIES = 1;
-
     const payload = {
       profile_id: userId,
       ...preferences,
       updated_at: new Date().toISOString(),
     };
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      try {
-        const upsertPromise = supabase.from("preferences").upsert(payload);
-
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(
-            () => reject(new Error(`Preferences save timed out after ${SERVICE_TIMEOUT_MS / 1000}s`)),
-            SERVICE_TIMEOUT_MS
-          );
-        });
-
-        const result = await Promise.race([upsertPromise, timeoutPromise]);
-
-        // HF-004 fix: always clear the timer when upsert resolves
-        if (timeoutId !== null) clearTimeout(timeoutId);
-
-        const { error } = result as { data: any; error: any };
-
-        if (error) {
-          throw error;
-        }
-
-        return true;
-      } catch (error) {
-        // HF-004 fix: clear timer on error path too
-        if (timeoutId !== null) clearTimeout(timeoutId);
-
-        if (attempt < MAX_RETRIES) {
-          console.warn(`[PreferencesService] Attempt ${attempt + 1} failed, retrying...`, error);
-          // Brief pause before retry
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-
-        console.error("[PreferencesService] updateUserPreferences failed after retries:", error);
-        return false;
-      }
+    try {
+      const { error } = await supabase.from("preferences").upsert(payload);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.warn("[PreferencesService] Preferences write failed, will retry in background:", error);
+      // Background retry — non-blocking
+      setTimeout(async () => {
+        try {
+          const { error: retryErr } = await supabase.from("preferences").upsert(payload);
+          if (retryErr) console.warn("[PreferencesService] Background retry failed:", retryErr.message);
+          else console.log("[PreferencesService] Background retry succeeded");
+        } catch { /* silent */ }
+      }, 3000);
+      return true; // Return true — local state is already correct
     }
-
-    return false;
   }
 
   /**

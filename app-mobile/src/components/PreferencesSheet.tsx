@@ -747,10 +747,14 @@ export default function PreferencesSheet({
     // The deck will show only curated cards for the selected intents.
     const finalCategories = selectedCategories;
 
-    setIsSaving(true); // UI-only — ref guard above is the real mutex
-    try {
-      // === CRITICAL PATH: Save to DB with 30s timeout ===
-      const savePromise = (async () => {
+    // === CLOSE SHEET IMMEDIATELY — user sees instant response ===
+    onClose?.();
+
+    // === FIRE-AND-FORGET: Save + invalidate ===
+    // onSave sets the optimistic React Query cache FIRST, then we invalidate
+    // deck/curated to trigger re-fetch with the new params.
+    (async () => {
+      try {
         if (isCollaborationMode) {
           const rawDbPrefs: any = {
             categories: finalCategories,
@@ -779,52 +783,32 @@ export default function PreferencesSheet({
           await updateBoardPreferences(dbPrefs);
         } else {
           if (onSave) {
-            const saveResult = await Promise.resolve(onSave(preferences));
-            if (saveResult === false) throw new Error('Save rejected');
+            await Promise.resolve(onSave(preferences));
           }
         }
-      })();
-
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Save timeout after 25s')), 25000);
-      });
-
-      try {
-        await Promise.race([savePromise, timeoutPromise]);
-      } finally {
-        clearTimeout(timeoutId!);
+      } catch (error) {
+        console.warn("[PreferencesSheet] Background save failed:", error);
       }
 
-      // === CLOSE SHEET FIRST — user sees instant response ===
-      onClose?.();
-
-      // === Invalidate caches immediately — ensures fresh data on next render ===
+      // Invalidate AFTER onSave runs — onSave sets optimistic cache first,
+      // then these trigger deck re-fetch with the new local params.
+      // userPreferences is NOT invalidated — onSave's setQueryData is authoritative.
       queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
-      // === FIRE-AND-FORGET: Non-critical post-save operations ===
+      // Offline cache update
       if (user?.id) {
         PreferencesService.getUserPreferences(user.id)
           .then(prefs => {
             if (prefs) offlineService.cacheUserPreferences(prefs);
           })
-          .catch(() => {}); // Silent — non-critical
+          .catch(() => {});
       }
+    })();
 
-    } catch (error) {
-      console.error("[PreferencesSheet] Save failed:", error);
-      Alert.alert(
-        "Couldn\u2019t Save",
-        'Something went wrong. Give it another try.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      isSavingRef.current = false;
-      setIsSaving(false); // ALWAYS resets, even on timeout/error
-    }
+    isSavingRef.current = false;
+    setIsSaving(false);
   }, [
     selectedIntents,
     selectedPriceTiers,

@@ -11,6 +11,7 @@ import {
 import {
   resolveCategories,
   getCategoryTypeMap,
+  getPlaceTypesForCategory,
   getExcludedTypesForCategory,
   CATEGORY_MIN_PRICE_TIER,
   CATEGORY_TEXT_KEYWORDS,
@@ -156,37 +157,91 @@ function formatPlaceType(type: string): string {
 }
 
 // ── DateTime Filter ─────────────────────────────────────────────────────────
+
+/** Parse "9:00 AM - 5:00 PM" or "9 AM - 5 PM" into { open: number, close: number } hours.
+ *  Handles overnight wraparound: "5 PM - 2 AM" → { open: 17, close: 26 } (close > 24 = next day). */
+function parseHoursText(text: string): { open: number; close: number } | null {
+  if (!text || text.toLowerCase().includes('closed')) return null;
+  if (text.toLowerCase().includes('open 24') || text.toLowerCase().includes('24 hours')) return { open: 0, close: 24 };
+  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (!match) return null;
+  let openH = parseInt(match[1]);
+  const openAmPm = match[3].toUpperCase();
+  let closeH = parseInt(match[4]);
+  const closeAmPm = match[6].toUpperCase();
+  if (openAmPm === 'PM' && openH !== 12) openH += 12;
+  if (openAmPm === 'AM' && openH === 12) openH = 0;
+  if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
+  if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
+  // Overnight wraparound: "5 PM - 2 AM" → close extends past midnight
+  if (closeH <= openH) closeH += 24;
+  return { open: openH, close: closeH };
+}
+
+const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
 function filterByDateTime(
   places: any[],
   datetimePref: string | undefined,
   dateOption: string,
-  timeSlot: string | null
+  timeSlot: string | null,
+  exactTime?: string | null
 ): any[] {
-  if (dateOption === 'now' || !datetimePref) {
+  if (dateOption === 'now' || (!datetimePref && !timeSlot && !exactTime)) {
     return places.filter(p => p.isOpenNow !== false);
   }
 
-  const targetDate = new Date(datetimePref);
+  // Determine target day and hour
+  const targetDate = datetimePref ? new Date(datetimePref) : new Date();
   const targetDay = targetDate.getDay();
 
   let targetHourStart: number;
-  if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+  // Fix 4: exact_time takes priority (e.g., "4:00 PM" → hour 16)
+  if (exactTime) {
+    const etMatch = exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+    if (etMatch) {
+      let h = parseInt(etMatch[1]);
+      const ampm = etMatch[3].toUpperCase();
+      if (ampm === 'PM' && h !== 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      targetHourStart = h;
+    } else {
+      targetHourStart = targetDate.getHours();
+    }
+  } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
     targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
   } else {
     targetHourStart = targetDate.getHours();
   }
 
   return places.filter(place => {
+    // Path A: Google API format — regularOpeningHours.periods
     const periods = place.regularOpeningHours?.periods;
-    if (!periods || periods.length === 0) return true;
+    if (periods && periods.length > 0) {
+      return periods.some((period: any) => {
+        if (period.open?.day !== targetDay) return false;
+        const openHour = period.open?.hour ?? 0;
+        let closeHour = period.close?.hour ?? 24;
+        if (closeHour === 0) closeHour = 24;
+        // Overnight wraparound: bar open 17-02 → effectiveClose = 26
+        if (closeHour <= openHour) closeHour += 24;
+        return targetHourStart >= openHour && targetHourStart < closeHour;
+      });
+    }
 
-    return periods.some((period: any) => {
-      if (period.open?.day !== targetDay) return false;
-      const openHour = period.open?.hour ?? 0;
-      const closeHour = period.close?.hour ?? 24;
-      const effectiveClose = closeHour === 0 ? 24 : closeHour;
-      return targetHourStart >= openHour && targetHourStart < effectiveClose;
-    });
+    // Path B: Pool format — openingHours as Record<string, string> (e.g., { "monday": "9 AM - 5 PM" })
+    const oh = place.openingHours;
+    if (oh && typeof oh === 'object') {
+      const dayName = DAY_NAMES[targetDay];
+      const dayText = oh[dayName];
+      if (!dayText) return true; // No data for this day — include
+      const parsed = parseHoursText(dayText);
+      if (!parsed) return false; // "Closed" or unparseable
+      return targetHourStart >= parsed.open && targetHourStart < parsed.close;
+    }
+
+    // No opening hours data at all — include (don't penalize missing data)
+    return true;
   });
 }
 
@@ -449,8 +504,10 @@ serve(async (req: Request) => {
         // serveCardsFromPipeline already gap-fills from Google when pool is short
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
-          const scoredPoolCards = scorePoolCards(poolResult.cards);
-          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (offset=${poolOffset}) in ${elapsed}ms`);
+          // Apply date/time filter to pool-served cards (Fix 3)
+          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
+          const scoredPoolCards = scorePoolCards(timeFilteredCards);
+          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
 
           // Fire-and-forget: fill pool gaps for categories with shortages (next request benefits)
           const cardsPerCat = Math.ceil(limit / categories.length);
@@ -522,11 +579,12 @@ serve(async (req: Request) => {
               { travelMode },
             );
             if (retryResult.cards.length > 0) {
+              const timeFilteredRetry = filterByDateTime(retryResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
               const elapsed = Date.now() - t0;
-              console.log(`[discover-cards] Served ${retryResult.cards.length} from expanded pool in ${elapsed}ms`);
+              console.log(`[discover-cards] Served ${timeFilteredRetry.length} from expanded pool in ${elapsed}ms`);
 
               return new Response(JSON.stringify({
-                cards: retryResult.cards,
+                cards: timeFilteredRetry,
                 total: retryResult.totalUnseenCount ?? retryResult.totalPoolSize,
                 source: 'pool',
                 metadata: {
@@ -553,7 +611,8 @@ serve(async (req: Request) => {
         // return what we have — falling through would duplicate the Google search.
         if (poolResult.fromApi > 0 && poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
-          const scoredMixedCards = scorePoolCards(poolResult.cards);
+          const timeFilteredMixed = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
+          const scoredMixedCards = scorePoolCards(timeFilteredMixed);
           console.log(`[discover-cards] Pipeline returned ${scoredMixedCards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
 
           return new Response(JSON.stringify({
@@ -578,9 +637,155 @@ serve(async (req: Request) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (pool-only, below 80%), falling through to API`);
+        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} cards, trying place_pool fallback`);
       } catch (poolErr) {
-        console.warn('[discover-cards] Pool serve failed, falling back to API:', poolErr);
+        console.warn('[discover-cards] Pool serve failed, falling back:', poolErr);
+      }
+    }
+
+    // ── Place pool fallback — build cards from existing places, no Google ──
+    if (userId) {
+      try {
+        const ppLatDelta = radiusMeters / 111320;
+        const ppLngDelta = radiusMeters / (111320 * Math.cos(location.lat * Math.PI / 180));
+
+        // For each requested category, get its Google place types and query place_pool
+        const placePoolCards: any[] = [];
+        const servedPlaceIds = new Set<string>();
+
+        await Promise.all(categories.map(async (category) => {
+          const placeTypes = getPlaceTypesForCategory(category);
+          if (placeTypes.length === 0) return;
+
+          const { data: places } = await supabaseAdmin
+            .from('place_pool')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .eq('is_active', true)
+            .gte('lat', location.lat - ppLatDelta)
+            .lte('lat', location.lat + ppLatDelta)
+            .gte('lng', location.lng - ppLngDelta)
+            .lte('lng', location.lng + ppLngDelta)
+            .overlaps('types', placeTypes)
+            .order('rating', { ascending: false })
+            .limit(10);
+
+          if (!places || places.length === 0) return;
+
+          for (const place of places) {
+            const gpid = place.google_place_id;
+            if (!gpid || servedPlaceIds.has(gpid)) continue;
+
+            // Price tier filter — respect user's selected tiers
+            if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
+              const placeTier = place.price_tier || googleLevelToTierSlug(place.price_level);
+              if (placeTier && !priceTiers.includes(placeTier)) continue;
+            }
+
+            servedPlaceIds.add(gpid);
+
+            // Build card using existing cardPoolService helper format
+            const primaryPhoto = place.photos?.[0];
+            const imageUrl = primaryPhoto?.name
+              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
+              : null;
+            const images = (place.photos || [])
+              .slice(0, 5)
+              .map((p: any) => p.name ? `https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}` : null)
+              .filter(Boolean);
+
+            const distKm = haversine(location.lat, location.lng, place.lat, place.lng);
+            const travelMin = estimateTravelMin(distKm, travelMode);
+
+            const parsedOH = place.opening_hours || null;
+            const isOpenNow = parsedOH?._isOpenNow ?? null;
+            const hours = parsedOH ? { ...parsedOH } : null;
+            if (hours) delete hours._isOpenNow;
+
+            placePoolCards.push({
+              id: gpid,
+              placeId: gpid,
+              title: place.name,
+              category,
+              matchScore: 85,
+              image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+              images: images.length > 0 ? images : [imageUrl].filter(Boolean),
+              rating: place.rating || 0,
+              reviewCount: place.review_count || 0,
+              priceMin: place.price_min ?? 0,
+              priceMax: place.price_max ?? 0,
+              distanceKm: Math.round(distKm * 100) / 100,
+              travelTimeMin: travelMin,
+              isOpenNow,
+              openingHours: hours,
+              description: getFallbackDescription(category, place.primary_type || 'place'),
+              highlights: ['Highly Rated', 'Popular Choice'],
+              address: place.address || '',
+              lat: place.lat,
+              lng: place.lng,
+              placeType: place.primary_type || 'place',
+              placeTypeLabel: formatPlaceType(place.primary_type || 'place'),
+              website: place.website || null,
+              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+              matchFactors: {},
+            });
+
+            // Insert into card_pool so future requests find it (fire-and-forget)
+            insertCardToPool(supabaseAdmin, {
+              placePoolId: place.id,
+              googlePlaceId: gpid,
+              cardType: 'single',
+              title: place.name,
+              category,
+              categories: [category],
+              description: getFallbackDescription(category, place.primary_type || 'place'),
+              imageUrl: imageUrl || undefined,
+              images: images as string[],
+              address: place.address || '',
+              lat: place.lat,
+              lng: place.lng,
+              rating: place.rating || 0,
+              reviewCount: place.review_count || 0,
+              priceMin: place.price_min ?? 0,
+              priceMax: place.price_max ?? 0,
+              openingHours: place.opening_hours,
+              website: place.website,
+              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceLevel: place.price_level,
+            }).catch(() => {});
+          }
+        }));
+
+        if (placePoolCards.length > 0) {
+          // Apply date/time filter
+          const timeFiltered = filterByDateTime(placePoolCards, datetimePref, dateOption, timeSlot, _exactTime);
+          const scored = scorePoolCards(timeFiltered);
+
+          if (scored.length > 0) {
+            const elapsed = Date.now() - t0;
+            console.log(`[discover-cards] Place pool fallback: ${scored.length} cards from place_pool (0 Google calls) in ${elapsed}ms`);
+
+            return new Response(JSON.stringify({
+              cards: scored.slice(0, limit),
+              total: scored.length,
+              source: 'place_pool',
+              metadata: { hasMore: scored.length > limit, poolSize: scored.length, batchSeed },
+              sourceBreakdown: {
+                fromPool: scored.length,
+                fromApi: 0,
+                totalServed: Math.min(scored.length, limit),
+                apiCallsMade: 0,
+                cacheHits: 0,
+                gapCategories: [],
+                reason: `Served from place_pool fallback (${placePoolCards.length} places found, ${scored.length} after filters)`,
+                path: 'place-pool-fallback',
+              },
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+
+        console.log(`[discover-cards] Place pool fallback: 0 matching places in area`);
+      } catch (ppErr) {
+        console.warn('[discover-cards] Place pool fallback failed:', ppErr);
       }
     }
 
@@ -741,7 +946,7 @@ serve(async (req: Request) => {
     }
 
     // ── Filter by datetime preference ─────────────────────────────────────
-    allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot);
+    allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot, _exactTime);
 
     console.log(`[discover-cards] ${allPlaces.length} places after all filters`);
 

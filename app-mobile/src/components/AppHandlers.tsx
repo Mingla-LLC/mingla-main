@@ -629,65 +629,50 @@ export function useAppHandlers(state: any) {
       }
       dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
 
-      // === CRITICAL PATH: Only the DB write is awaited ===
-      const success = await PreferencesService.updateUserPreferences(
-        user.id,
-        dbPreferences
-      );
+      // === Optimistic cache update FIRST — deck uses this immediately ===
+      queryClient.setQueryData(["userPreferences", user.id], {
+        mode: dbPreferences.mode,
+        price_tiers: dbPreferences.price_tiers,
+        budget_min: dbPreferences.budget_min,
+        budget_max: dbPreferences.budget_max,
+        people_count: dbPreferences.people_count,
+        categories: dbPreferences.categories,
+        intents: dbPreferences.intents || [],
+        travel_mode: dbPreferences.travel_mode,
+        travel_constraint_type: dbPreferences.travel_constraint_type,
+        travel_constraint_value: dbPreferences.travel_constraint_value,
+        datetime_pref: dbPreferences.datetime_pref,
+        date_option: dbPreferences.date_option,
+        time_slot: dbPreferences.time_slot,
+        exact_time: dbPreferences.exact_time,
+        custom_location: dbPreferences.custom_location,
+        use_gps_location: dbPreferences.use_gps_location,
+      });
 
-      if (!success) {
-        return false;
+      // Deck history reset
+      const newHashStr = computePrefsHash(dbPreferences);
+      const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
+      if (newHashStr !== deckPrefsHash) {
+        resetDeckHistory(newHashStr);
       }
 
-      // === FIRE-AND-FORGET: Post-save operations ===
-      // These run asynchronously after we return true. Failures are logged, not propagated.
-      // Query invalidation is NOT here — it lives in PreferencesSheet (single source of truth).
-      Promise.resolve().then(async () => {
-        try {
-          // Optimistic cache update
-          queryClient.setQueryData(["userPreferences", user.id], {
-            mode: dbPreferences.mode,
-            price_tiers: dbPreferences.price_tiers,
-            budget_min: dbPreferences.budget_min,
-            budget_max: dbPreferences.budget_max,
-            people_count: dbPreferences.people_count,
-            categories: dbPreferences.categories,
-            intents: dbPreferences.intents || [],
-            travel_mode: dbPreferences.travel_mode,
-            travel_constraint_type: dbPreferences.travel_constraint_type,
-            travel_constraint_value: dbPreferences.travel_constraint_value,
-            datetime_pref: dbPreferences.datetime_pref,
-            date_option: dbPreferences.date_option,
-            time_slot: dbPreferences.time_slot,
-            exact_time: dbPreferences.exact_time,
-            custom_location: dbPreferences.custom_location,
-            use_gps_location: dbPreferences.use_gps_location,
-          });
+      // Preferences refresh key
+      if (setPreferencesRefreshKey) {
+        setPreferencesRefreshKey((prev: number) => prev + 1);
+      }
 
-          // Offline cache (was previously awaited — no longer)
-          offlineService.cacheUserPreferences({
-            profile_id: user.id,
-            ...dbPreferences,
-          } as any).catch((e: any) => console.warn("[PostSave] Offline cache failed:", e));
+      // In-app notification
+      inAppNotificationService.notifyPreferencesUpdated("solo");
 
-          // Deck history reset
-          const newHashStr = computePrefsHash(dbPreferences);
-          const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
-          if (newHashStr !== deckPrefsHash) {
-            resetDeckHistory(newHashStr);
-          }
+      // === DB write — fire and forget (local state is already correct) ===
+      PreferencesService.updateUserPreferences(user.id, dbPreferences)
+        .catch((e: any) => console.warn("[handleSavePreferences] Background DB write failed:", e));
 
-          // Preferences refresh key
-          if (setPreferencesRefreshKey) {
-            setPreferencesRefreshKey((prev: number) => prev + 1);
-          }
-
-          // In-app notification
-          inAppNotificationService.notifyPreferencesUpdated("solo");
-        } catch (e) {
-          console.warn("[PostSave] Non-critical post-save operation failed:", e);
-        }
-      });
+      // Offline cache
+      offlineService.cacheUserPreferences({
+        profile_id: user.id,
+        ...dbPreferences,
+      } as any).catch(() => {});
 
       return true;
     } catch (error) {

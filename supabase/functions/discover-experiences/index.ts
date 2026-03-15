@@ -625,6 +625,188 @@ serve(async (req) => {
       }
     }
 
+    // ── Place pool fallback — build cards from existing places, no Google ──
+    if (adminClient) {
+      try {
+        const ppLatDelta = radius / 111320;
+        const ppLngDelta = radius / (111320 * Math.cos(location.lat * Math.PI / 180));
+        const ppHeroCards: any[] = [];
+        const ppGridCards: any[] = [];
+        const ppServedPlaceIds = new Set<string>();
+        const ppCoveredCategories = new Set<string>();
+
+        // Query place_pool per category using types overlap
+        for (const category of categoriesToFetch) {
+          const placeTypes = getPlaceTypesForCategory(category);
+          if (placeTypes.length === 0) continue;
+
+          const { data: places } = await adminClient
+            .from('place_pool')
+            .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, photos, website')
+            .eq('is_active', true)
+            .gte('lat', location.lat - ppLatDelta)
+            .lte('lat', location.lat + ppLatDelta)
+            .gte('lng', location.lng - ppLngDelta)
+            .lte('lng', location.lng + ppLngDelta)
+            .overlaps('types', placeTypes)
+            .order('rating', { ascending: false })
+            .limit(5);
+
+          if (!places || places.length === 0) continue;
+
+          for (const place of places) {
+            const gpid = place.google_place_id;
+            if (!gpid || ppServedPlaceIds.has(gpid)) continue;
+            ppServedPlaceIds.add(gpid);
+
+            const distKm = haversineDistance(location.lat, location.lng, place.lat, place.lng);
+            const SPEED_KMH: Record<string, number> = { walking: 4.5, driving: 40, transit: 25, bicycling: 15, biking: 15 };
+            const speed = SPEED_KMH[travelMode] || 4.5;
+            const travelMin = Math.max(1, Math.round((distKm / speed) * 60));
+
+            const primaryPhoto = place.photos?.[0];
+            const imageUrl = primaryPhoto?.name
+              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+              : null;
+
+            const parsedOH = place.opening_hours || null;
+            const isOpenNow = parsedOH?._isOpenNow ?? null;
+            const hours = parsedOH ? { ...parsedOH } : null;
+            if (hours) delete hours._isOpenNow;
+
+            const card = {
+              id: gpid,
+              placeId: gpid,
+              title: place.name,
+              category,
+              matchScore: 85,
+              image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+              images: [],
+              rating: place.rating || 0,
+              reviewCount: place.review_count || 0,
+              priceMin: place.price_min ?? 0,
+              priceMax: place.price_max ?? 0,
+              priceRange: formatPriceRange(place.price_min ?? 0, place.price_max ?? 0),
+              priceTier: place.price_tier || priceTierFromAmount(place.price_min ?? 0, place.price_max ?? 0),
+              distanceKm: Math.round(distKm * 100) / 100,
+              travelTimeMin: travelMin,
+              travelTime: `${travelMin} min`,
+              distance: `${Math.round(distKm * 10) / 10} km`,
+              isOpenNow,
+              openingHours: hours,
+              description: '',
+              highlights: [],
+              address: place.address || '',
+              website: place.website || null,
+              lat: place.lat,
+              lng: place.lng,
+              heroImage: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+            };
+
+            // Hero categories go to hero cards, rest to grid
+            if (HERO_CATEGORIES_RESOLVED.includes(category) && ppHeroCards.length < 2) {
+              ppHeroCards.push(card);
+            } else {
+              ppGridCards.push(card);
+            }
+            ppCoveredCategories.add(category);
+
+            // Insert into card_pool for future requests (fire-and-forget)
+            insertCardToPool(adminClient, {
+              placePoolId: place.id,
+              googlePlaceId: gpid,
+              cardType: 'single',
+              title: place.name,
+              category,
+              categories: [category],
+              imageUrl: imageUrl || undefined,
+              images: [],
+              address: place.address || '',
+              lat: place.lat,
+              lng: place.lng,
+              rating: place.rating || 0,
+              reviewCount: place.review_count || 0,
+              priceMin: place.price_min ?? 0,
+              priceMax: place.price_max ?? 0,
+              openingHours: place.opening_hours,
+              website: place.website,
+              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceLevel: place.price_level,
+            }).catch(() => {});
+            break; // One place per category for the grid
+          }
+        }
+
+        if (ppHeroCards.length + ppGridCards.length > 0) {
+          const ppFeaturedCard = ppHeroCards[0] || ppGridCards[0] || null;
+          const ppExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          const ppAllPlaceIds = [
+            ...ppHeroCards.map((c: any) => c.placeId || c.id),
+            ...ppGridCards.map((c: any) => c.placeId || c.id),
+          ].filter(Boolean);
+
+          // Impressions: cards were just inserted into card_pool (fire-and-forget),
+          // so IDs aren't available yet. The daily cache prevents re-calling for 24h.
+          // On the next request (after cache expires), cards will be in card_pool
+          // and the normal impression recording path handles it.
+
+          // Write to daily cache so mobile doesn't call again for 24h
+          adminClient
+            .from("discover_daily_cache")
+            .delete()
+            .eq("user_id", userId)
+            .filter("generated_location->>categoryHash", "eq", categoryHash)
+            .then(() =>
+              adminClient!
+                .from("discover_daily_cache")
+                .insert({
+                  user_id: userId,
+                  us_date_key: usDateKey,
+                  cards: ppGridCards,
+                  featured_card: ppFeaturedCard,
+                  expires_at: ppExpiresAt,
+                  all_place_ids: ppAllPlaceIds,
+                  previous_batch_place_ids: previousBatchPlaceIds,
+                  generated_location: {
+                    lat: location.lat,
+                    lng: location.lng,
+                    radius,
+                    categoryHash,
+                    heroCards: ppHeroCards,
+                  },
+                })
+            )
+            .catch((e: any) => console.warn("[place-pool-fallback] Cache write error:", e));
+
+          console.log(`[place-pool-fallback] Served ${ppCoveredCategories.size}/${categoriesToFetch.length} categories from place_pool (0 Google API calls)`);
+
+          return new Response(
+            JSON.stringify({
+              cards: ppGridCards,
+              heroCards: ppHeroCards,
+              featuredCard: ppFeaturedCard,
+              expiresAt: ppExpiresAt,
+              meta: {
+                totalResults: ppGridCards.length,
+                heroCount: ppHeroCards.length,
+                categories: categoriesToFetch,
+                successfulCategories: Array.from(ppCoveredCategories),
+                failedCategories: categoriesToFetch.filter(c => !ppCoveredCategories.has(c)),
+                poolFirst: true,
+                fromPool: ppHeroCards.length + ppGridCards.length,
+                fromApi: 0,
+              },
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`[place-pool-fallback] No matching places in place_pool for this area`);
+      } catch (ppErr) {
+        console.warn("[place-pool-fallback] Place pool fallback failed:", ppErr);
+      }
+    }
+
     // Fetch candidate places for filtered categories in parallel
     // Create an admin client for cache operations if we don't have one yet
     if (!adminClient && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
