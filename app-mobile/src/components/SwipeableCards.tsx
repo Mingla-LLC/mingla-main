@@ -1172,11 +1172,8 @@ export default function SwipeableCards({
     // currentCardIndex is always 0 in the removed-cards pattern, so remaining = length - 1
     handleDeckCardProgress(0, availableRecommendations.length);
 
-    // Auto-advance to next batch when all cards in current batch have been swiped
-    // availableRecommendations.length is pre-swipe count, so <= 1 means this was the last card
-    if (availableRecommendations.length <= 1 && (hasMoreCards || deckBatches.length > 1)) {
-      generateNextBatch();
-    }
+    // When last card is swiped, let the exhaustion screen handle next steps.
+    // The user explicitly chooses: review a previous deck, load a new deck, or change preferences.
   };
 
   // Sync function refs for PanResponder (must be after function definitions)
@@ -1339,6 +1336,7 @@ export default function SwipeableCards({
     case 'EMPTY':
     case 'EXHAUSTED': {
       const hasMultipleBatches = deckBatches.length > 1;
+      const canLoadMore = hasMoreCards && batchSeed + 1 < 3; // MAX_BATCHES = 3
       return (
         <View style={styles.emptyDeckContainer}>
           <View style={styles.emptyDeckContent}>
@@ -1346,32 +1344,52 @@ export default function SwipeableCards({
               <Ionicons name="earth-outline" size={24} color="#eb7825" />
             </View>
             <Text style={styles.emptyDeckTitle}>
-              {hasMultipleBatches
-                ? `All ${deckBatches.length} decks explored`
-                : "That's everything nearby"}
+              {`Deck ${currentDeckBatchIndex + 1} complete`}
             </Text>
             <Text style={styles.emptyDeckSubtitle}>
-              Tweak your preferences, revisit a deck, or review dismissed cards.
+              {canLoadMore
+                ? "Ready for more? Load a fresh deck or revisit what you've seen."
+                : hasMultipleBatches
+                  ? "You've explored all your decks. Revisit one or tweak your preferences."
+                  : "Tweak your preferences or review dismissed cards."}
             </Text>
 
             <View style={styles.emptyDeckActions}>
-              {/* Deck navigation buttons (if multiple batches) */}
-              {hasMultipleBatches && deckBatches.map((batch, idx) => (
+              {/* Load next deck — primary action when more cards exist */}
+              {canLoadMore && (
                 <TouchableOpacity
-                  key={batch.batchSeed}
-                  style={[
-                    styles.emptyDeckButton,
-                    idx === currentDeckBatchIndex && { backgroundColor: '#c2410c' },
-                  ]}
-                  onPress={() => navigateToDeckBatch(idx)}
+                  style={[styles.emptyDeckButton, { backgroundColor: '#eb7825' }]}
+                  onPress={generateNextBatch}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="albums-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.emptyDeckButtonText}>
-                    Deck {idx + 1} — {batch.cards.length} places
-                  </Text>
+                  <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyDeckButtonText}>Load Deck {currentDeckBatchIndex + 2}</Text>
                 </TouchableOpacity>
+              )}
+
+              {/* Review previous decks */}
+              {hasMultipleBatches && deckBatches.map((batch, idx) => (
+                idx !== currentDeckBatchIndex ? (
+                  <TouchableOpacity
+                    key={batch.batchSeed}
+                    style={styles.emptyDeckOutlineButton}
+                    onPress={() => navigateToDeckBatch(idx)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="albums-outline" size={16} color="#eb7825" />
+                    <Text style={styles.emptyDeckOutlineButtonText}>
+                      Review Deck {idx + 1} — {batch.cards.length} places
+                    </Text>
+                  </TouchableOpacity>
+                ) : null
               ))}
+
+              {/* Hint about deck chip when multiple batches exist */}
+              {hasMultipleBatches && (
+                <Text style={styles.emptyDeckHint}>
+                  Tip: tap the <Ionicons name="layers-outline" size={12} color="#9ca3af" /> Deck button (top-right of cards) to switch decks anytime.
+                </Text>
+              )}
 
               {/* Review dismissed cards */}
               {dismissedCards.length > 0 && (
@@ -2205,6 +2223,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#eb7825",
+  },
+  emptyDeckHint: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textAlign: "center",
+    lineHeight: 17,
+    marginTop: 4,
+    marginBottom: 4,
   },
   noCardsIcon: {
     width: 64,

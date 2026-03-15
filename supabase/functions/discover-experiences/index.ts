@@ -619,6 +619,10 @@ serve(async (req) => {
             );
           }
 
+        } else {
+          console.log(`[pool-first] No pool cards in geo area.`);
+        }
+
           console.log(`[pool-first] Pool completely empty at this location. Cold-start API fallback.`);
       } catch (poolError) {
         console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);

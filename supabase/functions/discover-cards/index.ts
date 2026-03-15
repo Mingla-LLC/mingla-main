@@ -774,7 +774,7 @@ serve(async (req: Request) => {
               cards: scored.slice(0, limit),
               total: scored.length,
               source: 'place_pool',
-              metadata: { hasMore: scored.length > limit, poolSize: scored.length, batchSeed },
+              metadata: { hasMore: placePoolCards.length > limit, poolSize: placePoolCards.length, batchSeed },
               sourceBreakdown: {
                 fromPool: scored.length,
                 fromApi: 0,
@@ -952,9 +952,12 @@ serve(async (req: Request) => {
     }
 
     // ── Filter by datetime preference ─────────────────────────────────────
+    // Capture pre-filter count for hasMore — time filtering determines what the user
+    // SEES now, but the pool has more cards that may be open at a different time.
+    const totalBeforeTimeFilter = allPlaces.length;
     allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot, _exactTime);
 
-    console.log(`[discover-cards] ${allPlaces.length} places after all filters`);
+    console.log(`[discover-cards] ${allPlaces.length} places after all filters (${totalBeforeTimeFilter} before time filter)`);
 
     // ── Sort by quality: rating desc, then review count desc ──────────────
     allPlaces.sort((a, b) => {
@@ -971,8 +974,10 @@ serve(async (req: Request) => {
 
     console.log(`[discover-cards] Batch ${batchSeed}: offset=${offset}, returning ${batch.length}/${totalAvailable}`);
 
-    // hasMore is false when there are no more batches beyond the current one
-    const hasMore = (offset + limit) < totalAvailable;
+    // hasMore uses PRE-filter count — time filtering determines what the user sees NOW,
+    // but the pool may have cards open at different times (e.g., user browses at 2 AM,
+    // batch 2 at 6 PM would have more open places). This keeps batch generation alive.
+    const hasMore = (offset + limit) < totalBeforeTimeFilter;
 
     if (batch.length === 0 && !isWarmPool) {
       return new Response(
