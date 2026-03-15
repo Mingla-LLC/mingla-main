@@ -1466,6 +1466,8 @@ export default function DiscoverScreen({
     tags: rec.tags || [],
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   const applyCachedDiscoverData = (cachedData: DiscoverCache) => {
@@ -1691,6 +1693,8 @@ export default function DiscoverScreen({
             popularity: 85,
           },
           strollData: exp.strollData,
+          website: exp.website || null,
+          phone: exp.phone || null,
         }));
 
         // Transform hero cards from server response
@@ -1815,6 +1819,8 @@ export default function DiscoverScreen({
             tags: exp.highlights || [],
             location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
             openingHours: exp.openingHours || null,
+            website: exp.website || null,
+            phone: exp.phone || null,
           }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
@@ -1891,6 +1897,8 @@ export default function DiscoverScreen({
     tags: rec.tags,
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
     openingHours: rec.openingHours || null,
+    website: rec.website || null,
+    phone: rec.phone || null,
   });
 
   // State for selected cards (to prevent re-randomization on every render)

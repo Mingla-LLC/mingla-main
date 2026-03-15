@@ -11,6 +11,8 @@ import {
   Share,
   Alert,
   Platform,
+  Keyboard,
+  InteractionManager,
   useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
@@ -1181,7 +1183,18 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               <View style={styles.phoneLookupRow}>
                 <TouchableOpacity
                   style={styles.phoneLookupCountry}
-                  onPress={() => setShowCountryPicker(true)}
+                  onPress={() => {
+                    // Dismiss keyboard first — on Android, simultaneous keyboard
+                    // dismissal + Modal Dialog creation causes severe jank.
+                    // On iOS, this prevents keyboard-type-change flicker when the
+                    // picker's search TextInput gets focus.
+                    Keyboard.dismiss();
+                    // Wait for running interactions (keyboard animation) to finish
+                    // before mounting the modal. Matches the PhoneInput pattern.
+                    InteractionManager.runAfterInteractions(() => {
+                      setShowCountryPicker(true);
+                    });
+                  }}
                   activeOpacity={0.6}
                 >
                   <Text style={styles.phoneLookupFlag}>{selectedCountry.flag}</Text>
@@ -1285,13 +1298,19 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Country picker modal */}
-            <CountryPickerModal
-              visible={showCountryPicker}
-              selectedCode={selectedCountry.code}
-              onSelect={handleCountrySelect}
-              onClose={() => setShowCountryPicker(false)}
-            />
+            {/* Country picker modal — conditionally mounted so the Modal
+                component, FlatList, and all hooks are NOT in the React tree
+                when hidden. This eliminates phantom render overhead and
+                avoids keeping an invisible Android Dialog in memory.
+                Matches the PhoneInput pattern. */}
+            {showCountryPicker && (
+              <CountryPickerModal
+                visible={showCountryPicker}
+                selectedCode={selectedCountry.code}
+                onSelect={handleCountrySelect}
+                onClose={() => setShowCountryPicker(false)}
+              />
+            )}
 
             {/* Empty state */}
             {friends.length === 0 &&

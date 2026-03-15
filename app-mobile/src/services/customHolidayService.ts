@@ -5,7 +5,7 @@ import { supabase } from "./supabase";
 export interface CustomHoliday {
   id: string;
   user_id: string;
-  person_id: string;
+  person_id: string | null;
   pairing_id?: string;
   paired_user_id?: string;
   name: string;
@@ -21,7 +21,7 @@ export interface CustomHoliday {
 export interface ArchivedHoliday {
   id: string;
   user_id: string;
-  person_id: string;
+  person_id: string | null;
   pairing_id?: string;
   paired_user_id?: string;
   holiday_key: string;

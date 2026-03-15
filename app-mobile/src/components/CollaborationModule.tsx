@@ -4,11 +4,11 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Modal,
   Dimensions,
   Alert,
 } from "react-native";
+import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -1051,13 +1051,14 @@ export default function CollaborationModule({
             </TouchableOpacity>
           </View>
 
-          {/* Content */}
-          <ScrollView
+          {/* Content — KeyboardAwareScrollView keeps the phone input
+              visible above the keyboard on both platforms. Plain ScrollView
+              did not adjust, leaving the input hidden on Android and iOS. */}
+          <KeyboardAwareScrollView
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
             bounces={true}
-            keyboardShouldPersistTaps="handled"
           >
             {activeTab === "sessions" && (
               <SessionsTab
@@ -1120,7 +1121,7 @@ export default function CollaborationModule({
                 </View>
               )
             )}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           <CustomPaywallScreen
             isVisible={showPaywall}
