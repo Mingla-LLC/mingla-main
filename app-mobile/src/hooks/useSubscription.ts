@@ -8,6 +8,7 @@ import {
   hasElevatedAccess,
 } from '../types/subscription'
 import { useCustomerInfo } from './useRevenueCat'
+import { useAppStore } from '../store/appStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query keys
@@ -69,7 +70,12 @@ export function useReferralStats(userId: string | undefined) {
 export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
   const { data: customerInfo } = useCustomerInfo()
   const { data: subscription } = useSubscription(userId)
-  return getEffectiveTier(customerInfo ?? null, subscription ?? null)
+  const profile = useAppStore((s) => s.profile)
+  return getEffectiveTier(
+    customerInfo ?? null,
+    subscription ?? null,
+    profile?.has_completed_onboarding ?? undefined,
+  )
 }
 
 /**

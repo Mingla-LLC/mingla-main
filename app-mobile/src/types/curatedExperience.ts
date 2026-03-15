@@ -10,6 +10,7 @@ export interface CuratedStop {
   rating: number;
   reviewCount: number;
   imageUrl: string;
+  imageUrls?: string[];  // Multiple photos for scrollable gallery (up to 5)
   priceLevelLabel: string;
   priceTier: PriceTierSlug;
   priceMin: number;

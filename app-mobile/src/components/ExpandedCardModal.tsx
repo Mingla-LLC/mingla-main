@@ -34,6 +34,7 @@ import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
 import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
+import { StopImageGallery } from "./expandedCard/StopImageGallery";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
@@ -156,13 +157,6 @@ const curatedStyles = StyleSheet.create({
     color: '#eb7825',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  stopImage: {
-    width: '100%',
-    height: 140,
-    borderRadius: 8,
-    marginBottom: 10,
-    overflow: 'hidden',
   },
   placeName: {
     fontSize: 16,
@@ -560,12 +554,14 @@ function MultiStopPlanView({
                   />
                 </TouchableOpacity>
 
-                {/* Always-visible: image + quick meta */}
-                {stop.imageUrl ? (
-                  <Image
-                    source={{ uri: stop.imageUrl }}
-                    style={curatedStyles.stopImage}
-                    resizeMode="cover"
+                {/* Always-visible: scrollable image gallery + quick meta */}
+                {(stop.imageUrls?.length || stop.imageUrl) ? (
+                  <StopImageGallery
+                    images={
+                      stop.imageUrls && stop.imageUrls.length > 0
+                        ? stop.imageUrls
+                        : [stop.imageUrl].filter(Boolean)
+                    }
                   />
                 ) : null}
 

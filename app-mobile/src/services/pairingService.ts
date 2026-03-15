@@ -1,4 +1,5 @@
-import { supabase, supabaseUrl } from "./supabase";
+import { supabase, trackedInvoke } from "./supabase";
+import { extractFunctionError } from "../utils/edgeFunctionError";
 import { generateInitials } from "../utils/stringUtils";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -52,13 +53,6 @@ export interface SendPairRequestResponse {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-async function getAuthToken(): Promise<string> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  if (!token) throw new Error("Not authenticated");
-  return token;
-}
 
 async function getCurrentUserId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -339,40 +333,30 @@ export async function fetchIncomingPairRequests(userId: string): Promise<PairReq
 }
 
 /**
- * Send pair request (calls edge function).
- * Uses the edge function error handling pattern: read as .text() first, then JSON.parse().
+ * Send pair request (calls edge function via trackedInvoke).
  */
 export async function sendPairRequest(params: {
   friendUserId?: string;
   phoneE164?: string;
 }): Promise<SendPairRequestResponse> {
-  const token = await getAuthToken();
-
-  const response = await fetch(
-    `${supabaseUrl}/functions/v1/send-pair-request`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(params),
-    }
+  const { data, error } = await trackedInvoke<SendPairRequestResponse>(
+    "send-pair-request",
+    { body: params }
   );
 
-  const text = await response.text();
-  let parsed: any;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`Unexpected response from server: ${text}`);
+  if (error) {
+    const msg = await extractFunctionError(
+      error,
+      "Failed to send pair request"
+    );
+    throw new Error(msg);
   }
 
-  if (!response.ok) {
-    throw new Error(parsed.error || parsed.message || "Failed to send pair request");
+  if (!data) {
+    throw new Error("No response from server");
   }
 
-  return parsed;
+  return data;
 }
 
 /**

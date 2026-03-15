@@ -63,19 +63,34 @@ export function getEffectiveTierFromRC(customerInfo: CustomerInfo | null): Subsc
  * Determine the effective tier from Supabase subscription data alone.
  *
  * Priority:
- *   1. Active trial (7-day) → 'elite'
- *   2. Unused referral bonus months → 'elite'
- *   3. Otherwise → 'free'
+ *   1. Active trial (7-day clock ticking) → 'elite'
+ *   2. Onboarding trial (trial_ends_at NULL + not yet onboarded) → 'elite'
+ *   3. Unused referral bonus months → 'elite'
+ *   4. Otherwise → 'free'
  *
  * Note: Paid subscription status is now owned by RevenueCat (getEffectiveTierFromRC).
  * The Supabase tier column is only checked here for legacy records; new paid
  * subscriptions must appear in RevenueCat to be honoured.
+ *
+ * @param hasCompletedOnboarding — from profiles.has_completed_onboarding.
+ *   When the subscription row exists but trial_ends_at is NULL and the user
+ *   hasn't finished onboarding, they get Elite access (the 7-day clock hasn't
+ *   started yet). Must match the SQL get_effective_tier() logic exactly.
  */
-export function getEffectiveTierFromSupabase(sub: Subscription | null): SubscriptionTier {
+export function getEffectiveTierFromSupabase(
+  sub: Subscription | null,
+  hasCompletedOnboarding?: boolean,
+): SubscriptionTier {
   if (!sub) return 'free'
 
-  // Active trial
+  // Active trial (7-day clock is ticking)
   if (sub.trialEndsAt && new Date(sub.trialEndsAt) > new Date()) {
+    return 'elite'
+  }
+
+  // Onboarding trial: subscription exists but trial not yet started
+  // User is still in onboarding → grant Elite access
+  if (!sub.trialEndsAt && !hasCompletedOnboarding) {
     return 'elite'
   }
 
@@ -102,11 +117,12 @@ export function getEffectiveTierFromSupabase(sub: Subscription | null): Subscrip
 export function getEffectiveTier(
   customerInfo: CustomerInfo | null,
   sub: Subscription | null,
+  hasCompletedOnboarding?: boolean,
 ): SubscriptionTier {
   const rcTier = getEffectiveTierFromRC(customerInfo)
   if (rcTier !== 'free') return rcTier
 
-  return getEffectiveTierFromSupabase(sub)
+  return getEffectiveTierFromSupabase(sub, hasCompletedOnboarding)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
