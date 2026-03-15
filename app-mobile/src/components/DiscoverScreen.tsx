@@ -57,8 +57,8 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v5";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v4";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v6";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v5";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
 const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
 
