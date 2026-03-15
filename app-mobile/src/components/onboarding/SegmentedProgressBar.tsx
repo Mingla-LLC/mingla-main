@@ -3,13 +3,13 @@ import { View, Animated, StyleSheet } from 'react-native';
 import { colors, radius } from '../../constants/designSystem';
 
 interface SegmentedProgressBarProps {
-  totalSegments: 5;
-  currentStep: number; // 1-5
+  totalSegments?: number;
+  currentStep: number; // 1-7
   currentSegmentFill: number; // 0-1, animated fill within current segment
 }
 
 export const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({
-  totalSegments = 5,
+  totalSegments = 7,
   currentStep,
   currentSegmentFill,
 }) => {

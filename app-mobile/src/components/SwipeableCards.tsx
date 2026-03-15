@@ -530,6 +530,42 @@ export default function SwipeableCards({
     isAnyLoading ||
     (!hasCompletedInitialFetch && availableRecommendations.length === 0);
 
+  // Auto-recovery: detect dead "Pulling up more for you" state.
+  // When recommendations exist but ALL are filtered by removedCards (stale persistence),
+  // clear removedCards after 1.5s to escape the dead state. This is a safety net — the
+  // primary fix is in the AsyncStorage restore (filtering stale IDs) and useDeckCards
+  // (matching initialData on categories, not just batchSeed). But if those fail, this
+  // prevents the user from being permanently stuck.
+  useEffect(() => {
+    if (
+      availableRecommendations.length === 0 &&
+      recommendations.length > 0 &&
+      removedCards.size > 0 &&
+      hasCompletedInitialFetch &&
+      !isExhausted &&
+      !loading &&
+      !isModeTransitioning &&
+      !isBatchTransitioning &&
+      !isWaitingForSessionResolution
+    ) {
+      const recoveryTimer = setTimeout(() => {
+        if (__DEV__) {
+          console.warn(
+            '[SwipeableCards] Dead state detected — clearing removedCards to recover',
+            { recommendations: recommendations.length, removed: removedCards.size }
+          );
+        }
+        setRemovedCards(new Set());
+        setCurrentCardIndex(0);
+      }, 1500);
+      return () => clearTimeout(recoveryTimer);
+    }
+  }, [
+    availableRecommendations.length, recommendations.length, removedCards.size,
+    hasCompletedInitialFetch, isExhausted, loading, isModeTransitioning,
+    isBatchTransitioning, isWaitingForSessionResolution,
+  ]);
+
   useEffect(() => {
     if (
       previousBatchRefreshKeyRef.current !== undefined &&
@@ -691,9 +727,17 @@ export default function SwipeableCards({
 
         if (savedIndex[1] !== null || savedRemovedCards[1] !== null) {
           const index = savedIndex[1] ? parseInt(savedIndex[1], 10) : 0;
-          const removedCardsArray = savedRemovedCards[1]
+          const rawRemovedCards: string[] = savedRemovedCards[1]
             ? JSON.parse(savedRemovedCards[1])
             : [];
+
+          // Filter out stale IDs that don't match any card in the current batch.
+          // Without this, persisted removedCards from a previous session (different
+          // preferences or location) can filter out ALL cards in the new batch,
+          // creating a dead state: availableRecommendations = 0, "Pulling up more
+          // for you" shows permanently with no auto-recovery.
+          const currentCardIds = new Set(recommendations.map(r => r.id));
+          const removedCardsArray = rawRemovedCards.filter(id => currentCardIds.has(id));
 
           // Validate index is within bounds
           const availableCount = recommendations.filter(
@@ -711,7 +755,10 @@ export default function SwipeableCards({
             "✅ Restored state from AsyncStorage - Index:",
             restoredIndex,
             "Removed:",
-            removedCardsArray.length
+            removedCardsArray.length,
+            rawRemovedCards.length !== removedCardsArray.length
+              ? `(pruned ${rawRemovedCards.length - removedCardsArray.length} stale)`
+              : ""
           );
           setRemovedCards(new Set(removedCardsArray));
           setCurrentCardIndex(restoredIndex);

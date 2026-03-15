@@ -29,10 +29,10 @@ export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
         <Ionicons name="shield-checkmark-outline" size={48} color={colors.primary[500]} />
       </View>
 
-      <Text style={styles.headline}>Before we continue</Text>
+      <Text style={styles.headline}>One quick thing</Text>
 
       <Text style={styles.body}>
-        Mingla uses your preferences and activity to find the best experiences for you. Your data is never sold or shared with advertisers.
+        Mingla uses what you've shared — your tastes, your vibe, your location — to find experiences you'll genuinely love. Your data stays yours. We never sell it, and you can delete it anytime.
       </Text>
 
       <View style={styles.actions}>
@@ -41,7 +41,7 @@ export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
           onPress={onConsent}
           activeOpacity={0.7}
         >
-          <Text style={styles.consentButtonText}>I agree — let's go</Text>
+          <Text style={styles.consentButtonText}>Sounds good — let's go</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onDecline} activeOpacity={0.7}>

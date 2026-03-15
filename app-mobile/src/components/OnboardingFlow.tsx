@@ -33,17 +33,7 @@ import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 
-// Inline type + function for legacy saved_people creation during onboarding.
-// The savedPeopleService was removed (replaced by pairing). The table still exists
-// for backward compat — it will be dropped in a future migration.
-type SavedPersonGender = "man" | "woman" | "non-binary" | "transgender_man" | "transgender_woman" | "genderqueer" | "agender" | "prefer_not_to_say" | null;
-async function createSavedPerson(person: { user_id: string; name: string; initials: string; birthday: string | null; gender: SavedPersonGender; description: string | null }) {
-  const { supabase } = await import('../services/supabase');
-  const { data, error } = await supabase.from('saved_people').insert(person).select().single();
-  if (error) throw new Error(error.message);
-  return data;
-}
-// Audio services removed — pairing uses real behavior data instead of voice recordings.
+// Legacy saved_people + audio services removed — pairing uses real behavior data.
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
@@ -53,12 +43,12 @@ import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
 import { CategoryTile } from './ui/CategoryTile'
-import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
-import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
+import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
 import { useFriends } from '../hooks/useFriends'
+import { FriendRequest } from '../services/friendsService'
 // processPersonAudio removed — pairing uses real behavior data
-import { PulseDotLoader } from './ui/PulseDotLoader'
+// PulseDotLoader removed — launch animation now in GettingExperiencesScreen
 
 import {
   OnboardingData,
@@ -154,6 +144,455 @@ function buildOccasions(birthday: Date | null): Array<{ name: string; date: stri
   return occasions
 }
 
+// ─── Getting Experiences Screen (Step 7b) ───
+
+interface GettingExperiencesScreenProps {
+  userId: string
+  data: OnboardingData
+  warmPoolPromiseRef: React.MutableRefObject<Promise<void> | null>
+  onComplete: () => void
+}
+
+const LOADING_MESSAGES = [
+  'Checking spots nearby...',
+  'Matching your preferences...',
+  'Finding hidden gems...',
+  'Almost there...',
+]
+
+const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
+  userId,
+  data,
+  warmPoolPromiseRef,
+  onComplete,
+}) => {
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [messageIndex, setMessageIndex] = useState(0)
+  const [retryCount, setRetryCount] = useState(0)
+
+  // Animations
+  const compassRotation = useRef(new Animated.Value(0)).current
+  const glowOpacity = useRef(new Animated.Value(0.4)).current
+  const progressWidth = useRef(new Animated.Value(0)).current
+  const messageOpacity = useRef(new Animated.Value(1)).current
+  const phase1Opacity = useRef(new Animated.Value(1)).current
+  const phase2Opacity = useRef(new Animated.Value(0)).current
+  const phase2TranslateY = useRef(new Animated.Value(16)).current
+  const checkScale = useRef(new Animated.Value(0)).current
+  const ctaOpacity = useRef(new Animated.Value(0)).current
+  const ctaTranslateY = useRef(new Animated.Value(16)).current
+
+  // Spinning compass animation
+  useEffect(() => {
+    if (phase !== 'loading') return
+    const spin = Animated.loop(
+      Animated.timing(compassRotation, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    )
+    spin.start()
+    return () => spin.stop()
+  }, [phase, compassRotation])
+
+  // Glow pulse
+  useEffect(() => {
+    if (phase !== 'loading') return
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpacity, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 0.4, duration: 750, useNativeDriver: true }),
+      ])
+    )
+    pulse.start()
+    return () => pulse.stop()
+  }, [phase, glowOpacity])
+
+  // Message cycling
+  useEffect(() => {
+    if (phase !== 'loading') return
+    const interval = setInterval(() => {
+      Animated.timing(messageOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setMessageIndex(prev => (prev + 1) % LOADING_MESSAGES.length)
+        Animated.timing(messageOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+      })
+    }, 1200)
+    return () => clearInterval(interval)
+  }, [phase, messageOpacity])
+
+  // Main loading + launch logic
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      // Enforce minimum 2500ms display time
+      const minTimer = new Promise<void>(r => setTimeout(r, 2500))
+
+      // Progress bar animation (runs for ~3s)
+      Animated.timing(progressWidth, {
+        toValue: 1,
+        duration: 3000,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start()
+
+      try {
+        // Mark onboarding complete — check response for errors
+        const { error: updateError } = await supabase.from('profiles').update({
+          has_completed_onboarding: true,
+          onboarding_step: 0,
+          gender: data.userGender,
+          birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+          country: data.userCountry,
+          preferred_language: data.userPreferredLanguage,
+        }).eq('id', userId)
+
+        if (updateError) throw updateError
+
+        // Only clear persistence AFTER DB confirms success
+        await clearOnboardingData()
+
+        const currentProfile = useAppStore.getState().profile
+        if (currentProfile) {
+          useAppStore.getState().setProfile({
+            ...currentProfile,
+            has_completed_onboarding: true,
+            onboarding_step: 0,
+            gender: data.userGender,
+            birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+            country: data.userCountry,
+            preferred_language: data.userPreferredLanguage,
+          })
+        }
+
+        // Wait for warm pool (max 3 seconds)
+        if (warmPoolPromiseRef.current) {
+          const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
+          await Promise.race([warmPoolPromiseRef.current, timeout])
+        }
+
+        await minTimer
+        if (cancelled) return
+
+        // Race progress to 100%
+        Animated.timing(progressWidth, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: false,
+        }).start()
+
+        // Transition to Phase 2
+        setTimeout(() => {
+          if (cancelled) return
+          // Fade out Phase 1
+          Animated.timing(phase1Opacity, { toValue: 0, duration: 300, useNativeDriver: true }).start()
+
+          setTimeout(() => {
+            if (cancelled) return
+            setPhase('ready')
+
+            // Fade in Phase 2
+            Animated.parallel([
+              Animated.timing(phase2Opacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+              Animated.timing(phase2TranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+            ]).start()
+
+            // Spring checkmark
+            Animated.spring(checkScale, { toValue: 1, tension: 200, friction: 12, useNativeDriver: true }).start()
+
+            // Haptic
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+
+            // CTA slides up after delay
+            setTimeout(() => {
+              if (cancelled) return
+              Animated.parallel([
+                Animated.timing(ctaOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+                Animated.timing(ctaTranslateY, { toValue: 0, duration: 250, useNativeDriver: true }),
+              ]).start()
+            }, 300)
+          }, 200) // 200ms pause between phases
+        }, 300) // After progress bar races
+      } catch (err) {
+        logger.error('GettingExperiences launch error', { error: String(err) })
+        await minTimer
+        if (cancelled) return
+        setPhase('error')
+      }
+    }
+
+    run()
+    return () => { cancelled = true }
+  }, [retryCount]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const spinInterpolation = compassRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
+
+  const handleRetry = () => {
+    setPhase('loading')
+    setMessageIndex(0)
+    progressWidth.setValue(0)
+    phase1Opacity.setValue(1)
+    phase2Opacity.setValue(0)
+    phase2TranslateY.setValue(16)
+    checkScale.setValue(0)
+    ctaOpacity.setValue(0)
+    ctaTranslateY.setValue(16)
+    setRetryCount(r => r + 1)
+  }
+
+  return (
+    <View style={getExpStyles.container}>
+      {/* Phase 1: Loading */}
+      {phase === 'loading' && (
+        <Animated.View style={[getExpStyles.phaseContainer, { opacity: phase1Opacity }]}>
+          {/* Glow circle + compass */}
+          <View style={getExpStyles.iconContainer}>
+            <Animated.View style={[getExpStyles.glowCircle, { opacity: glowOpacity }]} />
+            <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
+              <Ionicons name="compass-outline" size={48} color={colors.primary[500]} />
+            </Animated.View>
+          </View>
+
+          <Text style={getExpStyles.headline}>Building your deck...</Text>
+
+          {/* Progress bar */}
+          <View style={getExpStyles.progressTrack}>
+            <Animated.View
+              style={[
+                getExpStyles.progressFill,
+                {
+                  width: progressWidth.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                  }),
+                },
+              ]}
+            />
+          </View>
+
+          <Animated.Text style={[getExpStyles.statusMessage, { opacity: messageOpacity }]}>
+            {LOADING_MESSAGES[messageIndex]}
+          </Animated.Text>
+        </Animated.View>
+      )}
+
+      {/* Phase 2: Ready */}
+      {phase === 'ready' && (
+        <Animated.View
+          style={[
+            getExpStyles.phaseContainer,
+            { opacity: phase2Opacity, transform: [{ translateY: phase2TranslateY }] },
+          ]}
+        >
+          {/* Success icon with glow */}
+          <View style={getExpStyles.iconContainer}>
+            <View style={getExpStyles.successGlow} />
+            <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+              <Ionicons name="checkmark-circle" size={48} color={colors.success[500]} />
+            </Animated.View>
+          </View>
+
+          <Text style={getExpStyles.headline}>Your deck is ready</Text>
+          <Text style={getExpStyles.subtitle}>
+            Swipe through, save what you love, skip what you don't.
+          </Text>
+
+          <Animated.View
+            style={[
+              getExpStyles.ctaContainer,
+              { opacity: ctaOpacity, transform: [{ translateY: ctaTranslateY }] },
+            ]}
+          >
+            <Pressable
+              style={getExpStyles.ctaButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                onComplete()
+              }}
+            >
+              <Text style={getExpStyles.ctaText}>Let's go</Text>
+            </Pressable>
+          </Animated.View>
+        </Animated.View>
+      )}
+
+      {/* Phase 3: Error */}
+      {phase === 'error' && (
+        <View style={getExpStyles.phaseContainer}>
+          <View style={getExpStyles.iconContainer}>
+            <View style={getExpStyles.errorGlow} />
+            <Ionicons name="alert-circle" size={48} color={colors.error[400]} />
+          </View>
+
+          <Text style={getExpStyles.headline}>Something went wrong</Text>
+          <Text style={getExpStyles.subtitle}>
+            We couldn't load your picks. Let's try again.
+          </Text>
+
+          <View style={getExpStyles.ctaContainer}>
+            <Pressable
+              style={getExpStyles.ctaButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                handleRetry()
+              }}
+            >
+              <Text style={getExpStyles.ctaText}>Try again</Text>
+            </Pressable>
+            <Pressable
+              style={getExpStyles.skipErrorButton}
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                // Best-effort: try to mark onboarding complete before exiting.
+                // If this also fails, user will see onboarding again on next
+                // launch — correct behavior since we can't confirm completion.
+                try {
+                  const { error: skipError } = await supabase.from('profiles').update({
+                    has_completed_onboarding: true,
+                    onboarding_step: 0,
+                    gender: data.userGender,
+                    birthday: data.userBirthday?.toISOString().split('T')[0] || null,
+                    country: data.userCountry,
+                    preferred_language: data.userPreferredLanguage,
+                  }).eq('id', userId)
+                  if (!skipError) {
+                    await clearOnboardingData()
+                    const currentProfile = useAppStore.getState().profile
+                    if (currentProfile) {
+                      useAppStore.getState().setProfile({
+                        ...currentProfile,
+                        has_completed_onboarding: true,
+                        onboarding_step: 0,
+                      })
+                    }
+                  }
+                } catch {
+                  // Non-blocking — proceed to app regardless
+                }
+                onComplete()
+              }}
+            >
+              <Text style={getExpStyles.skipErrorText}>Skip for now</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  )
+}
+
+const getExpStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  phaseContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  iconContainer: {
+    width: 96,
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  glowCircle: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.primary[50],
+  },
+  successGlow: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.success[50],
+  },
+  errorGlow: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.error[50] ?? '#fef2f2',
+  },
+  headline: {
+    ...typography.xxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.gray[500],
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  progressTrack: {
+    width: 200,
+    height: 4,
+    backgroundColor: colors.gray[200],
+    borderRadius: radius.full,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  progressFill: {
+    height: 4,
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.full,
+  },
+  statusMessage: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  ctaContainer: {
+    width: '100%',
+    marginTop: spacing.xxl,
+  },
+  ctaButton: {
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.lg,
+    height: 56,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary[500],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  ctaText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  skipErrorButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+  },
+  skipErrorText: {
+    ...typography.md,
+    fontWeight: fontWeights.medium,
+    color: colors.text.tertiary,
+  },
+})
+
 interface OnboardingFlowProps {
   onComplete: () => void
   initialStep: OnboardingStep
@@ -185,7 +624,7 @@ const OnboardingFlow = ({
 
   const incomingPendingRequests = useMemo(
     () => (friendRequests || []).filter(
-      (req: any) => req.type === 'incoming' && req.status === 'pending'
+      (req: FriendRequest) => req.type === 'incoming' && req.status === 'pending'
     ),
     [friendRequests]
   )
@@ -201,11 +640,9 @@ const OnboardingFlow = ({
     goNext,
     goBack,
     goToSubStep,
-    choosePath,
-    setSkippedFriends,
     progress,
     isLaunch,
-  } = useOnboardingStateMachine({ initialStep, initialChosenPath: initialData.invitePath, hasGpsPermission })
+  } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
 
 
   // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
@@ -267,41 +704,17 @@ const OnboardingFlow = ({
   const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [launchState, setLaunchState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [launchLoadingText, setLaunchLoadingText] = useState('Finding your kind of places...')
-  const [launchRetries, setLaunchRetries] = useState(0)
+  // saving state removed — save handlers (Path A/B) deleted
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
-  // Audio state now lives in `data` for persistence (data.currentAudioFriendIndex, data.audioClipsByFriend)
-  // Helper setters for convenience:
-  const currentAudioFriendIndex = data.currentAudioFriendIndex
-  const audioClipsByFriend = data.audioClipsByFriend
-  const setCurrentAudioFriendIndex = useCallback((updater: number | ((i: number) => number)) => {
-    setData(prev => ({
-      ...prev,
-      currentAudioFriendIndex: typeof updater === 'function' ? updater(prev.currentAudioFriendIndex) : updater,
-    }))
-  }, [])
-  const setAudioClipsByFriend = useCallback((updater: Record<string, { storagePath: string; duration: number }> | ((prev: Record<string, { storagePath: string; duration: number }>) => Record<string, { storagePath: string; duration: number }>)) => {
-    setData(prev => ({
-      ...prev,
-      audioClipsByFriend: typeof updater === 'function' ? updater(prev.audioClipsByFriend) : updater,
-    }))
-  }, [])
-
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
   // Pending date for the Step 1 birthday picker.
   // Holds the in-progress date while the user is scrolling.
   // Only committed to `data` when the "Done" button is pressed.
   const pendingBirthdayRef = useRef<Date | null>(null)
-
-  // Pending date for the Step 5 person birthday picker.
-  // Committed to `data` only when the Next CTA is tapped.
-  const pendingPersonBirthdayRef = useRef<Date | null>(null)
 
   // ─── Persist Onboarding Data to AsyncStorage ───
   // Debounced: saves 500ms after the last data change to avoid excessive writes
@@ -322,20 +735,6 @@ const OnboardingFlow = ({
       setShowCountryPicker(false)
       setShowLanguagePicker(false)
       setShowDatePicker(false)
-    }
-  }, [navState.subStep])
-
-  // ─── Seed pendingPersonBirthdayRef when arriving at pathB_birthday ───
-  // Ensures pressing Next without scrolling commits the visible default date.
-  // data.personBirthday is intentionally omitted from the dep array: we only
-  // want to seed the ref when the user navigates TO this screen, not on every
-  // data change. data.personBirthday only changes via the CTA (which also calls
-  // handleGoNext, navigating away), so there is no scenario where it changes
-  // while the user is on this screen and the ref needs re-seeding.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (navState.subStep === 'pathB_birthday') {
-      pendingPersonBirthdayRef.current = data.personBirthday || DEFAULT_PERSON_DATE
     }
   }, [navState.subStep])
 
@@ -374,8 +773,7 @@ const OnboardingFlow = ({
   // ─── Animations ───
   const fadeAnim = useRef(new Animated.Value(1)).current
   const slideAnim = useRef(new Animated.Value(0)).current
-  const revealScale = useRef(new Animated.Value(0.8)).current
-  const revealOpacity = useRef(new Animated.Value(0)).current
+  // revealScale + revealOpacity removed — launch animation now in GettingExperiencesScreen
 
   // ─── Welcome Screen Animations (4-phase text reveal) ───
   const heyAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(20) }).current
@@ -629,11 +1027,7 @@ const OnboardingFlow = ({
     return () => clearTimeout(timer)
   }, [navState.subStep, valuePropBeat])
 
-  // ─── Launch Logic ───
-  useEffect(() => {
-    if (!isLaunch) return
-    handleLaunch()
-  }, [isLaunch])
+  // Launch logic is now triggered from the getting_experiences substep, not via isLaunch flag
 
   // ─── Persist Major Step ───
   const persistStep = useCallback(
@@ -1179,122 +1573,7 @@ const OnboardingFlow = ({
     goNext()
   }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, goNext, persistStep])
 
-  // ─── Step 5 Save Person (Path B) ───
-  const handleSavePersonPathB = useCallback(async () => {
-    if (!user?.id) return
-    logger.action('Save person (Path B) pressed')
-    setSaving(true)
-    try {
-      const personData = {
-        user_id: user.id,
-        name: data.personName || 'Friend',
-        initials: (data.personName || 'F').slice(0, 2).toUpperCase(),
-        birthday: data.personBirthday?.toISOString().split('T')[0] || null,
-        gender: data.personGender as SavedPersonGender,
-        description: null as string | null,
-      }
-      await createSavedPerson(personData)
-      // Audio recording pipeline removed — pairing uses real behavior data
-      setSaving(false)
-      goNext()
-    } catch (e) {
-      console.error('Save person error:', e)
-      setSaving(false)
-    }
-  }, [user?.id, data, goNext])
-
-  // ─── Step 5 Save Sync Friends (Path A) ───
-  const handleSaveSyncFriends = useCallback(async () => {
-    if (!user?.id) return
-    logger.action('Save sync friends pressed')
-    setSaving(true)
-    try {
-      for (const friend of data.selectedSyncFriends) {
-        // Create saved_person for each friend
-        const personData = {
-          user_id: user.id,
-          name: friend.displayName || 'Friend',
-          initials: (friend.displayName || 'F').slice(0, 2).toUpperCase(),
-          birthday: null as string | null,
-          gender: null as SavedPersonGender,
-          description: null as string | null,
-        }
-        await createSavedPerson(personData)
-        // Audio recording pipeline removed — pairing uses real behavior data
-      }
-      setSaving(false)
-      goNext() // This triggers launch (end of Path A sequence)
-    } catch (e) {
-      console.error('Save sync friends error:', e)
-      setSaving(false)
-    }
-  }, [user?.id, data, audioClipsByFriend, goNext])
-
-  // ─── Reveal Animation (declared before handleLaunch — handleLaunch depends on it) ───
-  const playRevealAnimation = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    Animated.parallel([
-      Animated.spring(revealScale, { toValue: 1, tension: 80, friction: 10, useNativeDriver: true }),
-      Animated.timing(revealOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start()
-    setTimeout(() => onComplete(), 1500)
-  }, [onComplete, revealScale, revealOpacity])
-
-  // ─── Launch Handler ───
-  const handleLaunch = useCallback(async () => {
-    if (!user?.id) return
-    logger.onboarding('Launch sequence started')
-
-    // Clear persisted onboarding data — no longer needed after completion
-    clearOnboardingData()
-
-    try {
-      // Mark onboarding complete + ensure identity data is persisted (safety net)
-      await supabase.from('profiles').update({
-        has_completed_onboarding: true,
-        onboarding_step: 0,
-        // Safety net: re-save identity data in case fire-and-forget in handleSaveIdentity failed
-        gender: data.userGender,
-        birthday: data.userBirthday?.toISOString().split('T')[0] || null,
-        country: data.userCountry,
-        preferred_language: data.userPreferredLanguage,
-      }).eq('id', user.id)
-
-      const currentProfile = useAppStore.getState().profile
-      if (currentProfile) {
-        useAppStore.getState().setProfile({
-          ...currentProfile,
-          has_completed_onboarding: true,
-          onboarding_step: 0,
-          gender: data.userGender,
-          birthday: data.userBirthday?.toISOString().split('T')[0] || null,
-          country: data.userCountry,
-          preferred_language: data.userPreferredLanguage,
-        })
-      }
-
-      // Wait for warm pool (max 3 seconds)
-      if (warmPoolPromiseRef.current) {
-        const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
-        await Promise.race([warmPoolPromiseRef.current, timeout]);
-      }
-
-      setLaunchState('ready')
-      playRevealAnimation()
-    } catch (err) {
-      console.warn('[Onboarding] Launch error:', err)
-      // Proceed anyway — useDeckCards will handle cold fetch
-      setLaunchState('ready')
-      playRevealAnimation()
-    }
-  }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, playRevealAnimation])
-
-  const handleLaunchRetry = useCallback(() => {
-    logger.action('Launch retry pressed', { attempt: launchRetries + 1 })
-    setLaunchRetries((r) => r + 1)
-    setLaunchState('loading')
-    handleLaunch()
-  }, [handleLaunch, launchRetries])
+  // Launch animation + handler now lives in GettingExperiencesScreen (Step 7b)
 
   // ─── Welcome Text Entrance Animation ───
   useEffect(() => {
@@ -1378,14 +1657,8 @@ const OnboardingFlow = ({
       return
     }
 
-    // Path A audio: navigate between friends before hitting the state machine
-    if (navState.subStep === 'pathA_audio' && currentAudioFriendIndex > 0) {
-      setCurrentAudioFriendIndex(i => i - 1)
-      return
-    }
-
     goBack()
-  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep, currentAudioFriendIndex])
+  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep])
 
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
@@ -1463,75 +1736,21 @@ const OnboardingFlow = ({
         }, hide: false }
       case 'travel_time':
         return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
-      case 'friends':
-        // OnboardingFriendsStep has its own Continue/Skip buttons
+      case 'friends_and_pairing':
+        // OnboardingFriendsAndPairingStep has its own Continue/Skip buttons
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'collaborations':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'consent':
         // OnboardingConsentStep has its own action buttons
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
-      case 'collaboration':
+      case 'getting_experiences':
+        // Full-screen takeover, no shell CTA
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
-      case 'pitch':
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
-      case 'pathA_sync':
-        // Continue button is internal to OnboardingSyncStep component
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
-      case 'pathA_audio': {
-        const friend = data.selectedSyncFriends[currentAudioFriendIndex]
-        const friendId = friend?.userId || friend?.phoneE164
-        const clip = friendId ? audioClipsByFriend[friendId] : null
-        const hasMinAudio = clip && clip.duration >= 10
-        const isLastFriend = currentAudioFriendIndex >= data.selectedSyncFriends.length - 1
-
-        if (isLastFriend) {
-          return { label: 'Finish', disabled: !hasMinAudio, loading: saving, onPress: handleSaveSyncFriends, hide: false }
-        }
-        return {
-          label: 'Next',
-          disabled: !hasMinAudio,
-          loading: false,
-          onPress: () => setCurrentAudioFriendIndex((i) => i + 1),
-          hide: false,
-        }
-      }
-      case 'pathB_birthday':
-        return {
-          label: 'Next',
-          disabled: false,
-          loading: false,
-          onPress: () => {
-            const personDateToCommit = pendingPersonBirthdayRef.current
-            if (personDateToCommit) {
-              setData((p) => ({ ...p, personBirthday: personDateToCommit }))
-              pendingPersonBirthdayRef.current = null
-            } else if (!data.personBirthday) {
-              // Safety fallback: normally unreachable because the seeding useEffect
-              // (above) always initializes pendingPersonBirthdayRef.current before the
-              // user can tap Next. DO NOT remove that effect assuming this branch covers it —
-              // this branch only fires if the effect somehow did not run (e.g., future
-              // refactor changes the dependency array). The ref seeding is the real guard.
-              setData((p) => ({ ...p, personBirthday: DEFAULT_PERSON_DATE }))
-            }
-            handleGoNext()
-          },
-          hide: false,
-        }
-      case 'pathB_gender':
-        return { label: 'Next', disabled: !data.personGender, loading: false, onPress: handleGoNext, hide: false }
-      case 'pathB_audio':
-        return {
-          label: 'Finish',
-          disabled: !data.audioClipStoragePath || (data.audioClipDuration || 0) < 10,
-          loading: saving,
-          onPress: handleSavePersonPathB,
-          hide: false,
-        }
-      case 'pathB_name':
-        return { label: 'Next', disabled: !data.personName?.trim(), loading: false, onPress: handleGoNext, hide: false }
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePersonPathB, handleSaveSyncFriends, persistStep, goToSubStep, currentAudioFriendIndex, audioClipsByFriend])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -2407,10 +2626,10 @@ const OnboardingFlow = ({
       )
     }
 
-    // ─── STEP 5 ───
-    if (subStep === 'friends') {
+    // ─── STEP 5: Friends & Pairing ───
+    if (subStep === 'friends_and_pairing') {
       return (
-        <OnboardingFriendsStep
+        <OnboardingFriendsAndPairingStep
           userId={user!.id}
           userPhoneE164={data.phoneNumber}
           addedFriends={data.addedFriends}
@@ -2426,10 +2645,16 @@ const OnboardingFlow = ({
               addedFriends: prev.addedFriends.filter(f => f.phoneE164 !== phoneE164),
             }))
           }}
+          pairActions={data.pairActions}
+          onPairAction={(action) => {
+            setData(prev => ({
+              ...prev,
+              pairActions: [...prev.pairActions, action],
+            }))
+          }}
           onContinue={() => goNext()}
           onSkip={() => {
             setData(prev => ({ ...prev, skippedFriends: true }))
-            setSkippedFriends(true)
             goNext()
           }}
           incomingRequests={incomingPendingRequests}
@@ -2445,16 +2670,8 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'consent') {
-      return (
-        <OnboardingConsentStep
-          onConsent={() => goNext()}
-          onDecline={() => goNext()}
-        />
-      )
-    }
-
-    if (subStep === 'collaboration') {
+    // ─── STEP 6: Collaborations ───
+    if (subStep === 'collaborations') {
       return (
         <OnboardingCollaborationStep
           userId={user!.id}
@@ -2478,181 +2695,29 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'pitch') {
+    // ─── STEP 7a: Consent ───
+    if (subStep === 'consent') {
       return (
-        <View>
-          <Text style={styles.headline}>Who do you have in mind?</Text>
-          <Text style={styles.body}>The people you care about deserve experiences that feel personal — not generic.</Text>
-          <View style={styles.pathCards}>
-            <Pressable
-              style={styles.pathCard}
-              onPress={() => {
-                logger.action('Path selected: invite')
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setData((p) => ({ ...p, invitePath: 'invite' }))
-                choosePath('invite')
-              }}
-            >
-              <Ionicons name="heart-outline" size={24} color={colors.primary[500]} />
-              <Text style={styles.pathCardTitle}>Sync with someone close</Text>
-              <Text style={styles.pathCardDesc}>Best friends remember their coffee order. You'll remember the rooftop bar they'd never find alone. Link up — your recommendations learn from each other.</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pathCard}
-              onPress={() => {
-                logger.action('Path selected: add')
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setData((p) => ({ ...p, invitePath: 'add' }))
-                choosePath('add')
-              }}
-            >
-              <Ionicons name="person-add-outline" size={24} color={colors.primary[500]} />
-              <Text style={styles.pathCardTitle}>Add someone</Text>
-              <Text style={styles.pathCardDesc}>They don't need the app. Tell us about them and we'll handle the rest.</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pathCard}
-              onPress={() => {
-                logger.action('Path selected: skip')
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setData((p) => ({ ...p, invitePath: 'skip' }))
-                choosePath('skip')
-              }}
-            >
-              <Ionicons name="arrow-forward-outline" size={24} color={colors.gray[400]} />
-              <Text style={styles.pathCardTitle}>Take me to the app</Text>
-              <Text style={styles.pathCardDesc}>You can always add people later.</Text>
-            </Pressable>
-          </View>
-        </View>
-      )
-    }
-
-    if (subStep === 'pathA_sync') {
-      return (
-        <OnboardingSyncStep
-          userId={user!.id}
-          userPhoneE164={buildE164()}
-          addedFriends={data.addedFriends}
-          initialSelectedIds={data.selectedSyncFriends.map(f => f.userId || f.phoneE164)}
-          onContinue={(selectedFriends, newFriends) => {
-            setData(prev => ({
-              ...prev,
-              selectedSyncFriends: selectedFriends,
-              addedFriends: [...prev.addedFriends, ...newFriends],
-            }))
-            setCurrentAudioFriendIndex(0)
-            setAudioClipsByFriend({})
-            goNext()
-          }}
+        <OnboardingConsentStep
+          onConsent={() => goNext()}
+          onDecline={() => goNext()}
         />
       )
     }
 
-    // pathA_audio step removed — audio recording pipeline replaced by pairing system
-
-    if (subStep === 'pathB_name') {
+    // ─── STEP 7b: Getting Experiences ───
+    if (subStep === 'getting_experiences') {
       return (
-        <View>
-          <Text style={styles.headline}>What's their name?</Text>
-          <View style={styles.inputSpacing}>
-            <TextInput
-              style={styles.textInput}
-              value={data.personName || ''}
-              onChangeText={(t) => setData((p) => ({ ...p, personName: t }))}
-              placeholder="First name"
-              placeholderTextColor={colors.gray[400]}
-              autoCapitalize="words"
-              autoFocus
-            />
-          </View>
-        </View>
+        <GettingExperiencesScreen
+          userId={user!.id}
+          data={data}
+          warmPoolPromiseRef={warmPoolPromiseRef}
+          onComplete={onComplete}
+        />
       )
     }
-
-    if (subStep === 'pathB_birthday') {
-      return (
-        <View>
-          <Text style={styles.headline}>When's their birthday?</Text>
-          <Text style={styles.body}>So we can get the vibe right.</Text>
-          <DateTimePicker
-            value={pendingPersonBirthdayRef.current || data.personBirthday || DEFAULT_PERSON_DATE}
-            mode="date"
-            display="spinner"
-            minimumDate={MIN_PERSON_DATE}
-            maximumDate={MAX_PERSON_DATE}
-            onChange={(_event, selectedDate) => {
-              if (Platform.OS === 'android') {
-                // Android: commit immediately on confirm
-                if (_event.type === 'set' && selectedDate) {
-                  setData((p) => ({ ...p, personBirthday: selectedDate }))
-                }
-                return
-              }
-              // iOS: update ref, committed via Next CTA
-              if (selectedDate) pendingPersonBirthdayRef.current = selectedDate
-            }}
-          />
-        </View>
-      )
-    }
-
-    if (subStep === 'pathB_gender') {
-      return (
-        <View>
-          <Text style={styles.headline}>How do they identify?</Text>
-          <Text style={styles.body}>Helps us personalize their picks.</Text>
-          {GENDER_OPTIONS.map((g) => (
-            <Pressable
-              key={g}
-              style={[styles.genderRow, data.personGender === g && styles.genderRowSelected]}
-              onPress={() => {
-                logger.action(`Gender selected: ${GENDER_DISPLAY_LABELS[g]}`)
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setData((p) => ({ ...p, personGender: g }))
-              }}
-            >
-              <Text style={[styles.genderText, data.personGender === g && styles.genderTextSelected]}>
-                {GENDER_DISPLAY_LABELS[g]}
-              </Text>
-              {data.personGender === g && <Ionicons name="checkmark" size={20} color={colors.text.inverse} />}
-            </Pressable>
-          ))}
-        </View>
-      )
-    }
-
-    // pathB_audio step removed — audio recording pipeline replaced by pairing system
 
     return null
-  }
-
-  // ─── Launch Screen ───
-  if (isLaunch) {
-    return (
-      <View style={styles.launchContainer}>
-        {launchState === 'loading' && (
-          <View style={styles.centerContent}>
-            <PulseDotLoader />
-            <Text style={[styles.body, styles.launchText]}>{launchLoadingText}</Text>
-          </View>
-        )}
-        {launchState === 'ready' && (
-          <Animated.View style={[styles.centerContent, { opacity: revealOpacity, transform: [{ scale: revealScale }] }]}>
-            <Text style={styles.headline}>Your picks are ready.</Text>
-            <Text style={styles.body}>Swipe right to save. Left to skip.</Text>
-          </Animated.View>
-        )}
-        {launchState === 'error' && (
-          <View style={styles.centerContent}>
-            <Text style={styles.body}>Having trouble loading your picks. Give it another shot.</Text>
-            <Pressable style={styles.primaryButton} onPress={handleLaunchRetry}>
-              <Text style={styles.primaryButtonText}>Try again</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    )
   }
 
   const ctaConfig = getCtaConfig()
@@ -2668,7 +2733,7 @@ const OnboardingFlow = ({
       primaryCtaLoading={ctaConfig.loading}
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
-      hideBottomBar={false}
+      hideBottomBar={navState.subStep === 'getting_experiences'}
       scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
@@ -3051,30 +3116,6 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginLeft: spacing.sm,
   },
-  // ─── Path Cards (Step 5) ───
-  pathCards: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  pathCard: {
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.background.primary,
-  },
-  pathCardTitle: {
-    ...typography.md,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-    marginTop: spacing.sm,
-  },
-  pathCardDesc: {
-    ...typography.sm,
-    color: colors.text.secondary,
-    marginTop: spacing.xs,
-  },
   // ─── Gender Rows ───
   genderRow: {
     flexDirection: 'row',
@@ -3343,17 +3384,6 @@ const styles = StyleSheet.create({
     ...typography.md,
     fontWeight: fontWeights.semibold,
     color: colors.text.inverse,
-  },
-  // ─── Launch ───
-  launchContainer: {
-    flex: 1,
-    backgroundColor: backgroundWarmGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  launchText: {
-    marginTop: spacing.lg,
   },
   // ─── Location Autocomplete ───
   locationSearchContainer: {

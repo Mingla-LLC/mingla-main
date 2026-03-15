@@ -125,11 +125,8 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
     }
   }, [pendingInvites])
 
-  // All pending resolved
-  const allPendingResolved = pendingCollabInvites.length === 0
-
-  // Can continue
-  const canContinue = allPendingResolved
+  // Continue is always enabled — all skippable
+  const canContinue = true
 
   // Unique key for a friend — userId for existing, phoneE164 for invited
   const getFriendKey = useCallback((friend: AddedFriend): string => {
@@ -279,13 +276,13 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      <Text style={styles.headline}>Start a session</Text>
+      <Text style={styles.headline}>Plan something together</Text>
       <Text style={styles.body}>
-        Create a collaboration session with your friends to discover experiences together.
+        Start a session with your crew. Discover things to do, vote on favorites, and actually make it happen.
       </Text>
 
       {/* Friend chips */}
-      <Text style={styles.sectionLabel}>Select friends</Text>
+      <Text style={styles.sectionLabel}>Who's in?</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -334,7 +331,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             style={styles.nameInput}
             value={sessionName}
             onChangeText={(text) => { setSessionName(text); setCreateError(null) }}
-            placeholder="e.g. Weekend plans"
+            placeholder="e.g. Weekend plans, Date night ideas..."
             placeholderTextColor={colors.gray[400]}
             maxLength={50}
             autoCapitalize="sentences"
@@ -353,7 +350,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             {creating ? (
               <ActivityIndicator size="small" color={colors.text.inverse} />
             ) : (
-              <Text style={styles.createButtonText}>Create Session</Text>
+              <Text style={styles.createButtonText}>Start session</Text>
             )}
           </Pressable>
           {createError && (
@@ -434,7 +431,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       {pendingCollabInvites.length > 0 && (
         <View style={styles.invitesSection}>
           <Text style={styles.sectionLabel}>
-            Pending collaboration invites ({pendingCollabInvites.length})
+            You're invited ({pendingCollabInvites.length})
           </Text>
 
           {pendingCollabInvites.length > 10 && (
@@ -469,7 +466,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                   style={styles.acceptButton}
                   onPress={() => handleAcceptInvite(invite.id)}
                 >
-                  <Text style={styles.acceptButtonText}>Accept</Text>
+                  <Text style={styles.acceptButtonText}>Join</Text>
                 </Pressable>
                 <Pressable
                   style={styles.declineButton}
@@ -492,7 +489,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             color={colors.gray[300]}
           />
           <Text style={styles.emptyStateText}>
-            No friends added yet. Go back to add friends first.
+            Pair with friends first — then you can start planning together.
           </Text>
         </View>
       )}
@@ -509,7 +506,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
       {/* Skip button */}
       <Pressable style={styles.skipButton} onPress={onSkip}>
-        <Text style={styles.skipButtonText}>Skip for now</Text>
+        <Text style={styles.skipButtonText}>I'll do this later</Text>
       </Pressable>
     </ScrollView>
   )

@@ -38,6 +38,9 @@ import PairRequestModal from "./PairRequestModal";
 import PairingInfoCard from "./PairingInfoCard";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
 import PairedPeopleRow from "./PairedPeopleRow";
+import PersonHolidayView from "./PersonHolidayView";
+import CustomHolidayModal from "./CustomHolidayModal";
+import { STANDARD_HOLIDAYS } from "../constants/holidays";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -59,11 +62,12 @@ interface CustomHoliday {
   id: string;
   personId: string; // The person this holiday is attached to
   name: string;
-  date: string; // ISO date string
+  date: string; // "MM-DD" format (recurring yearly)
   description: string;
   category: string;
   categories?: string[];
   createdAt: string;
+  year?: number; // Original year the event occurred
 }
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
@@ -810,16 +814,6 @@ export default function DiscoverScreen({
   
   // Add Custom Day Modal state
   const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
-  const [customDayName, setCustomDayName] = useState("");
-  const [customDayMonth, setCustomDayMonth] = useState<number>(0); // 1-12, 0 = not selected
-  const [customDayDay, setCustomDayDay] = useState<number>(0); // 1-31, 0 = not selected
-  const [showCustomDayMonthPicker, setShowCustomDayMonthPicker] = useState(false);
-  const [showCustomDayDayPicker, setShowCustomDayDayPicker] = useState(false);
-  const [customDayDescription, setCustomDayDescription] = useState("");
-  const [customDayCategories, setCustomDayCategories] = useState<string[]>(["Fine Dining"]);
-  const [customDayNameError, setCustomDayNameError] = useState<string | null>(null);
-  const [customDayDateError, setCustomDayDateError] = useState<string | null>(null);
-  const [customDayCategoryError, setCustomDayCategoryError] = useState<string | null>(null);
 
   // Toggle holiday expansion
   const toggleHolidayExpansion = (holidayId: string) => {
@@ -2508,83 +2502,182 @@ export default function DiscoverScreen({
 
   // Add Custom Day Modal handlers
   const handleOpenAddCustomDayModal = () => {
-    if (selectedPillId === "for-you") {
-      // Can't add custom days without a person selected
-      return;
-    }
+    if (selectedPillId === "for-you") return;
     setIsAddCustomDayModalVisible(true);
   };
 
   const handleCloseAddCustomDayModal = () => {
     setIsAddCustomDayModalVisible(false);
-    setCustomDayName("");
-    setCustomDayMonth(0);
-    setCustomDayDay(0);
-    setShowCustomDayMonthPicker(false);
-    setShowCustomDayDayPicker(false);
-    setCustomDayDescription("");
-    setCustomDayCategories(["Fine Dining"]);
-    setCustomDayNameError(null);
-    setCustomDayDateError(null);
-    setCustomDayCategoryError(null);
   };
 
-  const handleCustomDayDateChange = () => {}; // No longer needed - using month/day pickers
+  // Handle save from CustomHolidayModal
+  const handleCustomHolidaySave = useCallback(
+    async (holiday: { name: string; month: number; day: number; year: number }) => {
+      if (selectedPillId === "for-you") return; // Guard: no person selected
+      const dateStr = `${String(holiday.month).padStart(2, "0")}-${String(holiday.day).padStart(2, "0")}`;
 
-  const handleAddCustomDay = async () => {
-    // Validate required fields
-    let hasError = false;
-    
-    if (!customDayName.trim()) {
-      setCustomDayNameError("Day name is required");
-      hasError = true;
-    }
-    
-    if (!customDayMonth || !customDayDay) {
-      setCustomDayDateError("Date is required");
-      hasError = true;
-    }
+      const newCustomHoliday: CustomHoliday = {
+        id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        personId: selectedPillId,
+        name: holiday.name,
+        date: dateStr,
+        description: "",
+        category: "Fine Dining",
+        categories: ["Fine Dining"],
+        createdAt: new Date().toISOString(),
+        year: holiday.year,
+      };
 
-    if (customDayCategories.length === 0) {
-      setCustomDayCategoryError("Select at least one category");
-      hasError = true;
-    }
-    
-    if (hasError) return;
-    
-    // Store date as MM-DD format (recurring yearly)
-    const dateStr = `${String(customDayMonth).padStart(2, "0")}-${String(customDayDay).padStart(2, "0")}`;
-    const normalizedCategories = customDayCategories.length > 0
-      ? customDayCategories
-      : ["Fine Dining"];
-    
-    // Create new custom holiday
-    const newCustomHoliday: CustomHoliday = {
-      id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      personId: selectedPillId,
-      name: customDayName.trim(),
-      date: dateStr,
-      description: customDayDescription.trim() || "Custom celebration day",
-      category: normalizedCategories[0],
-      categories: normalizedCategories,
-      createdAt: new Date().toISOString(),
-    };
-    
-    const updatedHolidays = [...customHolidays, newCustomHoliday];
-    setCustomHolidays(updatedHolidays);
-    await saveCustomHolidaysToStorage(updatedHolidays);
+      const updatedHolidays = [...customHolidays, newCustomHoliday];
+      setCustomHolidays(updatedHolidays);
+      await saveCustomHolidaysToStorage(updatedHolidays);
 
-    // Track in Mixpanel
-    mixpanelService.trackDiscoverCustomHolidayAdded({
-      holidayName: customDayName.trim(),
-      date: dateStr,
-      categories: normalizedCategories,
-      personId: selectedPillId,
+      mixpanelService.trackDiscoverCustomHolidayAdded({
+        holidayName: holiday.name,
+        date: dateStr,
+        categories: ["Fine Dining"],
+        personId: selectedPillId,
+      });
+      // Note: CustomHolidayModal calls onClose() after onSave(), so no manual close needed
+    },
+    [customHolidays, selectedPillId, saveCustomHolidaysToStorage]
+  );
+
+  // Location for PersonHolidayView — use GPS first, fall back to saved preference
+  // Returns {0,0} when neither source is available yet; CardRow will show
+  // a "Getting your location" state and the query won't fire until real coords arrive.
+  const personViewLocation = useMemo(
+    () => ({
+      latitude: deviceGpsLat ?? fallbackLat ?? 0,
+      longitude: deviceGpsLng ?? fallbackLng ?? 0,
+    }),
+    [deviceGpsLat, deviceGpsLng, fallbackLat, fallbackLng]
+  );
+
+  // Transform custom holidays from DiscoverScreen format to PersonHolidayView format
+  const personCustomHolidays = useMemo(() => {
+    if (selectedPillId === "for-you") return undefined;
+    const filtered = customHolidays.filter((h) => h.personId === selectedPillId);
+    if (filtered.length === 0) return undefined;
+    return filtered.map((h) => {
+      const [month, day] = h.date.split("-").map(Number);
+      return {
+        id: h.id,
+        name: h.name,
+        month: month || 1,
+        day: day || 1,
+        year: h.year ?? new Date().getFullYear(),
+      };
     });
+  }, [customHolidays, selectedPillId]);
 
-    // Close modal
-    handleCloseAddCustomDayModal();
-  };
+  // Archive/unarchive handlers for PersonHolidayView (persisted via AsyncStorage)
+  // Migrates old-format keys (calendar:valentine's day:02-14) to holiday IDs (valentines_day)
+  const personArchivedHolidayIds = useMemo(() => {
+    if (selectedPillId === "for-you") return [];
+    const raw = archivedHolidayKeysByPerson[selectedPillId] ?? [];
+    if (raw.length === 0) return raw;
+
+    // Build reverse lookup: normalized "name:MM-DD" → holiday ID
+    const oldKeyToId = new Map<string, string>();
+    for (const h of STANDARD_HOLIDAYS) {
+      const yr = new Date().getFullYear();
+      const d = h.getDate(yr);
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const normName = h.name.trim().toLowerCase();
+      oldKeyToId.set(`calendar:${normName}:${mm}-${dd}`, h.id);
+    }
+
+    return raw.map((key) => {
+      // Already a holiday ID (new format)? Keep as-is.
+      if (!key.startsWith("calendar:") && !key.startsWith("custom:")) return key;
+      // Old format → look up matching holiday ID
+      return oldKeyToId.get(key) ?? key;
+    });
+  }, [archivedHolidayKeysByPerson, selectedPillId]);
+
+  const handlePersonArchiveHoliday = useCallback(async (holidayId: string) => {
+    if (selectedPillId === "for-you") return;
+    const current = archivedHolidayKeysByPerson[selectedPillId] || [];
+    if (current.includes(holidayId)) return;
+    const nextMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPillId]: [...current, holidayId],
+    };
+    setArchivedHolidayKeysByPerson(nextMap);
+    await saveArchivedHolidaysToStorage(nextMap);
+  }, [archivedHolidayKeysByPerson, selectedPillId]);
+
+  const handlePersonUnarchiveHoliday = useCallback(async (holidayId: string) => {
+    if (selectedPillId === "for-you") return;
+    const current = archivedHolidayKeysByPerson[selectedPillId] || [];
+    if (!current.includes(holidayId)) return;
+    const nextMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPillId]: current.filter((k) => k !== holidayId),
+    };
+    setArchivedHolidayKeysByPerson(nextMap);
+    await saveArchivedHolidaysToStorage(nextMap);
+  }, [archivedHolidayKeysByPerson, selectedPillId]);
+
+  // Handle card press from PersonHolidayView — open ExpandedCardModal
+  const handlePersonCardPress = useCallback(
+    (card: {
+      id: string;
+      title: string;
+      category: string;
+      imageUrl: string | null;
+      rating: number | null;
+      address: string | null;
+      priceRange: string | null;
+      cardType: "single" | "curated";
+      experienceType: string | null;
+    }) => {
+      const expanded: ExpandedCardData = {
+        id: card.id,
+        placeId: card.id,
+        title: card.title,
+        category: card.category,
+        categoryIcon: categoryIcons[card.category] || "ellipse-outline",
+        description: "",
+        fullDescription: "",
+        image: card.imageUrl || "",
+        images: card.imageUrl ? [card.imageUrl] : [],
+        rating: card.rating ?? 0,
+        reviewCount: 0,
+        priceRange: card.priceRange || "",
+        distance: "",
+        travelTime: "",
+        address: card.address || "",
+        highlights: [],
+        tags: [],
+        matchScore: 0,
+        matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+        socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+        selectedDateTime: new Date(),
+        ...(card.cardType === "curated" ? { cardType: "curated" as const } : {}),
+      };
+      setSelectedCardForExpansion(expanded);
+      setIsExpandedModalVisible(true);
+    },
+    []
+  );
+
+  // Transform discover recommendations into fallback cards for PersonHolidayView
+  // These are real Google Places that already loaded on the For You tab
+  const fallbackCardsForPerson = useMemo(() => {
+    if (discoverRecommendations.length === 0) return undefined;
+    return discoverRecommendations.slice(0, 30).map((rec) => ({
+      id: rec.id,
+      title: rec.title,
+      category: rec.category,
+      image: rec.image,
+      rating: rec.rating,
+      address: rec.address,
+      priceRange: rec.priceRange,
+    }));
+  }, [discoverRecommendations]);
 
   // Delete a custom holiday
   const handleDeleteCustomHoliday = async (holidayId: string) => {
@@ -2605,16 +2698,6 @@ export default function DiscoverScreen({
         await saveArchivedHolidaysToStorage(nextArchiveMap);
       }
     }
-  };
-
-  const toggleCustomDayCategory = (category: string) => {
-    setCustomDayCategories((prev) => {
-      if (prev.includes(category)) {
-        return prev.filter((item) => item !== category);
-      }
-      if (customDayCategoryError) setCustomDayCategoryError(null);
-      return [...prev, category];
-    });
   };
 
   const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
@@ -3073,281 +3156,23 @@ export default function DiscoverScreen({
               </ScrollView>
 
               {/* Person-specific view when a person is selected */}
-              {selectedPill?.pillState === 'active' ? (
-                <View style={styles.personHolidayContainer}>
-                  {/* Birthday Hero */}
-                  {birthdayInfo && (
-                    <Animated.View style={{ opacity: birthdayHeroOpacity, transform: [{ translateY: birthdayHeroSlide }] }}>
-                      <View style={styles.birthdayHeroCard}>
-                        <View style={styles.birthdayHeroContent}>
-                          <View style={styles.birthdayHeroLeft}>
-                            <Text style={styles.birthdayHeroTitle}>
-                              {selectedPill.displayName}'s Birthday
-                            </Text>
-                            <Text style={styles.birthdayHeroSubtitle}>{birthdayInfo.label}</Text>
-                          </View>
-                          <View style={styles.birthdayHeroDaysContainer}>
-                            <Text style={styles.birthdayHeroDaysNumber}>{birthdayInfo.daysAway}</Text>
-                            <Text style={styles.birthdayHeroDaysText}>
-                              {birthdayInfo.daysAway === 1 ? "day" : "days"}
-                            </Text>
-                            <Text style={styles.birthdayHeroDaysLabel}>away</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </Animated.View>
-                  )}
-
-                  {/* Upcoming Holidays Header */}
-                  <View style={styles.upcomingHolidaysSection}>
-                    <View style={styles.upcomingHolidaysHeader}>
-                      <Text style={styles.upcomingHolidaysTitle}>Upcoming Holidays</Text>
-                      <TouchableOpacity
-                        style={styles.upcomingHolidaysAddButton}
-                        onPress={handleOpenAddCustomDayModal}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="add-circle-outline" size={24} color="#eb7825" />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Loading */}
-                    {holidaysLoading && (
-                      <View style={styles.holidayLoadingContainer}>
-                        <ActivityIndicator size="small" color="#eb7825" />
-                        <Text style={styles.holidayLoadingText}>Loading holidays...</Text>
-                      </View>
-                    )}
-
-                    {/* Visible Holidays */}
-                    {!holidaysLoading && visibleHolidays.length === 0 && (
-                      <View style={styles.holidayEmptyState}>
-                        <Ionicons name="calendar-outline" size={36} color="#d1d5db" />
-                        <Text style={styles.holidayEmptyStateText}>No upcoming holidays</Text>
-                        <TouchableOpacity onPress={handleOpenAddCustomDayModal} style={styles.holidayEmptyStateAction}>
-                          <Text style={styles.holidayEmptyStateActionText}>Add a custom day</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {visibleHolidays.map((holiday, index) => {
-                      const isExpanded = expandedHolidayIds.has(holiday.id);
-                      const cards = holidayCardsById[holiday.id];
-                      const isLoadingCards = holidayCardsLoadingById[holiday.id];
-                      const extHoliday = holiday as ExtendedHoliday;
-                      const isCustom = extHoliday.isCustom === true;
-                      const animIndex = Math.min(index, holidayItemAnimations.length - 1);
-                      const anim = holidayItemAnimations[animIndex];
-
-                      return (
-                        <Animated.View
-                          key={holiday.id}
-                          style={{
-                            opacity: anim?.opacity ?? 1,
-                            transform: [{ translateX: anim?.translateX ?? 0 }],
-                          }}
-                        >
-                          <View style={styles.holidayItemContainer}>
-                            {/* Holiday Row — tappable to expand */}
-                            <TouchableOpacity
-                              style={styles.holidayItem}
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                toggleHolidayExpansion(holiday.id);
-                                if (!isExpanded && !cards && !isLoadingCards) {
-                                  loadHolidayCardsOnDemand({
-                                    id: holiday.id,
-                                    name: holiday.name,
-                                    daysAway: holiday.daysAway,
-                                    categories: extHoliday.categories,
-                                    category: holiday.category,
-                                    isCustom,
-                                  });
-                                }
-                              }}
-                            >
-                              <View style={styles.holidayItemLeft}>
-                                <View style={styles.holidayItemNameRow}>
-                                  <Text style={styles.holidayItemName}>{holiday.name}</Text>
-                                  <View style={styles.holidayItemActions}>
-                                    <TouchableOpacity
-                                      style={styles.holidayArchiveButton}
-                                      onPress={() => handleArchiveHoliday(extHoliday)}
-                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                      <Ionicons name="archive-outline" size={16} color="#9ca3af" />
-                                    </TouchableOpacity>
-                                    {isCustom && (
-                                      <TouchableOpacity
-                                        style={styles.holidayDeleteButton}
-                                        onPress={() => handleDeleteCustomHoliday(holiday.id)}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                      >
-                                        <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                      </TouchableOpacity>
-                                    )}
-                                    <Ionicons
-                                      name={isExpanded ? "chevron-up" : "chevron-down"}
-                                      size={18}
-                                      color="#9ca3af"
-                                    />
-                                  </View>
-                                </View>
-                                <Text style={styles.holidayItemDate}>
-                                  {formatHolidayDateForDisplay(holiday.date)}
-                                </Text>
-                                {holiday.description ? (
-                                  <Text style={styles.holidayItemDescription} numberOfLines={1}>
-                                    {holiday.description}
-                                  </Text>
-                                ) : null}
-                                {holiday.category ? (
-                                  <View style={styles.holidayCategoryBadge}>
-                                    <Ionicons name="pricetag-outline" size={10} color="#eb7825" />
-                                    <Text style={styles.holidayCategoryText}>{holiday.category}</Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                              <View style={styles.holidayItemRight}>
-                                <Text style={styles.holidayItemDays}>{holiday.daysAway}</Text>
-                                <Text style={styles.holidayItemDaysLabel}>
-                                  {holiday.daysAway === 1 ? "day" : "days"}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-
-                            {/* Expanded: Experience Cards */}
-                            {isExpanded && (
-                              <View style={styles.holidayCardsContainer}>
-                                {isLoadingCards ? (
-                                  <View style={styles.holidayLoadingContainer}>
-                                    <ActivityIndicator size="small" color="#eb7825" />
-                                    <Text style={styles.holidayLoadingText}>Finding experiences...</Text>
-                                  </View>
-                                ) : cards && cards.length > 0 ? (
-                                  <>
-                                    <TouchableOpacity
-                                      style={styles.holidayNavButton}
-                                      onPress={() => scrollHolidayCards(holiday.id, 'left')}
-                                    >
-                                      <Ionicons name="chevron-back" size={16} color="#6b7280" />
-                                    </TouchableOpacity>
-                                    <ScrollView
-                                      ref={(ref) => { holidayScrollRefs.current[holiday.id] = ref; }}
-                                      horizontal
-                                      showsHorizontalScrollIndicator={false}
-                                      contentContainerStyle={styles.holidayCardsScrollContent}
-                                      onScroll={(e) => handleHolidayScroll(holiday.id, e)}
-                                      scrollEventThrottle={16}
-                                    >
-                                      {cards.map((card) => (
-                                        <TouchableOpacity
-                                          key={card.id}
-                                          style={styles.holidayMiniCard}
-                                          activeOpacity={0.8}
-                                          onPress={() => handleGridCardPress(card)}
-                                        >
-                                          {card.image ? (
-                                            <Image
-                                              source={{ uri: card.image }}
-                                              style={styles.holidayMiniCardImage}
-                                              resizeMode="cover"
-                                            />
-                                          ) : (
-                                            <View style={[styles.holidayMiniCardImage, styles.holidayMiniCardImagePlaceholder]}>
-                                              <Ionicons name="image-outline" size={24} color="#d1d5db" />
-                                            </View>
-                                          )}
-                                          <View style={styles.holidayMiniCardContent}>
-                                            <Text style={styles.holidayMiniCardTitle} numberOfLines={2}>{card.title}</Text>
-                                            {card.description ? (
-                                              <Text style={styles.holidayMiniCardDescription} numberOfLines={1}>{card.description}</Text>
-                                            ) : null}
-                                            <View style={styles.holidayMiniCardFooter}>
-                                              {card.priceRange ? (
-                                                <Text style={styles.holidayMiniCardPrice}>{card.priceRange}</Text>
-                                              ) : <View />}
-                                              {card.rating ? (
-                                                <View style={styles.holidayMiniCardRating}>
-                                                  <Ionicons name="star" size={10} color="#F59E0B" />
-                                                  <Text style={styles.holidayMiniCardRatingText}>{card.rating.toFixed(1)}</Text>
-                                                </View>
-                                              ) : null}
-                                            </View>
-                                          </View>
-                                        </TouchableOpacity>
-                                      ))}
-                                    </ScrollView>
-                                    <TouchableOpacity
-                                      style={styles.holidayNavButton}
-                                      onPress={() => scrollHolidayCards(holiday.id, 'right')}
-                                    >
-                                      <Ionicons name="chevron-forward" size={16} color="#6b7280" />
-                                    </TouchableOpacity>
-                                  </>
-                                ) : (
-                                  <View style={styles.holidayCardsEmptyState}>
-                                    <Text style={styles.holidayCardsEmptyText}>No experiences found for this holiday</Text>
-                                  </View>
-                                )}
-                              </View>
-                            )}
-                          </View>
-                        </Animated.View>
-                      );
-                    })}
-
-                    {/* Archived Holidays Toggle */}
-                    {archivedHolidays.length > 0 && (
-                      <View style={styles.archivedHolidaysSection}>
-                        <TouchableOpacity
-                          style={styles.archivedHolidaysToggle}
-                          onPress={() => setIsArchivedHolidaysExpanded(!isArchivedHolidaysExpanded)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.archivedHolidaysToggleLeft}>
-                            <Ionicons name="archive-outline" size={18} color="#6b7280" />
-                            <Text style={styles.archivedHolidaysToggleTitle}>Archived</Text>
-                            <Text style={styles.archivedHolidaysToggleCount}>({archivedHolidays.length})</Text>
-                          </View>
-                          <Ionicons
-                            name={isArchivedHolidaysExpanded ? "chevron-up" : "chevron-down"}
-                            size={18}
-                            color="#6b7280"
-                          />
-                        </TouchableOpacity>
-
-                        {isArchivedHolidaysExpanded && (
-                          archivedHolidays.length === 0 ? (
-                            <View style={styles.archivedHolidaysEmptyState}>
-                              <Text style={styles.archivedHolidaysEmptyText}>No archived holidays</Text>
-                            </View>
-                          ) : (
-                            archivedHolidays.map((holiday) => (
-                              <View key={holiday.id} style={styles.archivedHolidayItem}>
-                                <View style={styles.archivedHolidayTextWrap}>
-                                  <Text style={styles.archivedHolidayName}>{holiday.name}</Text>
-                                  <Text style={styles.archivedHolidayMeta}>
-                                    {formatHolidayDateForDisplay(holiday.date)} · {holiday.daysAway} {holiday.daysAway === 1 ? "day" : "days"} away
-                                  </Text>
-                                </View>
-                                <View style={styles.archivedHolidayActions}>
-                                  <TouchableOpacity
-                                    style={styles.archivedHolidayActionButton}
-                                    onPress={() => handleUnarchiveHoliday(holiday as ExtendedHoliday)}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                  >
-                                    <Ionicons name="arrow-undo-outline" size={14} color="#6b7280" />
-                                  </TouchableOpacity>
-                                </View>
-                              </View>
-                            ))
-                          )
-                        )}
-                      </View>
-                    )}
-                  </View>
-                </View>
+              {selectedPill?.pillState === 'active' && user?.id ? (
+                <PersonHolidayView
+                  pairedUserId={selectedPill.pairedUserId!}
+                  pairingId={selectedPill.pairingId!}
+                  displayName={selectedPill.displayName}
+                  birthday={selectedPill.birthday}
+                  gender={selectedPill.gender}
+                  location={personViewLocation}
+                  userId={user.id}
+                  customHolidays={personCustomHolidays}
+                  onAddCustomDay={handleOpenAddCustomDayModal}
+                  fallbackCards={fallbackCardsForPerson}
+                  archivedHolidayIds={personArchivedHolidayIds}
+                  onArchiveHoliday={handlePersonArchiveHoliday}
+                  onUnarchiveHoliday={handlePersonUnarchiveHoliday}
+                  onCardPress={handlePersonCardPress}
+                />
               ) : (
                 <>
                   {/* Paired People Row — horizontal scroll of paired people cards */}
@@ -3639,294 +3464,11 @@ export default function DiscoverScreen({
       />
 
       {/* Add Custom Day Modal */}
-      <Modal
+      <CustomHolidayModal
         visible={isAddCustomDayModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={handleCloseAddCustomDayModal}
-      >
-        <View style={styles.addPersonBottomSheetOverlay}>
-          <TouchableOpacity
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={handleCloseAddCustomDayModal}
-          />
-          <View
-            style={[
-              styles.addPersonBottomSheetContent,
-              styles.customDayBottomSheetContent,
-              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
-            ]}
-          >
-            <View style={styles.addPersonSheetHandleContainer}>
-              <View style={styles.addPersonSheetHandle} />
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.customDayModalScrollContent}
-            >
-              {/* Modal Header */}
-              <View style={styles.customDayModalHeader}>
-                <View style={styles.customDayCloseButtonPlaceholder} />
-                <View style={styles.customDayHeaderLeft}>
-                  <View style={styles.customDayIconContainer}>
-                    <Ionicons name="calendar" size={20} color="white" />
-                  </View>
-                  <View style={styles.customDayHeaderTextCenter}>
-                    <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
-                    <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
-                  </View>
-                </View>
-                <View style={styles.customDayCloseButtonPlaceholder} />
-              </View>
-
-            {/* Day Name Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>
-                Day Name <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <TextInput
-                style={[
-                  styles.addPersonBirthdayInput,
-                  customDayNameError && styles.addPersonInputError,
-                ]}
-                value={customDayName}
-                onChangeText={(text) => {
-                  setCustomDayName(text);
-                  if (customDayNameError) setCustomDayNameError(null);
-                }}
-                placeholder="Anniversary, Mom's Birthday, etc."
-                placeholderTextColor="#9ca3af"
-              />
-              {customDayNameError && (
-                <Text style={styles.errorText}>{customDayNameError}</Text>
-              )}
-            </View>
-
-            {/* Date Field - Month & Day only (holidays recur every year) */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>
-                Date <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <Text style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>Holidays recur every year — only month and day are needed.</Text>
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                {/* Month Picker Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.addPersonInput,
-                    { flex: 1 },
-                    customDayDateError && styles.addPersonInputError,
-                  ]}
-                  onPress={() => {
-                    setShowCustomDayMonthPicker(true);
-                    setShowCustomDayDayPicker(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <Text style={customDayMonth ? { color: "#1f2937", fontSize: 14 } : { color: "#9ca3af", fontSize: 14 }}>
-                      {customDayMonth ? MONTH_NAMES[customDayMonth - 1] : "Month"}
-                    </Text>
-                    <Ionicons name="chevron-down" size={18} color="#9ca3af" />
-                  </View>
-                </TouchableOpacity>
-                {/* Day Picker Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.addPersonInput,
-                    { width: 100 },
-                    customDayDateError && styles.addPersonInputError,
-                    !customDayMonth && { opacity: 0.5 },
-                  ]}
-                  onPress={() => {
-                    if (!customDayMonth) return;
-                    setShowCustomDayDayPicker(true);
-                    setShowCustomDayMonthPicker(false);
-                  }}
-                  activeOpacity={0.7}
-                  disabled={!customDayMonth}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <Text style={customDayDay ? { color: "#1f2937", fontSize: 14 } : { color: "#9ca3af", fontSize: 14 }}>
-                      {customDayDay ? String(customDayDay) : "Day"}
-                    </Text>
-                    <Ionicons name="chevron-down" size={18} color="#9ca3af" />
-                  </View>
-                </TouchableOpacity>
-              </View>
-              {customDayDateError && (
-                <Text style={styles.errorText}>{customDayDateError}</Text>
-              )}
-            </View>
-
-            {/* Month Picker Modal */}
-            <Modal
-              visible={showCustomDayMonthPicker}
-              transparent={true}
-              animationType="fade"
-              onRequestClose={() => setShowCustomDayMonthPicker(false)}
-            >
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: 40 }}
-                activeOpacity={1}
-                onPress={() => setShowCustomDayMonthPicker(false)}
-              >
-                <View style={{ backgroundColor: "white", borderRadius: 16, width: "100%", maxHeight: 400, overflow: "hidden" }}>
-                  <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
-                    <Text style={{ fontSize: 16, fontWeight: "600", color: "#1f2937" }}>Select Month</Text>
-                  </View>
-                  <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
-                    {MONTH_NAMES.map((monthName, index) => (
-                      <TouchableOpacity
-                        key={monthName}
-                        style={[
-                          styles.categoryPickerItem,
-                          customDayMonth === index + 1 && styles.categoryPickerItemSelected,
-                        ]}
-                        onPress={() => {
-                          const newMonth = index + 1;
-                          setCustomDayMonth(newMonth);
-                          if (customDayDay > getDaysInMonth(newMonth)) {
-                            setCustomDayDay(getDaysInMonth(newMonth));
-                          }
-                          setShowCustomDayMonthPicker(false);
-                          if (customDayDateError) setCustomDayDateError(null);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[
-                          styles.categoryPickerItemText,
-                          customDayMonth === index + 1 && styles.categoryPickerItemTextSelected,
-                        ]}>
-                          {monthName}
-                        </Text>
-                        {customDayMonth === index + 1 && (
-                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </TouchableOpacity>
-            </Modal>
-
-            {/* Day Picker Modal */}
-            <Modal
-              visible={showCustomDayDayPicker}
-              transparent={true}
-              animationType="fade"
-              onRequestClose={() => setShowCustomDayDayPicker(false)}
-            >
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: 40 }}
-                activeOpacity={1}
-                onPress={() => setShowCustomDayDayPicker(false)}
-              >
-                <View style={{ backgroundColor: "white", borderRadius: 16, width: "100%", maxHeight: 400, overflow: "hidden" }}>
-                  <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
-                    <Text style={{ fontSize: 16, fontWeight: "600", color: "#1f2937" }}>Select Day</Text>
-                  </View>
-                  <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
-                    {customDayMonth > 0 && Array.from({ length: getDaysInMonth(customDayMonth) }, (_, i) => i + 1).map((d) => (
-                      <TouchableOpacity
-                        key={d}
-                        style={[
-                          styles.categoryPickerItem,
-                          customDayDay === d && styles.categoryPickerItemSelected,
-                        ]}
-                        onPress={() => {
-                          setCustomDayDay(d);
-                          setShowCustomDayDayPicker(false);
-                          if (customDayDateError) setCustomDayDateError(null);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[
-                          styles.categoryPickerItemText,
-                          customDayDay === d && styles.categoryPickerItemTextSelected,
-                        ]}>
-                          {d}
-                        </Text>
-                        {customDayDay === d && (
-                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </TouchableOpacity>
-            </Modal>
-
-            {/* Description Field (Optional) */}
-            {/* Description Field (Optional) */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Description</Text>
-              <TextInput
-                style={[styles.customDayDescriptionInput]}
-                value={customDayDescription}
-                onChangeText={setCustomDayDescription}
-                placeholder="Why is this day special?"
-                placeholderTextColor="#9ca3af"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Category Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Category</Text>
-              <Text style={styles.customDayCategoryHint}>Select all the categories you like</Text>
-              <View style={styles.customDayCategoryPillsContainer}>
-                {ALL_CATEGORIES.map((cat) => {
-                  const isSelected = customDayCategories.includes(cat);
-                  return (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        styles.customDayCategoryPill,
-                        isSelected && styles.customDayCategoryPillSelected,
-                      ]}
-                      onPress={() => toggleCustomDayCategory(cat)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={(categoryIcons[cat] || "sparkles-outline") as any}
-                        size={14}
-                        color={isSelected ? "#eb7825" : "#6b7280"}
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text
-                        style={[
-                          styles.customDayCategoryPillText,
-                          isSelected && styles.customDayCategoryPillTextSelected,
-                        ]}
-                      >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {customDayCategoryError && (
-                <Text style={styles.errorText}>{customDayCategoryError}</Text>
-              )}
-            </View>
-
-            {/* Add Button */}
-            <TouchableOpacity
-              style={styles.addCustomDayButton}
-              onPress={handleAddCustomDay}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-              <Text style={styles.addCustomDayButtonText}>Add Custom Day</Text>
-            </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        onClose={handleCloseAddCustomDayModal}
+        onSave={handleCustomHolidaySave}
+      />
 
       {/* Night Out Filter Modal */}
       <Modal

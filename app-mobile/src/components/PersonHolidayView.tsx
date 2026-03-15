@@ -1,12 +1,14 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
+  Image,
   ScrollView,
+  TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import {
   GenderOption,
   HolidayDefinition,
@@ -24,6 +26,20 @@ import { s, SCREEN_WIDTH } from "../utils/responsive";
 import CalendarButton from "./CalendarButton";
 import ShuffleButton from "./ShuffleButton";
 
+// ── Shared card data shape ──────────────────────────────────────────────────
+
+export interface FallbackCard {
+  id: string;
+  title: string;
+  category: string;
+  image: string;
+  rating: number;
+  address: string;
+  priceRange: string;
+}
+
+// ── Props ───────────────────────────────────────────────────────────────────
+
 interface PersonHolidayViewProps {
   pairedUserId: string;
   pairingId: string;
@@ -32,7 +48,6 @@ interface PersonHolidayViewProps {
   gender: string | null;
   location: { latitude: number; longitude: number };
   userId: string;
-  /** Custom holidays passed down from parent */
   customHolidays?: Array<{
     id: string;
     name: string;
@@ -40,289 +55,281 @@ interface PersonHolidayViewProps {
     day: number;
     year: number;
   }>;
-}
-
-// ── Helper functions ────────────────────────────────────────────────────────
-
-function getFirstName(displayName: string): string {
-  return displayName.split(" ")[0] || displayName;
-}
-
-function getDaysUntil(targetMonth: number, targetDay: number): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const thisYear = today.getFullYear();
-  let nextOccurrence = new Date(thisYear, targetMonth, targetDay);
-  nextOccurrence.setHours(0, 0, 0, 0);
-
-  if (nextOccurrence < today) {
-    nextOccurrence = new Date(thisYear + 1, targetMonth, targetDay);
-    nextOccurrence.setHours(0, 0, 0, 0);
-  }
-
-  const diffTime = nextOccurrence.getTime() - today.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-}
-
-function getNextOccurrenceDate(month: number, day: number): Date {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-  let d = new Date(thisYear, month, day);
-  d.setHours(0, 0, 0, 0);
-  if (d < today) {
-    d = new Date(thisYear + 1, month, day);
-    d.setHours(0, 0, 0, 0);
-  }
-  return d;
-}
-
-function getNextOccurrence(
-  getDate: (year: number) => Date
-): { date: Date; daysAway: number } {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const thisYear = today.getFullYear();
-  let occurrence = getDate(thisYear);
-  occurrence.setHours(0, 0, 0, 0);
-
-  if (occurrence < today) {
-    occurrence = getDate(thisYear + 1);
-    occurrence.setHours(0, 0, 0, 0);
-  }
-
-  const diffTime = occurrence.getTime() - today.getTime();
-  const daysAway = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  return { date: occurrence, daysAway };
-}
-
-function filterHolidaysByGender(
-  holidays: HolidayDefinition[],
-  gender: GenderOption | string | null
-): HolidayDefinition[] {
-  return holidays.filter((holiday) => {
-    if (!holiday.genderFilter) return true;
-    if (!gender) return true;
-    return holiday.genderFilter.includes(gender as GenderOption);
-  });
-}
-
-function formatMonthDay(date: Date): string {
-  const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
-  return `${months[date.getMonth()]} ${date.getDate()}`;
-}
-
-/**
- * Parses a "YYYY-MM-DD" date string into local year/month/day
- * without the UTC midnight shift that `new Date("YYYY-MM-DD")` causes.
- */
-function parseDateOnly(dateStr: string): { year: number; month: number; day: number } {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return { year: y, month: m - 1, day: d }; // month is 0-indexed
-}
-
-function formatBirthdayMonthDay(dateStr: string): string {
-  const { month, day } = parseDateOnly(dateStr);
-  const date = new Date(new Date().getFullYear(), month, day);
-  return formatMonthDay(date);
-}
-
-/** Calculate the age the person will be turning at their next birthday */
-function calculateTurningAge(birthdayStr: string): number {
-  const { year: birthYear, month: birthMonth, day: birthDay } =
-    parseDateOnly(birthdayStr);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-
-  // Has the birthday already passed this year?
-  const birthdayThisYear = new Date(thisYear, birthMonth, birthDay);
-  birthdayThisYear.setHours(0, 0, 0, 0);
-
-  if (birthdayThisYear < today) {
-    // Next birthday is next year
-    return thisYear + 1 - birthYear;
-  }
-  // Next birthday is this year (including today)
-  return thisYear - birthYear;
-}
-
-function getCountdownText(daysAway: number): { big: string; small: string } {
-  if (daysAway === 0) return { big: "Today!", small: "" };
-  if (daysAway === 1) return { big: "1", small: "day" };
-  return { big: String(daysAway), small: "days" };
-}
-
-function getSectionIcon(section: HolidayCardSection): string {
-  if (section.type === "romantic") return "heart-outline";
-  if (section.type === "adventurous") return "compass-outline";
-  if (section.type === "friendly") return "people-outline";
-  if (section.categorySlug) return getCategoryIcon(section.categorySlug);
-  return "sparkles-outline";
-}
-
-function getSectionColor(section: HolidayCardSection): string {
-  if (section.type === "romantic") return "#EC4899";
-  if (section.type === "adventurous") return "#F59E0B";
-  if (section.type === "friendly") return "#3B82F6";
-  if (section.categorySlug) return getCategoryColor(section.categorySlug);
-  return "#6B7280";
-}
-
-// ── Card Components ─────────────────────────────────────────────────────────
-
-function PlaceholderCard({
-  section,
-}: {
-  section: HolidayCardSection;
-}) {
-  const icon = getSectionIcon(section);
-  const color = getSectionColor(section);
-
-  return (
-    <View style={styles.placeholderCard}>
-      <View style={[styles.placeholderCardAccent, { backgroundColor: color }]} />
-      <View style={styles.placeholderCardContent}>
-        <View style={[styles.placeholderIconContainer, { backgroundColor: color + "20" }]}>
-          <Ionicons name={icon as any} size={s(24)} color={color} />
-        </View>
-        <Text style={styles.placeholderCardLabel}>{section.label}</Text>
-        <Text style={styles.placeholderCardHint}>Tap to explore</Text>
-      </View>
-    </View>
-  );
-}
-
-function PersonalizedCard({
-  card,
-}: {
-  card: {
+  onAddCustomDay?: () => void;
+  fallbackCards?: FallbackCard[];
+  /** Persisted set of archived holiday IDs for the current person */
+  archivedHolidayIds?: string[];
+  /** Called when user archives a holiday — parent persists to AsyncStorage */
+  onArchiveHoliday?: (holidayId: string) => void;
+  /** Called when user unarchives a holiday — parent persists to AsyncStorage */
+  onUnarchiveHoliday?: (holidayId: string) => void;
+  /** Called when any card is tapped — parent should open ExpandedCardModal */
+  onCardPress?: (card: {
     id: string;
     title: string;
     category: string;
     imageUrl: string | null;
     rating: number | null;
-    priceLevel: string | null;
     address: string | null;
+    priceRange: string | null;
     cardType: "single" | "curated";
     experienceType: string | null;
-    stops: number;
-    estimatedDurationMinutes: number | null;
-  };
+  }) => void;
+}
+
+// ── Category icon mapping (matches DiscoverScreen) ──────────────────────────
+
+const CATEGORY_ICONS: Record<string, string> = {
+  Nature: "leaf-outline",
+  "First Meet": "chatbubbles-outline",
+  Picnic: "basket-outline",
+  Drink: "wine-outline",
+  "Casual Eats": "fast-food-outline",
+  "Fine Dining": "restaurant-outline",
+  Watch: "film-outline",
+  "Creative & Arts": "color-palette-outline",
+  Play: "game-controller-outline",
+  Wellness: "body-outline",
+  "Groceries & Flowers": "cart-outline",
+  "Work & Business": "briefcase-outline",
+};
+
+function getCatIcon(category: string): string {
+  return CATEGORY_ICONS[category] || getCategoryIcon(category) || "ellipse-outline";
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function getFirstName(d: string): string {
+  return d.split(" ")[0] || d;
+}
+
+function getDaysUntil(m: number, d: number): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const y = today.getFullYear();
+  let next = new Date(y, m, d);
+  next.setHours(0, 0, 0, 0);
+  if (next < today) next = new Date(y + 1, m, d);
+  return Math.ceil((next.getTime() - today.getTime()) / 864e5);
+}
+
+function getNextOccurrenceDate(m: number, d: number): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const y = today.getFullYear();
+  let dt = new Date(y, m, d);
+  dt.setHours(0, 0, 0, 0);
+  if (dt < today) dt = new Date(y + 1, m, d);
+  return dt;
+}
+
+function getNextOccurrence(
+  getDate: (y: number) => Date
+): { date: Date; daysAway: number } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const y = today.getFullYear();
+  let occ = getDate(y);
+  occ.setHours(0, 0, 0, 0);
+  if (occ < today) {
+    occ = getDate(y + 1);
+    occ.setHours(0, 0, 0, 0);
+  }
+  return { date: occ, daysAway: Math.ceil((occ.getTime() - today.getTime()) / 864e5) };
+}
+
+function filterByGender(
+  holidays: HolidayDefinition[],
+  gender: GenderOption | string | null
+): HolidayDefinition[] {
+  return holidays.filter((h) => {
+    if (!h.genderFilter || !gender) return true;
+    return h.genderFilter.includes(gender as GenderOption);
+  });
+}
+
+function fmtMonthDay(date: Date): string {
+  const M = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return `${M[date.getMonth()]} ${date.getDate()}`;
+}
+
+function parseDateOnly(s: string) {
+  const [y, m, d] = s.split("-").map(Number);
+  return { year: y, month: m - 1, day: d };
+}
+
+function fmtBirthdayMD(s: string) {
+  const { month, day } = parseDateOnly(s);
+  return fmtMonthDay(new Date(new Date().getFullYear(), month, day));
+}
+
+function turningAge(s: string): number {
+  const { year: by, month: bm, day: bd } = parseDateOnly(s);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const y = today.getFullYear();
+  const bday = new Date(y, bm, bd);
+  bday.setHours(0, 0, 0, 0);
+  return bday < today ? y + 1 - by : y - by;
+}
+
+function countdownText(d: number): { big: string; small: string } {
+  if (d === 0) return { big: "Today!", small: "" };
+  if (d === 1) return { big: "1", small: "day" };
+  return { big: String(d), small: "days" };
+}
+
+function seededShuffle<T>(arr: T[], seed: string): T[] {
+  const c = [...arr];
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  for (let i = c.length - 1; i > 0; i--) {
+    h = ((h << 5) - h + i) | 0;
+    const j = Math.abs(h) % (i + 1);
+    [c[i], c[j]] = [c[j], c[i]];
+  }
+  return c;
+}
+
+// ── Compact Card (matches GridCard visual from For You tab) ─────────────────
+
+function CompactCard({
+  title,
+  category,
+  imageUrl,
+  rating,
+  priceRange,
+  isCurated,
+  experienceType,
+  stops,
+  onPress,
+}: {
+  title: string;
+  category: string;
+  imageUrl: string | null;
+  rating: number | null;
+  priceRange: string | null;
+  isCurated: boolean;
+  experienceType: string | null;
+  stops: number;
+  onPress?: () => void;
 }) {
-  const isCurated = card.cardType === "curated";
-  const color = isCurated
-    ? card.experienceType === "romantic"
-      ? "#EC4899"
-      : card.experienceType === "adventurous"
-      ? "#F59E0B"
-      : card.experienceType === "friendly"
-      ? "#3B82F6"
-      : "#6B7280"
-    : getCategoryColor(card.category);
-  const icon = isCurated
-    ? card.experienceType === "romantic"
+  const catIcon = isCurated
+    ? experienceType === "romantic"
       ? "heart-outline"
-      : card.experienceType === "adventurous"
+      : experienceType === "adventurous"
       ? "compass-outline"
-      : "people-outline"
-    : getCategoryIcon(card.category);
+      : experienceType === "friendly"
+      ? "people-outline"
+      : "sparkles-outline"
+    : getCatIcon(category);
+
+  const catLabel = isCurated
+    ? experienceType
+      ? experienceType.charAt(0).toUpperCase() + experienceType.slice(1)
+      : "Curated"
+    : category;
 
   return (
-    <View style={styles.personalizedCard}>
-      <View style={[styles.personalizedCardAccent, { backgroundColor: color }]} />
-      <View style={styles.personalizedCardContent}>
-        <View style={styles.personalizedCardHeader}>
-          <Ionicons name={icon as any} size={s(16)} color={color} />
-          <Text style={styles.personalizedCardCategory} numberOfLines={1}>
-            {isCurated
-              ? (card.experienceType
-                  ? card.experienceType.charAt(0).toUpperCase() + card.experienceType.slice(1)
-                  : "Curated")
-              : card.category}
-          </Text>
+    <TouchableOpacity
+      style={[styles.compactCard, isCurated && styles.compactCardCurated]}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      {/* Image */}
+      <View style={styles.compactCardImageWrap}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.compactCardImage} resizeMode="cover" />
+        ) : (
+          <View style={[styles.compactCardImage, styles.compactCardImageFallback]}>
+            <Ionicons name="image-outline" size={s(28)} color="#d1d5db" />
+          </View>
+        )}
+        {/* Category badge */}
+        <View style={[styles.compactCardBadge, isCurated && styles.compactCardBadgeCurated]}>
+          <Ionicons name={catIcon as any} size={s(13)} color={isCurated ? "white" : "#eb7825"} />
         </View>
-        {isCurated && card.stops > 0 && (
-          <Text style={styles.personalizedCardStops}>
-            {card.stops} stop{card.stops !== 1 ? "s" : ""}
-            {card.estimatedDurationMinutes
-              ? ` · ${card.estimatedDurationMinutes}min`
-              : ""}
-          </Text>
-        )}
-        <Text style={styles.personalizedCardTitle} numberOfLines={2}>
-          {card.title}
-        </Text>
-        {card.address && (
-          <View style={styles.personalizedCardLocation}>
-            <Ionicons name="location-outline" size={s(12)} color="#6b7280" />
-            <Text style={styles.personalizedCardAddress} numberOfLines={1}>
-              {card.address}
-            </Text>
-          </View>
-        )}
-        {card.rating != null && (
-          <View style={styles.personalizedCardRating}>
-            <Ionicons name="star" size={s(12)} color="#F59E0B" />
-            <Text style={styles.personalizedCardRatingText}>
-              {card.rating.toFixed(1)}
-            </Text>
-          </View>
-        )}
       </View>
-    </View>
+
+      {/* Content */}
+      <View style={styles.compactCardContent}>
+        <Text style={[styles.compactCardTitle, isCurated && styles.compactCardTitleCurated]} numberOfLines={2}>
+          {title}
+        </Text>
+        <Text style={[styles.compactCardCategory, isCurated && styles.compactCardCatCurated]} numberOfLines={1}>
+          {catLabel}
+          {isCurated && stops > 0 ? ` · ${stops} stops` : ""}
+        </Text>
+        <View style={styles.compactCardFooter}>
+          {priceRange ? (
+            <Text style={[styles.compactCardPrice, isCurated && styles.compactCardPriceCurated]}>
+              {priceRange}
+            </Text>
+          ) : <View />}
+          {rating != null && rating > 0 ? (
+            <View style={styles.compactCardRatingRow}>
+              <Ionicons name="star" size={s(11)} color="#F59E0B" />
+              <Text style={[styles.compactCardRatingText, isCurated && styles.compactCardRatingCurated]}>
+                {rating.toFixed(1)}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.compactCardArrow}>
+              <Feather name="chevron-right" size={s(12)} color="white" />
+            </View>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
-// ── Card Row (6 cards + shuffle) ────────────────────────────────────────────
+// ── Card Row ────────────────────────────────────────────────────────────────
 
 function CardRow({
   pairedUserId,
   holidayKey,
   sections,
   location,
+  fallbackCards,
+  onCardPress,
   onShuffleCategories,
 }: {
   pairedUserId: string;
   holidayKey: string;
   sections: HolidayCardSection[];
   location: { latitude: number; longitude: number };
-  /** Optional callback to re-generate AI categories on shuffle (for holiday sections) */
+  fallbackCards?: FallbackCard[];
+  onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
 }) {
-  const { data, isLoading } = usePairedCards({
-    pairedUserId,
-    holidayKey,
-    location,
-    sections,
-  });
+  const hasLoc = location.latitude !== 0 || location.longitude !== 0;
+
+  const { data, isLoading, isFetching } = usePairedCards(
+    hasLoc ? { pairedUserId, holidayKey, location, sections } : null
+  );
 
   const shufflePairedCards = useShufflePairedCards();
-
   const handleShuffle = useCallback(async () => {
-    // Fetch new cards first — edge function handles category selection
-    // server-side in shuffle mode, so current sections are fine
     await shufflePairedCards(pairedUserId, holidayKey, sections, location);
-    // Then re-generate AI categories for the next render's labels
-    if (onShuffleCategories) {
-      onShuffleCategories();
-    }
+    if (onShuffleCategories) onShuffleCategories();
   }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, onShuffleCategories]);
 
-  const cards = data?.cards ?? [];
+  const pairedCards = data?.cards ?? [];
 
-  if (isLoading) {
+  const sectionFallback = useMemo(() => {
+    if (!fallbackCards || fallbackCards.length === 0) return [];
+    return seededShuffle(fallbackCards, holidayKey).slice(0, 6);
+  }, [fallbackCards, holidayKey]);
+
+  if (!hasLoc || isLoading || (!data && isFetching)) {
     return (
       <View style={styles.loadingRow}>
         <ActivityIndicator size="small" color="#eb7825" />
-        <Text style={styles.loadingText}>Loading recommendations...</Text>
+        <Text style={styles.loadingText}>
+          {hasLoc ? "Loading recommendations..." : "Getting your location..."}
+        </Text>
       </View>
     );
   }
@@ -331,28 +338,73 @@ function CardRow({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.cardsScrollContent}
+      contentContainerStyle={styles.cardsScroll}
     >
-      {cards.length > 0
-        ? cards.map((card) => <PersonalizedCard key={card.id} card={card} />)
-        : sections.map((section, idx) => (
-            <PlaceholderCard key={`ph-${idx}`} section={section} />
+      {pairedCards.length > 0
+        ? pairedCards.map((c) => (
+            <CompactCard
+              key={c.id}
+              title={c.title}
+              category={c.category}
+              imageUrl={c.imageUrl}
+              rating={c.rating}
+              priceRange={c.priceLevel}
+              isCurated={c.cardType === "curated"}
+              experienceType={c.experienceType}
+              stops={c.stops}
+              onPress={() =>
+                onCardPress?.({
+                  id: c.id,
+                  title: c.title,
+                  category: c.category,
+                  imageUrl: c.imageUrl,
+                  rating: c.rating,
+                  address: c.address,
+                  priceRange: c.priceLevel,
+                  cardType: c.cardType,
+                  experienceType: c.experienceType,
+                })
+              }
+            />
+          ))
+        : sectionFallback.map((c) => (
+            <CompactCard
+              key={`fb-${c.id}`}
+              title={c.title}
+              category={c.category}
+              imageUrl={c.image}
+              rating={c.rating}
+              priceRange={c.priceRange}
+              isCurated={false}
+              experienceType={null}
+              stops={0}
+              onPress={() =>
+                onCardPress?.({
+                  id: c.id,
+                  title: c.title,
+                  category: c.category,
+                  imageUrl: c.image,
+                  rating: c.rating,
+                  address: c.address,
+                  priceRange: c.priceRange,
+                  cardType: "single",
+                  experienceType: null,
+                })
+              }
+            />
           ))}
       <ShuffleButton onShuffle={handleShuffle} />
     </ScrollView>
   );
 }
 
-// ── Holiday Section Component ──────────────────────────────────────────────
+// ── Collapsible Holiday Section ─────────────────────────────────────────────
 
 function HolidaySectionView({
-  holiday,
-  daysAway,
-  date,
-  pairedUserId,
-  pairingId,
-  firstName,
-  location,
+  holiday, daysAway, date,
+  pairedUserId, pairingId, firstName, location,
+  fallbackCards, onCardPress,
+  isExpanded, onToggle, onArchive,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -361,53 +413,54 @@ function HolidaySectionView({
   pairingId: string;
   firstName: string;
   location: { latitude: number; longitude: number };
+  fallbackCards?: FallbackCard[];
+  onCardPress?: PersonHolidayViewProps["onCardPress"];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onArchive: () => void;
 }) {
-  const { sections: aiSections, invalidate: invalidateCategories } =
-    useHolidayCategories(holiday.id, holiday.name);
-
-  const countdown = getCountdownText(daysAway);
+  const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
+  const cd = countdownText(daysAway);
 
   return (
     <View style={styles.holidaySection}>
-      {/* Holiday header */}
-      <View style={styles.holidaySectionHeader}>
-        <View style={styles.holidaySectionHeaderLeft}>
-          <Text style={styles.holidaySectionName}>{holiday.name}</Text>
-          <Text style={styles.holidaySectionDate}>
-            {formatMonthDay(date)}
-          </Text>
+      <TouchableOpacity style={styles.holidayHeader} activeOpacity={0.7} onPress={onToggle}>
+        <View style={styles.holidayHeaderLeft}>
+          <View style={styles.holidayNameRow}>
+            <Text style={styles.holidayName}>{holiday.name}</Text>
+            <View style={styles.holidayActions}>
+              <TouchableOpacity onPress={onArchive} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="archive-outline" size={s(16)} color="#9ca3af" />
+              </TouchableOpacity>
+              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
+            </View>
+          </View>
+          <Text style={styles.holidayDate}>{fmtMonthDay(date)}</Text>
         </View>
-        <View style={styles.holidaySectionDays}>
-          <Text style={styles.holidaySectionDaysNumber}>{countdown.big}</Text>
-          {countdown.small !== "" && (
-            <Text style={styles.holidaySectionDaysLabel}>
-              {countdown.small}
-            </Text>
-          )}
+        <View style={styles.holidayDays}>
+          <Text style={styles.holidayDaysNum}>{cd.big}</Text>
+          {cd.small !== "" && <Text style={styles.holidayDaysLabel}>{cd.small}</Text>}
         </View>
-      </View>
+      </TouchableOpacity>
 
-      {/* Calendar button */}
-      <View style={styles.holidayCalendarRow}>
-        <CalendarButton
-          holidayKey={holiday.id}
-          pairingId={pairingId}
-          eventTitle={holiday.name}
-          nextOccurrence={date}
-          notes={`Reminder from Mingla — ${firstName}'s ${holiday.name}`}
-          personName={firstName}
-          occasionLabel={holiday.name}
-        />
-      </View>
-
-      {/* Cards scroll */}
-      <CardRow
-        pairedUserId={pairedUserId}
-        holidayKey={holiday.id}
-        sections={aiSections}
-        location={location}
-        onShuffleCategories={invalidateCategories}
-      />
+      {isExpanded && (
+        <>
+          <View style={styles.calRow}>
+            <CalendarButton
+              holidayKey={holiday.id} pairingId={pairingId}
+              eventTitle={holiday.name} nextOccurrence={date}
+              notes={`Reminder from Mingla — ${firstName}'s ${holiday.name}`}
+              personName={firstName} occasionLabel={holiday.name}
+            />
+          </View>
+          <CardRow
+            pairedUserId={pairedUserId} holidayKey={holiday.id}
+            sections={aiSections} location={location}
+            fallbackCards={fallbackCards} onCardPress={onCardPress}
+            onShuffleCategories={invalidate}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -415,137 +468,111 @@ function HolidaySectionView({
 // ── Custom Holiday Section ──────────────────────────────────────────────────
 
 function CustomHolidaySectionView({
-  holiday,
-  pairedUserId,
-  pairingId,
-  firstName,
-  location,
+  holiday, pairedUserId, pairingId, firstName, location,
+  fallbackCards, onCardPress, isExpanded, onToggle,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
-  pairedUserId: string;
-  pairingId: string;
-  firstName: string;
+  pairedUserId: string; pairingId: string; firstName: string;
   location: { latitude: number; longitude: number };
+  fallbackCards?: FallbackCard[];
+  onCardPress?: PersonHolidayViewProps["onCardPress"];
+  isExpanded: boolean; onToggle: () => void;
 }) {
-  const daysAway = getDaysUntil(holiday.month - 1, holiday.day);
-  const nextDate = getNextOccurrenceDate(holiday.month - 1, holiday.day);
-  const countdown = getCountdownText(daysAway);
-
-  const { sections: aiSections, invalidate: invalidateCategories } =
-    useHolidayCategories(`custom_${holiday.id}`, holiday.name);
-
-  // Commemoration year calculation
-  const thisYear = new Date().getFullYear();
-  const yearsElapsed = thisYear - holiday.year;
-  const commemorationText =
-    yearsElapsed <= 0
-      ? "First year"
-      : `${ordinal(yearsElapsed)} year`;
+  const da = getDaysUntil(holiday.month - 1, holiday.day);
+  const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
+  const cd = countdownText(da);
+  const { sections: ai, invalidate } = useHolidayCategories(`custom_${holiday.id}`, holiday.name);
+  const yr = new Date().getFullYear();
+  const elapsed = yr - holiday.year;
+  const commem = elapsed <= 0 ? "First year" : `${ordinal(elapsed)} year`;
 
   return (
     <View style={styles.holidaySection}>
-      {/* Custom holiday hero */}
-      <View style={styles.birthdayHeroCard}>
-        <View style={styles.birthdayHeroContent}>
-          <View style={styles.birthdayHeroLeft}>
-            <Text style={styles.birthdayHeroTitle}>{holiday.name}</Text>
-            <Text style={styles.birthdayHeroSubtitle}>
-              {formatMonthDay(new Date(thisYear, holiday.month - 1, holiday.day))}
-            </Text>
-            <Text style={styles.birthdayHeroAge}>{commemorationText}</Text>
+      <TouchableOpacity style={styles.holidayHeader} activeOpacity={0.7} onPress={onToggle}>
+        <View style={styles.holidayHeaderLeft}>
+          <View style={styles.holidayNameRow}>
+            <Text style={styles.holidayName}>{holiday.name}</Text>
+            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
           </View>
-          <View style={styles.birthdayHeroDays}>
-            <Text style={styles.birthdayHeroDaysNumber}>{countdown.big}</Text>
-            {countdown.small !== "" && (
-              <Text style={styles.birthdayHeroDaysText}>{countdown.small}</Text>
-            )}
-          </View>
+          <Text style={styles.holidayDate}>
+            {fmtMonthDay(new Date(yr, holiday.month - 1, holiday.day))} · {commem}
+          </Text>
         </View>
-        <CalendarButton
-          holidayKey={`custom_${holiday.id}`}
-          pairingId={pairingId}
-          eventTitle={holiday.name}
-          nextOccurrence={nextDate}
-          notes={`Reminder from Mingla — ${holiday.name}`}
-          personName={firstName}
-          occasionLabel={holiday.name}
-        />
-      </View>
+        <View style={styles.holidayDays}>
+          <Text style={styles.holidayDaysNum}>{cd.big}</Text>
+          {cd.small !== "" && <Text style={styles.holidayDaysLabel}>{cd.small}</Text>}
+        </View>
+      </TouchableOpacity>
 
-      {/* Cards */}
-      <CardRow
-        pairedUserId={pairedUserId}
-        holidayKey={`custom_${holiday.id}`}
-        sections={aiSections}
-        location={location}
-        onShuffleCategories={invalidateCategories}
-      />
+      {isExpanded && (
+        <>
+          <View style={styles.calRow}>
+            <CalendarButton
+              holidayKey={`custom_${holiday.id}`} pairingId={pairingId}
+              eventTitle={holiday.name} nextOccurrence={nd}
+              notes={`Reminder from Mingla — ${holiday.name}`}
+              personName={firstName} occasionLabel={holiday.name}
+            />
+          </View>
+          <CardRow
+            pairedUserId={pairedUserId} holidayKey={`custom_${holiday.id}`}
+            sections={ai} location={location}
+            fallbackCards={fallbackCards} onCardPress={onCardPress}
+            onShuffleCategories={invalidate}
+          />
+        </>
+      )}
     </View>
   );
 }
 
-// ── Birthday Section Component ─────────────────────────────────────────────
+// ── Birthday Section ────────────────────────────────────────────────────────
 
 function BirthdaySection({
-  birthday,
-  displayName,
-  pairedUserId,
-  pairingId,
-  location,
+  birthday, displayName, pairedUserId, pairingId, location,
+  fallbackCards, onCardPress,
 }: {
-  birthday: string | null;
-  displayName: string;
-  pairedUserId: string;
-  pairingId: string;
+  birthday: string | null; displayName: string;
+  pairedUserId: string; pairingId: string;
   location: { latitude: number; longitude: number };
+  fallbackCards?: FallbackCard[];
+  onCardPress?: PersonHolidayViewProps["onCardPress"];
 }) {
   if (!birthday) return null;
-
-  const firstName = getFirstName(displayName);
-  const { month: bdMonth, day: bdDay } = parseDateOnly(birthday);
-  const daysAway = getDaysUntil(bdMonth, bdDay);
-  const turningAge = calculateTurningAge(birthday);
-  const countdown = getCountdownText(daysAway);
-  const nextBirthdayDate = getNextOccurrenceDate(bdMonth, bdDay);
+  const fn = getFirstName(displayName);
+  const { month: bm, day: bd } = parseDateOnly(birthday);
+  const da = getDaysUntil(bm, bd);
+  const ta = turningAge(birthday);
+  const cd = countdownText(da);
+  const nd = getNextOccurrenceDate(bm, bd);
 
   return (
     <View style={styles.birthdaySection}>
-      {/* Birthday hero card */}
-      <View style={styles.birthdayHeroCard}>
-        <View style={styles.birthdayHeroContent}>
-          <View style={styles.birthdayHeroLeft}>
-            <Text style={styles.birthdayHeroTitle}>{firstName}</Text>
-            <Text style={styles.birthdayHeroSubtitle}>
-              Birthday · {formatBirthdayMonthDay(birthday)}
-            </Text>
-            <Text style={styles.birthdayHeroAge}>Turning {turningAge}</Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroContent}>
+          <View style={styles.heroLeft}>
+            <Text style={styles.heroTitle}>{fn}</Text>
+            <Text style={styles.heroSubtitle}>Birthday · {fmtBirthdayMD(birthday)}</Text>
+            <Text style={styles.heroAge}>Turning {ta}</Text>
           </View>
-          <View style={styles.birthdayHeroDays}>
-            <Text style={styles.birthdayHeroDaysNumber}>{countdown.big}</Text>
-            {countdown.small !== "" && (
-              <Text style={styles.birthdayHeroDaysText}>
-                {countdown.small}
-              </Text>
-            )}
+          <View style={styles.heroDaysWrap}>
+            <Text style={styles.heroDaysNum}>{cd.big}</Text>
+            {cd.small !== "" && <Text style={styles.heroDaysLabel}>{cd.small}</Text>}
           </View>
         </View>
         <CalendarButton
-          holidayKey="birthday"
-          pairingId={pairingId}
-          eventTitle={`${firstName}'s Birthday`}
-          nextOccurrence={nextBirthdayDate}
-          notes={`Reminder from Mingla — ${firstName}'s Birthday`}
-          personName={firstName}
-          occasionLabel="Birthday"
+          holidayKey="birthday" pairingId={pairingId}
+          eventTitle={`${fn}'s Birthday`} nextOccurrence={nd}
+          notes={`Reminder from Mingla — ${fn}'s Birthday`}
+          personName={fn} occasionLabel="Birthday"
         />
       </View>
 
-      {/* Birthday cards — 6 default cards + shuffle */}
+      {/* Cards scroll — visually part of hero */}
       <CardRow
-        pairedUserId={pairedUserId}
-        holidayKey="birthday"
-        sections={DEFAULT_PERSON_SECTIONS}
-        location={location}
+        pairedUserId={pairedUserId} holidayKey="birthday"
+        sections={DEFAULT_PERSON_SECTIONS} location={location}
+        fallbackCards={fallbackCards} onCardPress={onCardPress}
       />
     </View>
   );
@@ -554,156 +581,190 @@ function BirthdaySection({
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function PersonHolidayView({
-  pairedUserId,
-  pairingId,
-  displayName,
-  birthday,
-  gender,
-  location,
-  userId,
-  customHolidays,
+  pairedUserId, pairingId, displayName, birthday, gender,
+  location, userId, customHolidays, onAddCustomDay,
+  fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
+  onCardPress,
 }: PersonHolidayViewProps) {
   const firstName = getFirstName(displayName);
 
-  // Filter and sort standard holidays
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Derive archived set from persisted prop (parent owns state + AsyncStorage)
+  const archivedSet = useMemo(
+    () => new Set(archivedHolidayIds ?? []),
+    [archivedHolidayIds]
+  );
+
   const sortedHolidays = useMemo(() => {
-    const filtered = filterHolidaysByGender(STANDARD_HOLIDAYS, gender);
+    const filtered = filterByGender(STANDARD_HOLIDAYS, gender);
     return filtered
-      .map((holiday) => {
-        const { date, daysAway } = getNextOccurrence(holiday.getDate);
-        return { holiday, date, daysAway };
+      .map((h) => {
+        const { date, daysAway } = getNextOccurrence(h.getDate);
+        return { holiday: h, date, daysAway };
       })
       .sort((a, b) => a.daysAway - b.daysAway);
   }, [gender]);
 
+  // CRIT-002 fix: useEffect (side-effect) instead of useMemo (pure computation)
+  const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
+  useEffect(() => {
+    if (!hasAutoExpanded && sortedHolidays.length > 0) {
+      const init = new Set<string>();
+      sortedHolidays.slice(0, 2).forEach(({ holiday }) => init.add(holiday.id));
+      setExpandedIds(init);
+      setHasAutoExpanded(true);
+    }
+  }, [sortedHolidays, hasAutoExpanded]);
+
+  const toggle = useCallback((id: string) => {
+    setExpandedIds((p) => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }, []);
+
+  const handleArchive = useCallback((id: string) => {
+    onArchiveHoliday?.(id);
+    setExpandedIds((p) => { const n = new Set(p); n.delete(id); return n; });
+  }, [onArchiveHoliday]);
+
+  const handleUnarchive = useCallback((id: string) => {
+    onUnarchiveHoliday?.(id);
+  }, [onUnarchiveHoliday]);
+
+  const visible = useMemo(
+    () => sortedHolidays.filter(({ holiday }) => !archivedSet.has(holiday.id)),
+    [sortedHolidays, archivedSet]
+  );
+  const archived = useMemo(
+    () => sortedHolidays.filter(({ holiday }) => archivedSet.has(holiday.id)),
+    [sortedHolidays, archivedSet]
+  );
+
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Birthday section */}
+    <View style={styles.root}>
       <BirthdaySection
-        birthday={birthday}
-        displayName={displayName}
-        pairedUserId={pairedUserId}
-        pairingId={pairingId}
-        location={location}
+        birthday={birthday} displayName={displayName}
+        pairedUserId={pairedUserId} pairingId={pairingId}
+        location={location} fallbackCards={fallbackCards}
+        onCardPress={onCardPress}
       />
 
-      {/* Standard holidays */}
       {sortedHolidays.length > 0 && (
-        <View style={styles.holidaysContainer}>
-          <Text style={styles.holidaysTitle}>Upcoming Holidays</Text>
-          {sortedHolidays.map(({ holiday, date, daysAway }) => (
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionTitleStandalone}>Upcoming Holidays</Text>
+
+          {visible.map(({ holiday, date, daysAway }) => (
             <HolidaySectionView
               key={holiday.id}
-              holiday={holiday}
-              daysAway={daysAway}
-              date={date}
-              pairedUserId={pairedUserId}
-              pairingId={pairingId}
-              firstName={firstName}
-              location={location}
+              holiday={holiday} daysAway={daysAway} date={date}
+              pairedUserId={pairedUserId} pairingId={pairingId}
+              firstName={firstName} location={location}
+              fallbackCards={fallbackCards} onCardPress={onCardPress}
+              isExpanded={expandedIds.has(holiday.id)}
+              onToggle={() => toggle(holiday.id)}
+              onArchive={() => handleArchive(holiday.id)}
             />
           ))}
+
+          {archived.length > 0 && (
+            <View style={styles.archWrap}>
+              <TouchableOpacity style={styles.archToggle} onPress={() => setShowArchived((v) => !v)} activeOpacity={0.7}>
+                <View style={styles.archToggleLeft}>
+                  <Ionicons name="archive-outline" size={s(16)} color="#6b7280" />
+                  <Text style={styles.archLabel}>Archived</Text>
+                  <Text style={styles.archCount}>({archived.length})</Text>
+                </View>
+                <Ionicons name={showArchived ? "chevron-up" : "chevron-down"} size={s(16)} color="#6b7280" />
+              </TouchableOpacity>
+              {showArchived && archived.map(({ holiday, date, daysAway }) => (
+                <View key={holiday.id} style={styles.archItem}>
+                  <View style={styles.flex1}>
+                    <Text style={styles.archItemName}>{holiday.name}</Text>
+                    <Text style={styles.archItemMeta}>
+                      {fmtMonthDay(date)} · {daysAway} {daysAway === 1 ? "day" : "days"} away
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleUnarchive(holiday.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="arrow-undo-outline" size={s(16)} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
       {/* Custom holidays */}
-      {customHolidays && customHolidays.length > 0 && (
-        <View style={styles.holidaysContainer}>
-          <Text style={styles.holidaysTitle}>Your Special Days</Text>
-          {customHolidays.map((ch) => (
-            <CustomHolidaySectionView
-              key={ch.id}
-              holiday={ch}
-              pairedUserId={pairedUserId}
-              pairingId={pairingId}
-              firstName={firstName}
-              location={location}
-            />
-          ))}
+      <View style={styles.sectionWrap}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Your Special Days</Text>
+          {onAddCustomDay && (
+            <TouchableOpacity onPress={onAddCustomDay} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="add-circle-outline" size={s(24)} color="#eb7825" />
+            </TouchableOpacity>
+          )}
         </View>
-      )}
-    </ScrollView>
+        {customHolidays && customHolidays.length > 0 ? (
+          customHolidays.map((ch) => (
+            <CustomHolidaySectionView
+              key={ch.id} holiday={ch}
+              pairedUserId={pairedUserId} pairingId={pairingId}
+              firstName={firstName} location={location}
+              fallbackCards={fallbackCards} onCardPress={onCardPress}
+              isExpanded={expandedIds.has(`custom_${ch.id}`)}
+              onToggle={() => toggle(`custom_${ch.id}`)}
+            />
+          ))
+        ) : (
+          <TouchableOpacity style={styles.emptyCustom} onPress={onAddCustomDay} activeOpacity={0.7}>
+            <Ionicons name="calendar-outline" size={s(28)} color="#d1d5db" />
+            <Text style={styles.emptyCustomText}>Mark a day that matters</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
   );
 }
 
-const CARD_WIDTH = s(160);
+// ── Styles ──────────────────────────────────────────────────────────────────
+
+const CARD_W = s(150);
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingBottom: s(80),
-  },
-  // Birthday section
-  birthdaySection: {
-    marginBottom: s(24),
-  },
-  birthdayHeroCard: {
+  root: { paddingBottom: s(80) },
+
+  // ── Birthday hero ────────────────────────────────────
+  birthdaySection: { marginBottom: s(24) },
+  heroCard: {
     backgroundColor: "#eb7825",
     borderRadius: s(20),
     padding: s(20),
-    marginBottom: s(16),
-  },
-  birthdayHeroContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  birthdayHeroLeft: {
-    flex: 1,
-  },
-  birthdayHeroTitle: {
-    fontSize: s(22),
-    fontWeight: "700",
-    color: "white",
     marginBottom: s(4),
   },
-  birthdayHeroSubtitle: {
-    fontSize: s(14),
-    color: "rgba(255, 255, 255, 0.9)",
-    marginBottom: s(2),
-  },
-  birthdayHeroAge: {
-    fontSize: s(15),
-    fontWeight: "600",
-    color: "rgba(255, 255, 255, 0.95)",
-  },
-  birthdayHeroDays: {
-    alignItems: "flex-end",
-  },
-  birthdayHeroDaysNumber: {
-    fontSize: s(36),
-    fontWeight: "700",
-    color: "white",
-    lineHeight: s(40),
-  },
-  birthdayHeroDaysText: {
-    fontSize: s(16),
-    fontWeight: "700",
-    color: "white",
-    lineHeight: s(24),
-    marginTop: s(4),
-  },
-  // Holidays container
-  holidaysContainer: {
-    marginBottom: s(24),
-  },
-  holidaysTitle: {
-    fontSize: s(18),
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: s(16),
-  },
-  // Holiday section
+  heroContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  heroLeft: { flex: 1 },
+  heroDaysWrap: { alignItems: "flex-end" },
+  heroTitle: { fontSize: s(22), fontWeight: "700", color: "white", marginBottom: s(4) },
+  heroSubtitle: { fontSize: s(14), color: "rgba(255,255,255,0.9)", marginBottom: s(2) },
+  heroAge: { fontSize: s(15), fontWeight: "600", color: "rgba(255,255,255,0.95)" },
+  heroDaysNum: { fontSize: s(36), fontWeight: "700", color: "white", lineHeight: s(40) },
+  heroDaysLabel: { fontSize: s(16), fontWeight: "700", color: "white", lineHeight: s(24), marginTop: s(4) },
+
+  // ── Section headers ──────────────────────────────────
+  sectionWrap: { marginBottom: s(24) },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: s(12) },
+  sectionTitle: { fontSize: s(18), fontWeight: "700", color: "#111827" },
+  sectionTitleStandalone: { fontSize: s(18), fontWeight: "700", color: "#111827", marginBottom: s(12) },
+
+  // ── Holiday section (collapsible) ────────────────────
   holidaySection: {
     backgroundColor: "white",
     borderRadius: s(12),
-    marginBottom: s(12),
+    marginBottom: s(10),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -711,165 +772,138 @@ const styles = StyleSheet.create({
     elevation: 1,
     overflow: "hidden",
   },
-  holidaySectionHeader: {
+  holidayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: s(14), paddingHorizontal: s(16) },
+  holidayHeaderLeft: { flex: 1 },
+  holidayNameRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: s(2) },
+  holidayActions: { flexDirection: "row", alignItems: "center", gap: s(12) },
+  holidayName: { fontSize: s(15), fontWeight: "600", color: "#111827", flex: 1 },
+  holidayDate: { fontSize: s(12), fontWeight: "500", color: "#eb7825" },
+  holidayDays: { alignItems: "flex-end", marginLeft: s(16) },
+  holidayDaysNum: { fontSize: s(20), fontWeight: "700", color: "#eb7825" },
+  holidayDaysLabel: { fontSize: s(11), color: "#6b7280" },
+  calRow: { paddingHorizontal: s(16), paddingBottom: s(8) },
+
+  // ── Archived ─────────────────────────────────────────
+  archWrap: { marginTop: s(8) },
+  archToggle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: s(10), paddingHorizontal: s(4) },
+  archToggleLeft: { flexDirection: "row", alignItems: "center", gap: s(6) },
+  archLabel: { fontSize: s(13), fontWeight: "500", color: "#6b7280" },
+  archCount: { fontSize: s(13), color: "#9ca3af" },
+  archItem: { flexDirection: "row", alignItems: "center", paddingVertical: s(10), paddingHorizontal: s(4), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e5e7eb" },
+  flex1: { flex: 1 },
+  archItemName: { fontSize: s(14), fontWeight: "500", color: "#6b7280" },
+  archItemMeta: { fontSize: s(12), color: "#9ca3af", marginTop: s(2) },
+
+  // ── Empty custom day ─────────────────────────────────
+  emptyCustom: {
+    alignItems: "center", justifyContent: "center", paddingVertical: s(24),
+    backgroundColor: "#fafafa", borderRadius: s(12),
+    borderWidth: 1, borderColor: "#e5e7eb", borderStyle: "dashed",
+  },
+  emptyCustomText: { fontSize: s(14), fontWeight: "500", color: "#9ca3af", marginTop: s(8) },
+
+  // ── Loading ──────────────────────────────────────────
+  loadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: s(24), gap: s(12) },
+  loadingText: { fontSize: s(14), color: "#6b7280" },
+
+  // ── Cards scroll ─────────────────────────────────────
+  cardsScroll: { paddingHorizontal: s(12), paddingVertical: s(8), paddingBottom: s(16), gap: s(10) },
+
+  // ── Compact card (matches GridCard visual from For You) ──
+  compactCard: {
+    width: CARD_W,
+    backgroundColor: "white",
+    borderRadius: s(14),
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  compactCardCurated: {
+    backgroundColor: "#1C1C1E",
+  },
+  compactCardImageWrap: {
+    position: "relative",
+    height: s(100),
+  },
+  compactCardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  compactCardImageFallback: {
+    backgroundColor: "#f3f4f6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  compactCardBadge: {
+    position: "absolute",
+    bottom: s(6),
+    left: s(6),
+    backgroundColor: "white",
+    paddingHorizontal: s(6),
+    paddingVertical: s(4),
+    borderRadius: s(6),
+  },
+  compactCardBadgeCurated: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  compactCardContent: {
+    padding: s(10),
+  },
+  compactCardTitle: {
+    fontSize: s(13),
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: s(3),
+    lineHeight: s(17),
+    minHeight: s(34),
+  },
+  compactCardTitleCurated: {
+    color: "white",
+  },
+  compactCardCategory: {
+    fontSize: s(11),
+    fontWeight: "500",
+    color: "#6b7280",
+    marginBottom: s(6),
+  },
+  compactCardCatCurated: {
+    color: "#9ca3af",
+  },
+  compactCardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: s(16),
-    paddingHorizontal: s(16),
   },
-  holidaySectionHeaderLeft: {
-    flex: 1,
-  },
-  holidaySectionName: {
-    fontSize: s(16),
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: s(2),
-  },
-  holidaySectionDate: {
-    fontSize: s(13),
-    fontWeight: "500",
+  compactCardPrice: {
+    fontSize: s(11),
+    fontWeight: "400",
     color: "#eb7825",
   },
-  holidaySectionDays: {
-    alignItems: "flex-end",
-    marginLeft: s(16),
+  compactCardPriceCurated: {
+    color: "#F59E0B",
   },
-  holidaySectionDaysNumber: {
-    fontSize: s(20),
-    fontWeight: "700",
-    color: "#eb7825",
-  },
-  holidaySectionDaysLabel: {
-    fontSize: s(12),
-    color: "#6b7280",
-  },
-  holidayCalendarRow: {
-    paddingHorizontal: s(16),
-    paddingBottom: s(8),
-  },
-  // Loading
-  loadingRow: {
+  compactCardRatingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: s(24),
-    gap: s(12),
+    gap: s(2),
   },
-  loadingText: {
-    fontSize: s(14),
-    color: "#6b7280",
-  },
-  // Cards scroll
-  cardsScrollContent: {
-    paddingHorizontal: s(12),
-    paddingVertical: s(8),
-    paddingBottom: s(16),
-    gap: s(12),
-  },
-  // Placeholder card
-  placeholderCard: {
-    width: CARD_WIDTH,
-    backgroundColor: "#fafafa",
-    borderRadius: s(12),
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  placeholderCardAccent: {
-    height: s(4),
-  },
-  placeholderCardContent: {
-    padding: s(14),
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: s(100),
-  },
-  placeholderIconContainer: {
-    width: s(44),
-    height: s(44),
-    borderRadius: s(22),
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: s(8),
-  },
-  placeholderCardLabel: {
-    fontSize: s(13),
-    fontWeight: "600",
-    color: "#374151",
-    textAlign: "center",
-    marginBottom: s(4),
-  },
-  placeholderCardHint: {
+  compactCardRatingText: {
     fontSize: s(11),
-    color: "#9ca3af",
-  },
-  // Personalized card
-  personalizedCard: {
-    width: CARD_WIDTH,
-    backgroundColor: "white",
-    borderRadius: s(12),
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  personalizedCardAccent: {
-    height: s(4),
-  },
-  personalizedCardContent: {
-    padding: s(10),
-  },
-  personalizedCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(4),
-    marginBottom: s(6),
-  },
-  personalizedCardCategory: {
-    fontSize: s(11),
-    fontWeight: "500",
-    color: "#6b7280",
-    flex: 1,
-  },
-  personalizedCardStops: {
-    fontSize: s(10),
-    fontWeight: "500",
-    color: "#9ca3af",
-    marginBottom: s(4),
-  },
-  personalizedCardTitle: {
-    fontSize: s(13),
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: s(4),
-    lineHeight: s(17),
-  },
-  personalizedCardLocation: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(4),
-    marginBottom: s(4),
-  },
-  personalizedCardAddress: {
-    fontSize: s(11),
-    color: "#6b7280",
-    flex: 1,
-  },
-  personalizedCardRating: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(3),
-  },
-  personalizedCardRatingText: {
-    fontSize: s(11),
-    fontWeight: "500",
+    fontWeight: "400",
     color: "#1f2937",
+  },
+  compactCardRatingCurated: {
+    color: "#d1d5db",
+  },
+  compactCardArrow: {
+    width: s(20),
+    height: s(20),
+    borderRadius: s(10),
+    backgroundColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

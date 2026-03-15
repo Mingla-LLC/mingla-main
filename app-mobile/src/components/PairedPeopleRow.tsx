@@ -7,9 +7,8 @@ import {
   Image,
   StyleSheet,
 } from "react-native";
-import * as Haptics from "expo-haptics";
-import { s, vs } from "../utils/responsive";
-import { colors } from "../constants/designSystem";
+import { Ionicons } from "@expo/vector-icons";
+import { s } from "../utils/responsive";
 
 interface PairedPerson {
   pairedUserId: string;
@@ -64,9 +63,9 @@ function formatBirthdayShort(birthdayStr: string): string {
 }
 
 function getCountdownLabel(daysAway: number): string {
-  if (daysAway === 0) return "Today! \uD83C\uDF89";
-  if (daysAway === 1) return "Tomorrow!";
-  return `${daysAway} days away`;
+  if (daysAway === 0) return "Today!";
+  if (daysAway === 1) return "Tomorrow";
+  return `${daysAway}d away`;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -99,16 +98,18 @@ export default function PairedPeopleRow({
               onPress={() => onSelectPerson(person)}
               activeOpacity={0.7}
             >
-              {/* Avatar */}
-              <View style={styles.avatarContainer}>
-                {person.avatarUrl ? (
-                  <Image
-                    source={{ uri: person.avatarUrl }}
-                    style={styles.avatarImage}
-                  />
-                ) : (
-                  <Text style={styles.avatarInitials}>{person.initials}</Text>
-                )}
+              {/* Avatar with ring */}
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarContainer}>
+                  {person.avatarUrl ? (
+                    <Image
+                      source={{ uri: person.avatarUrl }}
+                      style={styles.avatarImage}
+                    />
+                  ) : (
+                    <Text style={styles.avatarInitials}>{person.initials}</Text>
+                  )}
+                </View>
               </View>
 
               {/* Name */}
@@ -116,16 +117,18 @@ export default function PairedPeopleRow({
                 {name}
               </Text>
 
-              {/* Birthday info */}
-              {hasBirthday && (
-                <>
-                  <Text style={styles.birthday} numberOfLines={1}>
-                    \uD83C\uDF82 {formatBirthdayShort(person.birthday!)}
+              {/* Birthday countdown badge */}
+              {hasBirthday && daysAway != null && (
+                <View style={styles.badgeRow}>
+                  <Ionicons name="gift-outline" size={s(11)} color="#eb7825" />
+                  <Text style={styles.badgeText}>
+                    {formatBirthdayShort(person.birthday!)}
                   </Text>
-                  <Text style={styles.countdown} numberOfLines={1}>
-                    {getCountdownLabel(daysAway!)}
+                  <View style={styles.badgeDot} />
+                  <Text style={styles.badgeCountdown}>
+                    {getCountdownLabel(daysAway)}
                   </Text>
-                </>
+                </View>
               )}
             </TouchableOpacity>
           );
@@ -137,67 +140,93 @@ export default function PairedPeopleRow({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: s(16),
+    marginBottom: s(20),
   },
   sectionTitle: {
-    fontSize: s(16),
+    fontSize: s(17),
     fontWeight: "700",
     color: "#111827",
-    marginBottom: s(12),
+    marginBottom: s(14),
     paddingHorizontal: s(4),
+    letterSpacing: -0.2,
   },
   scrollContent: {
     gap: s(12),
     paddingRight: s(16),
   },
   card: {
-    width: s(140),
-    height: s(160),
+    width: s(130),
     backgroundColor: "white",
-    borderRadius: s(16),
-    padding: s(12),
+    borderRadius: s(20),
+    paddingTop: s(18),
+    paddingBottom: s(14),
+    paddingHorizontal: s(12),
     alignItems: "center",
-    justifyContent: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0,0,0,0.04)",
+  },
+  avatarRing: {
+    width: s(60),
+    height: s(60),
+    borderRadius: s(30),
+    borderWidth: s(2),
+    borderColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: s(10),
   },
   avatarContainer: {
-    width: s(48),
-    height: s(48),
-    borderRadius: s(24),
-    backgroundColor: "#eb7825",
+    width: s(52),
+    height: s(52),
+    borderRadius: s(26),
+    backgroundColor: "#1C1C1E",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: s(8),
     overflow: "hidden",
   },
   avatarImage: {
-    width: s(48),
-    height: s(48),
-    borderRadius: s(24),
+    width: s(52),
+    height: s(52),
+    borderRadius: s(26),
   },
   avatarInitials: {
-    fontSize: s(18),
+    fontSize: s(19),
     fontWeight: "700",
     color: "white",
+    letterSpacing: 0.5,
   },
   name: {
-    fontSize: s(14),
-    fontWeight: "600",
+    fontSize: s(15),
+    fontWeight: "700",
     color: "#111827",
-    marginBottom: s(4),
     textAlign: "center",
+    letterSpacing: -0.2,
+    marginBottom: s(4),
   },
-  birthday: {
-    fontSize: s(12),
-    color: colors.gray[500],
-    marginBottom: s(2),
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: s(3),
+    marginTop: s(2),
   },
-  countdown: {
-    fontSize: s(12),
+  badgeText: {
+    fontSize: s(10),
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  badgeDot: {
+    width: s(2),
+    height: s(2),
+    borderRadius: s(1),
+    backgroundColor: "#d1d5db",
+  },
+  badgeCountdown: {
+    fontSize: s(10),
     fontWeight: "600",
     color: "#eb7825",
   },

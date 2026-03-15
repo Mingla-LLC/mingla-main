@@ -12,7 +12,6 @@ export async function saveOnboardingData(data: OnboardingData): Promise<void> {
     const serializable = {
       ...data,
       userBirthday: data.userBirthday?.toISOString() ?? null,
-      personBirthday: data.personBirthday?.toISOString() ?? null,
     }
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(serializable))
   } catch {
@@ -34,9 +33,18 @@ export async function loadOnboardingData(): Promise<Partial<OnboardingData> | nu
     if (parsed.userBirthday && typeof parsed.userBirthday === 'string') {
       parsed.userBirthday = new Date(parsed.userBirthday)
     }
-    if (parsed.personBirthday && typeof parsed.personBirthday === 'string') {
-      parsed.personBirthday = new Date(parsed.personBirthday)
-    }
+
+    // Strip obsolete fields from previous onboarding versions
+    delete parsed.invitePath
+    delete parsed.personName
+    delete parsed.personBirthday
+    delete parsed.personGender
+    delete parsed.audioClipUri
+    delete parsed.audioClipDuration
+    delete parsed.audioClipStoragePath
+    delete parsed.selectedSyncFriends
+    delete parsed.audioClipsByFriend
+    delete parsed.currentAudioFriendIndex
 
     return parsed as Partial<OnboardingData>
   } catch {

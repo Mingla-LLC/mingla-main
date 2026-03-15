@@ -10,6 +10,8 @@ export const pairedCardKeys = {
   all: ["paired-cards"] as const,
   forOccasion: (pairedUserId: string, holidayKey: string) =>
     ["paired-cards", pairedUserId, holidayKey] as const,
+  forOccasionAt: (pairedUserId: string, holidayKey: string, locationKey: string) =>
+    ["paired-cards", pairedUserId, holidayKey, locationKey] as const,
 };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -22,6 +24,15 @@ interface UsePairedCardsParams {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+function isValidLocation(loc: { latitude: number; longitude: number }): boolean {
+  return loc.latitude !== 0 || loc.longitude !== 0;
+}
+
+function locationKey(loc: { latitude: number; longitude: number }): string {
+  // Coarse key — same cache within ~11km. Prevents needless refetch on GPS drift.
+  return `${loc.latitude.toFixed(1)},${loc.longitude.toFixed(1)}`;
+}
 
 export function sectionsToSlugsAndType(sections: HolidayCardSection[]): {
   categorySlugs: string[];
@@ -57,10 +68,12 @@ export function sectionsToSlugsAndType(sections: HolidayCardSection[]): {
 
 export function usePairedCards(params: UsePairedCardsParams | null) {
   const derived = params ? sectionsToSlugsAndType(params.sections) : null;
+  const hasValidLocation = !!params && isValidLocation(params.location);
+  const locKey = params ? locationKey(params.location) : "";
 
   return useQuery<HolidayCardsResponse>({
     queryKey: params
-      ? pairedCardKeys.forOccasion(params.pairedUserId, params.holidayKey)
+      ? pairedCardKeys.forOccasionAt(params.pairedUserId, params.holidayKey, locKey)
       : pairedCardKeys.all,
     queryFn: () =>
       fetchPersonHeroCards({
@@ -71,9 +84,10 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
         location: params!.location,
         mode: "default",
       }),
-    enabled: !!params,
-    staleTime: Infinity, // Sticky until shuffle
+    enabled: hasValidLocation,
+    staleTime: 30 * 60 * 1000, // 30 min — retry if empty, but don't spam
     gcTime: 24 * 60 * 60 * 1000, // 24h garbage collection
+    retry: 2,
   });
 }
 
@@ -107,9 +121,11 @@ export function useShufflePairedCards() {
         mode: "shuffle",
       });
 
+      const locK = locationKey(location);
+
       // Replace the cached data so the UI updates immediately
       queryClient.setQueryData(
-        pairedCardKeys.forOccasion(pairedUserId, holidayKey),
+        pairedCardKeys.forOccasionAt(pairedUserId, holidayKey, locK),
         result
       );
     },

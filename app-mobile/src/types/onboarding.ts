@@ -1,6 +1,6 @@
 // ─── State Machine ───
 
-export type OnboardingStep = 1 | 2 | 3 | 4 | 5
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export type Step1SubStep = 'welcome' | 'phone' | 'otp' | 'gender_identity' | 'details'
 export type Step2SubStep = 'value_prop' | 'intents'
@@ -12,17 +12,15 @@ export type Step4SubStep =
   | 'budget'
   | 'transport'
   | 'travel_time'
-export type Step5SubStep =
-  | 'friends'
-  | 'consent'
-  | 'collaboration'
-  | 'pitch'
-  | 'pathA_sync'
-  | 'pathA_audio'
-  | 'pathB_name'
-  | 'pathB_birthday'
-  | 'pathB_gender'
-  | 'pathB_audio'
+
+// CHANGED: Step 5 now only has 'friends_and_pairing'
+export type Step5SubStep = 'friends_and_pairing'
+
+// NEW: Step 6
+export type Step6SubStep = 'collaborations'
+
+// NEW: Step 7
+export type Step7SubStep = 'consent' | 'getting_experiences'
 
 export type SubStep =
   | Step1SubStep
@@ -30,6 +28,8 @@ export type SubStep =
   | Step3SubStep
   | Step4SubStep
   | Step5SubStep
+  | Step6SubStep
+  | Step7SubStep
 
 export interface OnboardingNavState {
   step: OnboardingStep
@@ -55,6 +55,16 @@ export interface AddedFriend {
 export interface CreatedSession {
   name: string
   participants: AddedFriend[]
+}
+
+// NEW: Pair request data tracked during onboarding
+export interface OnboardingPairAction {
+  type: 'sent' | 'accepted'
+  targetUserId: string
+  targetDisplayName: string
+  tier: 1 | 2 | 3
+  requestId?: string
+  pairingId?: string
 }
 
 export interface OnboardingData {
@@ -85,24 +95,13 @@ export interface OnboardingData {
   travelMode: 'walking' | 'biking' | 'transit' | 'driving'
   travelTimeMinutes: number      // 15, 30, 45, or 60
 
-  // Step 5
-  invitePath: 'invite' | 'add' | 'skip' | null
-  personName: string | null
-  personBirthday: Date | null
-  personGender: string | null
-  audioClipUri: string | null
-  audioClipDuration: number | null
-  audioClipStoragePath: string | null  // Supabase Storage path (survives restart)
-
-  // Step 5 — Friends & Collaboration
+  // Step 5 — Friends & Pairing
   addedFriends: AddedFriend[]
-  createdSessions: CreatedSession[]
+  pairActions: OnboardingPairAction[]  // tracks pair requests sent/accepted
   skippedFriends: boolean
 
-  // Step 5 — Sync & Audio Pipeline
-  selectedSyncFriends: AddedFriend[]
-  audioClipsByFriend: Record<string, { storagePath: string; duration: number }>
-  currentAudioFriendIndex: number
+  // Step 6 — Collaborations
+  createdSessions: CreatedSession[]
 }
 
 // ─── Country Data ───

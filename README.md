@@ -1,6 +1,6 @@
 # Mingla
 
-Mingla is a mobile app for planning social outings -- combining pool-first card serving, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
+A mobile app for planning social outings — combining pool-first card serving, real-time collaboration, and a card-based swipe interface to help users discover and plan experiences with friends.
 
 ---
 
@@ -36,21 +36,25 @@ Mingla/
 │   ├── app/
 │   │   └── index.tsx                    # Entry point (AppContent)
 │   ├── src/
-│   │   ├── components/                  # ~100+ UI components
-│   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput, etc.
-│   │   │   ├── connections/            # RequestsView, FriendsManagementList, PillFilters
-│   │   │   ├── board/                  # Board-related components
-│   │   │   ├── expandedCard/           # Expanded card sub-components (ActionButtons, etc.)
-│   │   │   ├── profile/               # ProfileHeroSection, InterestsSection, Toggle, SettingsRow, EditProfileSheet, EditBioSheet, EditInterestsSheet
+│   │   ├── components/                  # ~100 UI components
+│   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput,
+│   │   │   │                           # OnboardingFriendsAndPairingStep,
+│   │   │   │                           # OnboardingCollaborationStep,
+│   │   │   │                           # OnboardingConsentStep, SegmentedProgressBar
+│   │   │   ├── connections/            # RequestsView, FriendsManagementList, PillFilters, AddFriendView
+│   │   │   ├── board/                  # BoardViewScreen, BoardDiscussionTab, SwipeableSessionCards
+│   │   │   ├── expandedCard/           # ActionButtons, ImageGallery, TimelineSection, WeatherSection
+│   │   │   ├── profile/               # ProfileHeroSection, EditProfileSheet, EditBioSheet,
+│   │   │   │                           # EditInterestsSheet, ViewFriendProfileScreen, Toggle, SettingsRow
 │   │   │   ├── chat/                   # MessageBubble, ChatStatusLine, TypingIndicator
-│   │   │   ├── discussion/            # Board discussion components (MessageBubble, TypingIndicator, EmojiReactionPicker, SuggestionPopup, EmptyDiscussion)
-│   │   │   └── ui/                     # Shared UI primitives
-│   │   ├── hooks/                      # ~64 React Query hooks + realtime hooks
-│   │   ├── services/                   # ~75 service files
-│   │   ├── contexts/                   # 3 React contexts
+│   │   │   ├── discussion/            # EmojiReactionPicker, SuggestionPopup, EmptyDiscussion
+│   │   │   └── ui/                     # Design system primitives (Button, Toast, CategoryTile, etc.)
+│   │   ├── hooks/                      # ~62 React Query hooks + realtime hooks
+│   │   ├── services/                   # ~73 service files
+│   │   ├── contexts/                   # 3 React contexts (Navigation, CardCache, Recommendations)
 │   │   ├── store/                      # Zustand store (appStore)
 │   │   ├── types/                      # TypeScript types
-│   │   ├── constants/                  # Design tokens, config, categories, holidays
+│   │   ├── constants/                  # Design tokens, config, categories, holidays, countries, languages
 │   │   └── utils/                      # ~27 utility files
 │   ├── app.json
 │   ├── eas.json
@@ -59,9 +63,8 @@ Mingla/
 ├── supabase/
 │   ├── functions/                      # 51 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
-│   │   ├── send-phone-invite/         # Phone invite SMS via Twilio
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # SQL migration files
+│   ├── migrations/                    # 196 SQL migration files
 │   └── config.toml
 │
 ├── mingla-admin/                       # Admin tooling
@@ -73,232 +76,146 @@ Mingla/
 
 ## Features
 
-### Onboarding Flow
+### Onboarding Flow (7-Step State Machine)
 
-The onboarding flow uses a 5-step state machine with sub-steps within each step.
+The onboarding flow uses a 7-step state machine with sub-steps within each step. All friend and pairing actions during onboarding use real production services (`friendsService`, `pairingService`, `useFriends`, `usePairings`).
 
-**Step 1 -- Account & Identity** has 5 sub-steps:
-1. **Welcome** -- app introduction screen
-2. **Phone** -- phone number entry with country picker
-3. **OTP** -- 6-digit verification code
-4. **Gender Identity** -- 8 inclusive gender options
-5. **Personal Details** -- country, date of birth, and preferred language
+**Step 1 — Account & Identity** has 5 sub-steps:
+1. **Welcome** — app introduction screen
+2. **Phone** — phone number entry with country picker
+3. **OTP** — 6-digit verification code
+4. **Gender Identity** — 8 inclusive gender options
+5. **Personal Details** — country, date of birth, and preferred language
 
-**Step 2 -- Intents** -- value proposition and intent selection
+**Step 2 — Intents** — value proposition and intent selection
 
-**Step 3 -- Location** -- GPS permission request
+**Step 3 — Location** — GPS permission request
 
-**Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
+**Step 4 — Preferences** — manual location (if GPS denied), celebration, category selection, price tiers, transport mode, travel time
 
-**Step 5 -- Social** -- friends, consent, collaboration session management, then choose a path:
-- **Friends** (OnboardingFriendsStep) -- Interactive phone input to add friends or invite non-users to the platform. Incoming pending friend requests are displayed above the phone input with accept/decline buttons, haptic feedback, and visual feedback animations. Accepting a friend request triggers the DB trigger that reveals hidden collaboration invites. No longer auto-skipped.
-- **Consent** (OnboardingConsentStep) -- Interactive step with explicit data consent. No longer auto-skipped.
-- **Path A (Sync):** Select friends to sync with, record audio descriptions. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards. Saved people entries are created for every synced friend regardless of audio.
-- **Path B (Add person):** Streamlined 4-step flow: Name, birthday, gender, then confirm. The confirmation step features warm personal copy, staggered entrance animations, and an "Add to my people" CTA. No audio recording -- cards are served instantly from the pool.
-- **Skip:** Goes straight to the app.
+**Step 5 — Friends & Pairing** — unified screen (`OnboardingFriendsAndPairingStep`) combining friend addition and pairing into a single step. Users can add friends by phone number, accept incoming friend requests, and send/accept pair requests all from one screen. Tracks `OnboardingPairAction` entries (type, target, tier, request/pairing IDs) for audit and state.
+
+**Step 6 — Collaborations** — create collaboration sessions with friends (`OnboardingCollaborationStep`). Named sessions with multi-friend selection.
+
+**Step 7 — Consent & Launch** has 2 sub-steps:
+1. **Consent** (`OnboardingConsentStep`) — explicit data consent
+2. **Getting Experiences** (`GettingExperiencesScreen`) — animated loading/ready screen with compass spinner and checkmark reveal
+
+The progress bar displays 7 segments. `OnboardingData` tracks `addedFriends`, `pairActions`, `skippedFriends`, and `createdSessions`. The old Path A/B/C branching, `OnboardingSyncStep`, audio recording fields, `invitePath`, `personName`, `personBirthday`, `personGender`, and `selectedSyncFriends` have all been removed.
 
 ### Profile Page
 
-The profile page is a clean, modern single-scroll experience with 5 sections and inline editing via bottom sheets. No sub-screens -- all editing happens from the profile page itself.
+A single-scroll experience with 5 sections and inline editing via bottom sheets:
 
-- **ProfileHeroSection** -- 104px avatar with initials gradient fallback and camera badge, display name, @username, location with refresh, bio display (tappable to edit via EditBioSheet), and profile completion hints
-- **ProfileInterestsSection** -- Displays user intents (filled orange pills) and categories (outlined pills). Tappable pencil icon opens the EditInterestsSheet
-- **ProfileStatsRow** -- 3-column stats display: Saved count, Friends count, Boards count. Each stat is tappable for navigation
-- **Settings Section** -- Notifications toggle, Profile Visibility cycling (Friends Only / Everyone / Nobody), Show Activity toggle. Uses shared Toggle and SettingsRow components
-- **Account Section** -- Edit Profile (opens EditProfileSheet bottom sheet for name, username, bio), Replay Tips, Account settings navigation
-- **EditProfileSheet** -- Bottom sheet for editing first name, last name, username (with real-time sanitization), and bio (160 char max)
-- **EditBioSheet** -- Bottom sheet modal with multiline text input, 160-character limit with counter
-- **EditInterestsSheet** -- Bottom sheet modal for multi-selecting intents and categories
-- **Toggle** -- Shared animated toggle component with haptic feedback, used by all toggle rows
-- **SettingsRow** -- Reusable row component handling toggle, value-cycling, and navigation row variants
-
-The profile also includes legal links (Privacy Policy, Terms of Service) and sign out.
+- **ProfileHeroSection** — avatar with initials gradient fallback, display name, @username, location, bio, profile completion hints
+- **ProfileInterestsSection** — intents (filled orange pills) and categories (outlined pills) with edit via EditInterestsSheet
+- **ProfileStatsRow** — 3-column tappable stats: Saved, Friends, Boards
+- **Settings Section** — notifications toggle, profile visibility cycling, show activity toggle
+- **Account Section** — edit profile (EditProfileSheet), replay tips, account settings
+- Legal links (Privacy Policy, Terms of Service) and sign out
 
 ### View Friend Profile
 
-Tapping a friend's avatar in the connections list opens their full profile as an overlay screen. Shows their hero section, interests, stats, a message button, and a remove friend option. Access is controlled by 3 RLS policies that enforce visibility based on the friend's `visibility_mode` setting. Private profiles show a "This profile isn't available" error state.
+Tapping a friend's avatar opens their full profile as an overlay. Access controlled by 3 RLS policies based on `visibility_mode`. Private profiles show an error state.
 
-### Pairing (Replaces Saved People)
+### Pairing System
 
-Pairing replaces the manual Saved People system. Instead of recording voice descriptions and relying on AI to generate experience suggestions, users pair with real people and their actual behavior data (swipes, saves, visits) drives personalization.
+Pairing replaces the legacy Saved People system. Real behavior data (swipes, saves, visits) drives personalization instead of audio descriptions.
 
-**3-Tier Pairing System:**
-- **Tier 1 (Friend):** Send a direct pair request to any Mingla friend. Push + in-app notification. Pill shows at full opacity with "Pending" badge.
-- **Tier 2 (Mingla, not friend):** Enter phone number of a Mingla user. Creates friend request + hidden pair request. Receiver sees friend request first. When friendship accepted, DB trigger (`reveal_pair_requests_on_friend_accept`) flips pair request visibility and fires push notification. Sender sees greyed-out pill ("Waiting for friend request").
-- **Tier 3 (Not on Mingla):** Enter phone number of non-Mingla user. SMS invite sent. When person signs up and verifies phone, DB trigger auto-creates both friend request + hidden pair request. Same chain as Tier 2 from there. Sender sees greyed-out pill ("Waiting to join").
+**3-Tier Pairing:**
+- **Tier 1 (Friend):** Direct pair request to any Mingla friend
+- **Tier 2 (Mingla, not friend):** Phone number lookup creates friend request + hidden pair request. DB trigger reveals pair request on friend acceptance.
+- **Tier 3 (Not on Mingla):** SMS invite. DB trigger auto-creates friend request + pair request on phone verification.
 
-**Pill States on Discover:**
-- `active` — Full color, tappable, shows PersonHolidayView with hero cards and holidays
-- `incoming_request` — Orange border + red notification dot (incoming pair request, tappable to accept/decline)
-- `pending_active` — Full opacity + "Pending" badge (Tier 1: friend, awaiting pair accept)
-- `greyed_waiting_friend` — 40% opacity (Tier 2: waiting for friend accept)
-- `greyed_waiting_pair` — 40% opacity (Tier 2: friend accepted, waiting for pair accept)
-- `greyed_waiting_signup` — 40% opacity (Tier 3: waiting for person to join Mingla)
+**Pill States on Discover:** `active`, `incoming_request`, `pending_active`, `greyed_waiting_friend`, `greyed_waiting_pair`, `greyed_waiting_signup`
 
-**IncomingPairRequestCard:** Tapping an incoming request pill opens a bottom sheet with sender avatar, name, "wants to pair with you" subtitle, Accept/Decline buttons, success/error states, and haptic feedback. Accept shows brief "You're paired!" state before closing. Decline closes immediately. Both paths invalidate React Query cache.
-
-**PairingInfoCard:** Tapping a greyed/pending pill shows a bottom sheet with status message + "Cancel Pair Request" button.
-
-**PersonHolidayView (for active pairings):**
-- Birthday hero card with first name (never email), birthday date, turning age, and countdown ("Today!", "1 day", "X days")
-- "Add to calendar" button on birthday and every holiday with 7-tier reminder system (3 months, 1 month, 2 weeks, 1 week, 3 days, 1 day, day-of)
-- Deterministic 6-card layout per occasion: 3 curated (Romantic, Adventurous, Friendly) + 3 category (Fine Dining, Watch, Play), showing real places from the card pool
-- Shuffle button after the last card — fetches random cards if <10 swipes, personalized cards based on paired person's preferences if ≥10 swipes
-- Holiday sections with AI-generated categories (GPT-4o-mini) cached 30 days in AsyncStorage, each with its own 6-card row + shuffle + calendar button
-- Custom holidays with "Xth year" commemoration display, same hero layout as birthday
-- PairedPeopleRow on Discover "For You" tab — horizontal scrollable cards (avatar, name, birthday countdown) for quick access to paired people
-- Holiday rows sorted by proximity, gender-filtered, with pool-first hero card fetching via `get-person-hero-cards` (blends paired user's learned preferences with holiday categories)
-- Custom holidays tied to the pairing (CASCADE deleted on unpair)
-- Swipe-to-archive on holiday rows
-
-**Unpair:** Long-press active pill → confirmation → deletes pairing + CASCADEs to custom holidays, archived holidays, and card impressions.
+**PersonHolidayView:** Birthday hero card with countdown, "Add to calendar" with 7-tier reminder system, deterministic 6-card layout per occasion (3 curated + 3 category), shuffle button, AI-generated holiday categories cached 30 days, custom holidays with commemoration display, swipe-to-archive.
 
 ### Connect Page
 
-The Connect page manages friend relationships and real-time messaging:
+- **Friends Management Modal** — two-tab modal (Friends with search + dropdown menu, Requests with accept/decline)
+- **Real-Time Messaging** — dual-channel delivery (Supabase broadcast + postgres_changes backup), deduplication, optimistic messages
+- **Compact Chat UI** — sender grouping, timestamp pills, read receipts (sent/delivered/read)
+- **Presence & Typing** — realtime online/offline status with 30-second heartbeat, typing indicators via broadcast
+- **Inverted FlatList** — standard chat pattern
 
-- **Friends Management Modal** -- Two-tab modal: "Friends" tab shows all accepted friends with search, three-dot dropdown menu (Mute/Unmute, Remove Friend, Block User, Report User); "Requests" tab shows pending friend requests with accept/decline. Badge on Requests tab shows pending count.
-- **Blocked** -- Manage blocked users.
-- **Invite** -- Share invite link via system share sheet.
-- **Pill Filters** -- Horizontal scrollable pill navigation with badge counts for pending requests.
-- **Avatar Navigation** -- Tapping a friend's avatar in the chat list navigates to their full profile.
-- **Real-Time Messaging** -- Dual-channel delivery: Supabase broadcast for sub-second messages (<500ms) plus postgres_changes as backup (1-3s). Deduplication via shared `broadcastSeenIds` ref prevents double-rendering. Optimistic messages with temp IDs replaced by real DB IDs after successful send. Failed messages shown with error state.
-- **Compact Chat UI** -- Messages grouped by sender (same sender within 2 minutes = one group). Grouped messages use compact border radius. Timestamp pills shown on >5 minute gaps. Read receipts: single check (sent), double gray (delivered), double orange (read).
-- **Presence & Typing** -- Real-time online/offline status via Supabase Realtime presence channels with 30-second heartbeat. 60-second stale threshold for ghost detection. Typing indicators via broadcast (no DB writes). 3-second auto-stop, 4-second expiry.
-- **Inverted FlatList** -- Standard React Native chat pattern replacing ScrollView. Prevents scroll jump on load-more. New messages appear at bottom without manual scroll management.
+### Collaboration Sessions
 
-### Friends Management Modal
-
-The Friends Management Modal (accessible from the Chats page header via the people icon) provides a two-tab interface:
-
-- **Friends Tab** -- Searchable list of all accepted friends. Each friend row shows avatar (with initials fallback), display name, username, and muted badge. Three-dot dropdown menu offers: Mute/Unmute (with loading state), Remove Friend (with confirmation alert), Block User (opens BlockUserModal), Report User (opens ReportUserModal). Tapping outside closes open dropdowns.
-- **Requests Tab** -- Incoming friend requests with accept/decline buttons. Red badge on the tab shows pending count.
-
-### Phone Invites
-
-- Phone invites via `send-phone-invite` edge function with Twilio SMS and basic friendship on signup
-- Rate limited to 10 invites per 24 hours
-- Push-to-in-app notification pipeline for friend requests and friend acceptances (with foreground `friend_request` and `friend_accepted` push handling and deduplication against polling) and collaboration invites. Both friend request and acceptance push notifications respect `notification_preferences`.
-- Realtime subscriptions for `pending_invites`, `saved_people`, `messages`, `friends`, and `calendar_entries` tables
-- `lookup-phone` checks `friends` and `friend_requests` tables for friendship/pending status
-
-### AI-Powered Recommendations
-- Pool-first card serving: hero cards and holiday cards are sourced directly from the `card_pool` table by location and categories, delivering results in under 1 second
-- "Generate More" fallback: GPT-4o-mini generates deeper recommendations beyond the pool, using Google Places API for fresh data
-- Audio-to-recommendations pipeline (onboarding only): voice notes transcribed (Whisper), analyzed (GPT-4o-mini), used to generate personalized experience cards
-- Card pool data pipeline: pool-first serving, falls back to Google Places API for "Generate More" requests
-- 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
-- AI summary generation for birthday hero cards via `generate-ai-summary` edge function
-- Proximity-optimized stop pairing: consecutive stops on curated cards are proximity-chained (3km -> 5km -> closest fallback) so users spend time enjoying the experience, not traveling between distant locations. Applies to adventurous, first-date, romantic, friendly, and group-fun intents
-- Full curated card data pipeline: edge functions pass complete stop data (`stopsData`) through to mobile, enabling multi-stop timeline rendering in the ExpandedCardModal with per-stop name, image, duration, and price
+- Friendship prerequisite for activation (not creation). Non-friends get hidden invites that auto-reveal on friend acceptance.
+- Atomic friend operations via PostgreSQL RPC (`accept_friend_request_atomic`, `remove_friend_atomic`)
+- Phone number invites with auto-chain (friend request + session add in one tap)
+- Server-side synchronized deck generation stored in `session_decks`
+- Union-based preference aggregation across all participants
+- Real-time card swiping, voting, RSVP, lock-in, calendar sync, and chat
+- Concurrent board creation protection via DB-level partial unique index
 
 ### Card-Based Swipe Interface
-- Swipe right to save, left to skip, up to expand full details
-- PanResponder with ref-based closure management for reliable gesture handling
+
+- Swipe right to save, left to skip, up to expand
 - Curated multi-stop itinerary experiences interleaved with single-place cards
-- Expanded card modal with image gallery, weather forecast, busyness predictions, and match score breakdown
-- Dismissed cards review sheet for reconsidering skipped cards
-- Batch auto-advance when all cards in a batch have been swiped (regular and curated)
-- Unified loading states with pulsing-dot animation (initial load, slow batch, batch transition, overlay) -- no stock spinners
+- Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown
+- Dismissed cards review sheet
+- Batch auto-advance with unified pulsing-dot loading states
+
+### AI-Powered Recommendations
+
+- Pool-first card serving from the `card_pool` table (sub-second)
+- "Generate More" fallback via GPT-4o-mini + Google Places API
+- 5-factor scoring algorithm (category match, tag overlap, popularity, quality, text relevance)
+- Proximity-optimized stop pairing for curated cards (3km/5km/closest)
+- AI summary generation for birthday hero cards
 
 ### 12-Category System
 
-| Slug | Display Name | Color | Icon |
-|------|-------------|-------|------|
-| `nature` | Nature | `#10B981` | `leaf-outline` |
-| `first_meet` | First Meet | `#6366F1` | `chatbubbles-outline` |
-| `picnic` | Picnic | `#84CC16` | `basket-outline` |
-| `drink` | Drink | `#F59E0B` | `wine-outline` |
-| `casual_eats` | Casual Eats | `#F97316` | `fast-food-outline` |
-| `fine_dining` | Fine Dining | `#7C3AED` | `restaurant-outline` |
-| `watch` | Watch | `#3B82F6` | `film-outline` |
-| `creative_arts` | Creative & Arts | `#EC4899` | `color-palette-outline` |
-| `play` | Play | `#EF4444` | `game-controller-outline` |
-| `wellness` | Wellness | `#14B8A6` | `body-outline` |
-| `groceries_flowers` | Groceries & Flowers | `#22C55E` | `cart-outline` |
-| `work_business` | Work & Business | `#64748B` | `briefcase-outline` |
+| Slug | Display Name | Color |
+|------|-------------|-------|
+| `nature` | Nature | `#10B981` |
+| `first_meet` | First Meet | `#6366F1` |
+| `picnic` | Picnic | `#84CC16` |
+| `drink` | Drink | `#F59E0B` |
+| `casual_eats` | Casual Eats | `#F97316` |
+| `fine_dining` | Fine Dining | `#7C3AED` |
+| `watch` | Watch | `#3B82F6` |
+| `creative_arts` | Creative & Arts | `#EC4899` |
+| `play` | Play | `#EF4444` |
+| `wellness` | Wellness | `#14B8A6` |
+| `groceries_flowers` | Groceries & Flowers | `#22C55E` |
+| `work_business` | Work & Business | `#64748B` |
 
 ### 4-Tier Price System
 
-| Tier | Label | Range | Google Levels | Color |
-|------|-------|-------|--------------|-------|
-| `chill` | Chill | $50 max | FREE + INEXPENSIVE | `#10B981` |
-| `comfy` | Comfy | $50-$150 | MODERATE | `#3B82F6` |
-| `bougie` | Bougie | $150-$300 | EXPENSIVE | `#8B5CF6` |
-| `lavish` | Lavish | $300+ | VERY_EXPENSIVE | `#F59E0B` |
+| Tier | Label | Range | Google Levels |
+|------|-------|-------|--------------|
+| `chill` | Chill | $50 max | FREE + INEXPENSIVE |
+| `comfy` | Comfy | $50-$150 | MODERATE |
+| `bougie` | Bougie | $150-$300 | EXPENSIVE |
+| `lavish` | Lavish | $300+ | VERY_EXPENSIVE |
 
-### Collaboration Sessions
-- Friendship is a prerequisite for collaboration session **activation** but not **creation**. Non-friends can be invited to sessions -- a hidden invite is created with `pending_friendship=true`, and a friend request is sent simultaneously. When the friend request is accepted, the invite auto-reveals. If declined, the invite is cancelled and empty sessions are deleted.
-- **Atomic friend operations:** Friend accept and removal use PostgreSQL RPC functions (`accept_friend_request_atomic`, `remove_friend_atomic`) that wrap all DB operations in a single transaction -- no split state between `friend_requests` and `friends` tables is possible. The accept RPC returns revealed collaboration invite IDs deterministically from within the same transaction, eliminating timing-window race conditions.
-- **Defense-in-depth friendship check:** Session creation checks both `friends` table (primary) and `friend_requests` table (fallback) to handle any historical desync.
-- Unified session creation flow via `CreateSessionContent` component (embedded in CollaborationModule's Create tab, also available standalone)
-- Named sessions with multi-friend selection via `FriendSelectionModal`
-- Phone number invites: invite friends by phone number using AddFriendView's proven CountryPickerModal + inline country picker row + debounced lookup feedback pattern. For on-Mingla users, the "Add to session" button auto-chains — sends a friend request (if needed, idempotent upsert) and adds them to the session in one tap. For off-Mingla users, creates a pending invite + opens Share sheet + tracks as phoneInvitee. Self-lookup and already-added guards prevent invalid additions. Non-platform users get SMS invite with auto-conversion on signup (DB triggers handle the full pending -> converted pipeline for both friend invites AND session invites)
-- **Phone invite catch-up push:** When a new user signs up and verifies their phone, freshly converted invites (< 60s old) trigger a system push notification in addition to the in-app notification.
-- JWT-validated invite edge function prevents impersonation
-- **Notification preferences enforced:** Both `send-collaboration-invite` and `notify-invite-response` edge functions check `notification_preferences.collaboration_invites` before sending push -- respects user opt-out settings.
-- Real-time card swiping, voting (with synchronous double-tap guard), RSVP, lock-in, calendar sync, and chat
-- Union-based preference aggregation: all participants' categories, intents, and price tiers are merged; budget uses widest range; travel mode uses deterministic majority vote (alphabetical tie-break); travel time uses median; datetime uses earliest; location uses midpoint
-- Server-side synchronized deck generation: a single canonical deck is generated per session and stored in `session_decks`, ensuring all participants see identical cards in identical order
-- Idempotent preference seeding (upsert) on invite acceptance -- safe against double-accept race conditions
-- Auto-copy of solo preferences to collaboration sessions on invite acceptance and onboarding completion
-- Push notifications for collaboration invites via OneSignal (awaited with error logging)
-- Realtime deck refresh: when any participant updates preferences, a new deck is generated and all clients are notified via Supabase Realtime
-- Realtime invite status: InvitesTab auto-refreshes via Supabase Realtime subscription when invites are created, accepted, or cancelled
-- **Consolidated realtime subscriptions:** Session management uses a single realtime channel in index.tsx for pill bar updates; CollaborationModule maintains its own channel for modal-specific data. Redundant duplicate subscription eliminated.
-- Session status loading guard: action buttons (Start Voting, Mark Complete) only render after status is confirmed from DB -- prevents premature actions on pending sessions
-- **Concurrent board creation protection:** DB-level partial unique index on `collaboration_sessions.board_id` (non-null values only) prevents duplicate boards. App-side optimistic locking (`.is('board_id', null)`) ensures only one accept creates the board; the loser cleans up its orphaned board immediately.
-- Consensus lock-in with auto calendar entries
-- Realtime sync via Supabase Realtime (collaboration_invites, collaboration_sessions, session_participants all published to supabase_realtime)
-- In-app notification catch-up mechanism: on foreground resume and after friend request acceptance, pending invites are queried and notifications are created for any missed while the app was in background/killed or newly revealed by the friend acceptance trigger, with deduplication via ref-tracked invite IDs
-- **Zero-stale foreground recovery:** Two-layer resume system ensures every screen shows current data within ~1 second of returning from background. Layer 1: React Query's `focusManager` is wired to React Native's `AppState`, enabling automatic `refetchOnWindowFocus` for any query whose data exceeds its `staleTime`. Layer 2: `useForegroundRefresh` hook force-invalidates all critical query families on every resume (short or long background), plus handles auth session refresh (8s timeout) and Realtime WebSocket reconnection for long backgrounds (≥ 30s). Cached data remains visible during refresh -- no spinner on resume when cached data exists. The 500ms debounce collapses rapid background/foreground toggling.
-- **Network-aware query refetching:** React Query's `onlineManager` is wired to `expo-network`, enabling automatic refetch of all stale queries within seconds of network recovery (airplane mode, subway, elevator). `refetchOnReconnect: 'always'` is active and functional.
-- **App-level Realtime subscriptions:** `useSocialRealtime` subscribes to friends, pairings, calendar, and message table changes at the app root level, ensuring data stays fresh on every screen -- not just ConnectionsPage.
-- **Centralized 401 handler:** Consecutive auth failures (JWT expired, invalid token) are tracked globally across all queries and mutations. After 3 consecutive 401s within a 30-second window, the app auto-signs-out to escape the "zombie authenticated" state and shows the login screen cleanly.
-- **Navigation state persistence:** The user's current page (Connections, Discover, Saved, Profile) is persisted to AsyncStorage. After process death, the app restores the user's last page instead of always resetting to Home. Board view and modal pages are excluded (complex dependent state).
-- **Deep link deferral:** When a deep link arrives while the user is unauthenticated, it is stored in AsyncStorage and processed after login + onboarding complete. Links older than 24 hours are discarded. OAuth callbacks always process immediately.
-- **Friends freshness strategy:** Friends, friend requests, and blocked users queries use `staleTime: 30s` so `refetchOnWindowFocus` triggers automatic refresh on resume. A 5-minute `refetchInterval` remains as a safety net if Realtime channels silently disconnect.
-- **Memoized pill bar data:** `collaborationSessions` array is memoized via `useMemo` to prevent unnecessary re-renders of the `CollaborationSessions` pill bar.
+### Native UX
 
-### Subscription System
-- Free, Pro, and Elite tiers with 1-week trial
-- Referral bonus months for inviting friends
-- Stripe Connect payment processing
+- Pull-to-refresh on SavedTab, CalendarTab, DiscoverScreen, ConnectionsPage
+- Haptic feedback on all interactive buttons
+- Duplicate mutation guards via isPending checks
+- Push notifications via OneSignal (FCM v1 + APNs)
+
+### Additional Features
+
+- Subscription system (Free, Pro, Elite) with Stripe Connect
+- GPS and manual location with travel time preferences
+- Holiday planning with custom holidays, archiving, and pool-first card sourcing with shuffle
+- Post-experience reviews with star ratings and voice recordings
+- Device calendar export
+- Boards with card voting, RSVP, iMessage-style discussion (emoji reactions, photo attachments, typing indicators, read receipts, @mentions, #card-tags)
+- Universal deep links via usemingla.com
+- Night Out section powered by Ticketmaster
+- Navigation state persistence across process death
+- Deep link deferral for unauthenticated users (24-hour TTL)
+- Centralized 401 handler with auto-sign-out after 3 consecutive failures
+- Network-aware query refetching via expo-network + React Query onlineManager
 
 ### Console Telemetry & Breadcrumb Trail (Dev Only)
 
-A `__DEV__`-only full-firehose activity tracker that logs every user interaction, state change, background process, network call, realtime event, push notification, and lifecycle event to the Metro terminal with color-coded domain prefixes. Every log line starts with a domain tag -- `[TAP]`, `[NAV]`, `[STORE]`, `[EDGE]`, `[REALTIME]`, `[PUSH]`, `[LIFECYCLE]`, `[QUERY]`, `[MUTATION]` -- so you can scan or search by category instantly. All logs also record breadcrumbs into a 30-entry ring buffer that dumps on errors.
-
-- **TrackedTouchableOpacity / TrackedPressable** -- Drop-in replacements for TouchableOpacity and Pressable that auto-log taps with label resolution (logId > accessibilityLabel > testID > child text > "(unlabeled)")
-- **Zustand devLogger middleware** -- Intercepts every `set()` call on the app store, computes a diff of changed keys (skipping functions), and logs `[STORE] set(key) | changed={...}` with summarized values. Zero-cost in production.
-- **trackedInvoke wrapper** -- Drop-in replacement for `supabase.functions.invoke()` that logs `[EDGE] → functionName` on call and `[EDGE] ← functionName OK/ERROR Nms` on response with full request/response bodies. Migrated in the 5 most active services.
-- **Realtime channel logging** -- Every `.on()` handler in `realtimeService.ts` logs `[REALTIME] channelId | eventType | payload`. Subscribe/unsubscribe lifecycle events are logged.
-- **Push notification logging** -- OneSignal login, permission, foreground receive, and notification tap events all log via `[PUSH]` domain.
-- **React Query global callbacks** -- QueryCache `onSuccess` logs `[QUERY] success key`, MutationCache `onMutate`/`onSuccess`/`onError` logs `[MUTATION] start/success/ERROR key`.
-- **Lifecycle hook** -- `useLifecycleLogger()` logs app foreground/background transitions, keyboard show/hide with height, memory warnings (iOS), and network connectivity changes.
-- **Breadcrumb ring buffer** -- Stores last 30 user actions with `breadcrumbs.add()` / `breadcrumbs.dump()`
-- **Auto-dump on errors** -- `logger.error()`, query/mutation failures, and ErrorBoundary catches all trigger breadcrumb dumps
-- **Screen transition logging** -- `useScreenLogger()` hook logs `[NAV] home -> discover` on every screen change
-- **Button tracking** -- The design system `Button` component auto-logs taps without replacing its base TouchableOpacity
-- **Zero production overhead** -- All logging is gated behind `__DEV__` with early returns on hot paths
-- **logger.render() excluded** -- Render logs are deliberately excluded from breadcrumbs to prevent 60fps noise from flushing real user actions
-
-### Native UX
-- **Pull-to-refresh** on SavedTab, CalendarTab, DiscoverScreen, and ConnectionsPage
-- **Haptic feedback** on all interactive buttons (buttonPress, success, warning, error, selection patterns)
-- **Duplicate mutation guards** -- isPending checks prevent double-tap on accept/decline/send buttons
-- **Push notifications** -- OneSignal handles all push delivery (FCM v1 + APNs), token management, and device registration. Edge functions target users by Supabase UUID via OneSignal REST API
-
-### Additional Features
-- GPS and manual location with travel time preferences
-- Audio-to-recommendations pipeline for onboarding sync path (Whisper transcription + GPT-4o-mini interest extraction)
-- Holiday planning with custom holidays, archiving, and pool-first card sourcing with shuffle
-- Shuffle mechanic on hero cards and holiday rows -- fade-out/fade-in animation, no-repeat guarantee via impression tracking
-- Post-experience reviews with star ratings and voice recordings
-- Device calendar export
-- Boards with card voting, RSVP, iMessage-style discussion (inverted FlatList, emoji reactions, photo attachments, typing indicators, read receipts, @mentions, #card-tags)
-- Universal deep links via usemingla.com
-- Night Out section powered by Ticketmaster
+A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes (`[TAP]`, `[NAV]`, `[STORE]`, `[EDGE]`, `[REALTIME]`, `[PUSH]`, `[LIFECYCLE]`, `[QUERY]`, `[MUTATION]`). Features TrackedTouchableOpacity/TrackedPressable, Zustand devLogger middleware, trackedInvoke wrapper, realtime channel logging, push notification logging, React Query global callbacks, lifecycle hook, and a 30-entry breadcrumb ring buffer with auto-dump on errors.
 
 ---
 
@@ -308,76 +225,76 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, show_activity, visibility_mode. Legacy `photos` TEXT[] column retained but unused by app |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country, preferred_language, bio, avatar_url, visibility_mode |
 | `preferences` | User preference settings (categories, price tiers, intents, travel) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
-
-### Push Notifications
-
-| Table | Purpose |
-|-------|---------|
-| `user_push_tokens` | Legacy Expo push tokens (unused -- OneSignal manages tokens internally). Retained as safety net. |
 
 ### Social Tables
 
 | Table | Purpose |
 |-------|---------|
-| `friend_requests` | Friend request lifecycle with RLS. Atomic accept via `accept_friend_request_atomic` RPC. |
-| `friends` | Bidirectional friendship records (user_id, friend_user_id, status). Atomic removal via `remove_friend_atomic` RPC. |
+| `friend_requests` | Friend request lifecycle with RLS. Atomic accept via `accept_friend_request_atomic` RPC |
+| `friends` | Bidirectional friendship records. Atomic removal via `remove_friend_atomic` RPC |
 | `blocked_users` | User blocks |
-| `pending_invites` | Phone invites for non-app users (auto-converts to friend_requests on signup) |
+| `pending_invites` | Phone invites for non-app users (auto-converts on signup) |
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `referral_credits` | Referral credit audit log |
-
-### Chat & Presence Tables
-
-| Table | Purpose |
-|-------|---------|
-| `conversation_presence` | Per-user, per-conversation online status with heartbeat timestamps. Auto-update trigger on row modification. Stale presence cleanup function. |
 
 ### Pairing Tables
 
 | Table | Purpose |
 |-------|---------|
-| `pair_requests` | Pair request lifecycle across 3 tiers. Columns: `visibility` ('visible'\|'hidden_until_friend'), `gated_by_friend_request_id` (FK for Tier 2/3 chaining), `pending_display_name`, `pending_phone_e164`. Atomic accept via `accept_pair_request_atomic` RPC. |
-| `pairings` | Active bidirectional pairings. `user_a_id < user_b_id` constraint prevents duplicates. CASCADE deletes to custom_holidays, archived_holidays, person_card_impressions. |
-| `pending_pair_invites` | Tier 3 phone invites for non-Mingla users. Auto-converts to friend_request + pair_request on phone verification via DB trigger. |
+| `pair_requests` | Pair request lifecycle across 3 tiers. Supports `visibility`, `gated_by_friend_request_id`, `pending_display_name`, `pending_phone_e164`. Atomic accept via `accept_pair_request_atomic` RPC |
+| `pairings` | Active bidirectional pairings (`user_a_id < user_b_id`). CASCADE deletes to custom_holidays, archived_holidays, person_card_impressions |
+| `pending_pair_invites` | Tier 3 phone invites for non-Mingla users. Auto-converts via DB trigger |
 
-### People & Experiences Tables (Legacy + Pairing)
+### People & Experiences Tables
 
 | Table | Purpose |
 |-------|---------|
 | `saved_people` | Legacy saved people (deprecated — replaced by pairings) |
-| `custom_holidays` | User-created holidays. Now linked to pairings via `pairing_id` and `paired_user_id` columns (legacy `person_id` retained for backward compat) |
-| `archived_holidays` | Tracks which holidays a user has archived. Now supports `pairing_id` and `paired_user_id` columns |
-| `person_card_impressions` | Tracks which cards each paired person has been shown. Now supports `paired_user_id` column |
+| `custom_holidays` | User-created holidays linked to pairings via `pairing_id` and `paired_user_id` |
+| `archived_holidays` | Tracks archived holidays per user. Supports `pairing_id` and `paired_user_id` |
+| `person_card_impressions` | Tracks shown cards per paired person for no-repeat shuffle |
+
+### Chat & Presence Tables
+
+| Table | Purpose |
+|-------|---------|
+| `conversation_presence` | Per-user, per-conversation online status with heartbeat timestamps |
 
 ### Collaboration Tables
 
 | Table | Purpose |
 |-------|---------|
-| `collaboration_sessions` | Collaboration session records |
-| `collaboration_invites` | Session invite records (canonical columns: `inviter_id`, `invited_user_id`, `pending_friendship` boolean default false -- controls invite visibility until friendship is established) |
+| `collaboration_sessions` | Session records with board_id partial unique index |
+| `collaboration_invites` | Invite records with `pending_friendship` boolean for visibility gating |
 | `session_participants` | Session participant records |
 | `boards` | Collaboration boards |
-| `board_messages` | Discussion messages per session (content, image_url, mentions, reply_to_id) |
-| `board_message_reads` | Read receipts (message_id, user_id, read_at) |
-| `board_message_reactions` | Emoji reactions per message (message_id, user_id, emoji with unique constraint) |
-| `board_session_preferences` | Per-session preference settings (auto-seeded from solo preferences) |
-| `session_decks` | Canonical server-generated decks per session (JSONB cards, preferences hash, 24h expiry, RLS for participants) |
+| `board_messages` | Discussion messages (content, image_url, mentions, reply_to_id) |
+| `board_message_reads` | Read receipts |
+| `board_message_reactions` | Emoji reactions per message |
+| `board_session_preferences` | Per-session preferences (auto-seeded from solo preferences) |
+| `session_decks` | Server-generated decks per session (JSONB, SHA-256 hash dedup, 24h expiry) |
 
 ### Pipeline Tables
 
 | Table | Purpose |
 |-------|---------|
-| `card_pool` | Enriched place cards shared across users. Curated cards include full `stopsData` JSONB with per-stop details (name, image, duration, price). |
+| `card_pool` | Enriched place cards with curated `stopsData` JSONB |
 | `place_pool` | Place data pool from Google Places |
 | `user_card_impressions` | Tracks which cards users have seen (discover/swipe) |
-| `person_card_impressions` | Tracks which cards each saved person has been shown (hero cards + holiday rows), enabling no-repeat shuffle and "Generate More" exclusions |
+| `person_card_impressions` | Tracks shown cards per saved person (hero cards + holiday rows) |
 | `ticketmaster_events_cache` | Cached Ticketmaster events (2-hour TTL) |
 | `google_places_cache` | Cached Google Places API responses |
 | `discover_daily_cache` | Cached discover feed results |
 | `curated_places_cache` | Cached curated experience places |
+
+### Push Notifications
+
+| Table | Purpose |
+|-------|---------|
+| `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally) |
 
 ---
 
@@ -390,16 +307,14 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `generate-experiences` | AI-powered place recommendations |
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation |
-| `send-pair-request` | Handles all 3 pairing tiers: friend (Tier 1), Mingla non-friend via phone (Tier 2), non-Mingla via SMS invite (Tier 3). Auto-detects tier from input. |
-| `notify-pair-request-visible` | Sends push + in-app notification when a hidden pair request becomes visible (after friend request acceptance) |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Accepts `pairedUserId` to blend the paired user's learned preferences (`user_preference_learning`) with holiday categories. Supports `mode: "default" \| "shuffle"` — shuffle mode checks paired person's swipe count and returns personalized top-6 categories if ≥10 swipes, random cards if <10. Queries `card_pool` directly by location + blended categories using `query_person_hero_cards` DB function with progressive radius expansion. Tracks impressions in `person_card_impressions` (via `paired_user_id` column). Sub-second response time. |
-| `get-holiday-cards` | Holiday card sourcing -- now primarily used for "Generate More" requests (`generate_more` mode with GPT-4o-mini for deeper AI-generated suggestions excluding already-seen IDs). Uses shared `mapPoolCardToResponseCard` helper to build consistent card responses across all modes (replacing 3 previous inline card builders). Returns full `stopsData`, `estimatedDurationMinutes`, `experienceType`, `categories`, and `shoppingList` on every card. Legacy `holiday` and `hero` modes still available but superseded by `get-person-hero-cards` for default card loads. |
-| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char). Extended with optional `customDayName`/`customDayYear` fields for occasion-aware suggestions that reference both the person and the special day |
-| `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini. Returns mix of curated experience types (romantic, adventurous, friendly) and single-place categories. Validates against known category slugs. Falls back to birthday defaults on failure. |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Supports `mode: "default" \| "shuffle"` with paired user preference blending |
+| `get-holiday-cards` | Holiday card sourcing, primarily for "Generate More" requests via GPT-4o-mini |
+| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) with occasion-aware suggestions |
+| `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
-| `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions (aggregates preferences, calls discover-cards internally, caches in session_decks with SHA-256 hash deduplication) |
+| `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions |
 | `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
@@ -412,12 +327,14 @@ A `__DEV__`-only full-firehose activity tracker that logs every user interaction
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
-| `send-friend-request-email` | Push notification for friend requests (via OneSignal). Checks `notification_preferences` before sending. |
-| `send-friend-accepted-notification` | Push notification when a friend request is accepted (via OneSignal). Notifies the original sender. Checks `notification_preferences` before sending. |
-| `send-collaboration-invite` | Push notification for session invites (via OneSignal) |
-| `notify-invite-response` | Push notification for invite responses (via OneSignal) |
-| `send-message-email` | Push notification for new direct messages (via OneSignal) |
-| `process-referral` | Manual referral credit reconciliation + push notification |
+| `send-friend-request-email` | Push notification for friend requests (via OneSignal) |
+| `send-friend-accepted-notification` | Push notification when a friend request is accepted |
+| `send-collaboration-invite` | Push notification for session invites |
+| `notify-invite-response` | Push notification for invite responses |
+| `send-message-email` | Push notification for new direct messages |
+| `send-pair-request` | Handles all 3 pairing tiers with auto-detection |
+| `notify-pair-request-visible` | Push + in-app notification when hidden pair request becomes visible |
+| `process-referral` | Referral credit reconciliation + push notification |
 
 ### Authentication
 
@@ -537,11 +454,13 @@ npx eas build --platform ios --profile production
 
 ---
 
-## Recent Changes
+## Recent Changes (Onboarding Overhaul)
 
-- **Session phone lookup overhaul** -- Replaced the old `PhoneInput`-based phone section in `CreateSessionModal`'s friends step with AddFriendView's proven `CountryPickerModal` + inline country picker row + debounced `usePhoneLookup` + auto-chain action handler. On-Mingla users get friend request (if needed) + session add in one tap. Off-Mingla users get pending invite + Share sheet + phoneInvitee tracking. Self-lookup guard, already-added guard, and status state machine prevent all edge case issues.
-- **Files changed:** `CreateSessionModal.tsx` (1 file).
-- **Zero regressions** -- FriendSelectionModal, handleCreateSession, and all other flows untouched.
+- **7-step onboarding replaces 5-step flow** — Steps 1-4 unchanged; Step 5 is now Friends & Pairing (unified), Step 6 is Collaborations, Step 7 is Consent + Getting Experiences. Progress bar updated to 7 segments.
+- **Path A/B/C branching removed** — The old sync path (audio recording, Whisper transcription, AI analysis), add-person path (name/birthday/gender entry), and skip path have all been deleted. `OnboardingSyncStep.tsx` removed entirely.
+- **New `OnboardingFriendsAndPairingStep` component** — combines friend addition and pair requests into a single unified screen using real production services (`friendsService`, `pairingService`, `useFriends`, `usePairings`). New `OnboardingPairAction` type tracks pair requests sent/accepted during onboarding.
+- **New `GettingExperiencesScreen` inline component** — animated loading/ready state with compass spinner animation and checkmark reveal, replacing the old immediate launch.
+- **`OnboardingData` simplified** — removed `invitePath`, `personName`, `personBirthday`, `personGender`, audio fields, and `selectedSyncFriends`. Added `pairActions: OnboardingPairAction[]` and `createdSessions: CreatedSession[]`.
 
 ---
 

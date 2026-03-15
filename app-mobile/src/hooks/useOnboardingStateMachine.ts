@@ -13,16 +13,13 @@ const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
   2: ['value_prop', 'intents'],
   3: ['location'],
   4: ['celebration', 'categories', 'budget', 'transport', 'travel_time'],
-  5: ['friends'],  // Step 5 sub-steps are dynamic (depends on chosen path)
+  5: ['friends_and_pairing'],   // single substep, no paths
+  6: ['collaborations'],         // NEW
+  7: ['consent', 'getting_experiences'],  // NEW: consent moved here
 }
-
-// Step 5 path sub-steps (appended after 'pitch' when path is chosen)
-const STEP5_PATH_A: SubStep[] = ['pathA_sync', 'pathA_audio']
-const STEP5_PATH_B: SubStep[] = ['pathB_name', 'pathB_birthday', 'pathB_gender', 'pathB_audio']
 
 interface UseOnboardingStateMachineProps {
   initialStep?: OnboardingStep
-  initialChosenPath?: 'invite' | 'add' | 'skip' | null  // restored from persisted onboarding data on crash resume
   hasGpsPermission: boolean  // determines whether 'manual_location' sub-step appears in Step 4
 }
 
@@ -31,23 +28,18 @@ interface UseOnboardingStateMachineReturn {
   goNext: () => void
   goBack: () => void
   goToSubStep: (subStep: SubStep) => void
-  choosePath: (path: 'invite' | 'add' | 'skip') => void
-  setSkippedFriends: (skipped: boolean) => void
   progress: { step: OnboardingStep; segmentFill: number }  // segmentFill: 0-1 within current step
   isLaunch: boolean
 }
 
 export function useOnboardingStateMachine({
   initialStep = 1,
-  initialChosenPath = null,
   hasGpsPermission,
 }: UseOnboardingStateMachineProps): UseOnboardingStateMachineReturn {
   const [state, setState] = useState<OnboardingNavState>({
     step: initialStep,
     subStep: STEP_SUBSTEPS[initialStep][0],
   })
-  const [chosenPath, setChosenPath] = useState<'invite' | 'add' | 'skip' | null>(initialChosenPath)
-  const [skippedFriends, setSkippedFriends] = useState(false)
   const [isLaunch, setIsLaunch] = useState(false)
 
   // Mirror state in a ref so goNext/goBack can read it synchronously
@@ -79,26 +71,11 @@ export function useOnboardingStateMachine({
     return ['celebration', 'manual_location', 'categories', 'budget', 'transport', 'travel_time']
   }, [hasGpsPermission])
 
-  // Build the effective sub-step sequence for Step 5 (depends on chosen path)
-  const getStep5Sequence = useCallback((): SubStep[] => {
-    const base: SubStep[] = ['friends']
-
-    base.push('consent')
-    base.push('collaboration')
-
-    base.push('pitch')
-    if (chosenPath === 'invite') base.push(...STEP5_PATH_A)
-    if (chosenPath === 'add') base.push(...STEP5_PATH_B)
-
-    return base
-  }, [chosenPath])
-
   // Get full sequence for a given step
   const getSequence = useCallback((step: OnboardingStep): SubStep[] => {
     if (step === 4) return getStep4Sequence()
-    if (step === 5) return getStep5Sequence()
     return STEP_SUBSTEPS[step]
-  }, [getStep4Sequence, getStep5Sequence])
+  }, [getStep4Sequence])
 
   const goNext = useCallback(() => {
     const prev = stateRef.current
@@ -120,7 +97,7 @@ export function useOnboardingStateMachine({
     }
 
     // At end of step — advance to next step
-    if (prev.step < 5) {
+    if (prev.step < 7) {
       const nextStep = (prev.step + 1) as OnboardingStep
       const nextSeq = getSequence(nextStep)
       const next = { step: nextStep, subStep: nextSeq[0] }
@@ -129,16 +106,12 @@ export function useOnboardingStateMachine({
       return
     }
 
-    // At end of Step 5 — trigger launch directly (no updater indirection)
-    logger.onboarding('LAUNCH triggered from end of Step 5')
+    // At end of Step 7 — trigger launch
+    logger.onboarding('LAUNCH triggered from end of Step 7')
     setIsLaunch(true)
   }, [getSequence])
 
   // ─── Fix C: goBack floor is always Step 1 ───
-  // The back button visibility is controlled by isFirstScreen + OnboardingShell,
-  // so goBack itself never needs a dynamic floor. This is simple and bulletproof:
-  // even if the component remounts and resume re-runs, goBack always allows
-  // navigating all the way back to Step 1.
   const goBack = useCallback(() => {
     const prev = stateRef.current
     const seq = getSequence(prev.step)
@@ -176,19 +149,6 @@ export function useOnboardingStateMachine({
     setState((prev) => ({ ...prev, subStep }))
   }, [])
 
-  const choosePath = useCallback((path: 'invite' | 'add' | 'skip') => {
-    logger.onboarding(`choosePath: ${path}`)
-    setChosenPath(path)
-    if (path === 'skip') {
-      // Skip goes straight to launch — no intermediate substep
-      setIsLaunch(true)
-    } else if (path === 'invite') {
-      setState({ step: 5, subStep: 'pathA_sync' })
-    } else if (path === 'add') {
-      setState({ step: 5, subStep: 'pathB_name' })
-    }
-  }, [])
-
   const progress = useMemo(() => {
     const seq = getSequence(state.step)
     const idx = seq.indexOf(state.subStep)
@@ -201,8 +161,6 @@ export function useOnboardingStateMachine({
     goNext,
     goBack,
     goToSubStep,
-    choosePath,
-    setSkippedFriends,
     progress,
     isLaunch,
   }

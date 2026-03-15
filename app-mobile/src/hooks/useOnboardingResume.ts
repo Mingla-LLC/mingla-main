@@ -54,19 +54,10 @@ const BASE_INITIAL_DATA: OnboardingData = {
   selectedPriceTiers: DEFAULT_PRICE_TIERS,
   travelMode: DEFAULT_TRANSPORT,
   travelTimeMinutes: DEFAULT_TRAVEL_TIME,
-  invitePath: null,
-  personName: null,
-  personBirthday: null,
-  personGender: null,
-  audioClipUri: null,
-  audioClipDuration: null,
-  audioClipStoragePath: null,
   addedFriends: [],
-  createdSessions: [],
+  pairActions: [],
   skippedFriends: false,
-  selectedSyncFriends: [],
-  audioClipsByFriend: {},
-  currentAudioFriendIndex: 0,
+  createdSessions: [],
 }
 
 export function useOnboardingResume(userId: string, profile: ResumeProfile): OnboardingResumeData {
@@ -100,7 +91,7 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
         // 3. Compute which step to resume at
         const savedStep = profile.onboarding_step
 
-        if (savedStep && savedStep >= 1 && savedStep <= 5) {
+        if (savedStep && savedStep >= 1 && savedStep <= 7) {
           if (phoneAlreadyVerified && savedStep === 1) {
             const hasIdentityData = !!profile.gender && !!profile.birthday && !!profile.country
             if (hasIdentityData) {

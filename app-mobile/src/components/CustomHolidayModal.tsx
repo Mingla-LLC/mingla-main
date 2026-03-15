@@ -43,17 +43,18 @@ function isFutureDate(year: number, month: number, day: number): boolean {
 }
 
 const MIN_YEAR = 1900;
-const currentYear = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from(
-  { length: currentYear - MIN_YEAR + 1 },
-  (_, i) => currentYear - i
-);
 
 const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
   visible,
   onClose,
   onSave,
 }) => {
+  // Compute inside component so it stays fresh across year boundaries
+  const currentYear = new Date().getFullYear();
+  const YEAR_OPTIONS = useMemo(
+    () => Array.from({ length: currentYear - MIN_YEAR + 1 }, (_, i) => currentYear - i),
+    [currentYear]
+  );
   const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [selectedYear, setSelectedYear] = useState<number | null>(null);

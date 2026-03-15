@@ -27,7 +27,7 @@ import {
 } from '../../constants/designSystem';
 
 interface OnboardingShellProps {
-  step: number; // 1-5
+  step: number; // 1-7
   segmentFill: number; // 0-1
   showBackButton: boolean;
   onBack: () => void;
@@ -265,7 +265,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
         {/* Progress bar */}
         <View style={styles.progressContainer}>
           <SegmentedProgressBar
-            totalSegments={5}
+            totalSegments={7}
             currentStep={step}
             currentSegmentFill={segmentFill}
           />

@@ -54,9 +54,20 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   // If this exact batch was already fetched, serve it as initialData for instant rendering.
   // Only provide initialData when the hook is enabled — prevents stale persisted batches
   // from leaking through when the user has cleared their category/intent preferences.
+  //
+  // CRITICAL: Match on both batchSeed AND activePills (sorted category/intent IDs).
+  // Matching on batchSeed alone caused a dead state: Zustand persists batches across
+  // sessions, so after a preference change (e.g. 3 categories → 1), the old batch's
+  // cards would be served as initialData for the new query key. Combined with persisted
+  // removedCards in AsyncStorage, this created availableRecommendations = 0 on cold start
+  // → permanent "Pulling up more for you" loader with no auto-recovery.
   const isEnabled = enabled && location !== null;
+  const currentPillsKey = [...params.categories].sort().join(',');
   const latestBatch = isEnabled
-    ? useAppStore.getState().deckBatches.find(b => b.batchSeed === params.batchSeed)
+    ? useAppStore.getState().deckBatches.find(
+        b => b.batchSeed === params.batchSeed &&
+             [...b.activePills].sort().join(',') === currentPillsKey
+      )
     : undefined;
 
   // Round coordinates to 3 decimal places (~110m) in the query key to prevent
