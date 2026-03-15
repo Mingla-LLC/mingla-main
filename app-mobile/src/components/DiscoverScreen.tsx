@@ -57,10 +57,10 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v6";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v5";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v7";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v6";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-15-website-field-v7";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -1275,10 +1275,12 @@ export default function DiscoverScreen({
             key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v4_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v5_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v6_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
             key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`) ||
             key.startsWith(`mingla_discover_cache_daily_v3_${user.id}`) ||
-            key.startsWith(`mingla_discover_cache_daily_v4_${user.id}`)
+            key.startsWith(`mingla_discover_cache_daily_v4_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v5_${user.id}`)
           );
 
           if (keysToRemove.length > 0) {

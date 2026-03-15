@@ -59,6 +59,31 @@ export function useSwipeLimit() {
 
   const countRef = useRef(0);
 
+  // Sync state when tier changes (e.g. subscription loads async and flips free → elite)
+  useEffect(() => {
+    if (isUnlimited && !state.isUnlimited) {
+      countRef.current = 0;
+      setState({
+        remaining: -1,
+        limit: -1,
+        used: 0,
+        isLimited: false,
+        isUnlimited: true,
+        resetsAt: null,
+      });
+    } else if (!isUnlimited && state.isUnlimited) {
+      // Downgrade: elite → free — re-hydrate will run via the effect below
+      setState({
+        remaining: limit,
+        limit,
+        used: 0,
+        isLimited: false,
+        isUnlimited: false,
+        resetsAt: getNextMidnight(),
+      });
+    }
+  }, [isUnlimited, limit, state.isUnlimited]);
+
   // Hydrate from local storage, then reconcile with server
   useEffect(() => {
     if (!user?.id || isUnlimited) return;
