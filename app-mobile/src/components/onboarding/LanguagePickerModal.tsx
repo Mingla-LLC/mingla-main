@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
+import { useKeyboard } from '../../hooks/useKeyboard'
 import { LANGUAGES, LanguageData } from '../../constants/languages'
 import {
   colors,
@@ -38,6 +39,10 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
 }) => {
   const insets = useSafeAreaInsets()
   const [search, setSearch] = useState('')
+
+  // Keyboard awareness — match CountryPickerModal gold standard
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true })
+  const bottomSpacer = keyboardHeight > 0 ? keyboardHeight : insets.bottom
 
   const filtered = useMemo(() => {
     if (!search.trim()) return LANGUAGES
@@ -150,8 +155,11 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
           getItemLayout={getItemLayout}
           style={styles.list}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={true}
         />
+        {/* Bottom spacer: keyboard height when open, safe area when closed */}
+        <View style={{ height: bottomSpacer }} />
       </SafeAreaView>
     </Modal>
   )

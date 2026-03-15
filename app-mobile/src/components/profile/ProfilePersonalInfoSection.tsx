@@ -14,6 +14,7 @@ import { useAppStore } from "../../store/appStore";
 import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
 
+
 interface UserIdentity {
   firstName: string;
   lastName: string;
@@ -28,6 +29,7 @@ const BIO_MAX_LENGTH = 160;
 export default function ProfilePersonalInfoSection() {
   const { userIdentity, handleUserIdentityUpdate } = useAppState();
   const profile = useAppStore((s) => s.profile);
+
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,

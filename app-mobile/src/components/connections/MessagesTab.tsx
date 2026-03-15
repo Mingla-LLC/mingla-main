@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Conversation, Friend } from "../../data/mockConnections";
 import ConversationCard from "./ConversationCard";
 import MessageInterface from "../MessageInterface";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 const ANIMATION_DURATION = 250;
 
@@ -68,6 +70,8 @@ export default function MessagesTab({
   loading = false,
 }: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   // Animation refs for conversation cards
   const cardAnimations = useRef<{ [key: string]: { opacity: Animated.Value; scale: Animated.Value } }>({});
@@ -160,7 +164,7 @@ export default function MessagesTab({
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
@@ -248,6 +252,7 @@ export default function MessagesTab({
         })
         )}
       </View>
+        <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
     </ScrollView>
   );
 }

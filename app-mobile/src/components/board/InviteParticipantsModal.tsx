@@ -15,6 +15,8 @@ import { Ionicons, Feather } from "@expo/vector-icons";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { mixpanelService } from "../../services/mixpanelService";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 interface FriendItem {
   id: string;
@@ -47,6 +49,8 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
   const [sending, setSending] = useState(false);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [availableFriends, setAvailableFriends] = useState<FriendItem[]>([]);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   // Load friends directly from DB when modal opens
   useEffect(() => {
@@ -340,6 +344,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
             style={styles.friendsList}
             contentContainerStyle={styles.friendsListContent}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {loadingFriends ? (
               <View style={styles.loadingContainer}>
@@ -405,6 +410,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                 );
               })
             )}
+            <View style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />
           </ScrollView>
 
           {/* Actions */}

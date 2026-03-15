@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { supabase } from "../../services/supabase";
+import { useKeyboard } from "../../hooks/useKeyboard";
 
 interface BoardSettingsDropdownProps {
   visible: boolean;
@@ -57,6 +58,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   const [savingSessionName, setSavingSessionName] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
   const [exitingBoard, setExitingBoard] = useState(false);
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   // Check if current user can manage session (is creator or admin)
   const canManageSession = currentUserId && (sessionCreatorId === currentUserId || isAdmin);
@@ -346,7 +348,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           activeOpacity={1}
           onPress={() => setShowEditSessionModal(false)}
         >
-          <View style={styles.editModalContainer} onStartShouldSetResponder={() => true}>
+          <View style={[styles.editModalContainer, keyboardHeight > 0 && { marginBottom: keyboardHeight }]} onStartShouldSetResponder={() => true}>
             <View style={styles.editModalHeader}>
               <Text style={styles.editModalTitle}>Edit Session Name</Text>
               <TouchableOpacity
@@ -356,7 +358,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 <Ionicons name="close" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
-            
+
             <TextInput
               style={styles.editModalInput}
               value={editSessionName}
@@ -366,7 +368,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
               autoFocus
               maxLength={100}
             />
-            
+
             <View style={styles.editModalButtons}>
               <TouchableOpacity
                 style={styles.editModalCancelButton}

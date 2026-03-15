@@ -4,6 +4,8 @@ import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend } from '../../data/mockConnections';
 import FriendCard from './FriendCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 interface FriendsTabProps {
   friends: Friend[];
@@ -47,6 +49,8 @@ export default function FriendsTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [friendsListExpanded, setFriendsListExpanded] = useState(true);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   // Filter friends based on search query
   const filteredFriends = friends.filter(friend =>
@@ -74,7 +78,7 @@ export default function FriendsTab({
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
@@ -234,6 +238,7 @@ export default function FriendsTab({
           </TrackedTouchableOpacity>
         )}
       </View>
+        <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
     </ScrollView>
   );
 }

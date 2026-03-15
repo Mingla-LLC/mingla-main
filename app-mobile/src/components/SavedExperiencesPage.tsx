@@ -12,6 +12,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../hooks/useKeyboard';
 
 interface SavedExperiencesPageProps {
   savedCards: any[];
@@ -175,6 +177,8 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   onShareCard,
 }) => {
   useScreenLogger('saved');
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [matchScoreFilter, setMatchScoreFilter] = useState<number | null>(null);
@@ -289,6 +293,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
           <View>
@@ -372,6 +377,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
             userPreferences={userPreferences}
           />
         </View>
+        <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
       </ScrollView>
     </View>
   );

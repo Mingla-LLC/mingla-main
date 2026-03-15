@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   Text,
   View,
@@ -7,462 +7,316 @@ import {
   ScrollView,
   Linking,
   StatusBar,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "@/src/constants/colors";
 
 interface PrivacyPolicyProps {
   onNavigateBack: () => void;
 }
 
+// --- Reusable section number badge ---
+const SectionBadge: React.FC<{ num: number }> = ({ num }) => (
+  <LinearGradient colors={["#eb7825", "#f5a623"]} style={styles.badge}>
+    <Text style={styles.badgeText}>{num}</Text>
+  </LinearGradient>
+);
+
+// --- Bullet item with orange dot ---
+const Bullet: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.bulletRow}>
+    <View style={styles.bulletDot} />
+    <Text style={styles.bulletText}>{children}</Text>
+  </View>
+);
+
 export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
   const insets = useSafeAreaInsets();
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const headerShadowOpacity = scrollY.interpolate({
+    inputRange: [0, 10],
+    outputRange: [0, 0.1],
+    extrapolate: "clamp",
+  });
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={20} color="#6b7280" />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Feather name="shield" size={18} color={colors.primary} />
-            <Text style={styles.title}>Privacy Policy</Text>
+
+      {/* Fixed header */}
+      <Animated.View style={[styles.header, {
+        shadowOpacity: headerShadowOpacity,
+      }]}>
+        <TouchableOpacity
+          onPress={onNavigateBack}
+          style={styles.backButton}
+          activeOpacity={0.7}
+          accessibilityLabel="Close"
+          accessibilityRole="button"
+        >
+          <Ionicons name="arrow-back" size={20} color="#374151" />
+        </TouchableOpacity>
+        <View style={styles.titleCluster}>
+          <Feather name="shield" size={18} color="#eb7825" />
+          <Text style={styles.headerTitle}>Privacy Policy</Text>
+        </View>
+        <View style={styles.headerSpacer} />
+      </Animated.View>
+
+      {/* Scrollable content */}
+      <Animated.ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingTop: 72, paddingBottom: Math.max(insets.bottom, 16), paddingHorizontal: 20 }}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
+      >
+        {/* Document header */}
+        <View style={styles.docHeader}>
+          <Text style={styles.docTitle}>Mingla Privacy Policy</Text>
+          <Text style={styles.effectiveDate}>Effective September 27, 2025</Text>
+        </View>
+        <View style={styles.divider} />
+
+        {/* Introduction */}
+        <Text style={styles.bodyText}>
+          Mingla ("we," "our," "us") is committed to protecting your privacy. This Privacy Policy
+          explains how we collect, use, disclose, and protect your information when you use the
+          Mingla mobile application and related services ("Services").
+        </Text>
+
+        {/* Section 1 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={1} />
+            <Text style={styles.sectionTitle}>Information We Collect</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.subTitle}>Personal Information You Provide:</Text>
+            <Text style={styles.bodyText}>
+              When you create an account, update your profile, connect with friends, or interact
+              with features, we may collect your name, username, profile photo, location, email
+              address, preferences, and communications.
+            </Text>
+            <Text style={styles.subTitle}>Automatically Collected Information:</Text>
+            <Text style={styles.bodyText}>
+              We may collect device information, IP addresses, geolocation data, and usage patterns
+              to operate and improve the app.
+            </Text>
+            <Text style={styles.subTitle}>Activity Data:</Text>
+            <Text style={styles.bodyText}>
+              Cards liked, boards created, RSVPs, calendar entries, messages, and interactions
+              within Mingla.
+            </Text>
           </View>
         </View>
-      </View>
 
-      {/* Content */}
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        <View style={styles.contentContainer}>
-          <View style={styles.contentInner}>
-            {/* Header */}
-            <View style={styles.policyHeader}>
-              <Text style={styles.policyTitle}>📜 Mingla Privacy Policy</Text>
-              <Text style={styles.effectiveDate}>
-                <Text style={styles.boldText}>Effective Date:</Text> 27th
-                September 2025
-              </Text>
-            </View>
-
-            {/* Introduction */}
-            <View style={styles.section}>
-              <Text style={styles.introText}>
-                Mingla ("we," "our," "us") is committed to protecting your
-                privacy. This Privacy Policy explains how we collect, use,
-                disclose, and protect your information when you use the Mingla
-                mobile application and related services ("Services").
-              </Text>
-            </View>
-
-            {/* Section 1 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>1</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>
-                  Information We Collect
-                </Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <View style={styles.subsection}>
-                  <Text style={styles.subsectionTitle}>
-                    Personal Information You Provide:
-                  </Text>
-                  <Text style={styles.subsectionText}>
-                    When you create an account, update your profile, connect
-                    with friends, or interact with features, we may collect your
-                    name, username, profile photo, location, email address,
-                    preferences, and communications.
-                  </Text>
-                </View>
-                <View style={styles.subsection}>
-                  <Text style={styles.subsectionTitle}>
-                    Automatically Collected Information:
-                  </Text>
-                  <Text style={styles.subsectionText}>
-                    We may collect device information, IP addresses, geolocation
-                    data, and usage patterns to operate and improve the app.
-                  </Text>
-                </View>
-                <View style={styles.subsection}>
-                  <Text style={styles.subsectionTitle}>Activity Data:</Text>
-                  <Text style={styles.subsectionText}>
-                    Cards liked, boards created, RSVPs, calendar entries,
-                    messages, and interactions within Mingla.
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Section 2 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>2</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>
-                  How We Use Information
-                </Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>We use information to:</Text>
-                <View style={styles.listContainer}>
-                  <Text style={styles.listItem}>
-                    • Provide, personalize, and improve the Services.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • Enable collaboration, messaging, and activity planning.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • Show location-based recommendations.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • Deliver notifications, updates, and communications.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • Ensure security, detect fraud, and comply with legal
-                    obligations.
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Section 3 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>3</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>
-                  Sharing of Information
-                </Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  We may share information:
-                </Text>
-                <View style={styles.listContainer}>
-                  <Text style={styles.listItem}>
-                    • <Text style={styles.boldText}>With other users:</Text> As
-                    necessary to enable collaboration, boards, invitations, and
-                    messaging.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    •{" "}
-                    <Text style={styles.boldText}>With service providers:</Text>{" "}
-                    For hosting, analytics, and app functionality.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • <Text style={styles.boldText}>For legal reasons:</Text> To
-                    comply with applicable law, enforce our Terms of Service, or
-                    protect the rights and safety of Mingla and its users.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    •{" "}
-                    <Text style={styles.boldText}>
-                      In case of business transfer:
-                    </Text>{" "}
-                    If Mingla is acquired, merged, or undergoes reorganization.
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Section 4 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>4</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Data Retention</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  We retain information for as long as your account is active or
-                  as needed to provide Services. You may request account
-                  deletion, after which we will delete your data except where
-                  retention is required by law.
-                </Text>
-              </View>
-            </View>
-
-            {/* Section 5 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>5</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Your Choices</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <View style={styles.listContainer}>
-                  <Text style={styles.listItem}>
-                    • You can edit your profile, settings, and preferences at
-                    any time.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • You may opt in/out of notifications.
-                  </Text>
-                  <Text style={styles.listItem}>
-                    • You can delete your account permanently in Account
-                    Settings.
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Section 6 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>6</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Children's Privacy</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  Mingla is not intended for children under 13. We do not
-                  knowingly collect data from children under 13.
-                </Text>
-              </View>
-            </View>
-
-            {/* Section 7 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>7</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Security</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  We implement safeguards to protect your information, but no
-                  system is 100% secure.
-                </Text>
-              </View>
-            </View>
-
-            {/* Section 8 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>8</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Your Rights</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  Depending on your state, you may have privacy rights under
-                  laws like the California Consumer Privacy Act (CCPA). These
-                  may include the right to access, delete, or opt out of certain
-                  data uses.
-                </Text>
-              </View>
-            </View>
-
-            {/* Section 9 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>9</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Updates to Policy</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  We may update this policy periodically. Continued use of
-                  Mingla constitutes acceptance of the updated policy.
-                </Text>
-              </View>
-            </View>
-
-            {/* Section 10 */}
-            <View style={styles.section}>
-              <View style={styles.sectionTitle}>
-                <View style={styles.sectionNumber}>
-                  <Text style={styles.sectionNumberText}>10</Text>
-                </View>
-                <Text style={styles.sectionTitleText}>Contact Us</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.sectionText}>
-                  For questions, contact:{" "}
-                  <Text
-                    style={styles.linkText}
-                    onPress={() => Linking.openURL("mailto:privacy@mingla.app")}
-                  >
-                    privacy@mingla.app
-                  </Text>
-                </Text>
-              </View>
-            </View>
-
-            {/* Footer */}
-            <View style={styles.footer}>
-              <View style={styles.footerContainer}>
-                <Text style={styles.footerText}>
-                  <Text style={styles.boldText}>Last Updated:</Text> September
-                  27, 2025. This policy is automatically updated to reflect the
-                  most current version. By continuing to use Mingla, you agree
-                  to the terms outlined above.
-                </Text>
-              </View>
-            </View>
+        {/* Section 2 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={2} />
+            <Text style={styles.sectionTitle}>How We Use Information</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>We use information to:</Text>
+            <Bullet>Provide, personalize, and improve the Services.</Bullet>
+            <Bullet>Enable collaboration, messaging, and activity planning.</Bullet>
+            <Bullet>Show location-based recommendations.</Bullet>
+            <Bullet>Deliver notifications, updates, and communications.</Bullet>
+            <Bullet>Ensure security, detect fraud, and comply with legal obligations.</Bullet>
           </View>
         </View>
-      </ScrollView>
+
+        {/* Section 3 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={3} />
+            <Text style={styles.sectionTitle}>Sharing of Information</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>We may share information:</Text>
+            <Bullet><Text style={styles.bold}>With other users:</Text> As necessary to enable collaboration, boards, invitations, and messaging.</Bullet>
+            <Bullet><Text style={styles.bold}>With service providers:</Text> For hosting, analytics, and app functionality.</Bullet>
+            <Bullet><Text style={styles.bold}>For legal reasons:</Text> To comply with applicable law, enforce our Terms of Service, or protect the rights and safety of Mingla and its users.</Bullet>
+            <Bullet><Text style={styles.bold}>In case of business transfer:</Text> If Mingla is acquired, merged, or undergoes reorganization.</Bullet>
+          </View>
+        </View>
+
+        {/* Section 4 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={4} />
+            <Text style={styles.sectionTitle}>Data Retention</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              We retain information for as long as your account is active or as needed to provide
+              Services. You may request account deletion, after which we will delete your data except
+              where retention is required by law.
+            </Text>
+          </View>
+        </View>
+
+        {/* Section 5 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={5} />
+            <Text style={styles.sectionTitle}>Your Choices</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Bullet>You can edit your profile, settings, and preferences at any time.</Bullet>
+            <Bullet>You may opt in/out of notifications.</Bullet>
+            <Bullet>You can delete your account permanently in Account Settings.</Bullet>
+          </View>
+        </View>
+
+        {/* Section 6 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={6} />
+            <Text style={styles.sectionTitle}>Children's Privacy</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              Mingla is not intended for children under 13. We do not knowingly collect data from
+              children under 13.
+            </Text>
+          </View>
+        </View>
+
+        {/* Section 7 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={7} />
+            <Text style={styles.sectionTitle}>Security</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              We implement safeguards to protect your information, but no system is 100% secure.
+            </Text>
+          </View>
+        </View>
+
+        {/* Section 8 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={8} />
+            <Text style={styles.sectionTitle}>Your Rights</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              Depending on your state, you may have privacy rights under laws like the California
+              Consumer Privacy Act (CCPA). These may include the right to access, delete, or opt
+              out of certain data uses.
+            </Text>
+          </View>
+        </View>
+
+        {/* Section 9 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={9} />
+            <Text style={styles.sectionTitle}>Updates to Policy</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              We may update this policy periodically. Continued use of Mingla constitutes acceptance
+              of the updated policy.
+            </Text>
+          </View>
+        </View>
+
+        {/* Section 10 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <SectionBadge num={10} />
+            <Text style={styles.sectionTitle}>Contact Us</Text>
+          </View>
+          <View style={styles.sectionBody}>
+            <Text style={styles.bodyText}>
+              For questions, contact:{" "}
+              <Text style={styles.link} onPress={() => Linking.openURL("mailto:privacy@mingla.app")}>
+                privacy@mingla.app
+              </Text>
+            </Text>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <View style={styles.footerCard}>
+            <Text style={styles.footerText}>
+              <Text style={styles.bold}>Last Updated:</Text> September 27, 2025. This policy is
+              automatically updated to reflect the most current version. By continuing to use Mingla,
+              you agree to the terms outlined above.
+            </Text>
+          </View>
+        </View>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "white",
-  },
+  container: { flex: 1, backgroundColor: "white" },
+  // Fixed header
   header: {
+    position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
+    height: 56, backgroundColor: "#ffffff",
+    borderBottomWidth: 1, borderBottomColor: "#f3f4f6",
+    flexDirection: "row", alignItems: "center",
     paddingHorizontal: 16,
-  },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3, elevation: 2,
   },
   backButton: {
-    paddingTop: 8,
-    borderRadius: 20,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: "#f3f4f6",
+    alignItems: "center", justifyContent: "center",
   },
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  titleCluster: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111827",
+  headerTitle: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  headerSpacer: { width: 40 },
+  scroll: { flex: 1 },
+  // Document header
+  docHeader: { alignItems: "center", marginBottom: 0 },
+  docTitle: { fontSize: 28, fontWeight: "800", color: "#111827", textAlign: "center" },
+  effectiveDate: { fontSize: 13, fontWeight: "500", color: "#6b7280", textAlign: "center", marginTop: 6 },
+  divider: { height: 1, backgroundColor: "#e5e7eb", marginTop: 24, marginBottom: 32 },
+  // Sections
+  section: { marginBottom: 28 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  badge: {
+    width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1, shadowRadius: 2, elevation: 2,
   },
-  content: {
-    flex: 1,
+  badgeText: { fontSize: 13, fontWeight: "700", color: "#ffffff" },
+  sectionTitle: { fontSize: 19, fontWeight: "700", color: "#111827", letterSpacing: -0.2, flex: 1 },
+  sectionBody: { paddingLeft: 40 },
+  subTitle: { fontSize: 15, fontWeight: "600", color: "#1f2937", marginBottom: 4, marginTop: 8 },
+  bodyText: { fontSize: 15, color: "#4b5563", lineHeight: 24, marginBottom: 8 },
+  bold: { fontWeight: "700" },
+  // Bullets
+  bulletRow: { flexDirection: "row", marginBottom: 6, paddingRight: 8 },
+  bulletDot: {
+    width: 6, height: 6, borderRadius: 3, backgroundColor: "#eb7825",
+    marginTop: 9, marginRight: 10,
   },
-  contentContainer: {
-    maxWidth: 800,
-    alignSelf: "center",
-    padding: 16,
-    backgroundColor: "white",
-    borderRadius: 16,
+  bulletText: { fontSize: 15, color: "#4b5563", lineHeight: 24, flex: 1 },
+  // Links
+  link: { color: "#eb7825", textDecorationLine: "underline" },
+  // Footer
+  footer: { borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 24, marginTop: 20 },
+  footerCard: {
+    backgroundColor: "#fef3e2", borderWidth: 1, borderColor: "#fed7aa",
+    borderRadius: 12, padding: 16,
   },
-  contentInner: {
-    gap: 24,
-  },
-  policyHeader: {
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    paddingBottom: 24,
-  },
-  policyTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#111827",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  effectiveDate: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  boldText: {
-    fontWeight: "bold",
-  },
-  section: {
-    gap: 16,
-  },
-  sectionTitle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  sectionNumber: {
-    backgroundColor: "#eb7825",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionNumberText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  sectionTitleText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  sectionContent: {
-    paddingLeft: 32,
-  },
-  sectionText: {
-    color: "#374151",
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 8,
-  },
-  introText: {
-    color: "#374151",
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  subsection: {
-    marginBottom: 12,
-  },
-  subsectionTitle: {
-    fontWeight: "500",
-    color: "#111827",
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  subsectionText: {
-    color: "#374151",
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  listContainer: {
-    gap: 4,
-  },
-  listItem: {
-    color: "#374151",
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  linkText: {
-    color: "#eb7825",
-    textDecorationLine: "underline",
-  },
-  footer: {
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingTop: 24,
-    marginTop: 32,
-  },
-  footerContainer: {
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 8,
-    padding: 16,
-  },
-  footerText: {
-    fontSize: 14,
-    color: "#ea580c",
-    lineHeight: 20,
-  },
+  footerText: { fontSize: 13, color: "#92400e", lineHeight: 20 },
 });

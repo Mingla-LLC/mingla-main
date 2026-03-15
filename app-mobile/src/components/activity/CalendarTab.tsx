@@ -28,6 +28,7 @@ import { HapticFeedback } from "../../utils/hapticFeedback";
 import { formatCurrency } from "../utils/formatters";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
+import { useKeyboard } from "../../hooks/useKeyboard";
 
 interface CalendarEntry {
   id: string;
@@ -88,6 +89,7 @@ const CalendarTab = ({
   accountPreferences,
 }: CalendarTabProps) => {
   const { canAccess } = useFeatureGate();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [showLockedPaywall, setShowLockedPaywall] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{
@@ -1750,6 +1752,7 @@ const CalendarTab = ({
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
       >
         {/* Search & Filters */}
@@ -1987,6 +1990,7 @@ const CalendarTab = ({
                 })}
           </View>
         )}
+        {keyboardHeight > 0 && <View style={{ height: keyboardHeight }} />}
       </ScrollView>
 
       {/* Propose Date & Time Modal */}

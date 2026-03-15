@@ -16,6 +16,8 @@ import {
 
 const ANIMATION_DURATION = 250;
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 interface Friend {
   id: string;
@@ -68,6 +70,8 @@ export default function CollaborationFriendsTab({
 }: CollaborationFriendsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [friendsListExpanded, setFriendsListExpanded] = useState(true);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{
     x: number;
@@ -198,7 +202,7 @@ export default function CollaborationFriendsTab({
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       {/* Pill Buttons */}
       <View style={styles.pillContainer}>
         <TouchableOpacity onPress={onShowAddFriendModal} style={styles.pill}>
@@ -390,6 +394,8 @@ export default function CollaborationFriendsTab({
           </Text>
         </View>
       )}
+
+      <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
 
       {/* Dropdown Modal */}
       <Modal

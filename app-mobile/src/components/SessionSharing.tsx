@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
+import { useKeyboard } from '../hooks/useKeyboard';
 
 interface SessionInvite {
   id: string;
@@ -44,6 +45,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
   onInviteAccepted,
 }) => {
   const haptic = useHapticFeedback();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [inviteMessage, setInviteMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -183,6 +185,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
                 )}
               </TouchableOpacity>
             </View>
+            {keyboardHeight > 0 && <View style={{ height: keyboardHeight }} />}
           </View>
         </View>
       </Modal>

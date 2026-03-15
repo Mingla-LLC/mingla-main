@@ -1,65 +1,185 @@
-import * as React from "react";
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  StatusBar,
   ActivityIndicator,
   Modal,
+  Pressable,
+  Alert,
+  Platform,
   AppState,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Feather from "@expo/vector-icons/Feather";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/edgeFunctionError";
 import { useAppState } from "../AppStateManager";
+import { useAppStore } from "../../store/appStore";
+import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
+import Toggle from "./Toggle";
+import * as Haptics from "expo-haptics";
 
-export default function AccountSettings() {
+// --- Gender & Language options ---
+const GENDER_OPTIONS = [
+  "Woman",
+  "Man",
+  "Non-binary",
+  "Prefer not to say",
+] as const;
+
+const LANGUAGE_OPTIONS = [
+  { code: "en", name: "English" },
+  { code: "es", name: "Spanish" },
+  { code: "fr", name: "French" },
+  { code: "pt", name: "Portuguese" },
+  { code: "de", name: "German" },
+  { code: "ar", name: "Arabic" },
+  { code: "zh", name: "Mandarin" },
+  { code: "ja", name: "Japanese" },
+  { code: "ko", name: "Korean" },
+  { code: "hi", name: "Hindi" },
+] as const;
+
+const VISIBILITY_MODES = ["friends", "public", "private"] as const;
+const VISIBILITY_LABELS: Record<string, string> = {
+  friends: "Friends Only",
+  public: "Everyone",
+  private: "Nobody",
+};
+const VISIBILITY_DESCRIPTIONS: Record<string, string> = {
+  friends: "Only people you've linked with can see your profile.",
+  public: "Anyone on Mingla can find you and see your profile.",
+  private: "You're invisible. No one can see your profile — full ghost mode.",
+};
+
+interface AccountSettingsProps {
+  visible: boolean;
+  onClose: () => void;
+  notificationsEnabled?: boolean;
+  onNotificationsToggle?: (enabled: boolean) => void;
+}
+
+export default function AccountSettings({ visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
   const insets = useSafeAreaInsets();
-  const {
-    setShowAccountSettings,
-    user,
-    handleSignOut,
-  } = useAppState();
+  const { user, handleSignOut } = useAppState();
+  const profile = useAppStore((s) => s.profile);
+
+  // Field states
+  const [birthday, setBirthday] = useState<string | null>(profile?.birthday || null);
+  const [gender, setGender] = useState<string | null>(profile?.gender || null);
+  const [preferredLanguage, setPreferredLanguage] = useState<string | null>(
+    profile?.preferred_language || null
+  );
+  const currentVisibility = profile?.visibility_mode || "friends";
+  const showActivity = profile?.show_activity !== false;
+
+  // Picker modals
+  const [showGenderPicker, setShowGenderPicker] = useState(false);
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
+
+  // Delete account state
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<'confirm' | 'deleting' | 'success' | 'error'>('confirm');
+  const [deleteStep, setDeleteStep] = useState<"confirm" | "deleting" | "success" | "error">("confirm");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInProgressRef = useRef(false);
   const deleteStartTimeRef = useRef<number | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
+  // Saving states for individual fields
+  const [savingField, setSavingField] = useState<string | null>(null);
+
+  // Sync local state from store when sheet opens or profile changes externally
+  useEffect(() => {
+    if (visible) {
+      setBirthday(profile?.birthday || null);
+      setGender(profile?.gender || null);
+      setPreferredLanguage(profile?.preferred_language || null);
+    }
+  }, [visible, profile?.birthday, profile?.gender, profile?.preferred_language]);
+
+  // --- Field update helpers ---
+  const setProfile = useAppStore((s) => s.setProfile);
+
+  const updateField = async (field: string, value: unknown) => {
+    if (!user?.id) return;
+    setSavingField(field);
+    try {
+      await authService.updateUserProfile(user.id, { [field]: value });
+      // Sync Zustand store so the UI reflects the change immediately
+      // and persists across sheet open/close cycles
+      if (profile) {
+        setProfile({ ...profile, [field]: value } as typeof profile);
+      }
+      mixpanelService.trackProfileSettingUpdated({ field });
+    } catch {
+      Alert.alert("Error", "Failed to update. Please try again.");
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const handleCycleVisibility = async () => {
+    if (!user?.id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const currentIndex = VISIBILITY_MODES.indexOf(currentVisibility as typeof VISIBILITY_MODES[number]);
+    const nextMode = VISIBILITY_MODES[(currentIndex + 1) % VISIBILITY_MODES.length];
+    await updateField("visibility_mode", nextMode);
+  };
+
+  const handleToggleShowActivity = async () => {
+    await updateField("show_activity", !showActivity);
+  };
+
+  const handleSelectGender = async (value: string) => {
+    setGender(value);
+    setShowGenderPicker(false);
+    await updateField("gender", value);
+  };
+
+  const handleSelectLanguage = async (code: string) => {
+    setPreferredLanguage(code);
+    setShowLanguagePicker(false);
+    await updateField("preferred_language", code);
+  };
+
+  const handleSelectBirthday = async (dateStr: string) => {
+    setBirthday(dateStr);
+    setShowBirthdayPicker(false);
+    await updateField("birthday", dateStr);
+  };
+
+  // --- Delete account ---
   const handleDeleteAccount = () => {
-    setDeleteStep('confirm');
+    setDeleteStep("confirm");
     setDeleteError(null);
     setShowDeleteConfirmModal(true);
   };
 
   const executeDeleteAccount = async () => {
-    // Prevent duplicate requests
     if (deleteInProgressRef.current) return;
-
     if (!user?.id) {
       setDeleteError("You must be signed in to delete your account.");
-      setDeleteStep('error');
+      setDeleteStep("error");
       return;
     }
 
     deleteInProgressRef.current = true;
     deleteStartTimeRef.current = Date.now();
-    setDeleteStep('deleting');
+    setDeleteStep("deleting");
     setIsDeleting(true);
 
     let timeoutIntervalId: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const WALL_CLOCK_TIMEOUT_MS = 45000; // 45 seconds wall clock
-
+      const WALL_CLOCK_TIMEOUT_MS = 45000;
       const invokePromise = supabase.functions.invoke("delete-user", {
         method: "POST",
         body: { userId: user.id },
@@ -71,68 +191,48 @@ export default function AccountSettings() {
             if (timeoutIntervalId) clearInterval(timeoutIntervalId);
             reject(new Error("TIMEOUT"));
           }
-        }, 1000); // Check every second using wall clock, not setTimeout
+        }, 1000);
       });
 
       const result = await Promise.race([invokePromise, timeoutPromise]);
       const { data, error } = result as { data: { success?: boolean; error?: string } | null; error: Error | null };
 
       if (error) {
-        const errorMessage = await extractFunctionError(
-          error,
-          "An error occurred while deleting your account."
-        );
+        const errorMessage = await extractFunctionError(error, "An error occurred while deleting your account.");
         throw new Error(errorMessage);
       }
       if (data?.error) throw new Error(data.error);
 
-      // Immediately invalidate the local session so auth listeners
-      // don't try to load a deleted profile or register push tokens.
-      // This MUST happen before the 2-second success display.
       await supabase.auth.signOut().catch(() => {});
+      setDeleteStep("success");
 
-      // Show success state briefly before full cleanup
-      setDeleteStep('success');
-
-      // Show success message for 2 seconds, then perform full cleanup.
-      // handleSignOut() clears AsyncStorage, React Query, Zustand, etc.
-      // The supabase.auth.signOut() above already cleared the session,
-      // so handleSignOut()'s signOut call will be a harmless no-op.
       setTimeout(() => {
         setShowDeleteConfirmModal(false);
-        setShowAccountSettings(false);
-        handleSignOut().catch((err) =>
-          console.error("Sign-out after account deletion failed:", err)
-        );
+        onClose();
+        handleSignOut().catch((err) => console.error("Sign-out after account deletion failed:", err));
       }, 2000);
     } catch (e: unknown) {
       console.error("Delete account error:", e);
-
       if (e instanceof Error && e.message === "TIMEOUT") {
-        // The edge function may have completed server-side — check if session is still valid
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            // Auth user was deleted — the operation succeeded server-side
-            // Invalidate local session immediately to prevent stale auth listener errors
             await supabase.auth.signOut().catch(() => {});
-            setDeleteStep('success');
+            setDeleteStep("success");
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
-              setShowAccountSettings(false);
+              onClose();
               handleSignOut().catch(console.error);
             }, 2000);
             return;
           }
-        } catch {
-          // Session check failed — fall through to error
-        }
+        } catch { /* fall through */ }
         setDeleteError("This is taking longer than expected. Your account may already be deleted — try closing and reopening the app.");
-        setDeleteStep('error');
+        setDeleteStep("error");
       } else {
         const errorMsg = e instanceof Error ? e.message : "Could not delete account. Please try again.";
         setDeleteError(errorMsg);
-        setDeleteStep('error');
+        setDeleteStep("error");
       }
     } finally {
       if (timeoutIntervalId) clearInterval(timeoutIntervalId);
@@ -144,47 +244,37 @@ export default function AccountSettings() {
 
   // Detect app returning from background while delete is in-flight
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      const wasBackground = appStateRef.current === 'background' || appStateRef.current === 'inactive';
+    const subscription = AppState.addEventListener("change", async (nextAppState: AppStateStatus) => {
+      const wasBackground = appStateRef.current === "background" || appStateRef.current === "inactive";
       appStateRef.current = nextAppState;
-
-      if (nextAppState === 'active' && wasBackground && deleteInProgressRef.current) {
-        // App returned from background while delete was in-flight
-        // Check if the operation completed server-side
+      if (nextAppState === "active" && wasBackground && deleteInProgressRef.current) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            // Deletion succeeded server-side while we were in background
-            // Invalidate local session immediately to prevent stale auth listener errors
             await supabase.auth.signOut().catch(() => {});
-            setDeleteStep('success');
+            setDeleteStep("success");
             setIsDeleting(false);
             deleteInProgressRef.current = false;
             deleteStartTimeRef.current = null;
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
-              setShowAccountSettings(false);
+              onClose();
               handleSignOut().catch(console.error);
             }, 2000);
           }
-        } catch {
-          // Session check failed — let the existing timeout handle it
-        }
+        } catch { /* let timeout handle it */ }
       }
     });
-
     return () => subscription.remove();
-  }, [handleSignOut, setShowAccountSettings]);
+  }, [handleSignOut, onClose]);
 
   const closeDeleteModal = () => {
-    if (deleteStep === 'deleting') {
-      // Allow closing after 10 seconds (escape hatch for stuck state)
+    if (deleteStep === "deleting") {
       if (!deleteStartTimeRef.current || Date.now() - deleteStartTimeRef.current < 10000) return;
     }
     setShowDeleteConfirmModal(false);
-    setDeleteStep('confirm');
+    setDeleteStep("confirm");
     setDeleteError(null);
-    // If we're closing during an in-flight delete, reset the state
     if (deleteInProgressRef.current) {
       setIsDeleting(false);
       deleteInProgressRef.current = false;
@@ -192,176 +282,328 @@ export default function AccountSettings() {
     }
   };
 
+  // --- Format helpers ---
+  const formatBirthday = (iso: string | null): string => {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso + "T00:00:00");
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    } catch {
+      return iso;
+    }
+  };
+
+  const getLanguageName = (code: string | null): string => {
+    if (!code) return "";
+    return LANGUAGE_OPTIONS.find((l) => l.code === code)?.name || code;
+  };
+
+  // --- Render ---
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <StatusBar barStyle="dark-content" />
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => setShowAccountSettings(false)}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={20} color="#6b7280" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Account Settings</Text>
-        </View>
-      </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]} onPress={() => {}}>
+          {/* Drag handle */}
+          <View style={styles.dragHandle} />
 
-      {/* Content */}
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        {/* App Information */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="information-circle" size={20} color="#eb7825" />
-            <Text style={styles.sectionTitle}>App Information</Text>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Settings</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Close account settings"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={24} color="#6b7280" />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.appInfoContainer}>
-            <View style={styles.appInfoRow}>
-              <Text style={styles.appInfoLabel}>App Version</Text>
-              <Text style={styles.appInfoValue}>1.0.0</Text>
+          <ScrollView
+            style={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Card 1: The Basics */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="person-circle" size={20} color="#eb7825" />
+                <Text style={styles.cardTitle}>The Basics</Text>
+              </View>
+
+              {/* Birthday */}
+              <TouchableOpacity style={styles.row} onPress={() => setShowBirthdayPicker(true)} activeOpacity={0.7}>
+                <Text style={styles.rowLabel}>Birthday</Text>
+                <View style={styles.rowRight}>
+                  {savingField === "birthday" ? (
+                    <ActivityIndicator size="small" color="#eb7825" />
+                  ) : (
+                    <Text style={[styles.rowValue, !birthday && styles.rowPlaceholder]}>
+                      {birthday ? formatBirthday(birthday) : "When's the party?"}
+                    </Text>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* Gender */}
+              <TouchableOpacity style={styles.row} onPress={() => setShowGenderPicker(true)} activeOpacity={0.7}>
+                <Text style={styles.rowLabel}>Gender</Text>
+                <View style={styles.rowRight}>
+                  {savingField === "gender" ? (
+                    <ActivityIndicator size="small" color="#eb7825" />
+                  ) : (
+                    <Text style={[styles.rowValue, !gender && styles.rowPlaceholder]}>
+                      {gender || "How do you identify?"}
+                    </Text>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* Preferred Language */}
+              <TouchableOpacity style={[styles.row, styles.rowLast]} onPress={() => setShowLanguagePicker(true)} activeOpacity={0.7}>
+                <Text style={styles.rowLabel}>Language</Text>
+                <View style={styles.rowRight}>
+                  {savingField === "preferred_language" ? (
+                    <ActivityIndicator size="small" color="#eb7825" />
+                  ) : (
+                    <Text style={[styles.rowValue, !preferredLanguage && styles.rowPlaceholder]}>
+                      {getLanguageName(preferredLanguage) || "Choose your language"}
+                    </Text>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </TouchableOpacity>
             </View>
-          </View>
-        </View>
 
-        {/* Delete Account */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="trash" size={20} color="#ef4444" />
-            <Text style={styles.sectionTitle}>Delete Account</Text>
-          </View>
+            {/* Card 2: Privacy */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="lock-closed" size={20} color="#eb7825" />
+                <Text style={styles.cardTitle}>Privacy</Text>
+              </View>
 
-          <Text style={styles.sectionDescription}>
-            Permanently delete your Mingla account and all associated data.
-          </Text>
+              {/* Profile Visibility */}
+              <TouchableOpacity style={styles.row} onPress={handleCycleVisibility} activeOpacity={0.7}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Profile Visibility</Text>
+                  <Text style={styles.rowHint}>
+                    {VISIBILITY_DESCRIPTIONS[currentVisibility] || ""}
+                  </Text>
+                </View>
+                <View style={styles.rowRight}>
+                  {savingField === "visibility_mode" ? (
+                    <ActivityIndicator size="small" color="#eb7825" />
+                  ) : (
+                    <Text style={styles.rowValueBold}>
+                      {VISIBILITY_LABELS[currentVisibility] || "Friends Only"}
+                    </Text>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={handleDeleteAccount}
-            style={[
-              styles.deleteButton,
-              isDeleting && styles.deleteButtonDisabled,
-            ]}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color="#dc2626" />
-            ) : (
-              <Ionicons name="trash" size={16} color="#dc2626" />
-            )}
-            <Text style={styles.deleteButtonText}>
-              {isDeleting ? "Deleting…" : "Delete Account"}
-            </Text>
-          </TouchableOpacity>
+              <View style={styles.rowDivider} />
 
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>
-              <Text style={styles.warningBold}>Warning:</Text> Account deletion
-              is permanent and cannot be reversed. Make sure to save any
-              important information before proceeding.
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
+              {/* Show Activity */}
+              <View style={styles.row}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Show Activity</Text>
+                  <Text style={styles.rowHint}>
+                    {showActivity
+                      ? "Friends can see what you've been up to lately."
+                      : "Your activity is hidden from everyone."}
+                  </Text>
+                </View>
+                <Toggle value={showActivity} onToggle={handleToggleShowActivity} />
+              </View>
+
+              <View style={styles.rowDivider} />
+
+              {/* Notifications */}
+              <View style={[styles.row, styles.rowLast]}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>Notifications</Text>
+                  <Text style={styles.rowHint}>Invites, boards, and messages</Text>
+                </View>
+                <Toggle
+                  value={notificationsEnabled}
+                  onToggle={() => onNotificationsToggle?.(!notificationsEnabled)}
+                />
+              </View>
+            </View>
+
+            {/* Card 3: App Information */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="information-circle" size={20} color="#eb7825" />
+                <Text style={styles.cardTitle}>App Information</Text>
+              </View>
+              <View style={[styles.row, styles.rowLast]}>
+                <Text style={styles.rowLabel}>App Version</Text>
+                <Text style={styles.rowValueMuted}>1.0.0</Text>
+              </View>
+            </View>
+
+            {/* Card 4: The Red Zone */}
+            <View style={[styles.card, styles.dangerCard]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="trash" size={20} color="#ef4444" />
+                <Text style={[styles.cardTitle, styles.dangerTitle]}>The Red Zone</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleDeleteAccount}
+                style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+                disabled={isDeleting}
+                activeOpacity={0.7}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#dc2626" />
+                ) : (
+                  <Ionicons name="trash" size={16} color="#dc2626" />
+                )}
+                <Text style={styles.deleteButtonText}>
+                  {isDeleting ? "Deleting\u2026" : "Delete My Account"}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.dangerWarning}>
+                This permanently deletes your data, your boards, and your history. There's no undo.
+              </Text>
+            </View>
+
+            <View style={{ height: 16 }} />
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+
+      {/* --- Picker modals --- */}
+
+      {/* Gender picker */}
+      <Modal visible={showGenderPicker} transparent animationType="slide" onRequestClose={() => setShowGenderPicker(false)}>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowGenderPicker(false)}>
+          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+            <View style={styles.pickerHandle} />
+            <Text style={styles.pickerTitle}>Gender</Text>
+            {GENDER_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.pickerOption}
+                onPress={() => handleSelectGender(option)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.pickerOptionText, gender === option && styles.pickerOptionSelected]}>
+                  {option}
+                </Text>
+                {gender === option && <Ionicons name="checkmark" size={20} color="#eb7825" />}
+              </TouchableOpacity>
+            ))}
+            <View style={{ height: Math.max(insets.bottom, 16) }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Language picker */}
+      <Modal visible={showLanguagePicker} transparent animationType="slide" onRequestClose={() => setShowLanguagePicker(false)}>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowLanguagePicker(false)}>
+          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+            <View style={styles.pickerHandle} />
+            <Text style={styles.pickerTitle}>Language</Text>
+            {LANGUAGE_OPTIONS.map((lang) => (
+              <TouchableOpacity
+                key={lang.code}
+                style={styles.pickerOption}
+                onPress={() => handleSelectLanguage(lang.code)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
+                  {lang.name}
+                </Text>
+                {preferredLanguage === lang.code && <Ionicons name="checkmark" size={20} color="#eb7825" />}
+              </TouchableOpacity>
+            ))}
+            <View style={{ height: Math.max(insets.bottom, 16) }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Birthday picker (simple month/day/year picker) */}
+      <Modal visible={showBirthdayPicker} transparent animationType="slide" onRequestClose={() => setShowBirthdayPicker(false)}>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowBirthdayPicker(false)}>
+          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+            <View style={styles.pickerHandle} />
+            <Text style={styles.pickerTitle}>Birthday</Text>
+            <BirthdayPicker
+              currentValue={birthday}
+              onSelect={handleSelectBirthday}
+              onCancel={() => setShowBirthdayPicker(false)}
+            />
+            <View style={{ height: Math.max(insets.bottom, 16) }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Delete Account Confirmation Modal */}
-      <Modal
-        visible={showDeleteConfirmModal}
-        transparent
-        animationType="fade"
-        onRequestClose={closeDeleteModal}
-      >
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={closeDeleteModal}
-          />
-          <View style={styles.modalContainer}>
-            {deleteStep === 'confirm' && (
+      <Modal visible={showDeleteConfirmModal} transparent animationType="fade" onRequestClose={closeDeleteModal}>
+        <View style={styles.deleteOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeDeleteModal} />
+          <View style={styles.deleteModalContainer}>
+            {deleteStep === "confirm" && (
               <>
-                <View style={styles.modalIconContainer}>
+                <View style={styles.deleteIconCircle}>
                   <Ionicons name="warning" size={48} color="#ef4444" />
                 </View>
-                <Text style={styles.modalTitle}>Delete Your Account?</Text>
-                <Text style={styles.modalDescription}>
-                  This action is <Text style={styles.modalBold}>permanent</Text> and cannot be undone.
+                <Text style={styles.deleteModalTitle}>Are you sure?</Text>
+                <Text style={styles.deleteModalBody}>
+                  Deleting your account removes everything — your profile, boards, links, and activity. This can't be reversed.
                 </Text>
-                <Text style={styles.modalSubDescription}>
-                  • All your saved experiences, preferences, and activity history will be erased{"\n"}
-                  • You will be removed from all collaboration boards{"\n"}
-                  • You will no longer appear in search, connections, or member lists{"\n"}
-                  • You cannot sign in again with these credentials
-                </Text>
-                <View style={styles.modalButtonRow}>
-                  <TouchableOpacity
-                    style={styles.modalCancelButton}
-                    onPress={closeDeleteModal}
-                  >
-                    <Text style={styles.modalCancelButtonText}>Keep My Account</Text>
+                <View style={styles.deleteModalButtons}>
+                  <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
+                    <Text style={styles.deleteModalCancelText}>Never mind</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.modalDeleteButton}
-                    onPress={executeDeleteAccount}
-                  >
-                    <Text style={styles.modalDeleteButtonText}>Delete Account</Text>
+                  <TouchableOpacity style={styles.deleteModalConfirm} onPress={executeDeleteAccount}>
+                    <Text style={styles.deleteModalConfirmText}>Yes, Delete Everything</Text>
                   </TouchableOpacity>
                 </View>
               </>
             )}
-
-            {deleteStep === 'deleting' && (
+            {deleteStep === "deleting" && (
               <>
-                <ActivityIndicator size="large" color="#ef4444" style={styles.modalLoader} />
-                <Text style={styles.modalTitle}>We're sad to see you go</Text>
-                <Text style={styles.modalDescription}>
-                  Packing up your things and sweeping the floors.
-                </Text>
-                <Text style={styles.modalSubDescription}>
-                  This takes a moment. Hang tight.
-                </Text>
+                <ActivityIndicator size="large" color="#ef4444" style={{ marginBottom: 16 }} />
+                <Text style={styles.deleteModalTitle}>We're sad to see you go</Text>
+                <Text style={styles.deleteModalBody}>Packing up your things and sweeping the floors.</Text>
+                <Text style={styles.deleteModalSub}>This takes a moment. Hang tight.</Text>
               </>
             )}
-
-            {deleteStep === 'success' && (
+            {deleteStep === "success" && (
               <>
-                <View style={styles.modalIconContainerSuccess}>
+                <View style={[styles.deleteIconCircle, styles.deleteIconSuccess]}>
                   <Ionicons name="checkmark-circle" size={48} color="#10b981" />
                 </View>
-                <Text style={styles.modalTitle}>Account Deleted</Text>
-                <Text style={styles.modalDescription}>
-                  You're always welcome back. We'll leave the light on.
-                </Text>
-                <Text style={styles.modalSubDescription}>
-                  Signing you out now. Until next time.
-                </Text>
+                <Text style={styles.deleteModalTitle}>Account Deleted</Text>
+                <Text style={styles.deleteModalBody}>You're always welcome back. We'll leave the light on.</Text>
+                <Text style={styles.deleteModalSub}>Signing you out now. Until next time.</Text>
               </>
             )}
-
-            {deleteStep === 'error' && (
+            {deleteStep === "error" && (
               <>
-                <View style={styles.modalIconContainer}>
+                <View style={styles.deleteIconCircle}>
                   <Ionicons name="close-circle" size={48} color="#ef4444" />
                 </View>
-                <Text style={styles.modalTitle}>That Didn't Work</Text>
-                <Text style={styles.modalDescription}>
-                  {deleteError || "Something went wrong. Please try again."}
-                </Text>
-                <View style={styles.modalButtonRow}>
-                  <TouchableOpacity
-                    style={styles.modalCancelButton}
-                    onPress={closeDeleteModal}
-                  >
-                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                <Text style={styles.deleteModalTitle}>That Didn't Work</Text>
+                <Text style={styles.deleteModalBody}>{deleteError || "Something went wrong. Please try again."}</Text>
+                <View style={styles.deleteModalButtons}>
+                  <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
+                    <Text style={styles.deleteModalCancelText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.modalRetryButton}
-                    onPress={() => {
-                      setDeleteStep('confirm');
-                      setDeleteError(null);
-                    }}
-                  >
-                    <Text style={styles.modalRetryButtonText}>Try Again</Text>
+                  <TouchableOpacity style={[styles.deleteModalConfirm, { backgroundColor: "#eb7825" }]} onPress={() => { setDeleteStep("confirm"); setDeleteError(null); }}>
+                    <Text style={styles.deleteModalConfirmText}>Try Again</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -369,225 +611,236 @@ export default function AccountSettings() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </Modal>
   );
 }
 
+// --- Simple birthday picker component ---
+
+interface BirthdayPickerProps {
+  currentValue: string | null;
+  onSelect: (dateStr: string) => void;
+  onCancel: () => void;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProps) {
+  const now = new Date();
+  const parsed = currentValue ? new Date(currentValue + "T00:00:00") : null;
+
+  const [month, setMonth] = useState(parsed ? parsed.getMonth() : 0);
+  const [day, setDay] = useState(parsed ? parsed.getDate() : 1);
+  const [year, setYear] = useState(parsed ? parsed.getFullYear() : 2000);
+
+  const years = Array.from({ length: now.getFullYear() - 1920 + 1 }, (_, i) => now.getFullYear() - i);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  useEffect(() => {
+    if (day > daysInMonth) setDay(daysInMonth);
+  }, [month, year, daysInMonth]);
+
+  const handleConfirm = () => {
+    const selected = new Date(year, month, day);
+    if (selected > now) {
+      Alert.alert("Invalid date", "Birthday can't be in the future.");
+      return;
+    }
+    const m = String(month + 1).padStart(2, "0");
+    const d = String(day).padStart(2, "0");
+    onSelect(`${year}-${m}-${d}`);
+  };
+
+  return (
+    <View style={bdStyles.container}>
+      <View style={bdStyles.row}>
+        <View style={bdStyles.column}>
+          <Text style={bdStyles.colLabel}>Month</Text>
+          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+            {MONTHS.map((m, i) => (
+              <TouchableOpacity
+                key={m}
+                style={[bdStyles.option, month === i && bdStyles.optionSelected]}
+                onPress={() => setMonth(i)}
+              >
+                <Text style={[bdStyles.optionText, month === i && bdStyles.optionTextSelected]}>{m}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+        <View style={bdStyles.column}>
+          <Text style={bdStyles.colLabel}>Day</Text>
+          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+            {days.map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={[bdStyles.option, day === d && bdStyles.optionSelected]}
+                onPress={() => setDay(d)}
+              >
+                <Text style={[bdStyles.optionText, day === d && bdStyles.optionTextSelected]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+        <View style={bdStyles.column}>
+          <Text style={bdStyles.colLabel}>Year</Text>
+          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+            {years.map((y) => (
+              <TouchableOpacity
+                key={y}
+                style={[bdStyles.option, year === y && bdStyles.optionSelected]}
+                onPress={() => setYear(y)}
+              >
+                <Text style={[bdStyles.optionText, year === y && bdStyles.optionTextSelected]}>{y}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+      <View style={bdStyles.buttons}>
+        <TouchableOpacity style={bdStyles.cancelBtn} onPress={onCancel}>
+          <Text style={bdStyles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={bdStyles.confirmBtn} onPress={handleConfirm}>
+          <Text style={bdStyles.confirmText}>Set Birthday</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const bdStyles = StyleSheet.create({
+  container: { paddingHorizontal: 16 },
+  row: { flexDirection: "row", gap: 8, height: 200 },
+  column: { flex: 1 },
+  colLabel: { fontSize: 12, fontWeight: "600", color: "#9ca3af", textAlign: "center", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
+  scroll: { flex: 1 },
+  option: { paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, alignItems: "center" },
+  optionSelected: { backgroundColor: "#fff7ed" },
+  optionText: { fontSize: 15, color: "#374151" },
+  optionTextSelected: { color: "#eb7825", fontWeight: "700" },
+  buttons: { flexDirection: "row", gap: 12, marginTop: 16 },
+  cancelBtn: { flex: 1, backgroundColor: "#f3f4f6", paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  cancelText: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  confirmBtn: { flex: 1, backgroundColor: "#eb7825", paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  confirmText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+});
+
+// --- Main styles ---
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
+  overlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "#f9fafb", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: "90%", minHeight: "60%",
+  },
+  dragHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
+    alignSelf: "center", marginTop: 8, marginBottom: 4,
   },
   header: {
-    borderBottomColor: "#e5e7eb",
-    paddingHorizontal: 16,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16,
   },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
+  scrollContent: { flex: 1, paddingHorizontal: 16 },
+  // Cards
+  card: {
+    backgroundColor: "#ffffff", borderRadius: 16,
+    borderWidth: 1, borderColor: "#e5e7eb",
+    paddingVertical: 8, paddingHorizontal: 0, marginBottom: 16,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
   },
-  backButton: {
-    paddingTop: 8,
-    borderRadius: 20,
+  dangerCard: { borderColor: "#fecaca" },
+  cardHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111827",
+  cardTitle: { fontSize: 16, fontWeight: "700", color: "#111827" },
+  dangerTitle: { color: "#ef4444" },
+  // Rows
+  row: {
+    flexDirection: "row", alignItems: "center",
+    paddingVertical: 14, paddingHorizontal: 16, minHeight: 48,
   },
-  content: {
-    flex: 1,
-    gap: 24,
-    padding: 12,
-  },
-  section: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  sectionDescription: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  appInfoContainer: {
-    gap: 12,
-  },
-  appInfoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  appInfoLabel: {
-    fontSize: 16,
-    color: "#374151",
-  },
-  appInfoValue: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
+  rowLast: {},
+  rowDivider: { height: 1, backgroundColor: "#f3f4f6", marginHorizontal: 16 },
+  rowLabel: { fontSize: 15, fontWeight: "500", color: "#111827", flex: 1 },
+  rowLabelWrap: { flex: 1 },
+  rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 16 },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rowValue: { fontSize: 14, fontWeight: "500", color: "#eb7825" },
+  rowValueBold: { fontSize: 14, fontWeight: "700", color: "#eb7825" },
+  rowValueMuted: { fontSize: 14, fontWeight: "500", color: "#6b7280" },
+  rowPlaceholder: { color: "#9ca3af", fontStyle: "italic" },
+  // Delete button
   deleteButton: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: 16,
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 8,
-    marginBottom: 16,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, backgroundColor: "#fef2f2", borderWidth: 1, borderColor: "#fecaca",
+    borderRadius: 12, paddingVertical: 14, marginHorizontal: 16, marginVertical: 8,
   },
-  deleteButtonDisabled: {
-    opacity: 0.6,
+  deleteButtonDisabled: { opacity: 0.6 },
+  deleteButtonText: { fontSize: 15, fontWeight: "600", color: "#dc2626" },
+  dangerWarning: {
+    fontSize: 13, color: "#6b7280", lineHeight: 18,
+    paddingHorizontal: 16, paddingBottom: 12,
   },
-  deleteButtonText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#dc2626",
+  // Picker modals
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  pickerSheet: { backgroundColor: "#ffffff", borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  pickerHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
+    alignSelf: "center", marginTop: 8, marginBottom: 4,
   },
-  warningBox: {
-    padding: 12,
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 8,
+  pickerTitle: {
+    fontSize: 18, fontWeight: "700", color: "#111827",
+    paddingHorizontal: 24, paddingVertical: 16,
   },
-  warningText: {
-    fontSize: 14,
-    color: "#eb7825",
-    lineHeight: 20,
+  pickerOption: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingVertical: 16, paddingHorizontal: 24, minHeight: 56,
   },
-  warningBold: {
-    fontWeight: "600",
+  pickerOptionText: { fontSize: 16, fontWeight: "500", color: "#111827" },
+  pickerOptionSelected: { color: "#eb7825", fontWeight: "600" },
+  // Delete confirmation modal
+  deleteOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center", alignItems: "center", padding: 24,
   },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+  deleteModalContainer: {
+    backgroundColor: "white", borderRadius: 20, padding: 24,
+    width: "100%", maxWidth: 400, alignItems: "center",
   },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
+  deleteIconCircle: {
+    width: 80, height: 80, borderRadius: 40, backgroundColor: "#fef2f2",
+    justifyContent: "center", alignItems: "center", marginBottom: 16,
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 24,
-    width: "100%",
-    maxWidth: 400,
-    alignItems: "center",
+  deleteIconSuccess: { backgroundColor: "#d1fae5" },
+  deleteModalTitle: {
+    fontSize: 20, fontWeight: "bold", color: "#111827",
+    marginBottom: 12, textAlign: "center",
   },
-  modalIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#fef2f2",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
+  deleteModalBody: {
+    fontSize: 16, color: "#4b5563", textAlign: "center",
+    marginBottom: 12, lineHeight: 22,
   },
-  modalIconContainerSuccess: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#d1fae5",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
+  deleteModalSub: {
+    fontSize: 14, color: "#6b7280", textAlign: "center",
+    lineHeight: 22, marginBottom: 24,
   },
-  modalLoader: {
-    marginBottom: 16,
+  deleteModalButtons: { flexDirection: "row", gap: 12, width: "100%" },
+  deleteModalCancel: {
+    flex: 1, backgroundColor: "#f3f4f6", paddingVertical: 14,
+    borderRadius: 12, alignItems: "center",
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#111827",
-    marginBottom: 12,
-    textAlign: "center",
+  deleteModalCancelText: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  deleteModalConfirm: {
+    flex: 1, backgroundColor: "#ef4444", paddingVertical: 14,
+    borderRadius: 12, alignItems: "center",
   },
-  modalDescription: {
-    fontSize: 16,
-    color: "#4b5563",
-    textAlign: "center",
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  modalBold: {
-    fontWeight: "bold",
-    color: "#ef4444",
-  },
-  modalSubDescription: {
-    fontSize: 14,
-    color: "#6b7280",
-    textAlign: "left",
-    lineHeight: 22,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  modalButtonRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  modalCancelButton: {
-    flex: 1,
-    backgroundColor: "#f3f4f6",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalCancelButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  modalDeleteButton: {
-    flex: 1,
-    backgroundColor: "#ef4444",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalDeleteButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "white",
-  },
-  modalRetryButton: {
-    flex: 1,
-    backgroundColor: "#eb7825",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalRetryButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "white",
-  },
+  deleteModalConfirmText: { fontSize: 16, fontWeight: "600", color: "white" },
 });

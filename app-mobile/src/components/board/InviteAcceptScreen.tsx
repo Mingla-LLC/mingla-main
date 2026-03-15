@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BoardInviteService } from '../../services/boardInviteService';
 import { useAppStore } from '../../store/appStore';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 
 interface InviteAcceptScreenProps {
   inviteCode?: string;
@@ -97,7 +98,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
         <View style={styles.placeholder} />
       </View>
 
-      <View style={styles.content}>
+      <KeyboardAwareScrollView style={styles.content} contentContainerStyle={styles.contentInner} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {initialInviteLink ? (
           <>
             <Text style={styles.description}>
@@ -160,7 +161,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
             Board sessions allow you to plan experiences together with friends in real-time
           </Text>
         </View>
-      </View>
+      </KeyboardAwareScrollView>
     </View>
   );
 };
@@ -194,6 +195,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  contentInner: {
+    flexGrow: 1,
     justifyContent: 'center',
   },
   description: {

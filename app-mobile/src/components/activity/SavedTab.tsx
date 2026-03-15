@@ -37,6 +37,7 @@ import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtil
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
+import { useKeyboard } from "../../hooks/useKeyboard";
 
 interface SavedCard {
   id: string;
@@ -104,6 +105,7 @@ const SavedTab = ({
   boardSavedCards,
   activeBoardSessionId,
 }: SavedTabProps) => {
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const {
     savedCards: contextSavedCards,
     isLoadingSavedCards: contextIsLoadingSavedCards,
@@ -2049,6 +2051,7 @@ const SavedTab = ({
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
       >
         {/* Search & Filters */}
@@ -2196,6 +2199,7 @@ const SavedTab = ({
                 </Animated.View>
               );
             })}
+        {keyboardHeight > 0 && <View style={{ height: keyboardHeight }} />}
       </ScrollView>
 
       {/* Expanded Card Modal */}

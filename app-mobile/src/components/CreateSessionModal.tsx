@@ -12,7 +12,6 @@ import {
   Alert,
   Platform,
   Keyboard,
-  InteractionManager,
   useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
@@ -32,7 +31,7 @@ import { InviteLinkShare } from './board/InviteLinkShare';
 import { QRCodeDisplay } from './board/QRCodeDisplay';
 import { InviteCodeDisplay } from './board/InviteCodeDisplay';
 import FriendSelectionModal from './FriendSelectionModal';
-import { CountryPickerModal } from './onboarding/CountryPickerModal';
+import { CountryPickerModal, CountryPickerOverlay } from './onboarding/CountryPickerModal';
 import { CountryData } from '../types/onboarding';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite, createPendingSessionInvite } from '../services/phoneLookupService';
@@ -1204,9 +1203,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                       });
                     } else {
                       // Standalone: use <Modal> directly (no parent Modal).
-                      InteractionManager.runAfterInteractions(() => {
-                        setShowCountryPicker(true);
-                      });
+                      setShowCountryPicker(true);
                     }
                   }}
                   activeOpacity={0.6}
@@ -1316,8 +1313,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 When onOpenCountryPicker is provided (embedded), the parent
                 renders the picker as an overlay instead of a nested Dialog. */}
             {!onOpenCountryPicker && showCountryPicker && (
-              <CountryPickerModal
-                visible={showCountryPicker}
+              <CountryPickerOverlay
                 selectedCode={selectedCountry.code}
                 onSelect={handleCountrySelect}
                 onClose={() => setShowCountryPicker(false)}

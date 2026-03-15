@@ -3,6 +3,8 @@ import { Text, View, TextInput, StyleSheet, Modal, ActivityIndicator, ScrollView
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { useFriends } from '../hooks/useFriends';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../hooks/useKeyboard';
 
 interface User {
   id: string;
@@ -24,6 +26,8 @@ interface UserInviteModalProps {
 export default function UserInviteModal({ isOpen, onClose, sessionName, onSendInvites, friends: propFriends, existingMemberIds = [] }: UserInviteModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const { friends: dbFriends, fetchFriends, loading, error } = useFriends();
 
   // Fetch friends when modal opens
@@ -152,7 +156,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
           )}
 
           {/* User List */}
-          <ScrollView style={styles.userList} contentContainerStyle={styles.userListContent} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.userList} contentContainerStyle={styles.userListContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#eb7825" />
@@ -226,6 +230,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                 );
               })
             )}
+            <View style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />
           </ScrollView>
 
           {/* Footer */}

@@ -4,12 +4,14 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Alert,
+  StatusBar,
 } from "react-native";
+import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import * as Location from "expo-location";
 import { throttledReverseGeocode } from "../utils/throttledGeocode";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFriends } from "../hooks/useFriends";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
@@ -23,7 +25,8 @@ import ProfileStatsRow from "./profile/ProfileStatsRow";
 import SettingsRow from "./profile/SettingsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
-import EditProfileSheet from "./profile/EditProfileSheet";
+import AccountSettings from "./profile/AccountSettings";
+import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
 
@@ -31,10 +34,9 @@ interface ProfilePageProps {
   onSignOut?: () => void;
   onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
   onNavigateToConnections?: () => void;
-  onNavigateToAccountSettings?: () => void;
   onNavigateToPrivacyPolicy?: () => void;
   onNavigateToTermsOfService?: () => void;
-  onNavigateToReplayTips?: () => void;
+  onUpgrade?: () => void;
   savedExperiences?: number;
   boardsCount?: number;
   notificationsEnabled?: boolean;
@@ -52,10 +54,9 @@ export default function ProfilePage({
   onSignOut,
   onNavigateToActivity,
   onNavigateToConnections,
-  onNavigateToAccountSettings,
   onNavigateToPrivacyPolicy,
   onNavigateToTermsOfService,
-  onNavigateToReplayTips,
+  onUpgrade,
   savedExperiences = 0,
   boardsCount = 0,
   notificationsEnabled = true,
@@ -63,6 +64,7 @@ export default function ProfilePage({
   userIdentity,
 }: ProfilePageProps) {
   useScreenLogger('profile');
+  const insets = useSafeAreaInsets();
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 
@@ -81,7 +83,8 @@ export default function ProfilePage({
   // Modal state
   const [showBioSheet, setShowBioSheet] = useState(false);
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
-  const [showEditProfileSheet, setShowEditProfileSheet] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showBillingSheet, setShowBillingSheet] = useState(false);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -202,6 +205,24 @@ export default function ProfilePage({
     }
   };
 
+  // Name save — inline from hero
+  const handleSaveName = async (firstName: string, lastName: string): Promise<boolean> => {
+    if (!user?.id || !userIdentity) return false;
+    try {
+      const updatedIdentity = {
+        ...userIdentity,
+        firstName,
+        lastName,
+      };
+      await handleUserIdentityUpdate(updatedIdentity);
+      if (firstName !== userIdentity?.firstName) mixpanelService.trackProfileSettingUpdated({ field: 'first_name' });
+      if (lastName !== userIdentity?.lastName) mixpanelService.trackProfileSettingUpdated({ field: 'last_name' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // Bio save
   const handleSaveBio = async (bio: string) => {
     if (!user?.id) return;
@@ -219,161 +240,97 @@ export default function ProfilePage({
     });
   };
 
-  // Notifications toggle
-  const handleNotificationsToggle = () => {
-    onNotificationsToggle?.(!notificationsEnabled);
-  };
-
-  // Visibility mode cycling
-  const visibilityModes = ["friends", "public", "private"] as const;
-  const visibilityLabels: Record<string, string> = {
-    friends: "Friends Only",
-    public: "Everyone",
-    private: "Nobody",
-  };
-  const currentVisibility = profile?.visibility_mode || "friends";
-  const handleCycleVisibility = async () => {
-    if (!user?.id) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const currentIndex = visibilityModes.indexOf(currentVisibility);
-    const nextMode = visibilityModes[(currentIndex + 1) % visibilityModes.length];
-    try {
-      await authService.updateUserProfile(user.id, { visibility_mode: nextMode });
-    } catch (error) {
-      Alert.alert("Error", "Failed to update visibility.");
-    }
-  };
-
-  // Show Activity — uses show_activity (NOT active, which is account status)
-  const showActivity = profile?.show_activity !== false;
-  const handleToggleShowActivity = async () => {
-    if (!user?.id) return;
-    try {
-      await authService.updateUserProfile(user.id, { show_activity: !showActivity });
-    } catch (error) {
-      Alert.alert("Error", "Failed to update activity status.");
-    }
-  };
-
-  // Replay Tips
-  const handleReplayTips = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (onNavigateToReplayTips) {
-      onNavigateToReplayTips();
-    }
-  };
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.content}>
-        {/* 1. Hero Section */}
-        <ProfileHeroSection
-          isOwnProfile
-          firstName={userIdentity?.firstName || null}
-          lastName={userIdentity?.lastName || null}
-          username={userIdentity?.username || null}
-          avatarUrl={userIdentity?.profileImage || null}
-          bio={profile?.bio || null}
-          location={currentLocation}
-          isLoadingLocation={isLoadingLocation}
-          locationError={locationError}
-          onAvatarPress={handleAvatarChange}
-          onBioPress={() => setShowBioSheet(true)}
-          onLocationRefresh={updateLocation}
-          isUploading={isUploading}
-        />
-
-        {/* 2. Interests Section */}
-        <View style={styles.sectionSpacing}>
-          <ProfileInterestsSection
-            intents={interests?.intents || []}
-            categories={interests?.categories || []}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      <KeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <View style={styles.content}>
+          {/* 1. Hero Section — extends behind status bar */}
+          <ProfileHeroSection
             isOwnProfile
-            onEditPress={() => setShowInterestsSheet(true)}
+            firstName={userIdentity?.firstName || null}
+            lastName={userIdentity?.lastName || null}
+            username={userIdentity?.username || null}
+            avatarUrl={userIdentity?.profileImage || null}
+            bio={profile?.bio || null}
+            location={currentLocation}
+            isLoadingLocation={isLoadingLocation}
+            locationError={locationError}
+            onAvatarPress={handleAvatarChange}
+            onBioPress={() => setShowBioSheet(true)}
+            onLocationRefresh={updateLocation}
+            isUploading={isUploading}
+            statusBarHeight={insets.top}
+            onSaveName={handleSaveName}
           />
-        </View>
 
-        {/* 3. Stats Row */}
-        <ProfileStatsRow
-          savedCount={savedExperiences}
-          connectionsCount={actualConnectionsCount}
-          boardsCount={boardsCount}
-          onStatPress={(stat) => {
-            if (stat === "saved") onNavigateToActivity?.("saved");
-            else if (stat === "boards") onNavigateToActivity?.("boards");
-            else if (stat === "connections") onNavigateToConnections?.();
-          }}
-        />
+          {/* 2. Interests Section */}
+          <View style={styles.sectionSpacing}>
+            <ProfileInterestsSection
+              intents={interests?.intents || []}
+              categories={interests?.categories || []}
+              isOwnProfile
+              onEditPress={() => setShowInterestsSheet(true)}
+            />
+          </View>
 
-        {/* 4. Settings Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>SETTINGS</Text>
-          <SettingsRow
-            label="Notifications"
-            hint="Invites, boards, and messages"
-            toggle
-            toggleValue={notificationsEnabled}
-            onToggle={handleNotificationsToggle}
-          />
-          <SettingsRow
-            label="Profile Visibility"
-            value={visibilityLabels[currentVisibility] || "Friends Only"}
-            onPress={handleCycleVisibility}
-          />
-          <SettingsRow
-            label="Show Activity"
-            hint="Friends can see when you're active"
-            toggle
-            toggleValue={showActivity}
-            onToggle={handleToggleShowActivity}
-            isLast
-          />
-        </View>
+          {/* 3. Gamified Stats */}
+          <View style={styles.sectionSpacing}>
+            <ProfileStatsRow
+              savedCount={savedExperiences}
+              connectionsCount={actualConnectionsCount}
+              boardsCount={boardsCount}
+              placesVisited={0}
+              streakDays={0}
+              level={1}
+              levelProgress={0.35}
+              onStatPress={(stat) => {
+                if (stat === "saved") onNavigateToActivity?.("saved");
+                else if (stat === "boards") onNavigateToActivity?.("boards");
+                else if (stat === "connections") onNavigateToConnections?.();
+              }}
+            />
+          </View>
 
-        {/* 5. Account Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ACCOUNT</Text>
-          <SettingsRow
-            icon="settings"
-            label="Edit Profile"
-            description="Name, username, and bio"
-            showChevron
-            onPress={() => setShowEditProfileSheet(true)}
-          />
-          <SettingsRow
-            icon="refresh-cw"
-            label="Replay Tips"
-            showChevron
-            onPress={handleReplayTips}
-          />
-          <SettingsRow
-            icon="shield"
-            label="Account"
-            description="App info and account management"
-            showChevron
-            onPress={onNavigateToAccountSettings}
-            isLast
-          />
-        </View>
+          {/* 4. Account Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>ACCOUNT</Text>
+            <SettingsRow
+              icon="credit-card"
+              label="Billing"
+              description="Manage your plan and subscription"
+              showChevron
+              onPress={() => setShowBillingSheet(true)}
+            />
+            <SettingsRow
+              icon="shield"
+              label="Account Settings"
+              description="Privacy, preferences, and account management"
+              showChevron
+              onPress={() => setShowAccountSettings(true)}
+              isLast
+            />
+          </View>
 
-        {/* 6. Legal Footer */}
-        <View style={styles.legalRow}>
-          <TouchableOpacity onPress={onNavigateToPrivacyPolicy}>
-            <Text style={styles.legalLink}>Privacy Policy</Text>
-          </TouchableOpacity>
-          <Text style={styles.legalSeparator}>|</Text>
-          <TouchableOpacity onPress={onNavigateToTermsOfService}>
-            <Text style={styles.legalLink}>Terms of Service</Text>
-          </TouchableOpacity>
-        </View>
+          {/* 6. Legal Footer */}
+          <View style={styles.legalRow}>
+            <TouchableOpacity onPress={onNavigateToPrivacyPolicy}>
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <Text style={styles.legalSeparator}>|</Text>
+            <TouchableOpacity onPress={onNavigateToTermsOfService}>
+              <Text style={styles.legalLink}>Terms of Service</Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* 7. Sign Out */}
-        <View style={styles.signOutSection}>
-          <TouchableOpacity onPress={onSignOut} style={styles.signOutButton}>
-            <Text style={styles.signOutText}>Sign Out</Text>
-          </TouchableOpacity>
+          {/* 7. Sign Out */}
+          <View style={styles.signOutSection}>
+            <TouchableOpacity onPress={onSignOut} style={styles.signOutButton}>
+              <Text style={styles.signOutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </KeyboardAwareScrollView>
 
       {/* Bottom Sheets */}
       <EditBioSheet
@@ -389,11 +346,21 @@ export default function ProfilePage({
         currentCategories={interests?.categories || []}
         onSave={handleSaveInterests}
       />
-      <EditProfileSheet
-        visible={showEditProfileSheet}
-        onClose={() => setShowEditProfileSheet(false)}
+      <AccountSettings
+        visible={showAccountSettings}
+        onClose={() => setShowAccountSettings(false)}
+        notificationsEnabled={notificationsEnabled}
+        onNotificationsToggle={onNotificationsToggle}
       />
-    </ScrollView>
+      <BillingSheet
+        visible={showBillingSheet}
+        onClose={() => setShowBillingSheet(false)}
+        onUpgrade={() => {
+          setShowBillingSheet(false);
+          onUpgrade?.();
+        }}
+      />
+    </View>
   );
 }
 
@@ -402,18 +369,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     alignSelf: 'center',
     width: '100%',
     backgroundColor: '#ffffff',
-    minHeight: '100%',
   },
   sectionSpacing: {
-    marginTop: 16,
+    marginTop: 24,
   },
   section: {
     paddingHorizontal: 24,
+    marginTop: 24,
+  },
+  sectionTight: {
+    paddingHorizontal: 24,
+    marginTop: 16,
   },
   sectionLabel: {
     fontSize: 12,
@@ -422,14 +395,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 8,
-    marginTop: 24,
   },
   legalRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 16,
-    marginTop: 16,
+    marginTop: 24,
     gap: 12,
   },
   legalLink: {

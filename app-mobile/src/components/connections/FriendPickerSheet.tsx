@@ -10,6 +10,8 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 import { Friend } from "../../hooks/useFriends";
 
 interface FriendPickerSheetProps {
@@ -49,6 +51,8 @@ export function FriendPickerSheet({
 }: FriendPickerSheetProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingFriendId, setLoadingFriendId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   const filteredFriends = useMemo(() => {
     if (!searchQuery.trim()) return friends;
@@ -175,9 +179,11 @@ export function FriendPickerSheet({
               data={filteredFriends}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               renderItem={renderFriendRow}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
+              ListFooterComponent={<View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />}
             />
           )}
         </View>
@@ -197,7 +203,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     height: "88%",
-    paddingBottom: 34,
+    paddingBottom: 0,
   },
   handleBar: {
     width: 40,

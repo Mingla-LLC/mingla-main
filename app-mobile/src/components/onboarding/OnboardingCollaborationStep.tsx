@@ -9,6 +9,7 @@ import {
   Image,
   StyleSheet,
 } from 'react-native'
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -275,7 +276,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   const canCreateSession = hasSelectedFriends && sessionName.trim().length > 0
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <Text style={styles.headline}>Plan something together</Text>
       <Text style={styles.body}>
         Start a session with your crew. Discover things to do, vote on favorites, and actually make it happen.
@@ -516,7 +517,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       <Pressable style={styles.skipButton} onPress={onSkip}>
         <Text style={styles.skipButtonText}>I'll do this later</Text>
       </Pressable>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   )
 }
 

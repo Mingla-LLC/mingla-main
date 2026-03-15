@@ -760,8 +760,6 @@ function AppContent() {
       logger.nav('Modal: TermsOfService');
     } else if (showPrivacyPolicy) {
       logger.nav('Modal: PrivacyPolicy');
-    } else if (showAccountSettings) {
-      logger.nav('Modal: AccountSettings');
     } else {
       logger.nav(`Page: ${currentPage}`, { userId: user?.id });
     }
@@ -776,7 +774,6 @@ function AppContent() {
     showPreferences,
     showTermsOfService,
     showPrivacyPolicy,
-    showAccountSettings,
   ]);
 
   // Track main screen visits in Mixpanel
@@ -2052,9 +2049,9 @@ function AppContent() {
               logger.action('Navigate to connections from profile');
               setCurrentPage("connections");
             }}
-            onNavigateToAccountSettings={() => { logger.action('Open account settings'); setShowAccountSettings(true) }}
             onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
             onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
+            onUpgrade={() => { logger.action('Open paywall from billing'); setShowPaywall(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             notificationsEnabled={notificationsEnabled}
@@ -2062,10 +2059,6 @@ function AppContent() {
               console.log("Toggle notifications:", enabled)
             }
             userIdentity={userIdentity}
-            onNavigateToReplayTips={() => {
-              logger.action('Navigate to replay tips');
-              setCurrentPage("replay-tips" as any);
-            }}
           />
         );
       default:
@@ -2120,7 +2113,6 @@ function AppContent() {
 
   // Ensure any full-screen profile overlays are closed when switching tabs/pages
   const closeProfileOverlays = () => {
-    setShowAccountSettings(false);
     setShowPrivacyPolicy(false);
     setShowTermsOfService(false);
     setViewingFriendProfileId(null);
@@ -2151,8 +2143,8 @@ function AppContent() {
                       backgroundColor="transparent"
                     />
                     <View style={styles.container}>
-                      {/* Main Content — paddingTop for safe area since we use a raw View root */}
-                      <View style={[styles.mainContent, { paddingTop: layout.insets.top }]}>
+                      {/* Main Content — paddingTop for safe area; profile page manages its own for full-bleed gradient */}
+                      <View style={[styles.mainContent, { paddingTop: currentPage === "profile" ? 0 : layout.insets.top }]}>
                         {viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
@@ -2167,8 +2159,6 @@ function AppContent() {
                           <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
                         ) : showPrivacyPolicy ? (
                           <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
-                        ) : showAccountSettings ? (
-                          <AccountSettings />
                         ) : (
                           renderCurrentPage()
                         )}

@@ -3,6 +3,8 @@ import { Text, View, TextInput, StyleSheet, Modal, ScrollView } from 'react-nati
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../hooks/useKeyboard';
 
 interface Friend {
   id: string;
@@ -27,6 +29,8 @@ export default function FriendSelectionModal({
   friends
 }: FriendSelectionModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   if (!isOpen) return null;
 
@@ -73,7 +77,7 @@ export default function FriendSelectionModal({
         </View>
 
         {/* Friends List */}
-        <ScrollView style={styles.friendsList} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.friendsList} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           {filteredFriends.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="people" size={48} color="#d1d5db" />
@@ -123,6 +127,7 @@ export default function FriendSelectionModal({
               ))}
             </View>
           )}
+            <View style={{ height: keyboardHeight > 0 ? keyboardHeight : 16 }} />
         </ScrollView>
 
         {/* Footer */}

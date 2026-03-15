@@ -11,6 +11,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Friend } from "../../hooks/useFriends";
 import { colors, spacing, radius, fontWeights } from "../../constants/designSystem";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 interface FriendsManagementListProps {
   friends: Friend[];
@@ -61,6 +63,8 @@ export function FriendsManagementList({
 }: FriendsManagementListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   const filteredFriends = friends.filter((friend) => {
     if (!searchQuery.trim()) return true;
@@ -256,6 +260,7 @@ export function FriendsManagementList({
           );
         })
       )}
+      <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
     </View>
   );
 }

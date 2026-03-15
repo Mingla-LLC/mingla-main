@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  TextInput,
   ActivityIndicator,
   StyleSheet,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-
+import * as Haptics from 'expo-haptics';
 
 interface ProfileHeroSectionProps {
   isOwnProfile: boolean;
@@ -25,6 +28,8 @@ interface ProfileHeroSectionProps {
   onBioPress?: () => void;
   onLocationRefresh?: () => void;
   isUploading?: boolean;
+  statusBarHeight?: number;
+  onSaveName?: (firstName: string, lastName: string) => Promise<boolean>;
 }
 
 const getInitials = (first: string | null, last: string | null): string => {
@@ -33,11 +38,12 @@ const getInitials = (first: string | null, last: string | null): string => {
   return f + l || '?';
 };
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   isOwnProfile,
   firstName,
   lastName,
-  username,
   avatarUrl,
   bio,
   location,
@@ -47,23 +53,119 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   onBioPress,
   onLocationRefresh,
   isUploading,
+  statusBarHeight = 0,
+  onSaveName,
 }) => {
-  const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
+  const displayName = [firstName, lastName].filter(Boolean).join(' ') || '';
   const missingBio = !bio || bio.trim().length === 0;
   const missingAvatar = !avatarUrl;
+  const missingName = !displayName;
   const showHint = isOwnProfile && (missingBio || missingAvatar);
 
   const hintText = missingAvatar
-    ? 'Add a photo to complete your profile'
-    : 'Write a bio so people know what you\'re about';
+    ? 'People trust faces. Add a photo so friends know it\u2019s you.'
+    : 'A short bio goes a long way. What should people know about you?';
+
+  // Inline name editing state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editFirstName, setEditFirstName] = useState(firstName || '');
+  const [editLastName, setEditLastName] = useState(lastName || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  // Animation values
+  const nameOpacity = useRef(new Animated.Value(1)).current;
+  const editOpacity = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  const startEditing = () => {
+    if (!isOwnProfile) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditFirstName(firstName || '');
+    setEditLastName(lastName || '');
+    setNameError(null);
+    setIsEditingName(true);
+
+    Animated.parallel([
+      Animated.timing(nameOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(editOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const cancelEditing = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setNameError(null);
+    Animated.parallel([
+      Animated.timing(editOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(nameOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start(() => {
+      setIsEditingName(false);
+    });
+  };
+
+  const saveName = async () => {
+    if (!onSaveName) return;
+    const trimFirst = editFirstName.trim();
+    const trimLast = editLastName.trim();
+    if (!trimFirst && !trimLast) {
+      setNameError('Please enter your name.');
+      triggerShake();
+      return;
+    }
+
+    setIsSavingName(true);
+    setNameError(null);
+    try {
+      const success = await onSaveName(trimFirst, trimLast);
+      if (success) {
+        Animated.parallel([
+          Animated.timing(editOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+          Animated.timing(nameOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        ]).start(() => {
+          setIsEditingName(false);
+        });
+      } else {
+        setNameError('Failed to save. Try again.');
+        triggerShake();
+      }
+    } catch {
+      setNameError('Failed to save. Try again.');
+      triggerShake();
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: -10, duration: 75, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 75, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 75, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Reset edit state when name props change externally
+  useEffect(() => {
+    if (!isEditingName) {
+      nameOpacity.setValue(1);
+      editOpacity.setValue(0);
+    }
+  }, [firstName, lastName]);
+
+  const gradientHeight = 180 + statusBarHeight;
+  const inputRowMaxWidth = Math.min(SCREEN_WIDTH - 48, 340);
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#fef3e2', '#ffffff']} style={styles.gradient} />
+      <LinearGradient
+        colors={['#fef3e2', '#fef3e2', '#ffffff']}
+        locations={[0, 0.3, 1]}
+        style={[styles.gradient, { height: gradientHeight }]}
+      />
 
       <View>
         <TouchableOpacity
-          style={styles.avatarWrap}
+          style={[styles.avatarWrap, { marginTop: 28 + statusBarHeight }]}
           onPress={onAvatarPress}
           disabled={!isOwnProfile || isUploading}
           activeOpacity={0.8}
@@ -93,11 +195,87 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.name}>{displayName}</Text>
-
-      {username && (
-        <Text style={styles.username}>@{username}</Text>
+      {/* Name display / inline edit */}
+      {isEditingName ? (
+        <Animated.View style={[
+          styles.nameEditContainer,
+          { opacity: editOpacity, transform: [{ translateX: shakeAnim }] },
+          { maxWidth: inputRowMaxWidth },
+        ]}>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
+              value={editFirstName}
+              onChangeText={setEditFirstName}
+              placeholder="First name"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="words"
+              autoFocus
+              editable={!isSavingName}
+              returnKeyType="next"
+            />
+            <TextInput
+              style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
+              value={editLastName}
+              onChangeText={setEditLastName}
+              placeholder="Last name"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="words"
+              editable={!isSavingName}
+              returnKeyType="done"
+              onSubmitEditing={saveName}
+            />
+          </View>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={cancelEditing}
+              disabled={isSavingName}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              accessibilityLabel="Cancel editing"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={18} color="#6b7280" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={saveName}
+              disabled={isSavingName}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              accessibilityLabel="Save name"
+              accessibilityRole="button"
+            >
+              {isSavingName ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Ionicons name="checkmark" size={18} color="#ffffff" />
+              )}
+            </TouchableOpacity>
+          </View>
+          {nameError && <Text style={styles.nameErrorText}>{nameError}</Text>}
+        </Animated.View>
+      ) : (
+        <Animated.View style={{ opacity: nameOpacity }}>
+          {isOwnProfile ? (
+            <TouchableOpacity
+              style={styles.nameRow}
+              onPress={startEditing}
+              activeOpacity={0.7}
+              accessibilityLabel={displayName ? `Your name, ${displayName}. Double tap to edit.` : 'Add your name. Double tap to edit.'}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.name, missingName && styles.namePlaceholder]}>
+                {displayName || 'Your name here'}
+              </Text>
+              <Ionicons name="pencil" size={14} color="#9ca3af" style={styles.pencilIcon} />
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.name}>{displayName || 'User'}</Text>
+          )}
+        </Animated.View>
       )}
+
+      {/* Username line REMOVED — hidden from user */}
 
       {(location || isOwnProfile) && (
         <View style={styles.locationRow}>
@@ -105,7 +283,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           {isLoadingLocation ? (
             <ActivityIndicator size="small" color="#6b7280" style={styles.locationLoader} />
           ) : (
-            <Text style={styles.locationText}>{location || 'Unknown location'}</Text>
+            <Text style={styles.locationText}>{location || 'Somewhere cool, probably'}</Text>
           )}
           {isOwnProfile && onLocationRefresh && (
             <TouchableOpacity onPress={onLocationRefresh} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -118,7 +296,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
       <View>
         {missingBio && isOwnProfile ? (
           <TouchableOpacity onPress={onBioPress}>
-            <Text style={styles.addBio}>Add a bio</Text>
+            <Text style={styles.addBio}>Tap to add a bio</Text>
           </TouchableOpacity>
         ) : bio ? (
           <TouchableOpacity onPress={isOwnProfile ? onBioPress : undefined} disabled={!isOwnProfile}>
@@ -138,8 +316,8 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center', paddingBottom: 16 },
-  gradient: { ...StyleSheet.absoluteFillObject, height: 140 },
-  avatarWrap: { marginTop: 28, position: 'relative' },
+  gradient: { ...StyleSheet.absoluteFillObject },
+  avatarWrap: { position: 'relative' },
   avatar: {
     width: 104, height: 104, borderRadius: 52,
     backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center',
@@ -151,14 +329,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#eb7825', alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#ffffff',
   },
-  name: { fontSize: 24, fontWeight: '700', color: '#111827', marginTop: 12 },
-  username: { fontSize: 14, fontWeight: '500', color: '#6b7280', marginTop: 2 },
+  // Name display
+  nameRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 12, gap: 6, minHeight: 44,
+  },
+  name: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  namePlaceholder: { color: '#9ca3af', fontStyle: 'italic' },
+  pencilIcon: { marginTop: 2 },
+  // Name editing
+  nameEditContainer: {
+    alignItems: 'center', marginTop: 12, width: '100%',
+    paddingHorizontal: 24,
+  },
+  inputRow: { flexDirection: 'row', gap: 8, width: '100%' },
+  nameInput: {
+    flex: 1, height: 44, borderRadius: 12,
+    borderWidth: 1, borderColor: '#d1d5db',
+    backgroundColor: '#ffffff', paddingHorizontal: 16,
+    fontSize: 16, fontWeight: '600', color: '#111827', textAlign: 'center',
+  },
+  nameInputDisabled: { opacity: 0.6 },
+  actionRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  cancelButton: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center',
+  },
+  saveButton: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#eb7825', alignItems: 'center', justifyContent: 'center',
+  },
+  nameErrorText: {
+    fontSize: 12, color: '#ef4444', textAlign: 'center', marginTop: 4,
+  },
+  // Location
   locationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   locationText: { fontSize: 14, color: '#6b7280', marginLeft: 4 },
   locationLoader: { marginLeft: 4 },
   refreshIcon: { marginLeft: 6 },
+  // Bio
   bio: { fontSize: 15, color: '#374151', textAlign: 'center', marginTop: 12, paddingHorizontal: 24 },
   addBio: { fontSize: 15, color: '#9ca3af', fontStyle: 'italic', marginTop: 12 },
+  // Hint
   hintContainer: {
     marginTop: 12, marginHorizontal: 24, backgroundColor: '#fef3e2',
     borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12,
