@@ -92,7 +92,22 @@ interface PersonHolidayViewProps {
     priceRange: string | null;
     cardType: "single" | "curated";
     experienceType: string | null;
+    website: string | null;
+    description: string | null;
+    lat: number | null;
+    lng: number | null;
+    googlePlaceId: string | null;
+    priceTier: string | null;
+    tagline: string | null;
+    stops: number;
+    stopsData: unknown[] | null;
+    totalPriceMin: number | null;
+    totalPriceMax: number | null;
+    estimatedDurationMinutes: number | null;
+    shoppingList: unknown[] | null;
   }) => void;
+  /** Called when user deletes a custom holiday */
+  onDeleteCustomDay?: (holidayId: string, holidayName: string) => void;
 }
 
 // ── Category icon mapping (matches DiscoverScreen) ──────────────────────────
@@ -381,6 +396,19 @@ function CardRow({
                   priceRange: c.priceLevel,
                   cardType: c.cardType,
                   experienceType: c.experienceType,
+                  website: c.website,
+                  description: c.description,
+                  lat: c.lat,
+                  lng: c.lng,
+                  googlePlaceId: c.googlePlaceId,
+                  priceTier: c.priceTier,
+                  tagline: c.tagline,
+                  stops: c.stops,
+                  stopsData: c.stopsData,
+                  totalPriceMin: c.totalPriceMin,
+                  totalPriceMax: c.totalPriceMax,
+                  estimatedDurationMinutes: c.estimatedDurationMinutes,
+                  shoppingList: c.shoppingList,
                 })
               }
             />
@@ -407,6 +435,19 @@ function CardRow({
                   priceRange: c.priceRange,
                   cardType: "single",
                   experienceType: null,
+                  website: null,
+                  description: null,
+                  lat: null,
+                  lng: null,
+                  googlePlaceId: null,
+                  priceTier: null,
+                  tagline: null,
+                  stops: 0,
+                  stopsData: null,
+                  totalPriceMin: null,
+                  totalPriceMax: null,
+                  estimatedDurationMinutes: null,
+                  shoppingList: null,
                 })
               }
             />
@@ -487,7 +528,7 @@ function HolidaySectionView({
 
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
-  fallbackCards, onCardPress, isExpanded, onToggle,
+  fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -495,6 +536,7 @@ function CustomHolidaySectionView({
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   isExpanded: boolean; onToggle: () => void;
+  onDelete?: () => void;
 }) {
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
@@ -510,7 +552,14 @@ function CustomHolidaySectionView({
         <View style={styles.holidayHeaderLeft}>
           <View style={styles.holidayNameRow}>
             <Text style={styles.holidayName}>{holiday.name}</Text>
-            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
+            <View style={styles.holidayActions}>
+              {onDelete && (
+                <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="trash-outline" size={s(16)} color="#9ca3af" />
+                </TouchableOpacity>
+              )}
+              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
+            </View>
           </View>
           <Text style={styles.holidayDate}>
             {fmtMonthDay(new Date(yr, holiday.month - 1, holiday.day))} · {commem}
@@ -550,7 +599,7 @@ export default function PersonHolidayView({
   pairedUserId, pairingId, displayName, birthday, gender,
   location, userId, customHolidays, onAddCustomDay,
   fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
-  onCardPress,
+  onCardPress, onDeleteCustomDay,
 }: PersonHolidayViewProps) {
   const firstName = getFirstName(displayName);
 
@@ -737,6 +786,7 @@ export default function PersonHolidayView({
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               isExpanded={expandedIds.has(`custom_${ch.id}`)}
               onToggle={() => toggle(`custom_${ch.id}`)}
+              onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
             />
           ))
         ) : (

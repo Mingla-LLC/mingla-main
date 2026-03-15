@@ -2713,15 +2713,28 @@ export default function DiscoverScreen({
       priceRange: string | null;
       cardType: "single" | "curated";
       experienceType: string | null;
+      website: string | null;
+      description: string | null;
+      lat: number | null;
+      lng: number | null;
+      googlePlaceId: string | null;
+      priceTier: string | null;
+      tagline: string | null;
+      stops: number;
+      stopsData: unknown[] | null;
+      totalPriceMin: number | null;
+      totalPriceMax: number | null;
+      estimatedDurationMinutes: number | null;
+      shoppingList: unknown[] | null;
     }) => {
       const expanded: ExpandedCardData = {
         id: card.id,
-        placeId: card.id,
+        placeId: card.googlePlaceId || card.id,
         title: card.title,
         category: card.category,
         categoryIcon: categoryIcons[card.category] || "ellipse-outline",
-        description: "",
-        fullDescription: "",
+        description: card.description || "",
+        fullDescription: card.description || "",
         image: card.imageUrl || "",
         images: card.imageUrl ? [card.imageUrl] : [],
         rating: card.rating ?? 0,
@@ -2730,13 +2743,28 @@ export default function DiscoverScreen({
         distance: "",
         travelTime: "",
         address: card.address || "",
+        website: card.website || undefined,
+        location: card.lat && card.lng ? { lat: card.lat, lng: card.lng } : undefined,
         highlights: [],
         tags: [],
         matchScore: 0,
         matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
         socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
         selectedDateTime: new Date(),
-        ...(card.cardType === "curated" ? { cardType: "curated" as const } : {}),
+        // Curated card fields
+        ...(card.cardType === "curated"
+          ? {
+              cardType: "curated" as const,
+              stops: Array.isArray(card.stopsData) ? card.stopsData as ExpandedCardData["stops"] : undefined,
+              tagline: card.tagline || undefined,
+              totalPriceMin: card.totalPriceMin ?? undefined,
+              totalPriceMax: card.totalPriceMax ?? undefined,
+              estimatedDurationMinutes: card.estimatedDurationMinutes ?? undefined,
+              experienceType: card.experienceType || undefined,
+              priceTier: card.priceTier as ExpandedCardData["priceTier"],
+              shoppingList: Array.isArray(card.shoppingList) ? card.shoppingList as string[] : undefined,
+            }
+          : {}),
       };
       setSelectedCardForExpansion(expanded);
       setIsExpandedModalVisible(true);
@@ -3274,6 +3302,7 @@ export default function DiscoverScreen({
                   onArchiveHoliday={handlePersonArchiveHoliday}
                   onUnarchiveHoliday={handlePersonUnarchiveHoliday}
                   onCardPress={handlePersonCardPress}
+                  onDeleteCustomDay={handleConfirmDeleteCustomHoliday}
                 />
               ) : (
                 <>
