@@ -102,9 +102,11 @@ $$;
 
 -- 4. Backfill: create subscription rows for any existing users who signed up
 --    but don't have a subscription row yet (edge case for users mid-onboarding)
+--    Join auth.users to skip orphaned profiles that would violate the FK constraint.
 INSERT INTO public.subscriptions (user_id, tier, trial_ends_at)
 SELECT p.id, 'free', NULL
 FROM public.profiles p
+INNER JOIN auth.users u ON u.id = p.id
 LEFT JOIN public.subscriptions s ON s.user_id = p.id
 WHERE s.id IS NULL
   AND (p.has_completed_onboarding IS NULL OR p.has_completed_onboarding = false)
