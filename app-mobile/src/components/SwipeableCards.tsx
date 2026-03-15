@@ -388,6 +388,7 @@ export default function SwipeableCards({
     handleDeckCardProgress,
     totalDeckCardsViewed,
     hasMoreCards,
+    batchSeed,
     dismissedCards,
     addDismissedCard,
     removeDismissedCard,
@@ -570,11 +571,15 @@ export default function SwipeableCards({
   // primary fix is in the AsyncStorage restore (filtering stale IDs) and useDeckCards
   // (matching initialData on categories, not just batchSeed). But if those fail, this
   // prevents the user from being permanently stuck.
+  //
+  // IMPORTANT: Do NOT fire when removedCards >= recommendations — that means the user
+  // legitimately swiped every card. That's exhaustion, not a dead state.
   useEffect(() => {
     if (
       availableRecommendations.length === 0 &&
       recommendations.length > 0 &&
       removedCards.size > 0 &&
+      removedCards.size < recommendations.length && // User hasn't swiped all — this is stale data
       hasCompletedInitialFetch &&
       !isExhausted &&
       !loading &&
@@ -1344,26 +1349,26 @@ export default function SwipeableCards({
               <Ionicons name="earth-outline" size={24} color="#eb7825" />
             </View>
             <Text style={styles.emptyDeckTitle}>
-              {`Deck ${currentDeckBatchIndex + 1} complete`}
+              {`That's a wrap on Round ${currentDeckBatchIndex + 1}`}
             </Text>
             <Text style={styles.emptyDeckSubtitle}>
               {canLoadMore
-                ? "Ready for more? Load a fresh deck or revisit what you've seen."
+                ? "More where that came from."
                 : hasMultipleBatches
-                  ? "You've explored all your decks. Revisit one or tweak your preferences."
-                  : "Tweak your preferences or review dismissed cards."}
+                  ? "You've seen it all. For now."
+                  : "Shift your vibe, or give a skipped spot a second look."}
             </Text>
 
             <View style={styles.emptyDeckActions}>
               {/* Load next deck — primary action when more cards exist */}
               {canLoadMore && (
                 <TouchableOpacity
-                  style={[styles.emptyDeckButton, { backgroundColor: '#eb7825' }]}
+                  style={styles.emptyDeckButton}
                   onPress={generateNextBatch}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.emptyDeckButtonText}>Load Deck {currentDeckBatchIndex + 2}</Text>
+                  <Text style={styles.emptyDeckButtonText}>Another round</Text>
                 </TouchableOpacity>
               )}
 
@@ -1378,7 +1383,7 @@ export default function SwipeableCards({
                   >
                     <Ionicons name="albums-outline" size={16} color="#eb7825" />
                     <Text style={styles.emptyDeckOutlineButtonText}>
-                      Review Deck {idx + 1} — {batch.cards.length} places
+                      Revisit Round {idx + 1} — {batch.cards.length} places
                     </Text>
                   </TouchableOpacity>
                 ) : null
@@ -1387,11 +1392,11 @@ export default function SwipeableCards({
               {/* Hint about deck chip when multiple batches exist */}
               {hasMultipleBatches && (
                 <Text style={styles.emptyDeckHint}>
-                  Tip: tap the <Ionicons name="layers-outline" size={12} color="#9ca3af" /> Deck button (top-right of cards) to switch decks anytime.
+                  Switch rounds from the <Ionicons name="layers-outline" size={12} color="#9ca3af" /> chip anytime
                 </Text>
               )}
 
-              {/* Review dismissed cards */}
+              {/* Review skipped cards */}
               {dismissedCards.length > 0 && (
                 <TouchableOpacity
                   style={styles.emptyDeckOutlineButton}
@@ -1400,19 +1405,19 @@ export default function SwipeableCards({
                 >
                   <Ionicons name="refresh-outline" size={16} color="#eb7825" />
                   <Text style={styles.emptyDeckOutlineButtonText}>
-                    Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
+                    Revisit {dismissedCards.length} skipped place{dismissedCards.length !== 1 ? "s" : ""}
                   </Text>
                 </TouchableOpacity>
               )}
 
-              {/* Change Preferences — always available */}
+              {/* Shift your vibe — always available */}
               <TouchableOpacity
                 style={styles.emptyDeckButton}
                 onPress={handleOpenPreferences}
                 activeOpacity={0.7}
               >
                 <Ionicons name="options-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.emptyDeckButtonText}>Change Preferences</Text>
+                <Text style={styles.emptyDeckButtonText}>Shift your vibe</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1479,7 +1484,7 @@ export default function SwipeableCards({
             >
               <Ionicons name="layers-outline" size={14} color="#6b7280" />
               <Text style={styles.batchChipText}>
-                Deck {currentDeckBatchIndex + 1}
+                Round {currentDeckBatchIndex + 1}
               </Text>
             </TouchableOpacity>
           )}

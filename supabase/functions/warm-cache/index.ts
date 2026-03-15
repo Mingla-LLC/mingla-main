@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { batchSearchByCategory } from '../_shared/placesCache.ts';
+import { upsertPlaceToPool, insertCardToPool } from '../_shared/cardPoolService.ts';
+import { priceLevelToRange } from '../_shared/priceTiers.ts';
 import {
   ALL_CATEGORY_NAMES,
   getCategoryTypeMap,
@@ -64,10 +66,48 @@ serve(async (req) => {
       },
     );
 
-    const durationMs = Date.now() - startTime;
-    const totalPlaces = Object.values(results).reduce((sum, places) => sum + places.length, 0);
+    // ── Store results directly in place_pool + card_pool ──────────────────
+    let totalPlaces = 0;
+    for (const [category, places] of Object.entries(results)) {
+      for (const place of places) {
+        const googlePlaceId = place.id || place.placeId;
+        if (!googlePlaceId) continue;
 
-    console.log(`[warm-cache] Done in ${durationMs}ms: ${cacheHits} cache hits, ${apiCallsMade} API calls, ${totalPlaces} total places`);
+        totalPlaces++;
+
+        // Upsert to place_pool
+        const placePoolId = await upsertPlaceToPool(supabaseAdmin, place, GOOGLE_API_KEY, 'warm_cache');
+
+        // Build and insert card to card_pool
+        const priceRange = priceLevelToRange(place.priceLevel);
+        await insertCardToPool(supabaseAdmin, {
+          placePoolId: placePoolId ?? undefined,
+          googlePlaceId,
+          cardType: 'single',
+          title: place.displayName?.text || 'Unknown Place',
+          category,
+          categories: [category],
+          description: null,
+          highlights: [],
+          imageUrl: null,
+          images: [],
+          address: place.formattedAddress || '',
+          lat: place.location?.latitude ?? 0,
+          lng: place.location?.longitude ?? 0,
+          rating: place.rating || 0,
+          reviewCount: place.userRatingCount || 0,
+          priceMin: priceRange.min,
+          priceMax: priceRange.max,
+          openingHours: place.regularOpeningHours || null,
+          website: place.websiteUri || null,
+          priceLevel: place.priceLevel,
+        });
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    console.log(`[warm-cache] Done in ${durationMs}ms: ${cacheHits} cache hits, ${apiCallsMade} API calls, ${totalPlaces} total places stored to pools`);
 
     return new Response(
       JSON.stringify({

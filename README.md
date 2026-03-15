@@ -295,7 +295,6 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `user_card_impressions` | Tracks which cards users have seen (discover/swipe) |
 | `person_card_impressions` | Tracks shown cards per saved person (hero cards + holiday rows) |
 | `ticketmaster_events_cache` | Cached Ticketmaster events (2-hour TTL) |
-| `google_places_cache` | Cached Google Places API responses |
 | `discover_daily_cache` | Cached discover feed results |
 | `curated_places_cache` | Cached curated experience places |
 
@@ -327,7 +326,7 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
-| `warm-cache` | Cache warming for frequently accessed data |
+| `warm-cache` | Pre-stocks place_pool + card_pool for frequently accessed locations |
 
 ### Social and Notifications
 
@@ -465,10 +464,9 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Google API cost elimination** — 8 surgical fixes eliminate nearly all Google Places API and Distance Matrix API calls for users with mature pools. Discover page now serves exclusively from pool, warm pool calls short-circuit when pool is mature, impression-saturated users get rotated cards instead of empty states, and curated warm pool is capped at 15 cards with skipped descriptions
+- **Google Places cache elimination** — Removed the redundant `google_places_cache` table and 271 lines of cache management code from `placesCache.ts`. All Google API calls now go directly to Google with results stored in `place_pool` + `card_pool`. `warm-cache` now pre-stocks pools directly instead of populating an intermediate cache. Pagination expansion path removed from `discover-cards` (impression rotation handles the same scenario). Space leak from never-cleaned expired cache entries is eliminated. ~$2.70/month cost increase, offset by reduced complexity and DB operations
 - **NULL price_tier fix** — Cards with NULL `price_tier` are no longer silently excluded from tier-filtered queries. Existing NULLs backfilled to 'comfy', column DEFAULT set to 'comfy'
 - **Discover GPS race fix** — `lastDiscoverFetchDateRef` set before async fetch to close the double-fetch window. GPS-first location resolution eliminates set-twice coordinate pattern
-- **Warm pool deduplication** — Module-level timestamp in `deckService` prevents redundant warm pool calls from RecommendationsContext within 30 seconds of onboarding warm pool
 
 ---
 
