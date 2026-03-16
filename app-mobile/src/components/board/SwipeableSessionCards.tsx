@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel, tierLabel } from '../../constants/priceTiers';
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 
@@ -196,8 +196,8 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             const rsvpCount = rsvpCounts[card.id] || { responded: 0, total: 0, userRSVP: null, attendees: [] };
             const isCardLocked = lockedCards[card.id]?.isLocked || false;
             const isCurated = cardData.cardType === 'curated';
-            const categoryIcon = getIconComponent(isCurated ? "compass" : (cardData.categoryIcon || "star"));
-            const categoryLabel = isCurated ? "Adventurous" : (cardData.category || "Experience");
+            const categoryIcon = isCurated ? "" : getIconComponent(cardData.categoryIcon || "star");
+            const categoryLabel = isCurated ? "" : (cardData.category || "Experience");
 
             // Shared vote/RSVP buttons for both card types
             const voteButtons = (
