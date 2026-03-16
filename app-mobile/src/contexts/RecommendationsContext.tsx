@@ -55,7 +55,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Nature", "Casual Eats", "Drink"],
+  categories: ["nature", "casual_eats", "drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
@@ -272,7 +272,7 @@ export const RecommendationsProvider: React.FC<
         deckService.warmDeckPool({
           location: userLocation,
           categories: userPrefs.categories ?? [],
-          intents: userPrefs.intents ?? [],
+          intents: (userPrefs.intents ?? []).slice(0, 1),
           priceTiers: userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
           budgetMin: userPrefs.budget_min ?? 0,
           budgetMax: userPrefs.budget_max ?? 1000,
@@ -296,7 +296,7 @@ export const RecommendationsProvider: React.FC<
     // Use actual prefs if available, otherwise apply a sensible fallback deck so the
     // spinner doesn't block forever when preferences fail to load (e.g. network timeout).
     const effectivePrefs = userPrefs ?? {
-      categories: ["Nature", "Casual Eats", "Drink"],
+      categories: ["nature", "casual_eats", "drink"],
     };
     const cats = effectivePrefs.categories ?? [];
     const ints = (userPrefs as UserPreferences | undefined)?.intents ?? [];
@@ -304,8 +304,10 @@ export const RecommendationsProvider: React.FC<
     // Once preferences query has settled (data or error), always return a valid deck.
     if (cats.length === 0 && ints.length === 0 && isLoadingPreferences) return null;
     return {
-      categories: cats.length > 0 ? cats : ["Nature", "Casual Eats", "Drink"],
-      intents: ints,
+      categories: cats.length > 0 ? cats : ["nature", "casual_eats", "drink"],
+      // Radio behavior: max 1 intent. DB may have stale multi-intent data from
+      // legacy saves — cap here to prevent over-fetching curated pools.
+      intents: ints.slice(0, 1),
     };
   }, [
     // Use JSON.stringify to prevent array-reference changes from causing recomputation

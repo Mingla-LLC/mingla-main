@@ -24,6 +24,7 @@ import SessionViewModal from './SessionViewModal';
 import { supabase } from '../services/supabase';
 import { COUNTRIES, getDefaultCountryCode, getCountryByCode } from '../constants/countries';
 import { CountryData } from '../types/onboarding';
+import { CountryPickerOverlay } from './onboarding/CountryPickerModal';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite } from '../services/phoneLookupService';
 import { useAppStore } from '../store/appStore';
@@ -120,7 +121,6 @@ export default function CollaborationSessions({
     () => getCountryByCode(getDefaultCountryCode()) ?? COUNTRIES[0]
   );
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [countrySearch, setCountrySearch] = useState('');
   const [phoneActionStatus, setPhoneActionStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [phoneActionError, setPhoneActionError] = useState('');
   const [phoneInvitees, setPhoneInvitees] = useState<{ phoneE164: string }[]>([]);
@@ -146,16 +146,6 @@ export default function CollaborationSessions({
     return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15;
   }, [phoneRawDigits]);
 
-  const filteredCountries = useMemo(() => {
-    if (!countrySearch.trim()) return COUNTRIES;
-    const q = countrySearch.toLowerCase();
-    return COUNTRIES.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.dialCode.includes(q) ||
-        c.code.toLowerCase().includes(q)
-    );
-  }, [countrySearch]);
 
   const isSoloMode = currentMode === 'solo';
 
@@ -731,63 +721,20 @@ export default function CollaborationSessions({
           </View>
         </View>
 
-        {/* Country Picker Modal */}
-        <Modal
-          visible={showCountryPicker}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowCountryPicker(false)}
-        >
-          <View style={styles.csPickerOverlay}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFillObject}
-              activeOpacity={1}
-              onPress={() => setShowCountryPicker(false)}
-            />
-            <View style={styles.csPickerSheet}>
-              <View style={styles.csPickerHeader}>
-                <Text style={styles.csPickerTitle}>Select Country</Text>
-                <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-                  <Icon name="close" size={22} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.csPickerSearchRow}>
-                <Icon name="search-outline" size={18} color="#9ca3af" style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.csPickerSearchInput}
-                  value={countrySearch}
-                  onChangeText={setCountrySearch}
-                  placeholder="Search countries"
-                  placeholderTextColor="#9ca3af"
-                  autoFocus
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              <ScrollView keyboardShouldPersistTaps="handled">
-                {filteredCountries.map((item) => (
-                  <TouchableOpacity
-                    key={item.code}
-                    style={[
-                      styles.csCountryRow,
-                      item.code === selectedCountry.code && styles.csCountryRowSelected,
-                    ]}
-                    onPress={() => {
-                      setSelectedCountry(item);
-                      setShowCountryPicker(false);
-                      setCountrySearch('');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.csCountryRowFlag}>{item.flag}</Text>
-                    <Text style={styles.csCountryRowName}>{item.name}</Text>
-                    <Text style={styles.csCountryRowDial}>{item.dialCode}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        {/* Country picker overlay — rendered INSIDE the parent Modal (fills
+            the entire Modal window) but OUTSIDE createSheetContent (bypasses
+            overflow:hidden). No nested Android Dialog. Instant open. */}
+        {showCountryPicker && (
+          <CountryPickerOverlay
+            selectedCode={selectedCountry.code}
+            onSelect={(code) => {
+              const match = getCountryByCode(code);
+              if (match) setSelectedCountry(match);
+              setShowCountryPicker(false);
+            }}
+            onClose={() => setShowCountryPicker(false)}
+          />
+        )}
       </Modal>
 
       {/* Invite Action Modal */}
@@ -1450,71 +1397,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#374151',
-  },
-  // Country picker modal
-  csPickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  csPickerSheet: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    maxHeight: '75%',
-  },
-  csPickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  csPickerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  csPickerSearchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  csPickerSearchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#111827',
-    padding: 0,
-  },
-  csCountryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  csCountryRowSelected: {
-    backgroundColor: '#fff7ed',
-  },
-  csCountryRowFlag: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  csCountryRowName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#111827',
-  },
-  csCountryRowDial: {
-    fontSize: 13,
-    color: '#6b7280',
   },
   selectedFriendsContainer: {
     flexDirection: 'row',

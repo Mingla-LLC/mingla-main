@@ -163,6 +163,41 @@ export const getCategoryIcon = (categoryKey: string): string => {
 };
 
 /**
+ * Normalize a mixed-format category array to deduplicated slug IDs.
+ *
+ * Handles legacy display names ("Nature"), underscored slugs ("casual_eats"),
+ * and any other format that getCategorySlug understands. Returns a unique
+ * array of slug IDs capped at `maxCategories`.
+ */
+const VALID_SLUGS = new Set([
+  'nature', 'first_meet', 'picnic_park', 'drink', 'casual_eats',
+  'fine_dining', 'watch', 'creative_arts', 'play', 'wellness',
+  'groceries_flowers', 'work_business',
+]);
+
+export const normalizeCategoryArray = (
+  raw: string[],
+  maxCategories: number = 3,
+): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const cat of raw) {
+    // Fast path: already a valid slug
+    let slug = VALID_SLUGS.has(cat) ? cat : getCategorySlug(cat);
+    // getCategorySlug returns hyphenated fallback for unknowns — remap to underscore
+    slug = slug.replace(/-/g, '_');
+    // "picnic" from getCategorySlug → normalize to "picnic_park" (the canonical slug)
+    if (slug === 'picnic') slug = 'picnic_park';
+    if (!seen.has(slug) && VALID_SLUGS.has(slug)) {
+      seen.add(slug);
+      result.push(slug);
+    }
+    if (result.length >= maxCategories) break;
+  }
+  return result;
+};
+
+/**
  * Get category color
  */
 export const getCategoryColor = (categoryKey: string): string => {

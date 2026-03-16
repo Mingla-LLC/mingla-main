@@ -13,6 +13,7 @@ import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
 import { computePrefsHash } from "../utils/cardConverters";
 import { TIER_BY_SLUG, PRICE_TIERS, PriceTierSlug } from '../constants/priceTiers';
+import { normalizeCategoryArray } from '../utils/categoryUtils';
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -137,17 +138,20 @@ export function useAppHandlers(state: any) {
       }
     }
 
+    // Normalize categories and intents once — shared by both collab and solo save paths
+    const normalizedCats = normalizeCategoryArray(preferences.selectedCategories || []);
+    const normalizedIntents = (preferences.selectedIntents || []).slice(0, 1);
+    const collabTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
+    const collabHighest = PRICE_TIERS.slice().reverse().find(t => collabTiers.includes(t.slug));
+    const collabBudgetMax = collabHighest?.max ?? 150;
+
     if (sessionId) {
       // Transform preferences to database format
       // Separate intents and categories — matches solo preferences table schema.
-      const collabTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-      const collabHighest = PRICE_TIERS.slice().reverse().find(t => collabTiers.includes(t.slug));
-      const collabBudgetMax = collabHighest?.max ?? 150;
-
       const isGps = preferences.useLocation === "gps" || !preferences.searchLocation;
       const dbPreferences: any = {
-        categories: preferences.selectedCategories || [],
-        intents: preferences.selectedIntents || [],
+        categories: normalizedCats,
+        intents: normalizedIntents,
         price_tiers: collabTiers,
         budget_min: 0,
         budget_max: collabBudgetMax,
@@ -200,8 +204,8 @@ export function useAppHandlers(state: any) {
         price_tiers: collabTiers,
         budget_min: 0,
         budget_max: collabBudgetMax,
-        categories: preferences.selectedCategories || [],
-        intents: preferences.selectedIntents || [],
+        categories: normalizedCats,
+        intents: normalizedIntents,
         travel_mode: preferences.travelMode || "walking",
         travel_constraint_type: 'time' as const,
         travel_constraint_value:
@@ -588,14 +592,17 @@ export function useAppHandlers(state: any) {
       const highestTier = PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug));
       const backCompatBudgetMax = highestTier?.max ?? 1000;
 
+      const soloCats = normalizeCategoryArray(preferences.selectedCategories || []);
+      const soloIntents = (preferences.selectedIntents || []).slice(0, 1);
+
       const dbPreferences: any = {
-        mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
+        mode: soloIntents.length > 0 ? "custom" : "explore",
         people_count: 1,
         price_tiers: userTiers,
         budget_min: 0,
         budget_max: backCompatBudgetMax,
-        categories: preferences.selectedCategories || [],
-        intents: preferences.selectedIntents || [],
+        categories: soloCats,
+        intents: soloIntents,
         travel_mode: normalizedTravelMode,
         travel_constraint_type: 'time' as const,
         travel_constraint_value:
@@ -879,6 +886,7 @@ export function useAppHandlers(state: any) {
           reviewCount: card.reviewCount,
           travelTime: card.travelTime,
           priceRange: card.priceRange,
+          priceTier: (card as any).priceTier,
           description: card.description,
           fullDescription: card.fullDescription,
           address: card.address,
@@ -889,6 +897,18 @@ export function useAppHandlers(state: any) {
           matchFactors: card.matchFactors,
           lat: card.lat,
           lng: card.lng,
+          // Contact & location fields for Policies & Reservations
+          website: (card as any).website || (card as any).websiteUri,
+          websiteUri: (card as any).websiteUri || (card as any).website,
+          phone: (card as any).phone,
+          placeId: (card as any).placeId,
+          googleMapsUri: (card as any).googleMapsUri,
+          location: (card as any).location,
+          distance: (card as any).distance,
+          tags: (card as any).tags,
+          // Special card type data
+          strollData: (card as any).strollData,
+          picnicData: (card as any).picnicData,
           // Preserve curated card fields if this is a curated experience
           ...((card as any).cardType === 'curated' ? {
             cardType: (card as any).cardType,
@@ -899,6 +919,7 @@ export function useAppHandlers(state: any) {
             estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
             pairingKey: (card as any).pairingKey,
             experienceType: (card as any).experienceType,
+            shoppingList: (card as any).shoppingList,
           } : {}),
         };
 

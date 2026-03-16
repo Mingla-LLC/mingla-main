@@ -90,7 +90,7 @@ export interface OnboardingData {
 
   // Step 4
   manualLocation: string | null  // city name typed by user (when GPS denied)
-  selectedCategories: string[]   // display names: 'Nature', 'Drink', etc.
+  selectedCategories: string[]   // slug IDs: 'nature', 'drink', etc.
   selectedPriceTiers: PriceTierSlug[]  // selected price tier slugs
   travelMode: 'walking' | 'biking' | 'transit' | 'driving'
   travelTimeMinutes: number      // 15, 30, 45, or 60
@@ -171,4 +171,4 @@ export const DEFAULT_TRANSPORT = 'walking'
 // ─── Default Categories ───
 // Synced with PostgreSQL default in supabase/migrations/20260228000001_update_categories.sql
 // If you change this list, update the DB default too (and vice versa).
-export const DEFAULT_CATEGORIES = ['Nature', 'Casual Eats', 'Drink']
+export const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink']

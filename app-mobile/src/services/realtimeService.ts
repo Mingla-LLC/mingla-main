@@ -20,12 +20,12 @@ interface BoardSessionCallbacks {
   onCardVoted?: (
     savedCardId: string,
     userId: string,
-    voteType: "up" | "down"
+    voteType: "up" | "down" | null
   ) => void;
   onCardRSVP?: (
     savedCardId: string,
     userId: string,
-    rsvpStatus: "attending" | "not_attending"
+    rsvpStatus: "attending" | "not_attending" | null
   ) => void;
   onMessage?: (message: any) => void;
   onCardMessage?: (savedCardId: string, message: any) => void;
@@ -369,6 +369,25 @@ export class RealtimeService {
           }
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "board_votes",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | DELETE board_votes`);
+          if (payload.old.saved_card_id) {
+            dispatch('onCardVoted',
+              payload.old.saved_card_id,
+              payload.old.user_id,
+              null
+            );
+          }
+        }
+      )
       // RSVPs
       .on(
         "postgres_changes",
@@ -401,6 +420,23 @@ export class RealtimeService {
             payload.new.saved_card_id,
             payload.new.user_id,
             payload.new.rsvp_status
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "board_card_rsvps",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | DELETE board_card_rsvps`);
+          dispatch('onCardRSVP',
+            payload.old.saved_card_id,
+            payload.old.user_id,
+            null
           );
         }
       )

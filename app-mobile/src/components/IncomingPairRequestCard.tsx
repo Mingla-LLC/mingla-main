@@ -115,7 +115,7 @@ export default function IncomingPairRequestCard({
       await acceptMutation.mutateAsync(request.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowSuccess(true);
-      successTimerRef.current = setTimeout(() => onAccept(), 1500);
+      successTimerRef.current = setTimeout(() => onAccept(), 800);
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }

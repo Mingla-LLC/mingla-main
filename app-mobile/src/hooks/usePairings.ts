@@ -103,8 +103,42 @@ export function useAcceptPairRequest() {
   >({
     mutationKey: ["pairings", "accept"],
     mutationFn: acceptPairRequest,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pairings"] });
+    onMutate: async (requestId) => {
+      // Cancel in-flight fetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: pairingKeys.prefix });
+
+      // Snapshot previous values for rollback
+      const prevIncoming = queryClient.getQueriesData<PairRequest[]>({
+        queryKey: ["pairings", "incoming"],
+      });
+      const prevPills = queryClient.getQueriesData<PairingPill[]>({
+        queryKey: ["pairings", "pills"],
+      });
+
+      // Optimistically remove the accepted request from ALL incoming caches
+      queryClient.setQueriesData<PairRequest[]>(
+        { queryKey: ["pairings", "incoming"] },
+        (old) => old?.filter((r) => r.id !== requestId) ?? [],
+      );
+
+      return { prevIncoming, prevPills };
+    },
+    onError: (_err, _requestId, context) => {
+      // Rollback on failure — restore exact previous cache state
+      if (context?.prevIncoming) {
+        for (const [key, data] of context.prevIncoming) {
+          if (data !== undefined) queryClient.setQueryData(key, data);
+        }
+      }
+      if (context?.prevPills) {
+        for (const [key, data] of context.prevPills) {
+          if (data !== undefined) queryClient.setQueryData(key, data);
+        }
+      }
+    },
+    onSettled: () => {
+      // Always refetch to ensure server truth, regardless of success/failure
+      queryClient.invalidateQueries({ queryKey: pairingKeys.prefix });
     },
   });
 }
@@ -114,8 +148,29 @@ export function useDeclinePairRequest() {
   return useMutation<void, Error, string>({
     mutationKey: ["pairings", "decline"],
     mutationFn: declinePairRequest,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pairings"] });
+    onMutate: async (requestId) => {
+      await queryClient.cancelQueries({ queryKey: pairingKeys.prefix });
+
+      const prevIncoming = queryClient.getQueriesData<PairRequest[]>({
+        queryKey: ["pairings", "incoming"],
+      });
+
+      queryClient.setQueriesData<PairRequest[]>(
+        { queryKey: ["pairings", "incoming"] },
+        (old) => old?.filter((r) => r.id !== requestId) ?? [],
+      );
+
+      return { prevIncoming };
+    },
+    onError: (_err, _requestId, context) => {
+      if (context?.prevIncoming) {
+        for (const [key, data] of context.prevIncoming) {
+          if (data !== undefined) queryClient.setQueryData(key, data);
+        }
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: pairingKeys.prefix });
     },
   });
 }

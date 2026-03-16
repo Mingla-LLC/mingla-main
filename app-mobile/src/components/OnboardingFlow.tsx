@@ -2424,21 +2424,21 @@ const OnboardingFlow = ({
                 name={cat.name}
                 icon={cat.ux.activeColor ? getCategoryIcon(cat.slug) : 'ellipse-outline'}
                 activeColor={cat.ux.activeColor}
-                selected={data.selectedCategories.includes(cat.name)}
+                selected={data.selectedCategories.includes(cat.slug)}
                 onPress={() => {
-                  const isSelected = data.selectedCategories.includes(cat.name)
-                  logger.action(`Category ${isSelected ? 'deselected' : 'selected'}: ${cat.name}`)
+                  const isSelected = data.selectedCategories.includes(cat.slug)
+                  logger.action(`Category ${isSelected ? 'deselected' : 'selected'}: ${cat.slug}`)
                   setData((p) => {
-                    const selected = p.selectedCategories.includes(cat.name);
+                    const selected = p.selectedCategories.includes(cat.slug);
                     if (selected) {
-                      return { ...p, selectedCategories: p.selectedCategories.filter((c) => c !== cat.name) };
+                      return { ...p, selectedCategories: p.selectedCategories.filter((c) => c !== cat.slug) };
                     }
                     if (p.selectedCategories.length >= 3) {
                       setCategoryCapMessage(true);
                       setTimeout(() => setCategoryCapMessage(false), 2000);
                       return p;
                     }
-                    return { ...p, selectedCategories: [...p.selectedCategories, cat.name] };
+                    return { ...p, selectedCategories: [...p.selectedCategories, cat.slug] };
                   })
                 }}
               />

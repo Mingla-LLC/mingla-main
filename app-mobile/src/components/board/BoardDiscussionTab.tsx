@@ -7,10 +7,8 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Platform,
   ActivityIndicator,
   Alert,
-  Keyboard,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import {
@@ -23,14 +21,21 @@ import { Participant } from "./ParticipantAvatars";
 import { BoardErrorHandler } from "../../services/boardErrorHandler";
 import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
+import { CardTagPopover } from "./CardTagPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
-import { useKeyboard } from "../../hooks/useKeyboard";
 import EmojiReactionPicker from "../discussion/EmojiReactionPicker";
 import * as Haptics from "expo-haptics";
+
+interface SavedCard {
+  id: string;
+  card_data?: { id?: string; title?: string; name?: string; category?: string; categoryIcon?: string; image?: string; images?: string[] };
+  experience_data?: { id?: string; title?: string; name?: string; category?: string; categoryIcon?: string; image?: string; images?: string[] };
+}
 
 interface BoardDiscussionTabProps {
   sessionId: string;
   participants: Participant[];
+  savedCards?: SavedCard[];
   onMentionUser?: (userId: string) => void;
   onUnreadCountChange?: () => void;
 }
@@ -38,12 +43,12 @@ interface BoardDiscussionTabProps {
 export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   sessionId,
   participants,
+  savedCards = [],
   onMentionUser,
   onUnreadCountChange,
 }) => {
   const { user } = useAppStore();
   const networkState = useNetworkMonitor();
-  const { keyboardHeight } = useKeyboard();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -57,6 +62,8 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
   const [mentionSearchText, setMentionSearchText] = useState("");
+  const [showCardTagPopover, setShowCardTagPopover] = useState(false);
+  const [cardTagSearchText, setCardTagSearchText] = useState("");
   const [reactionPicker, setReactionPicker] = useState<{
     visible: boolean;
     messageId: string;
@@ -613,82 +620,12 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         )}
       </ScrollView>
 
-      {/* Input */}
-      <View style={styles.inputContainer}>
-        {editingMessage && (
-          <View style={styles.editingIndicator}>
-            <Text style={styles.editingText}>Editing message</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setEditingMessage(null);
-                setMessageText("");
-              }}
-            >
-              <Icon name="close" size={16} color="#666" />
-            </TouchableOpacity>
-          </View>
-        )}
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={[styles.input, isInputFocused && styles.inputFocused]}
-            placeholder="Type @ to mention someone or # to tag a card..."
-            placeholderTextColor="#999"
-            value={messageText}
-            onChangeText={(text) => {
-              setMessageText(text);
-
-              // Check for "@" to show mention popover
-              const lastAtIndex = text.lastIndexOf("@");
-              if (lastAtIndex !== -1) {
-                const afterAt = text.substring(lastAtIndex + 1);
-                // Check if there's a space after @ (meaning @ is complete)
-                if (afterAt.includes(" ")) {
-                  setShowMentionPopover(false);
-                  setMentionSearchText("");
-                } else {
-                  // Show popover and filter by text after @
-                  setShowMentionPopover(true);
-                  setMentionSearchText(afterAt.toLowerCase());
-                }
-              } else {
-                setShowMentionPopover(false);
-                setMentionSearchText("");
-              }
-
-              if (!editingMessage) {
-                handleTyping();
-              }
-            }}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
-            multiline
-            maxLength={1000}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || sending) && styles.sendButtonDisabled,
-            ]}
-            onPress={editingMessage ? handleUpdateMessage : handleSendMessage}
-            disabled={!messageText.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Icon
-                name={editingMessage ? "checkmark" : "send"}
-                size={20}
-                color="white"
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-
-
+      {/* Popovers — positioned absolutely above input, outside inputContainer to avoid clipping */}
+      <View style={styles.popoverAnchor} pointerEvents="box-none">
         {/* Mention Popover */}
         <MentionPopover
           participants={participants
-            .filter((p) => p.user_id !== user?.id) // Exclude current user
+            .filter((p) => p.user_id !== user?.id)
             .filter((p) => {
               if (!showMentionPopover) return false;
               if (!mentionSearchText) return true;
@@ -727,8 +664,122 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             setMentionSearchText("");
           }}
           visible={showMentionPopover}
-          keyboardHeight={keyboardHeight}
+          keyboardHeight={0}
         />
+
+        {/* Card Tag Popover */}
+        <CardTagPopover
+          cards={savedCards.filter((card) => {
+            if (!showCardTagPopover) return false;
+            if (!cardTagSearchText) return true;
+            const data = card.card_data || card.experience_data || {};
+            const title = (data.title || data.name || '').toLowerCase();
+            const category = (data.category || '').toLowerCase();
+            return title.includes(cardTagSearchText) || category.includes(cardTagSearchText);
+          })}
+          onSelectCard={(card) => {
+            const lastHashIndex = messageText.lastIndexOf("#");
+            if (lastHashIndex !== -1) {
+              const beforeHash = messageText.substring(0, lastHashIndex);
+              const cardTitle = card.card_data?.title || card.experience_data?.title || card.card_data?.name || card.experience_data?.name || 'Card';
+              const newText = `${beforeHash}#${cardTitle} `;
+              setMessageText(newText);
+            }
+            setShowCardTagPopover(false);
+            setCardTagSearchText("");
+          }}
+          onClose={() => {
+            setShowCardTagPopover(false);
+            setCardTagSearchText("");
+          }}
+          visible={showCardTagPopover}
+          keyboardHeight={0}
+        />
+      </View>
+
+      {/* Input */}
+      <View style={styles.inputContainer}>
+        {editingMessage && (
+          <View style={styles.editingIndicator}>
+            <Text style={styles.editingText}>Editing message</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setEditingMessage(null);
+                setMessageText("");
+              }}
+            >
+              <Icon name="close" size={16} color="#666" />
+            </TouchableOpacity>
+          </View>
+        )}
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={[styles.input, isInputFocused && styles.inputFocused]}
+            placeholder="Type @ to mention, # to tag a card..."
+            placeholderTextColor="#999"
+            value={messageText}
+            onChangeText={(text) => {
+              setMessageText(text);
+
+              // Find cursor context: check what trigger character is active
+              const lastAtIndex = text.lastIndexOf("@");
+              const lastHashIndex = text.lastIndexOf("#");
+
+              const atIsActive = lastAtIndex !== -1 && !text.substring(lastAtIndex + 1).includes(" ");
+              const hashIsActive = lastHashIndex !== -1 && !text.substring(lastHashIndex + 1).includes(" ");
+
+              // @ mention detection — only if @ is the most recent trigger
+              if (atIsActive && (!hashIsActive || lastAtIndex > lastHashIndex)) {
+                const afterAt = text.substring(lastAtIndex + 1);
+                setShowMentionPopover(true);
+                setMentionSearchText(afterAt.toLowerCase());
+                setShowCardTagPopover(false);
+                setCardTagSearchText("");
+              } else {
+                setShowMentionPopover(false);
+                setMentionSearchText("");
+              }
+
+              // # card tag detection — only if # is the most recent trigger
+              if (hashIsActive && (!atIsActive || lastHashIndex > lastAtIndex)) {
+                const afterHash = text.substring(lastHashIndex + 1);
+                setShowCardTagPopover(true);
+                setCardTagSearchText(afterHash.toLowerCase());
+                setShowMentionPopover(false);
+                setMentionSearchText("");
+              } else {
+                setShowCardTagPopover(false);
+                setCardTagSearchText("");
+              }
+
+              if (!editingMessage) {
+                handleTyping();
+              }
+            }}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
+            multiline
+            maxLength={1000}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!messageText.trim() || sending) && styles.sendButtonDisabled,
+            ]}
+            onPress={editingMessage ? handleUpdateMessage : handleSendMessage}
+            disabled={!messageText.trim() || sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Icon
+                name={editingMessage ? "checkmark" : "send"}
+                size={20}
+                color="white"
+              />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Emoji Reaction Picker */}
@@ -868,6 +919,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#999",
     fontStyle: "italic",
+  },
+  popoverAnchor: {
+    position: "relative",
   },
   inputContainer: {
     paddingHorizontal: 16,

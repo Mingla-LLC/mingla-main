@@ -52,16 +52,40 @@ interface SavedCardData {
   image?: string;
   images?: string[];
   rating?: number;
+  reviewCount?: number;
   priceLevel?: string;
   priceTier?: string;
+  priceRange?: string;
+  distance?: string;
+  travelTime?: string;
   address?: string;
   location?: { lat: number; lng: number };
+  lat?: number;
+  lng?: number;
   placeId?: string;
   googleMapsUri?: string;
   websiteUri?: string;
+  website?: string;
   phone?: string;
-  openingHours?: string[];
+  openingHours?: any;
   tags?: string[];
+  highlights?: string[];
+  matchScore?: number;
+  matchFactors?: { location?: number; budget?: number; category?: number; time?: number; popularity?: number };
+  socialStats?: { views?: number; likes?: number; saves?: number; shares?: number };
+  selectedDateTime?: any;
+  strollData?: any;
+  picnicData?: any;
+  // Curated card fields
+  cardType?: string;
+  stops?: any[];
+  tagline?: string;
+  totalPriceMin?: number;
+  totalPriceMax?: number;
+  estimatedDurationMinutes?: number;
+  pairingKey?: string;
+  experienceType?: string;
+  shoppingList?: any;
 }
 
 interface SavedCard {
@@ -525,7 +549,7 @@ export default function SessionViewModal({
       description: cardData.description || "",
       fullDescription: cardData.fullDescription || cardData.description || "",
       image: cardData.image || "",
-      images: cardData.images || [cardData.image].filter(Boolean),
+      images: cardData.images || [cardData.image].filter(Boolean) as string[],
       rating: cardData.rating || 4.5,
       reviewCount: cardData.reviewCount || 0,
       priceRange: cardData.priceRange || "N/A",
@@ -534,11 +558,11 @@ export default function SessionViewModal({
       address: cardData.address || "",
       openingHours: cardData.openingHours,
       phone: cardData.phone,
-      website: cardData.website,
+      website: cardData.websiteUri || cardData.website,
       highlights: cardData.highlights || [],
       tags: cardData.tags || [],
       matchScore: cardData.matchScore || 0,
-      matchFactors: cardData.matchFactors || {
+      matchFactors: (cardData.matchFactors as any) || {
         location: 0,
         budget: 0,
         category: 0,
@@ -577,7 +601,7 @@ export default function SessionViewModal({
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.backdropTouch} onPress={onClose} />
-        <View style={styles.modalContent}>
+        <View style={[styles.modalContent, { height: SCREEN_HEIGHT - insets.top }]}>
           <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         <StatusBar barStyle="dark-content" />
 
@@ -685,44 +709,6 @@ export default function SessionViewModal({
         {/* Main Content */}
         {!sessionLoading && sessionValid && hasPermission && (
           <>
-            {/* Session Status Row */}
-            {session && isStatusLoaded && sessionStatus && (
-              <View style={styles.statusRow}>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        sessionStatus === 'locked'
-                          ? '#10B981'
-                          : sessionStatus === 'voting'
-                          ? '#F59E0B'
-                          : sessionStatus === 'completed'
-                          ? '#6B7280'
-                          : sessionStatus === 'pending'
-                          ? '#9CA3AF'
-                          : '#3B82F6',
-                    },
-                  ]}
-                >
-                  <Text style={styles.statusBadgeText}>
-                    {sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
-                  </Text>
-                </View>
-                {/* H8 FIX: Only show action buttons for active/voting/locked sessions, never pending */}
-                {isCreator && sessionStatus === 'active' && (
-                  <TouchableOpacity style={styles.statusActionButton} onPress={advanceToVoting}>
-                    <Text style={styles.statusActionText}>Start Voting</Text>
-                  </TouchableOpacity>
-                )}
-                {isCreator && sessionStatus === 'locked' && (
-                  <TouchableOpacity style={styles.statusActionButton} onPress={markCompleted}>
-                    <Text style={styles.statusActionText}>Mark Complete</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
             <BoardTabs
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -749,6 +735,7 @@ export default function SessionViewModal({
                 <BoardDiscussionTab
                   sessionId={sessionId}
                   participants={participants}
+                  savedCards={savedCards}
                   onUnreadCountChange={loadUnreadCount}
                 />
               )}
@@ -889,8 +876,6 @@ export default function SessionViewModal({
   );
 }
 
-// Modal height with proper centering - sits flush on bottom nav
-const MODAL_HEIGHT = SCREEN_HEIGHT * 0.95; // Near full height — preserves backdrop dismiss area
 const MODAL_MARGIN_BOTTOM = 0; // 0px margin for flush positioning on Android
 
 const styles = StyleSheet.create({
@@ -904,7 +889,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
-    height: MODAL_HEIGHT,
     width: "100%",
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 36,
@@ -1065,37 +1049,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: "white",
     overflow: "visible",
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  statusActionButton: {
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  statusActionText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
   },
   calendarPromptOverlay: {
     flex: 1,

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  Platform,
   TouchableOpacity,
   ActivityIndicator,
   Image,
@@ -187,6 +188,153 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             const categoryIcon = getIconComponent(isCurated ? "compass" : (cardData.categoryIcon || "star"));
             const categoryLabel = isCurated ? "Adventurous" : (cardData.category || "Experience");
 
+            // Shared vote/RSVP buttons for both card types
+            const voteButtons = (
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.voteButton,
+                    styles.thumbsUpButton,
+                    voteCount.userVote === "yes" && styles.voteButtonActive,
+                    isCardLocked && styles.buttonDisabled,
+                  ]}
+                  onPress={() => onVote(card.id, "yes")}
+                  disabled={isCardLocked}
+                >
+                  <Icon name="thumbs-up" size={15} color="white" />
+                  <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.voteButton,
+                    styles.thumbsDownButton,
+                    voteCount.userVote === "no" && styles.thumbsDownButtonActive,
+                    isCardLocked && styles.buttonDisabled,
+                  ]}
+                  onPress={() => onVote(card.id, "no")}
+                  disabled={isCardLocked}
+                >
+                  <Icon name="thumbs-down" size={15} color="#d63d1f" />
+                  <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.rsvpButton,
+                    rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
+                    isCardLocked && styles.buttonDisabled,
+                  ]}
+                  onPress={() => onRSVP(card.id, "yes")}
+                  disabled={isCardLocked}
+                >
+                  <Text
+                    style={[
+                      styles.rsvpButtonText,
+                      rsvpCount.userRSVP === "yes" && styles.rsvpButtonTextActive,
+                    ]}
+                  >
+                    {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+
+            // ── Curated card layout (dark theme, multi-stop image strip) ──
+            if (isCurated && Array.isArray(cardData.stops) && cardData.stops.length > 0) {
+              const stops = cardData.stops;
+              const avgRating = (stops.reduce((s: number, st: any) => s + (st.rating || 0), 0) / stops.length).toFixed(1);
+              const durationHrs = cardData.estimatedDurationMinutes
+                ? (cardData.estimatedDurationMinutes / 60).toFixed(1)
+                : null;
+              const priceText = cardData.totalPriceMin != null && cardData.totalPriceMax != null
+                ? cardData.totalPriceMin === 0 && cardData.totalPriceMax === 0
+                  ? "Free"
+                  : `$${cardData.totalPriceMin}–$${cardData.totalPriceMax}`
+                : "";
+              const isSingleStop = stops.length === 1;
+
+              return (
+                <TouchableOpacity
+                  key={card.id}
+                  style={[styles.card, styles.curatedCard, isCardLocked && styles.cardLocked]}
+                  onPress={() => onViewDetails(card)}
+                  activeOpacity={0.9}
+                >
+                  {isCardLocked && (
+                    <View style={styles.lockedBadge}>
+                      <Icon name="lock-closed" size={12} color="#FFFFFF" />
+                      <Text style={styles.lockedBadgeText}>Locked In</Text>
+                    </View>
+                  )}
+
+                  {/* Card index badge */}
+                  <View style={[styles.cardCounter, { zIndex: 5 }]}>
+                    <Text style={styles.cardCounterText}>
+                      {index + 1}/{sortedCards.length}
+                    </Text>
+                  </View>
+
+                  {/* Multi-stop image strip */}
+                  <View style={styles.curatedImageStrip}>
+                    {stops.map((stop: any, idx: number) => (
+                      <View key={`${stop.placeId || idx}_${idx}`} style={styles.curatedImageWrapper}>
+                        {stop.imageUrl ? (
+                          <Image
+                            source={{ uri: stop.imageUrl }}
+                            style={styles.curatedStopImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={[styles.curatedStopImage, styles.curatedImagePlaceholder]} />
+                        )}
+                        {!isSingleStop && (
+                          <View style={styles.curatedStopBadge}>
+                            <Text style={styles.curatedStopBadgeText}>{idx + 1}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Curated info section */}
+                  <View style={styles.curatedInfoSection}>
+                    {/* Category badge */}
+                    <View style={styles.curatedCategoryBadge}>
+                      <Icon name="compass-outline" size={12} color="#fff" />
+                      <Text style={styles.curatedCategoryText}>{cardData.categoryLabel || "Adventurous"}</Text>
+                      <Text style={styles.curatedStopCountText}> · {stops.length} {stops.length === 1 ? "spot" : "stops"}</Text>
+                    </View>
+
+                    <Text style={styles.curatedTitle} numberOfLines={2}>
+                      {cardData.title || "Untitled"}
+                    </Text>
+
+                    {/* Meta row */}
+                    <View style={styles.curatedMetaRow}>
+                      {priceText ? (
+                        <>
+                          <Text style={styles.curatedMetaText}>{priceText}</Text>
+                          <Text style={styles.curatedMetaDot}> · </Text>
+                        </>
+                      ) : null}
+                      {durationHrs ? (
+                        <>
+                          <Icon name="time-outline" size={11} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.curatedMetaText}> {durationHrs}h</Text>
+                          <Text style={styles.curatedMetaDot}> · </Text>
+                        </>
+                      ) : null}
+                      <Icon name="star" size={11} color="#F59E0B" />
+                      <Text style={styles.curatedMetaText}> {avgRating} avg</Text>
+                    </View>
+
+                    {/* Vote buttons */}
+                    {voteButtons}
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+
+            // ── Standard category card layout ──
             return (
               <TouchableOpacity
                 key={card.id}
@@ -194,7 +342,6 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 onPress={() => onViewDetails(card)}
                 activeOpacity={0.9}
               >
-                {/* Locked badge */}
                 {isCardLocked && (
                   <View style={styles.lockedBadge}>
                     <Icon name="lock-closed" size={12} color="#FFFFFF" />
@@ -210,14 +357,12 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     resizeMode="cover"
                   />
 
-                  {/* Card index badge */}
                   <View style={styles.cardCounter}>
                     <Text style={styles.cardCounterText}>
                       {index + 1}/{sortedCards.length}
                     </Text>
                   </View>
 
-                  {/* Title Overlay */}
                   <View style={styles.titleOverlay}>
                     <Text style={styles.cardTitle} numberOfLines={2}>
                       {cardData.title || "Untitled"}
@@ -246,20 +391,16 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   </View>
                 </View>
 
-                {/* Details Section */}
                 <View style={styles.cardDetails}>
-                  {/* Category */}
                   <View style={styles.categoryRow}>
                     <Icon name={categoryIcon} size={14} color="#eb7825" />
                     <Text style={styles.categoryText}>{categoryLabel}</Text>
                   </View>
 
-                  {/* Description */}
                   <Text style={styles.description} numberOfLines={2}>
                     {cardData.description || ""}
                   </Text>
 
-                  {/* RSVP Progress */}
                   {rsvpCount.total > 0 && rsvpCount.responded > 0 && (
                     <View style={styles.rsvpProgressRow}>
                       <View style={styles.rsvpProgressBarBg}>
@@ -276,60 +417,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     </View>
                   )}
 
-                  {/* Vote/RSVP Buttons */}
-                  <View
-                    style={styles.actionButtonsRow}
-                  >
-                    {/* Thumbs Up */}
-                    <TouchableOpacity
-                      style={[
-                        styles.voteButton,
-                        styles.thumbsUpButton,
-                        voteCount.userVote === "yes" && styles.voteButtonActive,
-                        isCardLocked && styles.buttonDisabled,
-                      ]}
-                      onPress={() => onVote(card.id, "yes")}
-                      disabled={isCardLocked}
-                    >
-                      <Icon name="thumbs-up" size={15} color="white" />
-                      <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
-                    </TouchableOpacity>
-
-                    {/* Thumbs Down */}
-                    <TouchableOpacity
-                      style={[
-                        styles.voteButton,
-                        styles.thumbsDownButton,
-                        voteCount.userVote === "no" && styles.thumbsDownButtonActive,
-                        isCardLocked && styles.buttonDisabled,
-                      ]}
-                      onPress={() => onVote(card.id, "no")}
-                      disabled={isCardLocked}
-                    >
-                      <Icon name="thumbs-down" size={15} color="#d63d1f" />
-                      <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
-                    </TouchableOpacity>
-
-                    {/* RSVP Button */}
-                    <TouchableOpacity
-                      style={[
-                        styles.rsvpButton,
-                        rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
-                        isCardLocked && styles.buttonDisabled,
-                      ]}
-                      onPress={() => onRSVP(card.id, "yes")}
-                      disabled={isCardLocked}
-                    >
-                      <Text
-                        style={[
-                          styles.rsvpButtonText,
-                          rsvpCount.userRSVP === "yes" && styles.rsvpButtonTextActive,
-                        ]}
-                      >
-                        {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  {voteButtons}
                 </View>
               </TouchableOpacity>
             );
@@ -354,7 +442,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     paddingVertical: 0,
     marginTop: 0,
     backgroundColor: "white",
@@ -388,9 +476,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 12,
-    paddingVertical: 4,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 2,
   },
   cardCountText: {
     fontSize: 14,
@@ -407,6 +495,7 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
   },
   scrollContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     position: "relative",
@@ -443,17 +532,101 @@ const styles = StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
-    backgroundColor: "white",
-    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderRadius: 22,
+    borderWidth: 0.5,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: Platform.OS === "ios" ? 12 : 8 },
+    shadowOpacity: Platform.OS === "ios" ? 0.2 : 0.15,
+    shadowRadius: Platform.OS === "ios" ? 32 : 24,
+    elevation: 10,
     overflow: "hidden",
   },
+  // ── Curated card styles ──
+  curatedCard: {
+    backgroundColor: "#1C1C1E",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  curatedImageStrip: {
+    flexDirection: "row",
+    height: Platform.OS === "ios" ? 250 : 210,
+  },
+  curatedImageWrapper: {
+    flex: 1,
+    position: "relative",
+  },
+  curatedStopImage: {
+    width: "100%",
+    height: "100%",
+  },
+  curatedImagePlaceholder: {
+    backgroundColor: "#2C2C2E",
+  },
+  curatedStopBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  curatedStopBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  curatedInfoSection: {
+    flex: 1,
+    padding: 12,
+    gap: 6,
+    justifyContent: "center",
+  },
+  curatedCategoryBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F59E0B",
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  curatedCategoryText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  curatedStopCountText: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  curatedTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 21,
+  },
+  curatedMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  curatedMetaText: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+  },
+  curatedMetaDot: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+  },
+  // ── Standard card styles ──
   imageContainer: {
-    height: 260,
+    height: Platform.OS === "ios" ? 443 : 365,
     position: "relative",
   },
   cardImage: {

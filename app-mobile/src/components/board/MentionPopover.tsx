@@ -28,9 +28,9 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
     return null;
   }
 
-  const INPUT_BAR_HEIGHT = 48;
-  const POPOVER_MARGIN = 8;
-  const bottomOffset = (keyboardHeight || 0) + INPUT_BAR_HEIGHT + POPOVER_MARGIN;
+  // When keyboardHeight is 0, the popover is rendered inside a relative anchor
+  // above the input bar — no offset needed. Otherwise, use legacy absolute positioning.
+  const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 0;
 
   const getParticipantDisplayName = (participant: Participant): string => {
     if (participant.profiles?.display_name) {
@@ -76,11 +76,6 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
                 <Text style={styles.participantName}>
                   {getParticipantDisplayName(item)}
                 </Text>
-                {item.profiles?.username && (
-                  <Text style={styles.participantUsername}>
-                    @{item.profiles.username}
-                  </Text>
-                )}
               </View>
             </TouchableOpacity>
           )}

@@ -800,12 +800,6 @@ export default function DiscoverScreen({
   const [infoPill, setInfoPill] = useState<PairingPill | null>(null);
   const [incomingRequestPill, setIncomingRequestPill] = useState<PairRequest | null>(null);
 
-  // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled)
-  useEffect(() => {
-    if (incomingRequestPill && !incomingPairRequests.some((r) => r.id === incomingRequestPill.id)) {
-      setIncomingRequestPill(null);
-    }
-  }, [incomingPairRequests, incomingRequestPill]);
 
   // Pairing selector
   const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
@@ -878,6 +872,15 @@ export default function DiscoverScreen({
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
+
+  // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled,
+  // or optimistic update removed it after accept/decline).
+  useEffect(() => {
+    if (!incomingRequestPill) return;
+    if (!incomingPairRequests.some((r) => r.id === incomingRequestPill.id)) {
+      setIncomingRequestPill(null);
+    }
+  }, [incomingPairRequests, incomingRequestPill]);
 
   // Pairing mutation hooks
   const cancelRequestMutation = useCancelPairRequest();

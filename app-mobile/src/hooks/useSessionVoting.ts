@@ -277,6 +277,12 @@ export function useSessionVoting(
             .eq('user_id', userId);
 
           if (error) throw error;
+
+          // Broadcast vote removal so other users see the change
+          realtimeService.broadcastVoteUpdate(sessionId, savedCardId, {
+            user_id: userId,
+            vote_type: 'down', // placeholder — receivers call loadCounts() anyway
+          });
         } else {
           // Upsert vote — single round-trip, race-condition safe
           const { error } = await supabase
@@ -421,6 +427,12 @@ export function useSessionVoting(
             .eq('user_id', userId);
 
           if (error) throw error;
+
+          // Broadcast RSVP removal so other users see the change
+          realtimeService.broadcastRSVPUpdate(sessionId, savedCardId, {
+            user_id: userId,
+            rsvp_status: 'not_attending', // placeholder — receivers call loadCounts() anyway
+          });
         } else {
           const rsvpStatus =
             finalRSVP === 'yes' ? 'attending' : 'not_attending';

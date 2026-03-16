@@ -149,6 +149,7 @@ class DeckService {
     const cats = categories;
     const pills: DeckPill[] = [];
     const categoryFilters: string[] = [];
+    const seenPillIds = new Set<string>();
 
     // Category pills — lookup map handles all format variations (display names,
     // slugs, underscored slugs) so no category silently falls through.
@@ -194,16 +195,23 @@ class DeckService {
       const normalized = cat.replace(/_/g, ' ').toLowerCase();
       const pillId = CATEGORY_PILL_MAP[normalized] ?? CATEGORY_PILL_MAP[cat.toLowerCase()];
       if (pillId) {
-        pills.push({ id: pillId, type: 'category' });
+        if (!seenPillIds.has(pillId)) {
+          seenPillIds.add(pillId);
+          pills.push({ id: pillId, type: 'category' });
+        }
       } else {
         console.warn(`[DeckService] Unrecognized category: "${cat}" — adding as curated filter`);
         categoryFilters.push(cat);
       }
     }
 
-    // Intent pills — one curated pill per selected intent
+    // Intent pills — one curated pill per selected intent (deduplicated)
     for (const intent of intents) {
-      pills.push({ id: intent, type: 'curated' });
+      const key = `curated:${intent}`;
+      if (!seenPillIds.has(key)) {
+        seenPillIds.add(key);
+        pills.push({ id: intent, type: 'curated' });
+      }
     }
 
     // If both intents and categories are empty, return zero pills.

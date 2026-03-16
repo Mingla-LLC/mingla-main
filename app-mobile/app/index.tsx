@@ -1190,20 +1190,47 @@ function AppContent() {
     if (!user?.id) return;
     logger.action('Cancel invite pressed', { sessionId });
     try {
-      // Cancel sent invite - remove the session if creator
-      const { error } = await supabase
+      // Step 1: Cancel all pending invites for this session
+      const { error: inviteError } = await supabase
+        .from('collaboration_invites')
+        .update({ status: 'cancelled' })
+        .eq('session_id', sessionId)
+        .eq('status', 'pending');
+
+      if (inviteError) {
+        console.warn('[CancelInvite] Failed to cancel invites:', inviteError.message);
+      }
+
+      // Step 2: Remove all participants (in case CASCADE doesn't fire cleanly)
+      await supabase
+        .from('session_participants')
+        .delete()
+        .eq('session_id', sessionId);
+
+      // Step 3: Delete the session itself. Use .select() to verify rows were affected.
+      const { data: deleted, error } = await supabase
         .from('collaboration_sessions')
         .delete()
         .eq('id', sessionId)
-        .eq('created_by', user.id);
-      
-      if (error) throw error;
-      
-      // Refresh all sessions
+        .eq('created_by', user.id)
+        .select('id');
+
+      if (error) {
+        console.error('[CancelInvite] DB error:', error.message);
+        throw error;
+      }
+
+      if (!deleted || deleted.length === 0) {
+        console.warn('[CancelInvite] No rows deleted — session may not exist or user is not the creator. sessionId:', sessionId);
+        // Fallback: try removing the local pill state even if DB delete didn't match.
+        // The session might already be gone, or ownership changed.
+      }
+
+      // Step 4: Refresh sessions to update the pill bar
       await refreshAllSessions({ showLoading: true });
       toastManager.success('Invite cancelled.');
     } catch (error) {
-      console.error('Error cancelling invite:', error);
+      console.error('[CancelInvite] Error:', error);
       toastManager.error('Failed to cancel invite.');
     }
   };

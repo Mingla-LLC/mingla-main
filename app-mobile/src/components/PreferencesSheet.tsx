@@ -106,6 +106,7 @@ const categories = [
 const CATEGORY_LABEL_TO_ID: Record<string, string> = {};
 categories.forEach(c => { CATEGORY_LABEL_TO_ID[c.label.toLowerCase()] = c.id; });
 const MAX_CATEGORIES = 3;
+const MAX_INTENTS = 1;
 const normalizeCategoryIds = (raw: string[]): string[] =>
   raw.map(c => CATEGORY_LABEL_TO_ID[c.toLowerCase()] || c).slice(0, MAX_CATEGORIES);
 
@@ -263,9 +264,10 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences — intents and categories are separate DB columns
-      setSelectedIntents(
+      const collabIntents = (
         Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
-      );
+      ).slice(0, MAX_INTENTS);
+      setSelectedIntents(collabIntents);
       const collabCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
@@ -300,9 +302,7 @@ export default function PreferencesSheet({
       }
 
       setInitialPreferences({
-        selectedIntents: Array.isArray((loadedPreferences).intents)
-          ? (loadedPreferences).intents
-          : [],
+        selectedIntents: collabIntents,
         selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
           ? (loadedPreferences).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
@@ -322,9 +322,10 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
-      setSelectedIntents(
+      const soloIntents = (
         Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
-      );
+      ).slice(0, MAX_INTENTS);
+      setSelectedIntents(soloIntents);
       const soloCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
@@ -384,9 +385,7 @@ export default function PreferencesSheet({
       }
 
       setInitialPreferences({
-        selectedIntents: Array.isArray((loadedPreferences).intents)
-          ? (loadedPreferences).intents
-          : [],
+        selectedIntents: soloIntents,
         selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
           ? (loadedPreferences).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
@@ -450,7 +449,7 @@ export default function PreferencesSheet({
         }
         return prev.filter((c) => c !== id);
       }
-      if (prev.length >= 3) {
+      if (prev.length >= MAX_CATEGORIES) {
         capped = true;
         return prev;
       }
@@ -742,12 +741,16 @@ export default function PreferencesSheet({
       custom_location: customLocationValue,
     });
 
+    // Safety cap — should already be ≤3/≤1 from toggle logic, but enforce at save boundary.
+    const finalCategories = selectedCategories.slice(0, MAX_CATEGORIES);
+    const finalIntents = selectedIntents.slice(0, MAX_INTENTS);
+
     const preferences = {
-      selectedIntents,
+      selectedIntents: finalIntents,
       priceTiers: selectedPriceTiers,
       budgetMin: 0,
       budgetMax: backCompatBudgetMax,
-      selectedCategories,
+      selectedCategories: finalCategories,
       dateOption: selectedDateOption,
       selectedDate: normalized.datetime_pref || selectedDate?.toISOString(),
       selectedTimeSlot: normalized.time_slot || selectedTimeSlot,
@@ -761,10 +764,6 @@ export default function PreferencesSheet({
       custom_location: normalized.custom_location ?? customLocationValue,
     };
 
-    // Allow empty categories when intents are selected — user wants curated-only.
-    // The deck will show only curated cards for the selected intents.
-    const finalCategories = selectedCategories;
-
     // === CLOSE SHEET IMMEDIATELY — user sees instant response ===
     onClose?.();
 
@@ -776,7 +775,7 @@ export default function PreferencesSheet({
         if (isCollaborationMode) {
           const rawDbPrefs: any = {
             categories: finalCategories,
-            intents: selectedIntents,
+            intents: finalIntents,
             price_tiers: selectedPriceTiers,
             budget_min: 0,
             budget_max: backCompatBudgetMax,

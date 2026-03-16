@@ -149,7 +149,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Nature", "Casual Eats", "Drink"],
+  categories: ["nature", "casual_eats", "drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
