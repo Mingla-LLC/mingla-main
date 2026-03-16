@@ -224,9 +224,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'copy':                       Copy,
   'copy-outline':               Copy,
   'create-outline':             SquarePen,
+  'credit-card':                CreditCard,
   'crown-outline':              Crown,
 
   // ─── D ───
+  'diamond':                    Diamond,
   'diamond-outline':            Diamond,
   'document-text':              FileText,
   'download':                   Download,

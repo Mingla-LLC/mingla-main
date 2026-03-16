@@ -138,8 +138,16 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
         }
-        console.error('Profile update error:', updateError)
-        return new Response(JSON.stringify({ error: 'Phone verified but save failed. Contact support.' }), {
+        console.error('[verify-otp] Profile update failed:', {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        })
+        return new Response(JSON.stringify({
+          error: 'Phone verified but save failed. Contact support.',
+          debug_code: updateError.code,
+        }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })

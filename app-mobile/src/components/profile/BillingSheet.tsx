@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   Alert,
+  Dimensions,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
@@ -116,13 +117,13 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
 
   const currentRank = TIER_RANK[effectiveTier];
 
+  const SHEET_TOP = Math.round(Dimensions.get("window").height * 0.08);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
-          onPress={() => {}}
-        >
+      <View style={styles.overlay}>
+        <Pressable style={{ height: SHEET_TOP }} onPress={onClose} />
+        <View style={styles.sheet}>
           {/* Drag handle */}
           <View style={styles.dragHandle} />
 
@@ -142,6 +143,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
           {/* Content */}
           <ScrollView
             style={styles.scrollContent}
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -204,12 +206,12 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
                   )}
                 </TouchableOpacity>
 
-                <View style={styles.bottomSpacer} />
+
               </>
             )}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -364,14 +366,13 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
   },
   sheet: {
+    flex: 1,
     backgroundColor: "#f9fafb",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: "90%",
-    minHeight: "60%",
+    overflow: "hidden",
   },
   dragHandle: {
     width: 36,
@@ -588,8 +589,4 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 
-  // Bottom spacer
-  bottomSpacer: {
-    height: 16,
-  },
 });

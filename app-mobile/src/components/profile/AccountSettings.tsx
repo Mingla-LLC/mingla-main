@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -11,6 +11,9 @@ import {
   Alert,
   Platform,
   AppState,
+  LayoutAnimation,
+  UIManager,
+  Dimensions,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
@@ -24,6 +27,11 @@ import { mixpanelService } from "../../services/mixpanelService";
 import Toggle from "./Toggle";
 import * as Haptics from "expo-haptics";
 import type { NotificationPreferences } from "../../services/smartNotificationService";
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // --- Gender & Language options ---
 const GENDER_OPTIONS = [
@@ -56,6 +64,17 @@ const VISIBILITY_DESCRIPTIONS: Record<string, string> = {
   friends: "Only people you've linked with can see your profile.",
   public: "Anyone on Mingla can find you and see your profile.",
   private: "You're invisible. No one can see your profile — full ghost mode.",
+};
+
+// --- Accordion section IDs ---
+type SectionId = "basics" | "privacy" | "notifications" | "quietHours" | "appInfo";
+
+// Smooth spring-like animation config for accordions
+const ACCORDION_ANIM = {
+  duration: 250,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
 };
 
 interface AccountSettingsProps {
@@ -96,6 +115,30 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
   // Saving states for individual fields
   const [savingField, setSavingField] = useState<string | null>(null);
 
+  // ── Accordion state — "basics" expanded by default ──
+  const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(new Set(["basics"]));
+
+  const toggleSection = useCallback((id: SectionId) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(ACCORDION_ANIM);
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // Reset accordion state when sheet opens
+  useEffect(() => {
+    if (visible) {
+      setExpandedSections(new Set(["basics"]));
+    }
+  }, [visible]);
+
   // ── Notification Preferences (V2) ──
   const [notifPrefs, setNotifPrefs] = useState<Partial<NotificationPreferences>>({
     push_enabled: true,
@@ -135,7 +178,6 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
   const updateNotifPref = async (key: string, value: boolean) => {
     if (!user?.id) return;
-    // Optimistic update
     const prev = { ...notifPrefs };
     setNotifPrefs((p) => ({ ...p, [key]: value }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -144,7 +186,6 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
       .update({ [key]: value, updated_at: new Date().toISOString() })
       .eq('user_id', user.id);
     if (error) {
-      // Rollback
       setNotifPrefs(prev);
       Alert.alert("Error", "Failed to update notification setting.");
     }
@@ -182,8 +223,6 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
     setSavingField(field);
     try {
       await authService.updateUserProfile(user.id, { [field]: value });
-      // Sync Zustand store so the UI reflects the change immediately
-      // and persists across sheet open/close cycles
       if (profile) {
         setProfile({ ...profile, [field]: value } as typeof profile);
       }
@@ -367,13 +406,16 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
     return LANGUAGE_OPTIONS.find((l) => l.code === code)?.name || code;
   };
 
+  // --- Sheet sizing (matches BillingSheet pattern) ---
+  const SHEET_TOP = Math.round(Dimensions.get("window").height * 0.08);
+
   // --- Render ---
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <View
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
-          onStartShouldSetResponder={() => true}
+        <Pressable
+          style={[styles.sheet, { marginTop: SHEET_TOP }]}
+          onPress={() => {}}
         >
           {/* Drag handle */}
           <View style={styles.dragHandle} />
@@ -393,19 +435,19 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
           <ScrollView
             style={styles.scrollContent}
-            contentContainerStyle={styles.scrollContentContainer}
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             bounces
             overScrollMode="always"
           >
-            {/* Card 1: The Basics */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Icon name="person-circle" size={20} color="#eb7825" />
-                <Text style={styles.cardTitle}>The Basics</Text>
-              </View>
-
+            {/* Section 1: The Basics (accordion) */}
+            <AccordionCard
+              icon="person-circle"
+              title="The Basics"
+              expanded={expandedSections.has("basics")}
+              onToggle={() => toggleSection("basics")}
+            >
               {/* Birthday */}
               <TouchableOpacity style={styles.row} onPress={() => setShowBirthdayPicker(true)} activeOpacity={0.7}>
                 <Text style={styles.rowLabel}>Birthday</Text>
@@ -441,7 +483,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               <View style={styles.rowDivider} />
 
               {/* Preferred Language */}
-              <TouchableOpacity style={[styles.row, styles.rowLast]} onPress={() => setShowLanguagePicker(true)} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.row} onPress={() => setShowLanguagePicker(true)} activeOpacity={0.7}>
                 <Text style={styles.rowLabel}>Language</Text>
                 <View style={styles.rowRight}>
                   {savingField === "preferred_language" ? (
@@ -454,15 +496,15 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
-            </View>
+            </AccordionCard>
 
-            {/* Card 2: Privacy */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Icon name="lock-closed" size={20} color="#eb7825" />
-                <Text style={styles.cardTitle}>Privacy</Text>
-              </View>
-
+            {/* Section 2: Privacy (accordion) */}
+            <AccordionCard
+              icon="lock-closed"
+              title="Privacy"
+              expanded={expandedSections.has("privacy")}
+              onToggle={() => toggleSection("privacy")}
+            >
               {/* Profile Visibility */}
               <TouchableOpacity style={styles.row} onPress={handleCycleVisibility} activeOpacity={0.7}>
                 <View style={styles.rowLabelWrap}>
@@ -500,8 +542,8 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
               <View style={styles.rowDivider} />
 
-              {/* Notifications - legacy toggle kept for backward compat */}
-              <View style={[styles.row, styles.rowLast]}>
+              {/* Notifications - legacy toggle */}
+              <View style={styles.row}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Notifications</Text>
                   <Text style={styles.rowHint}>Invites, boards, and messages</Text>
@@ -511,15 +553,15 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   onToggle={() => onNotificationsToggle?.(!notificationsEnabled)}
                 />
               </View>
-            </View>
+            </AccordionCard>
 
-            {/* Card 3: Notification Settings (V2) */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Icon name="notifications" size={20} color="#eb7825" />
-                <Text style={styles.cardTitle}>Notification Settings</Text>
-              </View>
-
+            {/* Section 3: Notification Settings (accordion) */}
+            <AccordionCard
+              icon="notifications"
+              title="Notification Settings"
+              expanded={expandedSections.has("notifications")}
+              onToggle={() => toggleSection("notifications")}
+            >
               {/* Master toggle */}
               <View style={styles.row}>
                 <View style={styles.rowLabelWrap}>
@@ -584,7 +626,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
 
                   <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowLast]}>
+                  <View style={styles.row}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Tips & Re-engagement</Text>
                       <Text style={styles.rowHint}>Occasional nudges, weekly digest, and recommendations</Text>
@@ -596,15 +638,15 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
                 </>
               )}
-            </View>
+            </AccordionCard>
 
-            {/* Quiet Hours */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Icon name="moon" size={20} color="#eb7825" />
-                <Text style={styles.cardTitle}>Quiet Hours</Text>
-              </View>
-
+            {/* Section 4: Quiet Hours (accordion) */}
+            <AccordionCard
+              icon="moon"
+              title="Quiet Hours"
+              expanded={expandedSections.has("quietHours")}
+              onToggle={() => toggleSection("quietHours")}
+            >
               <View style={styles.row}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Quiet Hours</Text>
@@ -615,7 +657,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
               <View style={styles.rowDivider} />
 
-              <View style={[styles.row, styles.rowLast]}>
+              <View style={styles.row}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Messages during quiet hours</Text>
                   <Text style={styles.rowHint}>Allow DMs between 10 PM - 8 AM</Text>
@@ -625,23 +667,24 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   onToggle={() => updateDmBypass(!dmBypassQuietHours)}
                 />
               </View>
-            </View>
+            </AccordionCard>
 
-            {/* Card: App Information */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Icon name="information-circle" size={20} color="#eb7825" />
-                <Text style={styles.cardTitle}>App Information</Text>
-              </View>
-              <View style={[styles.row, styles.rowLast]}>
+            {/* Section 5: App Information (accordion) */}
+            <AccordionCard
+              icon="information-circle"
+              title="App Information"
+              expanded={expandedSections.has("appInfo")}
+              onToggle={() => toggleSection("appInfo")}
+            >
+              <View style={styles.row}>
                 <Text style={styles.rowLabel}>App Version</Text>
                 <Text style={styles.rowValueMuted}>1.0.0</Text>
               </View>
-            </View>
+            </AccordionCard>
 
-            {/* Card 4: The Red Zone */}
+            {/* Section 6: The Red Zone (NOT collapsible — always visible) */}
             <View style={[styles.card, styles.dangerCard]}>
-              <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderStatic}>
                 <Icon name="trash" size={20} color="#ef4444" />
                 <Text style={[styles.cardTitle, styles.dangerTitle]}>The Red Zone</Text>
               </View>
@@ -668,7 +711,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             </View>
 
           </ScrollView>
-        </View>
+        </Pressable>
       </Pressable>
 
       {/* --- Picker modals --- */}
@@ -721,7 +764,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
         </Pressable>
       </Modal>
 
-      {/* Birthday picker (simple month/day/year picker) */}
+      {/* Birthday picker */}
       <Modal visible={showBirthdayPicker} transparent animationType="slide" onRequestClose={() => setShowBirthdayPicker(false)}>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowBirthdayPicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
@@ -763,7 +806,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             )}
             {deleteStep === "deleting" && (
               <>
-                <ActivityIndicator size="large" color="#ef4444" style={{ marginBottom: 16 }} />
+                <ActivityIndicator size="large" color="#ef4444" style={styles.deleteSpinner} />
                 <Text style={styles.deleteModalTitle}>We're sad to see you go</Text>
                 <Text style={styles.deleteModalBody}>Packing up your things and sweeping the floors.</Text>
                 <Text style={styles.deleteModalSub}>This takes a moment. Hang tight.</Text>
@@ -790,7 +833,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
                     <Text style={styles.deleteModalCancelText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.deleteModalConfirm, { backgroundColor: "#eb7825" }]} onPress={() => { setDeleteStep("confirm"); setDeleteError(null); }}>
+                  <TouchableOpacity style={[styles.deleteModalConfirm, styles.deleteRetryButton]} onPress={() => { setDeleteStep("confirm"); setDeleteError(null); }}>
                     <Text style={styles.deleteModalConfirmText}>Try Again</Text>
                   </TouchableOpacity>
                 </View>
@@ -803,7 +846,49 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
   );
 }
 
-// --- Simple birthday picker component ---
+// ── Accordion Card component ──────────────────────────────────────────
+
+interface AccordionCardProps {
+  icon: string;
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  iconColor?: string;
+}
+
+function AccordionCard({ icon, title, expanded, onToggle, children, iconColor = "#eb7825" }: AccordionCardProps) {
+  return (
+    <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.cardHeader}
+        onPress={onToggle}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${title} section, ${expanded ? "expanded" : "collapsed"}`}
+      >
+        <View style={styles.cardHeaderLeft}>
+          <Icon name={icon} size={20} color={iconColor} />
+          <Text style={styles.cardTitle}>{title}</Text>
+        </View>
+        <Icon
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={18}
+          color="#9ca3af"
+        />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={styles.cardBody}>
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Simple birthday picker component ──────────────────────────────────
 
 interface BirthdayPickerProps {
   currentValue: string | null;
@@ -919,117 +1004,214 @@ const bdStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end",
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#f9fafb", borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: "92%", minHeight: "80%",
+    flex: 1,
+    backgroundColor: "#f9fafb",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
   },
   dragHandle: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
-    alignSelf: "center", marginTop: 8, marginBottom: 4,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 4,
   },
   header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
-  scrollContent: { flex: 1, paddingHorizontal: 16, overflow: "hidden" },
-  scrollContentContainer: { paddingBottom: 16 },
+  scrollContent: { flex: 1, paddingHorizontal: 16 },
   // Cards
   card: {
-    backgroundColor: "#ffffff", borderRadius: 16,
-    borderWidth: 1, borderColor: "#e5e7eb",
-    paddingVertical: 8, paddingHorizontal: 0, marginBottom: 16,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   dangerCard: { borderColor: "#fecaca" },
+  // Accordion card header (tappable)
   cardHeader: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 52,
+  },
+  cardHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  // Static card header (non-tappable, e.g. Red Zone)
+  cardHeaderStatic: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   cardTitle: { fontSize: 16, fontWeight: "700", color: "#111827" },
   dangerTitle: { color: "#ef4444" },
+  // Accordion body
+  cardBody: {
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
   // Rows
   row: {
-    flexDirection: "row", alignItems: "center",
-    paddingVertical: 14, paddingHorizontal: 16, minHeight: 48,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 48,
   },
-  rowLast: {},
   rowDivider: { height: 1, backgroundColor: "#f3f4f6", marginHorizontal: 16 },
   rowLabel: { fontSize: 15, fontWeight: "500", color: "#111827", flex: 1 },
-  rowLabelWrap: { flex: 1 },
-  rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 16 },
-  rowRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rowLabelWrap: { flex: 1, marginRight: 16 },
+  rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 16, flexWrap: "wrap" },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1, flexShrink: 0 },
   rowValue: { fontSize: 14, fontWeight: "500", color: "#eb7825" },
   rowValueBold: { fontSize: 14, fontWeight: "700", color: "#eb7825" },
   rowValueMuted: { fontSize: 14, fontWeight: "500", color: "#6b7280" },
   rowPlaceholder: { color: "#9ca3af", fontStyle: "italic" },
   // Delete button
   deleteButton: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, backgroundColor: "#fef2f2", borderWidth: 1, borderColor: "#fecaca",
-    borderRadius: 12, paddingVertical: 14, marginHorizontal: 16, marginVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginVertical: 8,
   },
   deleteButtonDisabled: { opacity: 0.6 },
   deleteButtonText: { fontSize: 15, fontWeight: "600", color: "#dc2626" },
   dangerWarning: {
-    fontSize: 13, color: "#6b7280", lineHeight: 18,
-    paddingHorizontal: 16, paddingBottom: 12,
+    fontSize: 13,
+    color: "#6b7280",
+    lineHeight: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
   // Picker modals
   pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   pickerSheet: { backgroundColor: "#ffffff", borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   pickerHandle: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
-    alignSelf: "center", marginTop: 8, marginBottom: 4,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 4,
   },
   pickerTitle: {
-    fontSize: 18, fontWeight: "700", color: "#111827",
-    paddingHorizontal: 24, paddingVertical: 16,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   pickerOption: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingVertical: 16, paddingHorizontal: 24, minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    minHeight: 56,
   },
   pickerOptionText: { fontSize: 16, fontWeight: "500", color: "#111827" },
   pickerOptionSelected: { color: "#eb7825", fontWeight: "600" },
   // Delete confirmation modal
   deleteOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center", alignItems: "center", padding: 24,
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
   },
   deleteModalContainer: {
-    backgroundColor: "white", borderRadius: 20, padding: 24,
-    width: "100%", maxWidth: 400, alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
   },
   deleteIconCircle: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: "#fef2f2",
-    justifyContent: "center", alignItems: "center", marginBottom: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#fef2f2",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
   },
   deleteIconSuccess: { backgroundColor: "#d1fae5" },
+  deleteSpinner: { marginBottom: 16 },
   deleteModalTitle: {
-    fontSize: 20, fontWeight: "bold", color: "#111827",
-    marginBottom: 12, textAlign: "center",
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 12,
+    textAlign: "center",
   },
   deleteModalBody: {
-    fontSize: 16, color: "#4b5563", textAlign: "center",
-    marginBottom: 12, lineHeight: 22,
+    fontSize: 16,
+    color: "#4b5563",
+    textAlign: "center",
+    marginBottom: 12,
+    lineHeight: 22,
   },
   deleteModalSub: {
-    fontSize: 14, color: "#6b7280", textAlign: "center",
-    lineHeight: 22, marginBottom: 24,
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 24,
   },
   deleteModalButtons: { flexDirection: "row", gap: 12, width: "100%" },
   deleteModalCancel: {
-    flex: 1, backgroundColor: "#f3f4f6", paddingVertical: 14,
-    borderRadius: 12, alignItems: "center",
+    flex: 1,
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
   },
   deleteModalCancelText: { fontSize: 16, fontWeight: "600", color: "#374151" },
   deleteModalConfirm: {
-    flex: 1, backgroundColor: "#ef4444", paddingVertical: 14,
-    borderRadius: 12, alignItems: "center",
+    flex: 1,
+    backgroundColor: "#ef4444",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
   },
+  deleteRetryButton: { backgroundColor: "#eb7825" },
   deleteModalConfirmText: { fontSize: 16, fontWeight: "600", color: "white" },
 });
