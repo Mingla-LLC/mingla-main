@@ -161,139 +161,102 @@ export const useSessionManagement = () => {
   const sessionStateRef = useRef(sessionState);
   sessionStateRef.current = sessionState;
 
-  // Load user's sessions and invites
+  // Load user's sessions and invites.
+  // Queries are parallelized with Promise.all where dependencies allow:
+  //   Round 1 (parallel): invites + participations (independent)
+  //   Round 2 (parallel): sessions + invite-sessions + phone-invites + all-participants
+  //   Round 3 (parallel): participant-profiles + inviter-profiles
+  // This cuts 8 sequential queries into 3 parallel rounds (~60% faster).
   const loadUserSessions = useCallback(async () => {
     if (!user) return;
 
     setSessionState(prev => ({ ...prev, loading: true }));
-    
-    try {
-      // 1. First load received invites to know all relevant sessions
-      const { data: receivedInvites, error: receivedError } = await supabase
-        .from('collaboration_invites')
-        .select('*')
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending')
-        .eq('pending_friendship', false);
 
-      if (receivedError) {
-        console.error('❌ Error loading received invites:', receivedError);
+    try {
+      // ── Round 1 (parallel): invites + participations ──────────────────
+      const [invitesResult, participationsResult] = await Promise.all([
+        supabase
+          .from('collaboration_invites')
+          .select('*')
+          .eq('invited_user_id', user.id)
+          .eq('status', 'pending')
+          .eq('pending_friendship', false),
+        supabase
+          .from('session_participants')
+          .select('session_id, has_accepted, joined_at')
+          .eq('user_id', user.id),
+      ]);
+
+      const receivedInvites = invitesResult.data;
+      if (invitesResult.error) {
+        console.error('❌ Error loading received invites:', invitesResult.error);
       }
 
-      // 2. Load all sessions where user is a participant or creator
-      const { data: userParticipations, error: participationError } = await supabase
-        .from('session_participants')
-        .select('session_id, has_accepted, joined_at')
-        .eq('user_id', user.id);
-
-      if (participationError) {
-        console.error('❌ Error loading participations:', participationError);
+      const userParticipations = participationsResult.data;
+      if (participationsResult.error) {
+        console.error('❌ Error loading participations:', participationsResult.error);
         setSessionState(prev => ({ ...prev, loading: false }));
         return;
       }
 
       const sessionIds = userParticipations?.map(p => p.session_id) || [];
+      const inviteSessionIds = receivedInvites
+        ? [...new Set(receivedInvites.map(invite => invite.session_id))]
+        : [];
+      const missingSessionIds = inviteSessionIds.filter(id => !sessionIds.includes(id));
+      const allSessionIds = [...new Set([...sessionIds, ...inviteSessionIds])];
 
-      // 3. Load all collaboration sessions for these session IDs
-      let allSessions: SessionRow[] = [];
-      if (sessionIds.length > 0) {
-        const { data: sessions, error: sessionsError } = await supabase
-          .from('collaboration_sessions')
-          .select('*')
-          .in('id', sessionIds);
+      // ── Round 2 (parallel): sessions + invite-sessions + participants + phone-invites
+      const [sessionsResult, inviteSessionsResult, participantsResult, phoneInvitesResult] =
+        await Promise.all([
+          // Sessions by participant IDs
+          sessionIds.length > 0
+            ? supabase.from('collaboration_sessions').select('*').in('id', sessionIds)
+            : Promise.resolve({ data: [] as SessionRow[], error: null }),
+          // Sessions from received invites (missing from participation)
+          missingSessionIds.length > 0
+            ? supabase.from('collaboration_sessions').select('*').in('id', missingSessionIds)
+            : Promise.resolve({ data: [] as SessionRow[], error: null }),
+          // All participants for all sessions
+          allSessionIds.length > 0
+            ? supabase.from('session_participants').select('*').in('session_id', allSessionIds)
+            : Promise.resolve({ data: [] as ParticipantRow[], error: null }),
+          // Pending phone invites
+          allSessionIds.length > 0
+            ? supabase.from('pending_session_invites').select('session_id, phone_e164').in('session_id', allSessionIds).eq('status', 'pending')
+            : Promise.resolve({ data: [] as { session_id: string; phone_e164: string }[], error: null }),
+        ] as const);
 
-        if (sessionsError) {
-          console.error('❌ Error loading sessions:', sessionsError);
-        } else {
-          allSessions = sessions || [];
-        }
-      }
+      if (sessionsResult.error) console.error('❌ Error loading sessions:', sessionsResult.error);
+      if (inviteSessionsResult.error) console.error('❌ Error loading invite sessions:', inviteSessionsResult.error);
+      if (participantsResult.error) console.error('❌ Error loading participants:', participantsResult.error);
+      if (phoneInvitesResult.error) console.error('❌ Error loading pending phone invites:', phoneInvitesResult.error);
 
-      // 3.5. Also load sessions from received invites to ensure we have all relevant sessions
-      if (receivedInvites && receivedInvites.length > 0) {
-        const inviteSessionIds = [...new Set(receivedInvites.map(invite => invite.session_id))];
-        const missingSessionIds = inviteSessionIds.filter(id => !sessionIds.includes(id));
-        
-        if (missingSessionIds.length > 0) {
-          const { data: inviteSessions, error: inviteSessionsError } = await supabase
-            .from('collaboration_sessions')
-            .select('*')
-            .in('id', missingSessionIds);
+      let allSessions: SessionRow[] = [
+        ...(sessionsResult.data || []),
+        ...(inviteSessionsResult.data || []),
+      ];
+      const allParticipants: ParticipantRow[] = participantsResult.data || [];
+      const pendingPhoneInvites: { session_id: string; phone_e164: string }[] = phoneInvitesResult.data || [];
 
-          if (inviteSessionsError) {
-            console.error('❌ Error loading invite sessions:', inviteSessionsError);
-          } else {
-            allSessions = [...allSessions, ...(inviteSessions || [])];
-          }
-        }
-      }
-
-      // 4. Load all participants for these sessions (including invite sessions)
-      let allParticipants: ParticipantRow[] = [];
-      const allSessionIds = [...new Set([...sessionIds, ...(receivedInvites?.map(i => i.session_id) || [])])];
-
-      if (allSessionIds.length > 0) {
-        const { data: participants, error: participantsError } = await supabase
-          .from('session_participants')
-          .select('*')
-          .in('session_id', allSessionIds);
-
-        if (participantsError) {
-          console.error('❌ Error loading participants:', participantsError);
-        } else {
-          allParticipants = participants || [];
-        }
-      }
-
-      // 4.5. Load pending phone invites (non-Mingla users) so they count toward
-      // the participant threshold. Without this, sessions with 1 real user +
-      // phone-invited contacts appear empty and get filtered out.
-      let pendingPhoneInvites: { session_id: string; phone_e164: string }[] = [];
-      if (allSessionIds.length > 0) {
-        const { data: phoneInvites, error: phoneInvitesError } = await supabase
-          .from('pending_session_invites')
-          .select('session_id, phone_e164')
-          .in('session_id', allSessionIds)
-          .eq('status', 'pending');
-
-        if (phoneInvitesError) {
-          console.error('❌ Error loading pending phone invites:', phoneInvitesError);
-        } else {
-          pendingPhoneInvites = phoneInvites || [];
-        }
-      }
-
-      // 5. Load profiles for all participants
+      // ── Round 3 (parallel): participant profiles + inviter profiles ────
       const participantUserIds = [...new Set(allParticipants.map(p => p.user_id))];
-      let profiles: ProfileRow[] = [];
-      if (participantUserIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, first_name, last_name, avatar_url')
-          .in('id', participantUserIds);
-
-        if (profilesError) {
-          console.error('❌ Error loading profiles:', profilesError);
-        } else {
-          profiles = profilesData || [];
-        }
-      }
-
-      // 6. Load inviter profiles for received invites
       const inviterIds = [...new Set((receivedInvites || []).map(i => i.inviter_id))];
-      let inviterProfiles: ProfileRow[] = [];
-      if (inviterIds.length > 0) {
-        const { data: invitersData, error: invitersError } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, first_name, last_name, avatar_url')
-          .in('id', inviterIds);
 
-        if (invitersError) {
-          console.error('❌ Error loading inviter profiles:', invitersError);
-        } else {
-          inviterProfiles = invitersData || [];
-        }
-      }
+      const [profilesResult, inviterProfilesResult] = await Promise.all([
+        participantUserIds.length > 0
+          ? supabase.from('profiles').select('id, username, display_name, first_name, last_name, avatar_url').in('id', participantUserIds)
+          : Promise.resolve({ data: [], error: null }),
+        inviterIds.length > 0
+          ? supabase.from('profiles').select('id, username, display_name, first_name, last_name, avatar_url').in('id', inviterIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (profilesResult.error) console.error('❌ Error loading profiles:', profilesResult.error);
+      if (inviterProfilesResult.error) console.error('❌ Error loading inviter profiles:', inviterProfilesResult.error);
+
+      const profiles: ProfileRow[] = profilesResult.data || [];
+      const inviterProfiles: ProfileRow[] = inviterProfilesResult.data || [];
 
       // Helper function to get profile by user ID
       const getProfile = (userId: string) => {

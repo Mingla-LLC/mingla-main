@@ -1951,6 +1951,7 @@ function AppContent() {
             currentMode={currentMode ?? "solo"}
             refreshKey={preferencesRefreshKey}
             resumeCount={resumeCount}
+            persistedSessionId={currentSessionId}
           >
             <MobileFeaturesProvider>
               <NavigationProvider>

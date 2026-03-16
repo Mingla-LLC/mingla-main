@@ -136,13 +136,78 @@ For each file listed in the spec (or that you reason must be involved):
 - Note: what React Query keys are already in use
 - Note: what Supabase tables/columns already exist (cross-reference §23 of architecture)
 
-**Step 1.3 — Identify dependencies.**
+**Step 1.3 — Understand the History (MANDATORY: How Did This Code Get Here?)**
+
+Before modifying any file, you must understand its **evolution** — not just its current state.
+Reading the code tells you WHAT it does. Reading the history tells you WHY it does it that way,
+what was tried before, what broke, and what constraints you must respect. Without this, you are
+navigating with half the map.
+
+**For every file you plan to modify, do the following:**
+
+1. **Run `git log --oneline -20 -- <file>`** — Read the last 20 commits that touched this file.
+   For each meaningful commit:
+   - What was the intent? (Read the commit message carefully)
+   - Was it a bug fix? What bug? Is the fix still load-bearing?
+   - Was it a refactor? What pattern was it moving toward?
+   - Was it a revert? What went wrong with the original approach?
+
+2. **Run `git blame` on the specific lines you plan to change** — Understand who wrote them,
+   when, and as part of what commit. A line written 2 days ago as part of a bug fix carries
+   very different weight than a line written 18 months ago that nobody's touched since.
+
+3. **Look for related commits across files** — If a commit that changed your target file also
+   changed 3 other files, read those changes too. They reveal the full scope of the decision.
+   A guard clause in file A might only make sense because of a companion change in file B.
+
+4. **Identify active work and direction of travel** — Are recent commits gradually migrating
+   this file from one pattern to another? Is someone actively refactoring this area? Your
+   implementation should align with the direction the codebase is moving, not the legacy
+   pattern that happens to still exist.
+
+5. **Flag historical landmines** — If you find any of these, call them out explicitly in your
+   diagnosis:
+   - A commit that was reverted (something was tried and failed — don't repeat it)
+   - A "fix:" commit on the lines you're about to modify (the current code is a deliberate
+     fix — understand what it fixed before changing it)
+   - TODO/HACK/WORKAROUND comments with commit context (understand the constraint)
+   - A recent commit by someone else that touches the same area (potential conflict)
+
+**How to present history context to the user:**
+
+In your Phase 0.2 diagnosis (or Phase 1 scope confirmation), include a **History Context**
+section that explains, in plain English:
+
+- **How this code got here:** The key commits that shaped the current state — not a raw git
+  log dump, but a narrative. "This hook was originally simple, then 3 weeks ago a race
+  condition was found and a guard was added in commit abc123. Last week, the error handling
+  was refactored as part of the edge function error standardization effort."
+- **What constraints the history reveals:** "The `setTimeout` wrapper on line 47 looks like
+  a hack, but it was added in commit def456 to fix a React 18 batching issue where state
+  updates were being swallowed. We must keep it or find a proper alternative."
+- **What direction the codebase is moving:** "The last 4 commits in this area are gradually
+  moving from callback-style error handling to the new `edgeFunctionError.ts` utility.
+  Our implementation should use the new pattern, not the old one."
+- **What I must be careful not to break:** Specific lines or patterns that exist because of
+  past bug fixes, with the commit hash and explanation.
+
+**Why this matters (non-negotiable):**
+
+Without history context, you are coding blind. You will:
+- Reintroduce bugs that were already fixed (because you "simplified" a deliberate guard)
+- Break intentional workarounds (because you "cleaned up" code that was ugly for a reason)
+- Conflict with in-progress work (because you didn't see recent commits heading a direction)
+- Miss partial fixes (because you only see the current broken state, not the attempted fix)
+
+History is not optional context. It is **required intelligence** for any implementation.
+
+**Step 1.4 — Identify dependencies.**
 - What existing services/hooks does this touch?
 - What RLS policies exist on affected tables?
 - What edge functions are already deployed that might conflict or be extended?
 - Are there TypeScript types in `types/` that need updating?
 
-**Step 1.4 — Confirm scope before writing.**
+**Step 1.5 — Confirm scope before writing.**
 If anything is ambiguous or seems to require going outside the stated scope, flag it explicitly
 and ask. Do not silently expand scope. Do not silently shrink scope. The spec is the contract.
 If the spec says do X, do X. If the spec doesn't mention Y, don't touch Y.
@@ -502,6 +567,17 @@ and exactly what they should verify. Be precise. Be complete. Do not exaggerate,
 [Plain description of how the system worked before this implementation.
 What the user experienced, what data existed, what was missing.]
 
+### History Context (How This Code Got Here)
+[For each file modified, a narrative of the key commits that shaped its current state.
+Not a raw git log — a plain-English story of how this code evolved, what constraints
+the history reveals, what direction the codebase was moving, and what past bug fixes
+or workarounds must be respected. This section proves the implementor understood the
+full picture before making changes.]
+
+| File | Key Historical Context | Commits Referenced |
+|------|----------------------|-------------------|
+| `path/to/file.ts` | [narrative: how it got here, key decisions, past bugs fixed] | `abc123`, `def456` |
+
 ---
 
 ## 2. What Changed
@@ -681,6 +757,22 @@ in §4 of your report.
 
 **Follow the spec's implementation order.** §7 of the spec defines the sequence. Follow it
 step by step. Do not reorder because you think you know better.
+
+**Update the AppsFlyer Event Map when touching analytics-related files.** The file
+`outputs/APPSFLYER_EVENT_MAP.md` is the single source of truth for all AppsFlyer in-app
+event configuration. If your implementation modifies ANY of these files, you MUST read the
+event map and update the affected rows/sections before generating the implementation report:
+- `appsFlyerService.ts`, `mixpanelService.ts`, `userInteractionService.ts`
+- `OnboardingFlow.tsx`, `useOnboardingStateMachine.ts`
+- `index.tsx` (auth flow), `authService.ts`
+- `revenueCatService.ts`, `useRevenueCat.ts`, `tierLimits.ts`
+- `subscriptionService.ts`, any `subscriptions` migration
+- `deepLinkService.ts`, `friendsService.ts`, `pairingService.ts`
+- `referral_credits` migration, `process-referral` edge function
+- Collaboration services, paywall components
+- `notify-lifecycle` edge function
+
+Add a row to the Change Log table at the bottom of the event map for every update.
 
 ---
 

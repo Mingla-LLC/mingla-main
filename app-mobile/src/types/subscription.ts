@@ -99,6 +99,21 @@ export function getEffectiveTierFromSupabase(
     return 'elite'
   }
 
+  // Manual override / legacy paid record: honour the tier column directly.
+  // This covers two cases:
+  //   1. Developer/QA manually sets tier in Supabase for testing
+  //   2. Legacy paid subscriptions where syncSubscriptionFromRC wrote tier + is_active
+  //      but RevenueCat is unavailable (test key, offline, SDK error)
+  // Guard: only trust the column when is_active is true AND (no expiry set OR expiry
+  // is in the future). This prevents honouring stale rows from cancelled subs.
+  if (
+    sub.tier !== 'free' &&
+    sub.isActive &&
+    (!sub.currentPeriodEnd || new Date(sub.currentPeriodEnd) > new Date())
+  ) {
+    return sub.tier
+  }
+
   return 'free'
 }
 

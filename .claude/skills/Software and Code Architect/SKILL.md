@@ -138,7 +138,74 @@ Produce an **Investigation Manifest** — an explicit list of every file you wil
 Present this list to the user before reading. This forces you to be systematic and prevents
 tunnel vision.
 
-### Step 3 — Read Everything in the Manifest
+### Step 3 — Mandatory History Analysis (Git Forensics)
+
+**This step is non-negotiable.** Before reading current code, you must understand HOW the code
+got to its current state. Code does not appear from nothing — every line has a history of
+decisions, fixes, reverts, and rewrites. Without this history, you will:
+- Misidentify the root cause (confusing a symptom fix for the original design)
+- Propose a fix that re-introduces a bug a previous commit already fixed
+- Miss the pattern of "fix → regression → fix → regression" that reveals systemic problems
+- Fail to see that 10 commits over 5 days were all trying to fix the same thing, meaning
+  the architecture itself is the problem, not any individual line
+
+**What to do:**
+
+For every file in your Investigation Manifest, run `git log --oneline -20 -- <file>` to see
+its recent commit history. Then for the most relevant commits (those that touch the area
+where the symptom originates), read the actual diffs with `git show <hash> -- <file>`.
+
+**What you are looking for:**
+
+1. **When was the problematic code introduced?** — Was it always there, or added recently?
+   If recently, what was the commit message? What was the developer trying to fix?
+2. **Is there a pattern of repeated fixes?** — If the same file has 5+ commits in 2 weeks
+   all saying "fix loading" or "fix spinner" or "fix timeout", that's a red flag that the
+   underlying architecture is broken and individual fixes are whack-a-mole.
+3. **Were safety mechanisms added as band-aids?** — Timeouts, fallbacks, and "nuclear" escape
+   hatches are often symptoms of an earlier design flaw. Trace back to find what they were
+   compensating for.
+4. **Were previous safety nets removed?** — If a commit removes a timeout "because the state
+   machine handles it now" but the state machine has a gap, the removal IS the regression.
+5. **What was the original design intent?** — Before the flurry of fixes, what was the code
+   supposed to do? Sometimes the original design was correct and the fixes broke it.
+6. **Were there omnibus commits?** — Large commits touching 10+ files with messages like
+   "fix all issues" or "19 bug fixes" are high-risk regression sources. Each sub-fix may
+   have been tested in isolation but not in combination.
+
+**How to present history findings:**
+
+In your report, include a **History Timeline** section before the root cause analysis. Format:
+
+```
+## History Timeline
+
+| Date | Commit | What Changed | Significance |
+|------|--------|-------------|--------------|
+| Mar 5 | caf2af71 | Unified Pipeline rewrite | Merged two deck systems into one — complexity jump |
+| Mar 11 | feb3ec43 | 19 bug fixes | Added 15s safety timeout as band-aid |
+| Mar 13 | d58bc867 | Stabilize mode switching | Added isDeckParamsStable guard |
+| Mar 15 | 55ae1331 | deckUIState state machine | Added fallback INITIAL_LOADING; REMOVED two safety timeouts |
+| Mar 16 | 00848501 | Latest commit | Tightened shouldMarkComplete — made loading harder to resolve |
+
+**Pattern detected:** 10 commits in 11 days all fixing loading/spinner issues. Each fix
+plugged one hole but opened another. The architecture itself (state machine fighting the
+cache) is the root problem, not any individual commit.
+```
+
+**Why this matters:** In the infinite-loading investigation, the history analysis revealed
+that the bug wasn't a single mistake — it was the COMBINATION of (a) adding a fallback
+`INITIAL_LOADING` state, (b) removing two safety timeouts in the same commit, and (c)
+tightening the completion guard the next day. No single commit was "wrong" in isolation.
+Only the history showed the full causal chain. Without it, the diagnosis would have been
+"fix the fallback" — a shallow fix that wouldn't address the systemic whack-a-mole pattern.
+
+**When to skip:** Never. Even for seemingly simple bugs, a 2-minute git log check can reveal
+that the "simple" code was actually rewritten 4 times last week. If the history is clean
+(file hasn't changed in months), state that — it's useful information that increases
+confidence in your diagnosis.
+
+### Step 4 — Read Everything in the Manifest
 
 Read every file listed. For each file, inspect for the failure patterns most common at
 that layer:
@@ -158,7 +225,7 @@ that layer:
 - **State / Persistence**: AsyncStorage shape mismatches after schema changes, Zustand
   stores holding server data, React Query and Zustand fighting over the same data
 
-### Step 4 — Classify Every Finding
+### Step 5 — Classify Every Finding
 
 Every finding gets exactly one classification:
 
@@ -178,7 +245,7 @@ A root cause finding is not complete unless it includes all six of these:
 
 If you cannot fill all six fields, you have not found the root cause — keep investigating.
 
-### Step 5 — Write the Report
+### Step 6 — Write the Report
 
 Produce exactly one file: `INVESTIGATION_[ISSUE_NAME]_REPORT.md`
 
@@ -192,6 +259,12 @@ Structure:
 
 ## Investigation Manifest
 [Every file inspected, in trace order]
+
+## History Timeline
+[Git forensics table showing how the code evolved to its current state.
+ Include commit hash, date, what changed, and significance.
+ Identify patterns: repeated fix attempts, removed safety nets, omnibus commits.
+ State whether the bug was always present or introduced by a specific change.]
 
 ## Findings
 

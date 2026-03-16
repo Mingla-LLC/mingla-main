@@ -58,7 +58,8 @@ export const useBoardSession = (sessionId?: string) => {
   const queryClient = useQueryClient();
   const loadSessionIdRef = useRef<string | null>(null);
 
-  // Load session data
+  // Load session data with 10-second timeout.
+  // Queries are parallelized where possible so the preferences sheet opens fast.
   const loadSession = useCallback(
     async (id: string) => {
       if (!id || !user) return;
@@ -69,81 +70,86 @@ export const useBoardSession = (sessionId?: string) => {
       setLoading(true);
       setError(null);
 
+      // 10-second hard timeout — prevents the preferences sheet from spinning forever
+      // when Supabase is slow or unreachable. Shows whatever data loaded so far.
+      let didTimeout = false;
+      const timeoutTimer = setTimeout(() => {
+        didTimeout = true;
+        if (loadSessionIdRef.current === loadId) {
+          console.warn('[useBoardSession] 10s timeout — showing available data');
+          setError('Session data is taking too long to load');
+          setLoading(false);
+        }
+      }, 10000);
+
       try {
-        // Load session
-        const { data: sessionData, error: sessionError } = await supabase
-          .from("collaboration_sessions")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-        if (sessionError) throw sessionError;
-        if (loadSessionIdRef.current !== loadId) return;
-
-        // Load preferences for the current user
-        const { data: prefsData, error: prefsError } = await supabase
-          .from("board_session_preferences")
-          .select("*")
-          .eq("session_id", id)
-          .eq("user_id", user?.id || "")
-          .single();
-
-        if (prefsError && prefsError.code !== "PGRST116") {
-          console.error("Error loading preferences:", prefsError);
-        }
-        if (loadSessionIdRef.current !== loadId) return;
-
-        // Load ALL participants' preferences (for aggregation)
-        const { data: allPrefsData, error: allPrefsError } = await supabase
-          .from("board_session_preferences")
-          .select("*")
-          .eq("session_id", id);
-
-        if (allPrefsError) {
-          console.warn("Error loading all participant preferences:", allPrefsError);
-        }
-        if (loadSessionIdRef.current !== loadId) return;
-
-        setAllParticipantPreferences(allPrefsData || []);
-
-        // Load participants
-        const { data: participantsData, error: participantsError } =
-          await supabase
-            .from("session_participants")
-            .select(
-              `
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `
+        // Parallel: session + user prefs + all prefs + participants
+        const [sessionResult, prefsResult, allPrefsResult, participantsResult] =
+          await Promise.all([
+            supabase
+              .from("collaboration_sessions")
+              .select("*")
+              .eq("id", id)
+              .single(),
+            supabase
+              .from("board_session_preferences")
+              .select("*")
+              .eq("session_id", id)
+              .eq("user_id", user?.id || "")
+              .single(),
+            supabase
+              .from("board_session_preferences")
+              .select("*")
+              .eq("session_id", id),
+            supabase
+              .from("session_participants")
+              .select(
+                `
+            *,
+            profiles (
+              id,
+              username,
+              display_name,
+              first_name,
+              last_name,
+              avatar_url
             )
-            .eq("session_id", id);
+          `
+              )
+              .eq("session_id", id),
+          ]);
 
-        if (participantsError) {
-          console.error("Error loading participants:", participantsError);
+        if (didTimeout || loadSessionIdRef.current !== loadId) return;
+
+        if (sessionResult.error) throw sessionResult.error;
+
+        if (prefsResult.error && prefsResult.error.code !== "PGRST116") {
+          console.error("Error loading preferences:", prefsResult.error);
         }
-        if (loadSessionIdRef.current !== loadId) return;
+        if (allPrefsResult.error) {
+          console.warn("Error loading all participant preferences:", allPrefsResult.error);
+        }
+        if (participantsResult.error) {
+          console.error("Error loading participants:", participantsResult.error);
+        }
+
+        setAllParticipantPreferences(allPrefsResult.data || []);
 
         setSession({
-          ...sessionData,
-          participants: participantsData || [],
+          ...sessionResult.data,
+          participants: participantsResult.data || [],
         } as BoardSession);
 
-        if (prefsData) {
-          setPreferences(prefsData as BoardSessionPreferences);
+        if (prefsResult.data) {
+          setPreferences(prefsResult.data as BoardSessionPreferences);
         }
       } catch (err: any) {
         if (loadSessionIdRef.current !== loadId) return;
         setError(err.message || "Failed to load session");
         console.error("Error loading session:", err);
       } finally {
-        if (loadSessionIdRef.current === loadId) {
+        clearTimeout(timeoutTimer);
+        if (!didTimeout && loadSessionIdRef.current === loadId) {
           setLoading(false);
         }
       }

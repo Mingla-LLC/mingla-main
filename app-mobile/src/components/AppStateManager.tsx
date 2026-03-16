@@ -150,12 +150,17 @@ export function useAppState() {
   // immediate value so the pill bar highlights correctly on first render.
   const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
 
-  // Wrapper to update currentMode and persist to storage
+  // Wrapper to update currentMode and persist to storage.
+  // ALWAYS saves both the mode name AND the session UUID so that on app reopen
+  // we can resolve the session instantly from storage without a network round-trip.
   const setCurrentMode = (mode: "solo" | string, sessionId?: string | null) => {
     // Always update state to ensure immediate propagation
-    // The check prevents unnecessary updates but we update regardless to ensure consistency
     if (currentMode !== mode) {
       setCurrentModeState(mode);
+    }
+    // Keep initialSessionId in sync so index.tsx's pill bar highlights immediately
+    if (sessionId) {
+      setInitialSessionId(sessionId);
     }
 
     // Persist the last mode to storage with session ID

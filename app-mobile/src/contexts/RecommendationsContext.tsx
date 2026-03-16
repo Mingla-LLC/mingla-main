@@ -25,7 +25,7 @@ import type { DeckBatch } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
 import { useSessionDeck } from '../hooks/useSessionDeck';
-import { fetchSessionDeck } from '../services/sessionDeckService';
+import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
@@ -110,6 +110,9 @@ interface RecommendationsProviderProps {
   currentMode?: string;
   refreshKey?: number | string;
   resumeCount?: number;
+  /** Pre-resolved session UUID from AsyncStorage — enables instant session resolution
+   *  without waiting for the full loadUserSessions() network round-trip. */
+  persistedSessionId?: string | null;
 }
 
 export const RecommendationsProvider: React.FC<
@@ -119,6 +122,7 @@ export const RecommendationsProvider: React.FC<
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
   resumeCount: propResumeCount = 0,
+  persistedSessionId: propPersistedSessionId = null,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [batchSeed, setBatchSeed] = useState(0);
@@ -137,7 +141,8 @@ export const RecommendationsProvider: React.FC<
   // Cleared on preference change and mode switch. Catches the prefetch race
   // condition where batch 2 starts before batch 1's impressions are committed.
   const sessionServedIdsRef = useRef<Set<string>>(new Set());
-  // hasStartedRef: used by the 15-second nuclear safety timeout (mount-only, never resets)
+  // hasStartedRef: previously used by the 15s nuclear safety timeout (removed).
+  // Kept for potential future mount-tracking needs.
   const hasStartedRef = useRef(false);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
@@ -183,9 +188,14 @@ export const RecommendationsProvider: React.FC<
   }, [user?.id, currentMode]);
 
   // ── Session Resolution ──────────────────────────────────────────────────
+  // Priority: currentSession (live) > persisted UUID (AsyncStorage) > mode-as-UUID > name lookup.
+  // The persisted UUID enables instant resolution on app reopen without waiting
+  // for the full loadUserSessions() network round-trip (8 sequential queries).
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
     if (currentSession?.id) return currentSession.id;
+    // Use the UUID persisted alongside the mode name in AsyncStorage
+    if (propPersistedSessionId) return propPersistedSessionId;
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(currentMode)) return currentMode;
@@ -193,7 +203,7 @@ export const RecommendationsProvider: React.FC<
       (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
-  }, [currentMode, currentSession, availableSessions]);
+  }, [currentMode, currentSession, propPersistedSessionId, availableSessions]);
 
   const [hasTimedOutWaitingForSession, setHasTimedOutWaitingForSession] =
     useState(false);
@@ -589,25 +599,25 @@ export const RecommendationsProvider: React.FC<
   // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
   // The settle effect above (isDeckBatchLoaded && !isDeckFetching) clears the flag.
 
-  // Nuclear safety timeout: mount-only 15-second guarantee that the fetch completes.
-  // Fires once when the component mounts, regardless of any state change.
-  // Handles edge cases where GPS, prefs, and deck all silently hang simultaneously.
-  // setHasCompletedFetchForCurrentMode is a useState setter — React guarantees stability.
+  // First-mount safety timeout: 20s guard for the edge case where GPS never resolves
+  // on first launch (user denies permission, device has no location services, etc.).
+  // Unlike the old 15s timeout, this works correctly because the EMPTY check no longer
+  // requires !loading — so forcing hasCompletedFetchForCurrentMode=true actually
+  // resolves to EMPTY state instead of falling through to the INITIAL_LOADING fallback.
   useEffect(() => {
-    if (hasStartedRef.current) return; // Only run on first mount
+    if (hasStartedRef.current) return;
     hasStartedRef.current = true;
 
     const safetyTimer = setTimeout(() => {
-      setHasCompletedFetchForCurrentMode(true);
-      console.warn('[RecommendationsContext] 15s safety timeout fired — forcing complete');
-    }, 15000);
+      if (!hasCompletedFetchForCurrentMode) {
+        console.warn('[RecommendationsContext] 20s first-mount safety timeout — forcing complete');
+        setHasCompletedFetchForCurrentMode(true);
+        setIsModeTransitioning(false);
+      }
+    }, 20000);
 
     return () => clearTimeout(safetyTimer);
-  }, []); // Empty deps — mount only
-
-  // Resume safety timeout REMOVED — state machine rule: app resume never changes state.
-  // If state is LOADED, it stays LOADED. No loader re-shown. The nuclear mount timeout
-  // (15s) handles the case where the app hangs on first load.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Deck batch history: detect pref changes → reset ──────────────────
   useEffect(() => {
@@ -795,11 +805,26 @@ export const RecommendationsProvider: React.FC<
         completionTimeoutRef.current = null;
       }
 
+      // ── Cache-first check: see if React Query already has cards for the new mode.
+      // If so, skip the loading spinner entirely and show cached cards instantly.
+      // This is the key optimization — reopening a previously visited session is instant.
+      let hasCachedCards = false;
+      const newModeIsSolo = currentMode === 'solo';
+      if (!newModeIsSolo && propPersistedSessionId) {
+        // Collaboration: check session-deck cache
+        const cachedSessionDeck = queryClient.getQueryData<SessionDeckResponse>(['session-deck', propPersistedSessionId, 0]);
+        if (cachedSessionDeck && cachedSessionDeck.cards?.length > 0) {
+          hasCachedCards = true;
+        }
+      }
+      // For solo mode, useDeckCards' initialData and RQ persistence handle the cache.
+      // We don't need to check here — the query will return cached data immediately.
+
       // ── Full state reset on mode change ────────────────────────────────
       // Every mode starts with a clean slate. No stale batch positions,
       // exhaustion flags, or prefetch state carrying over.
-      setIsModeTransitioning(true);
-      setHasCompletedFetchForCurrentMode(false);
+      setIsModeTransitioning(!hasCachedCards); // Skip transition spinner if cache has cards
+      setHasCompletedFetchForCurrentMode(hasCachedCards); // Already "complete" if cache hit
       previousDeckIdsRef.current = '';
       setBatchSeed(0);
       prefetchFiredRef.current = false;
@@ -818,11 +843,13 @@ export const RecommendationsProvider: React.FC<
       // mode-specific (`dismissed_cards_${userId}_${mode}`), so each mode's
       // dismissed cards persist independently and don't cross-contaminate.
 
-      completionTimeoutRef.current = setTimeout(() => {
-        console.warn("Recommendations fetch timeout - forcing completion");
-        setHasCompletedFetchForCurrentMode(true);
-        setIsModeTransitioning(false);
-      }, 5000);
+      if (!hasCachedCards) {
+        completionTimeoutRef.current = setTimeout(() => {
+          console.warn("Recommendations fetch timeout - forcing completion");
+          setHasCompletedFetchForCurrentMode(true);
+          setIsModeTransitioning(false);
+        }, 5000);
+      }
     }
 
     previousModeRef.current = currentMode;
@@ -862,14 +889,16 @@ export const RecommendationsProvider: React.FC<
         (queryEnabled && queryFinished && hasQueryResult) ||
         (hasRecommendationsInState && !isModeTransitioning && !loading) ||
         (locationError && queryFinished) ||
-        // Settled state: all three loading flags are false regardless of data/null.
+        // Settled state: initial loading flags are false regardless of data/null.
         // This fires when location resolves to null (no error, no data) — without it
         // the spinner runs forever in that case.
         // Guard: skip during mode transitions — location & preferences are already
         // loaded from the previous mode, so this would fire before the new mode's
         // deck query has started, dropping the loading screen prematurely and
         // flashing an empty state before cards arrive.
-        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isDeckFetching && !isModeTransitioning);
+        // NOTE: isDeckFetching intentionally excluded — it stays true during
+        // background refetches and would prevent completion after the initial load.
+        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -1009,10 +1038,14 @@ export const RecommendationsProvider: React.FC<
     }
 
     // EMPTY (server returned 0 cards for location/prefs)
+    // When hasCompletedFetchForCurrentMode is true, we trust the completion signal
+    // regardless of background loading state. Previously required !loading which
+    // caused infinite spinners when background refetches kept loading=true after
+    // the fetch cycle had genuinely completed.
     if (
       hasCompletedFetchForCurrentMode &&
       recommendations.length === 0 &&
-      !loading &&
+      !isModeTransitioning &&
       !isBatchTransitioning
     ) {
       return { type: 'EMPTY' };
@@ -1023,33 +1056,30 @@ export const RecommendationsProvider: React.FC<
       return { type: 'LOADED', cards: recommendations };
     }
 
-    // Fallback: still loading (between batch seed change and query key update)
+    // Fallback: genuinely still loading (between batch seed change and query key
+    // update, or first load before any data arrives). This ONLY fires when
+    // hasCompletedFetchForCurrentMode is false AND recommendations are empty —
+    // once the fetch cycle completes, the EMPTY branch above catches it.
     return { type: 'INITIAL_LOADING' };
   }, [
     locationError, isModeTransitioning, isWaitingForSessionResolution,
     hasCompletedFetchForCurrentMode, recommendations, isSlowBatchLoad,
-    isExhausted, isBatchTransitioning, loading,
+    isExhausted, isBatchTransitioning,
+    // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
+    // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);
 
-  // __DEV__ assertion: verify deckUIState agrees with legacy shouldShowLoader
+  // __DEV__ assertion: log deckUIState transitions for debugging
   if (__DEV__) {
-    const legacyShouldShowLoader =
-      loading || isModeTransitioning || isWaitingForSessionResolution ||
-      (!hasCompletedFetchForCurrentMode && recommendations.length === 0);
     const stateMachineShowsLoader =
       deckUIState.type === 'INITIAL_LOADING' || deckUIState.type === 'MODE_TRANSITIONING';
 
-    // Only warn on meaningful disagreements (exclude BATCH states and ERROR)
-    if (
-      legacyShouldShowLoader !== stateMachineShowsLoader &&
-      deckUIState.type !== 'BATCH_LOADING' &&
-      deckUIState.type !== 'BATCH_SLOW' &&
-      deckUIState.type !== 'ERROR'
-    ) {
+    // Warn if we're stuck in a loading state with the completion flag already set —
+    // this would indicate a regression in the state machine logic.
+    if (stateMachineShowsLoader && hasCompletedFetchForCurrentMode && !isModeTransitioning && !isWaitingForSessionResolution) {
       console.warn(
-        `[RecommendationsContext] State machine disagreement: legacy shouldShowLoader=${legacyShouldShowLoader}, ` +
-        `deckUIState=${deckUIState.type}, loading=${loading}, isModeTransitioning=${isModeTransitioning}, ` +
-        `hasCompletedFetch=${hasCompletedFetchForCurrentMode}, recs=${recommendations.length}`
+        `[RecommendationsContext] Unexpected loader after completion: ` +
+        `deckUIState=${deckUIState.type}, loading=${loading}, recs=${recommendations.length}`
       );
     }
   }
