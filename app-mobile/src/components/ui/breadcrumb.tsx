@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 function Breadcrumb({ ...props }: React.ComponentProps<typeof View>) {
   return <View aria-label="breadcrumb" data-slot="breadcrumb" {...props} />;
@@ -93,7 +93,7 @@ function BreadcrumbSeparator({
       style={[styles.breadcrumbSeparator, style]}
       {...props}
     >
-      {children ?? <Ionicons name="chevron-forward" size={14} color="#6b7280" />}
+      {children ?? <Icon name="chevron-forward" size={14} color="#6b7280" />}
     </View>
   );
 }
@@ -111,7 +111,7 @@ function BreadcrumbEllipsis({
       style={[styles.breadcrumbEllipsis, style]}
       {...props}
     >
-      <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
+      <Icon name="ellipsis-horizontal" size={16} color="#6b7280" />
     </View>
   );
 }

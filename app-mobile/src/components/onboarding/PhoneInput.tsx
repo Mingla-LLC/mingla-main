@@ -11,7 +11,7 @@ import {
   InputAccessoryView,
   InteractionManager,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import {
   colors,
   typography,
@@ -132,7 +132,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         >
           <Text style={styles.flag}>{country?.flag || ''}</Text>
           <Text style={styles.dialCode}>{country?.dialCode || '+1'}</Text>
-          <Ionicons
+          <Icon
             name="chevron-down"
             size={16}
             color={colors.gray[400]}

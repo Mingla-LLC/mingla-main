@@ -12,7 +12,7 @@ import {
   Animated,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
@@ -742,7 +742,7 @@ export default function ActionButtons({
       {parsedOpeningHours && (
         <View style={styles.openingHoursSection}>
           <View style={styles.openingHoursHeader}>
-            <Ionicons name="time" size={18} color="#ea580c" />
+            <Icon name="time" size={18} color="#ea580c" />
             <Text style={styles.openingHoursTitle}>Opening Hours</Text>
             {liveOpenStatus !== null && (
               <View style={[
@@ -784,7 +784,7 @@ export default function ActionButtons({
               <Text style={styles.showAllHoursText}>
                 {showAllHours ? "Show less" : "Show all hours"}
               </Text>
-              <Ionicons name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
+              <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
             </TouchableOpacity>
           )}
         </View>
@@ -806,7 +806,7 @@ export default function ActionButtons({
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
-              <Ionicons
+              <Icon
                 name={isSaved ? "bookmark" : "bookmark-outline"}
                 size={20}
                 color="#ffffff"
@@ -832,7 +832,7 @@ export default function ActionButtons({
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
-              <Ionicons
+              <Icon
                 name={isScheduled ? "checkmark-circle" : "calendar-outline"}
                 size={20}
                 color="#ffffff"
@@ -850,7 +850,7 @@ export default function ActionButtons({
           onPress={handleShare}
           activeOpacity={0.7}
         >
-          <Ionicons name="share-outline" size={20} color="#6b7280" />
+          <Icon name="share-outline" size={20} color="#6b7280" />
         </TouchableOpacity>
       </View>
 
@@ -861,7 +861,7 @@ export default function ActionButtons({
           onPress={handlePoliciesAndReservations}
           activeOpacity={0.8}
         >
-          <Ionicons name="globe-outline" size={18} color="#ffffff" />
+          <Icon name="globe-outline" size={18} color="#ffffff" />
           <Text style={styles.policiesButtonText}>
             Policies & Reservations
           </Text>
@@ -898,7 +898,7 @@ export default function ActionButtons({
               </>
             ) : isVisited ? (
               <>
-                <Ionicons
+                <Icon
                   name="checkmark-circle"
                   size={20}
                   color="#16a34a"
@@ -909,7 +909,7 @@ export default function ActionButtons({
               </>
             ) : (
               <>
-                <Ionicons
+                <Icon
                   name="checkmark-circle-outline"
                   size={20}
                   color="#9ca3af"
@@ -927,7 +927,7 @@ export default function ActionButtons({
         !availabilityCheck.isOpen &&
         !availabilityCheck.isAssumption && (
           <View style={styles.closedMessageContainer}>
-            <Ionicons name="alert-circle" size={16} color="#9a3412" />
+            <Icon name="alert-circle" size={16} color="#9a3412" />
             <Text style={styles.closedMessage}>
               This place is closed at the selected date and time. Tap "Schedule" to choose a different time.
             </Text>

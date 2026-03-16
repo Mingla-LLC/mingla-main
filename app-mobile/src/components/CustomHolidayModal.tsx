@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_HEIGHT } from "../utils/responsive";
@@ -180,7 +180,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                 onPress={onClose}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={s(24)} color={colors.gray[400]} />
+                <Icon name="close" size={s(24)} color={colors.gray[400]} />
               </TouchableOpacity>
             </View>
 

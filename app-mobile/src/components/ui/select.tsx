@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, ScrollView, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 
@@ -75,7 +75,7 @@ function SelectTrigger({
     >
       <View style={styles.selectTriggerContent}>
         {children}
-        <Ionicons 
+        <Icon 
           name="chevron-down" 
           size={16} 
           color="#6b7280" 
@@ -176,7 +176,7 @@ function SelectItem({
       <View style={styles.selectItemContent}>
         <Text style={styles.selectItemText}>{children}</Text>
         {selected && (
-          <Ionicons 
+          <Icon 
             name="checkmark" 
             size={16} 
             color="#059669" 
@@ -214,7 +214,7 @@ function SelectScrollUpButton({ style, onPress, ...props }: SelectScrollUpButton
       activeOpacity={0.7}
       {...props}
     >
-      <Ionicons name="chevron-up" size={16} color="#6b7280" />
+      <Icon name="chevron-up" size={16} color="#6b7280" />
     </TrackedTouchableOpacity>
   );
 }
@@ -232,7 +232,7 @@ function SelectScrollDownButton({ style, onPress, ...props }: SelectScrollDownBu
       activeOpacity={0.7}
       {...props}
     >
-      <Ionicons name="chevron-down" size={16} color="#6b7280" />
+      <Icon name="chevron-down" size={16} color="#6b7280" />
     </TrackedTouchableOpacity>
   );
 }

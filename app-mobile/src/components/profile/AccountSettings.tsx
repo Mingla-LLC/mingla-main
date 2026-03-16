@@ -13,8 +13,7 @@ import {
   AppState,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import Feather from "@expo/vector-icons/Feather";
+import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/edgeFunctionError";
@@ -372,7 +371,10 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]} onPress={() => {}}>
+        <View
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          onStartShouldSetResponder={() => true}
+        >
           {/* Drag handle */}
           <View style={styles.dragHandle} />
 
@@ -385,19 +387,22 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               accessibilityLabel="Close account settings"
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={24} color="#6b7280" />
+              <Icon name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
           <ScrollView
             style={styles.scrollContent}
+            contentContainerStyle={styles.scrollContentContainer}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            bounces
+            overScrollMode="always"
           >
             {/* Card 1: The Basics */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="person-circle" size={20} color="#eb7825" />
+                <Icon name="person-circle" size={20} color="#eb7825" />
                 <Text style={styles.cardTitle}>The Basics</Text>
               </View>
 
@@ -412,7 +417,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                       {birthday ? formatBirthday(birthday) : "When's the party?"}
                     </Text>
                   )}
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
 
@@ -429,7 +434,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                       {gender || "How do you identify?"}
                     </Text>
                   )}
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
 
@@ -446,7 +451,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                       {getLanguageName(preferredLanguage) || "Choose your language"}
                     </Text>
                   )}
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
             </View>
@@ -454,7 +459,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {/* Card 2: Privacy */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="lock-closed" size={20} color="#eb7825" />
+                <Icon name="lock-closed" size={20} color="#eb7825" />
                 <Text style={styles.cardTitle}>Privacy</Text>
               </View>
 
@@ -474,7 +479,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                       {VISIBILITY_LABELS[currentVisibility] || "Friends Only"}
                     </Text>
                   )}
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
 
@@ -511,7 +516,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {/* Card 3: Notification Settings (V2) */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="notifications" size={20} color="#eb7825" />
+                <Icon name="notifications" size={20} color="#eb7825" />
                 <Text style={styles.cardTitle}>Notification Settings</Text>
               </View>
 
@@ -596,7 +601,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {/* Quiet Hours */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="moon" size={20} color="#eb7825" />
+                <Icon name="moon" size={20} color="#eb7825" />
                 <Text style={styles.cardTitle}>Quiet Hours</Text>
               </View>
 
@@ -625,7 +630,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {/* Card: App Information */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="information-circle" size={20} color="#eb7825" />
+                <Icon name="information-circle" size={20} color="#eb7825" />
                 <Text style={styles.cardTitle}>App Information</Text>
               </View>
               <View style={[styles.row, styles.rowLast]}>
@@ -637,7 +642,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {/* Card 4: The Red Zone */}
             <View style={[styles.card, styles.dangerCard]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="trash" size={20} color="#ef4444" />
+                <Icon name="trash" size={20} color="#ef4444" />
                 <Text style={[styles.cardTitle, styles.dangerTitle]}>The Red Zone</Text>
               </View>
 
@@ -650,7 +655,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                 {isDeleting ? (
                   <ActivityIndicator size="small" color="#dc2626" />
                 ) : (
-                  <Ionicons name="trash" size={16} color="#dc2626" />
+                  <Icon name="trash" size={16} color="#dc2626" />
                 )}
                 <Text style={styles.deleteButtonText}>
                   {isDeleting ? "Deleting\u2026" : "Delete My Account"}
@@ -662,9 +667,8 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               </Text>
             </View>
 
-            <View style={{ height: 16 }} />
           </ScrollView>
-        </Pressable>
+        </View>
       </Pressable>
 
       {/* --- Picker modals --- */}
@@ -672,7 +676,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
       {/* Gender picker */}
       <Modal visible={showGenderPicker} transparent animationType="slide" onRequestClose={() => setShowGenderPicker(false)}>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowGenderPicker(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
             <Text style={styles.pickerTitle}>Gender</Text>
             {GENDER_OPTIONS.map((option) => (
@@ -685,18 +689,18 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                 <Text style={[styles.pickerOptionText, gender === option && styles.pickerOptionSelected]}>
                   {option}
                 </Text>
-                {gender === option && <Ionicons name="checkmark" size={20} color="#eb7825" />}
+                {gender === option && <Icon name="checkmark" size={20} color="#eb7825" />}
               </TouchableOpacity>
             ))}
             <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
 
       {/* Language picker */}
       <Modal visible={showLanguagePicker} transparent animationType="slide" onRequestClose={() => setShowLanguagePicker(false)}>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowLanguagePicker(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
             <Text style={styles.pickerTitle}>Language</Text>
             {LANGUAGE_OPTIONS.map((lang) => (
@@ -709,18 +713,18 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                 <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
                   {lang.name}
                 </Text>
-                {preferredLanguage === lang.code && <Ionicons name="checkmark" size={20} color="#eb7825" />}
+                {preferredLanguage === lang.code && <Icon name="checkmark" size={20} color="#eb7825" />}
               </TouchableOpacity>
             ))}
             <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
 
       {/* Birthday picker (simple month/day/year picker) */}
       <Modal visible={showBirthdayPicker} transparent animationType="slide" onRequestClose={() => setShowBirthdayPicker(false)}>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowBirthdayPicker(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
             <Text style={styles.pickerTitle}>Birthday</Text>
             <BirthdayPicker
@@ -729,7 +733,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               onCancel={() => setShowBirthdayPicker(false)}
             />
             <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
 
@@ -741,7 +745,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {deleteStep === "confirm" && (
               <>
                 <View style={styles.deleteIconCircle}>
-                  <Ionicons name="warning" size={48} color="#ef4444" />
+                  <Icon name="warning" size={48} color="#ef4444" />
                 </View>
                 <Text style={styles.deleteModalTitle}>Are you sure?</Text>
                 <Text style={styles.deleteModalBody}>
@@ -768,7 +772,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {deleteStep === "success" && (
               <>
                 <View style={[styles.deleteIconCircle, styles.deleteIconSuccess]}>
-                  <Ionicons name="checkmark-circle" size={48} color="#10b981" />
+                  <Icon name="checkmark-circle" size={48} color="#10b981" />
                 </View>
                 <Text style={styles.deleteModalTitle}>Account Deleted</Text>
                 <Text style={styles.deleteModalBody}>You're always welcome back. We'll leave the light on.</Text>
@@ -778,7 +782,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             {deleteStep === "error" && (
               <>
                 <View style={styles.deleteIconCircle}>
-                  <Ionicons name="close-circle" size={48} color="#ef4444" />
+                  <Icon name="close-circle" size={48} color="#ef4444" />
                 </View>
                 <Text style={styles.deleteModalTitle}>That Didn't Work</Text>
                 <Text style={styles.deleteModalBody}>{deleteError || "Something went wrong. Please try again."}</Text>
@@ -919,7 +923,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: "#f9fafb", borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: "90%", minHeight: "60%",
+    maxHeight: "92%", minHeight: "80%",
   },
   dragHandle: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
@@ -930,7 +934,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16,
   },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
-  scrollContent: { flex: 1, paddingHorizontal: 16 },
+  scrollContent: { flex: 1, paddingHorizontal: 16, overflow: "hidden" },
+  scrollContentContainer: { paddingBottom: 16 },
   // Cards
   card: {
     backgroundColor: "#ffffff", borderRadius: 16,

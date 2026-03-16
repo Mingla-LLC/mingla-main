@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
@@ -66,7 +66,7 @@ export default function FriendSelectionModal({
         {/* Search */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
-            <Ionicons name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
+            <Icon name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
             <TextInput
               placeholder="Search friends..."
               value={searchQuery}
@@ -80,7 +80,7 @@ export default function FriendSelectionModal({
         <ScrollView style={styles.friendsList} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           {filteredFriends.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="people" size={48} color="#d1d5db" />
+              <Icon name="people" size={48} color="#d1d5db" />
               <Text style={styles.emptyStateText}>
                 {searchQuery ? 'No friends found' : 'No friends available'}
               </Text>
@@ -121,7 +121,7 @@ export default function FriendSelectionModal({
                   </View>
 
                   <View style={styles.messageButton}>
-                    <Ionicons name="chatbubble" size={16} color="#eb7825" />
+                    <Icon name="chatbubble" size={16} color="#eb7825" />
                   </View>
                 </TrackedTouchableOpacity>
               ))}

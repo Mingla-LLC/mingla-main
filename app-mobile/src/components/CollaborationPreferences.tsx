@@ -16,7 +16,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -609,7 +609,7 @@ export default function CollaborationPreferences({
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="close" size={24} color="#6b7280" />
+              <Icon name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
           )}
           <Text style={styles.title}>Narrow your search</Text>
@@ -641,8 +641,8 @@ export default function CollaborationPreferences({
                       isSelected && styles.experienceTypeButtonSelected,
                     ]}
                   >
-                    <Ionicons
-                      name={type.icon as any}
+                    <Icon
+                      name={type.icon}
                       size={16}
                       color={isSelected ? "#eb7825" : "#6b7280"}
                     />
@@ -680,8 +680,8 @@ export default function CollaborationPreferences({
                       isSelected && styles.categoryButtonSelected,
                     ]}
                   >
-                    <Ionicons
-                      name={category.icon as any}
+                    <Icon
+                      name={category.icon}
                       size={20}
                       color={isSelected ? "#eb7825" : "#6b7280"}
                     />
@@ -720,7 +720,7 @@ export default function CollaborationPreferences({
                       ]}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name={tier.icon as any} size={20} color={isActive ? tier.color : '#9CA3AF'} />
+                      <Icon name={tier.icon} size={20} color={isActive ? tier.color : '#9CA3AF'} />
                       <Text style={[styles.priceTierLabel, isActive && { color: tier.color }]}>{tier.label}</Text>
                       <Text style={styles.priceTierRange}>{tier.rangeLabel}</Text>
                     </TouchableOpacity>
@@ -773,7 +773,7 @@ export default function CollaborationPreferences({
             {/* Weekend Info Card (only for "This Weekend") */}
             {selectedDateOption === "This Weekend" && (
               <TouchableOpacity style={styles.weekendInfoCard}>
-                <Ionicons
+                <Icon
                   name="calendar"
                   size={24}
                   color="#0369a1"
@@ -794,7 +794,7 @@ export default function CollaborationPreferences({
                 style={styles.dateInputField}
                 onPress={() => setShowCalendar(true)}
               >
-                <Ionicons name="calendar" size={20} color="#eb7825" />
+                <Icon name="calendar" size={20} color="#eb7825" />
                 {selectedDate ? (
                   <Text style={styles.dateInputText}>
                     {formatDateForDisplay(selectedDate)}
@@ -824,8 +824,8 @@ export default function CollaborationPreferences({
                         ]}
                       >
                         <View style={styles.timeSlotContent}>
-                          <Ionicons
-                            name={slot.icon as any}
+                          <Icon
+                            name={slot.icon}
                             size={24}
                             color={isSelected ? "#ffffff" : "#6b7280"}
                             style={styles.timeSlotIcon}
@@ -859,7 +859,7 @@ export default function CollaborationPreferences({
                     style={styles.exactTimeInput}
                     onPress={() => setShowTimePicker(true)}
                   >
-                    <Ionicons
+                    <Icon
                       name="time-outline"
                       size={20}
                       color={exactTime ? "#eb7825" : "#9ca3af"}
@@ -893,8 +893,8 @@ export default function CollaborationPreferences({
                       isSelected && styles.travelModeCardSelected,
                     ]}
                   >
-                    <Ionicons
-                      name={mode.icon as any}
+                    <Icon
+                      name={mode.icon}
                       size={24}
                       color={isSelected ? "#ffffff" : "#6b7280"}
                     />
@@ -967,7 +967,7 @@ export default function CollaborationPreferences({
             </View>
             {showCustomTravelTime && (
               <View style={styles.constraintInputContainer}>
-                <Ionicons
+                <Icon
                   name="time-outline"
                   size={20}
                   color="#6b7280"
@@ -1014,7 +1014,7 @@ export default function CollaborationPreferences({
               {isRequestingLocation ? (
                 <ActivityIndicator size="small" color="#eb7825" />
               ) : (
-                <Ionicons name="send-outline" size={20} color="#eb7825" />
+                <Icon name="send-outline" size={20} color="#eb7825" />
               )}
               <Text style={styles.useLocationButtonText}>
                 {isRequestingLocation
@@ -1035,7 +1035,7 @@ export default function CollaborationPreferences({
                 isInputFocused && styles.locationInputContainerFocused,
               ]}
             >
-              <Ionicons
+              <Icon
                 name="location"
                 size={20}
                 color="#6b7280"
@@ -1087,7 +1087,7 @@ export default function CollaborationPreferences({
                         activeOpacity={0.7}
                         delayPressIn={0}
                       >
-                        <Ionicons
+                        <Icon
                           name="location-outline"
                           size={18}
                           color="#6b7280"
@@ -1154,7 +1154,7 @@ export default function CollaborationPreferences({
                 onPress={() => setShowCalendar(false)}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={24} color="#111827" />
+                <Icon name="close" size={24} color="#111827" />
               </TouchableOpacity>
             </View>
             <ScrollView>

@@ -12,7 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -433,7 +433,7 @@ export default function BoardDiscussion({
             style={styles.backButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="arrow-back" size={16} color={colors.gray[500]} />
+            <Icon name="arrow-back" size={16} color={colors.gray[500]} />
           </TouchableOpacity>
 
           <View style={styles.headerInfo}>
@@ -445,7 +445,7 @@ export default function BoardDiscussion({
           <DropdownMenu>
             <DropdownMenuTrigger>
               <TouchableOpacity style={styles.menuButton}>
-                <Ionicons
+                <Icon
                   name="ellipsis-horizontal"
                   size={16}
                   color={colors.gray[500]}
@@ -456,7 +456,7 @@ export default function BoardDiscussion({
               <DropdownMenuItem
                 onPress={() => setShowMemberManagement(true)}
               >
-                <Ionicons
+                <Icon
                   name="people"
                   size={16}
                   color={colors.gray[500]}
@@ -465,7 +465,7 @@ export default function BoardDiscussion({
                 <Text style={styles.menuItemText}>Manage Members</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={handleToggleNotifications}>
-                <Ionicons
+                <Icon
                   name={boardNotifications ? "notifications-off" : "notifications"}
                   size={16}
                   color={colors.gray[500]}
@@ -479,7 +479,7 @@ export default function BoardDiscussion({
                 onPress={handleExitBoard}
                 variant="destructive"
               >
-                <Ionicons
+                <Icon
                   name="log-out"
                   size={16}
                   color={colors.error[500]}
@@ -554,7 +554,7 @@ export default function BoardDiscussion({
             </View>
           ) : isError ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={48} color={colors.error[500]} />
+              <Icon name="alert-circle" size={48} color={colors.error[500]} />
               <Text style={styles.errorText}>
                 {error?.message || 'Failed to load discussion'}
               </Text>
@@ -618,14 +618,14 @@ export default function BoardDiscussion({
                   <View style={styles.pendingImageRow}>
                     <Image source={{ uri: pendingImage.uri }} style={styles.pendingImagePreview} />
                     <TouchableOpacity onPress={() => setPendingImage(null)}>
-                      <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                      <Icon name="close-circle" size={20} color={colors.gray[500]} />
                     </TouchableOpacity>
                   </View>
                 )}
 
                 <View style={styles.inputRow}>
                   <TouchableOpacity onPress={handlePhotoPicker} style={styles.photoButton}>
-                    <Ionicons name="camera" size={22} color={colors.gray[500]} />
+                    <Icon name="camera" size={22} color={colors.gray[500]} />
                   </TouchableOpacity>
                   <View style={styles.inputWrapper}>
                     <TextInput
@@ -644,7 +644,7 @@ export default function BoardDiscussion({
                     disabled={!canSend}
                     style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
                   >
-                    <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+                    <Icon name="arrow-up" size={18} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               </View>

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 import { Button, buttonVariants } from "./button";
@@ -102,7 +102,7 @@ function PaginationPrevious({ style, onPress, ...props }: PaginationPreviousProp
       style={[styles.paginationPrevious, style]}
       {...props}
     >
-      <Ionicons name="chevron-back" size={16} color="#374151" />
+      <Icon name="chevron-back" size={16} color="#374151" />
       <Text style={styles.paginationPreviousText}>Previous</Text>
     </PaginationLink>
   );
@@ -122,7 +122,7 @@ function PaginationNext({ style, onPress, ...props }: PaginationNextProps) {
       {...props}
     >
       <Text style={styles.paginationNextText}>Next</Text>
-      <Ionicons name="chevron-forward" size={16} color="#374151" />
+      <Icon name="chevron-forward" size={16} color="#374151" />
     </PaginationLink>
   );
 }
@@ -137,7 +137,7 @@ function PaginationEllipsis({ style, ...props }: PaginationEllipsisProps) {
       style={[styles.paginationEllipsis, style]}
       {...props}
     >
-      <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
+      <Icon name="ellipsis-horizontal" size={16} color="#6b7280" />
       <Text style={styles.srOnly}>More pages</Text>
     </View>
   );

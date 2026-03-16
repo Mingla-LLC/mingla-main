@@ -7,7 +7,7 @@ import {
   Alert,
   Share,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { Clipboard } from 'react-native';
 
 interface InviteLinkShareProps {
@@ -72,7 +72,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
           style={[styles.actionButton, styles.copyButton]}
           onPress={handleCopy}
         >
-          <Ionicons
+          <Icon
             name={copied ? 'checkmark' : 'copy-outline'}
             size={20}
             color="white"
@@ -86,7 +86,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
           style={[styles.actionButton, styles.shareButton]}
           onPress={handleShare}
         >
-          <Ionicons name="share-outline" size={20} color="white" />
+          <Icon name="share-outline" size={20} color="white" />
           <Text style={styles.actionButtonText}>Share</Text>
         </TouchableOpacity>
       </View>

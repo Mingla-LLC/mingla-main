@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Text,
   View,
@@ -10,7 +10,7 @@ import {
   Pressable,
   Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "../../store/appStore";
@@ -19,6 +19,7 @@ import {
   useEffectiveTier,
   useSubscription,
   useTrialDaysRemaining,
+  useTrialTotalDays,
   useReferralMonthsRemaining,
 } from "../../hooks/useSubscription";
 import type { SubscriptionTier } from "../../types/subscription";
@@ -27,7 +28,7 @@ import type { SubscriptionTier } from "../../types/subscription";
 
 interface TierConfig {
   name: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
   description: string;
   perks: string[];
 }
@@ -72,12 +73,19 @@ const TIER_ORDER: SubscriptionTier[] = ["free", "pro", "elite"];
 
 const TIER_RANK: Record<SubscriptionTier, number> = { free: 0, pro: 1, elite: 2 };
 
+// --- CTA labels per upgrade path ---
+
+const CTA_LABELS: Partial<Record<SubscriptionTier, string>> = {
+  pro: "Upgrade to Pro",
+  elite: "Go Elite",
+};
+
 // --- Props ---
 
 interface BillingSheetProps {
   visible: boolean;
   onClose: () => void;
-  onUpgrade?: () => void;
+  onUpgrade: () => void;
 }
 
 // --- Component ---
@@ -90,19 +98,19 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
   const effectiveTier = useEffectiveTier(userId);
   const { data: subscription, isLoading, isError, refetch } = useSubscription(userId);
   const trialDays = useTrialDaysRemaining(userId);
+  const trialTotalDays = useTrialTotalDays(userId);
   const referralMonths = useReferralMonthsRemaining(userId);
-  const restoreMutation = useRestorePurchases();
-  const [isRestoring, setIsRestoring] = useState(false);
+  const { mutateAsync: restorePurchases, isPending: isRestoring } = useRestorePurchases();
 
   const handleRestore = async () => {
-    setIsRestoring(true);
     try {
-      await restoreMutation.mutateAsync();
+      await restorePurchases();
       Alert.alert("Purchases restored", "Your subscription status has been updated.");
     } catch {
-      Alert.alert("Restore failed", "We couldn't find any previous purchases. If you believe this is an error, contact support@mingla.app.");
-    } finally {
-      setIsRestoring(false);
+      Alert.alert(
+        "Restore failed",
+        "We couldn't find any previous purchases. If you believe this is an error, contact support@mingla.app.",
+      );
     }
   };
 
@@ -127,7 +135,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
               accessibilityLabel="Close billing"
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={24} color="#6b7280" />
+              <Icon name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
@@ -143,7 +151,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
               </View>
             ) : isError ? (
               <View style={styles.errorCard}>
-                <Ionicons name="cloud-offline-outline" size={32} color="#9ca3af" />
+                <Icon name="cloud-offline-outline" size={32} color="#9ca3af" />
                 <Text style={styles.errorTitle}>Couldn't load your plan</Text>
                 <Text style={styles.errorBody}>Check your connection and try again.</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
@@ -156,6 +164,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
                 <CurrentPlanCard
                   tier={effectiveTier}
                   trialDays={trialDays}
+                  trialTotalDays={trialTotalDays}
                   referralMonths={referralMonths}
                 />
 
@@ -195,7 +204,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
                   )}
                 </TouchableOpacity>
 
-                <View style={{ height: 16 }} />
+                <View style={styles.bottomSpacer} />
               </>
             )}
           </ScrollView>
@@ -210,19 +219,25 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
 interface CurrentPlanCardProps {
   tier: SubscriptionTier;
   trialDays: number;
+  trialTotalDays: number;
   referralMonths: number;
 }
 
-function CurrentPlanCard({ tier, trialDays, referralMonths }: CurrentPlanCardProps) {
+function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralMonths }: CurrentPlanCardProps) {
   const config = TIERS[tier];
   const isOnTrial = trialDays > 0;
   const hasReferralBonus = referralMonths > 0 && !isOnTrial;
+
+  // Progress bar: fraction of trial remaining, derived from actual trial duration
+  const trialProgress = trialTotalDays > 0
+    ? Math.min(1, Math.max(0, trialDays / trialTotalDays))
+    : 0;
 
   return (
     <View style={styles.currentCard}>
       {/* Top row */}
       <View style={styles.currentTopRow}>
-        <Ionicons name={config.icon} size={22} color="#eb7825" />
+        <Icon name={config.icon} size={22} color="#eb7825" />
         <Text style={styles.currentTierName}>{config.name}</Text>
         {isOnTrial && (
           <View style={styles.trialBadge}>
@@ -255,7 +270,7 @@ function CurrentPlanCard({ tier, trialDays, referralMonths }: CurrentPlanCardPro
               end={{ x: 1, y: 0 }}
               style={[
                 styles.trialFill,
-                { width: `${Math.min(100, (trialDays / 7) * 100)}%` },
+                { width: `${Math.round(trialProgress * 100)}%` },
               ]}
             />
           </View>
@@ -265,7 +280,7 @@ function CurrentPlanCard({ tier, trialDays, referralMonths }: CurrentPlanCardPro
       {/* Referral bonus */}
       {hasReferralBonus && (
         <View style={styles.referralRow}>
-          <Ionicons name="gift-outline" size={14} color="#eb7825" />
+          <Icon name="gift-outline" size={14} color="#eb7825" />
           <Text style={styles.referralText}>
             {referralMonths} bonus {referralMonths === 1 ? "month" : "months"} remaining
           </Text>
@@ -282,27 +297,19 @@ interface TierCardProps {
   isCurrent: boolean;
   isUpgrade: boolean;
   isDowngrade: boolean;
-  onUpgrade?: () => void;
+  onUpgrade: () => void;
 }
 
 function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onUpgrade }: TierCardProps) {
   const config = TIERS[tier];
-
-  const ctaText =
-    tier === "elite"
-      ? isCurrent
-        ? ""
-        : "Go Elite"
-      : tier === "pro"
-        ? "Upgrade to Pro"
-        : "";
+  const ctaText = CTA_LABELS[tier] ?? "";
 
   return (
     <View style={[styles.tierCard, isCurrent && styles.tierCardCurrent]}>
       {/* Header */}
       <View style={styles.tierHeaderRow}>
         <View style={styles.tierHeaderLeft}>
-          <Ionicons
+          <Icon
             name={config.icon}
             size={20}
             color={isCurrent ? "#eb7825" : "#9ca3af"}
@@ -320,7 +327,7 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onUpgrade }: TierCa
       <View style={styles.perksList}>
         {config.perks.map((perk, i) => (
           <View key={i} style={styles.perkRow}>
-            <Ionicons
+            <Icon
               name="checkmark-circle"
               size={16}
               color={isCurrent ? "#eb7825" : "#9ca3af"}
@@ -579,5 +586,10 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#6b7280",
     textDecorationLine: "underline",
+  },
+
+  // Bottom spacer
+  bottomSpacer: {
+    height: 16,
   },
 });

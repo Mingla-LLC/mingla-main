@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
@@ -1298,7 +1298,7 @@ const CalendarTab = ({
       return (
         <View style={[styles.calendarCard, styles.lockedCardOverflow]}>
           <View style={styles.lockedCalendarBody}>
-            <Ionicons name="lock-closed" size={24} color="rgba(255,255,255,0.5)" />
+            <Icon name="lock-closed" size={24} color="rgba(255,255,255,0.5)" />
             <View style={styles.lockedCalendarInfo}>
               <Text style={styles.lockedCalendarTitle}>Locked Curated Experience</Text>
               <Text style={styles.lockedCalendarSubtext}>
@@ -1362,17 +1362,17 @@ const CalendarTab = ({
               {/* Event Details: Date, Time, Location with orange icons */}
               <View style={styles.eventDetailsContainer}>
                 <View style={styles.eventDetailRow}>
-                  <Ionicons name="calendar" size={16} color="#eb7825" />
+                  <Icon name="calendar" size={16} color="#eb7825" />
                   <Text style={styles.eventDetailText}>{formattedDate}</Text>
                 </View>
                 {formattedTime ? (
                   <View style={styles.eventDetailRow}>
-                    <Ionicons name="time" size={16} color="#eb7825" />
+                    <Icon name="time" size={16} color="#eb7825" />
                     <Text style={styles.eventDetailText}>{formattedTime}</Text>
                   </View>
                 ) : null}
                 <View style={styles.eventDetailRow}>
-                  <Ionicons name="location" size={16} color="#eb7825" />
+                  <Icon name="location" size={16} color="#eb7825" />
                   <Text style={styles.eventDetailText}>
                     {entry.experience?.address ||
                       entry.address ||
@@ -1384,7 +1384,7 @@ const CalendarTab = ({
               {/* Solo Plan Badge */}
               <View style={styles.statusIndicators}>
                 <View style={[styles.sessionBadge, styles.soloBadge]}>
-                  <Ionicons name="eye" size={12} color="#1e40af" />
+                  <Icon name="eye" size={12} color="#1e40af" />
                   <Text style={[styles.sourceText, styles.soloText]}>
                     {entry.source === "solo"
                       ? "Solo Discovery"
@@ -1401,7 +1401,7 @@ const CalendarTab = ({
           <View style={styles.purchaseDetails}>
             <View style={styles.purchaseCard}>
               <View style={styles.purchaseHeader}>
-                <Ionicons name="bag" size={16} color="#059669" />
+                <Icon name="bag" size={16} color="#059669" />
                 <Text style={styles.purchaseTitle}>Purchase Details</Text>
               </View>
               <View style={styles.purchaseDetailsList}>
@@ -1474,7 +1474,7 @@ const CalendarTab = ({
               }}
               style={styles.proposeDateButton}
             >
-              <Ionicons name="calendar" size={18} color="white" />
+              <Icon name="calendar" size={18} color="white" />
               <Text style={styles.proposeDateButtonText}>Reschedule</Text>
             </TouchableOpacity>
 
@@ -1486,7 +1486,7 @@ const CalendarTab = ({
               }}
               style={styles.shareButton}
             >
-              <Ionicons name="share-social-outline" size={18} color="#374151" />
+              <Icon name="share-social-outline" size={18} color="#374151" />
             </TouchableOpacity>
 
             {/* Delete Button - Small circular */}
@@ -1501,7 +1501,7 @@ const CalendarTab = ({
               {removingEntryId === entry.id ? (
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
-                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                <Icon name="trash-outline" size={18} color="#ef4444" />
               )}
             </TouchableOpacity>
           </View>
@@ -1532,7 +1532,7 @@ const CalendarTab = ({
                         }
                         style={[styles.imageNavigation, styles.leftNav]}
                       >
-                        <Ionicons name="chevron-back" size={16} color="white" />
+                        <Icon name="chevron-back" size={16} color="white" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() =>
@@ -1540,7 +1540,7 @@ const CalendarTab = ({
                         }
                         style={[styles.imageNavigation, styles.rightNav]}
                       >
-                        <Ionicons
+                        <Icon
                           name="chevron-forward"
                           size={16}
                           color="white"
@@ -1602,7 +1602,7 @@ const CalendarTab = ({
               <View style={styles.scheduleDetails}>
                 <Text style={styles.sectionTitle}>Schedule Details</Text>
                 <View style={styles.scheduleRow}>
-                  <Ionicons name="calendar" size={16} color="#eb7825" />
+                  <Icon name="calendar" size={16} color="#eb7825" />
                   <Text style={styles.scheduleText}>
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleDateString(
@@ -1618,7 +1618,7 @@ const CalendarTab = ({
                   </Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Ionicons name="time" size={16} color="#eb7825" />
+                  <Icon name="time" size={16} color="#eb7825" />
                   <Text style={styles.scheduleText}>
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
@@ -1633,7 +1633,7 @@ const CalendarTab = ({
                   </Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Ionicons name="location" size={16} color="#eb7825" />
+                  <Icon name="location" size={16} color="#eb7825" />
                   <Text style={styles.scheduleText}>
                     {entry.experience?.address ||
                       "Location details will be provided"}
@@ -1681,7 +1681,7 @@ const CalendarTab = ({
                   )}
                   {entry.experience.website && (
                     <View style={styles.contactRow}>
-                      <Ionicons name="link" size={16} color="#eb7825" />
+                      <Icon name="link" size={16} color="#eb7825" />
                       <Text style={styles.contactLink}>Visit Website</Text>
                     </View>
                   )}
@@ -1699,7 +1699,7 @@ const CalendarTab = ({
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyStateIconCircle}>
-          <Ionicons
+          <Icon
             name={isActive ? "calendar-outline" : "archive-outline"}
             size={22}
             color="#eb7825"
@@ -1767,7 +1767,7 @@ const CalendarTab = ({
         >
           <View style={styles.filterHeaderRow}>
             <View style={styles.searchInputContainer}>
-              <Ionicons
+              <Icon
                 name="search-outline"
                 size={18}
                 color="#9ca3af"
@@ -1787,8 +1787,8 @@ const CalendarTab = ({
               activeOpacity={0.7}
               onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
             >
-              <Feather name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
-              <Ionicons
+              <Icon name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
+              <Icon
                 name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
                 size={18}
                 color={isFiltersExpanded ? "white" : "#9ca3af"}
@@ -1903,7 +1903,7 @@ const CalendarTab = ({
               ({filteredActiveEntries.length})
             </Text>
           </View>
-          <Ionicons
+          <Icon
             name={
               expandedAccordionItems.includes("active")
                 ? "chevron-down"
@@ -1956,7 +1956,7 @@ const CalendarTab = ({
               ({filteredArchiveEntries.length})
             </Text>
           </View>
-          <Ionicons
+          <Icon
             name={
               expandedAccordionItems.includes("archive")
                 ? "chevron-down"

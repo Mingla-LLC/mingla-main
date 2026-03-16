@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import Svg, { Circle } from 'react-native-svg';
 
 // --- Types ---
@@ -125,7 +125,7 @@ const ProgressRing: React.FC<{ progress: number; size?: number; strokeWidth?: nu
 // --- Stat column for top row ---
 
 interface StatColumnProps {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
   iconColor: string;
   iconBg: string;
   count: number;
@@ -143,7 +143,7 @@ const StatColumn: React.FC<StatColumnProps> = ({
   const content = (
     <View style={styles.statItem}>
       <View style={[styles.statIconCircle, { backgroundColor: iconBg }]}>
-        <Ionicons name={icon} size={14} color={iconColor} />
+        <Icon name={icon} size={14} color={iconColor} />
       </View>
       <Text style={[
         styles.statNumber,
@@ -243,7 +243,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
       <View style={styles.bottomRow}>
         {/* Places Visited */}
         <View style={styles.gamifiedCard}>
-          <Ionicons name="location" size={18} color="#eb7825" />
+          <Icon name="location" size={18} color="#eb7825" />
           <Text style={[styles.gamifiedNumber, placesVisited === 0 && styles.gamifiedNumberZero]}>
             {visitedDisplay}
           </Text>
@@ -256,7 +256,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
             {streakDays > 0 && (
               <Animated.View style={[styles.streakGlow, { opacity: glowOpacity }]} />
             )}
-            <Ionicons name="flame" size={18} color="#f97316" />
+            <Icon name="flame" size={18} color="#f97316" />
           </View>
           <View style={styles.streakRow}>
             <Text style={[styles.gamifiedNumber, streakDays === 0 && styles.gamifiedNumberZero]}>
@@ -269,7 +269,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
 
         {/* Level */}
         <View style={styles.gamifiedCard}>
-          <Ionicons name="trophy" size={18} color="#f59e0b" />
+          <Icon name="trophy" size={18} color="#f59e0b" />
           <View style={styles.levelRingWrap}>
             <ProgressRing progress={levelProgress} />
             <Text style={styles.levelNumber}>{level}</Text>
@@ -281,7 +281,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
       {/* Tier badge */}
       <View style={styles.tierRow}>
         <View style={styles.tierBadge}>
-          <Ionicons name="shield-checkmark" size={12} color="#f59e0b" />
+          <Icon name="shield-checkmark" size={12} color="#f59e0b" />
           <Text style={styles.tierText}>{tierName}</Text>
         </View>
       </View>

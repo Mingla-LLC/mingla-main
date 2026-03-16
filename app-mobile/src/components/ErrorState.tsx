@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, radius, colors, typography, fontWeights, commonStyles } from '../constants/designSystem';
 
 interface ErrorStateProps {
@@ -9,7 +9,7 @@ interface ErrorStateProps {
   message?: string;
   onRetry?: () => void;
   retryText?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: string;
   type?: 'error' | 'warning' | 'info';
 }
 
@@ -51,7 +51,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
     <View style={[styles.container, { backgroundColor: getBackgroundColor() }]}>
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Ionicons
+          <Icon
             name={icon}
             size={48}
             color={getIconColor()}
@@ -67,7 +67,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
             onPress={onRetry}
             activeOpacity={0.8}
           >
-            <Ionicons
+            <Icon
               name="refresh"
               size={20}
               color={getIconColor()}
@@ -121,7 +121,7 @@ export const AuthErrorState: React.FC<{ onRetry?: () => void }> = ({ onRetry }) 
 interface EmptyStateProps {
   title: string;
   message: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: string;
   actionText?: string;
   onAction?: () => void;
 }
@@ -137,7 +137,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
     <View style={styles.emptyContainer}>
       <View style={styles.emptyContent}>
         <View style={styles.emptyIconContainer}>
-          <Ionicons
+          <Icon
             name={icon}
             size={64}
             color={colors.gray[400]}

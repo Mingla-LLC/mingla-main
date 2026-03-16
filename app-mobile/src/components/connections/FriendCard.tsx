@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { Friend } from '../../data/mockConnections';
 
 interface FriendCardProps {
@@ -69,7 +69,7 @@ export default function FriendCard({
                 <Text style={styles.friendName}>{friend.name}</Text>
                 {friend.isMuted && (
                   <View style={styles.mutedBadge}>
-                    <Ionicons name="volume-mute" size={12} color="#6b7280" />
+                    <Icon name="volume-mute" size={12} color="#6b7280" />
                   </View>
                 )}
               </View>
@@ -92,7 +92,7 @@ export default function FriendCard({
                 style={styles.messageButton}
               >
                 <View style={styles.iconContainer}>
-                  <Ionicons name="chatbubble" size={16} color="#6b7280" />
+                  <Icon name="chatbubble" size={16} color="#6b7280" />
                 </View>
               </TrackedTouchableOpacity>
               
@@ -106,7 +106,7 @@ export default function FriendCard({
                   style={styles.dropdownButton}
                 >
                   <View style={styles.iconContainer}>
-                    <Ionicons name="ellipsis-horizontal" size={16} color="#9ca3af" />
+                    <Icon name="ellipsis-horizontal" size={16} color="#9ca3af" />
                   </View>
                 </TrackedTouchableOpacity>
                 
@@ -118,7 +118,7 @@ export default function FriendCard({
                         style={styles.dropdownItem}
                       >
                         <View style={styles.dropdownItemContent}>
-                          <Ionicons name="add" size={16} color="#eb7825" />
+                          <Icon name="add" size={16} color="#eb7825" />
                           <Text style={styles.dropdownItemText}>Send Collaboration Invite</Text>
                         </View>
                       </TrackedTouchableOpacity>
@@ -127,7 +127,7 @@ export default function FriendCard({
                         style={styles.dropdownItem}
                       >
                         <View style={styles.dropdownItemContent}>
-                          <Ionicons name="people" size={16} color="#2563eb" />
+                          <Icon name="people" size={16} color="#2563eb" />
                           <Text style={styles.dropdownItemText}>Add to Board</Text>
                         </View>
                       </TrackedTouchableOpacity>
@@ -136,7 +136,7 @@ export default function FriendCard({
                         style={styles.dropdownItem}
                       >
                         <View style={styles.dropdownItemContent}>
-                          <Ionicons name="bookmark" size={16} color="#9333ea" />
+                          <Icon name="bookmark" size={16} color="#9333ea" />
                           <Text style={styles.dropdownItemText}>Share Saved Card</Text>
                         </View>
                       </TrackedTouchableOpacity>
@@ -150,7 +150,7 @@ export default function FriendCard({
                           {isMuteLoading ? (
                             <ActivityIndicator size={16} color="#6b7280" />
                           ) : (
-                            <Ionicons 
+                            <Icon 
                               name={friend.isMuted ? "volume-high" : "volume-mute"} 
                               size={16} 
                               color="#6b7280" 
@@ -172,7 +172,7 @@ export default function FriendCard({
                         style={styles.dropdownItem}
                       >
                         <View style={styles.dropdownItemContent}>
-                          <Ionicons name="shield" size={16} color="#ef4444" />
+                          <Icon name="shield" size={16} color="#ef4444" />
                           <Text style={[styles.dropdownItemText, styles.dangerText]}>Block User</Text>
                         </View>
                       </TrackedTouchableOpacity>
@@ -181,7 +181,7 @@ export default function FriendCard({
                         style={styles.dropdownItem}
                       >
                         <View style={styles.dropdownItemContent}>
-                          <Ionicons name="flag" size={16} color="#ef4444" />
+                          <Icon name="flag" size={16} color="#ef4444" />
                           <Text style={[styles.dropdownItemText, styles.dangerText]}>Report User</Text>
                         </View>
                       </TrackedTouchableOpacity>

@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useCreateBoard, useAddCollaboratorByEmail } from '../hooks/useBoardQueries';
 import { useAppStore } from '../store/appStore';
 import { useMobileFeatures } from './MobileFeaturesProvider';
@@ -161,14 +161,14 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
             <View style={styles.headerSidePlaceholder} />
             <Text style={styles.title}>Create New Board</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color="#6B7280" />
+              <Icon name="close" size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
           {/* Session Context */}
           {currentSession && (
             <View style={styles.sessionContext}>
-              <Ionicons name="people" size={16} color="#007AFF" />
+              <Icon name="people" size={16} color="#007AFF" />
               <Text style={styles.sessionContextText}>{getSessionContext()}</Text>
             </View>
           )}
@@ -237,7 +237,7 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
                 onPress={handleAddCollaborator}
                 disabled={!newCollaborator.trim()}
               >
-                <Ionicons 
+                <Icon 
                   name="add" 
                   size={20} 
                   color={newCollaborator.trim() ? 'white' : '#ccc'} 
@@ -251,14 +251,14 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
                 {collaborators.map((email, index) => (
                   <View key={index} style={styles.collaboratorItem}>
                     <View style={styles.collaboratorInfo}>
-                      <Ionicons name="person" size={16} color="#666" />
+                      <Icon name="person" size={16} color="#666" />
                       <Text style={styles.collaboratorEmail}>{email}</Text>
                     </View>
                     <TouchableOpacity
                       style={styles.removeCollaboratorButton}
                       onPress={() => handleRemoveCollaborator(email)}
                     >
-                      <Ionicons name="close" size={16} color="#FF3B30" />
+                      <Icon name="close" size={16} color="#FF3B30" />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -271,7 +271,7 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
             <Text style={styles.label}>Preview</Text>
             <View style={styles.boardPreview}>
               <View style={styles.previewHeader}>
-                <Ionicons name="grid" size={20} color="#007AFF" />
+                <Icon name="grid" size={20} color="#007AFF" />
                 <Text style={styles.previewName}>{name || 'Board Name'}</Text>
               </View>
               {description && (
@@ -279,18 +279,18 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
               )}
               <View style={styles.previewStats}>
                 <View style={styles.previewStat}>
-                  <Ionicons name="person" size={14} color="#666" />
+                  <Icon name="person" size={14} color="#666" />
                   <Text style={styles.previewStatText}>
                     {collaborators.length + 1} member{collaborators.length + 1 !== 1 ? 's' : ''}
                   </Text>
                 </View>
                 <View style={styles.previewStat}>
-                  <Ionicons name="compass" size={14} color="#666" />
+                  <Icon name="compass" size={14} color="#666" />
                   <Text style={styles.previewStatText}>0 experiences</Text>
                 </View>
                 {isPublic && (
                   <View style={styles.previewStat}>
-                    <Ionicons name="globe" size={14} color="#34C759" />
+                    <Icon name="globe" size={14} color="#34C759" />
                     <Text style={styles.previewStatText}>Public</Text>
                   </View>
                 )}
@@ -318,7 +318,7 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
               <ActivityIndicator size="small" color="white" />
             ) : (
               <>
-                <Ionicons name="add" size={16} color="white" />
+                <Icon name="add" size={16} color="white" />
                 <Text style={styles.createButtonText}>Create Board</Text>
               </>
             )}

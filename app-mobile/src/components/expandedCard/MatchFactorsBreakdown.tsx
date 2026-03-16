@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface MatchFactorsBreakdownProps {
   matchFactors: {
@@ -91,7 +91,7 @@ export default function MatchFactorsBreakdown({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="analytics" size={20} color="#eb7825" />
+        <Icon name="analytics" size={20} color="#eb7825" />
         <Text style={styles.title}>Match Breakdown</Text>
       </View>
 
@@ -104,8 +104,8 @@ export default function MatchFactorsBreakdown({
             <View key={index} style={styles.factorRow}>
               <View style={styles.factorHeader}>
                 <View style={styles.factorInfo}>
-                  <Ionicons
-                    name={factor.icon as any}
+                  <Icon
+                    name={factor.icon}
                     size={18}
                     color="#6b7280"
                   />

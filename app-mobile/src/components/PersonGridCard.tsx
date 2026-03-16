@@ -2,8 +2,7 @@
 
 import React from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors, shadows } from "../constants/designSystem";
 import { getCategoryIcon } from "../utils/categoryUtils";
@@ -53,16 +52,16 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
           />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Ionicons
-              name={categoryIconName as keyof typeof Ionicons.glyphMap}
+            <Icon
+              name={categoryIconName}
               size={s(28)}
               color="rgba(255,255,255,0.6)"
             />
           </View>
         )}
         <View style={styles.categoryBadge}>
-          <Ionicons
-            name={categoryIconName as keyof typeof Ionicons.glyphMap}
+          <Icon
+            name={categoryIconName}
             size={s(16)}
             color="#eb7825"
           />
@@ -81,7 +80,7 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
             {formattedPrice}
           </Text>
           <View style={styles.arrowButton}>
-            <Feather name="chevron-right" size={s(14)} color="#FFFFFF" />
+            <Icon name="chevron-right" size={s(14)} color="#FFFFFF" />
           </View>
         </View>
       </View>

@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 // Dynamic import to handle cases where the library might not be available
 let QRCode: any = null;
@@ -24,7 +24,7 @@ interface QRCodeDisplayProps {
 const FallbackQRCode: React.FC<{ data: string; size: number }> = ({ data, size }) => {
   return (
     <View style={[styles.fallbackContainer, { width: size, height: size }]}>
-      <Ionicons name="qr-code-outline" size={size * 0.4} color="#007AFF" />
+      <Icon name="qr-code-outline" size={size * 0.4} color="#007AFF" />
       <Text style={styles.fallbackText}>QR Code</Text>
       <Text style={styles.fallbackData} numberOfLines={2} ellipsizeMode="middle">
         {data}
@@ -44,7 +44,7 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
       <View style={styles.container}>
         <View style={[styles.qrCodeContainer, { width: size + 40, height: size + 40 }]}>
           <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
+            <Icon name="alert-circle-outline" size={48} color="#FF3B30" />
             <Text style={styles.errorText}>No Data</Text>
             <Text style={styles.errorSubtext}>Cannot generate QR code without data</Text>
           </View>

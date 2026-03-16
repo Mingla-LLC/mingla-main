@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
 import { ActivePreferences } from '../types';
@@ -11,7 +11,7 @@ interface PresetConfig {
   id: string;
   name: string;
   description: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
   preferences: Partial<ActivePreferences>;
   color: string;
 }
@@ -165,7 +165,7 @@ export const PreferencePresets: React.FC<PreferencePresetsProps> = ({
               activeOpacity={0.8}
             >
               <View style={[styles.presetIcon, { backgroundColor: preset.color }]}>
-                <Ionicons
+                <Icon
                   name={preset.icon}
                   size={24}
                   color={colors.text.inverse}
@@ -177,7 +177,7 @@ export const PreferencePresets: React.FC<PreferencePresetsProps> = ({
               
               {isSelected && (
                 <View style={styles.selectedIndicator}>
-                  <Ionicons
+                  <Icon
                     name="checkmark-circle"
                     size={20}
                     color={preset.color}

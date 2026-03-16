@@ -49,7 +49,7 @@ export interface InAppNotification {
   timestamp: string;       // ISO string
   timeAgo: string;         // Human-readable (computed on read)
   isRead: boolean;
-  icon: string;            // Ionicons name
+  icon: string;            // Icon component name
   iconColor: string;       // Hex color for the icon
   navigation: NavigationTarget;
   data?: Record<string, any>; // Extra context (card name, session name, etc.)

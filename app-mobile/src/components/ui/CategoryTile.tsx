@@ -6,7 +6,7 @@ import {
   Pressable,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 import * as Haptics from 'expo-haptics';
 import {
   colors,
@@ -86,8 +86,8 @@ export const CategoryTile: React.FC<CategoryTileProps> = ({
           { transform: [{ scale: scaleAnim }] },
         ]}
       >
-        <Ionicons
-          name={icon as any}
+        <Icon
+          name={icon}
           size={28}
           color={selected ? colors.text.inverse : colors.gray[600]}
         />

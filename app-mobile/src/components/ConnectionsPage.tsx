@@ -17,7 +17,7 @@ import {
   RefreshControl,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage } from "../services/messagingService";
@@ -1241,14 +1241,14 @@ export default function ConnectionsPageRefactored({
                 style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
+                <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleActionPress("friends")}
                 style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
+                <Icon name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
                 {incomingRequests.length > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
@@ -1299,7 +1299,7 @@ export default function ConnectionsPageRefactored({
                   {activePanel === "add" ? "Add Friend" : "Friends"}
                 </Text>
                 <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
-                  <Ionicons name="close" size={24} color="#6b7280" />
+                  <Icon name="close" size={24} color="#6b7280" />
                 </TouchableOpacity>
               </View>
 
@@ -1495,7 +1495,7 @@ export default function ConnectionsPageRefactored({
                 style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
+                <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1503,7 +1503,7 @@ export default function ConnectionsPageRefactored({
                 style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
+                <Icon name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
                 {incomingRequests.length > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
@@ -1518,7 +1518,7 @@ export default function ConnectionsPageRefactored({
                 style={[styles.headerIconBtn, activePanel === "blocked" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="ban-outline" size={18} color={activePanel === "blocked" ? "#ffffff" : "#eb7825"} />
+                <Icon name="ban-outline" size={18} color={activePanel === "blocked" ? "#ffffff" : "#eb7825"} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1526,7 +1526,7 @@ export default function ConnectionsPageRefactored({
                 style={styles.headerIconBtn}
                 activeOpacity={0.7}
               >
-                <Ionicons name="link-outline" size={18} color="#eb7825" />
+                <Icon name="link-outline" size={18} color="#eb7825" />
               </TouchableOpacity>
 
               <View style={styles.headerDivider} />
@@ -1536,14 +1536,14 @@ export default function ConnectionsPageRefactored({
                 style={styles.composeBtn}
                 activeOpacity={0.7}
               >
-                <Ionicons name="create-outline" size={18} color="#ffffff" />
+                <Icon name="create-outline" size={18} color="#ffffff" />
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Search bar */}
           <View style={styles.searchContainer}>
-            <Ionicons
+            <Icon
               name="search"
               size={16}
               color="#9ca3af"
@@ -1566,7 +1566,7 @@ export default function ConnectionsPageRefactored({
             </View>
           ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={56} color="#d1d5db" />
+              <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
               <Text style={styles.emptyTitle}>Your chats live here</Text>
               <Text style={styles.emptySubtitle}>Tap the compose button to start a conversation</Text>
               <TouchableOpacity
@@ -1579,7 +1579,7 @@ export default function ConnectionsPageRefactored({
             </View>
           ) : filteredConversations.length === 0 && searchQuery.trim() ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="search" size={48} color="#d1d5db" />
+              <Icon name="search" size={48} color="#d1d5db" />
               <Text style={styles.emptyTitle}>No results</Text>
             </View>
           ) : (
@@ -1645,7 +1645,7 @@ export default function ConnectionsPageRefactored({
                   : "Blocked Users"}
               </Text>
               <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
-                <Ionicons name="close" size={24} color="#6b7280" />
+                <Icon name="close" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
 

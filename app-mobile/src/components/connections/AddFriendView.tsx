@@ -10,7 +10,7 @@ import {
   Share,
   FlatList,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 import {
@@ -358,7 +358,7 @@ export function AddFriendView({
     return (
       <View style={styles.sentRow}>
         <View style={styles.inviteAvatar}>
-          <Ionicons name="call-outline" size={16} color="#ffffff" />
+          <Icon name="call-outline" size={16} color="#ffffff" />
         </View>
         <View style={styles.sentInfo}>
           <Text style={styles.sentName} numberOfLines={1}>
@@ -433,7 +433,7 @@ export function AddFriendView({
               <Text style={styles.countryPickerDial}>
                 {selectedCountry.dialCode}
               </Text>
-              <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+              <Icon name="chevron-down" size={14} color="#9ca3af" />
             </TouchableOpacity>
 
             <View style={styles.phoneDivider} />
@@ -472,7 +472,7 @@ export function AddFriendView({
             <View style={styles.lookupResult}>
               {phoneLookupResult.found ? (
                 <View style={styles.lookupRow}>
-                  <Ionicons
+                  <Icon
                     name="checkmark-circle"
                     size={s(14)}
                     color="#22c55e"
@@ -486,7 +486,7 @@ export function AddFriendView({
                 </View>
               ) : (
                 <View style={styles.lookupRow}>
-                  <Ionicons
+                  <Icon
                     name="person-add-outline"
                     size={s(14)}
                     color="#6b7280"
@@ -502,7 +502,7 @@ export function AddFriendView({
           {/* Status */}
           {actionStatus === "sent" && (
             <View style={styles.statusRow}>
-              <Ionicons
+              <Icon
                 name="checkmark-circle"
                 size={s(16)}
                 color="#22c55e"
@@ -514,7 +514,7 @@ export function AddFriendView({
           )}
           {actionStatus === "error" && (
             <View style={styles.statusRow}>
-              <Ionicons name="alert-circle" size={s(16)} color="#ef4444" />
+              <Icon name="alert-circle" size={s(16)} color="#ef4444" />
               <Text style={styles.statusError}>{actionError}</Text>
             </View>
           )}
@@ -533,7 +533,7 @@ export function AddFriendView({
               <ActivityIndicator size="small" color="#ffffff" />
             ) : (
               <>
-                <Ionicons
+                <Icon
                   name={
                     phoneLookupResult?.found
                       ? "person-add"
@@ -561,7 +561,7 @@ export function AddFriendView({
             </View>
           ) : sentItems.length === 0 ? (
             <View style={styles.sentEmptyState}>
-              <Ionicons
+              <Icon
                 name="paper-plane-outline"
                 size={32}
                 color="#d1d5db"

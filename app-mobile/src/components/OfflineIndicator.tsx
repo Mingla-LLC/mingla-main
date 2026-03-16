@@ -12,7 +12,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { offlineService, SyncStatus } from '../services/offlineService';
 import { spacing, colors, typography, radius, shadows } from '../constants/designSystem';
 
@@ -139,8 +139,8 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
         disabled={!showDetails}
       >
         <View style={styles.statusContent}>
-          <Ionicons
-            name={getStatusIcon() as any}
+          <Icon
+            name={getStatusIcon()}
             size={16}
             color="white"
           />
@@ -148,7 +148,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
           
           {syncStatus.syncInProgress && (
             <View style={styles.syncSpinner}>
-              <Ionicons name="refresh" size={12} color="white" />
+              <Icon name="refresh" size={12} color="white" />
             </View>
           )}
         </View>
@@ -159,7 +159,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
             onPress={handleSyncPress}
             disabled={syncStatus.syncInProgress || !syncStatus.isOnline}
           >
-            <Ionicons
+            <Icon
               name="sync"
               size={16}
               color={syncStatus.syncInProgress || !syncStatus.isOnline ? 'rgba(255,255,255,0.5)' : 'white'}
@@ -171,7 +171,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
       {isExpanded && showDetails && (
         <View style={styles.detailsContainer}>
           <View style={styles.detailItem}>
-            <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+            <Icon name="time-outline" size={16} color={colors.textSecondary} />
             <Text style={styles.detailText}>
               Last sync: {formatLastSyncTime(syncStatus.lastSyncTime)}
             </Text>
@@ -179,7 +179,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
           
           {syncStatus.pendingSyncs > 0 && (
             <View style={styles.detailItem}>
-              <Ionicons name="cloud-upload-outline" size={16} color={colors.warning} />
+              <Icon name="cloud-upload-outline" size={16} color={colors.warning} />
               <Text style={styles.detailText}>
                 {syncStatus.pendingSyncs} actions pending sync
               </Text>
@@ -187,7 +187,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
           )}
           
           <View style={styles.detailItem}>
-            <Ionicons name="wifi-outline" size={16} color={syncStatus.isOnline ? colors.success : colors.error} />
+            <Icon name="wifi-outline" size={16} color={syncStatus.isOnline ? colors.success : colors.error} />
             <Text style={styles.detailText}>
               {syncStatus.isOnline ? 'Connected' : 'Disconnected'}
             </Text>

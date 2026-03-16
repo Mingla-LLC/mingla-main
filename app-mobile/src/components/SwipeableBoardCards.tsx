@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Text, View, StyleSheet, ScrollView, Image, PanResponder, Animated } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { parseAndFormatDistance } from './utils/formatters';
 
@@ -9,7 +9,7 @@ interface BoardCard {
   id: string;
   title: string;
   category: string;
-  categoryIcon: string; // Changed to string for @expo/vector-icons compatibility
+  categoryIcon: string; // Icon name string
   image: string;
   images?: string[];
   rating: number;
@@ -71,7 +71,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
-          <Ionicons name="eye" size={32} color="#9ca3af" />
+          <Icon name="eye" size={32} color="#9ca3af" />
         </View>
         <Text style={styles.emptyText}>No cards in this session yet</Text>
       </View>
@@ -164,7 +164,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                 currentIndex === 0 ? styles.navButtonDisabled : styles.navButtonEnabled
               ]}
             >
-              <Ionicons name="chevron-back" size={16} color={currentIndex === 0 ? "#9ca3af" : "#6b7280"} />
+              <Icon name="chevron-back" size={16} color={currentIndex === 0 ? "#9ca3af" : "#6b7280"} />
             </TrackedTouchableOpacity>
             <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
               onPress={() => navigateCard('next')}
@@ -174,7 +174,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                 currentIndex === cards.length - 1 ? styles.navButtonDisabled : styles.navButtonEnabled
               ]}
             >
-              <Ionicons name="chevron-forward" size={16} color={currentIndex === cards.length - 1 ? "#9ca3af" : "#6b7280"} />
+              <Icon name="chevron-forward" size={16} color={currentIndex === cards.length - 1 ? "#9ca3af" : "#6b7280"} />
             </TrackedTouchableOpacity>
           </View>
         </View>
@@ -238,7 +238,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             <View style={styles.overlayLeft}>
                               <Text style={styles.cardTitle}>{card.title}</Text>
                               <View style={styles.categoryRow}>
-                                <Ionicons name={card.categoryIcon as any} size={16} color="white" />
+                                <Icon name={card.categoryIcon} size={16} color="white" />
                                 <Text style={styles.categoryText}>{card.category}</Text>
                               </View>
                             </View>
@@ -247,7 +247,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               onPress={() => toggleExpanded(card.id)}
                               style={styles.expandButton}
                             >
-                              <Ionicons name="eye" size={16} color="white" />
+                              <Icon name="eye" size={16} color="white" />
                             </TrackedTouchableOpacity>
                           </View>
                         </View>
@@ -258,12 +258,12 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         {/* Quick stats row */}
                         <View style={styles.statsRow}>
                           <View style={styles.statItem}>
-                            <Ionicons name="star" size={16} color="#eb7825" />
+                            <Icon name="star" size={16} color="#eb7825" />
                             <Text style={styles.statText}>{card.rating}</Text>
                             <Text style={styles.statSubtext}>({card.reviewCount || '100+'})</Text>
                           </View>
                           <View style={styles.statItem}>
-                            <Ionicons name="location" size={16} color="#eb7825" />
+                            <Icon name="location" size={16} color="#eb7825" />
                             <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || 'Nearby'}</Text>
                           </View>
                           <View style={styles.statItem}>
@@ -285,7 +285,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   card.votes.userVote === 'yes' ? styles.voteButtonActive : styles.voteButtonInactive
                                 ]}
                               >
-                                <Ionicons name="thumbs-up" size={16} color={card.votes.userVote === 'yes' ? 'white' : '#16a34a'} />
+                                <Icon name="thumbs-up" size={16} color={card.votes.userVote === 'yes' ? 'white' : '#16a34a'} />
                                 <Text style={[
                                   styles.voteButtonText,
                                   card.votes.userVote === 'yes' ? styles.voteButtonTextActive : styles.voteButtonTextInactive
@@ -298,7 +298,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   card.votes.userVote === 'no' ? styles.voteButtonActive : styles.voteButtonInactive
                                 ]}
                               >
-                                <Ionicons name="thumbs-down" size={16} color={card.votes.userVote === 'no' ? 'white' : '#dc2626'} />
+                                <Icon name="thumbs-down" size={16} color={card.votes.userVote === 'no' ? 'white' : '#dc2626'} />
                                 <Text style={[
                                   styles.voteButtonText,
                                   card.votes.userVote === 'no' ? styles.voteButtonTextActive : styles.voteButtonTextInactive
@@ -324,7 +324,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         ) : (
                           <View style={styles.lockedSection}>
                             <View style={styles.lockedContent}>
-                              <Ionicons name="checkmark" size={16} color="#16a34a" />
+                              <Icon name="checkmark" size={16} color="#16a34a" />
                               <Text style={styles.lockedText}>Added to Calendar</Text>
                             </View>
                             <Text style={styles.lockedSubtext}>Locked {card.lockedAt}</Text>
@@ -345,13 +345,13 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             onPress={() => toggleExpanded(card.id)}
                             style={styles.closeButton}
                           >
-                            <Ionicons name="close" size={16} color="#6b7280" />
+                            <Icon name="close" size={16} color="#6b7280" />
                           </TrackedTouchableOpacity>
                           
                           <View style={styles.expandedHeaderCenter}>
                             {card.isLocked && (
                               <View style={[styles.expandedStatusBadge, styles.lockedBadge]}>
-                                <Ionicons name="lock-closed" size={16} color="white" />
+                                <Icon name="lock-closed" size={16} color="white" />
                                 <Text style={styles.expandedStatusText}>Locked In</Text>
                               </View>
                             )}
@@ -376,7 +376,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             <View style={styles.expandedTitleSection}>
                               <Text style={styles.expandedTitle}>{card.title}</Text>
                               <View style={styles.expandedCategory}>
-                                <Ionicons name={card.categoryIcon as any} size={16} color="#eb7825" />
+                                <Icon name={card.categoryIcon} size={16} color="#eb7825" />
                                 <Text style={styles.expandedCategoryText}>{card.category}</Text>
                               </View>
                               <Text style={styles.expandedDescription}>{card.fullDescription || card.description}</Text>
@@ -386,7 +386,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             {card.matchFactors && (
                               <View style={styles.matchBreakdown}>
                                 <Text style={styles.matchBreakdownTitle}>
-                                  <Ionicons name="sparkles" size={16} color="#eb7825" />
+                                  <Icon name="sparkles" size={16} color="#eb7825" />
                                   Why It's Perfect
                                 </Text>
                                 <View style={styles.matchFactors}>
@@ -411,14 +411,14 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             <View style={styles.statsGrid}>
                               <View style={styles.statCard}>
                                 <View style={styles.statCardHeader}>
-                                  <Ionicons name="star" size={16} color="#eb7825" />
+                                  <Icon name="star" size={16} color="#eb7825" />
                                   <Text style={styles.statCardValue}>{card.rating}</Text>
                                 </View>
                                 <Text style={styles.statCardSubtext}>{card.reviewCount || '100+'} reviews</Text>
                               </View>
                               <View style={styles.statCard}>
                                 <View style={styles.statCardHeader}>
-                                  <Ionicons name="navigate" size={16} color="#eb7825" />
+                                  <Icon name="navigate" size={16} color="#eb7825" />
                                   <Text style={styles.statCardValue}>{card.travelTime}</Text>
                                 </View>
                                 <Text style={styles.statCardSubtext}>{card.priceRange}</Text>
@@ -428,7 +428,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             {/* Location */}
                             {card.address && (
                               <View style={styles.locationCard}>
-                                <Ionicons name="location" size={16} color="#eb7825" />
+                                <Icon name="location" size={16} color="#eb7825" />
                                 <Text style={styles.locationText}>{card.address}</Text>
                               </View>
                             )}
@@ -453,14 +453,14 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               <View style={styles.votingStats}>
                                 <View style={styles.votingStat}>
                                   <View style={styles.votingStatIcon}>
-                                    <Ionicons name="thumbs-up" size={16} color="#16a34a" />
+                                    <Icon name="thumbs-up" size={16} color="#16a34a" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.votes.yes}</Text>
                                   <Text style={styles.votingStatLabel}>Yes</Text>
                                 </View>
                                 <View style={styles.votingStat}>
                                   <View style={styles.votingStatIcon}>
-                                    <Ionicons name="thumbs-down" size={16} color="#dc2626" />
+                                    <Icon name="thumbs-down" size={16} color="#dc2626" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.votes.no}</Text>
                                   <Text style={styles.votingStatLabel}>No</Text>
@@ -471,7 +471,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   activeOpacity={0.7}
                                 >
                                   <View style={styles.votingStatIcon}>
-                                    <Ionicons name="chatbubble" size={16} color="#2563eb" />
+                                    <Icon name="chatbubble" size={16} color="#2563eb" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.messages}</Text>
                                   <Text style={styles.votingStatLabel}>Messages</Text>
@@ -496,7 +496,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                     card.votes.userVote === 'yes' ? styles.expandedVoteButtonActive : styles.expandedVoteButtonInactive
                                   ]}
                                 >
-                                  <Ionicons name="thumbs-up" size={16} color={card.votes.userVote === 'yes' ? 'white' : '#16a34a'} />
+                                  <Icon name="thumbs-up" size={16} color={card.votes.userVote === 'yes' ? 'white' : '#16a34a'} />
                                   <Text style={[
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'yes' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
@@ -509,7 +509,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                     card.votes.userVote === 'no' ? styles.expandedVoteButtonActive : styles.expandedVoteButtonInactive
                                   ]}
                                 >
-                                  <Ionicons name="thumbs-down" size={16} color={card.votes.userVote === 'no' ? 'white' : '#dc2626'} />
+                                  <Icon name="thumbs-down" size={16} color={card.votes.userVote === 'no' ? 'white' : '#dc2626'} />
                                   <Text style={[
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'no' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
@@ -535,7 +535,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   onPress={() => onOpenDiscussion(card.id)}
                                   style={styles.discussionButton}
                                 >
-                                  <Ionicons name="chatbubbles" size={16} color="#007AFF" />
+                                  <Icon name="chatbubbles" size={16} color="#007AFF" />
                                   <Text style={styles.discussionButtonText}>
                                     Discuss ({card.messages})
                                   </Text>
@@ -545,7 +545,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           ) : (
                             <View style={styles.expandedLockedSection}>
                               <View style={styles.expandedLockedContent}>
-                                <Ionicons name="checkmark" size={20} color="#16a34a" />
+                                <Icon name="checkmark" size={20} color="#16a34a" />
                                 <Text style={styles.expandedLockedText}>Added to Calendar</Text>
                               </View>
                               <Text style={styles.expandedLockedSubtext}>This activity has been locked and scheduled</Text>

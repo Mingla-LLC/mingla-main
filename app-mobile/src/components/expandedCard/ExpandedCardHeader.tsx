@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface ExpandedCardHeaderProps {
   onClose: () => void;
@@ -17,7 +17,7 @@ export default function ExpandedCardHeader({
         style={styles.closeButton}
         activeOpacity={0.7}
       >
-        <Ionicons name="close" size={16} color="#6b7280" />
+        <Icon name="close" size={16} color="#6b7280" />
       </TrackedTouchableOpacity>
       <View style={styles.headerSpacer} />
     </View>

@@ -18,7 +18,7 @@ import {
   Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
@@ -316,7 +316,7 @@ export default function PairRequestModal({
               onPress={handleClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="close" size={20} color={colors.gray[500]} />
+              <Icon name="close" size={20} color={colors.gray[500]} />
             </TouchableOpacity>
           </View>
 
@@ -331,7 +331,7 @@ export default function PairRequestModal({
               {/* Search filter */}
               {acceptedFriends.length > 3 && (
                 <View style={styles.searchContainer}>
-                  <Ionicons
+                  <Icon
                     name="search-outline"
                     size={16}
                     color={colors.gray[400]}
@@ -354,7 +354,7 @@ export default function PairRequestModal({
                 </View>
               ) : acceptedFriends.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                  <Ionicons
+                  <Icon
                     name="people-outline"
                     size={32}
                     color={colors.gray[300]}
@@ -480,7 +480,7 @@ export default function PairRequestModal({
                   <Text style={styles.countryPickerDial}>
                     {selectedCountry.dialCode}
                   </Text>
-                  <Ionicons
+                  <Icon
                     name="chevron-down"
                     size={14}
                     color={colors.gray[400]}
@@ -518,7 +518,7 @@ export default function PairRequestModal({
                 <View style={styles.lookupResult}>
                   {phoneLookupResult.found ? (
                     <View style={styles.lookupRow}>
-                      <Ionicons
+                      <Icon
                         name="checkmark-circle"
                         size={s(14)}
                         color="#22c55e"
@@ -531,7 +531,7 @@ export default function PairRequestModal({
                     </View>
                   ) : (
                     <View style={styles.lookupRow}>
-                      <Ionicons
+                      <Icon
                         name="person-add-outline"
                         size={s(14)}
                         color={colors.gray[500]}
@@ -561,7 +561,7 @@ export default function PairRequestModal({
                   <ActivityIndicator size="small" color="white" />
                 ) : (
                   <View style={styles.sendPhoneButtonContent}>
-                    <Ionicons
+                    <Icon
                       name={
                         phoneLookupResult?.found
                           ? "people"

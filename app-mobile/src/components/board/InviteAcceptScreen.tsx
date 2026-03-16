@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { BoardInviteService } from '../../services/boardInviteService';
 import { useAppStore } from '../../store/appStore';
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
@@ -92,7 +92,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-          <Ionicons name="close" size={24} color="#666" />
+          <Icon name="close" size={24} color="#666" />
         </TouchableOpacity>
         <Text style={styles.title}>Join Board Session</Text>
         <View style={styles.placeholder} />
@@ -113,7 +113,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
                 <ActivityIndicator color="white" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Icon name="checkmark-circle" size={20} color="white" />
                   <Text style={styles.joinButtonText}>Join Session</Text>
                 </>
               )}
@@ -147,7 +147,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
                 <ActivityIndicator color="white" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Icon name="checkmark-circle" size={20} color="white" />
                   <Text style={styles.joinButtonText}>Join Session</Text>
                 </>
               )}
@@ -156,7 +156,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({
         )}
 
         <View style={styles.infoContainer}>
-          <Ionicons name="information-circle-outline" size={16} color="#666" />
+          <Icon name="information-circle-outline" size={16} color="#666" />
           <Text style={styles.infoText}>
             Board sessions allow you to plan experiences together with friends in real-time
           </Text>

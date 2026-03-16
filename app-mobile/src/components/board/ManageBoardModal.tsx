@@ -8,7 +8,7 @@ import {
   Modal,
   Alert,
 } from "react-native";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { colors } from "../../constants/colors";
@@ -490,7 +490,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
               style={styles.closeButton}
               onPress={handleClose}
             >
-              <Feather name="x" size={24} color="#374151" />
+              <Icon name="x" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
 
@@ -520,13 +520,13 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
                           <Text style={styles.memberName}>{truncateString(displayName, 13)}</Text>
                           {isCreator && (
                             <View style={styles.creatorBadge}>
-                              <MaterialCommunityIcons name="crown-outline" size={12} color="white" />
+                              <Icon name="crown-outline" size={12} color="white" />
                               <Text style={styles.creatorBadgeText}>Creator</Text>
                             </View>
                           )}
                           {!isCreator && isParticipantAdmin && (
                             <View style={styles.adminBadge}>
-                              <Feather name="shield" size={10} color="white" />
+                              <Icon name="shield" size={10} color="white" />
                               <Text style={styles.adminBadgeText}>Admin</Text>
                             </View>
                           )}
@@ -548,7 +548,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
                           ]}
                           onPress={() => handleToggleAdmin(participant.user_id, originalDisplayName, isParticipantAdmin)}
                         >
-                          <Feather 
+                          <Icon 
                             name="shield" 
                             size={18} 
                             color={isParticipantAdmin ? "#eb7825" : "#9CA3AF"} 
@@ -560,7 +560,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
                           style={styles.memberActionButton}
                           onPress={() => handleRemoveMember(participant.user_id, originalDisplayName)}
                         >
-                          <Feather name="user-minus" size={18} color="#EF4444" />
+                          <Icon name="user-minus" size={18} color="#EF4444" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -637,7 +637,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
               onPress={handleLeaveBoard}
               disabled={leavingBoard}
             >
-              <Feather name="user-minus" size={20} color={leavingBoard ? "#9CA3AF" : "#EF4444"} />
+              <Icon name="user-minus" size={20} color={leavingBoard ? "#9CA3AF" : "#EF4444"} />
               <Text style={[styles.leaveBoardButtonText, leavingBoard && styles.leaveBoardButtonTextDisabled]}>
                 {leavingBoard ? "Leaving..." : "Leave Board"}
               </Text>

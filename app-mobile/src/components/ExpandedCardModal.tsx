@@ -13,7 +13,7 @@ import {
   Animated,
   LayoutAnimation,
 } from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
@@ -481,17 +481,17 @@ function MultiStopPlanView({
         <Text style={curatedStyles.tagline}>{card.tagline}</Text>
         <View style={curatedStyles.summaryRow}>
           <View style={curatedStyles.summaryItem}>
-            <Ionicons name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Icon name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
             <Text style={curatedStyles.summaryText}>{priceText}</Text>
           </View>
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
-            <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Icon name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
             <Text style={curatedStyles.summaryText}>{totalTimeLabel}</Text>
           </View>
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
-            <Ionicons name="star" size={14} color="#F59E0B" />
+            <Icon name="star" size={14} color="#F59E0B" />
             <Text style={curatedStyles.summaryText}>{avgRating} avg</Text>
           </View>
         </View>
@@ -517,7 +517,7 @@ function MultiStopPlanView({
                 <View style={curatedStyles.travelConnector}>
                   <View style={curatedStyles.travelLine} />
                   <View style={curatedStyles.travelBadge}>
-                    <Ionicons
+                    <Icon
                       name={travelIcon(stop.travelModeFromPreviousStop)}
                       size={12}
                       color="#6b7280"
@@ -547,7 +547,7 @@ function MultiStopPlanView({
                       <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
                     </View>
                   </View>
-                  <Ionicons
+                  <Icon
                     name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
                     size={18}
                     color="#9ca3af"
@@ -572,7 +572,7 @@ function MultiStopPlanView({
                 <View style={curatedStyles.stopMetaRow}>
                   {stop.rating > 0 && (
                     <View style={curatedStyles.stopMetaItem}>
-                      <Ionicons name="star" size={12} color="#F59E0B" />
+                      <Icon name="star" size={12} color="#F59E0B" />
                       <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
                     </View>
                   )}
@@ -595,7 +595,7 @@ function MultiStopPlanView({
                     }}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="globe-outline" size={15} color="#ffffff" />
+                    <Icon name="globe-outline" size={15} color="#ffffff" />
                     <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -636,7 +636,7 @@ function MultiStopPlanView({
 
                     {/* Address + Directions */}
                     <View style={curatedStyles.stopAddressRow}>
-                      <Ionicons name="location-outline" size={13} color="#9ca3af" />
+                      <Icon name="location-outline" size={13} color="#9ca3af" />
                       <Text style={curatedStyles.stopAddress} numberOfLines={2}>
                         {stop.address}
                       </Text>
@@ -646,7 +646,7 @@ function MultiStopPlanView({
                       onPress={() => openDirectionsForStop(stop)}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="navigate-outline" size={14} color="#eb7825" />
+                      <Icon name="navigate-outline" size={14} color="#eb7825" />
                       <Text style={curatedStyles.directionsText}>Get Directions</Text>
                     </TouchableOpacity>
                   </View>
@@ -663,7 +663,7 @@ function MultiStopPlanView({
 
         {/* Total time estimate footer */}
         <View style={curatedStyles.totalTimeCard}>
-          <Ionicons name="time-outline" size={20} color="#eb7825" />
+          <Icon name="time-outline" size={20} color="#eb7825" />
           <View style={curatedStyles.totalTimeTextBlock}>
             <Text style={curatedStyles.totalTimeLabel}>Total Time Estimate</Text>
             <Text style={curatedStyles.totalTimeValue}>{totalTimeLabel}</Text>
@@ -681,7 +681,7 @@ function MultiStopPlanView({
           onPress={() => onSave(card as unknown as ExpandedCardData)}
           activeOpacity={0.8}
         >
-          <Ionicons
+          <Icon
             name={isSaved ? 'bookmark' : 'bookmark-outline'}
             size={18}
             color={isSaved ? '#eb7825' : '#ffffff'}
@@ -1103,7 +1103,7 @@ export default function ExpandedCardModal({
 
                 {/* Venue + Artist Row */}
                 <View style={nightOutStyles.categoryHostRow}>
-                  <Ionicons name="musical-notes" size={16} color="#eb7825" />
+                  <Icon name="musical-notes" size={16} color="#eb7825" />
                   <Text style={nightOutStyles.categoryText}>{nightOut.venueName}</Text>
                   <Text style={nightOutStyles.dotSep}>•</Text>
                   <Text style={nightOutStyles.hostText}>{nightOut.artistName}</Text>
@@ -1131,7 +1131,7 @@ export default function ExpandedCardModal({
                   nightOut.ticketStatus === "offsale" ? { backgroundColor: '#EF4444' } :
                   { backgroundColor: '#F59E0B' }
                 ]}>
-                  <Ionicons name="ticket-outline" size={16} color="#fff" />
+                  <Icon name="ticket-outline" size={16} color="#fff" />
                   <Text style={nightOutStyles.ticketStatusText}>
                     {nightOut.ticketStatus === "onsale" ? "On Sale" :
                      nightOut.ticketStatus === "offsale" ? "Sold Out" : "Coming Soon"}
@@ -1143,7 +1143,7 @@ export default function ExpandedCardModal({
                   {/* Date & Time Card */}
                   <View style={nightOutStyles.infoCard}>
                     <View style={nightOutStyles.infoCardHeader}>
-                      <Feather name="calendar" size={14} color="#eb7825" />
+                      <Icon name="calendar" size={14} color="#eb7825" />
                       <Text style={nightOutStyles.infoCardLabel}>Date & Time</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrimary}>{nightOut.date}</Text>
@@ -1153,7 +1153,7 @@ export default function ExpandedCardModal({
                   {/* Ticket Price Card */}
                   <View style={nightOutStyles.infoCard}>
                     <View style={nightOutStyles.infoCardHeader}>
-                      <Ionicons name="pricetag-outline" size={14} color="#eb7825" />
+                      <Icon name="pricetag-outline" size={14} color="#eb7825" />
                       <Text style={nightOutStyles.infoCardLabel}>Tickets</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrice} numberOfLines={1} adjustsFontSizeToFit>{formatPriceRange(nightOut.price, accountPreferences?.currency)}</Text>
@@ -1185,7 +1185,7 @@ export default function ExpandedCardModal({
                 <View style={nightOutStyles.venueCard}>
                   <View style={nightOutStyles.venueIconRow}>
                     <View style={nightOutStyles.venueIcon}>
-                      <Ionicons name="location" size={20} color="#eb7825" />
+                      <Icon name="location" size={20} color="#eb7825" />
                     </View>
                     <View style={nightOutStyles.venueDetails}>
                       <Text style={nightOutStyles.venueName}>{nightOut.venueName}</Text>
@@ -1197,7 +1197,7 @@ export default function ExpandedCardModal({
                     onPress={openDirections}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="navigate-outline" size={16} color="#eb7825" />
+                    <Icon name="navigate-outline" size={16} color="#eb7825" />
                     <Text style={nightOutStyles.directionsText}>Get Directions</Text>
                   </TouchableOpacity>
                 </View>
@@ -1261,7 +1261,7 @@ export default function ExpandedCardModal({
                         </>
                       ) : (
                         <>
-                          <Ionicons
+                          <Icon
                             name="map-outline"
                             size={20}
                             color="#ffffff"
@@ -1298,7 +1298,7 @@ export default function ExpandedCardModal({
                         </>
                       ) : (
                         <>
-                          <Ionicons
+                          <Icon
                             name="map-outline"
                             size={20}
                             color="#ffffff"
@@ -1354,7 +1354,7 @@ export default function ExpandedCardModal({
                 {picnicData && picnicData.groceryStore && (
                   <View style={styles.groceryStoreSection}>
                     <View style={styles.groceryStoreHeader}>
-                      <Ionicons name="storefront" size={20} color="#eb7825" />
+                      <Icon name="storefront" size={20} color="#eb7825" />
                       <Text style={styles.groceryStoreTitle}>
                         Start Your Picnic
                       </Text>
@@ -1372,7 +1372,7 @@ export default function ExpandedCardModal({
                       )}
                       <View style={styles.groceryStoreContent}>
                         <View style={styles.groceryStoreInfo}>
-                          <Ionicons
+                          <Icon
                             name="storefront-outline"
                             size={20}
                             color="#eb7825"
@@ -1390,7 +1390,7 @@ export default function ExpandedCardModal({
                         </View>
                         {picnicData.groceryStore.rating && (
                           <View style={styles.groceryStoreRating}>
-                            <Ionicons name="star" size={14} color="#fbbf24" />
+                            <Icon name="star" size={14} color="#fbbf24" />
                             <Text style={styles.ratingText}>
                               {picnicData.groceryStore.rating.toFixed(1)}
                             </Text>
@@ -1403,7 +1403,7 @@ export default function ExpandedCardModal({
                         )}
                         {picnicData.groceryStore.address && (
                           <View style={styles.groceryStoreAddress}>
-                            <Ionicons
+                            <Icon
                               name="location-outline"
                               size={12}
                               color="#9ca3af"
@@ -1415,7 +1415,7 @@ export default function ExpandedCardModal({
                         )}
                         {picnicData.groceryStore.distance && (
                           <View style={styles.groceryStoreDistance}>
-                            <Ionicons
+                            <Icon
                               name="walk-outline"
                               size={12}
                               color="#9ca3af"
@@ -1498,7 +1498,7 @@ export default function ExpandedCardModal({
                     activeOpacity={0.8}
                     onPress={() => setTicketBrowserUrl(nightOut.ticketUrl)}
                   >
-                    <Ionicons name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Icon name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
                       Get Tickets – {formatPriceRange(nightOut.price, accountPreferences?.currency)}
                     </Text>
@@ -1515,7 +1515,7 @@ export default function ExpandedCardModal({
                   activeOpacity={0.7}
                   onPress={() => setIsNightOutShareOpen(true)}
                 >
-                  <Feather name="share-2" size={20} color="#111827" />
+                  <Icon name="share-2" size={20} color="#111827" />
                 </TouchableOpacity>
               </View>
             </View>

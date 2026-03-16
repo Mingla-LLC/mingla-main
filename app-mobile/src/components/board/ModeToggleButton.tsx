@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { useSessionManagement } from '../../hooks/useSessionManagement';
 import { useNavigation } from '../../contexts/NavigationContext';
 
@@ -33,7 +33,7 @@ export const ModeToggleButton: React.FC<ModeToggleButtonProps> = ({ style }) => 
       disabled={loading}
     >
       <View style={styles.content}>
-        <Ionicons
+        <Icon
           name={isInSolo ? 'person' : 'people'}
           size={16}
           color="#007AFF"
@@ -41,7 +41,7 @@ export const ModeToggleButton: React.FC<ModeToggleButtonProps> = ({ style }) => 
         <Text style={styles.text} numberOfLines={1}>
           {displayText}
         </Text>
-        <Ionicons
+        <Icon
           name="chevron-down"
           size={12}
           color="#007AFF"

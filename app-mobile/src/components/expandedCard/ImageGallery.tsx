@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   Text,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -83,7 +83,7 @@ export default function ImageGallery({
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Ionicons name="image-outline" size={48} color="#9ca3af" />
+          <Icon name="image-outline" size={48} color="#9ca3af" />
         </View>
       </View>
     );
@@ -123,7 +123,7 @@ export default function ImageGallery({
               onPress={goToPrevious}
               activeOpacity={0.7}
             >
-              <Ionicons name="chevron-back" size={20} color="#ffffff" />
+              <Icon name="chevron-back" size={20} color="#ffffff" />
             </TouchableOpacity>
           )}
           {currentIndex < images.length - 1 && (
@@ -132,7 +132,7 @@ export default function ImageGallery({
               onPress={goToNext}
               activeOpacity={0.7}
             >
-              <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+              <Icon name="chevron-forward" size={20} color="#ffffff" />
             </TouchableOpacity>
           )}
         </>

@@ -11,7 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
@@ -222,7 +222,7 @@ export default function FriendRequestsModal({
                 {incomingRequests.length === 0 ? (
                   <View style={styles.emptyState}>
                     <View style={styles.emptyStateIcon}>
-                      <Feather name="inbox" size={32} color="#9ca3af" />
+                      <Icon name="inbox" size={32} color="#9ca3af" />
                     </View>
                     <Text style={styles.emptyStateTitle}>
                       No Friend Requests
@@ -232,7 +232,7 @@ export default function FriendRequestsModal({
                       here.
                     </Text>
                     <View style={styles.emptyStateHint}>
-                      <Feather name="info" size={14} color="#9ca3af" />
+                      <Icon name="info" size={14} color="#9ca3af" />
                       <Text style={styles.emptyStateHintText}>
                         When someone sends you a friend request, you'll see it here
                       </Text>
@@ -293,7 +293,7 @@ export default function FriendRequestsModal({
                               <View style={styles.actionButtons}>
                                 {status === "accepted" ? (
                                   <View style={styles.statusAccepted}>
-                                    <Ionicons
+                                    <Icon
                                       name="checkmark"
                                       size={16}
                                       color="#059669"
@@ -304,7 +304,7 @@ export default function FriendRequestsModal({
                                   </View>
                                 ) : status === "declined" ? (
                                   <View style={styles.statusDeclined}>
-                                    <Ionicons
+                                    <Icon
                                       name="close"
                                       size={16}
                                       color="#dc2626"
@@ -330,7 +330,7 @@ export default function FriendRequestsModal({
                                           color="#6b7280"
                                         />
                                       ) : (
-                                        <Feather
+                                        <Icon
                                           name="user-x"
                                           size={16}
                                           color="#6b7280"
@@ -352,7 +352,7 @@ export default function FriendRequestsModal({
                                           color="white"
                                         />
                                       ) : (
-                                        <Feather
+                                        <Icon
                                           name="user-plus"
                                           size={16}
                                           color="white"

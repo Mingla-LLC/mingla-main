@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 import { locationService } from "../../services/locationService";
 import {
@@ -486,7 +486,7 @@ const LocationSetupStep = ({
             {isRequestingLocation ? (
               <ActivityIndicator size="small" color="#eb7825" />
             ) : (
-              <Ionicons name="send-outline" size={20} color="#eb7825" />
+              <Icon name="send-outline" size={20} color="#eb7825" />
             )}
             <Text style={styles.useLocationButtonText}>
               {isRequestingLocation
@@ -507,7 +507,7 @@ const LocationSetupStep = ({
               isInputFocused && styles.inputContainerFocused,
             ]}
           >
-            <Ionicons
+            <Icon
               name="location"
               size={20}
               color={isInputFocused ? "#eb7825" : "#6b7280"}
@@ -562,7 +562,7 @@ const LocationSetupStep = ({
                       activeOpacity={0.7}
                       delayPressIn={0}
                     >
-                      <Ionicons
+                      <Icon
                         name="location-outline"
                         size={18}
                         color="#6b7280"
@@ -612,7 +612,7 @@ const LocationSetupStep = ({
         {/* Navigation Buttons */}
         <View style={styles.navigationContainer}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Ionicons name="arrow-back" size={18} color="#111827" />
+            <Icon name="arrow-back" size={18} color="#111827" />
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
 
@@ -670,7 +670,7 @@ const LocationSetupStep = ({
                 >
                   Next
                 </Text>
-                <Ionicons
+                <Icon
                   name="arrow-forward"
                   size={18}
                   color={hasLocation ? "#ffffff" : "#6b7280"}

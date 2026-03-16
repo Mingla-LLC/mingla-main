@@ -8,7 +8,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface TravelModeStepProps {
@@ -262,14 +262,14 @@ const TravelModeStep = ({
                 {/* Checkmark (only for selected) */}
                 {isSelected && (
                   <View style={styles.checkmarkContainer}>
-                    <Ionicons name="checkmark" size={16} color="#ffffff" />
+                    <Icon name="checkmark" size={16} color="#ffffff" />
                   </View>
                 )}
 
                 {/* Icon */}
                 <View style={styles.modeIcon}>
-                  <Ionicons
-                    name={mode.icon as any}
+                  <Icon
+                    name={mode.icon}
                     size={28}
                     color={isSelected ? "#eb7825" : "#6b7280"}
                   />
@@ -297,7 +297,7 @@ const TravelModeStep = ({
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Icon name="arrow-back" size={18} color="#111827" />
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
@@ -335,7 +335,7 @@ const TravelModeStep = ({
           ) : (
             <>
               <Text style={styles.nextButtonText}>Next</Text>
-              <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+              <Icon name="arrow-forward" size={18} color="#ffffff" />
             </>
           )}
         </TouchableOpacity>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { formatPriceRange, getCurrencySymbol, getCurrencyRate } from '../utils/formatters';
@@ -416,7 +416,7 @@ const ExperienceCard = ({
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{experience.title}</Text>
                 <View style={styles.cardCategory}>
-                  <Ionicons name={CardIcon} size={16} color="#eb7825" />
+                  <Icon name={CardIcon} size={16} color="#eb7825" />
                   <Text style={styles.categoryText}>{experience.category}</Text>
                 </View>
               </View>
@@ -432,11 +432,11 @@ const ExperienceCard = ({
             <View style={styles.cardMeta}>
               <View style={styles.cardStats}>
                 <View style={styles.statItem}>
-                  <Ionicons name="star" size={16} color="#eb7825" />
+                  <Icon name="star" size={16} color="#eb7825" />
                   <Text style={styles.statText}>{experience.rating || '4.5'}</Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Ionicons name="navigate" size={16} color="#eb7825" />
+                  <Icon name="navigate" size={16} color="#eb7825" />
                   <Text style={styles.statText}>{experience.travelTime || '15 min'}</Text>
                 </View>
                 <Text style={styles.priceText}>
@@ -451,7 +451,7 @@ const ExperienceCard = ({
                   onPress={onToggleExpand}
                   style={styles.expandButton}
                 >
-                  <Ionicons 
+                  <Icon 
                     name={isExpanded ? "chevron-up" : "chevron-down"} 
                     size={16} 
                     color="#6b7280" 
@@ -467,7 +467,7 @@ const ExperienceCard = ({
                   styles.sourceBadge,
                   experience.source === 'solo' ? styles.soloBadge : styles.collaborationBadge
                 ]}>
-                  <Ionicons 
+                  <Icon 
                     name={experience.source === 'solo' ? "eye" : "people"} 
                     size={12} 
                     color={experience.source === 'solo' ? "#1e40af" : "#7c3aed"} 
@@ -495,7 +495,7 @@ const ExperienceCard = ({
                 onPress={() => onPurchase?.(experience, experience.purchaseOptions?.[0])}
                 style={styles.primaryButton}
               >
-                <Ionicons name="bag" size={16} color="white" />
+                <Icon name="bag" size={16} color="white" />
                 <Text style={styles.primaryButtonText}>Buy Now</Text>
               </TrackedTouchableOpacity>
             ) : (
@@ -503,7 +503,7 @@ const ExperienceCard = ({
                 onPress={() => onSchedule?.(experience)}
                 style={styles.primaryButton}
               >
-                <Ionicons name="calendar" size={16} color="white" />
+                <Icon name="calendar" size={16} color="white" />
                 <Text style={styles.primaryButtonText}>Schedule</Text>
               </TrackedTouchableOpacity>
             )}
@@ -513,7 +513,7 @@ const ExperienceCard = ({
                 onPress={() => onShare(experience)}
                 style={styles.secondaryButton}
               >
-                <Ionicons name="share" size={16} color="#6b7280" />
+                <Icon name="share" size={16} color="#6b7280" />
               </TrackedTouchableOpacity>
             )}
             
@@ -522,7 +522,7 @@ const ExperienceCard = ({
                 onPress={() => onRemove(experience)}
                 style={styles.secondaryButton}
               >
-                <Ionicons name="close" size={16} color="#6b7280" />
+                <Icon name="close" size={16} color="#6b7280" />
               </TrackedTouchableOpacity>
             )}
           </View>
@@ -548,13 +548,13 @@ const ExperienceCard = ({
                       onPress={() => prevImage(experience.images.length)}
                       style={[styles.imageNavigation, styles.leftNav]}
                     >
-                      <Ionicons name="chevron-back" size={16} color="white" />
+                      <Icon name="chevron-back" size={16} color="white" />
                     </TrackedTouchableOpacity>
                     <TrackedTouchableOpacity logComponent="ExperienceCard"
                       onPress={() => nextImage(experience.images.length)}
                       style={[styles.imageNavigation, styles.rightNav]}
                     >
-                      <Ionicons name="chevron-forward" size={16} color="white" />
+                      <Icon name="chevron-forward" size={16} color="white" />
                     </TrackedTouchableOpacity>
                     
                     {/* Image indicators */}
@@ -600,7 +600,7 @@ const ExperienceCard = ({
             <View style={styles.locationContainer}>
               <Text style={styles.sectionTitle}>Location</Text>
               <View style={styles.locationRow}>
-                <Ionicons name="location" size={16} color="#eb7825" />
+                <Icon name="location" size={16} color="#eb7825" />
                 <Text style={styles.locationText}>
                   {experience.address || 'Address not available'}
                 </Text>
@@ -612,15 +612,15 @@ const ExperienceCard = ({
                 <Text style={styles.socialStatsTitle}>Community Stats</Text>
                 <View style={styles.socialStatsRow}>
                   <View style={styles.socialStatItem}>
-                    <Ionicons name="eye" size={16} color="#6b7280" />
+                    <Icon name="eye" size={16} color="#6b7280" />
                     <Text style={styles.socialStatText}>{experience.socialStats.views} views</Text>
                   </View>
                   <View style={styles.socialStatItem}>
-                    <Ionicons name="heart" size={16} color="#6b7280" />
+                    <Icon name="heart" size={16} color="#6b7280" />
                     <Text style={styles.socialStatText}>{experience.socialStats.likes} likes</Text>
                   </View>
                   <View style={styles.socialStatItem}>
-                    <Ionicons name="bookmark" size={16} color="#6b7280" />
+                    <Icon name="bookmark" size={16} color="#6b7280" />
                     <Text style={styles.socialStatText}>{experience.socialStats.saves} saves</Text>
                   </View>
                 </View>

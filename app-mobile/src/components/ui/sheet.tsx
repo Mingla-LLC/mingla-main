@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, Modal, StyleSheet, Animated, Dimensions } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 
@@ -144,7 +144,7 @@ function SheetContent({
           style={styles.sheetClose}
           onPress={onClose}
         >
-          <Ionicons name="close" size={16} color="#6b7280" />
+          <Icon name="close" size={16} color="#6b7280" />
           <Text style={styles.srOnly}>Close</Text>
         </TrackedTouchableOpacity>
       </View>

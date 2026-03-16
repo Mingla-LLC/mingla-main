@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { ParticipantAvatars, Participant } from "./ParticipantAvatars";
 import { BoardSession } from "../../hooks/useBoardSession";
 
@@ -49,7 +49,7 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             style={styles.backButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={20} color="#6b7280" />
+            <Icon name="arrow-back" size={20} color="#6b7280" />
           </TrackedTouchableOpacity>
         )}
 
@@ -72,7 +72,7 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
               onPress={onSettingsPress}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="ellipsis-horizontal" size={24} color="#6b7280" />
+              <Icon name="ellipsis-horizontal" size={24} color="#6b7280" />
             </TrackedTouchableOpacity>
         )}
       </View>

@@ -10,7 +10,7 @@ import {
   Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -55,7 +55,7 @@ export default function InAppBrowserModal({
               {title}
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7}>
-              <Ionicons name="close" size={20} color="#ffffff" />
+              <Icon name="close" size={20} color="#ffffff" />
             </TouchableOpacity>
           </View>
 

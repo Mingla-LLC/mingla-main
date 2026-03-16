@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, ScrollView } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface CalendarProps {
   selected?: Date;
@@ -85,7 +85,7 @@ function Calendar({
           style={styles.navButton}
           onPress={() => navigateMonth('prev')}
         >
-          <Ionicons name="chevron-back" size={16} color="#6b7280" />
+          <Icon name="chevron-back" size={16} color="#6b7280" />
         </TrackedTouchableOpacity>
         
         <Text style={styles.monthYear}>
@@ -96,7 +96,7 @@ function Calendar({
           style={styles.navButton}
           onPress={() => navigateMonth('next')}
         >
-          <Ionicons name="chevron-forward" size={16} color="#6b7280" />
+          <Icon name="chevron-forward" size={16} color="#6b7280" />
         </TrackedTouchableOpacity>
       </View>
 

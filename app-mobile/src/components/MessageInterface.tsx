@@ -16,7 +16,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
 // TODO: Uncomment after rebuilding app with expo-av native module
@@ -528,7 +528,7 @@ export default function MessageInterface({
         {/* Top Row: Back button, Avatar, Name and Status */}
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#6b7280" />
+            <Icon name="arrow-back" size={24} color="#6b7280" />
           </TouchableOpacity>
 
           <View style={styles.avatarContainer}>
@@ -564,17 +564,17 @@ export default function MessageInterface({
         {/* Commented out header icons temporarily */}
         {/* <View style={styles.headerActions}>
           <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="call" size={16} color="#6b7280" />
+            <Icon name="call" size={16} color="#6b7280" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="videocam" size={16} color="#6b7280" />
+            <Icon name="videocam" size={16} color="#6b7280" />
           </TouchableOpacity>
           <View style={styles.moreOptionsContainer}>
             <TouchableOpacity
               onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
               style={styles.actionButton}
             >
-              <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
+              <Icon name="ellipsis-horizontal" size={16} color="#6b7280" />
             </TouchableOpacity>
 
             {showMoreOptionsMenu && (
@@ -583,7 +583,7 @@ export default function MessageInterface({
                   onPress={handleSendCollabInvite}
                   style={styles.menuItem}
                 >
-                  <Ionicons name="add" size={16} color="#6b7280" />
+                  <Icon name="add" size={16} color="#6b7280" />
                   <Text style={styles.menuItemText}>
                     Send Collaboration Invite
                   </Text>
@@ -592,14 +592,14 @@ export default function MessageInterface({
                   onPress={handleAddToBoard}
                   style={styles.menuItem}
                 >
-                  <Ionicons name="people" size={16} color="#6b7280" />
+                  <Icon name="people" size={16} color="#6b7280" />
                   <Text style={styles.menuItemText}>Add to Board</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleShareSavedCard}
                   style={styles.menuItem}
                 >
-                  <Ionicons name="bookmark" size={16} color="#6b7280" />
+                  <Icon name="bookmark" size={16} color="#6b7280" />
                   <Text style={styles.menuItemText}>Share Saved Card</Text>
                 </TouchableOpacity>
                 <View style={styles.menuDivider} />
@@ -607,21 +607,21 @@ export default function MessageInterface({
                   onPress={handleRemoveFriend}
                   style={styles.menuItemDanger}
                 >
-                  <Ionicons name="person-remove" size={16} color="#dc2626" />
+                  <Icon name="person-remove" size={16} color="#dc2626" />
                   <Text style={styles.menuItemTextDanger}>Remove Friend</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleBlockUser}
                   style={styles.menuItemDanger}
                 >
-                  <Ionicons name="shield" size={16} color="#dc2626" />
+                  <Icon name="shield" size={16} color="#dc2626" />
                   <Text style={styles.menuItemTextDanger}>Block User</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleReportUser}
                   style={styles.menuItemDanger}
                 >
-                  <Ionicons name="flag" size={16} color="#dc2626" />
+                  <Icon name="flag" size={16} color="#dc2626" />
                   <Text style={styles.menuItemTextDanger}>Report User</Text>
                 </TouchableOpacity>
               </View>
@@ -635,7 +635,7 @@ export default function MessageInterface({
         <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
-              <Ionicons name="chatbubble" size={32} color="#eb7825" />
+              <Icon name="chatbubble" size={32} color="#eb7825" />
             </View>
             <Text style={styles.emptyStateTitle}>Start your conversation</Text>
             <Text style={styles.emptyStateText}>
@@ -708,11 +708,11 @@ export default function MessageInterface({
               </TouchableOpacity>
             ) : previewUrl && selectedFile.type?.startsWith("video/") ? (
               <View style={styles.filePreviewVideo}>
-                <Ionicons name="play-circle" size={24} color="#eb7825" />
+                <Icon name="play-circle" size={24} color="#eb7825" />
               </View>
             ) : (
               <View style={styles.filePreviewIcon}>
-                <Ionicons name="document-text" size={24} color="#eb7825" />
+                <Icon name="document-text" size={24} color="#eb7825" />
               </View>
             )}
 
@@ -727,7 +727,7 @@ export default function MessageInterface({
               onPress={handleRemoveFile}
               style={styles.removeFileButton}
             >
-              <Ionicons name="close" size={12} color="#6b7280" />
+              <Icon name="close" size={12} color="#6b7280" />
             </TouchableOpacity>
           </View>
         </View>
@@ -745,7 +745,7 @@ export default function MessageInterface({
             style={styles.imagePreviewCloseButton}
             onPress={() => setShowImagePreview(false)}
           >
-            <Ionicons name="close" size={28} color="white" />
+            <Icon name="close" size={28} color="white" />
           </TouchableOpacity>
           {previewUrl && (
             <ImageWithFallback
@@ -760,7 +760,7 @@ export default function MessageInterface({
       {/* Blocked User Banner */}
       {isBlocked && (
         <View style={styles.blockedBanner}>
-          <Ionicons name="ban" size={18} color="#dc2626" />
+          <Icon name="ban" size={18} color="#dc2626" />
           <Text style={styles.blockedBannerText}>
             Messaging is not available with this user
           </Text>
@@ -789,7 +789,7 @@ export default function MessageInterface({
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
             >
-              <Ionicons name="attach" size={20} color="#6b7280" />
+              <Icon name="attach" size={20} color="#6b7280" />
             </TouchableOpacity>
 
             {showAttachmentMenu && (
@@ -799,7 +799,7 @@ export default function MessageInterface({
                   style={styles.attachmentMenuItem}
                 >
                   <View style={styles.attachmentMenuIcon}>
-                    <Ionicons name="image" size={16} color="#3b82f6" />
+                    <Icon name="image" size={16} color="#3b82f6" />
                   </View>
                   <View>
                     <Text style={styles.attachmentMenuTitle}>Photo</Text>
@@ -814,7 +814,7 @@ export default function MessageInterface({
                   style={styles.attachmentMenuItem}
                 >
                   <View style={styles.attachmentMenuIcon}>
-                    <Ionicons name="videocam" size={16} color="#8b5cf6" />
+                    <Icon name="videocam" size={16} color="#8b5cf6" />
                   </View>
                   <View>
                     <Text style={styles.attachmentMenuTitle}>Video</Text>
@@ -829,7 +829,7 @@ export default function MessageInterface({
                   style={styles.attachmentMenuItem}
                 >
                   <View style={styles.attachmentMenuIcon}>
-                    <Ionicons name="document-text" size={16} color="#10b981" />
+                    <Icon name="document-text" size={16} color="#10b981" />
                   </View>
                   <View>
                     <Text style={styles.attachmentMenuTitle}>Document</Text>
@@ -879,7 +879,7 @@ export default function MessageInterface({
               !newMessage.trim() && !selectedFile && styles.sendButtonDisabled,
             ]}
           >
-            <Ionicons name="paper-plane" size={20} color="white" />
+            <Icon name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -898,7 +898,7 @@ export default function MessageInterface({
                 onPress={() => setShowBoardSelection(false)}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={12} color="#6b7280" />
+                <Icon name="close" size={12} color="#6b7280" />
               </TouchableOpacity>
             </View>
 
@@ -934,7 +934,7 @@ export default function MessageInterface({
                     ]}
                   >
                     {selectedBoards.includes(board.id) && (
-                      <Ionicons name="checkmark" size={12} color="white" />
+                      <Icon name="checkmark" size={12} color="white" />
                     )}
                   </View>
                   <View style={styles.boardInfo}>
@@ -995,7 +995,7 @@ export default function MessageInterface({
                 onPress={() => dismissNotification(notification.id)}
                 style={styles.dismissButton}
               >
-                <Ionicons name="close" size={12} color="#6b7280" />
+                <Icon name="close" size={12} color="#6b7280" />
               </TouchableOpacity>
             </View>
           ))}

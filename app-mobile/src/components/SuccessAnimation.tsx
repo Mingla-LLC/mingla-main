@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, radius, colors, typography, fontWeights, animations } from '../constants/designSystem';
 
 interface SuccessAnimationProps {
   message?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: string;
   onComplete?: () => void;
   duration?: number;
 }
@@ -80,7 +80,7 @@ export const SuccessAnimation: React.FC<SuccessAnimationProps> = ({
         ]}
       >
         <View style={styles.iconContainer}>
-          <Ionicons
+          <Icon
             name={icon}
             size={64}
             color={colors.success[500]}
@@ -223,7 +223,7 @@ export const Toast: React.FC<ToastProps> = ({
         },
       ]}
     >
-      <Ionicons
+      <Icon
         name={getIcon()}
         size={20}
         color={colors.text.inverse}

@@ -7,7 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from '../ui/Icon';
 
 /**
  * Memoized Experience Types Section
@@ -63,7 +63,7 @@ export const ExperienceTypesSection = memo(
             activeOpacity={0.7}
             style={styles.curatedLockedBanner}
           >
-            <Ionicons name="lock-closed" size={14} color="#f97316" />
+            <Icon name="lock-closed" size={14} color="#f97316" />
             <Text style={styles.curatedLockedText}>
               Curated cards are locked on Free — upgrade to explore them
             </Text>
@@ -81,8 +81,8 @@ export const ExperienceTypesSection = memo(
                   isSelected && styles.experienceTypeButtonSelected,
                 ]}
               >
-                <Ionicons
-                  name={type.icon as any}
+                <Icon
+                  name={type.icon}
                   size={14}
                   color={isSelected ? "#eb7825" : "#6b7280"}
                 />
@@ -100,7 +100,7 @@ export const ExperienceTypesSection = memo(
         </View>
         {helperIntent && EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id] && (
           <View style={styles.helperTextContainer}>
-            <Ionicons name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
+            <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
               <Text style={styles.helperTextBold}>{helperIntent.label}:</Text>{" "}
               {EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id]}
@@ -188,8 +188,8 @@ export const CategoriesSection = memo(
                   isSelected && styles.categoryButtonSelected,
                 ]}
               >
-                <Ionicons
-                  name={isSelected ? (category.icon as string).replace('-outline', '') as any : category.icon as any}
+                <Icon
+                  name={isSelected ? (category.icon as string).replace('-outline', '') : category.icon}
                   size={14}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
@@ -208,7 +208,7 @@ export const CategoriesSection = memo(
         </View>
         {helperCategory && CATEGORY_DESCRIPTIONS[helperCategory.id] && (
           <View style={styles.helperTextContainer}>
-            <Ionicons name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
+            <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
               <Text style={styles.helperTextBold}>{helperCategory.label}:</Text>{" "}
               {CATEGORY_DESCRIPTIONS[helperCategory.id]}
@@ -279,7 +279,7 @@ export const DateTimeSection = memo(
 
       {showWeekendInfo && (
         <TouchableOpacity style={styles.weekendInfoCard}>
-          <Ionicons
+          <Icon
             name="calendar"
             size={20}
             color="#0369a1"
@@ -299,7 +299,7 @@ export const DateTimeSection = memo(
           style={styles.dateInputField}
           onPress={onShowCalendar}
         >
-          <Ionicons name="calendar" size={16} color="#eb7825" />
+          <Icon name="calendar" size={16} color="#eb7825" />
           {selectedDate ? (
             <Text style={styles.dateInputText}>
               {formatDateForDisplay(selectedDate)}
@@ -317,7 +317,7 @@ export const DateTimeSection = memo(
             style={styles.exactTimeInput}
             onPress={onShowTimePicker}
           >
-            <Ionicons
+            <Icon
               name="time-outline"
               size={16}
               color={exactTime ? "#eb7825" : "#9ca3af"}
@@ -364,8 +364,8 @@ export const TravelModeSection = memo(
                 isSelected && styles.travelModeCardSelected,
               ]}
             >
-              <Ionicons
-                name={mode.icon as any}
+              <Icon
+                name={mode.icon}
                 size={14}
                 color={isSelected ? "#eb7825" : "#6b7280"}
               />

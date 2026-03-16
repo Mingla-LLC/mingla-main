@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useAppStore } from '../store/appStore';
 import { KeyboardAwareView } from './ui/KeyboardAwareView';
@@ -68,13 +68,13 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Ionicons name="people" size={20} color="#007AFF" />
+          <Icon name="people" size={20} color="#007AFF" />
           <Text style={styles.headerTitle}>Session Chat</Text>
           <Text style={styles.participantCount}>{participants.length} participants</Text>
         </View>
         {onClose && (
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
+            <Icon name="close" size={24} color="#666" />
           </TouchableOpacity>
         )}
       </View>
@@ -89,7 +89,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
       >
         {sessionMessages.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+            <Icon name="chatbubbles-outline" size={48} color="#ccc" />
             <Text style={styles.emptyStateText}>No messages yet</Text>
             <Text style={styles.emptyStateSubtext}>
               Start the conversation by sending a message
@@ -158,7 +158,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
           onPress={handleSendMessage}
           disabled={!message.trim() || sending}
         >
-          <Ionicons
+          <Icon
             name="send"
             size={20}
             color={(!message.trim() || sending) ? '#ccc' : 'white'}

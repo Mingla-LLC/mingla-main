@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import * as Haptics from 'expo-haptics';
 
 interface PicnicShoppingListProps {
@@ -30,7 +30,7 @@ export function PicnicShoppingList({ items }: PicnicShoppingListProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="cart-outline" size={18} color="#eb7825" />
+        <Icon name="cart-outline" size={18} color="#eb7825" />
         <Text style={styles.title}>Shopping List</Text>
         <Text style={styles.counter}>{checkedCount}/{totalCount}</Text>
       </View>
@@ -45,7 +45,7 @@ export function PicnicShoppingList({ items }: PicnicShoppingListProps) {
           >
             <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
               {isChecked && (
-                <Ionicons name="checkmark" size={14} color="#fff" />
+                <Icon name="checkmark" size={14} color="#fff" />
               )}
             </View>
             <Text style={[styles.itemText, isChecked && styles.itemTextChecked]}>

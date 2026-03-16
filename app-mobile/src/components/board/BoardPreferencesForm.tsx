@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { categories } from '../../constants/categories';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { getCurrencySymbol } from '../utils/formatters';
@@ -173,8 +173,8 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
               ]}
               onPress={() => handleExperienceTypeToggle(type.id)}
             >
-              <Ionicons
-                name={type.icon as any}
+              <Icon
+                name={type.icon}
                 size={16}
                 color={selectedExperienceTypes.includes(type.id) ? '#007AFF' : '#666'}
                 style={styles.chipIcon}

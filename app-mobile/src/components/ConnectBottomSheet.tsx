@@ -9,7 +9,7 @@ import {
   PanResponder,
   Pressable,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { s, vs, SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
 
@@ -108,7 +108,7 @@ const ConnectBottomSheet: React.FC<ConnectBottomSheetProps> = ({
               onPress={dismiss}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="close" size={s(24)} color={colors.gray[400]} />
+              <Icon name="close" size={s(24)} color={colors.gray[400]} />
             </TouchableOpacity>
           </View>
 

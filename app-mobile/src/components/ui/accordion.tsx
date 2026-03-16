@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, Animated } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface AccordionProps {
   children: React.ReactNode;
@@ -46,7 +46,7 @@ function Accordion({
             ...childProps,
             isOpen: openItems.includes(childProps.value),
             onToggle: () => handleValueChange(childProps.value),
-          } as any);
+          });
         }
         return child;
       })}
@@ -79,7 +79,7 @@ function AccordionItem({
             ...childProps,
             isOpen,
             onToggle,
-          } as any);
+          });
         }
         return child;
       })}
@@ -125,7 +125,7 @@ function AccordionTrigger({
       <View style={styles.accordionTriggerContent}>
         {children}
         <Animated.View style={{ transform: [{ rotate }] }}>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Icon name="chevron-forward" size={16} color="#9ca3af" />
         </Animated.View>
       </View>
     </TrackedTouchableOpacity>

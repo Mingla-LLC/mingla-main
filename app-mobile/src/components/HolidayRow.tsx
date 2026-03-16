@@ -9,7 +9,7 @@ import {
   PanResponder,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
@@ -161,7 +161,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
     <View style={[styles.outerContainer, isArchived && styles.archivedOuter]}>
       {/* Swipe background */}
       <View style={styles.swipeBackground}>
-        <Ionicons name="archive-outline" size={s(24)} color="#FFFFFF" />
+        <Icon name="archive-outline" size={s(24)} color="#FFFFFF" />
       </View>
 
       <Animated.View
@@ -178,7 +178,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.rowLeft}>
-            <Ionicons name={holiday.icon as keyof typeof Ionicons.glyphMap} size={s(22)} color={colors.gray[600]} />
+            <Icon name={holiday.icon} size={s(22)} color={colors.gray[600]} />
             <View style={styles.rowTextGroup}>
               <Text style={styles.holidayName}>{holiday.name}</Text>
               <Text style={styles.holidayDate}>{formattedDate}</Text>
@@ -196,7 +196,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 style={styles.actionButton}
               >
-                <Ionicons
+                <Icon
                   name="arrow-undo-outline"
                   size={s(20)}
                   color={colors.gray[500]}
@@ -208,7 +208,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 style={styles.actionButton}
               >
-                <Ionicons
+                <Icon
                   name="archive-outline"
                   size={s(20)}
                   color={colors.gray[500]}
@@ -219,7 +219,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
             <Animated.View
               style={{ transform: [{ rotate: chevronRotateInterpolation }] }}
             >
-              <Ionicons
+              <Icon
                 name="chevron-down"
                 size={s(20)}
                 color={colors.gray[400]}
@@ -295,7 +295,7 @@ const HolidayRow: React.FC<HolidayRowProps> = ({
                   activeOpacity={0.7}
                   disabled={isShuffling}
                 >
-                  <Ionicons name="shuffle-outline" size={s(22)} color="rgba(0,0,0,0.4)" />
+                  <Icon name="shuffle-outline" size={s(22)} color="rgba(0,0,0,0.4)" />
                   <Text style={styles.shuffleText}>Shuffle</Text>
                 </TouchableOpacity>
               </ScrollView>

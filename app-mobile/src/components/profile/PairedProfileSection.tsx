@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Animated,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { s, vs, SCREEN_WIDTH } from '../../utils/responsive';
 import { colors } from '../../constants/designSystem';
 import { PERSON_GRID_CARD_WIDTH } from '../PersonGridCard';
@@ -70,8 +70,8 @@ const EmptyState: React.FC<{
 }> = ({ title, body, icon }) => (
   <View style={styles.emptyContainer}>
     {icon && (
-      <Ionicons
-        name={icon as keyof typeof Ionicons.glyphMap}
+      <Icon
+        name={icon}
         size={s(32)}
         color={colors.gray[300]}
       />
@@ -116,7 +116,7 @@ const PairedProfileSection: React.FC<PairedProfileSectionProps> = ({
           style={styles.seeAllButton}
         >
           <Text style={styles.seeAllText}>See all</Text>
-          <Ionicons name="arrow-forward" size={s(14)} color={'#eb7825'} />
+          <Icon name="arrow-forward" size={s(14)} color={'#eb7825'} />
         </TouchableOpacity>
       </View>
 

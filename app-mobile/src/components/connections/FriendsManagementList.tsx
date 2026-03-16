@@ -8,7 +8,7 @@ import {
   TextInput,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { Friend } from "../../hooks/useFriends";
 import { colors, spacing, radius, fontWeights } from "../../constants/designSystem";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,7 +91,7 @@ export function FriendsManagementList({
   if (friends.length === 0) {
     return (
       <View style={styles.emptyState}>
-        <Ionicons name="people-outline" size={32} color={colors.gray[300]} />
+        <Icon name="people-outline" size={32} color={colors.gray[300]} />
         <Text style={styles.emptyText}>No friends yet</Text>
       </View>
     );
@@ -110,7 +110,7 @@ export function FriendsManagementList({
     >
       {/* Search bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={14} color={colors.gray[400]} style={styles.searchIcon} />
+        <Icon name="search" size={14} color={colors.gray[400]} style={styles.searchIcon} />
         <TextInput
           placeholder="Search friends..."
           value={searchQuery}
@@ -158,7 +158,7 @@ export function FriendsManagementList({
                     {displayName}
                   </Text>
                   {isMuted && (
-                    <Ionicons
+                    <Icon
                       name="volume-mute"
                       size={13}
                       color={colors.gray[400]}
@@ -180,7 +180,7 @@ export function FriendsManagementList({
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color={colors.text.tertiary} />
+                <Icon name="ellipsis-horizontal" size={18} color={colors.text.tertiary} />
               </TouchableOpacity>
 
               {/* Dropdown menu */}
@@ -196,7 +196,7 @@ export function FriendsManagementList({
                     {isMuteLoading ? (
                       <ActivityIndicator size="small" color={colors.text.tertiary} style={styles.dropdownIcon} />
                     ) : (
-                      <Ionicons
+                      <Icon
                         name={isMuted ? "volume-high" : "volume-mute"}
                         size={16}
                         color={colors.text.tertiary}
@@ -216,7 +216,7 @@ export function FriendsManagementList({
                     style={styles.dropdownItem}
                     activeOpacity={0.7}
                   >
-                    <Ionicons
+                    <Icon
                       name="person-remove"
                       size={16}
                       color={colors.error[500]}
@@ -231,7 +231,7 @@ export function FriendsManagementList({
                     style={styles.dropdownItem}
                     activeOpacity={0.7}
                   >
-                    <Ionicons
+                    <Icon
                       name="shield"
                       size={16}
                       color={colors.error[500]}
@@ -246,7 +246,7 @@ export function FriendsManagementList({
                     style={styles.dropdownItem}
                     activeOpacity={0.7}
                   >
-                    <Ionicons
+                    <Icon
                       name="flag"
                       size={16}
                       color={colors.error[500]}

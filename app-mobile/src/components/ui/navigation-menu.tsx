@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 
@@ -86,7 +86,7 @@ function NavigationMenuTrigger({
       {...props}
     >
       <Text style={styles.navigationMenuTriggerText}>{children}</Text>
-      <Ionicons 
+      <Icon 
         name="chevron-down" 
         size={12} 
         color="#374151"

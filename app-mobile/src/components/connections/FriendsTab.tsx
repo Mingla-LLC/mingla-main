@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, TextInput, StyleSheet, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { Friend } from '../../data/mockConnections';
 import FriendCard from './FriendCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -81,7 +81,7 @@ export default function FriendsTab({
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
+        <Icon name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
         <TextInput
           placeholder="Search friends..."
           value={searchQuery}
@@ -96,14 +96,14 @@ export default function FriendsTab({
           onPress={onShowAddFriendModal}
           style={styles.actionButton}
         >
-          <Ionicons name="person-add" size={20} color="#eb7825" />
+          <Icon name="person-add" size={20} color="#eb7825" />
         </TrackedTouchableOpacity>
 
         <TrackedTouchableOpacity logComponent="FriendsTab" 
           onPress={onShowFriendRequests}
           style={styles.actionButton}
         >
-          <Ionicons name="people" size={20} color="#eb7825" />
+          <Icon name="people" size={20} color="#eb7825" />
           {friendRequestsCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{friendRequestsCount}</Text>
@@ -118,7 +118,7 @@ export default function FriendsTab({
             showQRCode && styles.actionButtonActive
           ]}
         >
-          <Ionicons 
+          <Icon 
             name="qr-code" 
             size={20} 
             color={showQRCode ? 'white' : '#eb7825'} 
@@ -130,8 +130,8 @@ export default function FriendsTab({
           style={styles.actionButton}
         >
           {inviteCopied ? 
-            <Ionicons name="checkmark" size={20} color="white" /> : 
-            <Ionicons name="link" size={20} color="#eb7825" />
+            <Icon name="checkmark" size={20} color="white" /> : 
+            <Icon name="link" size={20} color="#eb7825" />
           }
         </TrackedTouchableOpacity>
       </View>
@@ -166,7 +166,7 @@ export default function FriendsTab({
           onPress={() => setFriendsListExpanded(!friendsListExpanded)}
           style={styles.expandButton}
         >
-          <Ionicons 
+          <Icon 
             name={friendsListExpanded ? "chevron-up" : "chevron-down"} 
             size={20} 
             color="#6b7280" 

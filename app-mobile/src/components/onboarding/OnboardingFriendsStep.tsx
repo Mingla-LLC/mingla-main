@@ -11,7 +11,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from '../ui/Icon'
 
 import { PhoneInput } from './PhoneInput'
 import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
@@ -234,7 +234,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
             if (status === 'accepted') {
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardAccepted]}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success?.[600] ?? '#059669'} />
+                  <Icon name="checkmark-circle" size={20} color={colors.success?.[600] ?? '#059669'} />
                   <Text style={styles.acceptedText}>Added</Text>
                 </View>
               )
@@ -244,7 +244,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
             if (status === 'declined') {
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
-                  <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                  <Icon name="close-circle" size={20} color={colors.gray[500]} />
                   <Text style={styles.declinedText}>Declined</Text>
                 </View>
               )
@@ -326,7 +326,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="person" size={18} color={colors.gray[400]} />
+                  <Icon name="person" size={18} color={colors.gray[400]} />
                 </View>
               )}
               <Text style={styles.lookupName} numberOfLines={1}>
@@ -360,7 +360,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                   <Image source={{ uri: friend.avatarUrl }} style={styles.friendAvatar} />
                 ) : (
                   <View style={styles.friendAvatarPlaceholder}>
-                    <Ionicons name="person" size={14} color={colors.gray[400]} />
+                    <Icon name="person" size={14} color={colors.gray[400]} />
                   </View>
                 )}
                 <View style={styles.friendTextCol}>
@@ -376,7 +376,7 @@ export const OnboardingFriendsStep: React.FC<OnboardingFriendsStepProps> = ({
                 onPress={() => onRemoveFriend(friend.phoneE164)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="close-circle" size={22} color={colors.gray[400]} />
+                <Icon name="close-circle" size={22} color={colors.gray[400]} />
               </TouchableOpacity>
             </View>
           ))}

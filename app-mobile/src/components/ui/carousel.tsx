@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, ScrollView, Dimensions } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface CarouselProps {
   children: React.ReactNode;
@@ -228,7 +228,7 @@ function CarouselPrevious({ style, onPress, ...props }: CarouselPreviousProps) {
       disabled={!canScrollPrev}
       {...props}
     >
-      <Ionicons 
+      <Icon 
         name="chevron-back" 
         size={16} 
         color={canScrollPrev ? "#6b7280" : "#d1d5db"} 
@@ -260,7 +260,7 @@ function CarouselNext({ style, onPress, ...props }: CarouselNextProps) {
       disabled={!canScrollNext}
       {...props}
     >
-      <Ionicons 
+      <Icon 
         name="chevron-forward" 
         size={16} 
         color={canScrollNext ? "#6b7280" : "#d1d5db"} 

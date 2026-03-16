@@ -401,8 +401,7 @@ async function updateServedCounts(
     .from('card_pool')
     .update({ last_served_at: new Date().toISOString() })
     .in('id', cardPoolIds)
-    .then(() => {})
-    .catch(() => {});
+    .then(() => {}, () => {});
 }
 
 // ── Step 7: Build a single card from a place_pool entry ─────────────────────
@@ -665,7 +664,7 @@ async function incrementPlaceImpressions(
         p_google_place_id: gpid,
         p_field: 'total_impressions',
         p_amount: 1,
-      }).catch(() => {});
+      }).then(() => {}, () => {});
     }
   } catch {
     // Entire helper is fire-and-forget; never propagate errors
@@ -743,7 +742,7 @@ export async function serveCardsFromPipeline(
       p_user_id: userId,
       p_field: 'total_cards_seen',
       p_amount: servedIds.length,
-    }).catch(() => {});
+    }).then(() => {}, () => {});
     incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
 
     // hasMore based on UNSEEN count, not raw pool size (RC-003 fix)
@@ -781,7 +780,7 @@ export async function serveCardsFromPipeline(
         p_user_id: userId,
         p_field: 'total_cards_seen',
         p_amount: servedIds.length,
-      }).catch(() => {});
+      }).then(() => {}, () => {});
       incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
     }
 
@@ -1049,7 +1048,7 @@ export async function serveCardsFromPipeline(
       p_user_id: userId,
       p_field: 'total_cards_seen',
       p_amount: allCards.length,
-    }).catch(() => {});
+    }).then(() => {}, () => {});
     incrementPlaceImpressions(supabaseAdmin, allPoolIds).catch(() => {});
   }
 
@@ -1058,7 +1057,7 @@ export async function serveCardsFromPipeline(
       p_user_id: userId,
       p_field: 'total_cards_seen',
       p_amount: allCards.length,
-    }).catch(() => {});
+    }).then(() => {}, () => {});
   }
 
   // hasMore: unseen count minus what we just served, plus API cards signal

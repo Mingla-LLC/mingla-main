@@ -10,7 +10,7 @@ import {
   Share,
   Clipboard,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
 import { useKeyboard } from '../hooks/useKeyboard';
@@ -110,7 +110,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
         onPress={() => setIsModalVisible(true)}
         activeOpacity={0.8}
       >
-        <Ionicons name="share-outline" size={20} color={colors.primary[500]} />
+        <Icon name="share-outline" size={20} color={colors.primary[500]} />
         <Text style={styles.shareButtonText}>Share Session</Text>
       </TouchableOpacity>
 
@@ -127,7 +127,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
               style={styles.closeButton}
               onPress={() => setIsModalVisible(false)}
             >
-              <Ionicons name="close" size={24} color={colors.text.primary} />
+              <Icon name="close" size={24} color={colors.text.primary} />
             </TouchableOpacity>
           </View>
 
@@ -161,7 +161,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
                 onPress={handleCopyLink}
                 activeOpacity={0.8}
               >
-                <Ionicons name="copy-outline" size={20} color={colors.primary[500]} />
+                <Icon name="copy-outline" size={20} color={colors.primary[500]} />
                 <Text style={styles.copyButtonText}>Copy Link</Text>
               </TouchableOpacity>
 
@@ -179,7 +179,7 @@ export const SessionSharing: React.FC<SessionSharingProps> = ({
                   <Text style={styles.shareButtonText}>Generating...</Text>
                 ) : (
                   <>
-                    <Ionicons name="share-outline" size={20} color={colors.background.primary} />
+                    <Icon name="share-outline" size={20} color={colors.background.primary} />
                     <Text style={styles.shareActionButtonText}>Share Invite</Text>
                   </>
                 )}
@@ -220,7 +220,7 @@ export const InviteAcceptance: React.FC<InviteAcceptanceProps> = ({
   if (invite.isExpired) {
     return (
       <View style={styles.expiredInvite}>
-        <Ionicons name="time-outline" size={24} color={colors.error[500]} />
+        <Icon name="time-outline" size={24} color={colors.error[500]} />
         <Text style={styles.expiredText}>This invite has expired</Text>
       </View>
     );
@@ -231,7 +231,7 @@ export const InviteAcceptance: React.FC<InviteAcceptanceProps> = ({
       <View style={styles.inviteHeader}>
         <View style={styles.inviterInfo}>
           <View style={styles.avatarPlaceholder}>
-            <Ionicons name="person" size={20} color={colors.text.secondary} />
+            <Icon name="person" size={20} color={colors.text.secondary} />
           </View>
           <View>
             <Text style={styles.inviterName}>{invite.inviterName}</Text>

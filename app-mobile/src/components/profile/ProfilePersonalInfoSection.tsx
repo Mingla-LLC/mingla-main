@@ -7,8 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import Feather from "@expo/vector-icons/Feather";
+import { Icon } from "../ui/Icon";
 import { useAppState } from "../AppStateManager";
 import { useAppStore } from "../../store/appStore";
 import { authService } from "../../services/authService";
@@ -115,13 +114,13 @@ export default function ProfilePersonalInfoSection() {
                     onPress={() => handleSaveField("firstName")}
                     style={styles.saveButton}
                   >
-                    <Ionicons name="checkmark" size={16} color="#10b981" />
+                    <Icon name="checkmark" size={16} color="#10b981" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleCancelEdit}
                     style={styles.cancelButton}
                   >
-                    <Ionicons name="close" size={16} color="#ef4444" />
+                    <Icon name="close" size={16} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -132,7 +131,7 @@ export default function ProfilePersonalInfoSection() {
                   onPress={() => handleEditField("firstName")}
                   style={styles.editButton}
                 >
-                  <Feather name="edit-3" size={16} color="#6b7280" />
+                  <Icon name="edit-3" size={16} color="#6b7280" />
                 </TouchableOpacity>
               </View>
             )}
@@ -157,13 +156,13 @@ export default function ProfilePersonalInfoSection() {
                     onPress={() => handleSaveField("lastName")}
                     style={styles.saveButton}
                   >
-                    <Ionicons name="checkmark" size={16} color="#10b981" />
+                    <Icon name="checkmark" size={16} color="#10b981" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleCancelEdit}
                     style={styles.cancelButton}
                   >
-                    <Ionicons name="close" size={16} color="#ef4444" />
+                    <Icon name="close" size={16} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -174,7 +173,7 @@ export default function ProfilePersonalInfoSection() {
                   onPress={() => handleEditField("lastName")}
                   style={styles.editButton}
                 >
-                  <Feather name="edit-3" size={16} color="#6b7280" />
+                  <Icon name="edit-3" size={16} color="#6b7280" />
                 </TouchableOpacity>
               </View>
             )}
@@ -205,13 +204,13 @@ export default function ProfilePersonalInfoSection() {
                     onPress={() => handleSaveField("username")}
                     style={styles.saveButton}
                   >
-                    <Ionicons name="checkmark" size={16} color="#10b981" />
+                    <Icon name="checkmark" size={16} color="#10b981" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleCancelEdit}
                     style={styles.cancelButton}
                   >
-                    <Ionicons name="close" size={16} color="#ef4444" />
+                    <Icon name="close" size={16} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -222,7 +221,7 @@ export default function ProfilePersonalInfoSection() {
                   onPress={() => handleEditField("username")}
                   style={styles.editButton}
                 >
-                  <Feather name="edit-3" size={16} color="#6b7280" />
+                  <Icon name="edit-3" size={16} color="#6b7280" />
                 </TouchableOpacity>
               </View>
             )}
@@ -267,13 +266,13 @@ export default function ProfilePersonalInfoSection() {
                       onPress={() => handleSaveField("bio")}
                       style={styles.saveButton}
                     >
-                      <Ionicons name="checkmark" size={16} color="#10b981" />
+                      <Icon name="checkmark" size={16} color="#10b981" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleCancelEdit}
                       style={styles.cancelButton}
                     >
-                      <Ionicons name="close" size={16} color="#ef4444" />
+                      <Icon name="close" size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -292,7 +291,7 @@ export default function ProfilePersonalInfoSection() {
                   onPress={() => handleEditField("bio")}
                   style={styles.editButton}
                 >
-                  <Feather name="edit-3" size={16} color="#6b7280" />
+                  <Icon name="edit-3" size={16} color="#6b7280" />
                 </TouchableOpacity>
               </View>
             )}

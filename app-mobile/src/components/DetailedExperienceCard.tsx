@@ -9,7 +9,7 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { getReadableCategoryName, getCategoryIcon, getCategoryColor } from '../utils/categoryUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -245,13 +245,13 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
 
         {/* Rating Badge */}
         <View style={styles.ratingBadge}>
-          <Ionicons name="star" size={12} color="#FFD700" />
+          <Icon name="star" size={12} color="#FFD700" />
           <Text style={styles.ratingText}>{experience.meta?.rating || 4.8}</Text>
         </View>
 
         {/* Distance Badge */}
         <View style={styles.distanceBadge}>
-          <Ionicons name="paper-plane" size={12} color="white" />
+          <Icon name="paper-plane" size={12} color="white" />
           <Text style={styles.distanceText}>5.8 km</Text>
         </View>
       </View>
@@ -272,7 +272,7 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
             {experience.copy?.oneLiner || `Handpicked ${getReadableCategoryName(experience.category).toLowerCase()} experience at ${experience.title}.`}
           </Text>
           <View style={styles.curationInfo}>
-            <Ionicons name="chatbubble" size={14} color="#666" />
+            <Icon name="chatbubble" size={14} color="#666" />
             <Text style={styles.curationText}>
               {experience.copy?.tip || 'Curated for your 25-150 budget and preferences'}
             </Text>
@@ -282,7 +282,7 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
         {/* View Details Link */}
         <TouchableOpacity style={styles.viewDetailsButton} onPress={onViewDetails}>
           <Text style={styles.viewDetailsText}>View Details</Text>
-          <Ionicons name="chevron-down" size={16} color="#FF6B35" />
+          <Icon name="chevron-down" size={16} color="#FF6B35" />
         </TouchableOpacity>
       </View>
 

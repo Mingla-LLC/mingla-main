@@ -105,14 +105,18 @@ export function getEffectiveTierFromSupabase(
 /**
  * Unified tier resolution combining RevenueCat (paid) and Supabase (trial/referral).
  *
- * Priority:
- *   1. RC reports active "Mingla Pro" entitlement → 'pro'
+ * Hierarchy (highest to lowest):
+ *   'elite' > 'pro' > 'free'
+ *
+ * Resolution order:
+ *   1. RC reports active entitlement → return highest RC tier (Elite checked first)
  *   2. Supabase reports active trial or referral bonus → 'elite'
  *   3. Otherwise → 'free'
  *
- * 'pro' ≥ 'elite' ≥ 'free' — all paid features available to 'pro' users are also
- * available to 'elite' users. The PaywallScreen and entitlement checks treat both
- * 'pro' and 'elite' as "has access". Check `tier !== 'free'` to gate features.
+ * Elite is the top tier — purchasable, earnable via trial (7 days at signup),
+ * and earnable via referral bonuses (1 month per referred friend).
+ * Pro is the mid-tier paid plan. Both grant elevated access over Free.
+ * Use `hasElevatedAccess(tier)` to gate features available to any paid/earned tier.
  */
 export function getEffectiveTier(
   customerInfo: CustomerInfo | null,
@@ -133,6 +137,25 @@ export function getTrialDaysRemaining(sub: Subscription | null): number {
   if (!sub?.trialEndsAt) return 0
   const diff = new Date(sub.trialEndsAt).getTime() - Date.now()
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
+/**
+ * Returns the total trial duration in days, derived from the difference between
+ * trial_ends_at and the subscription's created_at.
+ *
+ * Uses createdAt (immutable) instead of updatedAt because the subscriptions table
+ * has an auto-update trigger that overwrites updated_at on every row modification
+ * (referral credits, tier changes, etc.), which would shrink the calculated duration.
+ *
+ * Falls back to 7 if dates are missing or invalid.
+ */
+export function getTrialTotalDays(sub: Subscription | null): number {
+  if (!sub?.trialEndsAt) return 7
+  const start = new Date(sub.createdAt).getTime()
+  const end = new Date(sub.trialEndsAt).getTime()
+  const totalMs = end - start
+  if (totalMs <= 0) return 7
+  return Math.ceil(totalMs / (1000 * 60 * 60 * 24))
 }
 
 export function getReferralMonthsRemaining(sub: Subscription | null): number {

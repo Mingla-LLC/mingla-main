@@ -10,7 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import * as Haptics from 'expo-haptics';
 
@@ -189,7 +189,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           )}
           {isOwnProfile && !isUploading && (
             <View style={styles.cameraBadge}>
-              <Ionicons name="camera" size={14} color="#ffffff" />
+              <Icon name="camera" size={14} color="#ffffff" />
             </View>
           )}
         </TouchableOpacity>
@@ -235,7 +235,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               accessibilityLabel="Cancel editing"
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={18} color="#6b7280" />
+              <Icon name="close" size={18} color="#6b7280" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.saveButton}
@@ -248,7 +248,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               {isSavingName ? (
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
-                <Ionicons name="checkmark" size={18} color="#ffffff" />
+                <Icon name="checkmark" size={18} color="#ffffff" />
               )}
             </TouchableOpacity>
           </View>
@@ -267,7 +267,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               <Text style={[styles.name, missingName && styles.namePlaceholder]}>
                 {displayName || 'Your name here'}
               </Text>
-              <Ionicons name="pencil" size={14} color="#9ca3af" style={styles.pencilIcon} />
+              <Icon name="pencil" size={14} color="#9ca3af" style={styles.pencilIcon} />
             </TouchableOpacity>
           ) : (
             <Text style={styles.name}>{displayName || 'User'}</Text>
@@ -279,7 +279,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
 
       {(location || isOwnProfile) && (
         <View style={styles.locationRow}>
-          <Ionicons name="location-sharp" size={14} color="#6b7280" />
+          <Icon name="location-sharp" size={14} color="#6b7280" />
           {isLoadingLocation ? (
             <ActivityIndicator size="small" color="#6b7280" style={styles.locationLoader} />
           ) : (
@@ -287,7 +287,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           )}
           {isOwnProfile && onLocationRefresh && (
             <TouchableOpacity onPress={onLocationRefresh} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="refresh" size={14} color="#6b7280" style={styles.refreshIcon} />
+              <Icon name="refresh" size={14} color="#6b7280" style={styles.refreshIcon} />
             </TouchableOpacity>
           )}
         </View>

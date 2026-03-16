@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 export type InviteMethod = 'friends_list' | 'link' | 'qr_code' | 'invite_code' | null;
 
@@ -74,8 +74,8 @@ export const InviteMethodSelector: React.FC<InviteMethodSelectorProps> = ({
               onPress={() => onMethodSelect(method.id)}
             >
               <View style={styles.methodIconContainer}>
-                <Ionicons
-                  name={method.icon as any}
+                <Icon
+                  name={method.icon}
                   size={24}
                   color={selectedMethod === method.id ? '#007AFF' : '#666'}
                 />
@@ -94,7 +94,7 @@ export const InviteMethodSelector: React.FC<InviteMethodSelectorProps> = ({
                 </Text>
               </View>
               {selectedMethod === method.id && (
-                <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                <Icon name="checkmark-circle" size={24} color="#007AFF" />
               )}
             </TouchableOpacity>
           ))}

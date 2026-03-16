@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions, Image } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -134,14 +134,14 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
                 </Text>
               )}
               <View style={[styles.videoPlaceholder, borderRadius]}>
-                <Ionicons name="play-circle" size={40} color={isMe ? 'white' : colors.primary[500]} />
+                <Icon name="play-circle" size={40} color={isMe ? 'white' : colors.primary[500]} />
               </View>
             </View>
           )}
 
           {message.type === 'file' && (
             <View style={styles.fileContainer}>
-              <Ionicons name="document-text" size={16} color={isMe ? 'white' : colors.primary[500]} />
+              <Icon name="document-text" size={16} color={isMe ? 'white' : colors.primary[500]} />
               <View style={styles.fileInfo}>
                 <Text style={[styles.fileName, isMe ? styles.textSent : styles.textReceived]} numberOfLines={1}>
                   {message.fileName || 'Document'}
@@ -156,7 +156,7 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
           {/* Failed indicator */}
           {isFailed && (
             <View style={styles.failedIcon}>
-              <Ionicons name="alert-circle" size={14} color={colors.error[500]} />
+              <Icon name="alert-circle" size={14} color={colors.error[500]} />
             </View>
           )}
         </View>
@@ -168,11 +168,11 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
           {isFailed ? (
             <Text style={styles.failedText}>Failed</Text>
           ) : !isDelivered ? (
-            <Ionicons name="checkmark" size={12} color={colors.gray[400]} />
+            <Icon name="checkmark" size={12} color={colors.gray[400]} />
           ) : isRead ? (
-            <Ionicons name="checkmark-done" size={12} color={colors.primary[500]} />
+            <Icon name="checkmark-done" size={12} color={colors.primary[500]} />
           ) : (
-            <Ionicons name="checkmark-done" size={12} color={colors.gray[400]} />
+            <Icon name="checkmark-done" size={12} color={colors.gray[400]} />
           )}
         </View>
       )}

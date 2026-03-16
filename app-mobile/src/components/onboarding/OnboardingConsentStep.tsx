@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from '../ui/Icon'
 import {
   colors,
   typography,
@@ -26,7 +26,7 @@ export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
-        <Ionicons name="shield-checkmark-outline" size={48} color={colors.primary[500]} />
+        <Icon name="shield-checkmark-outline" size={48} color={colors.primary[500]} />
       </View>
 
       <Text style={styles.headline}>One quick thing</Text>

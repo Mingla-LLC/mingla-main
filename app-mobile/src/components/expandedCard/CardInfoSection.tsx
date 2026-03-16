@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { parseAndFormatDistance } from "../utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
 
@@ -22,8 +22,8 @@ interface CardInfoSectionProps {
   currency?: string;
 }
 
-/** Map travel mode preference to an Ionicons icon name */
-function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+/** Map travel mode preference to an icon name */
+function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
     case 'transit': return 'bus';
@@ -110,7 +110,7 @@ export default function CardInfoSection({
       {/* Tags Row */}
       <View style={styles.tagsRow}>
         <View style={styles.categoryTag}>
-          <Ionicons name={getCategoryIcon() as any} size={14} color="#d97706" />
+          <Icon name={getCategoryIcon()} size={14} color="#d97706" />
           <Text style={styles.categoryText}>{formatTag(category)}</Text>
         </View>
         {romanticTag && (
@@ -125,7 +125,7 @@ export default function CardInfoSection({
       <View style={styles.metricsRow}>
         {rating !== undefined && (
           <View style={styles.metricItem}>
-            <Ionicons name="star" size={14} color="#d97706" />
+            <Icon name="star" size={14} color="#d97706" />
             <Text style={styles.metricText}>{rating.toFixed(1)}</Text>
           </View>
         )}
@@ -133,7 +133,7 @@ export default function CardInfoSection({
           <>
             {rating !== undefined && <View style={styles.metricDivider} />}
             <View style={styles.metricItem}>
-              <Ionicons name="location" size={14} color="#d97706" />
+              <Icon name="location" size={14} color="#d97706" />
               <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem) || 'Nearby'}</Text>
             </View>
           </>
@@ -142,7 +142,7 @@ export default function CardInfoSection({
           <>
             {(rating !== undefined || distance) && <View style={styles.metricDivider} />}
             <View style={styles.metricItem}>
-              <Ionicons name={getTravelModeIcon(travelMode)} size={14} color="#d97706" />
+              <Icon name={getTravelModeIcon(travelMode)} size={14} color="#d97706" />
               <Text style={styles.metricText}>{travelTime}</Text>
             </View>
           </>

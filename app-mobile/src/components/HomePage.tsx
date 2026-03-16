@@ -9,7 +9,7 @@ import {
   Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
@@ -210,7 +210,7 @@ export default function HomePage({
               activeOpacity={0.6}
               hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
-              <Ionicons
+              <Icon
                 name="options-outline"
                 size={18}
                 color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
@@ -235,7 +235,7 @@ export default function HomePage({
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="notifications-outline" size={18} color="#1f2937" />
+              <Icon name="notifications-outline" size={18} color="#1f2937" />
               {/* Notification indicator dot */}
               {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 
 // Simple Slot component for React Native
@@ -230,7 +230,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <Ionicons name="menu" size={20} color="#6b7280" />
+      <Icon name="menu" size={20} color="#6b7280" />
       <Text style={styles.srOnly}>Toggle Sidebar</Text>
     </Button>
   );

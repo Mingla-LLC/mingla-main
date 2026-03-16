@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 import SessionsTab from "./collaboration/SessionsTab";
@@ -1048,7 +1048,7 @@ export default function CollaborationModule({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={22} color="#6B7280" />
+              <Icon name="close" size={22} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
@@ -1150,7 +1150,7 @@ export default function CollaborationModule({
                 />
               ) : (
                 <View style={styles.lockedCreateSection}>
-                  <Ionicons name="lock-closed" size={48} color="#9CA3AF" />
+                  <Icon name="lock-closed" size={48} color="#9CA3AF" />
                   <Text style={styles.lockedTitle}>
                     Session Limit Reached
                   </Text>

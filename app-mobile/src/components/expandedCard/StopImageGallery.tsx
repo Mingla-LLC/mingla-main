@@ -9,7 +9,7 @@ import {
   NativeSyntheticEvent,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 const GALLERY_HEIGHT = 140;
 
@@ -59,7 +59,7 @@ export function StopImageGallery({ images }: StopImageGalleryProps) {
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Ionicons name="image-outline" size={32} color="#d1d5db" />
+          <Icon name="image-outline" size={32} color="#d1d5db" />
         </View>
       </View>
     );
@@ -127,7 +127,7 @@ export function StopImageGallery({ images }: StopImageGalleryProps) {
 
           {/* Photo counter pill — top right */}
           <View style={styles.counterPill}>
-            <Ionicons name="images-outline" size={10} color="#ffffff" />
+            <Icon name="images-outline" size={10} color="#ffffff" />
             <Text style={styles.counterText}>{currentIndex + 1}/{images.length}</Text>
           </View>
         </>

@@ -15,7 +15,7 @@ import {
   Image,
   Share,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { HapticFeedback } from '../utils/hapticFeedback';
@@ -390,7 +390,7 @@ export default function CollaborationSessions({
         </Text>
         {isInvite && (
           <View style={[styles.inviteBadge, isSentInvite && styles.inviteBadgePending]}>
-            <Ionicons
+            <Icon
               name={isReceivedInvite ? 'mail' : 'time-outline'}
               size={7}
               color="#fff"
@@ -406,7 +406,7 @@ export default function CollaborationSessions({
       {/* Left scroll indicator */}
       {showLeftArrow && (
         <TouchableOpacity style={styles.scrollArrowLeft} onPress={scrollLeft}>
-          <Ionicons name="chevron-back" size={16} color="#6B7280" />
+          <Icon name="chevron-back" size={16} color="#6B7280" />
         </TouchableOpacity>
       )}
 
@@ -435,7 +435,7 @@ export default function CollaborationSessions({
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="add" size={16} color="#FFFFFF" />
+          <Icon name="add" size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -458,7 +458,7 @@ export default function CollaborationSessions({
       {/* Right scroll indicator */}
       {showRightArrow && (
         <TouchableOpacity style={styles.scrollArrowRight} onPress={scrollRight}>
-          <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+          <Icon name="chevron-forward" size={16} color="#6B7280" />
         </TouchableOpacity>
       )}
 
@@ -512,7 +512,7 @@ export default function CollaborationSessions({
                   >
                     <Text style={styles.csCountryFlag}>{selectedCountry.flag}</Text>
                     <Text style={styles.csCountryDial}>{selectedCountry.dialCode}</Text>
-                    <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+                    <Icon name="chevron-down" size={14} color="#9ca3af" />
                   </TouchableOpacity>
 
                   <View style={styles.csPhoneDivider} />
@@ -544,14 +544,14 @@ export default function CollaborationSessions({
                   <View style={styles.csLookupResult}>
                     {phoneLookupResult.found ? (
                       <View style={styles.csLookupRow}>
-                        <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+                        <Icon name="checkmark-circle" size={14} color="#22c55e" />
                         <Text style={styles.csLookupTextGreen}>
                           {phoneLookupResult.user?.display_name || 'Someone'} is on Mingla
                         </Text>
                       </View>
                     ) : (
                       <View style={styles.csLookupRow}>
-                        <Ionicons name="person-add-outline" size={14} color="#6b7280" />
+                        <Icon name="person-add-outline" size={14} color="#6b7280" />
                         <Text style={styles.csLookupTextMuted}>Not on Mingla yet</Text>
                       </View>
                     )}
@@ -561,7 +561,7 @@ export default function CollaborationSessions({
                 {/* Status */}
                 {phoneActionStatus === 'sent' && (
                   <View style={styles.csStatusRow}>
-                    <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                    <Icon name="checkmark-circle" size={16} color="#22c55e" />
                     <Text style={styles.csStatusSuccess}>
                       {phoneLookupResult?.found
                         ? phoneLookupResult.friendship_status === 'friends'
@@ -573,7 +573,7 @@ export default function CollaborationSessions({
                 )}
                 {phoneActionStatus === 'error' && (
                   <View style={styles.csStatusRow}>
-                    <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                    <Icon name="alert-circle" size={16} color="#ef4444" />
                     <Text style={styles.csStatusError}>{phoneActionError}</Text>
                   </View>
                 )}
@@ -589,7 +589,7 @@ export default function CollaborationSessions({
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
                     <>
-                      <Ionicons
+                      <Icon
                         name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
                         size={14}
                         color="#ffffff"
@@ -612,7 +612,7 @@ export default function CollaborationSessions({
                             onPress={() => setPhoneInvitees(prev => prev.filter(i => i.phoneE164 !== invitee.phoneE164))}
                             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                           >
-                            <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                            <Icon name="close-circle" size={16} color="#9CA3AF" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -649,7 +649,7 @@ export default function CollaborationSessions({
                           onPress={() => toggleFriendSelection(friend)}
                           style={styles.removeFriendButton}
                         >
-                          <Ionicons name="close" size={12} color="#6B7280" />
+                          <Icon name="close" size={12} color="#6B7280" />
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -659,7 +659,7 @@ export default function CollaborationSessions({
                 {/* Friends List */}
                 {availableFriends.length === 0 ? (
                   <View style={styles.noFriendsContainer}>
-                    <Ionicons name="people-outline" size={32} color="#D1D5DB" />
+                    <Icon name="people-outline" size={32} color="#D1D5DB" />
                     <Text style={styles.noFriendsText}>No friends yet</Text>
                     <Text style={styles.noFriendsSubtext}>
                       Invite someone by phone number above
@@ -696,7 +696,7 @@ export default function CollaborationSessions({
                           </View>
                           {isSelected && (
                             <View style={styles.friendCheckmark}>
-                              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                              <Icon name="checkmark" size={16} color="#FFFFFF" />
                             </View>
                           )}
                         </TouchableOpacity>
@@ -748,11 +748,11 @@ export default function CollaborationSessions({
               <View style={styles.csPickerHeader}>
                 <Text style={styles.csPickerTitle}>Select Country</Text>
                 <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-                  <Ionicons name="close" size={22} color="#374151" />
+                  <Icon name="close" size={22} color="#374151" />
                 </TouchableOpacity>
               </View>
               <View style={styles.csPickerSearchRow}>
-                <Ionicons name="search-outline" size={18} color="#9ca3af" style={{ marginRight: 8 }} />
+                <Icon name="search-outline" size={18} color="#9ca3af" style={{ marginRight: 8 }} />
                 <TextInput
                   style={styles.csPickerSearchInput}
                   value={countrySearch}
@@ -821,7 +821,7 @@ export default function CollaborationSessions({
                 onPress={() => setShowInviteModal(false)}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={20} color="#6B7280" />
+                <Icon name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -864,7 +864,7 @@ export default function CollaborationSessions({
                     setShowInviteModal(false);
                   }}
                 >
-                  <Ionicons name="person-remove" size={14} color="#DC2626" style={{ marginRight: 5 }} />
+                  <Icon name="person-remove" size={14} color="#DC2626" style={{ marginRight: 5 }} />
                   <Text style={styles.modalDeclineButtonText}>Decline Invite</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -876,7 +876,7 @@ export default function CollaborationSessions({
                     setShowInviteModal(false);
                   }}
                 >
-                  <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
+                  <Icon name="checkmark-circle" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
                   <Text style={styles.modalAcceptButtonText}>Accept Invite</Text>
                 </TouchableOpacity>
               </View>

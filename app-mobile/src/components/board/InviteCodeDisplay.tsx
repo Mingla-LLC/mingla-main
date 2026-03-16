@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { Clipboard } from 'react-native';
 
 interface InviteCodeDisplayProps {
@@ -46,7 +46,7 @@ export const InviteCodeDisplay: React.FC<InviteCodeDisplayProps> = ({
         style={[styles.copyButton, copied && styles.copyButtonCopied]}
         onPress={handleCopy}
       >
-        <Ionicons
+        <Icon
           name={copied ? 'checkmark-circle' : 'copy-outline'}
           size={20}
           color="white"
@@ -57,7 +57,7 @@ export const InviteCodeDisplay: React.FC<InviteCodeDisplayProps> = ({
       </TouchableOpacity>
 
       <View style={styles.infoContainer}>
-        <Ionicons name="information-circle-outline" size={16} color="#666" />
+        <Icon name="information-circle-outline" size={16} color="#666" />
         <Text style={styles.infoText}>
           Recipients can enter this code in the app to join your board session
         </Text>

@@ -7,7 +7,7 @@ import {
   Image,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { s } from "../utils/responsive";
 
 interface PairedPerson {
@@ -120,7 +120,7 @@ export default function PairedPeopleRow({
               {/* Birthday countdown badge */}
               {hasBirthday && daysAway != null && (
                 <View style={styles.badgeRow}>
-                  <Ionicons name="gift-outline" size={s(11)} color="#eb7825" />
+                  <Icon name="gift-outline" size={s(11)} color="#eb7825" />
                   <Text style={styles.badgeText}>
                     {formatBirthdayShort(person.birthday!)}
                   </Text>

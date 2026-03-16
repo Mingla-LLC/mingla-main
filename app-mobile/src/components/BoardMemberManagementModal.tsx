@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 
 interface Participant {
   id: string;
@@ -116,7 +116,7 @@ export default function BoardMemberManagementModal({
               onPress={onClose}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={16} color="#6b7280" />
+              <Icon name="close" size={16} color="#6b7280" />
             </TrackedTouchableOpacity>
           </View>
         </View>
@@ -145,13 +145,13 @@ export default function BoardMemberManagementModal({
                         </Text>
                         {isCreator && (
                           <View style={styles.creatorBadge}>
-                            <Ionicons name="star" size={12} color="white" />
+                            <Icon name="star" size={12} color="white" />
                             <Text style={styles.badgeText}>Creator</Text>
                           </View>
                         )}
                         {isAdmin && !isCreator && (
                           <View style={styles.adminBadge}>
-                            <Ionicons name="shield" size={12} color="white" />
+                            <Icon name="shield" size={12} color="white" />
                             <Text style={styles.badgeText}>Admin</Text>
                           </View>
                         )}
@@ -168,7 +168,7 @@ export default function BoardMemberManagementModal({
                           onPress={() => handlePromoteToAdmin(participant.id)}
                           style={styles.promoteButton}
                         >
-                          <Ionicons name="shield-checkmark" size={16} color="#eb7825" />
+                          <Icon name="shield-checkmark" size={16} color="#eb7825" />
                         </TrackedTouchableOpacity>
                       )}
                       
@@ -177,7 +177,7 @@ export default function BoardMemberManagementModal({
                           onPress={() => handleDemoteFromAdmin(participant.id)}
                           style={styles.demoteButton}
                         >
-                          <Ionicons name="shield" size={16} color="#6b7280" />
+                          <Icon name="shield" size={16} color="#6b7280" />
                         </TrackedTouchableOpacity>
                       )}
                       
@@ -186,7 +186,7 @@ export default function BoardMemberManagementModal({
                           onPress={() => handleRemoveMember(participant.id)}
                           style={styles.removeButton}
                         >
-                          <Ionicons name="person-remove" size={16} color="#eb7825" />
+                          <Icon name="person-remove" size={16} color="#eb7825" />
                         </TrackedTouchableOpacity>
                       )}
                     </View>
@@ -199,7 +199,7 @@ export default function BoardMemberManagementModal({
           {/* Board info */}
           <View style={styles.boardInfo}>
             <View style={styles.boardInfoHeader}>
-              <Ionicons name="people" size={16} color="#eb7825" />
+              <Icon name="people" size={16} color="#eb7825" />
               <Text style={styles.boardInfoTitle}>Board Info</Text>
             </View>
             <View style={styles.boardInfoContent}>
@@ -207,7 +207,7 @@ export default function BoardMemberManagementModal({
               <Text style={styles.boardInfoText}>Admins: {board.admins.length}</Text>
               {board.participants.length <= 2 && (
                 <View style={styles.warningBox}>
-                  <Ionicons name="warning" size={16} color="#d97706" />
+                  <Icon name="warning" size={16} color="#d97706" />
                   <Text style={styles.warningText}>
                     Board will be deleted if any member leaves (minimum 2 members required)
                   </Text>
@@ -301,7 +301,7 @@ export default function BoardMemberManagementModal({
               onPress={handleLeaveBoard}
               style={styles.leaveBoardButton}
             >
-              <Ionicons name="person-remove" size={16} color="#dc2626" />
+              <Icon name="person-remove" size={16} color="#dc2626" />
               <Text style={styles.leaveBoardButtonText}>Leave Board</Text>
             </TrackedTouchableOpacity>
           )}

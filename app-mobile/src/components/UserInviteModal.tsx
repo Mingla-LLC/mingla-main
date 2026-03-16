@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Text, View, TextInput, StyleSheet, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useFriends } from '../hooks/useFriends';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
@@ -113,14 +113,14 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               onPress={onClose}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={20} color="#6b7280" />
+              <Icon name="close" size={20} color="#6b7280" />
             </TrackedTouchableOpacity>
           </View>
 
           {/* Search */}
           <View style={styles.searchContainer}>
             <View style={styles.searchWrapper}>
-              <Ionicons name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
+              <Icon name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -147,7 +147,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                       onPress={() => toggleUser(user)}
                       style={styles.removeUserButton}
                     >
-                      <Ionicons name="close" size={12} color="#9ca3af" />
+                      <Icon name="close" size={12} color="#9ca3af" />
                     </TrackedTouchableOpacity>
                   </View>
                 ))}
@@ -165,7 +165,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
             ) : error ? (
               <View style={styles.errorContainer}>
                 <View style={styles.errorIconContainer}>
-                  <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" />
+                  <Icon name="cloud-offline-outline" size={48} color="#ef4444" />
                 </View>
                 <Text style={styles.errorTitle}>Connection Error</Text>
                 <Text style={styles.errorSubtitle}>{error}</Text>
@@ -173,13 +173,13 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                   style={styles.retryButton}
                   onPress={() => fetchFriends()}
                 >
-                  <Ionicons name="refresh" size={16} color="white" />
+                  <Icon name="refresh" size={16} color="white" />
                   <Text style={styles.retryButtonText}>Try Again</Text>
                 </TrackedTouchableOpacity>
               </View>
             ) : transformedFriends.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="people-outline" size={48} color="#d1d5db" />
+                <Icon name="people-outline" size={48} color="#d1d5db" />
                 <Text style={styles.emptyTitle}>No Friends Yet</Text>
                 <Text style={styles.emptySubtitle}>
                   Add friends to invite them to your sessions
@@ -187,7 +187,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               </View>
             ) : filteredUsers.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="search-outline" size={48} color="#d1d5db" />
+                <Icon name="search-outline" size={48} color="#d1d5db" />
                 <Text style={styles.emptyTitle}>No Results</Text>
                 <Text style={styles.emptySubtitle}>
                   No friends match "{searchQuery}"
@@ -224,7 +224,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                     </View>
 
                     {isSelected && (
-                      <Ionicons name="checkmark" size={20} color="#eb7825" />
+                      <Icon name="checkmark" size={20} color="#eb7825" />
                     )}
                   </TrackedTouchableOpacity>
                 );
@@ -243,7 +243,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
                 selectedUsers.length === 0 ? styles.inviteButtonDisabled : styles.inviteButtonEnabled
               ]}
             >
-              <Ionicons name="send" size={16} color="white" />
+              <Icon name="send" size={16} color="white" />
               <Text style={styles.inviteButtonText}>
                 Send Invite{selectedUsers.length > 1 ? 's' : ''} ({selectedUsers.length})
               </Text>

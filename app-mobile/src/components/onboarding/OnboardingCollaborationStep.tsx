@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView'
 import * as Haptics from 'expo-haptics'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from '../ui/Icon'
 
 import { useSessionManagement, SessionParticipantInput } from '../../hooks/useSessionManagement'
 import { AddedFriend, CreatedSession } from '../../types/onboarding'
@@ -374,7 +374,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                   onPress={() => handleRemoveSession(index)}
                   hitSlop={8}
                 >
-                  <Ionicons
+                  <Icon
                     name="close-circle"
                     size={20}
                     color={colors.gray[400]}
@@ -458,7 +458,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
               <View key={invite.id} style={styles.inviteCard}>
                 <View style={styles.inviteCardHeader}>
                   <View style={styles.inviteIconContainer}>
-                    <Ionicons name="people" size={20} color={colors.primary[500]} />
+                    <Icon name="people" size={20} color={colors.primary[500]} />
                   </View>
                   <View style={styles.inviteCardInfo}>
                     <Text style={styles.inviteCardName} numberOfLines={1}>
@@ -492,7 +492,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       {/* Empty state */}
       {addedFriends.length === 0 && (
         <View style={styles.emptyState}>
-          <Ionicons
+          <Icon
             name="chatbubbles-outline"
             size={48}
             color={colors.gray[300]}

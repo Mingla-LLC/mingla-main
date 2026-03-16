@@ -12,7 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { RecommendationCard } from '../types';
 import { useHapticFeedback } from '../utils/hapticFeedback';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
@@ -344,7 +344,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
               styles.swipeIndicator,
               swipeDirection === 'right' ? styles.swipeIndicatorRight : styles.swipeIndicatorLeft
             ]}>
-              <Ionicons 
+              <Icon 
                 name={swipeDirection === 'right' ? 'heart' : 'close'} 
                 size={isAnimating ? 32 : 48} 
                 color={swipeDirection === 'right' ? '#10B981' : '#EF4444'} 
@@ -376,7 +376,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
             />
           ) : (
             <View style={styles.imageFallback}>
-              <Ionicons name="location-outline" size={48} color="#9CA3AF" />
+              <Icon name="location-outline" size={48} color="#9CA3AF" />
             </View>
           )}
 
@@ -387,14 +387,14 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
           {/* Rating */}
           {card.rating && (
             <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={12} color="#FCD34D" />
+              <Icon name="star" size={12} color="#FCD34D" />
               <Text style={styles.ratingText}>{formatToOneDecimal(card.rating)}</Text>
             </View>
           )}
 
           {/* Travel Info Overlay */}
           <View style={styles.travelInfoContainer}>
-            <Ionicons name="navigate-outline" size={12} color="white" />
+            <Icon name="navigate-outline" size={12} color="white" />
             <Text style={styles.travelInfoText}>
               {card.route.etaMinutes}m • {card.route.distanceText}
             </Text>
@@ -422,7 +422,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
           <View style={styles.copySection}>
             <Text style={styles.oneLiner}>{card.copy.oneLiner}</Text>
             <View style={styles.tipContainer}>
-              <Ionicons name="chatbubble-outline" size={16} color="#6B7280" />
+              <Icon name="chatbubble-outline" size={16} color="#6B7280" />
               <Text style={styles.tipText}>{card.copy.tip}</Text>
             </View>
           </View>
@@ -433,7 +433,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
             onPress={() => setIsExpanded(!isExpanded)}
           >
             <Text style={styles.expandButtonText}>View Details</Text>
-            <Ionicons
+            <Icon
               name={isExpanded ? "chevron-up" : "chevron-down"}
               size={16}
               color="#6B7280"
@@ -472,24 +472,24 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
               {/* Metadata Grid */}
               <View style={styles.metadataGrid}>
                 <View style={styles.metadataItem}>
-                  <Ionicons name="time-outline" size={16} color="#6B7280" />
+                  <Icon name="time-outline" size={16} color="#6B7280" />
                   <Text style={styles.metadataText}>{formatDuration(card.durationMinutes)}</Text>
                 </View>
                 <View style={styles.metadataItem}>
-                  <Ionicons name="cash-outline" size={16} color="#6B7280" />
+                  <Icon name="cash-outline" size={16} color="#6B7280" />
                   <Text style={styles.metadataText}>{priceDisplay}</Text>
                 </View>
               </View>
 
               {/* Address */}
               <View style={styles.addressContainer}>
-                <Ionicons name="location-outline" size={16} color="#6B7280" />
+                <Icon name="location-outline" size={16} color="#6B7280" />
                 <Text style={styles.addressText}>{card.address}</Text>
               </View>
 
               {/* View Route Button */}
               <TouchableOpacity style={styles.routeButton} onPress={handleViewRoute}>
-                <Ionicons name="open-outline" size={16} color="#FF6B35" />
+                <Icon name="open-outline" size={16} color="#FF6B35" />
                 <Text style={styles.routeButtonText}>Open in Maps</Text>
               </TouchableOpacity>
             </View>

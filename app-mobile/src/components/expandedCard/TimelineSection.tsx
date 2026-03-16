@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { TimelineData } from "../../types/expandedCardTypes";
 import { generateTimeline } from "../../utils/timelineGenerator";
 
@@ -184,7 +184,7 @@ export default function TimelineSection({
                   ]}
                 >
                   {step.isStart ? (
-                    <Ionicons
+                    <Icon
                       name="flag"
                       size={20}
                       color={isExpanded ? "#ffffff" : "#9ca3af"}
@@ -227,7 +227,7 @@ export default function TimelineSection({
                     </View>
 
                     {/* Location pin icon */}
-                    <Ionicons
+                    <Icon
                       name="location"
                       size={14}
                       color={"#eb7825"}
@@ -251,7 +251,7 @@ export default function TimelineSection({
                   </View>
 
                   {/* Caret icon */}
-                  <Ionicons
+                  <Icon
                     name={isExpanded ? "chevron-up" : "chevron-down"}
                     size={20}
                     color={isExpanded ? "#eb7825" : "#9ca3af"}
@@ -273,7 +273,7 @@ export default function TimelineSection({
                       (step.location.address || step.location.name) && (
                         <View style={styles.locationCard}>
                           <View style={styles.locationCardContent}>
-                            <Ionicons
+                            <Icon
                               name="location"
                               size={16}
                               color="#eb7825"
@@ -287,7 +287,7 @@ export default function TimelineSection({
                             onPress={() => openInMaps(step.location!)}
                             activeOpacity={0.7}
                           >
-                            <Ionicons
+                            <Icon
                               name="paper-plane"
                               size={14}
                               color="#eb7825"
@@ -295,7 +295,7 @@ export default function TimelineSection({
                             <Text style={styles.openMapsText}>
                               Open in Maps
                             </Text>
-                            <Ionicons
+                            <Icon
                               name="open-outline"
                               size={12}
                               color="#eb7825"

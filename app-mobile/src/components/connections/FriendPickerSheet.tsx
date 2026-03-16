@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import { Friend } from "../../hooks/useFriends";
@@ -131,13 +131,13 @@ export function FriendPickerSheet({
           <View style={styles.header}>
             <Text style={styles.headerTitle}>New Message</Text>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#111827" />
+              <Icon name="close" size={24} color="#111827" />
             </TouchableOpacity>
           </View>
 
           {/* Search */}
           <View style={styles.searchContainer}>
-            <Ionicons
+            <Icon
               name="search"
               size={18}
               color="#9ca3af"
@@ -160,7 +160,7 @@ export function FriendPickerSheet({
             </View>
           ) : friends.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="people-outline" size={48} color="#d1d5db" />
+              <Icon name="people-outline" size={48} color="#d1d5db" />
               <Text style={styles.emptyTitle}>No friends yet</Text>
               <Text style={styles.emptySubtitle}>
                 Add friends to start messaging
@@ -168,7 +168,7 @@ export function FriendPickerSheet({
             </View>
           ) : filteredFriends.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="search" size={48} color="#d1d5db" />
+              <Icon name="search" size={48} color="#d1d5db" />
               <Text style={styles.emptyTitle}>No results</Text>
               <Text style={styles.emptySubtitle}>
                 Try a different search term

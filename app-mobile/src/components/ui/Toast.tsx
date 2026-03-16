@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   Dimensions,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './Icon';
 
 const { width } = Dimensions.get("window");
 
@@ -120,10 +120,10 @@ export const Toast: React.FC<ToastProps> = ({
       ]}
     >
       <View style={[styles.toast, { backgroundColor: getColor() }]}>
-        <Ionicons name={getIcon()} size={24} color="white" />
+        <Icon name={getIcon()} size={24} color="white" />
         <Text style={styles.message}>{message}</Text>
         <TouchableOpacity onPress={dismiss} style={styles.closeButton}>
-          <Ionicons name="close" size={20} color="white" />
+          <Icon name="close" size={20} color="white" />
         </TouchableOpacity>
       </View>
     </Animated.View>

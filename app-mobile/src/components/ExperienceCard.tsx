@@ -7,7 +7,7 @@ import {
   Image,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { Experience } from '../types';
 import { useExperiences } from '../hooks/useExperiences';
 import { useAppStore } from '../store/appStore';
@@ -97,7 +97,7 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
             onPress={handleSave}
             disabled={saving}
           >
-            <Ionicons
+            <Icon
               name={isSaved ? 'heart' : 'heart-outline'}
               size={20}
               color={isSaved ? '#FF3B30' : 'white'}
@@ -113,20 +113,20 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
 
         <View style={styles.metaInfo}>
           <View style={styles.metaItem}>
-            <Ionicons name="cash-outline" size={14} color="#666" />
+            <Icon name="cash-outline" size={14} color="#666" />
             <Text style={styles.metaText}>
               {formatPrice(experience.price_min, experience.price_max)}
             </Text>
           </View>
           <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={14} color="#666" />
+            <Icon name="time-outline" size={14} color="#666" />
             <Text style={styles.metaText}>
               {formatDuration(experience.duration_min)}
             </Text>
           </View>
           {showLocation && experience.lat && experience.lng && (
             <View style={styles.metaItem}>
-              <Ionicons name="location-outline" size={14} color="#666" />
+              <Icon name="location-outline" size={14} color="#666" />
               <Text style={styles.metaText}>Nearby</Text>
             </View>
           )}
@@ -136,7 +136,7 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
           <View style={styles.actions}>
             <TouchableOpacity style={styles.actionButton}>
               <Text style={styles.actionButtonText}>View Details</Text>
-              <Ionicons name="chevron-forward" size={16} color="#FF6B35" />
+              <Icon name="chevron-forward" size={16} color="#FF6B35" />
             </TouchableOpacity>
           </View>
         )}

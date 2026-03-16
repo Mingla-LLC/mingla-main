@@ -6,7 +6,7 @@ import {
   ScrollView,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 export type PillId = "add" | "requests" | "blocked" | "invite";
 
@@ -53,8 +53,8 @@ export function PillFilters({
             style={[styles.pill, isActive && styles.pillActive]}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name={pill.icon as any}
+            <Icon
+              name={pill.icon}
               size={16}
               color={isActive ? "#ffffff" : "#eb7825"}
               style={styles.pillIcon}

@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 
 interface EditBioSheetProps {
@@ -51,7 +51,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Edit Bio</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={24} color="#111827" />
+                <Icon name="close" size={24} color="#111827" />
               </TouchableOpacity>
             </View>
 

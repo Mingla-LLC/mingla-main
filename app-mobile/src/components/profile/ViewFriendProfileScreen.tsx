@@ -8,7 +8,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { s, vs } from '../../utils/responsive';
 import ProfileHeroSection from './ProfileHeroSection';
@@ -49,7 +49,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Ionicons name="arrow-back" size={s(24)} color="#111827" />
+        <Icon name="arrow-back" size={s(24)} color="#111827" />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Profile</Text>
       <View style={styles.headerSpacer} />

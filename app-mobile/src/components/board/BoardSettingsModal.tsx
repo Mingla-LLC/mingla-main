@@ -11,7 +11,7 @@ import {
   Switch,
 } from "react-native";
 import { KeyboardAwareScrollView } from "../ui/KeyboardAwareScrollView";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { BoardSession } from "../../hooks/useBoardSession";
 import { useBoardSession } from "../../hooks/useBoardSession";
 import { InviteLinkShare } from "./InviteLinkShare";
@@ -127,7 +127,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
           <View style={styles.headerSidePlaceholder} />
           <Text style={styles.title}>Board Settings</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
+            <Icon name="close" size={24} color="#666" />
           </TouchableOpacity>
         </View>
 
@@ -138,7 +138,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
                 style={styles.backButton}
                 onPress={() => setShowInviteOptions(false)}
               >
-                <Ionicons name="arrow-back" size={20} color="#eb7825" />
+                <Icon name="arrow-back" size={20} color="#eb7825" />
                 <Text style={styles.backButtonText}>Back to Settings</Text>
               </TouchableOpacity>
 
@@ -210,7 +210,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
                   style={styles.inviteButton}
                   onPress={handleLoadInviteLink}
                 >
-                  <Ionicons name="share-outline" size={20} color="#eb7825" />
+                  <Icon name="share-outline" size={20} color="#eb7825" />
                   <Text style={styles.inviteButtonText}>
                     View Invite Options
                   </Text>
@@ -224,7 +224,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
                   style={styles.deleteButton}
                   onPress={handleDelete}
                 >
-                  <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+                  <Icon name="trash-outline" size={20} color="#FF3B30" />
                   <Text style={styles.deleteButtonText}>Delete Session</Text>
                 </TouchableOpacity>
               </View>

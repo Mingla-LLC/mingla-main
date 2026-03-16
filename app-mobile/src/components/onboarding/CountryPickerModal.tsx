@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { COUNTRIES } from '../../constants/countries';
 import { CountryData } from '../../types/onboarding';
@@ -125,7 +125,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           </Text>
           <Text style={styles.dialCode}>{item.dialCode}</Text>
           {isSelected && (
-            <Ionicons
+            <Icon
               name="checkmark"
               size={20}
               color={colors.primary[500]}
@@ -153,13 +153,13 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           accessibilityLabel="Close country picker"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="close" size={24} color={colors.text.primary} />
+          <Icon name="close" size={24} color={colors.text.primary} />
         </TouchableOpacity>
       </View>
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <Ionicons
+        <Icon
           name="search-outline"
           size={20}
           color={colors.gray[400]}

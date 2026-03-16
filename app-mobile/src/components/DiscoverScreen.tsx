@@ -15,7 +15,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -471,8 +471,8 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
               activeOpacity={0.7}
             >
               <View style={styles.tabContent}>
-                <Feather
-                  name={tab.icon as any}
+                <Icon
+                  name={tab.icon}
                   size={18}
                   color={isActive ? "#eb7825" : "#6B7280"}
                 />
@@ -514,7 +514,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
         <View style={styles.travelInfoContainer}>
           {formattedDistance ? (
             <View style={styles.travelInfoBadge}>
-              <Ionicons name="location-outline" size={14} color="white" />
+              <Icon name="location-outline" size={14} color="white" />
               <Text style={styles.travelInfoText}>{formattedDistance}</Text>
             </View>
           ) : null}
@@ -538,7 +538,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
         <View style={styles.cardFooter}>
           <Text style={styles.priceRange}>{formattedPrice}</Text>
           <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={16} color="#eb7825" />
+            <Icon name="star" size={16} color="#eb7825" />
             <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
           </View>
         </View>
@@ -574,7 +574,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
         />
         {/* Category Badge */}
         <View style={styles.heroCardCategoryBadge}>
-          <Ionicons name={categoryIcon as any} size={14} color="#eb7825" />
+          <Icon name={categoryIcon} size={14} color="#eb7825" />
           <Text style={styles.heroCardCategoryText}>{card.experienceType}</Text>
         </View>
       </View>
@@ -586,7 +586,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurement
         <View style={styles.heroCardFooter}>
           <Text style={styles.heroCardPrice}>{formattedPrice}</Text>
           <View style={styles.heroCardRating}>
-            <Ionicons name="star" size={13} color="#eb7825" />
+            <Icon name="star" size={13} color="#eb7825" />
             <Text style={styles.heroCardRatingText}>{card.rating.toFixed(1)}</Text>
           </View>
         </View>
@@ -615,7 +615,7 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
         />
         {/* Category Icon Badge */}
         <View style={styles.categoryIconBadge}>
-          <Ionicons name={categoryIcon as any} size={16} color="#eb7825" />
+          <Icon name={categoryIcon} size={16} color="#eb7825" />
         </View>
       </View>
 
@@ -631,7 +631,7 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
         <View style={styles.gridCardFooter}>
           <Text style={styles.gridCardPrice}>{formattedPrice}</Text>
           <View style={styles.gridCardArrowButton}>
-            <Feather name="chevron-right" size={14} color="white" />
+            <Icon name="chevron-right" size={14} color="white" />
           </View>
         </View>
       </View>
@@ -675,16 +675,16 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 
           {/* Date · Time row */}
           <View style={styles.nightOutMetaRow}>
-            <Feather name="calendar" size={12} color="#eb7825" />
+            <Icon name="calendar" size={12} color="#eb7825" />
             <Text style={styles.nightOutMetaText}>{card.date}</Text>
             <Text style={styles.nightOutMetaDot}>·</Text>
-            <Feather name="clock" size={12} color="#eb7825" />
+            <Icon name="clock" size={12} color="#eb7825" />
             <Text style={styles.nightOutMetaText}>{card.time}</Text>
           </View>
 
           {/* Venue row */}
           <View style={styles.nightOutMetaRow}>
-            <Ionicons name="location-outline" size={12} color="#eb7825" />
+            <Icon name="location-outline" size={12} color="#eb7825" />
             <Text style={styles.nightOutMetaText} numberOfLines={1}>{card.venueName}{card.location ? `, ${card.location}` : ""}</Text>
           </View>
         </View>
@@ -701,7 +701,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
         <View style={styles.nightOutTagStrip}>
           {card.genre ? (
             <View style={styles.nightOutTagChip}>
-              <Ionicons name="musical-notes-outline" size={10} color="#eb7825" />
+              <Icon name="musical-notes-outline" size={10} color="#eb7825" />
               <Text style={styles.nightOutTagLabel}>{card.genre}</Text>
             </View>
           ) : null}
@@ -3209,7 +3209,7 @@ export default function DiscoverScreen({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons
+                  <Icon
                     name={canAccess('pairing') ? "person-add-outline" : "lock-closed"}
                     size={canAccess('pairing') ? 18 : 16}
                     color={canAccess('pairing') ? "#eb7825" : "#9CA3AF"}
@@ -3373,7 +3373,7 @@ export default function DiscoverScreen({
                           setShowPaywall(true);
                         }}
                       >
-                        <Ionicons name="lock-closed" size={16} color="#F59E0B" />
+                        <Icon name="lock-closed" size={16} color="#F59E0B" />
                         <Text style={styles.frozenPairingText}>
                           {pairingPills.filter((p) => p.pillState === "active").length} pairing{pairingPills.filter((p) => p.pillState === "active").length > 1 ? 's' : ''} — upgrade to Elite to reconnect
                         </Text>
@@ -3392,7 +3392,7 @@ export default function DiscoverScreen({
                   {/* Error State */}
                   {recommendationsError && !recommendationsLoading && (
                     <View style={styles.emptyStateContainer}>
-                      <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                      <Icon name="alert-circle-outline" size={48} color="#ef4444" />
                       <Text style={styles.emptyStateTitle}>Something went wrong</Text>
                       <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
                     </View>
@@ -3401,7 +3401,7 @@ export default function DiscoverScreen({
                   {/* Empty State */}
                   {!recommendationsLoading && !recommendationsError && !featuredCard && gridCards.length === 0 && recommendations.length === 0 && hasCompletedInitialFetch && (
                     <View style={styles.emptyStateContainer}>
-                      <Ionicons name="compass-outline" size={48} color="#eb7825" />
+                      <Icon name="compass-outline" size={48} color="#eb7825" />
                       <Text style={styles.emptyStateTitle}>No experiences found</Text>
                       <Text style={styles.emptyStateSubtitle}>
                         Try adjusting your preferences to discover new activities
@@ -3489,7 +3489,7 @@ export default function DiscoverScreen({
                 activeOpacity={0.7}
               >
                 <View style={styles.filterButtonLeft}>
-                  <Feather name="filter" size={18} color="#eb7825" />
+                  <Icon name="filter" size={18} color="#eb7825" />
                   <Text style={styles.filterButtonText}>Filter</Text>
                   {activeFilterCount > 0 && (
                     <View style={styles.filterBadge}>
@@ -3497,13 +3497,13 @@ export default function DiscoverScreen({
                     </View>
                   )}
                 </View>
-                <Feather name="chevron-right" size={20} color="#6b7280" />
+                <Icon name="chevron-right" size={20} color="#6b7280" />
               </TouchableOpacity>
 
               {/* Active genre filter confirmation */}
               {selectedFilters.genre !== "all" && (
                 <View style={styles.activeFilterChip}>
-                  <Feather name="music" size={14} color="#eb7825" />
+                  <Icon name="music" size={14} color="#eb7825" />
                   <Text style={styles.activeFilterChipText}>
                     Showing: {getGenreLabel(selectedFilters.genre)}
                   </Text>
@@ -3511,7 +3511,7 @@ export default function DiscoverScreen({
                     onPress={() => setSelectedFilters({ ...selectedFilters, genre: "all" })}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Feather name="x" size={16} color="#6b7280" />
+                    <Icon name="x" size={16} color="#6b7280" />
                   </TouchableOpacity>
                 </View>
               )}
@@ -3527,7 +3527,7 @@ export default function DiscoverScreen({
               {/* Error State */}
               {nightOutError && !nightOutLoading && (
                 <View style={styles.emptyStateContainer}>
-                  <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                  <Icon name="alert-circle-outline" size={48} color="#ef4444" />
                   <Text style={styles.emptyStateTitle}>Something went wrong</Text>
                   <Text style={styles.emptyStateSubtitle}>{nightOutError}</Text>
                   <TouchableOpacity
@@ -3556,7 +3556,7 @@ export default function DiscoverScreen({
               {/* Empty State - No data at all */}
               {!nightOutLoading && !nightOutError && nightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
-                  <Ionicons name="moon-outline" size={48} color="#eb7825" />
+                  <Icon name="moon-outline" size={48} color="#eb7825" />
                   <Text style={styles.emptyStateTitle}>No events found</Text>
                   <Text style={styles.emptyStateSubtitle}>No events found near your location. Try increasing your radius.</Text>
                 </View>
@@ -3565,7 +3565,7 @@ export default function DiscoverScreen({
               {/* Empty State - Filters produced no results */}
               {!nightOutLoading && !nightOutError && nightOutCards.length > 0 && filteredNightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
-                  <Feather name="sliders" size={48} color="#eb7825" />
+                  <Icon name="sliders" size={48} color="#eb7825" />
                   <Text style={styles.emptyStateTitle}>No matching events</Text>
                   <Text style={styles.emptyStateSubtitle}>
                     No events match your selected filters
@@ -3679,7 +3679,7 @@ export default function DiscoverScreen({
                 onPress={handleCloseFilterModal}
                 style={styles.modalCloseButton}
               >
-                <Feather name="x" size={24} color="#6b7280" />
+                <Icon name="x" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
 
@@ -3690,7 +3690,7 @@ export default function DiscoverScreen({
               {/* Date Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Feather name="calendar" size={20} color="#eb7825" />
+                  <Icon name="calendar" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Date</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
@@ -3720,7 +3720,7 @@ export default function DiscoverScreen({
               {/* Price Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Feather name="tag" size={20} color="#eb7825" />
+                  <Icon name="tag" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Price Range</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
@@ -3750,7 +3750,7 @@ export default function DiscoverScreen({
               {/* Music Genre Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Feather name="music" size={20} color="#eb7825" />
+                  <Icon name="music" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Music Genre</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>

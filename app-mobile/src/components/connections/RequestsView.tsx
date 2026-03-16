@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { FriendRequest } from "../../hooks/useFriends";
 
 interface RequestsViewProps {
@@ -56,7 +56,7 @@ export function RequestsView({
   if (requests.length === 0) {
     return (
       <View style={styles.emptyState}>
-        <Ionicons name="people-outline" size={32} color="#d1d5db" />
+        <Icon name="people-outline" size={32} color="#d1d5db" />
         <Text style={styles.emptyText}>No pending requests</Text>
       </View>
     );

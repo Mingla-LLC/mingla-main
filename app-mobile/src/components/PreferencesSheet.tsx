@@ -20,7 +20,7 @@ import {
 import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
 import { offlineService } from "../services/offlineService";
@@ -263,74 +263,74 @@ export default function PreferencesSheet({
     if (isCollaborationMode) {
       // Load from board session preferences — intents and categories are separate DB columns
       setSelectedIntents(
-        Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
+        Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
       );
       const collabCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
       setSelectedCategories(collabCats);
-      if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
-        setSelectedPriceTiers((loadedPreferences as any).price_tiers);
+      if (Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0) {
+        setSelectedPriceTiers((loadedPreferences).price_tiers);
       }
-      if ((loadedPreferences as any).travel_mode) {
-        setTravelMode((loadedPreferences as any).travel_mode);
+      if ((loadedPreferences).travel_mode) {
+        setTravelMode((loadedPreferences).travel_mode);
       }
       // travel_constraint_type is always 'time' — no need to load from DB
-      if ((loadedPreferences as any).travel_constraint_value !== undefined) {
-        setConstraintValue((loadedPreferences as any).travel_constraint_value);
+      if ((loadedPreferences).travel_constraint_value !== undefined) {
+        setConstraintValue((loadedPreferences).travel_constraint_value);
       }
-      if ((loadedPreferences as any).time_of_day) {
-        const timeSlot = (loadedPreferences as any).time_of_day;
+      if ((loadedPreferences).time_of_day) {
+        const timeSlot = (loadedPreferences).time_of_day;
         if (["brunch", "afternoon", "dinner", "lateNight"].includes(timeSlot)) {
           setSelectedTimeSlot(timeSlot as TimeSlot);
         }
       }
-      if ((loadedPreferences as any).datetime_pref) {
-        const date = new Date((loadedPreferences as any).datetime_pref);
+      if ((loadedPreferences).datetime_pref) {
+        const date = new Date((loadedPreferences).datetime_pref);
         if (!isNaN(date.getTime())) {
           setSelectedDate(date);
         }
       }
-      if ((loadedPreferences as any).location) {
-        const savedLocation = (loadedPreferences as any).location;
+      if ((loadedPreferences).location) {
+        const savedLocation = (loadedPreferences).location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
       setInitialPreferences({
-        selectedIntents: Array.isArray((loadedPreferences as any).intents)
-          ? (loadedPreferences as any).intents
+        selectedIntents: Array.isArray((loadedPreferences).intents)
+          ? (loadedPreferences).intents
           : [],
-        selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
-          ? (loadedPreferences as any).price_tiers
+        selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
+          ? (loadedPreferences).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
-        budgetMin: (loadedPreferences as any).budget_min || 0,
-        budgetMax: (loadedPreferences as any).budget_max || 200,
+        budgetMin: (loadedPreferences).budget_min || 0,
+        budgetMax: (loadedPreferences).budget_max || 200,
         selectedCategories: collabCats,
         selectedDateOption: "Now",
-        selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
-        selectedDate: (loadedPreferences as any).datetime_pref
-          ? new Date((loadedPreferences as any).datetime_pref)
+        selectedTimeSlot: (loadedPreferences).time_of_day || null,
+        selectedDate: (loadedPreferences).datetime_pref
+          ? new Date((loadedPreferences).datetime_pref)
           : null,
         exactTime: "",
-        travelMode: (loadedPreferences as any).travel_mode || "walking",
+        travelMode: (loadedPreferences).travel_mode || "walking",
         constraintType: 'time' as const,
-        constraintValue: (loadedPreferences as any).travel_constraint_value || 30,
-        searchLocation: (loadedPreferences as any).location || "",
+        constraintValue: (loadedPreferences).travel_constraint_value || 30,
+        searchLocation: (loadedPreferences).location || "",
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
       setSelectedIntents(
-        Array.isArray((loadedPreferences as any).intents) ? (loadedPreferences as any).intents : []
+        Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
       );
       const soloCats = normalizeCategoryIds(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
       setSelectedCategories(soloCats);
 
-      if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
-        setSelectedPriceTiers((loadedPreferences as any).price_tiers);
+      if (Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0) {
+        setSelectedPriceTiers((loadedPreferences).price_tiers);
       }
 
       if (loadedPreferences.travel_mode) {
@@ -354,15 +354,15 @@ export default function PreferencesSheet({
         );
       }
 
-      if ((loadedPreferences as any).time_slot) {
-        const timeSlot = (loadedPreferences as any).time_slot;
+      if ((loadedPreferences).time_slot) {
+        const timeSlot = (loadedPreferences).time_slot;
         if (["brunch", "afternoon", "dinner", "lateNight"].includes(timeSlot)) {
           setSelectedTimeSlot(timeSlot as TimeSlot);
         }
       }
 
-      if ((loadedPreferences as any).exact_time) {
-        setExactTime((loadedPreferences as any).exact_time);
+      if ((loadedPreferences).exact_time) {
+        setExactTime((loadedPreferences).exact_time);
       }
 
       if (loadedPreferences.datetime_pref) {
@@ -372,22 +372,22 @@ export default function PreferencesSheet({
         }
       }
 
-      const gpsFlag = (loadedPreferences as any).use_gps_location ?? true;
+      const gpsFlag = (loadedPreferences).use_gps_location ?? true;
       setUseGpsLocation(gpsFlag);
 
-      if (!gpsFlag && (loadedPreferences as any).custom_location) {
-        const savedLocation = (loadedPreferences as any).custom_location;
+      if (!gpsFlag && (loadedPreferences).custom_location) {
+        const savedLocation = (loadedPreferences).custom_location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
       setInitialPreferences({
-        selectedIntents: Array.isArray((loadedPreferences as any).intents)
-          ? (loadedPreferences as any).intents
+        selectedIntents: Array.isArray((loadedPreferences).intents)
+          ? (loadedPreferences).intents
           : [],
-        selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
-          ? (loadedPreferences as any).price_tiers
+        selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
+          ? (loadedPreferences).price_tiers
           : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
@@ -401,15 +401,15 @@ export default function PreferencesSheet({
             } as Record<string, DateOption>)[loadedPreferences.date_option] ||
             "Now"
           : "Now",
-        selectedTimeSlot: (loadedPreferences as any).time_slot || null,
+        selectedTimeSlot: (loadedPreferences).time_slot || null,
         selectedDate: loadedPreferences.datetime_pref
           ? new Date(loadedPreferences.datetime_pref)
           : null,
-        exactTime: (loadedPreferences as any).exact_time || "",
+        exactTime: (loadedPreferences).exact_time || "",
         travelMode: loadedPreferences.travel_mode || "walking",
         constraintType: 'time' as const,
         constraintValue: loadedPreferences.travel_constraint_value || 30,
-        searchLocation: (loadedPreferences as any).custom_location || "",
+        searchLocation: (loadedPreferences).custom_location || "",
       });
     }
   }, [loadedPreferences, preferencesLoading, visible, isCollaborationMode]);
@@ -911,7 +911,7 @@ export default function PreferencesSheet({
                       activeOpacity={0.7}
                     >
                       <View style={[styles.tierIconDot, isActive && { backgroundColor: tier.color }]}>
-                        <Ionicons name={tier.icon as any} size={13} color={isActive ? '#fff' : '#9CA3AF'} />
+                        <Icon name={tier.icon} size={13} color={isActive ? '#fff' : '#9CA3AF'} />
                       </View>
                       <View style={styles.tierTextContainer}>
                         <Text style={[styles.tierLabel, isActive && { color: tier.color }]}>{tier.label}</Text>
@@ -1279,7 +1279,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tierPill: {
-    width: "47%" as any,
+    width: "47%",
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,

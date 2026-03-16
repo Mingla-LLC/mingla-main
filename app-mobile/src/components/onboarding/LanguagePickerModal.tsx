@@ -9,7 +9,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from '../ui/Icon'
 import * as Haptics from 'expo-haptics'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import { LANGUAGES, LanguageData } from '../../constants/languages'
@@ -100,7 +100,7 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
             </Text>
           </View>
           {isSelected && (
-            <Ionicons
+            <Icon
               name="checkmark"
               size={20}
               color={colors.primary[500]}
@@ -125,12 +125,12 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
             accessibilityLabel="Close language picker"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="close" size={24} color={colors.text.primary} />
+            <Icon name="close" size={24} color={colors.text.primary} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.searchContainer}>
-          <Ionicons
+          <Icon
             name="search-outline"
             size={20}
             color={colors.gray[400]}

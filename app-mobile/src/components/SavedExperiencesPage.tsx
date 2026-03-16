@@ -9,7 +9,7 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import SavedTab from "./activity/SavedTab";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,7 +113,7 @@ const Dropdown: React.FC<DropdownProps> = ({
         >
           {selectedOption?.label || placeholder}
         </Text>
-        <Ionicons
+        <Icon
           name={isOpen ? "chevron-up" : "chevron-down"}
           size={20}
           color="#6b7280"
@@ -155,7 +155,7 @@ const Dropdown: React.FC<DropdownProps> = ({
                       {option.label}
                     </Text>
                     {value === option.value && (
-                      <Ionicons name="checkmark" size={20} color="#eb7825" />
+                      <Icon name="checkmark" size={20} color="#eb7825" />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -235,7 +235,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
         if (card?.category === selectedCategory) return true;
         // Check if it matches experience type
         const experienceType =
-          card?.experienceType || (card as any)?.experience_type;
+          card?.experienceType || (card)?.experience_type;
         if (experienceType === selectedCategory) return true;
         return false;
       });
@@ -281,7 +281,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <Ionicons name="heart" size={28} color="#eb7825" />
+        <Icon name="heart" size={28} color="#eb7825" />
         <Text style={styles.loadingText}>Loading your saved experiences...</Text>
       </View>
     );
@@ -303,14 +303,14 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
             </Text>
           </View>
           <View style={styles.badge}>
-            <Ionicons name="bookmark" size={16} color="#eb7825" />
+            <Icon name="bookmark" size={16} color="#eb7825" />
             <Text style={styles.badgeText}>Library</Text>
           </View>
         </View>
 
         {/* Search */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color="#9CA3AF" />
+          <Icon name="search" size={18} color="#9CA3AF" />
           <TextInput
             placeholder="Search saved experiences"
             placeholderTextColor="#9CA3AF"

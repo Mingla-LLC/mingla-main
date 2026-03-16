@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface HighlightsSectionProps {
   highlights: string[];
@@ -24,7 +24,7 @@ export default function HighlightsSection({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="sparkles" size={20} color="#eb7825" />
+        <Icon name="sparkles" size={20} color="#eb7825" />
         <Text style={styles.title}>Highlights</Text>
       </View>
       <ScrollView
@@ -34,8 +34,8 @@ export default function HighlightsSection({
       >
         {highlights.map((highlight, index) => (
           <View key={index} style={styles.highlightBadge}>
-            <Ionicons
-              name={getHighlightIcon(index) as any}
+            <Icon
+              name={getHighlightIcon(index)}
               size={16}
               color="#eb7825"
               style={styles.highlightIcon}

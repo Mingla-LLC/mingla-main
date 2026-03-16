@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
@@ -1660,7 +1660,7 @@ const SavedTab = ({
       return (
         <View style={[curatedSavedStyles.card, curatedSavedStyles.lockedCardOverflow]}>
           <View style={curatedSavedStyles.lockedBody}>
-            <Ionicons name="lock-closed" size={32} color="rgba(255,255,255,0.5)" />
+            <Icon name="lock-closed" size={32} color="rgba(255,255,255,0.5)" />
             <Text style={curatedSavedStyles.lockedTeaserText} numberOfLines={2}>
               {teaserText}
             </Text>
@@ -1742,7 +1742,7 @@ const SavedTab = ({
           {/* Experience type + stop count badges */}
           <View style={curatedSavedStyles.badgeRow}>
             <View style={curatedSavedStyles.typeBadge}>
-              <Ionicons name="map-outline" size={12} color="#F59E0B" />
+              <Icon name="map-outline" size={12} color="#F59E0B" />
               <Text style={curatedSavedStyles.typeBadgeText}>{experienceLabel}</Text>
             </View>
             <View style={curatedSavedStyles.stopCountBadge}>
@@ -1765,17 +1765,17 @@ const SavedTab = ({
           {/* Stats row: avg rating, duration, price */}
           <View style={curatedSavedStyles.statsRow}>
             <View style={curatedSavedStyles.statItem}>
-              <Ionicons name="star" size={13} color="#F59E0B" />
+              <Icon name="star" size={13} color="#F59E0B" />
               <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
             </View>
             <Text style={curatedSavedStyles.statDot}>·</Text>
             <View style={curatedSavedStyles.statItem}>
-              <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Icon name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
               <Text style={curatedSavedStyles.statText}>{durationLabel}</Text>
             </View>
             <Text style={curatedSavedStyles.statDot}>·</Text>
             <View style={curatedSavedStyles.statItem}>
-              <Ionicons name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Icon name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
               <Text style={curatedSavedStyles.statText}>{totalPrice}</Text>
             </View>
           </View>
@@ -1795,7 +1795,7 @@ const SavedTab = ({
               <ActivityIndicator size="small" color="#1C1C1E" />
             ) : (
               <>
-                <Ionicons name="calendar" size={16} color="#1C1C1E" />
+                <Icon name="calendar" size={16} color="#1C1C1E" />
                 <Text style={curatedSavedStyles.scheduleButtonText}>
                   {isScheduled ? 'Scheduled' : 'Schedule Plan'}
                 </Text>
@@ -1807,7 +1807,7 @@ const SavedTab = ({
             onPress={() => onShareCard(card)}
             style={curatedSavedStyles.iconButton}
           >
-            <Ionicons name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
+            <Icon name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1818,7 +1818,7 @@ const SavedTab = ({
             {isRemoving ? (
               <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
             ) : (
-              <Ionicons name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
+              <Icon name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
             )}
           </TouchableOpacity>
         </View>
@@ -1869,7 +1869,7 @@ const SavedTab = ({
                   <Text style={styles.cardTitle}>{card.title}</Text>
                   {/* Subtitle - use category or a default subtitle */}
                   <View style={{flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 4}}>
-                    <Feather name="heart" size={16} color="orange" />
+                    <Icon name="heart" size={16} color="orange" />
                     <Text style={styles.cardSubtitle}>
                       {(card as any).subtitle || card.category || "Experience"}
                     </Text>
@@ -1884,11 +1884,11 @@ const SavedTab = ({
               <View style={styles.cardMeta}>
                 <View style={styles.cardStats}>
                   <View style={styles.statItem}>
-                    <Ionicons name="star" size={14} color="#fbbf24" />
+                    <Icon name="star" size={14} color="#fbbf24" />
                     <Text style={styles.statText}>{card.rating || "4.5"}</Text>
                   </View>
                   <View style={styles.statItem}>
-                    <Ionicons name="paper-plane" size={14} color="#6b7280" />
+                    <Icon name="paper-plane" size={14} color="#6b7280" />
                     <Text style={styles.statText}>
                       {card.travelTime || "15m"}
                     </Text>
@@ -1899,7 +1899,7 @@ const SavedTab = ({
                       : card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                <Icon name="chevron-forward" size={16} color="#9ca3af" />
               </View>
 
               {/* Source badge */}
@@ -1941,7 +1941,7 @@ const SavedTab = ({
                 }
                 style={styles.primaryButton}
               >
-                <Ionicons name="bag" size={16} color="white" />
+                <Icon name="bag" size={16} color="white" />
                 <Text style={styles.primaryButtonText}>Buy Now</Text>
               </TouchableOpacity>
             ) : (
@@ -1963,7 +1963,7 @@ const SavedTab = ({
                     <ActivityIndicator size="small" color="white" />
                   ) : (
                     <>
-                      <Ionicons name="calendar" size={16} color="white" />
+                      <Icon name="calendar" size={16} color="white" />
                       <Text style={styles.primaryButtonText}>
                         {isScheduled ? "Scheduled" : "Schedule"}
                       </Text>
@@ -1982,7 +1982,7 @@ const SavedTab = ({
               onPress={() => onShareCard(card)}
               style={styles.shareButton}
             >
-              <Ionicons name="share-social-outline" size={18} color="#374151" />
+              <Icon name="share-social-outline" size={18} color="#374151" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1993,7 +1993,7 @@ const SavedTab = ({
               {isRemoving ? (
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
-                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                <Icon name="trash-outline" size={18} color="#ef4444" />
               )}
             </TouchableOpacity>
           </View>
@@ -2015,7 +2015,7 @@ const SavedTab = ({
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyStateIconCircle}>
-          <Ionicons name="heart-outline" size={22} color="#eb7825" />
+          <Icon name="heart-outline" size={22} color="#eb7825" />
         </View>
         <View style={styles.emptyStateTextContainer}>
           <Text style={styles.emptyStateTitle}>Nothing saved yet</Text>
@@ -2066,7 +2066,7 @@ const SavedTab = ({
         >
           <View style={styles.filterHeaderRow}>
             <View style={styles.searchInputContainer}>
-              <Ionicons
+              <Icon
                 name="search-outline"
                 size={18}
                 color="#9ca3af"
@@ -2085,8 +2085,8 @@ const SavedTab = ({
               activeOpacity={0.7}
               onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
             >
-              <Feather name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
-              <Ionicons
+              <Icon name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
+              <Icon
                 name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
                 size={18}
                 color={isFiltersExpanded ? "white" : "#9ca3af"}

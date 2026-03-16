@@ -13,7 +13,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from '../ui/Icon'
 
 import { PhoneInput } from './PhoneInput'
 import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
@@ -424,7 +424,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
             if (status === 'accepted') {
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardAccepted]}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success[600]} />
+                  <Icon name="checkmark-circle" size={20} color={colors.success[600]} />
                   <Text style={styles.acceptedText}>Added</Text>
                 </View>
               )
@@ -433,7 +433,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
             if (status === 'declined') {
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
-                  <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                  <Icon name="close-circle" size={20} color={colors.gray[500]} />
                   <Text style={styles.declinedText}>Declined</Text>
                 </View>
               )
@@ -505,7 +505,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   <Image source={{ uri: phoneLookupResult.user.avatar_url }} style={styles.avatar32} />
                 ) : (
                   <View style={styles.avatarPlaceholder32}>
-                    <Ionicons name="person" size={18} color={colors.gray[400]} />
+                    <Icon name="person" size={18} color={colors.gray[400]} />
                   </View>
                 )}
                 <Text style={styles.lookupName} numberOfLines={1}>
@@ -547,7 +547,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   <Image source={{ uri: friend.avatarUrl }} style={styles.avatar36} />
                 ) : (
                   <View style={styles.avatarPlaceholder36}>
-                    <Ionicons name="person" size={14} color={colors.gray[400]} />
+                    <Icon name="person" size={14} color={colors.gray[400]} />
                   </View>
                 )}
 
@@ -585,7 +585,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                       <ActivityIndicator size="small" color={colors.primary[500]} />
                     ) : (
                       <>
-                        <Ionicons
+                        <Icon
                           name={
                             pillState === 'paired' ? 'checkmark-circle'
                               : pillState === 'pending' ? 'time-outline'
@@ -620,7 +620,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   style={styles.removeButton}
                 >
-                  <Ionicons name="close-circle" size={22} color={colors.gray[400]} />
+                  <Icon name="close-circle" size={22} color={colors.gray[400]} />
                 </TouchableOpacity>
               </View>
             )
@@ -645,7 +645,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
             if (status === 'accepted') {
               return (
                 <View key={request.id} style={[styles.pairRequestCard, styles.pairRequestCardAccepted]}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success[600]} />
+                  <Icon name="checkmark-circle" size={20} color={colors.success[600]} />
                   <Text style={styles.pairedFeedbackText}>Paired!</Text>
                 </View>
               )
@@ -654,7 +654,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
             if (status === 'declined') {
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
-                  <Ionicons name="close-circle" size={20} color={colors.gray[500]} />
+                  <Icon name="close-circle" size={20} color={colors.gray[500]} />
                   <Text style={styles.declinedText}>Declined</Text>
                 </View>
               )

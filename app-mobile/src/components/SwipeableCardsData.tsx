@@ -1,4 +1,4 @@
-// Icons are now referenced as strings for use with @expo/vector-icons
+// Icons are referenced as strings for use with the Icon component
 
 interface MatchFactors {
   location: number;
@@ -31,7 +31,7 @@ interface Recommendation {
   id: string;
   title: string;
   category: string;
-  categoryIcon: string; // Changed to string for @expo/vector-icons compatibility
+  categoryIcon: string; // Icon name string
   timeAway: string;
   description: string;
   budget: string;

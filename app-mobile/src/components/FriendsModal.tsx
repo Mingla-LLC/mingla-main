@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboard } from "../hooks/useKeyboard";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useQueryClient } from "@tanstack/react-query";
 import { useFriends, Friend, FriendRequest } from "../hooks/useFriends";
 import { useMutedUserIds, friendsKeys } from "../hooks/useFriendsQuery";
@@ -212,7 +212,7 @@ function SwipeableFriendRow({
           }}
           accessibilityLabel={isMuted ? "Unmute" : "Mute"}
         >
-          <Ionicons
+          <Icon
             name={isMuted ? "volume-high-outline" : "volume-mute-outline"}
             size={20}
             color={colors.gray[600]}
@@ -230,7 +230,7 @@ function SwipeableFriendRow({
           }}
           accessibilityLabel="Block"
         >
-          <Ionicons name="ban-outline" size={20} color={colors.warning[600]} />
+          <Icon name="ban-outline" size={20} color={colors.warning[600]} />
           <Text style={[swipeStyles.actionLabel, { color: colors.warning[600] }]}>
             Block
           </Text>
@@ -244,7 +244,7 @@ function SwipeableFriendRow({
           }}
           accessibilityLabel="Report"
         >
-          <Ionicons name="flag-outline" size={20} color={colors.error[500]} />
+          <Icon name="flag-outline" size={20} color={colors.error[500]} />
           <Text style={[swipeStyles.actionLabel, { color: colors.error[500] }]}>
             Report
           </Text>
@@ -258,7 +258,7 @@ function SwipeableFriendRow({
           }}
           accessibilityLabel="Remove"
         >
-          <Ionicons name="person-remove-outline" size={20} color={colors.error[600]} />
+          <Icon name="person-remove-outline" size={20} color={colors.error[600]} />
           <Text style={[swipeStyles.actionLabel, { color: colors.error[600] }]}>
             Remove
           </Text>
@@ -495,11 +495,11 @@ function RequestItem({
       <View style={requestStyles.actions}>
         {processedStatus === "accepted" ? (
           <View style={requestStyles.acceptedCircle}>
-            <Ionicons name="checkmark" size={18} color={colors.text.inverse} />
+            <Icon name="checkmark" size={18} color={colors.text.inverse} />
           </View>
         ) : processedStatus === "declined" ? (
           <View style={requestStyles.declinedCircle}>
-            <Ionicons name="close" size={18} color={colors.gray[500]} />
+            <Icon name="close" size={18} color={colors.gray[500]} />
           </View>
         ) : (
           <>
@@ -512,7 +512,7 @@ function RequestItem({
               disabled={loading}
               accessibilityLabel="Decline request"
             >
-              <Ionicons name="close" size={18} color={colors.gray[500]} />
+              <Icon name="close" size={18} color={colors.gray[500]} />
             </TouchableOpacity>
             <TouchableOpacity
               style={requestStyles.acceptButton}
@@ -523,7 +523,7 @@ function RequestItem({
               disabled={loading}
               accessibilityLabel="Accept request"
             >
-              <Ionicons name="checkmark" size={18} color={colors.text.inverse} />
+              <Icon name="checkmark" size={18} color={colors.text.inverse} />
             </TouchableOpacity>
           </>
         )}
@@ -1052,7 +1052,7 @@ export default function FriendsModal({
     if (friendsError) {
       return (
         <TouchableOpacity style={styles.emptyState} onPress={handleRetry}>
-          <Feather name="alert-circle" size={32} color={colors.gray[400]} />
+          <Icon name="alert-circle" size={32} color={colors.gray[400]} />
           <Text style={styles.emptyTitle}>Couldn't load friends</Text>
           <Text style={styles.emptySubtitle}>Tap to retry</Text>
         </TouchableOpacity>
@@ -1063,7 +1063,7 @@ export default function FriendsModal({
       return (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Feather name="users" size={32} color={colors.gray[400]} />
+            <Icon name="users" size={32} color={colors.gray[400]} />
           </View>
           <Text style={styles.emptyTitle}>No friends yet</Text>
           <Text style={styles.emptySubtitle}>
@@ -1081,7 +1081,7 @@ export default function FriendsModal({
         {/* Search bar — rendered above the FlatList so it stays visible */}
         <View style={styles.searchContainer}>
           <View style={styles.searchBar}>
-            <Feather name="search" size={16} color={colors.gray[400]} />
+            <Icon name="search" size={16} color={colors.gray[400]} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search friends"
@@ -1093,7 +1093,7 @@ export default function FriendsModal({
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={16} color={colors.gray[400]} />
+                <Icon name="close-circle" size={16} color={colors.gray[400]} />
               </TouchableOpacity>
             )}
           </View>
@@ -1150,7 +1150,7 @@ export default function FriendsModal({
       return (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Feather name="inbox" size={32} color={colors.gray[400]} />
+            <Icon name="inbox" size={32} color={colors.gray[400]} />
           </View>
           <Text style={styles.emptyTitle}>All caught up</Text>
           <Text style={styles.emptySubtitle}>

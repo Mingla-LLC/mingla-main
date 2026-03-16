@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface DropdownMenuProps {
   children: React.ReactNode;
@@ -141,7 +141,7 @@ function DropdownMenuCheckboxItem({
     >
       <View style={styles.checkboxIndicator}>
         {checked && (
-          <Ionicons name="checkmark" size={16} color="#eb7825" />
+          <Icon name="checkmark" size={16} color="#eb7825" />
         )}
       </View>
       {children}
@@ -288,7 +288,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
+      <Icon name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
     </TrackedTouchableOpacity>
   );
 }

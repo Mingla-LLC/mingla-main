@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Text, View, StyleSheet, Animated } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 
 interface Notification {
   id: string;
@@ -97,25 +97,25 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
     
     switch (notification.type) {
       case 'invite':
-        return <Ionicons name="people" {...iconProps} />;
+        return <Icon name="people" {...iconProps} />;
       case 'join':
-        return <Ionicons name="people" {...iconProps} />;
+        return <Icon name="people" {...iconProps} />;
       case 'success':
-        return <Ionicons name="checkmark" {...iconProps} />;
+        return <Icon name="checkmark" {...iconProps} />;
       case 'board_activity':
-        if (notification.activityType === 'like') return <Ionicons name="heart" {...iconProps} />;
-        if (notification.activityType === 'rsvp') return <Ionicons name="calendar" {...iconProps} />;
-        if (notification.activityType === 'discussion') return <Ionicons name="chatbubble" {...iconProps} />;
-        if (notification.activityType === 'lock_in') return <Ionicons name="lock-closed" {...iconProps} />;
-        return <Ionicons name="notifications" {...iconProps} />;
+        if (notification.activityType === 'like') return <Icon name="heart" {...iconProps} />;
+        if (notification.activityType === 'rsvp') return <Icon name="calendar" {...iconProps} />;
+        if (notification.activityType === 'discussion') return <Icon name="chatbubble" {...iconProps} />;
+        if (notification.activityType === 'lock_in') return <Icon name="lock-closed" {...iconProps} />;
+        return <Icon name="notifications" {...iconProps} />;
       case 'discussion_tag':
-        return <Ionicons name="pricetag" {...iconProps} />;
+        return <Icon name="pricetag" {...iconProps} />;
       case 'lock_in':
-        return <Ionicons name="lock-closed" {...iconProps} />;
+        return <Icon name="lock-closed" {...iconProps} />;
       case 'rsvp':
-        return <Ionicons name="calendar" {...iconProps} />;
+        return <Icon name="calendar" {...iconProps} />;
       default:
-        return <Ionicons name="notifications" {...iconProps} />;
+        return <Icon name="notifications" {...iconProps} />;
     }
   };
 
@@ -168,7 +168,7 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
         {/* Sparkle decoration for success notifications */}
         {notification.type === 'success' && (
           <View style={styles.sparkleContainer}>
-            <Ionicons name="sparkles" size={16} color="white" />
+            <Icon name="sparkles" size={16} color="white" />
           </View>
         )}
         
@@ -248,7 +248,7 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
                 : styles.dismissButtonDefault
             ]}
           >
-            <Ionicons 
+            <Icon 
               name="close" 
               size={16} 
               color={(notification.type === 'success' || notification.type === 'invite' || notification.type === 'join') ? 'rgba(255, 255, 255, 0.8)' : '#9ca3af'} 

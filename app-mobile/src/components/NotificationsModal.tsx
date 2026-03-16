@@ -22,8 +22,8 @@ import {
   ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useNetInfo } from 'expo-network';
+import { Icon } from './ui/Icon';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { colors, spacing, radius, shadows } from '../constants/designSystem';
 import type { ServerNotification } from '../hooks/useNotifications';
@@ -442,8 +442,8 @@ export default function NotificationsModal({
               </View>
             ) : (
               <View style={[styles.iconCircle, { backgroundColor: iconConfig.color + '15' }]}>
-                <Ionicons
-                  name={iconConfig.name as any}
+                <Icon
+                  name={iconConfig.name}
                   size={20}
                   color={iconConfig.color}
                 />
@@ -586,7 +586,7 @@ export default function NotificationsModal({
                   style={styles.headerActionButton}
                   onPress={onMarkAllRead}
                 >
-                  <Ionicons name="checkmark-done-outline" size={16} color="#eb7825" />
+                  <Icon name="checkmark-done-outline" size={16} color="#eb7825" />
                   <Text style={styles.headerActionText}>Mark all read</Text>
                 </TouchableOpacity>
               )}
@@ -595,7 +595,7 @@ export default function NotificationsModal({
                   style={styles.headerActionButton}
                   onPress={onClearAll}
                 >
-                  <Ionicons name="trash-outline" size={16} color={colors.gray[400]} />
+                  <Icon name="trash-outline" size={16} color={colors.gray[400]} />
                   <Text style={[styles.headerActionText, { color: colors.gray[400] }]}>
                     Clear all
                   </Text>
@@ -638,7 +638,7 @@ export default function NotificationsModal({
             renderSkeleton()
           ) : isError ? (
             <View style={styles.errorState}>
-              <Ionicons name="alert-circle-outline" size={48} color={colors.gray[300]} />
+              <Icon name="alert-circle-outline" size={48} color={colors.gray[300]} />
               <Text style={styles.errorTitle}>Something went wrong</Text>
               <Text style={styles.errorSubtext}>
                 Couldn't load notifications.
@@ -650,7 +650,7 @@ export default function NotificationsModal({
           ) : filteredNotifications.length === 0 && !isOffline ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIconCircle}>
-                <Ionicons
+                <Icon
                   name="notifications-outline"
                   size={40}
                   color={colors.gray[300]}
@@ -662,29 +662,31 @@ export default function NotificationsModal({
               </Text>
             </View>
           ) : (
-            {isOffline && (
-              <View style={styles.offlineBanner}>
-                <Ionicons name="cloud-offline-outline" size={14} color="#6B7280" />
-                <Text style={styles.offlineBannerText}>
-                  You're offline — showing cached notifications
-                </Text>
-              </View>
-            )}
-            <SectionList
-              sections={sections}
-              keyExtractor={(item) => item.id}
-              renderItem={renderNotification}
-              renderSectionHeader={renderSectionHeader}
-              stickySectionHeadersEnabled={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
-              onEndReached={() => {
-                if (hasMore) onLoadMore?.();
-              }}
-              onEndReachedThreshold={0.3}
-              refreshing={false}
-              onRefresh={onRefresh}
-            />
+            <>
+              {isOffline && (
+                <View style={styles.offlineBanner}>
+                  <Icon name="cloud-offline-outline" size={14} color="#6B7280" />
+                  <Text style={styles.offlineBannerText}>
+                    You're offline — showing cached notifications
+                  </Text>
+                </View>
+              )}
+              <SectionList
+                sections={sections}
+                keyExtractor={(item) => item.id}
+                renderItem={renderNotification}
+                renderSectionHeader={renderSectionHeader}
+                stickySectionHeadersEnabled={false}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                onEndReached={() => {
+                  if (hasMore) onLoadMore?.();
+                }}
+                onEndReachedThreshold={0.3}
+                refreshing={false}
+                onRefresh={onRefresh}
+              />
+            </>
           )}
         </View>
       </View>

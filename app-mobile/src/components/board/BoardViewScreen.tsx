@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   Modal,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 import { BoardHeader } from "./BoardHeader";
 import { BoardTabs, BoardTab } from "./BoardTabs";
@@ -544,7 +544,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={48} color="#FF3B30" />
+          <Icon name="alert-circle" size={48} color="#FF3B30" />
           <Text style={styles.errorText}>
             {error.userFriendlyMessage || "Session not found"}
           </Text>
@@ -563,7 +563,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       {/* Network Error Banner */}
       {showNetworkBanner && (
         <View style={styles.networkBanner}>
-          <Ionicons name="wifi-outline" size={16} color="white" />
+          <Icon name="wifi-outline" size={16} color="white" />
           <Text style={styles.networkBannerText}>
             No internet connection. Some features may be unavailable.
           </Text>
@@ -809,7 +809,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         <Modal visible={true} transparent animationType="fade">
           <View style={styles.calendarPromptOverlay}>
             <View style={styles.calendarPromptCard}>
-              <Ionicons name="checkmark-circle" size={48} color="#22c55e" />
+              <Icon name="checkmark-circle" size={48} color="#22c55e" />
               <Text style={styles.calendarPromptTitle}>Locked In!</Text>
               <Text style={styles.calendarPromptText}>
                 Everyone agreed on this experience. Add it to your calendar?
@@ -818,7 +818,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                 style={styles.calendarPromptButton}
                 onPress={() => syncToDeviceCalendar(lockedCalendarEntry)}
               >
-                <Ionicons name="calendar-outline" size={16} color="white" />
+                <Icon name="calendar-outline" size={16} color="white" />
                 <Text style={styles.calendarPromptButtonText}>Add to Calendar</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -853,7 +853,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
               onPressOut={() => setExitMenuItemPressed(false)}
               activeOpacity={1}
             >
-              <Ionicons name="exit-outline" size={20} color="#FF3B30" />
+              <Icon name="exit-outline" size={20} color="#FF3B30" />
               <Text style={styles.exitMenuText}>Exit Board</Text>
             </TouchableOpacity>
           </View>

@@ -12,7 +12,7 @@ import {
   Alert,
   Keyboard,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import {
   BoardMessageService,
   BoardMessage,
@@ -534,7 +534,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+            <Icon name="chatbubbles-outline" size={48} color="#ccc" />
             <Text style={styles.emptyStateText}>No messages yet</Text>
             <Text style={styles.emptyStateSubtext}>
               Start the conversation by sending a message
@@ -624,7 +624,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                 setMessageText("");
               }}
             >
-              <Ionicons name="close" size={16} color="#666" />
+              <Icon name="close" size={16} color="#666" />
             </TouchableOpacity>
           </View>
         )}
@@ -675,7 +675,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             {sending ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <Ionicons
+              <Icon
                 name={editingMessage ? "checkmark" : "send"}
                 size={20}
                 color="white"

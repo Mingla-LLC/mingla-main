@@ -13,7 +13,7 @@ import {
   Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -99,8 +99,8 @@ function CardHeroImage({ uri, style }: { uri: string; style: any }) {
   );
 }
 
-/** Map travel mode preference to an Ionicons icon name */
-function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+/** Map travel mode preference to an icon name */
+function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
     case 'transit': return 'bus';
@@ -1434,7 +1434,7 @@ export default function SwipeableCards({
         <View style={styles.loadingContainer}>
           <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
             <View style={styles.brandMark}>
-              <Ionicons name="compass-outline" size={28} color="#eb7825" />
+              <Icon name="compass-outline" size={28} color="#eb7825" />
             </View>
             <PulseDots size={8} speed={600} />
             <View style={styles.loaderTextGroup}>
@@ -1452,7 +1452,7 @@ export default function SwipeableCards({
         <View style={styles.noCardsContainer}>
           <View style={styles.noCardsContent}>
             <View style={styles.noCardsIcon}>
-              <Ionicons name="alert-circle" size={48} color="#ef4444" />
+              <Icon name="alert-circle" size={48} color="#ef4444" />
             </View>
             <Text style={styles.noCardsTitle}>That didn't land</Text>
             <Text style={styles.noCardsSubtitle}>{effectiveUIState.message}</Text>
@@ -1477,7 +1477,7 @@ export default function SwipeableCards({
         <View style={styles.emptyDeckContainer}>
           <View style={styles.emptyDeckContent}>
             <View style={styles.emptyDeckIconCircle}>
-              <Ionicons name="earth-outline" size={24} color="#eb7825" />
+              <Icon name="earth-outline" size={24} color="#eb7825" />
             </View>
             <Text style={styles.emptyDeckTitle}>
               {`That's a wrap on Round ${currentDeckBatchIndex + 1}`}
@@ -1498,7 +1498,7 @@ export default function SwipeableCards({
                   onPress={generateNextBatch}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+                  <Icon name="add-circle-outline" size={16} color="#FFFFFF" />
                   <Text style={styles.emptyDeckButtonText}>Another round</Text>
                 </TouchableOpacity>
               )}
@@ -1512,7 +1512,7 @@ export default function SwipeableCards({
                     onPress={() => navigateToDeckBatch(idx)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="albums-outline" size={16} color="#eb7825" />
+                    <Icon name="albums-outline" size={16} color="#eb7825" />
                     <Text style={styles.emptyDeckOutlineButtonText}>
                       Revisit Round {idx + 1} — {batch.cards.length} places
                     </Text>
@@ -1523,7 +1523,7 @@ export default function SwipeableCards({
               {/* Hint about deck chip when multiple batches exist */}
               {hasMultipleBatches && (
                 <Text style={styles.emptyDeckHint}>
-                  Switch rounds from the <Ionicons name="layers-outline" size={12} color="#9ca3af" /> chip anytime
+                  Switch rounds from the <Icon name="layers-outline" size={12} color="#9ca3af" /> chip anytime
                 </Text>
               )}
 
@@ -1534,7 +1534,7 @@ export default function SwipeableCards({
                   onPress={() => setDismissedSheetVisible(true)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="refresh-outline" size={16} color="#eb7825" />
+                  <Icon name="refresh-outline" size={16} color="#eb7825" />
                   <Text style={styles.emptyDeckOutlineButtonText}>
                     Revisit {dismissedCards.length} skipped place{dismissedCards.length !== 1 ? "s" : ""}
                   </Text>
@@ -1547,7 +1547,7 @@ export default function SwipeableCards({
                 onPress={handleOpenPreferences}
                 activeOpacity={0.7}
               >
-                <Ionicons name="options-outline" size={16} color="#FFFFFF" />
+                <Icon name="options-outline" size={16} color="#FFFFFF" />
                 <Text style={styles.emptyDeckButtonText}>Shift your vibe</Text>
               </TouchableOpacity>
             </View>
@@ -1621,7 +1621,7 @@ export default function SwipeableCards({
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="layers-outline" size={14} color="#6b7280" />
+              <Icon name="layers-outline" size={14} color="#6b7280" />
               <Text style={styles.batchChipText}>
                 Round {currentDeckBatchIndex + 1}
               </Text>
@@ -1658,7 +1658,7 @@ export default function SwipeableCards({
                     {/* Gallery Indicator if multiple images */}
                     {nextCard.images && nextCard.images.length > 1 && (
                       <View style={styles.galleryIndicator}>
-                        <Ionicons name="images" size={16} color="white" />
+                        <Icon name="images" size={16} color="white" />
                         <Text style={styles.galleryText}>
                           {nextCard.images.length}
                         </Text>
@@ -1672,27 +1672,27 @@ export default function SwipeableCards({
                       {/* Info badges: distance, travel time, rating, price */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
-                          <Ionicons name="location" size={12} color="white" />
+                          <Icon name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Ionicons name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {nextCard.travelTime}
                             </Text>
                           </View>
                         ) : null}
                         <View style={styles.detailBadge}>
-                          <Ionicons name="star" size={12} color="white" />
+                          <Icon name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {(nextCard.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
-                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Icon name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
                               ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
@@ -1700,7 +1700,7 @@ export default function SwipeableCards({
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
-                          <Ionicons name={NextCategoryIcon as any} size={12} color="white" />
+                          <Icon name={NextCategoryIcon} size={12} color="white" />
                           <Text style={styles.detailBadgeText}>{getReadableCategoryName(nextCard.category)}</Text>
                         </View>
                       </View>
@@ -1708,7 +1708,7 @@ export default function SwipeableCards({
                       {/* View more badge */}
                       <View style={styles.viewMoreRow}>
                         <View style={styles.viewMoreBadge}>
-                          <Ionicons name="eye" size={12} color="white" />
+                          <Icon name="eye" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>View more</Text>
                         </View>
                       </View>
@@ -1727,7 +1727,7 @@ export default function SwipeableCards({
                       }}
                       activeOpacity={0.7}
                     >
-                      <Ionicons
+                      <Icon
                         name="share-outline"
                         size={18}
                         color="#6b7280"
@@ -1805,7 +1805,7 @@ export default function SwipeableCards({
                     {/* Gallery Indicator if multiple images */}
                     {currentRec.images && currentRec.images.length > 1 && (
                       <View style={styles.galleryIndicator}>
-                        <Ionicons name="images" size={16} color="white" />
+                        <Icon name="images" size={16} color="white" />
                         <Text style={styles.galleryText}>
                           {currentRec.images.length}
                         </Text>
@@ -1828,27 +1828,27 @@ export default function SwipeableCards({
                       {/* Info badges: distance, travel time, rating, price */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
-                          <Ionicons name="location" size={12} color="white" />
+                          <Icon name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Ionicons name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {currentRec.travelTime}
                             </Text>
                           </View>
                         ) : null}
                         <View style={styles.detailBadge}>
-                          <Ionicons name="star" size={12} color="white" />
+                          <Icon name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {(currentRec.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
-                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Icon name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
                               ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
@@ -1856,7 +1856,7 @@ export default function SwipeableCards({
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
-                          <Ionicons name={CategoryIcon as any} size={12} color="white" />
+                          <Icon name={CategoryIcon} size={12} color="white" />
                           <Text style={styles.detailBadgeText}>{getReadableCategoryName(currentRec.category)}</Text>
                         </View>
                       </View>
@@ -1864,7 +1864,7 @@ export default function SwipeableCards({
                       {/* View more badge */}
                       <View style={styles.viewMoreRow}>
                         <View style={styles.viewMoreBadge}>
-                          <Ionicons name="eye" size={12} color="white" />
+                          <Icon name="eye" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>View more</Text>
                         </View>
                       </View>
@@ -1879,7 +1879,7 @@ export default function SwipeableCards({
                       onPress={handleShare}
                       activeOpacity={0.7}
                     >
-                      <Ionicons
+                      <Icon
                         name="share-social-outline"
                         size={18}
                         color="#6b7280"

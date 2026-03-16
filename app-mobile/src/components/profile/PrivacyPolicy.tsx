@@ -9,8 +9,7 @@ import {
   StatusBar,
   Animated,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import Feather from "@expo/vector-icons/Feather";
+import { Icon } from "../ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -58,10 +57,10 @@ export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
           accessibilityLabel="Close"
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={20} color="#374151" />
+          <Icon name="arrow-back" size={20} color="#374151" />
         </TouchableOpacity>
         <View style={styles.titleCluster}>
-          <Feather name="shield" size={18} color="#eb7825" />
+          <Icon name="shield" size={18} color="#eb7825" />
           <Text style={styles.headerTitle}>Privacy Policy</Text>
         </View>
         <View style={styles.headerSpacer} />

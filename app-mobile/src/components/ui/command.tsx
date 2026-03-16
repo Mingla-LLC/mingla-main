@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, TextInput, StyleSheet, ScrollView, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface CommandProps {
   children: React.ReactNode;
@@ -81,7 +81,7 @@ function CommandInput({
 }: CommandInputProps) {
   return (
     <View style={[styles.inputWrapper, style]}>
-      <Ionicons name="search" size={16} color="#6b7280" style={styles.searchIcon} />
+      <Icon name="search" size={16} color="#6b7280" style={styles.searchIcon} />
       <TextInput
         style={styles.input}
         placeholder={placeholder}

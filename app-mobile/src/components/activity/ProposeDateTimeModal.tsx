@@ -10,7 +10,7 @@ import {
   Animated,
   Dimensions,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -626,7 +626,7 @@ export default function ProposeDateTimeModal({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerIconContainer}>
-                  <Ionicons
+                  <Icon
                     name={isCurated ? "map" : "calendar"}
                     size={18}
                     color="#F59E0B"
@@ -648,7 +648,7 @@ export default function ProposeDateTimeModal({
                 style={styles.closeButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons
+                <Icon
                   name="close"
                   size={18}
                   color="rgba(255,255,255,0.6)"
@@ -666,7 +666,7 @@ export default function ProposeDateTimeModal({
               {/* Curated plan info banner */}
               {isCurated && stopCount > 0 && (
                 <View style={styles.curatedBanner}>
-                  <Ionicons
+                  <Icon
                     name="trail-sign-outline"
                     size={16}
                     color="#F59E0B"
@@ -682,7 +682,7 @@ export default function ProposeDateTimeModal({
               {!isCurated && parsedOpeningHours && (
                 <View style={styles.openingHoursSection}>
                   <View style={styles.openingHoursHeader}>
-                    <Ionicons name="time" size={18} color="#F59E0B" />
+                    <Icon name="time" size={18} color="#F59E0B" />
                     <Text style={styles.openingHoursTitle}>Opening Hours</Text>
                     {liveOpenStatus !== null && (
                       <View
@@ -747,7 +747,7 @@ export default function ProposeDateTimeModal({
               {currentScheduledDate && (
                 <View style={styles.currentScheduleSection}>
                   <View style={styles.currentScheduleHeader}>
-                    <Ionicons name="calendar" size={16} color="#F59E0B" />
+                    <Icon name="calendar" size={16} color="#F59E0B" />
                     <Text style={styles.currentScheduleTitle}>
                       Currently Scheduled
                     </Text>
@@ -780,7 +780,7 @@ export default function ProposeDateTimeModal({
               {/* Selected time display */}
               {selectedTimeLabel && (
                 <View style={styles.selectedTimeContainer}>
-                  <Ionicons name="time-outline" size={16} color="#F59E0B" />
+                  <Icon name="time-outline" size={16} color="#F59E0B" />
                   <Text style={styles.selectedTimeText}>
                     {selectedTimeLabel}
                   </Text>
@@ -798,7 +798,7 @@ export default function ProposeDateTimeModal({
               {/* Availability messages (regular cards only) */}
               {!isCurated && isAvailabilityChecked && !isPlaceOpen && (
                 <View style={styles.availabilityMessage}>
-                  <Ionicons name="warning" size={18} color="#ef4444" />
+                  <Icon name="warning" size={18} color="#ef4444" />
                   <Text style={styles.availabilityMessageText}>
                     This place is closed at the selected time. Please choose a
                     different time.
@@ -811,7 +811,7 @@ export default function ProposeDateTimeModal({
                 isPlaceOpen &&
                 availabilityAssumption && (
                   <View style={styles.assumptionWarning}>
-                    <Ionicons
+                    <Icon
                       name="information-circle"
                       size={18}
                       color="#F59E0B"

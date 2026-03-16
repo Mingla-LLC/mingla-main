@@ -138,7 +138,7 @@ export const getCategorySlug = (categoryKey: string): string => {
 };
 
 /**
- * Get category icon name for Ionicons
+ * Get category icon name (used by the Icon component wrapper)
  */
 export const getCategoryIcon = (categoryKey: string): string => {
   if (!categoryKey) return 'compass-outline';

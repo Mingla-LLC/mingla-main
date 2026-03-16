@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Text, View, TextInput, StyleSheet, Dimensions } from "react-native";
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface InputOTPProps {
   value?: string;
@@ -262,7 +262,7 @@ interface InputOTPSeparatorProps {
 function InputOTPSeparator({ style, ...props }: InputOTPSeparatorProps) {
   return (
     <View style={[styles.separator, style]} {...props}>
-      <Ionicons name="remove" size={16} color="#6b7280" />
+      <Icon name="remove" size={16} color="#6b7280" />
     </View>
   );
 }

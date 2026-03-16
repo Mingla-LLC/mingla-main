@@ -8,10 +8,11 @@ import {
   StyleSheet,
   Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories } from '../../constants/categories';
+import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
 
 interface EditInterestsSheetProps {
   visible: boolean;
@@ -75,7 +76,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Edit Interests</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={24} color="#111827" />
+              <X size={24} color="#111827" strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
@@ -84,6 +85,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
             <View style={styles.pillsWrap}>
               {ONBOARDING_INTENTS.map((intent) => {
                 const selected = selectedIntents.includes(intent.id);
+                const IconComponent = INTENT_ICON_MAP[intent.id];
                 return (
                   <TouchableOpacity
                     key={intent.id}
@@ -96,12 +98,14 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
                     onPress={() => toggleIntent(intent.id)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons
-                      name={intent.icon as any}
-                      size={16}
-                      color={selected ? '#ffffff' : '#374151'}
-                      style={styles.pillIcon}
-                    />
+                    {IconComponent && (
+                      <IconComponent
+                        size={16}
+                        color={selected ? '#ffffff' : '#374151'}
+                        strokeWidth={2.5}
+                        style={styles.pillIcon}
+                      />
+                    )}
                     <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
                       {intent.label}
                     </Text>
@@ -114,6 +118,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
             <View style={styles.pillsWrap}>
               {categories.map((cat) => {
                 const selected = selectedCategories.includes(cat.name);
+                const CatIcon = CATEGORY_ICON_MAP[cat.slug];
                 return (
                   <TouchableOpacity
                     key={cat.slug}
@@ -124,8 +129,16 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
                     onPress={() => toggleCategory(cat.name)}
                     activeOpacity={0.7}
                   >
+                    {CatIcon && (
+                      <CatIcon
+                        size={16}
+                        color={selected ? '#ffffff' : '#374151'}
+                        strokeWidth={2}
+                        style={styles.catPillIcon}
+                      />
+                    )}
                     <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
-                      {cat.icon} {cat.name}
+                      {cat.name}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -183,10 +196,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
+  catPillIcon: { marginRight: 6 },
   selectedCategoryPill: { backgroundColor: '#eb7825' },
   unselectedPill: { borderWidth: 1, borderColor: '#d1d5db' },
   pillIcon: { marginRight: 6 },

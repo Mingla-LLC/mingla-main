@@ -20,7 +20,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useFriends, BlockedUser } from "../hooks/useFriends";
 
 interface BlockedUsersModalProps {
@@ -138,7 +138,7 @@ export default function BlockedUsersModal({
             </View>
           )}
           <View style={styles.blockedBadge}>
-            <Feather name="user-x" size={12} color="white" />
+            <Icon name="user-x" size={12} color="white" />
           </View>
         </View>
         <View style={styles.userDetails}>
@@ -172,7 +172,7 @@ export default function BlockedUsersModal({
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Feather name="shield" size={32} color="#d1d5db" />
+        <Icon name="shield" size={32} color="#d1d5db" />
       </View>
       <Text style={styles.emptyTitle}>No Blocked Users</Text>
       <Text style={styles.emptySubtitle}>

@@ -7,7 +7,7 @@ import {
   Modal,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { CollaborationSession, SessionInvite } from '../types';
 
 interface HeaderControlsProps {
@@ -69,7 +69,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         style={[styles.button, totalNotifications > 0 && styles.buttonWithBadge]}
         onPress={() => setInviteModalOpen(true)}
       >
-        <Ionicons name="notifications-outline" size={20} color="#FF6B35" />
+        <Icon name="notifications-outline" size={20} color="#FF6B35" />
         {totalNotifications > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
@@ -86,12 +86,12 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
       >
         {isInSolo ? (
           <>
-            <Ionicons name="person-outline" size={20} color="#FF6B35" />
+            <Icon name="person-outline" size={20} color="#FF6B35" />
             <Text style={styles.sessionButtonText}>Solo</Text>
           </>
         ) : (
           <>
-            <Ionicons name="people-outline" size={20} color="#FF6B35" />
+            <Icon name="people-outline" size={20} color="#FF6B35" />
             <Text style={styles.sessionButtonText}>Team</Text>
           </>
         )}
@@ -109,7 +109,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         style={styles.createButton}
         onPress={handleCreateSession}
       >
-        <Ionicons name="add" size={20} color="#FF6B35" />
+        <Icon name="add" size={20} color="#FF6B35" />
       </TouchableOpacity>
 
       {/* Invite Modal */}
@@ -123,14 +123,14 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Collaboration Invites</Text>
             <TouchableOpacity onPress={() => setInviteModalOpen(false)}>
-              <Ionicons name="close" size={24} color="#666" />
+              <Icon name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
           <View style={styles.modalContent}>
             {(pendingInvites?.length || 0) === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="mail-outline" size={48} color="#ccc" />
+                <Icon name="mail-outline" size={48} color="#ccc" />
                 <Text style={styles.emptyStateText}>No pending invites</Text>
               </View>
             ) : (
@@ -180,7 +180,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Session Management</Text>
             <TouchableOpacity onPress={() => setSessionModalOpen(false)}>
-              <Ionicons name="close" size={24} color="#666" />
+              <Icon name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
@@ -235,7 +235,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
                 setSessionModalOpen(false);
               }}
             >
-              <Ionicons name="add" size={20} color="white" />
+              <Icon name="add" size={20} color="white" />
               <Text style={styles.createSessionButtonText}>Create New Session</Text>
             </TouchableOpacity>
           </View>

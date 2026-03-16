@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 
 interface Friend {
   id: string;
@@ -115,10 +115,10 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
 
   const getStatusIcon = (status: CollaborationSession['status']) => {
     switch (status) {
-      case 'active': return <Ionicons name="people" size={12} color="#059669" />;
-      case 'pending': return <Ionicons name="time" size={12} color="#d97706" />;
-      case 'archived': return <Ionicons name="calendar" size={12} color="#6b7280" />;
-      default: return <Ionicons name="alert-circle" size={12} color="#6b7280" />;
+      case 'active': return <Icon name="people" size={12} color="#059669" />;
+      case 'pending': return <Icon name="time" size={12} color="#d97706" />;
+      case 'archived': return <Icon name="calendar" size={12} color="#6b7280" />;
+      default: return <Icon name="alert-circle" size={12} color="#6b7280" />;
     }
   };
 
@@ -177,7 +177,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
               onPress={onClose}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={20} color="#6b7280" />
+              <Icon name="close" size={20} color="#6b7280" />
             </TrackedTouchableOpacity>
           </View>
         </View>
@@ -186,7 +186,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
         <ScrollView style={styles.content}>
           {availableSessions.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="people" size={48} color="#d1d5db" />
+              <Icon name="people" size={48} color="#d1d5db" />
               <Text style={styles.emptyStateTitle}>No Available Boards</Text>
               <Text style={styles.emptyStateText}>
                 {friend.name} is already in all your active collaboration boards, or you don't have any boards yet.
@@ -201,7 +201,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                 <View style={styles.selectionControls}>
                   {selectedSessions.length > 0 && (
                     <View style={styles.selectionBadge}>
-                      <Ionicons name="checkmark" size={12} color="#ea580c" />
+                      <Icon name="checkmark" size={12} color="#ea580c" />
                       <Text style={styles.selectionCount}>{selectedSessions.length}</Text>
                     </View>
                   )}
@@ -211,9 +211,9 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                       style={styles.selectAllButton}
                     >
                       {selectedSessions.length === availableSessions.length ? (
-                        <Ionicons name="close" size={12} color="#eb7825" />
+                        <Icon name="close" size={12} color="#eb7825" />
                       ) : (
-                        <Ionicons name="checkmark" size={12} color="#eb7825" />
+                        <Icon name="checkmark" size={12} color="#eb7825" />
                       )}
                       <Text style={styles.selectAllText}>All</Text>
                     </TrackedTouchableOpacity>
@@ -245,15 +245,15 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                         
                         <View style={styles.sessionCardMeta}>
                           <View style={styles.metaItem}>
-                            <Ionicons name="people" size={12} color="#6b7280" />
+                            <Icon name="people" size={12} color="#6b7280" />
                             <Text style={styles.metaText}>{session.totalParticipants} members</Text>
                           </View>
                           <View style={styles.metaItem}>
-                            <Ionicons name="calendar" size={12} color="#6b7280" />
+                            <Icon name="calendar" size={12} color="#6b7280" />
                             <Text style={styles.metaText}>{session.boardCards} cards</Text>
                           </View>
                           <View style={styles.metaItem}>
-                            <Ionicons name="time" size={12} color="#6b7280" />
+                            <Icon name="time" size={12} color="#6b7280" />
                             <Text style={styles.metaText}>{session.lastActivity}</Text>
                           </View>
                         </View>
@@ -265,7 +265,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                           selectedSessions.includes(session.id) && styles.checkboxSelected
                         ]}>
                           {selectedSessions.includes(session.id) && (
-                            <Ionicons name="checkmark" size={16} color="white" />
+                            <Icon name="checkmark" size={16} color="white" />
                           )}
                         </View>
                       </View>

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Text, View, StyleSheet, PanResponder, Animated } from "react-native";
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 
@@ -93,7 +93,7 @@ function ResizableHandle({
     >
       {withHandle && (
         <View style={styles.resizableHandleGrip}>
-          <Ionicons 
+          <Icon 
             name="reorder-three" 
             size={10} 
             color="#6b7280" 

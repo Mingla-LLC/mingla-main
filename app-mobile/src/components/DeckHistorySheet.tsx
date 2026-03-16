@@ -7,7 +7,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import type { DeckBatch } from '../store/appStore';
 
 interface DeckHistorySheetProps {
@@ -69,7 +69,7 @@ export const DeckHistorySheet: React.FC<DeckHistorySheetProps> = ({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={22} color="#6b7280" />
+              <Icon name="close" size={22} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
@@ -81,7 +81,7 @@ export const DeckHistorySheet: React.FC<DeckHistorySheetProps> = ({
           >
             {deckBatches.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="layers-outline" size={36} color="#d1d5db" />
+                <Icon name="layers-outline" size={36} color="#d1d5db" />
                 <Text style={styles.emptyText}>No batches yet</Text>
               </View>
             ) : (

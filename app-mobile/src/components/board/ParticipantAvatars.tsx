@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 export interface Participant {
   id: string;
@@ -124,7 +124,7 @@ export const ParticipantAvatars: React.FC<ParticipantAvatarsProps> = ({
   if (acceptedParticipants.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="people-outline" size={size} color="#ccc" />
+        <Icon name="people-outline" size={size} color="#ccc" />
         <Text style={styles.emptyText}>No participants</Text>
       </View>
     );

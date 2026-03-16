@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { ProfileGamifiedData } from '../types';
 
 interface GamifiedHistoryProps {
@@ -89,8 +89,8 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
           {gamifiedData.vibes.slice(0, 5).map((vibe, index) => (
             <View key={vibe.id} style={styles.vibeItem}>
               <View style={styles.vibeIconContainer}>
-                <Ionicons 
-                  name={getCategoryIcon(vibe.category) as any} 
+                <Icon 
+                  name={getCategoryIcon(vibe.category)} 
                   size={20} 
                   color={getCategoryColor(vibe.category)} 
                 />
@@ -122,8 +122,8 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
           {gamifiedData.recentActivity.slice(0, 5).map((activity) => (
             <View key={activity.id} style={styles.activityItem}>
               <View style={styles.activityIcon}>
-                <Ionicons 
-                  name={getCategoryIcon(activity.category || 'freestyle') as any} 
+                <Icon 
+                  name={getCategoryIcon(activity.category || 'freestyle')} 
                   size={16} 
                   color={getCategoryColor(activity.category || 'freestyle')} 
                 />
@@ -150,7 +150,7 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
         gamifiedData.timeline.map((event) => (
           <View key={event.id} style={styles.timelineItem}>
             <View style={styles.timelineIcon}>
-              <Ionicons 
+              <Icon 
                 name={event.badge_earned ? 'trophy' : 'star'} 
                 size={20} 
                 color="#FF9500" 
@@ -171,7 +171,7 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
         ))
       ) : (
         <View style={styles.emptyState}>
-          <Ionicons name="time-outline" size={48} color="#CCC" />
+          <Icon name="time-outline" size={48} color="#CCC" />
           <Text style={styles.emptyStateText}>No timeline events yet</Text>
           <Text style={styles.emptyStateSubtext}>Start exploring to build your timeline!</Text>
         </View>
@@ -211,7 +211,7 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
           <View style={styles.badgesContainer}>
             {gamifiedData.badges.map((badge, index) => (
               <View key={index} style={styles.badgeItem}>
-                <Ionicons name="trophy" size={24} color="#FF9500" />
+                <Icon name="trophy" size={24} color="#FF9500" />
                 <Text style={styles.badgeText}>{badge.replace(/_/g, ' ')}</Text>
               </View>
             ))}
@@ -224,8 +224,8 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Your Favorite</Text>
           <View style={styles.favoriteCategory}>
-            <Ionicons 
-              name={getCategoryIcon(gamifiedData.achievements.favoriteCategory) as any} 
+            <Icon 
+              name={getCategoryIcon(gamifiedData.achievements.favoriteCategory)} 
               size={32} 
               color={getCategoryColor(gamifiedData.achievements.favoriteCategory)} 
             />
@@ -257,7 +257,7 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
     return (
       <View style={styles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Ionicons name="trophy-outline" size={64} color="#FF9500" style={{ marginBottom: 16 }} />
+          <Icon name="trophy-outline" size={64} color="#FF9500" style={{ marginBottom: 16 }} />
           <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1a1a1a', marginBottom: 8 }}>
             Start Your Journey!
           </Text>
@@ -288,21 +288,21 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
           style={[styles.tabButton, activeTab === 'stats' && styles.activeTab]}
           onPress={() => setActiveTab('stats')}
         >
-          <Ionicons name="stats-chart" size={20} color={activeTab === 'stats' ? '#FF9500' : '#666'} />
+          <Icon name="stats-chart" size={20} color={activeTab === 'stats' ? '#FF9500' : '#666'} />
           <Text style={[styles.tabText, activeTab === 'stats' && styles.activeTabText]}>Stats</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'timeline' && styles.activeTab]}
           onPress={() => setActiveTab('timeline')}
         >
-          <Ionicons name="time" size={20} color={activeTab === 'timeline' ? '#FF9500' : '#666'} />
+          <Icon name="time" size={20} color={activeTab === 'timeline' ? '#FF9500' : '#666'} />
           <Text style={[styles.tabText, activeTab === 'timeline' && styles.activeTabText]}>Timeline</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'achievements' && styles.activeTab]}
           onPress={() => setActiveTab('achievements')}
         >
-          <Ionicons name="trophy" size={20} color={activeTab === 'achievements' ? '#FF9500' : '#666'} />
+          <Icon name="trophy" size={20} color={activeTab === 'achievements' ? '#FF9500' : '#666'} />
           <Text style={[styles.tabText, activeTab === 'achievements' && styles.activeTabText]}>Achievements</Text>
         </TouchableOpacity>
       </View>

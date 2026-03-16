@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
@@ -43,8 +43,8 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
               activeOpacity={0.7}
             >
               <View style={styles.tabContent}>
-                <Feather
-                  name={tab.icon as any}
+                <Icon
+                  name={tab.icon}
                   size={20}
                   color={isActive ? "#eb7825" : "#6B7280"}
                 />

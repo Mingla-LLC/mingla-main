@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface MenubarProps {
   children: React.ReactNode;
@@ -167,7 +167,7 @@ function MenubarCheckboxItem({
     >
       <View style={styles.checkboxIndicator}>
         {checked && (
-          <Ionicons name="checkmark" size={16} color="#eb7825" />
+          <Icon name="checkmark" size={16} color="#eb7825" />
         )}
       </View>
       {children}
@@ -301,7 +301,7 @@ function MenubarSubTrigger({
       {...props}
     >
       {children}
-      <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
+      <Icon name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
     </TrackedTouchableOpacity>
   );
 }

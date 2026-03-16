@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PurchasesPackage } from 'react-native-purchases';
 
@@ -110,6 +110,22 @@ export function CustomPaywallScreen({
   const [selectedTier, setSelectedTier] = useState<TierKey>(initialTier);
   const [selectedPkgId, setSelectedPkgId] = useState<string | null>(null);
 
+  // Sync state when the modal reopens — initialTier may have changed
+  // (e.g. pairing gates pass 'elite', curated cards pass 'pro')
+  useEffect(() => {
+    if (isVisible) {
+      setSelectedTier(initialTier);
+      setSelectedPkgId(null);
+    }
+  }, [isVisible, initialTier]);
+
+  // Reset package selection when switching tiers so the UI
+  // always highlights the first package of the newly selected tier
+  const handleTierSwitch = (tier: TierKey) => {
+    setSelectedTier(tier);
+    setSelectedPkgId(null);
+  };
+
   const headerText = feature ? FEATURE_HEADERS[feature] : 'Upgrade Your Experience';
 
   // Split packages by tier
@@ -141,9 +157,10 @@ export function CustomPaywallScreen({
       queryClient.invalidateQueries({ queryKey: revenueCatKeys.all });
       onClose();
     } catch (err: unknown) {
-      const error = err as { userCancelled?: boolean; message?: string };
-      if (error.userCancelled) return; // user tapped cancel — do nothing
-      Alert.alert('Purchase Failed', error.message ?? 'Something went wrong. Please try again.');
+      // RevenueCat throws { userCancelled: true } when user dismisses the payment sheet
+      if (err != null && typeof err === 'object' && 'userCancelled' in err && (err as Record<string, unknown>).userCancelled) return;
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      Alert.alert('Purchase Failed', message);
     }
   };
 
@@ -157,8 +174,8 @@ export function CustomPaywallScreen({
       Alert.alert('Restored', 'Your purchases have been restored.');
       onClose();
     } catch (err: unknown) {
-      const error = err as { message?: string };
-      Alert.alert('Restore Failed', error.message ?? 'Could not restore purchases.');
+      const message = err instanceof Error ? err.message : 'Could not restore purchases.';
+      Alert.alert('Restore Failed', message);
     }
   };
 
@@ -194,7 +211,7 @@ export function CustomPaywallScreen({
           <View style={styles.tierTabs}>
             <TouchableOpacity
               style={[styles.tierTab, selectedTier === 'pro' && styles.tierTabActivePro]}
-              onPress={() => setSelectedTier('pro')}
+              onPress={() => handleTierSwitch('pro')}
             >
               <Text style={[styles.tierTabText, selectedTier === 'pro' && styles.tierTabTextActive]}>
                 Pro
@@ -202,7 +219,7 @@ export function CustomPaywallScreen({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tierTab, selectedTier === 'elite' && styles.tierTabActiveElite]}
-              onPress={() => setSelectedTier('elite')}
+              onPress={() => handleTierSwitch('elite')}
             >
               <View style={styles.bestValueBadge}>
                 <Text style={styles.bestValueText}>Best Value</Text>
@@ -219,7 +236,7 @@ export function CustomPaywallScreen({
               const included = selectedTier === 'pro' ? item.pro : item.elite;
               return (
                 <View key={item.label} style={styles.checklistRow}>
-                  <Ionicons
+                  <Icon
                     name={included ? 'checkmark-circle' : 'close-circle'}
                     size={20}
                     color={included ? '#22C55E' : '#6B7280'}

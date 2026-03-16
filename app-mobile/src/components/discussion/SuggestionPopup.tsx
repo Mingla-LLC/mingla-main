@@ -7,7 +7,7 @@ import {
   Animated,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { colors, typography, shadows } from "../../constants/designSystem";
 
 interface SuggestionItem {
@@ -58,7 +58,7 @@ function SuggestionPopup({ type, items, onSelect }: SuggestionPopupProps) {
                 </Text>
               </View>
             ) : (
-              <Ionicons
+              <Icon
                 name="hash"
                 size={16}
                 color={colors.primary[500]}

@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
 
 interface ChatListItemProps {
@@ -159,7 +159,7 @@ export function ChatListItem({
           </Text>
           <View style={styles.metaRow}>
             {isMuted && (
-              <Ionicons
+              <Icon
                 name="volume-mute"
                 size={14}
                 color="#9ca3af"

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Switch,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
 
 export const TravelLimitSection = memo(
@@ -90,7 +90,7 @@ export const TravelLimitSection = memo(
         </View>
         {showCustom && (
           <View style={styles.constraintInputContainer}>
-            <Ionicons
+            <Icon
               name="time-outline"
               size={16}
               color="#6b7280"
@@ -152,14 +152,14 @@ export const LocationInputSection = memo(
   }) => (
     <View>
       <View style={styles.gpsSwitchRow}>
-        <Ionicons
+        <Icon
           name={useGpsLocation ? "navigate" : "navigate-outline"}
           size={16}
           color={useGpsLocation ? "#eb7825" : "#6b7280"}
         />
         <Text style={styles.gpsSwitchLabel}>Use my current location</Text>
         {isLocked && (
-          <Ionicons name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
+          <Icon name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
         )}
         <Switch
           value={useGpsLocation}
@@ -183,7 +183,7 @@ export const LocationInputSection = memo(
               isInputFocused && styles.locationInputContainerFocused,
             ]}
           >
-            <Ionicons
+            <Icon
               name="location"
               size={16}
               color="#6b7280"
@@ -207,7 +207,7 @@ export const LocationInputSection = memo(
 
       {/* Helper text — always visible, state-aware */}
       <View style={styles.locationHelperContainer}>
-        <Ionicons
+        <Icon
           name="information-circle-outline"
           size={14}
           color="#9ca3af"
@@ -223,7 +223,7 @@ export const LocationInputSection = memo(
       {isLocked && (
         <TouchableOpacity onPress={onLockedTap} activeOpacity={0.7}>
           <View style={styles.lockedHintContainer}>
-            <Ionicons name="sparkles" size={14} color="#f97316" />
+            <Icon name="sparkles" size={14} color="#f97316" />
             <Text style={styles.lockedHintText}>
               Pro feature — explore from anywhere
             </Text>
@@ -254,7 +254,7 @@ export const LocationInputSection = memo(
                   activeOpacity={0.7}
                   delayPressIn={0}
                 >
-                  <Ionicons
+                  <Icon
                     name="location-outline"
                     size={16}
                     color="#6b7280"

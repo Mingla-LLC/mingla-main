@@ -17,7 +17,7 @@ import {
 } from 'react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from './ui/Icon'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -354,7 +354,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           <View style={getExpStyles.iconContainer}>
             <Animated.View style={[getExpStyles.glowCircle, { opacity: glowOpacity }]} />
             <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
-              <Ionicons name="compass-outline" size={48} color={colors.primary[500]} />
+              <Icon name="compass-outline" size={48} color={colors.primary[500]} />
             </Animated.View>
           </View>
 
@@ -393,7 +393,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           <View style={getExpStyles.iconContainer}>
             <View style={getExpStyles.successGlow} />
             <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-              <Ionicons name="checkmark-circle" size={48} color={colors.success[500]} />
+              <Icon name="checkmark-circle" size={48} color={colors.success[500]} />
             </Animated.View>
           </View>
 
@@ -426,7 +426,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
         <View style={getExpStyles.phaseContainer}>
           <View style={getExpStyles.iconContainer}>
             <View style={getExpStyles.errorGlow} />
-            <Ionicons name="alert-circle" size={48} color={colors.error[400]} />
+            <Icon name="alert-circle" size={48} color={colors.error[400]} />
           </View>
 
           <Text style={getExpStyles.headline}>Something went wrong</Text>
@@ -1813,7 +1813,7 @@ const OnboardingFlow = ({
             <View style={styles.verifiedCard}>
               <View style={styles.verifiedBadgeRow}>
                 <View style={styles.verifiedIconCircle}>
-                  <Ionicons name="checkmark" size={16} color="#fff" />
+                  <Icon name="checkmark" size={16} color="#fff" />
                 </View>
                 <Text style={styles.verifiedBadgeText}>Verified</Text>
               </View>
@@ -1902,7 +1902,7 @@ const OnboardingFlow = ({
                   {GENDER_DISPLAY_LABELS[g]}
                 </Text>
                 {data.userGender === g && (
-                  <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
+                  <Icon name="checkmark" size={20} color={colors.text.inverse} />
                 )}
               </Pressable>
             ))}
@@ -1928,7 +1928,7 @@ const OnboardingFlow = ({
               {getCountryByCode(data.userCountry)?.flag ?? ''}{' '}
               {getCountryByCode(data.userCountry)?.name ?? data.userCountry}
             </Text>
-            <Ionicons name="chevron-down" size={18} color={colors.text.secondary} />
+            <Icon name="chevron-down" size={18} color={colors.text.secondary} />
           </Pressable>
 
           {/* Date of Birth */}
@@ -1948,7 +1948,7 @@ const OnboardingFlow = ({
                 ? formatBirthdayDisplay(data.userBirthday)
                 : "When's your birthday?"}
             </Text>
-            <Ionicons name="calendar-outline" size={18} color={colors.text.secondary} />
+            <Icon name="calendar-outline" size={18} color={colors.text.secondary} />
           </Pressable>
 
           {showDatePicker && (
@@ -2011,7 +2011,7 @@ const OnboardingFlow = ({
                 ({getLanguageByCode(data.userPreferredLanguage)?.name ?? 'English'})
               </Text>
             </Text>
-            <Ionicons name="chevron-down" size={18} color={colors.text.secondary} />
+            <Icon name="chevron-down" size={18} color={colors.text.secondary} />
           </Pressable>
 
           {/* Country Picker Modal */}
@@ -2053,10 +2053,10 @@ const OnboardingFlow = ({
               ],
             },
           ]}>
-            <Ionicons name={beat.icon} size={64} color={colors.primary[500]} />
+            <Icon name={beat.icon} size={64} color={colors.primary[500]} />
             {isLightning && (
               <Animated.View style={[styles.vpFlashOverlay, { opacity: vpFlashOpacity }]}>
-                <Ionicons name="flash" size={64} color="#FFFFFF" />
+                <Icon name="flash" size={64} color="#FFFFFF" />
               </Animated.View>
             )}
           </Animated.View>
@@ -2103,8 +2103,8 @@ const OnboardingFlow = ({
                       }))
                     }}
                   >
-                    <Ionicons
-                      name={intent.icon as any}
+                    <Icon
+                      name={intent.icon}
                       size={20}
                       color={selected ? colors.text.inverse : colors.gray[600]}
                     />
@@ -2133,7 +2133,7 @@ const OnboardingFlow = ({
           >
             <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }] }]}>
               <View style={styles.locIconCircleSuccess}>
-                <Ionicons name="checkmark" size={36} color={colors.text.inverse} />
+                <Icon name="checkmark" size={36} color={colors.text.inverse} />
               </View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
@@ -2148,7 +2148,7 @@ const OnboardingFlow = ({
           <View style={styles.locContainer}>
             <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
               <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
-                <Ionicons name="settings-outline" size={36} color={colors.primary[500]} />
+                <Icon name="settings-outline" size={36} color={colors.primary[500]} />
               </Animated.View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
@@ -2162,7 +2162,7 @@ const OnboardingFlow = ({
                 style={styles.locGlassButton}
                 onPress={() => { logger.action('Open device settings pressed'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openSettings() }}
               >
-                <Ionicons name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                <Icon name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
                 <Text style={styles.locButtonText}>Open Settings</Text>
               </Pressable>
             </Animated.View>
@@ -2175,7 +2175,7 @@ const OnboardingFlow = ({
                 {locationStatus === 'requesting' ? (
                   <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
                 ) : (
-                  <Ionicons name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                  <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 )}
                 <Text style={styles.locRetryText}>{locationStatus === 'requesting' ? 'Finding you...' : "I've turned it on — retry"}</Text>
               </Pressable>
@@ -2189,7 +2189,7 @@ const OnboardingFlow = ({
                   goNextRef.current()
                 }}
               >
-                <Ionicons name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 <Text style={styles.locRetryText}>Type my city instead</Text>
               </Pressable>
             </Animated.View>
@@ -2201,7 +2201,7 @@ const OnboardingFlow = ({
           <View style={styles.locContainer}>
             <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
               <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
-                <Ionicons name="cloud-offline-outline" size={36} color={colors.warning[500]} />
+                <Icon name="cloud-offline-outline" size={36} color={colors.warning[500]} />
               </Animated.View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
@@ -2222,7 +2222,7 @@ const OnboardingFlow = ({
                 {locationStatus === 'requesting' ? (
                   <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
                 ) : (
-                  <Ionicons name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                  <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
                 )}
                 <Text style={styles.locButtonText}>
                   {locationStatus === 'requesting' ? 'Finding you...' : 'Try Again'}
@@ -2238,7 +2238,7 @@ const OnboardingFlow = ({
                   goNextRef.current()
                 }}
               >
-                <Ionicons name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 <Text style={styles.locRetryText}>Type my city instead</Text>
               </Pressable>
             </Animated.View>
@@ -2250,7 +2250,7 @@ const OnboardingFlow = ({
         <View style={styles.locContainer}>
           <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
             <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
-              <Ionicons name="navigate" size={36} color={colors.primary[500]} />
+              <Icon name="navigate" size={36} color={colors.primary[500]} />
             </Animated.View>
           </Animated.View>
           <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
@@ -2268,7 +2268,7 @@ const OnboardingFlow = ({
               {locationStatus === 'requesting' ? (
                 <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
               ) : (
-                <Ionicons name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                <Icon name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
               )}
               <Text style={styles.locButtonText}>
                 {locationStatus === 'requesting' ? 'Finding you...' : 'Enable Location'}
@@ -2277,7 +2277,7 @@ const OnboardingFlow = ({
           </Animated.View>
           <Animated.View style={[{ opacity: locBodyAnim.opacity }]}>
             <View style={styles.locPrivacyRow}>
-              <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
+              <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
               <Text style={styles.locPrivacyText}>Your location stays private. Always.</Text>
             </View>
           </Animated.View>
@@ -2289,7 +2289,7 @@ const OnboardingFlow = ({
     if (subStep === 'celebration') {
       return (
         <View style={styles.celebrationCenter}>
-          <Ionicons name="trophy-outline" size={64} color={colors.primary[500]} style={styles.stepIcon} />
+          <Icon name="trophy-outline" size={64} color={colors.primary[500]} style={styles.stepIcon} />
           <Text style={[styles.headline, styles.textCenter]}>Look at you go.</Text>
           <Text style={[styles.body, styles.textCenter]}>Four quick picks and you're done.</Text>
         </View>
@@ -2314,7 +2314,7 @@ const OnboardingFlow = ({
               >
                 <View style={styles.locationSelectedContent}>
                   <View style={styles.locationSelectedIconWrap}>
-                    <Ionicons name="location" size={20} color={colors.primary[500]} />
+                    <Icon name="location" size={20} color={colors.primary[500]} />
                   </View>
                   <View style={styles.locationSelectedTextWrap}>
                     <Text style={styles.locationSelectedName} numberOfLines={1}>
@@ -2326,14 +2326,14 @@ const OnboardingFlow = ({
                       </Text>
                     )}
                   </View>
-                  <Ionicons name="checkmark-circle" size={22} color={colors.primary[500]} />
+                  <Icon name="checkmark-circle" size={22} color={colors.primary[500]} />
                 </View>
               </Pressable>
             ) : (
               // ─── Search Input + Dropdown ───
               <View style={styles.locationSearchContainer}>
                 <View style={styles.locationSearchInputWrap}>
-                  <Ionicons
+                  <Icon
                     name="search-outline"
                     size={20}
                     color={colors.text.tertiary}
@@ -2373,7 +2373,7 @@ const OnboardingFlow = ({
                           onPress={() => handleSelectLocationSuggestion(suggestion)}
                         >
                           <View style={styles.locationSuggestionIconWrap}>
-                            <Ionicons name="location-outline" size={20} color={colors.gray[400]} />
+                            <Icon name="location-outline" size={20} color={colors.gray[400]} />
                           </View>
                           <View style={styles.locationSuggestionTextWrap}>
                             <Text style={styles.locationSuggestionName} numberOfLines={1}>
@@ -2393,7 +2393,7 @@ const OnboardingFlow = ({
 
                 {manualLocationText.trim().length >= 3 && !locationSearchLoading && locationHasSearched && locationSuggestions.length === 0 && (
                   <View style={styles.locationNoResults}>
-                    <Ionicons name="search" size={16} color={colors.gray[400]} />
+                    <Icon name="search" size={16} color={colors.gray[400]} />
                     <Text style={styles.locationNoResultsText}>Hmm, we didn't catch that. Try a nearby street or neighborhood.</Text>
                   </View>
                 )}
@@ -2404,7 +2404,7 @@ const OnboardingFlow = ({
             The more precise, the better your recommendations.
           </Text>
           <View style={styles.locPrivacyRow}>
-            <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
+            <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
             <Text style={styles.locPrivacyText}>Your exact location stays between us. Always.</Text>
           </View>
         </View>
@@ -2480,8 +2480,8 @@ const OnboardingFlow = ({
                     })
                   }}
                 >
-                  <Ionicons
-                    name={tier.icon as any}
+                  <Icon
+                    name={tier.icon}
                     size={22}
                     color={isActive ? colors.text.inverse : colors.text.tertiary}
                     style={styles.tierIcon}
@@ -2524,8 +2524,8 @@ const OnboardingFlow = ({
                   setData((p) => ({ ...p, travelMode: mode.value }))
                 }}
               >
-                <Ionicons
-                  name={mode.icon as any}
+                <Icon
+                  name={mode.icon}
                   size={28}
                   color={data.travelMode === mode.value ? colors.text.inverse : colors.gray[600]}
                 />
@@ -2591,7 +2591,7 @@ const OnboardingFlow = ({
 
           {showCustomTravelTime && (
             <View style={styles.customInputContainer}>
-              <Ionicons name="time-outline" size={20} color={colors.primary[500]} style={styles.customInputIcon} />
+              <Icon name="time-outline" size={20} color={colors.primary[500]} style={styles.customInputIcon} />
               <TextInput
                 value={customTravelInput}
                 onChangeText={(text) => {

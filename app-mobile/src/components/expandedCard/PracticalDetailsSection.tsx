@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 interface PracticalDetailsSectionProps {
   address?: string;
@@ -58,10 +58,10 @@ export default function PracticalDetailsSection({
           activeOpacity={0.7}
         >
           <View style={styles.iconBadge}>
-            <Ionicons name="location" size={14} color="#ea580c" />
+            <Icon name="location" size={14} color="#ea580c" />
           </View>
           <Text style={styles.addressText} numberOfLines={2}>{address}</Text>
-          <Ionicons name="open-outline" size={13} color="#9ca3af" />
+          <Icon name="open-outline" size={13} color="#9ca3af" />
         </TouchableOpacity>
       )}
 
@@ -73,7 +73,7 @@ export default function PracticalDetailsSection({
             onPress={handlePhonePress}
             activeOpacity={0.7}
           >
-            <Ionicons name="call" size={13} color="#ea580c" />
+            <Icon name="call" size={13} color="#ea580c" />
             <Text style={styles.contactText} numberOfLines={1}>{phone}</Text>
           </TouchableOpacity>
         </View>

@@ -5,7 +5,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
 import { s, vs } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
@@ -51,13 +51,13 @@ export default function ShuffleButton({
         </>
       ) : error ? (
         <>
-          <Ionicons name="refresh-outline" size={s(28)} color="#eb7825" />
+          <Icon name="refresh-outline" size={s(28)} color="#eb7825" />
           <Text style={styles.label}>Couldn't shuffle.</Text>
           <Text style={styles.sublabel}>Tap to retry.</Text>
         </>
       ) : (
         <>
-          <Ionicons name="shuffle-outline" size={s(28)} color="#eb7825" />
+          <Icon name="shuffle-outline" size={s(28)} color="#eb7825" />
           <Text style={styles.label}>Shuffle</Text>
           <Text style={styles.sublabel}>Find new spots</Text>
         </>

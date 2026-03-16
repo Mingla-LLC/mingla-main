@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { blockUser, BlockReason } from '../services/blockService';
 
 interface ReportUserModalProps {
@@ -114,7 +114,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
             <View style={styles.headerSidePlaceholder} />
             <View style={styles.headerCenter}>
               <View style={styles.iconContainer}>
-                <Ionicons name="flag" size={20} color="#dc2626" />
+                <Icon name="flag" size={20} color="#dc2626" />
               </View>
               <Text style={styles.headerTitle}>Report User</Text>
             </View>
@@ -122,7 +122,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               onPress={handleClose}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={20} color="#9ca3af" />
+              <Icon name="close" size={20} color="#9ca3af" />
             </TrackedTouchableOpacity>
           </View>
 
@@ -150,8 +150,8 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
                 ]}
               >
                 <View style={styles.optionContent}>
-                  <Ionicons 
-                    name={option.icon as any} 
+                  <Icon 
+                    name={option.icon} 
                     size={20} 
                     color={selectedReason === option.id ? '#eb7825' : option.color}
                     style={styles.optionIcon}

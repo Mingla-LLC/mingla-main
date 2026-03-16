@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "./ui/Icon";
 import { s, vs } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
 
@@ -74,7 +74,7 @@ const PersonCuratedCard: React.FC<PersonCuratedCardProps> = ({
           />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Ionicons
+            <Icon
               name="compass-outline"
               size={s(28)}
               color="rgba(255,255,255,0.6)"

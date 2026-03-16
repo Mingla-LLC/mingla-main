@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface Board {
   id: string;
@@ -321,7 +321,7 @@ const BoardCard = ({
               onPress={() => onInviteToSession(board.id, board.name)}
               style={[styles.secondaryButton, styles.adminButton]}
             >
-              <Ionicons name="person-add" size={16} color="#eb7825" />
+              <Icon name="person-add" size={16} color="#eb7825" />
             </TrackedTouchableOpacity>
           )}
           
@@ -331,7 +331,7 @@ const BoardCard = ({
               onPress={() => onToggleNotifications(board.id)}
               style={[styles.secondaryButton, styles.menuButton]}
             >
-              <Ionicons 
+              <Icon 
                 name={isNotificationEnabled ? "notifications" : "notifications-off"} 
                 size={16} 
                 color="#6b7280" 
@@ -345,7 +345,7 @@ const BoardCard = ({
               onPress={() => onLeaveBoard(board.id, board.name)}
               style={[styles.secondaryButton, styles.leaveButton]}
             >
-              <Ionicons name="log-out" size={16} color="#ef4444" />
+              <Icon name="log-out" size={16} color="#ef4444" />
             </TrackedTouchableOpacity>
           )}
         </View>

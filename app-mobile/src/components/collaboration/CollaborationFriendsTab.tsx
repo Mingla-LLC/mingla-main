@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
 
@@ -207,14 +207,14 @@ export default function CollaborationFriendsTab({
       <View style={styles.pillContainer}>
         <TouchableOpacity onPress={onShowAddFriendModal} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="user-plus" size={10} color="white" />
+            <Icon name="user-plus" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Add</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onShowFriendRequests} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="users" size={10} color="white" />
+            <Icon name="users" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Requests</Text>
           {friendRequestsCount > 0 && (
@@ -226,14 +226,14 @@ export default function CollaborationFriendsTab({
 
         <TouchableOpacity onPress={onShowBlockedFriends} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="shield" size={10} color="white" />
+            <Icon name="shield" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Blocked</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onCopyInvite} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name={inviteCopied ? "check" : "link"} size={10} color="white" />
+            <Icon name={inviteCopied ? "check" : "link"} size={10} color="white" />
           </View>
           <Text style={styles.pillText}>{inviteCopied ? "Copied" : "Invite"}</Text>
         </TouchableOpacity>
@@ -241,7 +241,7 @@ export default function CollaborationFriendsTab({
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons
+        <Icon
           name="search"
           size={20}
           color="#9CA3AF"
@@ -270,7 +270,7 @@ export default function CollaborationFriendsTab({
             <Text style={styles.showLessText}>
               {friendsListExpanded ? "Show Less" : `Show All (${filteredFriends.length})`}
             </Text>
-            <Ionicons
+            <Icon
               name={friendsListExpanded ? "chevron-up" : "chevron-down"}
               size={16}
               color="#eb7825"
@@ -321,7 +321,7 @@ export default function CollaborationFriendsTab({
                   <Text style={styles.friendName}>{friend.name}</Text>
                   {friend.isMuted && (
                     <View style={styles.mutedIndicator}>
-                      <Ionicons name="notifications-off" size={12} color="#6b7280" />
+                      <Icon name="notifications-off" size={12} color="#6b7280" />
                     </View>
                   )}
                 </View>
@@ -336,7 +336,7 @@ export default function CollaborationFriendsTab({
                   onPress={() => onSelectFriend(friend)}
                   style={styles.chatButton}
                 >
-                  <Feather name="message-square" size={18} color="white" />
+                  <Icon name="message-square" size={18} color="white" />
                 </TouchableOpacity>
 
                 <View style={styles.dropdownContainer}>
@@ -350,7 +350,7 @@ export default function CollaborationFriendsTab({
                       onPress={() => handleToggleDropdown(friend.id)}
                       style={styles.menuButton}
                     >
-                      <Ionicons
+                      <Icon
                         name="ellipsis-horizontal"
                         size={18}
                         color="#6B7280"
@@ -385,7 +385,7 @@ export default function CollaborationFriendsTab({
 
       {filteredFriends.length === 0 && !loading && (
         <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={48} color="#D1D5DB" />
+          <Icon name="people-outline" size={48} color="#D1D5DB" />
           <Text style={styles.emptyStateTitle}>No Friends Found</Text>
           <Text style={styles.emptyStateText}>
             {searchQuery
@@ -432,7 +432,7 @@ export default function CollaborationFriendsTab({
                         }}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons
+                        <Icon
                           name="bookmark-outline"
                           size={16}
                           color="#111827"
@@ -456,7 +456,7 @@ export default function CollaborationFriendsTab({
                         {muteLoadingFriendId === friend.id ? (
                           <ActivityIndicator size={16} color="#6b7280" />
                         ) : (
-                          <Ionicons
+                          <Icon
                             name={friend.isMuted ? "notifications-outline" : "notifications-off-outline"}
                             size={16}
                             color="#111827"
@@ -476,7 +476,7 @@ export default function CollaborationFriendsTab({
                         onPress={() => handleBlockUser(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons
+                        <Icon
                           name="shield-outline"
                           size={16}
                           color="#EF4444"
@@ -497,7 +497,7 @@ export default function CollaborationFriendsTab({
                         }}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons
+                        <Icon
                           name="flag-outline"
                           size={16}
                           color="#EF4444"
@@ -515,7 +515,7 @@ export default function CollaborationFriendsTab({
                         }}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons
+                        <Icon
                           name="person-remove-outline"
                           size={16}
                           color="#EF4444"

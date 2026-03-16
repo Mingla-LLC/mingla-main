@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
+import { Icon } from './ui/Icon';
 import RevenueCatUI from 'react-native-purchases-ui'
 import type { CustomerInfo, PurchasesStoreTransaction } from 'react-native-purchases'
 import { useQueryClient } from '@tanstack/react-query'
@@ -112,7 +112,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
         accessibilityLabel="Close paywall"
         accessibilityRole="button"
       >
-        <Ionicons name="close" size={24} color={colors.gray700} />
+        <Icon name="close" size={24} color={colors.gray700} />
       </TouchableOpacity>
 
       {/* RevenueCat Paywall UI — fills remaining space */}

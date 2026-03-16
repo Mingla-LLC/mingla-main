@@ -4,6 +4,7 @@ import {
   SubscriptionTier,
   getEffectiveTier,
   getTrialDaysRemaining,
+  getTrialTotalDays,
   getReferralMonthsRemaining,
   hasElevatedAccess,
 } from '../types/subscription'
@@ -59,9 +60,11 @@ export function useReferralStats(userId: string | undefined) {
 /**
  * The single source of truth for the current user's subscription tier.
  *
+ * Hierarchy: elite > pro > free
+ *
  * Sources (in priority order):
- *   1. RevenueCat CustomerInfo  — active "Mingla Pro" entitlement → 'pro'
- *   2. Supabase subscription    — active 7-day trial or referral bonus months → 'elite'
+ *   1. RevenueCat CustomerInfo  — active entitlement (Elite checked first, then Pro)
+ *   2. Supabase subscription    — active trial or referral bonus months → 'elite'
  *   3. Fallback                 → 'free'
  *
  * This hook is safe to call from any component; it won't cause extra network
@@ -95,6 +98,12 @@ export function useIsUpgraded(userId: string | undefined): boolean {
 export function useTrialDaysRemaining(userId: string | undefined): number {
   const { data: subscription } = useSubscription(userId)
   return getTrialDaysRemaining(subscription ?? null)
+}
+
+/** Returns the total trial duration in days (derived from actual dates, not hardcoded). */
+export function useTrialTotalDays(userId: string | undefined): number {
+  const { data: subscription } = useSubscription(userId)
+  return getTrialTotalDays(subscription ?? null)
 }
 
 /** Returns how many referral bonus months remain, or 0 if none. */

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface Friend {
   id: string;
@@ -303,7 +303,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
 
       <View style={styles.participantsSection}>
         <View style={styles.participantsHeader}>
-          <Ionicons name="people" size={16} color="#eb7825" />
+          <Icon name="people" size={16} color="#eb7825" />
           <Text style={styles.participantsTitle}>Collaborating Users</Text>
         </View>
         <View style={styles.participantsList}>
@@ -341,7 +341,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
                     }}
                     style={styles.kickButton}
                   >
-                    <Ionicons name="close" size={12} color="white" />
+                    <Icon name="close" size={12} color="white" />
                   </TrackedTouchableOpacity>
                 )}
               </View>
@@ -396,14 +396,14 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
           }}
           style={styles.viewBoardButton}
         >
-          <Ionicons name="chatbubble" size={16} color="#6b7280" />
+          <Icon name="chatbubble" size={16} color="#6b7280" />
         </TrackedTouchableOpacity>
       </View>
 
       {!session.hasCollabPreferences && (
         <View style={styles.preferencesWarning}>
           <View style={styles.preferencesWarningContent}>
-            <Ionicons name="alert-circle" size={16} color="#b45309" />
+            <Icon name="alert-circle" size={16} color="#b45309" />
             <Text style={styles.preferencesWarningText}>Set preferences for this session - separate from solo mode</Text>
           </View>
         </View>

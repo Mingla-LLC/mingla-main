@@ -8,7 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
 
@@ -70,7 +70,7 @@ export const SessionSwitcher: React.FC = () => {
         <View style={styles.header}>
           <Text style={styles.title}>Switch Session</Text>
           <TouchableOpacity onPress={closeSessionSwitcher} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
+            <Icon name="close" size={24} color="#666" />
           </TouchableOpacity>
         </View>
 
@@ -81,7 +81,7 @@ export const SessionSwitcher: React.FC = () => {
             {isInSolo ? (
               <View style={[styles.sessionCard, styles.activeSessionCard]}>
                 <View style={styles.sessionHeader}>
-                  <Ionicons name="person" size={20} color="#007AFF" />
+                  <Icon name="person" size={20} color="#007AFF" />
                   <Text style={styles.sessionName}>Solo Mode</Text>
                   <View style={styles.activeBadge}>
                     <Text style={styles.activeBadgeText}>Active</Text>
@@ -94,7 +94,7 @@ export const SessionSwitcher: React.FC = () => {
             ) : currentSession ? (
               <View style={[styles.sessionCard, styles.activeSessionCard]}>
                 <View style={styles.sessionHeader}>
-                  <Ionicons name="people" size={20} color="#007AFF" />
+                  <Icon name="people" size={20} color="#007AFF" />
                   <Text style={styles.sessionName}>{currentSession.name}</Text>
                   <View style={styles.activeBadge}>
                     <Text style={styles.activeBadgeText}>Active</Text>
@@ -119,7 +119,7 @@ export const SessionSwitcher: React.FC = () => {
                   disabled={loading}
                 >
                   <View style={styles.sessionHeader}>
-                    <Ionicons name="people" size={20} color="#666" />
+                    <Icon name="people" size={20} color="#666" />
                     <Text style={styles.sessionName}>{session.name}</Text>
                   </View>
                   <Text style={styles.sessionDescription}>
@@ -137,7 +137,7 @@ export const SessionSwitcher: React.FC = () => {
               {pendingInvites.map((invite) => (
                 <View key={invite.id} style={styles.inviteCard}>
                   <View style={styles.sessionHeader}>
-                    <Ionicons name="mail" size={20} color="#FF9500" />
+                    <Icon name="mail" size={20} color="#FF9500" />
                     <Text style={styles.sessionName}>{invite.collaboration_sessions?.name}</Text>
                   </View>
                   <Text style={styles.sessionDescription}>
@@ -173,7 +173,7 @@ export const SessionSwitcher: React.FC = () => {
                 disabled={loading}
               >
                 <View style={styles.sessionHeader}>
-                  <Ionicons name="person" size={20} color="#666" />
+                  <Icon name="person" size={20} color="#666" />
                   <Text style={styles.sessionName}>Switch to Solo Mode</Text>
                 </View>
                 <Text style={styles.sessionDescription}>

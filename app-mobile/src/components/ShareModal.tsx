@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
+import { WhatsAppLogo, InstagramLogo, TwitterLogo } from './ui/BrandIcons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from './utils/formatters';
@@ -53,7 +54,7 @@ export default function ShareModal({
               <View style={styles.headerSidePlaceholder} />
               <Text style={styles.headerTitle}>Share Experience</Text>
               <TrackedTouchableOpacity logComponent="ShareModal" onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={20} color="#111827" />
+                <Icon name="close" size={20} color="#111827" />
               </TrackedTouchableOpacity>
             </View>
             <View style={{ padding: 20, alignItems: 'center' }}>
@@ -204,7 +205,7 @@ export default function ShareModal({
               onPress={onClose}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={20} color="#111827" />
+              <Icon name="close" size={20} color="#111827" />
             </TrackedTouchableOpacity>
           </View>
 
@@ -231,7 +232,7 @@ export default function ShareModal({
                     </View>
                     {/* Rating Badge */}
                     <View style={styles.ratingBadge}>
-                      <Ionicons name="star" size={12} color="#fbbf24" />
+                      <Icon name="star" size={12} color="#fbbf24" />
                       <Text style={styles.ratingText}>{rating}</Text>
                     </View>
                   </View>
@@ -242,11 +243,11 @@ export default function ShareModal({
                     
                     <View style={styles.experienceMeta}>
                       <View style={styles.metaItem}>
-                        <Ionicons name="location-outline" size={14} color="#6b7280" />
+                        <Icon name="location-outline" size={14} color="#6b7280" />
                         <Text style={styles.metaText}>{distance}</Text>
                       </View>
                       <View style={styles.metaItem}>
-                        <Ionicons name="person-outline" size={14} color="#6b7280" />
+                        <Icon name="person-outline" size={14} color="#6b7280" />
                         <Text style={styles.metaText}>{priceRange}</Text>
                       </View>
                     </View>
@@ -254,7 +255,7 @@ export default function ShareModal({
                     {/* Suggested Schedule */}
                     <View style={styles.scheduleContainer}>
                       <View style={styles.scheduleHeader}>
-                        <Ionicons name="calendar-outline" size={14} color="#eb7825" />
+                        <Icon name="calendar-outline" size={14} color="#eb7825" />
                         <Text style={styles.scheduleTitle}>Suggested Schedule</Text>
                       </View>
                       <View style={styles.scheduleDetails}>
@@ -286,7 +287,7 @@ export default function ShareModal({
                   onPress={handleCopyMessage}
                   style={styles.copyMessageButton}
                 >
-                  <Ionicons 
+                  <Icon 
                     name={messageCopied ? "checkmark" : "copy-outline"} 
                     size={18} 
                     color={messageCopied ? "#eb7825" : "#6b7280"} 
@@ -307,7 +308,7 @@ export default function ShareModal({
                   disabled={isSharing}
                 >
                   <View style={[styles.socialButtonIconWrapper, styles.messagesButton]}>
-                    <Ionicons name="chatbubble" size={20} color="white" />
+                    <Icon name="chatbubble" size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Messages</Text>
                 </TrackedTouchableOpacity>
@@ -318,7 +319,7 @@ export default function ShareModal({
                   disabled={isSharing}
                 >
                   <View style={[styles.socialButtonIconWrapper, styles.whatsappButton]}>
-                    <Ionicons name="logo-whatsapp" size={20} color="white" />
+                    <WhatsAppLogo size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>WhatsApp</Text>
                 </TrackedTouchableOpacity>
@@ -329,7 +330,7 @@ export default function ShareModal({
                   disabled={isSharing}
                 >
                   <View style={[styles.socialButtonIconWrapper, styles.instagramButton]}>
-                    <Ionicons name="logo-instagram" size={20} color="white" />
+                    <InstagramLogo size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Instagram</Text>
                 </TrackedTouchableOpacity>
@@ -340,7 +341,7 @@ export default function ShareModal({
                   disabled={isSharing}
                 >
                   <View style={[styles.socialButtonIconWrapper, styles.twitterButton]}>
-                    <Ionicons name="logo-twitter" size={20} color="white" />
+                    <TwitterLogo size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>Twitter</Text>
                 </TrackedTouchableOpacity>
@@ -352,7 +353,7 @@ export default function ShareModal({
                     handleSocialShare('more');
                   }}
                 >
-                  <Feather name='share-2' size={24} color="black"/>
+                  <Icon name='share-2' size={24} color="black"/>
                   <Text>More sharing options</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons]}
@@ -361,13 +362,13 @@ export default function ShareModal({
                     mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
                   }}
                 >
-                  <Feather name='copy' size={24} color="black"/>
+                  <Icon name='copy' size={24} color="black"/>
                   <Text>Copy link</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal"
                 onPress={handleCopyMessage}
                 style={[styles.bottomButtons]}>
-                  <Feather name='copy' size={24} color="black"/>
+                  <Icon name='copy' size={24} color="black"/>
                   <Text>Copy Message</Text>
                 </TrackedTouchableOpacity>
               </View>

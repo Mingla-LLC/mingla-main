@@ -6,7 +6,7 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { Participant } from './ParticipantAvatars';
 
 interface MentionPopoverProps {
@@ -53,7 +53,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerText}>Mention someone</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={20} color="#666" />
+            <Icon name="close" size={20} color="#666" />
           </TouchableOpacity>
         </View>
         <FlatList

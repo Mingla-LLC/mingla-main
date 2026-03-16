@@ -6,7 +6,7 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { BoardSession } from '../../hooks/useBoardSession';
 
 interface BoardSessionListProps {
@@ -51,14 +51,14 @@ export const BoardSessionList: React.FC<BoardSessionListProps> = ({
 
           <View style={styles.sessionInfo}>
             <View style={styles.infoItem}>
-              <Ionicons name="people" size={16} color="#666" />
+              <Icon name="people" size={16} color="#666" />
               <Text style={styles.infoText}>
                 {participantCount} / {maxParticipants} participants
               </Text>
             </View>
             {item.last_activity_at && (
               <View style={styles.infoItem}>
-                <Ionicons name="time" size={16} color="#666" />
+                <Icon name="time" size={16} color="#666" />
                 <Text style={styles.infoText}>
                   {formatLastActivity(item.last_activity_at)}
                 </Text>
@@ -68,7 +68,7 @@ export const BoardSessionList: React.FC<BoardSessionListProps> = ({
 
           {item.invite_code && (
             <View style={styles.inviteCodeContainer}>
-              <Ionicons name="key" size={14} color="#007AFF" />
+              <Icon name="key" size={14} color="#007AFF" />
               <Text style={styles.inviteCodeText}>{item.invite_code}</Text>
             </View>
           )}
@@ -80,7 +80,7 @@ export const BoardSessionList: React.FC<BoardSessionListProps> = ({
             onPress={() => onSettingsPress(item)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="settings-outline" size={20} color="#666" />
+            <Icon name="settings-outline" size={20} color="#666" />
           </TouchableOpacity>
         )}
       </TouchableOpacity>
@@ -105,7 +105,7 @@ export const BoardSessionList: React.FC<BoardSessionListProps> = ({
   if (sessions.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="grid-outline" size={48} color="#ccc" />
+        <Icon name="grid-outline" size={48} color="#ccc" />
         <Text style={styles.emptyText}>{emptyMessage}</Text>
         <Text style={styles.emptySubtext}>
           Create a new board session to start planning together

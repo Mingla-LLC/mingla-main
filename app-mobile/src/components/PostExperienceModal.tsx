@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { Audio } from "expo-av";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
@@ -393,7 +393,7 @@ export default function PostExperienceModal({
         />
       ) : (
         <View style={styles.promptImageFallback}>
-          <Ionicons name="location-outline" size={60} color="#D1D5DB" />
+          <Icon name="location-outline" size={60} color="#D1D5DB" />
         </View>
       )}
       <View style={styles.promptContent}>
@@ -406,7 +406,7 @@ export default function PostExperienceModal({
           style={styles.primaryButton}
           onPress={() => setStep("rate")}
         >
-          <Ionicons name="checkmark-circle-outline" size={24} color="#FFFFFF" />
+          <Icon name="checkmark-circle-outline" size={24} color="#FFFFFF" />
           <Text style={styles.primaryButtonText}>Yes, I went</Text>
         </TouchableOpacity>
 
@@ -414,7 +414,7 @@ export default function PostExperienceModal({
           style={styles.secondaryButton}
           onPress={() => setStep("reschedule")}
         >
-          <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+          <Icon name="calendar-outline" size={24} color={colors.primary} />
           <Text style={styles.secondaryButtonText}>No, I'll go later</Text>
         </TouchableOpacity>
       </View>
@@ -429,7 +429,7 @@ export default function PostExperienceModal({
         style={styles.backButton}
         onPress={() => setStep("prompt")}
       >
-        <Ionicons name="arrow-back" size={24} color={colors.gray800} />
+        <Icon name="arrow-back" size={24} color={colors.gray800} />
       </TouchableOpacity>
 
       <Text style={styles.rateTitle}>How was {review.placeName}?</Text>
@@ -441,7 +441,7 @@ export default function PostExperienceModal({
             onPress={() => setRating(i)}
             style={styles.starButton}
           >
-            <Ionicons
+            <Icon
               name={i <= rating ? "star" : "star-outline"}
               size={40}
               color={i <= rating ? "#F59E0B" : "#D1D5DB"}
@@ -468,7 +468,7 @@ export default function PostExperienceModal({
         style={styles.backButton}
         onPress={() => setStep("rate")}
       >
-        <Ionicons name="arrow-back" size={24} color={colors.gray800} />
+        <Icon name="arrow-back" size={24} color={colors.gray800} />
       </TouchableOpacity>
 
       <ScrollView
@@ -487,7 +487,7 @@ export default function PostExperienceModal({
               onPress={startRecording}
               disabled={clips.length >= 5}
             >
-              <Ionicons name="mic-outline" size={48} color={colors.gray500} />
+              <Icon name="mic-outline" size={48} color={colors.gray500} />
             </TouchableOpacity>
             <Text style={styles.micHint}>Tap to record</Text>
           </>
@@ -503,7 +503,7 @@ export default function PostExperienceModal({
                   { transform: [{ scale: pulseAnim }] },
                 ]}
               />
-              <Ionicons name="stop" size={32} color="#FFFFFF" />
+              <Icon name="stop" size={32} color="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.recordingTimer}>
               {formatDuration(recordingDuration)}
@@ -524,7 +524,7 @@ export default function PostExperienceModal({
                     style={styles.clipActionButton}
                     onPress={() => playClip(index)}
                   >
-                    <Ionicons
+                    <Icon
                       name={playingClipIndex === index ? "pause" : "play"}
                       size={20}
                       color={colors.primary}
@@ -534,7 +534,7 @@ export default function PostExperienceModal({
                     style={styles.clipActionButton}
                     onPress={() => deleteClip(index)}
                   >
-                    <Ionicons name="trash-outline" size={20} color={colors.error} />
+                    <Icon name="trash-outline" size={20} color={colors.error} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -544,7 +544,7 @@ export default function PostExperienceModal({
 
         {clips.length > 0 && clips.length < 5 && !isRecording && (
           <TouchableOpacity style={styles.addClipButton} onPress={startRecording}>
-            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+            <Icon name="add-circle-outline" size={20} color={colors.primary} />
             <Text style={styles.addClipText}>Add another clip</Text>
           </TouchableOpacity>
         )}
@@ -584,7 +584,7 @@ export default function PostExperienceModal({
         </>
       ) : (
         <>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Icon name="alert-circle-outline" size={48} color={colors.error} />
           <Text style={styles.errorText}>{submitError}</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
             <Text style={styles.primaryButtonText}>Try again</Text>
@@ -598,7 +598,7 @@ export default function PostExperienceModal({
 
   const renderThankYouStep = () => (
     <View style={styles.centerContainer}>
-      <Ionicons name="checkmark-circle" size={80} color="#10B981" />
+      <Icon name="checkmark-circle" size={80} color="#10B981" />
       <Text style={styles.thankYouTitle}>Thank you!</Text>
       <Text style={styles.thankYouSubtitle}>
         Your feedback helps everyone find better experiences.
@@ -620,7 +620,7 @@ export default function PostExperienceModal({
         style={styles.backButton}
         onPress={() => setStep("prompt")}
       >
-        <Ionicons name="arrow-back" size={24} color={colors.gray800} />
+        <Icon name="arrow-back" size={24} color={colors.gray800} />
       </TouchableOpacity>
 
       <Text style={styles.rescheduleTitle}>
@@ -635,7 +635,7 @@ export default function PostExperienceModal({
           ]}
           onPress={() => handleSelectDateOption("today")}
         >
-          <Ionicons
+          <Icon
             name="today-outline"
             size={20}
             color={selectedDateOption === "today" ? "#FFFFFF" : colors.gray700}
@@ -657,7 +657,7 @@ export default function PostExperienceModal({
           ]}
           onPress={() => handleSelectDateOption("weekend")}
         >
-          <Ionicons
+          <Icon
             name="sunny-outline"
             size={20}
             color={selectedDateOption === "weekend" ? "#FFFFFF" : colors.gray700}
@@ -679,7 +679,7 @@ export default function PostExperienceModal({
           ]}
           onPress={() => handleSelectDateOption("custom")}
         >
-          <Ionicons
+          <Icon
             name="calendar-outline"
             size={20}
             color={selectedDateOption === "custom" ? "#FFFFFF" : colors.gray700}
@@ -764,7 +764,7 @@ export default function PostExperienceModal({
             accessibilityLabel="Close"
             accessibilityRole="button"
           >
-            <Ionicons name="close" size={24} color={colors.gray800} />
+            <Icon name="close" size={24} color={colors.gray800} />
           </TouchableOpacity>
         )}
         {step === "prompt" && renderPromptStep()}

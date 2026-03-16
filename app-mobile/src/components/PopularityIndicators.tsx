@@ -10,7 +10,7 @@ import Animated, {
   Extrapolate,
   runOnJS,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { formatDecimal, formatToOneDecimal } from '../utils/numberFormatter';
 
@@ -152,7 +152,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
           onPress={handleLike}
           activeOpacity={0.8}
         >
-          <Ionicons
+          <Icon
             name={isLiked ? 'heart' : 'heart-outline'}
             size={20}
             color={isLiked ? colors.error[500] : colors.text.secondary}
@@ -177,7 +177,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
           onPress={handleSave}
           activeOpacity={0.8}
         >
-          <Ionicons
+          <Icon
             name={isSaved ? 'bookmark' : 'bookmark-outline'}
             size={20}
             color={isSaved ? colors.primary[500] : colors.text.secondary}
@@ -202,7 +202,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
           onPress={handleShare}
           activeOpacity={0.8}
         >
-          <Ionicons
+          <Icon
             name="share-outline"
             size={20}
             color={colors.text.secondary}
@@ -234,7 +234,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
         <View style={styles.ratingHeader}>
           <View style={styles.ratingStars}>
             {[1, 2, 3, 4, 5].map((star) => (
-              <Ionicons
+              <Icon
                 key={star}
                 name={star <= data.rating! ? 'star' : 'star-outline'}
                 size={16}
@@ -299,7 +299,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
       <View style={styles.statsGrid}>
         {stats.map((stat, index) => (
           <View key={stat.label} style={styles.statItem}>
-            <Ionicons
+            <Icon
               name={stat.icon}
               size={16}
               color={stat.color}

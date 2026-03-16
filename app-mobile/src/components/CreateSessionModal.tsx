@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -110,7 +110,7 @@ const StepProgress: React.FC<{ steps: string[]; currentIndex: number }> = ({
               ]}
             >
               {isCompleted ? (
-                <Ionicons name="checkmark" size={10} color={colors.text.inverse} />
+                <Icon name="checkmark" size={10} color={colors.text.inverse} />
               ) : (
                 <Text
                   style={[
@@ -893,7 +893,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               accessibilityState={{ selected: sessionType === 'board' }}
             >
               <View style={[styles.typeIconWrap, sessionType === 'board' && styles.typeIconWrapSelected]}>
-                <Ionicons
+                <Icon
                   name="grid"
                   size={24}
                   color={sessionType === 'board' ? colors.primary[500] : colors.gray[400]}
@@ -924,7 +924,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               accessibilityState={{ selected: sessionType === 'collaboration' }}
             >
               <View style={[styles.typeIconWrap, sessionType === 'collaboration' && styles.typeIconWrapSelected]}>
-                <Ionicons
+                <Icon
                   name="people"
                   size={24}
                   color={sessionType === 'collaboration' ? colors.primary[500] : colors.gray[400]}
@@ -980,7 +980,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               </View>
               {nameError && (
                 <View style={styles.inlineError}>
-                  <Ionicons
+                  <Icon
                     name="alert-circle"
                     size={14}
                     color={colors.error[500]}
@@ -1044,7 +1044,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {/* Selected people summary */}
             {totalPeople > 0 && (
               <View style={styles.crewCount}>
-                <Ionicons
+                <Icon
                   name="people"
                   size={16}
                   color={colors.primary[500]}
@@ -1067,7 +1067,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               accessibilityLabel="Select friends from your list"
             >
               <View style={styles.addFriendIcon}>
-                <Ionicons
+                <Icon
                   name="person-add"
                   size={20}
                   color={colors.primary[500]}
@@ -1079,7 +1079,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                   Pick from people you're already connected with
                 </Text>
               </View>
-              <Ionicons
+              <Icon
                 name="chevron-forward"
                 size={20}
                 color={colors.gray[400]}
@@ -1125,7 +1125,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                         accessibilityRole="button"
                         accessibilityLabel={`Remove ${friend.name}`}
                       >
-                        <Ionicons
+                        <Icon
                           name="close-circle"
                           size={20}
                           color={colors.gray[400]}
@@ -1142,7 +1142,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               <View style={styles.phoneInviteesList}>
                 {phoneInvitees.map((invitee) => (
                   <View key={invitee.phoneE164} style={styles.phoneInviteePill}>
-                    <Ionicons
+                    <Icon
                       name="call-outline"
                       size={12}
                       color={colors.primary[600]}
@@ -1163,7 +1163,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${invitee.phoneE164}`}
                     >
-                      <Ionicons
+                      <Icon
                         name="close"
                         size={14}
                         color={colors.primary[600]}
@@ -1210,7 +1210,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 >
                   <Text style={styles.phoneLookupFlag}>{selectedCountry.flag}</Text>
                   <Text style={styles.phoneLookupDial}>{selectedCountry.dialCode}</Text>
-                  <Ionicons name="chevron-down" size={14} color={colors.gray[400]} />
+                  <Icon name="chevron-down" size={14} color={colors.gray[400]} />
                 </TouchableOpacity>
 
                 <View style={styles.phoneLookupDivider} />
@@ -1246,7 +1246,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 <View style={styles.phoneLookupFeedback}>
                   {phoneLookupResult.found ? (
                     <View style={styles.phoneLookupFeedbackRow}>
-                      <Ionicons name="checkmark-circle" size={14} color={colors.success[500]} />
+                      <Icon name="checkmark-circle" size={14} color={colors.success[500]} />
                       <Text style={styles.phoneLookupFoundText}>
                         {phoneLookupResult.user?.display_name ||
                           phoneLookupResult.user?.username ||
@@ -1256,7 +1256,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                     </View>
                   ) : (
                     <View style={styles.phoneLookupFeedbackRow}>
-                      <Ionicons name="person-add-outline" size={14} color={colors.gray[500]} />
+                      <Icon name="person-add-outline" size={14} color={colors.gray[500]} />
                       <Text style={styles.phoneLookupNotFoundText}>
                         Not on Mingla yet
                       </Text>
@@ -1268,7 +1268,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               {/* Status feedback */}
               {phoneActionStatus === 'sent' && (
                 <View style={styles.phoneLookupFeedbackRow}>
-                  <Ionicons name="checkmark-circle" size={16} color={colors.success[500]} />
+                  <Icon name="checkmark-circle" size={16} color={colors.success[500]} />
                   <Text style={styles.phoneLookupSuccessText}>
                     {phoneLookupResult?.found ? 'Added to session!' : 'Invite sent!'}
                   </Text>
@@ -1276,7 +1276,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               )}
               {phoneActionStatus === 'error' && (
                 <View style={styles.phoneLookupFeedbackRow}>
-                  <Ionicons name="alert-circle" size={16} color={colors.error[500]} />
+                  <Icon name="alert-circle" size={16} color={colors.error[500]} />
                   <Text style={styles.phoneLookupErrorText}>{phoneActionError}</Text>
                 </View>
               )}
@@ -1295,7 +1295,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                   <ActivityIndicator size="small" color={colors.text.inverse} />
                 ) : (
                   <>
-                    <Ionicons
+                    <Icon
                       name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
                       size={14}
                       color={colors.text.inverse}
@@ -1327,7 +1327,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
               onNavigateToInvites && (
                 <View style={styles.emptyState}>
                   <View style={styles.emptyStateIcon}>
-                    <Ionicons
+                    <Icon
                       name="people-outline"
                       size={32}
                       color={colors.gray[300]}
@@ -1358,7 +1358,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {/* Validation nudge for collaboration */}
             {sessionType === 'collaboration' && totalPeople === 0 && (
               <View style={styles.nudge}>
-                <Ionicons
+                <Icon
                   name="information-circle-outline"
                   size={16}
                   color={colors.primary[500]}
@@ -1418,7 +1418,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {/* Session name */}
             <View style={styles.reviewRow}>
               <View style={styles.reviewIcon}>
-                <Ionicons name="text" size={18} color={colors.primary[500]} />
+                <Icon name="text" size={18} color={colors.primary[500]} />
               </View>
               <View style={styles.reviewContent}>
                 <Text style={styles.reviewLabel}>Session name</Text>
@@ -1432,7 +1432,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {totalPeople > 0 && (
               <View style={styles.reviewRow}>
                 <View style={styles.reviewIcon}>
-                  <Ionicons
+                  <Icon
                     name="people"
                     size={18}
                     color={colors.primary[500]}
@@ -1456,7 +1456,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {!isEmbedded && inviteMethod && (
               <View style={styles.reviewRow}>
                 <View style={styles.reviewIcon}>
-                  <Ionicons
+                  <Icon
                     name="mail"
                     size={18}
                     color={colors.primary[500]}
@@ -1479,7 +1479,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
 
             {/* Info banner */}
             <View style={styles.infoBanner}>
-              <Ionicons
+              <Icon
                 name="sparkles"
                 size={18}
                 color={colors.primary[500]}
@@ -1493,7 +1493,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             {/* Creation error */}
             {creationError && (
               <View style={styles.creationError}>
-                <Ionicons
+                <Icon
                   name="alert-circle"
                   size={16}
                   color={colors.error[500]}
@@ -1510,7 +1510,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           <View style={styles.stepBody}>
             <View style={styles.successWrap}>
               <View style={styles.successIconWrap}>
-                <Ionicons
+                <Icon
                   name="checkmark-circle"
                   size={56}
                   color={colors.success[500]}
@@ -1570,7 +1570,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                 accessibilityLabel="Go back"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons
+                <Icon
                   name="chevron-back"
                   size={20}
                   color={colors.text.secondary}
@@ -1630,7 +1630,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Create another session"
           >
-            <Ionicons name="add" size={18} color={colors.primary[500]} />
+            <Icon name="add" size={18} color={colors.primary[500]} />
             <Text style={styles.secondaryBtnText}>Create another</Text>
           </TouchableOpacity>
         )}
@@ -1688,7 +1688,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Create another session"
         >
-          <Ionicons name="add" size={18} color={colors.primary[500]} />
+          <Icon name="add" size={18} color={colors.primary[500]} />
           <Text style={styles.secondaryBtnText}>Create another</Text>
         </TouchableOpacity>
       )}

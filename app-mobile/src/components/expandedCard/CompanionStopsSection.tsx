@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface CompanionStop {
   id: string;
@@ -81,7 +81,7 @@ export default function CompanionStopsSection({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="location" size={20} color="#eb7825" />
+        <Icon name="location" size={20} color="#eb7825" />
         <Text style={styles.title}>Start Your Stroll</Text>
       </View>
       <Text style={styles.subtitle}>
@@ -101,8 +101,8 @@ export default function CompanionStopsSection({
             <View style={styles.stopContent}>
               <View style={styles.stopHeader}>
                 <View style={styles.stopIconContainer}>
-                  <Ionicons
-                    name={getTypeIcon(stop.type) as any}
+                  <Icon
+                    name={getTypeIcon(stop.type)}
                     size={20}
                     color="#eb7825"
                   />
@@ -114,7 +114,7 @@ export default function CompanionStopsSection({
               </View>
               {stop.rating && (
                 <View style={styles.stopRating}>
-                  <Ionicons name="star" size={14} color="#fbbf24" />
+                  <Icon name="star" size={14} color="#fbbf24" />
                   <Text style={styles.ratingText}>
                     {stop.rating.toFixed(1)}
                   </Text>
@@ -127,7 +127,7 @@ export default function CompanionStopsSection({
               )}
               {stop.address && (
                 <View style={styles.stopAddress}>
-                  <Ionicons name="location-outline" size={12} color="#9ca3af" />
+                  <Icon name="location-outline" size={12} color="#9ca3af" />
                   <Text style={styles.addressText} numberOfLines={1}>
                     {stop.address}
                   </Text>

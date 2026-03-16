@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import { parseAndFormatDistance } from './utils/formatters';
@@ -16,7 +16,7 @@ const CURATED_ICON_MAP: Record<string, string> = {
   'Take a Stroll': 'walk-outline',
 };
 
-function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
     case 'transit': return 'bus';
@@ -89,7 +89,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
       <View style={styles.infoSection}>
         {/* Category badge */}
         <View style={styles.categoryBadge}>
-          <Ionicons name={categoryIcon as any} size={12} color="#fff" />
+          <Icon name={categoryIcon} size={12} color="#fff" />
           <Text style={styles.categoryText}>{categoryLabel}</Text>
           <Text style={styles.stopCountText}> · {card.stops.length} {card.stops.length === 1 ? 'spot' : 'stops'}</Text>
         </View>
@@ -103,28 +103,28 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
         <View style={styles.metaRow}>
           {formattedDistance ? (
             <>
-              <Ionicons name="location" size={11} color="rgba(255,255,255,0.7)" />
+              <Icon name="location" size={11} color="rgba(255,255,255,0.7)" />
               <Text style={styles.metaText}> {formattedDistance}</Text>
               <Text style={styles.metaDot}> · </Text>
             </>
           ) : null}
           {formattedTravelTime ? (
             <>
-              <Ionicons name={getTravelModeIcon(travelMode)} size={11} color="rgba(255,255,255,0.7)" />
+              <Icon name={getTravelModeIcon(travelMode)} size={11} color="rgba(255,255,255,0.7)" />
               <Text style={styles.metaText}> {formattedTravelTime}</Text>
               <Text style={styles.metaDot}> · </Text>
             </>
           ) : null}
           <Text style={styles.metaText}>{priceText}</Text>
           <Text style={styles.metaDot}> · </Text>
-          <Ionicons name="star" size={11} color="#F59E0B" />
+          <Icon name="star" size={11} color="#F59E0B" />
           <Text style={styles.metaText}> {avgRating} avg</Text>
         </View>
 
         {/* CTA */}
         <TrackedTouchableOpacity logComponent="CuratedExperienceSwipeCard" style={styles.ctaButton} onPress={onSeePlan} activeOpacity={0.85}>
           <Text style={styles.ctaText}>{ctaText}</Text>
-          <Ionicons name="arrow-forward" size={16} color="#fff" />
+          <Icon name="arrow-forward" size={16} color="#fff" />
         </TrackedTouchableOpacity>
       </View>
     </View>

@@ -15,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { BlockReason } from "../services/blockService";
 
 interface BlockUserModalProps {
@@ -76,7 +76,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
               {/* Header */}
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Feather name="shield" size={32} color="#ef4444" />
+                  <Icon name="shield" size={32} color="#ef4444" />
                 </View>
                 <Text style={styles.title}>Block {userName}?</Text>
               </View>
@@ -88,25 +88,25 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                 </Text>
                 <View style={styles.bulletList}>
                   <View style={styles.bulletItem}>
-                    <Ionicons name="remove-circle" size={16} color="#6b7280" />
+                    <Icon name="remove-circle" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
                       They'll be removed from your friends list
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Ionicons name="chatbubble-ellipses" size={16} color="#6b7280" />
+                    <Icon name="chatbubble-ellipses" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
                       They won't be able to message you
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Ionicons name="search" size={16} color="#6b7280" />
+                    <Icon name="search" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
                       They won't be able to find you in search
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Ionicons name="people" size={16} color="#6b7280" />
+                    <Icon name="people" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
                       Existing collaboration sessions remain unaffected
                     </Text>
@@ -130,8 +130,8 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                       )}
                       disabled={isLoading}
                     >
-                      <Ionicons
-                        name={reason.icon as any}
+                      <Icon
+                        name={reason.icon}
                         size={16}
                         color={selectedReason === reason.value ? "#eb7825" : "#6b7280"}
                       />
@@ -166,7 +166,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                     <ActivityIndicator size="small" color="white" />
                   ) : (
                     <>
-                      <Ionicons name="shield" size={18} color="white" />
+                      <Icon name="shield" size={18} color="white" />
                       <Text style={styles.blockButtonText}>Block</Text>
                     </>
                   )}

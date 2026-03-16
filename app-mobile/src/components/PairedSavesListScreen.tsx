@@ -9,7 +9,7 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { s, vs, SCREEN_WIDTH } from '../utils/responsive';
 import { colors, shadows } from '../constants/designSystem';
 import PersonGridCard from './PersonGridCard';
@@ -182,7 +182,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
             onPress={onBack}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.gray[900]} />
+            <Icon name="arrow-back" size={24} color={colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{title}</Text>
           <View style={styles.headerSpacer} />
@@ -205,13 +205,13 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
             onPress={onBack}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.gray[900]} />
+            <Icon name="arrow-back" size={24} color={colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{title}</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.centered}>
-          <Ionicons name="alert-circle-outline" size={s(48)} color={colors.gray[400]} />
+          <Icon name="alert-circle-outline" size={s(48)} color={colors.gray[400]} />
           <Text style={styles.errorText}>Something went wrong</Text>
           {onRetry && (
             <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
@@ -231,7 +231,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
           onPress={onBack}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-back" size={24} color={colors.gray[900]} />
+          <Icon name="arrow-back" size={24} color={colors.gray[900]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{title}</Text>
         <View style={styles.headerSpacer} />
@@ -241,7 +241,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
 
       {items.length === 0 ? (
         <View style={styles.centered}>
-          <Ionicons name="albums-outline" size={s(48)} color={colors.gray[300]} />
+          <Icon name="albums-outline" size={s(48)} color={colors.gray[300]} />
           <Text style={styles.emptyTitle}>Nothing here yet</Text>
         </View>
       ) : (

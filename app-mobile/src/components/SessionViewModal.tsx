@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import { useBoardSession } from "../hooks/useBoardSession";
 import { useSessionVoting } from "../hooks/useSessionVoting";
 import { useSessionStatus } from "../hooks/useSessionStatus";
@@ -584,7 +584,7 @@ export default function SessionViewModal({
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#6B7280" />
+            <Icon name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
@@ -649,14 +649,14 @@ export default function SessionViewModal({
           </View>
 
           <TouchableOpacity onPress={() => setShowSettingsDropdown(true)} style={styles.settingsButton}>
-            <Ionicons name="ellipsis-vertical" size={20} color="#374151" />
+            <Icon name="ellipsis-vertical" size={20} color="#374151" />
           </TouchableOpacity>
         </View>
 
         {/* Network Banner */}
         {showNetworkBanner && (
           <View style={styles.networkBanner}>
-            <Ionicons name="wifi-outline" size={16} color="white" />
+            <Icon name="wifi-outline" size={16} color="white" />
             <Text style={styles.networkBannerText}>No internet connection</Text>
           </View>
         )}
@@ -672,7 +672,7 @@ export default function SessionViewModal({
         {/* Error State */}
         {!sessionLoading && (sessionError || !sessionValid || !hasPermission) && (
           <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
+            <Icon name="alert-circle-outline" size={48} color="#FF3B30" />
             <Text style={styles.errorText}>
               {sessionError || (!sessionValid ? "Session is no longer available." : "You don't have access to this session.")}
             </Text>
@@ -860,7 +860,7 @@ export default function SessionViewModal({
           <Modal visible={showCalendarPrompt} transparent animationType="fade">
             <View style={styles.calendarPromptOverlay}>
               <View style={styles.calendarPromptCard}>
-                <Ionicons name="calendar" size={40} color="#10B981" />
+                <Icon name="calendar" size={40} color="#10B981" />
                 <Text style={styles.calendarPromptTitle}>Plan Locked In!</Text>
                 <Text style={styles.calendarPromptText}>
                   Everyone is attending. Add this to your calendar?

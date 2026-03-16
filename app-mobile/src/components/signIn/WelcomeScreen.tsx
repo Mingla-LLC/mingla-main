@@ -14,7 +14,8 @@ import {
   BackHandler,
   AccessibilityInfo,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
+import { AppleLogo } from "../ui/BrandIcons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
@@ -346,7 +347,7 @@ export default function WelcomeScreen({
                 {isAppleSignInInProgress ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <Ionicons name="logo-apple" size={22} color="#ffffff" />
+                  <AppleLogo size={22} color="#ffffff" />
                 )}
                 <Text style={styles.appleButtonText}>
                   {isAppleSignInInProgress

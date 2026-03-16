@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { s } from '../utils/responsive';
 import { colors } from '../constants/designSystem';
 
@@ -14,7 +14,7 @@ const VisitBadge: React.FC = () => (
     accessibilityLabel="Visited"
     accessibilityRole="image"
   >
-    <Ionicons name="checkmark" size={s(12)} color="#ffffff" />
+    <Icon name="checkmark" size={s(12)} color="#ffffff" />
   </View>
 );
 

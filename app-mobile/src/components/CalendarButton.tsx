@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { DeviceCalendarService } from "../services/deviceCalendarService";
@@ -183,7 +183,7 @@ export default function CalendarButton({
         <ActivityIndicator size="small" color="#eb7825" />
       ) : (
         <>
-          <Ionicons
+          <Icon
             name={isAdded ? "checkmark-circle" : "calendar-outline"}
             size={s(16)}
             color={isAdded ? "#FFFFFF" : "#eb7825"}

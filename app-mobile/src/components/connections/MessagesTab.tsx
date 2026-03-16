@@ -9,7 +9,7 @@ import {
   Animated,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { Conversation, Friend } from "../../data/mockConnections";
 import ConversationCard from "./ConversationCard";
 import MessageInterface from "../MessageInterface";
@@ -171,7 +171,7 @@ export default function MessagesTab({
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
-          <Ionicons
+          <Icon
             name="search"
             size={20}
             color="#9ca3af"
@@ -190,7 +190,7 @@ export default function MessagesTab({
           onPress={onStartNewConversation}
           style={styles.newConversationButton}
         >
-          <Ionicons name="add" size={20} color="white" />
+          <Icon name="add" size={20} color="white" />
           <Text style={styles.newConversationText}>Start New Conversation</Text>
         </TouchableOpacity>
       </View>
@@ -204,7 +204,7 @@ export default function MessagesTab({
           </View>
         ) : filteredConversations.length === 0 && messageSearchQuery.trim() ? (
           <View style={styles.emptyState}>
-            <Ionicons name="search" size={48} color="#d1d5db" />
+            <Icon name="search" size={48} color="#d1d5db" />
             <Text style={styles.emptyStateTitle}>No conversations found</Text>
             <Text style={styles.emptyStateSubtitle}>
               Try searching with different keywords

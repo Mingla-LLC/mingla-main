@@ -13,7 +13,7 @@ import {
   Switch,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { useAppStore } from '../../store/appStore';
 import { useEnhancedProfile } from '../../hooks/useEnhancedProfile';
 import { SavedExperiencePrivacy } from '../../types';
@@ -273,8 +273,8 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = ({ onClose }) => 
               <View key={experience.id} style={styles.experienceItem}>
                 <View style={styles.experienceInfo}>
                   <View style={styles.experienceIcon}>
-                    <Ionicons 
-                      name={getCategoryIcon(experience.category) as any} 
+                    <Icon 
+                      name={getCategoryIcon(experience.category)}
                       size={16} 
                       color={getCategoryColor(experience.category)} 
                     />

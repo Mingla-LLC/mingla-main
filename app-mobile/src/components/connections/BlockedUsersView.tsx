@@ -8,7 +8,7 @@ import {
   Alert,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { BlockedUser } from "../../hooks/useFriends";
 
 interface BlockedUsersViewProps {
@@ -59,7 +59,7 @@ export function BlockedUsersView({
   if (blockedUsers.length === 0) {
     return (
       <View style={styles.emptyState}>
-        <Ionicons name="ban-outline" size={32} color="#d1d5db" />
+        <Icon name="ban-outline" size={32} color="#d1d5db" />
         <Text style={styles.emptyText}>No blocked users</Text>
       </View>
     );

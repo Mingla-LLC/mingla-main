@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, Image, StyleSheet, Alert, Clipboard } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { formatCurrency } from './utils/formatters';
 
 interface PurchaseQRCodeProps {
@@ -66,7 +66,7 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.iconContainer}>
-          <Ionicons name="qr-code" size={20} color="white" />
+          <Icon name="qr-code" size={20} color="white" />
         </View>
         <Text style={styles.title}>Purchase Verification</Text>
         <Text style={styles.subtitle}>Scan at venue for instant verification</Text>
@@ -98,9 +98,9 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
               style={styles.copyButton}
             >
               {copied ? (
-                <Ionicons name="checkmark" size={16} color="#10b981" />
+                <Icon name="checkmark" size={16} color="#10b981" />
               ) : (
-                <Ionicons name="copy" size={16} color="#6b7280" />
+                <Icon name="copy" size={16} color="#6b7280" />
               )}
             </TrackedTouchableOpacity>
           </View>
@@ -113,7 +113,7 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
           onPress={handleDownloadQR}
           style={styles.downloadButton}
         >
-          <Ionicons name="download" size={16} color="white" />
+          <Icon name="download" size={16} color="white" />
           <Text style={styles.downloadButtonText}>Download QR Code</Text>
         </TrackedTouchableOpacity>
       </View>

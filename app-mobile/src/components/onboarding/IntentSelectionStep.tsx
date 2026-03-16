@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 interface IntentSelectionStepProps {
   onNext: () => void | Promise<void>;
@@ -310,8 +310,8 @@ const IntentSelectionStep = ({
                 activeOpacity={0.7}
               >
                 <View style={styles.intentIconContainer}>
-                  <Ionicons
-                    name={getIconName(option) as any}
+                  <Icon
+                    name={getIconName(option)}
                     size={24}
                     color={isSelected ? "#ffffff" : "#374151"}
                   />
@@ -344,7 +344,7 @@ const IntentSelectionStep = ({
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Icon name="arrow-back" size={18} color="#111827" />
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
@@ -400,7 +400,7 @@ const IntentSelectionStep = ({
               >
                 Next
               </Text>
-              <Ionicons
+              <Icon
                 name="arrow-forward"
                 size={18}
                 color={hasIntentsSelected ? "#ffffff" : "#6b7280"}

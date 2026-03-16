@@ -10,7 +10,7 @@ import {
   Alert,
   Pressable,
 } from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useKeyboard } from "../../hooks/useKeyboard";
 
@@ -201,7 +201,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       {canManageSession && (
         <View style={styles.adminHeader}>
           <View style={styles.adminHeaderIcon}>
-            <Feather name="shield" size={16} color="#eb7825" />
+            <Icon name="shield" size={16} color="#eb7825" />
           </View>
           <Text style={styles.adminHeaderText}>Admin Privileges</Text>
         </View>
@@ -217,7 +217,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           }}
           activeOpacity={0.7}
         >
-          <Feather name="settings" size={18} color="#6B7280" />
+          <Icon name="settings" size={18} color="#6B7280" />
           <Text style={styles.menuItemText}>Manage Board</Text>
         </TouchableOpacity>
       )}
@@ -229,7 +229,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           onPress={handleEditSessionName}
           activeOpacity={0.7}
         >
-          <Feather name="edit-2" size={18} color="#6B7280" />
+          <Icon name="edit-2" size={18} color="#6B7280" />
           <Text style={styles.menuItemText}>Rename Board</Text>
         </TouchableOpacity>
       )}
@@ -244,7 +244,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           }}
           activeOpacity={0.7}
         >
-          <Feather name="user-plus" size={18} color="#6B7280" />
+          <Icon name="user-plus" size={18} color="#6B7280" />
           <Text style={styles.menuItemText}>Invite Participants</Text>
         </TouchableOpacity>
       )}
@@ -259,7 +259,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           }}
           activeOpacity={0.7}
         >
-          <Feather 
+          <Icon 
             name={notificationsEnabled ? "bell-off" : "bell"} 
             size={18} 
             color="#6B7280" 
@@ -294,7 +294,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         activeOpacity={0.7}
         disabled={exitingBoard}
       >
-        <Feather name="log-out" size={18} color="#6B7280" />
+        <Icon name="log-out" size={18} color="#6B7280" />
         <Text style={styles.menuItemText}>
           {exitingBoard ? "Leaving..." : "Leave Board"}
         </Text>
@@ -307,7 +307,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           onPress={handleDeleteSessionWithConfirmation}
           activeOpacity={0.7}
         >
-          <Feather name="x" size={18} color="#EF4444" />
+          <Icon name="x" size={18} color="#EF4444" />
           <Text style={styles.menuItemTextDanger}>Delete Board</Text>
         </TouchableOpacity>
       )}
@@ -355,7 +355,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 onPress={() => setShowEditSessionModal(false)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={24} color="#6b7280" />
+                <Icon name="close" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
 

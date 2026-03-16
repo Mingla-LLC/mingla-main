@@ -5,8 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import Feather from '@expo/vector-icons/Feather';
+import { Icon } from '../ui/Icon';
 import Toggle from './Toggle';
 
 interface SettingsRowProps {
@@ -46,7 +45,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
     <View style={[styles.row, !isLast && styles.rowBorder]}>
       {icon && (
         <View style={styles.iconContainer}>
-          <Feather name={icon as any} size={20} color="#6b7280" />
+          <Icon name={icon} size={20} color="#6b7280" />
         </View>
       )}
       <View style={styles.labelContainer}>
@@ -60,11 +59,11 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
       {value != null && (
         <View style={styles.valueRow}>
           <Text style={styles.value}>{value}</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Icon name="chevron-forward" size={16} color="#9ca3af" />
         </View>
       )}
       {showChevron && !value && (
-        <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        <Icon name="chevron-forward" size={16} color="#9ca3af" />
       )}
     </View>
   );

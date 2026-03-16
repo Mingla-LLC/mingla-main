@@ -11,7 +11,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { SegmentedProgressBar } from './SegmentedProgressBar';
 import { KeyboardAwareView } from '../ui/KeyboardAwareView';
@@ -243,7 +243,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             accessibilityRole="button"
             accessibilityLabel={secondaryAccessibilityLabel}
           >
-            <Ionicons
+            <Icon
               name="chevron-back"
               size={18}
               color={colors.text.secondary}

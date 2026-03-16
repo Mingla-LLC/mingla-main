@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 
 interface QuickAction {
   id: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
@@ -108,7 +108,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
             disabled={action.disabled}
             activeOpacity={0.8}
           >
-            <Ionicons
+            <Icon
               name={action.icon}
               size={sizeConfig.iconSize}
               color={action.disabled ? colors.gray[400] : variantStyles.iconColor}

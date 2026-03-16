@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface Friend {
   id: string;
@@ -229,7 +229,7 @@ export const SentInviteCard = ({ invite, onCancel }: SentInviteCardProps) => {
           </Text>
         </View>
         <View style={styles.sentInviteStatus}>
-          <Ionicons name="time" size={12} color="#6b7280" />
+          <Icon name="time" size={12} color="#6b7280" />
           <Text style={styles.sentInviteStatusText}>{invite.expiresAt}</Text>
         </View>
       </View>
@@ -335,7 +335,7 @@ export const PendingSessionCard = ({ session, onLeaveSession }: PendingSessionCa
           <Text style={styles.cancelSessionButtonText}>Cancel Session</Text>
         </TrackedTouchableOpacity>
         <TrackedTouchableOpacity logComponent="InviteCard" style={styles.pendingSessionViewButton}>
-          <Ionicons name="people" size={16} color="#6b7280" />
+          <Icon name="people" size={16} color="#6b7280" />
         </TrackedTouchableOpacity>
       </View>
     </View>

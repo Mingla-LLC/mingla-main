@@ -11,7 +11,7 @@ import {
   Alert,
   Image,
 } from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { mixpanelService } from "../../services/mixpanelService";
@@ -265,7 +265,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <View style={styles.headerIcon}>
-                <Feather name="user-plus" size={18} color="white" />
+                <Icon name="user-plus" size={18} color="white" />
               </View>
               <View>
                 <Text style={styles.headerTitle}>Invite Participants</Text>
@@ -275,13 +275,13 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color="#6b7280" />
+              <Icon name="close" size={20} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
           {/* Search */}
           <View style={styles.searchContainer}>
-            <Feather
+            <Icon
               name="search"
               size={16}
               color="#9ca3af"
@@ -297,7 +297,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={18} color="#9ca3af" />
+                <Icon name="close-circle" size={18} color="#9ca3af" />
               </TouchableOpacity>
             )}
           </View>
@@ -331,7 +331,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                       onPress={() => toggleFriendSelection(friend)}
                       style={styles.selectedTagRemove}
                     >
-                      <Ionicons name="close" size={12} color="#6B7280" />
+                      <Icon name="close" size={12} color="#6B7280" />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -353,7 +353,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
               </View>
             ) : displayList.length === 0 ? (
               <View style={styles.emptyState}>
-                <Feather name="users" size={32} color="#9ca3af" />
+                <Icon name="users" size={32} color="#9ca3af" />
                 <Text style={styles.emptyStateTitle}>
                   {searchQuery
                     ? "No users found"
@@ -399,7 +399,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                     </View>
                     {isSelected && (
                       <View style={styles.friendCheckmark}>
-                        <Ionicons
+                        <Icon
                           name="checkmark"
                           size={16}
                           color="#FFFFFF"
@@ -430,7 +430,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                 <ActivityIndicator size="small" color="white" />
               ) : (
                 <>
-                  <Feather name="send" size={16} color="white" />
+                  <Icon name="send" size={16} color="white" />
                   <Text style={styles.sendButtonText}>
                     Invite{" "}
                     {selectedFriends.length > 0

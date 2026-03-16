@@ -1,12 +1,12 @@
 import React from "react";
 import { Text, View, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { colors, typography, spacing } from "../../constants/designSystem";
 
 function EmptyDiscussion() {
   return (
     <View style={styles.wrapper}>
-      <Ionicons
+      <Icon
         name="chatbubbles-outline"
         size={48}
         color={colors.gray[300]}

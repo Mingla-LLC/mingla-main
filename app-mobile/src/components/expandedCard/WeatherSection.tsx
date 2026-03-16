@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { WeatherData } from "../../services/weatherService";
 import { formatTemperature } from "../utils/formatters";
 
@@ -56,7 +56,7 @@ export default function WeatherSection({
       <View style={styles.container}>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Ionicons name="cloudy" size={14} color="#ea580c" />
+            <Icon name="cloudy" size={14} color="#ea580c" />
           </View>
           <Text style={styles.label}>Weather</Text>
           <ActivityIndicator size="small" color="#ea580c" />
@@ -74,7 +74,7 @@ export default function WeatherSection({
     <View style={styles.container}>
       <View style={styles.row}>
         <View style={styles.iconBadge}>
-          <Ionicons name={weatherIcon as any} size={14} color="#ea580c" />
+          <Icon name={weatherIcon} size={14} color="#ea580c" />
         </View>
         <Text style={styles.label}>Weather</Text>
         <View style={styles.conditionBadge}>

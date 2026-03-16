@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Icon } from './ui/Icon';
 import {
   GenderOption,
   HolidayDefinition,
@@ -276,12 +276,12 @@ function CompactCard({
           <Image source={{ uri: imageUrl }} style={styles.compactCardImage} resizeMode="cover" />
         ) : (
           <View style={[styles.compactCardImage, styles.compactCardImageFallback]}>
-            <Ionicons name="image-outline" size={s(28)} color="#d1d5db" />
+            <Icon name="image-outline" size={s(28)} color="#d1d5db" />
           </View>
         )}
         {/* Category badge */}
         <View style={[styles.compactCardBadge, isCurated && styles.compactCardBadgeCurated]}>
-          <Ionicons name={catIcon as any} size={s(13)} color={isCurated ? "white" : "#eb7825"} />
+          <Icon name={catIcon} size={s(13)} color={isCurated ? "white" : "#eb7825"} />
         </View>
       </View>
 
@@ -302,14 +302,14 @@ function CompactCard({
           ) : <View />}
           {rating != null && rating > 0 ? (
             <View style={styles.compactCardRatingRow}>
-              <Ionicons name="star" size={s(11)} color="#F59E0B" />
+              <Icon name="star" size={s(11)} color="#F59E0B" />
               <Text style={[styles.compactCardRatingText, isCurated && styles.compactCardRatingCurated]}>
                 {rating.toFixed(1)}
               </Text>
             </View>
           ) : (
             <View style={styles.compactCardArrow}>
-              <Feather name="chevron-right" size={s(12)} color="white" />
+              <Icon name="chevron-right" size={s(12)} color="white" />
             </View>
           )}
         </View>
@@ -489,9 +489,9 @@ function HolidaySectionView({
             <Text style={styles.holidayName}>{holiday.name}</Text>
             <View style={styles.holidayActions}>
               <TouchableOpacity onPress={onArchive} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="archive-outline" size={s(16)} color="#9ca3af" />
+                <Icon name="archive-outline" size={s(16)} color="#9ca3af" />
               </TouchableOpacity>
-              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
+              <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
             </View>
           </View>
           <Text style={styles.holidayDate}>{fmtMonthDay(date)}</Text>
@@ -555,10 +555,10 @@ function CustomHolidaySectionView({
             <View style={styles.holidayActions}>
               {onDelete && (
                 <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="trash-outline" size={s(16)} color="#9ca3af" />
+                  <Icon name="trash-outline" size={s(16)} color="#9ca3af" />
                 </TouchableOpacity>
               )}
-              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
+              <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={s(18)} color="#9ca3af" />
             </View>
           </View>
           <Text style={styles.holidayDate}>
@@ -773,7 +773,7 @@ export default function PersonHolidayView({
           <Text style={styles.sectionTitle}>Your Special Days</Text>
           {onAddCustomDay && (
             <TouchableOpacity onPress={onAddCustomDay} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="add-circle-outline" size={s(24)} color="#eb7825" />
+              <Icon name="add-circle-outline" size={s(24)} color="#eb7825" />
             </TouchableOpacity>
           )}
         </View>
@@ -791,7 +791,7 @@ export default function PersonHolidayView({
           ))
         ) : (
           <TouchableOpacity style={styles.emptyCustom} onPress={onAddCustomDay} activeOpacity={0.7}>
-            <Ionicons name="calendar-outline" size={s(28)} color="#d1d5db" />
+            <Icon name="calendar-outline" size={s(28)} color="#d1d5db" />
             <Text style={styles.emptyCustomText}>Mark a day that matters</Text>
           </TouchableOpacity>
         )}
@@ -826,11 +826,11 @@ export default function PersonHolidayView({
             <View style={styles.archWrap}>
               <TouchableOpacity style={styles.archToggle} onPress={() => setShowArchived((v) => !v)} activeOpacity={0.7}>
                 <View style={styles.archToggleLeft}>
-                  <Ionicons name="archive-outline" size={s(16)} color="#6b7280" />
+                  <Icon name="archive-outline" size={s(16)} color="#6b7280" />
                   <Text style={styles.archLabel}>Archived</Text>
                   <Text style={styles.archCount}>({archived.length})</Text>
                 </View>
-                <Ionicons name={showArchived ? "chevron-up" : "chevron-down"} size={s(16)} color="#6b7280" />
+                <Icon name={showArchived ? "chevron-up" : "chevron-down"} size={s(16)} color="#6b7280" />
               </TouchableOpacity>
               {showArchived && archived.map(({ holiday, date, daysAway }) => (
                 <View key={holiday.id} style={styles.archItem}>
@@ -841,7 +841,7 @@ export default function PersonHolidayView({
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => handleUnarchive(holiday.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="arrow-undo-outline" size={s(16)} color="#6b7280" />
+                    <Icon name="arrow-undo-outline" size={s(16)} color="#6b7280" />
                   </TouchableOpacity>
                 </View>
               ))}

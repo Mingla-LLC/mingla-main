@@ -1,7 +1,7 @@
 import * as React from "react";
 import { View, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface CheckboxProps {
   checked?: boolean;
@@ -56,7 +56,7 @@ function Checkbox({
       {...props}
     >
       {checked && (
-        <Ionicons
+        <Icon
           name="checkmark"
           size={sizeStyles.iconSize}
           color={checked ? 'white' : '#6b7280'}

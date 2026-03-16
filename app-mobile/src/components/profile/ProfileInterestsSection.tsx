@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Pencil, Sparkles } from 'lucide-react-native';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories as allCategories } from '../../constants/categories';
+import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
 
 interface ProfileInterestsSectionProps {
   intents: string[];
@@ -26,6 +27,10 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
   const categoryData = allCategories.filter((c) => categories.includes(c.name));
   const totalPills = intentData.length + categoryData.length;
+
+  // Stable dep keys — avoids calling .join() inside the useEffect dep array
+  const intentsKey = useMemo(() => intents.join(','), [intents]);
+  const categoriesKey = useMemo(() => categories.join(','), [categories]);
 
   // Stagger animation refs
   const pillAnims = useRef<Animated.Value[]>([]);
@@ -54,7 +59,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
       ])
     );
     Animated.parallel(animations).start();
-  }, [intents.join(','), categories.join(',')]);
+  }, [intentsKey, categoriesKey, totalPills]);
 
   if (!hasInterests && !isOwnProfile) return null;
 
@@ -71,7 +76,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             accessibilityLabel="Edit your interests"
             accessibilityRole="button"
           >
-            <Ionicons name="pencil" size={14} color="#6b7280" />
+            <Pencil size={14} color="#6b7280" strokeWidth={2.5} />
           </TrackedTouchableOpacity>
         )}
       </View>
@@ -83,7 +88,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
           style={styles.emptyState}
           activeOpacity={0.8}
         >
-          <Ionicons name="sparkles" size={24} color="#eb7825" />
+          <Sparkles size={24} color="#eb7825" strokeWidth={2} />
           <Text style={styles.emptyText}>
             Tell us what you're into — it helps us find your next favorite thing.
           </Text>
@@ -96,6 +101,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
           {intentData.map((intent, i) => {
             const opacity = pillAnims.current[i] || new Animated.Value(1);
             const translateY = pillTranslates.current[i] || new Animated.Value(0);
+            const IconComponent = INTENT_ICON_MAP[intent.id];
             return (
               <Animated.View
                 key={intent.id}
@@ -107,6 +113,9 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
                   end={{ x: 1, y: 0 }}
                   style={styles.intentPill}
                 >
+                  {IconComponent && (
+                    <IconComponent size={14} color="#ffffff" strokeWidth={2.5} />
+                  )}
                   <Text style={styles.intentText}>{intent.label}</Text>
                 </LinearGradient>
               </Animated.View>
@@ -116,13 +125,16 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             const idx = intentData.length + i;
             const opacity = pillAnims.current[idx] || new Animated.Value(1);
             const translateY = pillTranslates.current[idx] || new Animated.Value(0);
+            const CatIcon = CATEGORY_ICON_MAP[cat.slug];
             return (
               <Animated.View
                 key={cat.slug}
                 style={[styles.categoryPillWrap, { opacity, transform: [{ translateY }] }]}
               >
                 <View style={styles.categoryPill}>
-                  <Text style={styles.categoryEmoji}>{cat.icon}</Text>
+                  {CatIcon && (
+                    <CatIcon size={14} color="#374151" strokeWidth={2} />
+                  )}
                   <Text style={styles.categoryText}>{cat.name}</Text>
                 </View>
               </Animated.View>
@@ -164,6 +176,7 @@ const styles = StyleSheet.create({
   pillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   intentPillWrap: {},
   intentPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
@@ -179,7 +192,6 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
   },
-  categoryEmoji: { fontSize: 14 },
   categoryText: { fontSize: 13, fontWeight: '500', color: '#374151' },
 });
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 
 interface Friend {
   id: string;
@@ -538,7 +538,7 @@ const SessionsTab = ({
         activeOpacity={0.7}
       >
         <View style={styles.soloAvatar}>
-          <Ionicons name="person-outline" size={24} color="#FFFFFF" />
+          <Icon name="person-outline" size={24} color="#FFFFFF" />
         </View>
         <View style={styles.soloInfo}>
           <Text style={styles.soloTitle}>Solo Explorer</Text>
@@ -546,7 +546,7 @@ const SessionsTab = ({
         </View>
         {isSoloMode && (
           <View style={styles.soloCheckmark}>
-            <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            <Icon name="checkmark" size={16} color="#FFFFFF" />
           </View>
         )}
       </TrackedTouchableOpacity>
@@ -604,9 +604,9 @@ const SessionsTab = ({
                   </View>
                   {isActive && (
                     <View style={styles.activeHeaderIcon}>
-                      <Ionicons name="person-outline" size={14} color="#FFFFFF" />
+                      <Icon name="person-outline" size={14} color="#FFFFFF" />
                       <View style={styles.activeHeaderCheckmarkBadge}>
-                        <Ionicons name="checkmark" size={6} color="#FFFFFF" />
+                        <Icon name="checkmark" size={6} color="#FFFFFF" />
                       </View>
                     </View>
                   )}
@@ -614,16 +614,16 @@ const SessionsTab = ({
                 
                 <View style={styles.sessionDetails}>
                   <View style={styles.sessionDetail}>
-                    <Ionicons name="people" size={14} color="#6B7280" />
+                    <Icon name="people" size={14} color="#6B7280" />
                     <Text style={styles.sessionDetailText}>{membersCount} members</Text>
                   </View>
                   <View style={styles.sessionDetail}>
-                    <Ionicons name="calendar" size={14} color="#6B7280" />
+                    <Icon name="calendar" size={14} color="#6B7280" />
                     <Text style={styles.sessionDetailText}>{cardsCount} cards</Text>
                   </View>
                   {session.lastActivity && (
                     <View style={styles.sessionDetail}>
-                      <Ionicons name="time" size={14} color="#6B7280" />
+                      <Icon name="time" size={14} color="#6B7280" />
                       <Text style={styles.sessionDetailText}>
                         {formatTimestamp(session.lastActivity)}
                       </Text>
@@ -676,7 +676,7 @@ const SessionsTab = ({
                       </>
                     ) : (
                       <>
-                        <Ionicons 
+                        <Icon 
                           name="flash" 
                           size={16} 
                           color={isActive ? "#FFFFFF" : "#6B7280"} 
@@ -698,7 +698,7 @@ const SessionsTab = ({
                       }
                     }}
                   >
-                    <Ionicons name="chatbubble-outline" size={18} color="#6B7280" />
+                    <Icon name="chatbubble-outline" size={18} color="#6B7280" />
                   </TrackedTouchableOpacity>
                   <TrackedTouchableOpacity logComponent="SessionsTab"
                     style={styles.actionButton}
@@ -708,7 +708,7 @@ const SessionsTab = ({
                       }
                     }}
                   >
-                    <Ionicons name="settings-outline" size={18} color="#6B7280" />
+                    <Icon name="settings-outline" size={18} color="#6B7280" />
                   </TrackedTouchableOpacity>
                 </View>
               </View>
@@ -721,7 +721,7 @@ const SessionsTab = ({
       {activeTab === 'active' && filteredActiveSessions.length === 0 && (
         <View style={styles.emptyState}>
           <View style={styles.emptyStateIcon}>
-            <Ionicons name="people" size={32} color="#9CA3AF" />
+            <Icon name="people" size={32} color="#9CA3AF" />
           </View>
           <Text style={styles.emptyStateTitle}>No Active Sessions</Text>
           <Text style={styles.emptyStateSubtitle}>
@@ -737,7 +737,7 @@ const SessionsTab = ({
             }}
             style={styles.startCollaborationButton}
           >
-            <Ionicons name="add" size={20} color="#FFFFFF" />
+            <Icon name="add" size={20} color="#FFFFFF" />
             <Text style={styles.startCollaborationButtonText}>Create Session</Text>
           </TrackedTouchableOpacity>
         </View>
@@ -767,11 +767,11 @@ const SessionsTab = ({
                 
                 <View style={styles.sessionDetails}>
                   <View style={styles.sessionDetail}>
-                    <Ionicons name="people" size={14} color="#6B7280" />
+                    <Icon name="people" size={14} color="#6B7280" />
                     <Text style={styles.sessionDetailText}>{membersCount} invited</Text>
                   </View>
                   <View style={styles.sessionDetail}>
-                    <Ionicons name="hourglass" size={14} color="#F59E0B" />
+                    <Icon name="hourglass" size={14} color="#F59E0B" />
                     <Text style={styles.sessionDetailText}>{pendingCount} awaiting response</Text>
                   </View>
                 </View>
@@ -800,7 +800,7 @@ const SessionsTab = ({
                 )}
 
                 <View style={styles.pendingNote}>
-                  <Ionicons name="information-circle" size={16} color="#F59E0B" />
+                  <Icon name="information-circle" size={16} color="#F59E0B" />
                   <Text style={styles.pendingNoteText}>
                     Waiting for at least one friend to accept the invite
                   </Text>
@@ -815,7 +815,7 @@ const SessionsTab = ({
       {activeTab === 'pending' && filteredPendingSessions.length === 0 && (
         <View style={styles.emptyState}>
           <View style={styles.emptyStateIcon}>
-            <Ionicons name="hourglass-outline" size={32} color="#9CA3AF" />
+            <Icon name="hourglass-outline" size={32} color="#9CA3AF" />
           </View>
           <Text style={styles.emptyStateTitle}>No Pending Sessions</Text>
           <Text style={styles.emptyStateSubtitle}>

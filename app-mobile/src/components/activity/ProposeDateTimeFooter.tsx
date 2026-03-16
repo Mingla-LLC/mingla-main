@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 interface ProposeDateTimeFooterProps {
   selectedDateOption: "now" | "today" | "weekend" | "custom" | null;
@@ -67,7 +67,7 @@ export default function ProposeDateTimeFooter({
           {isScheduling ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Ionicons name="map" size={20} color="white" />
+            <Icon name="map" size={20} color="white" />
           )}
           <Text style={styles.buttonText}>
             {isScheduling
@@ -102,7 +102,7 @@ export default function ProposeDateTimeFooter({
           {isScheduling ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Ionicons name="calendar" size={20} color="white" />
+            <Icon name="calendar" size={20} color="white" />
           )}
           <Text style={styles.buttonText}>
             {isScheduling ? "Scheduling..." : "Schedule"}
@@ -133,7 +133,7 @@ export default function ProposeDateTimeFooter({
         {isCheckingAvailability ? (
           <ActivityIndicator size="small" color="white" />
         ) : (
-          <Ionicons name="sparkles" size={20} color="white" />
+          <Icon name="sparkles" size={20} color="white" />
         )}
         <Text style={styles.buttonText}>
           {isCheckingAvailability ? "Checking..." : "Check Availability"}

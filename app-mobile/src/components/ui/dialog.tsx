@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet, Modal } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 interface DialogProps {
   children: React.ReactNode;
@@ -61,7 +61,7 @@ function DialogClose({ onPress, style, ...props }: DialogCloseProps) {
       activeOpacity={0.7}
       {...props}
     >
-      <Ionicons name="close" size={16} color="#6b7280" />
+      <Icon name="close" size={16} color="#6b7280" />
     </TrackedTouchableOpacity>
   );
 }

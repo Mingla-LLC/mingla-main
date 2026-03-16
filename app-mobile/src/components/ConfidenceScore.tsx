@@ -8,7 +8,7 @@ import Animated, {
   interpolate,
   Extrapolate,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius } from '../constants/designSystem';
 
 interface ConfidenceScoreProps {
@@ -193,7 +193,7 @@ export const ConfidenceScore: React.FC<ConfidenceScoreProps> = ({
         {factorItems.map((factor) => (
           <View key={factor.key} style={styles.factorItem}>
             <View style={styles.factorHeader}>
-              <Ionicons
+              <Icon
                 name={factor.icon}
                 size={sizeConfig.iconSize}
                 color={colors.text.secondary}

@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   Dimensions,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 
 interface BoardSessionCardProps {
@@ -103,7 +103,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
               style={styles.eyeButton}
               onPress={() => onViewDetails?.(card.id)}
             >
-              <Ionicons name="eye" size={20} color="white" />
+              <Icon name="eye" size={20} color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -113,14 +113,14 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
           {/* Stats Row */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Ionicons name="star" size={14} color="#eb7825" />
+              <Icon name="star" size={14} color="#eb7825" />
               <Text style={styles.statText}>
                 {cardData.rating?.toFixed(1) || "4.5"} (
                 {cardData.reviewCount || 0})
               </Text>
             </View>
             <View style={styles.statItem}>
-              <Ionicons name="paper-plane" size={14} color="#eb7825" />
+              <Icon name="paper-plane" size={14} color="#eb7825" />
               <Text style={styles.statText}>
                 {cardData.travelTime || "12 min drive"}
               </Text>
@@ -142,7 +142,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
               style={[styles.voteButton, styles.thumbsUpButton]}
               onPress={() => onVote?.(card.id, "yes")}
             >
-              <Ionicons name="thumbs-up" size={20} color="white" />
+              <Icon name="thumbs-up" size={20} color="white" />
               <Text style={styles.voteButtonText}>{voteCounts.yes}</Text>
             </TouchableOpacity>
 
@@ -151,7 +151,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
               style={[styles.voteButton, styles.thumbsDownButton]}
               onPress={() => onVote?.(card.id, "no")}
             >
-              <Ionicons name="thumbs-down" size={20} color="#d63d1f" />
+              <Icon name="thumbs-down" size={20} color="#d63d1f" />
               <Text style={styles.thumbsDownText}>{voteCounts.no}</Text>
             </TouchableOpacity>
           </View>

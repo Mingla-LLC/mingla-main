@@ -10,7 +10,7 @@ import Animated, {
   Extrapolate,
   runOnJS,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
 
@@ -130,7 +130,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
         <View style={styles.refreshContent}>
           {refreshing ? (
             <Animated.View style={refreshingSpinnerStyle}>
-              <Ionicons
+              <Icon
                 name="refresh"
                 size={24}
                 color={colors.primary[500]}
@@ -138,7 +138,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
             </Animated.View>
           ) : (
             <Animated.View style={spinnerStyle}>
-              <Ionicons
+              <Icon
                 name="arrow-down"
                 size={24}
                 color={colors.primary[500]}

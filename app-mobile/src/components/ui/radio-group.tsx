@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Text, View, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './Icon';
 
 import { cn } from "./utils";
 
@@ -61,7 +61,7 @@ function RadioGroupItem({
       <View style={styles.radioGroupItemIndicator}>
         {selected && (
           <View style={styles.radioGroupItemDot}>
-            <Ionicons 
+            <Icon 
               name="radio-button-on" 
               size={16} 
               color="#059669" 
@@ -70,7 +70,7 @@ function RadioGroupItem({
         )}
         {!selected && (
           <View style={styles.radioGroupItemEmpty}>
-            <Ionicons 
+            <Icon 
               name="radio-button-off" 
               size={16} 
               color="#6b7280" 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 
@@ -63,13 +63,13 @@ export function LockedCuratedCard({ card, onUpgrade }: LockedCuratedCardProps) {
       <View style={styles.content}>
         {/* Category badge */}
         <View style={styles.categoryBadge}>
-          <Ionicons name={categoryIcon as keyof typeof Ionicons.glyphMap} size={12} color="#fff" />
+          <Icon name={categoryIcon} size={12} color="#fff" />
           <Text style={styles.categoryText}>{categoryLabel}</Text>
         </View>
 
         {/* Stop count pill */}
         <View style={styles.stopPill}>
-          <Ionicons name="location-outline" size={12} color="#fff" />
+          <Icon name="location-outline" size={12} color="#fff" />
           <Text style={styles.stopPillText}>
             {stopCount} {stopCount === 1 ? 'spot' : 'stops'}
           </Text>
@@ -81,7 +81,7 @@ export function LockedCuratedCard({ card, onUpgrade }: LockedCuratedCardProps) {
         </Text>
 
         {/* Lock icon */}
-        <Ionicons
+        <Icon
           name="lock-closed"
           size={32}
           color="rgba(255,255,255,0.6)"
@@ -90,7 +90,7 @@ export function LockedCuratedCard({ card, onUpgrade }: LockedCuratedCardProps) {
 
         {/* CTA button */}
         <View style={styles.ctaButton}>
-          <Ionicons name="lock-open-outline" size={16} color="#fff" />
+          <Icon name="lock-open-outline" size={16} color="#fff" />
           <Text style={styles.ctaText}>Unlock with Pro</Text>
         </View>
       </View>

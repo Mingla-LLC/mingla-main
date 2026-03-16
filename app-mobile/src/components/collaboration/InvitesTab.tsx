@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 
 interface Friend {
   id: string;
@@ -502,7 +502,7 @@ const InvitesTab = ({
           ) : (
             <View style={styles.noInvitesState}>
               <View style={styles.noInvitesIcon}>
-                <Ionicons name="checkmark-circle" size={24} color="#9ca3af" />
+                <Icon name="checkmark-circle" size={24} color="#9ca3af" />
               </View>
               <Text style={styles.noInvitesText}>
                 {!hasActiveSessions
@@ -514,7 +514,7 @@ const InvitesTab = ({
                   style={styles.createSessionButton}
                   onPress={onCreateSession}
                 >
-                  <Ionicons name="add" size={20} color="#FFFFFF" />
+                  <Icon name="add" size={20} color="#FFFFFF" />
                   <Text style={styles.createSessionButtonText}>
                     Create Session
                   </Text>
@@ -539,7 +539,7 @@ const InvitesTab = ({
           ) : (
             <View style={styles.noInvitesState}>
               <View style={styles.noInvitesIcon}>
-                <Ionicons name="send" size={24} color="#9ca3af" />
+                <Icon name="send" size={24} color="#9ca3af" />
               </View>
               <Text style={styles.noInvitesText}>No sent invites</Text>
             </View>
@@ -601,7 +601,7 @@ const ReceivedInviteCard = ({ invite, onAccept, onDecline, processingInviteId }:
           {/* Time Row */}
           <View style={styles.receivedInviteTimeRow}>
             <View style={styles.receivedInviteTime}>
-              <Ionicons name="time-outline" size={12} color="#6B7280" />
+              <Icon name="time-outline" size={12} color="#6B7280" />
               <Text style={styles.receivedInviteTimeText}>{timeAgo}</Text>
             </View>
           </View>
@@ -622,7 +622,7 @@ const ReceivedInviteCard = ({ invite, onAccept, onDecline, processingInviteId }:
             <ActivityIndicator size="small" color="#6B7280" />
           ) : (
             <>
-              <Ionicons name="close" size={16} color="#6B7280" />
+              <Icon name="close" size={16} color="#6B7280" />
               <Text style={styles.receivedDeclineButtonText}>Decline</Text>
             </>
           )}
@@ -639,7 +639,7 @@ const ReceivedInviteCard = ({ invite, onAccept, onDecline, processingInviteId }:
             <ActivityIndicator size="small" color="white" />
           ) : (
             <>
-              <Ionicons name="checkmark" size={16} color="white" />
+              <Icon name="checkmark" size={16} color="white" />
               <Text style={styles.receivedAcceptButtonText}>Accept</Text>
             </>
           )}
@@ -801,13 +801,13 @@ const SentInviteCard = ({ invite, onCancel }: any) => {
           {/* Time and Expiry Row */}
           <View style={styles.sentInviteTimeRow}>
             <View style={styles.sentInviteTime}>
-              <Ionicons name="time-outline" size={12} color="#6B7280" />
+              <Icon name="time-outline" size={12} color="#6B7280" />
               <Text style={styles.sentInviteTimeText}>{timeAgo}</Text>
             </View>
 
             {expiresIn && (
               <View style={styles.sentInviteExpiry}>
-                <Ionicons name="time" size={12} color="#F97316" />
+                <Icon name="time" size={12} color="#F97316" />
                 <Text style={styles.sentInviteExpiryText}>
                   Expires in {expiresIn}
                 </Text>
@@ -830,7 +830,7 @@ const SentInviteCard = ({ invite, onCancel }: any) => {
           <ActivityIndicator size="small" color="#DC2626" />
         ) : (
           <>
-            <Ionicons name="close" size={16} color="#DC2626" />
+            <Icon name="close" size={16} color="#DC2626" />
             <Text style={styles.cancelButtonText}>Cancel Invitation</Text>
           </>
         )}

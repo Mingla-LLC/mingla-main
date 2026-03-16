@@ -9,7 +9,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { Recommendation } from '../contexts/RecommendationsContext';
 import { getReadableCategoryName } from '../utils/categoryUtils';
@@ -68,7 +68,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close-outline" size={22} color="#6b7280" />
+              <Icon name="close-outline" size={22} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
@@ -99,15 +99,15 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                         {card.title}
                       </Text>
                       <View style={styles.metaRow}>
-                        <Ionicons
-                          name={(card.categoryIcon as any) || 'location-outline'}
+                        <Icon
+                          name={(card.categoryIcon) || 'location-outline'}
                           size={13}
                           color="#6B7280"
                         />
                         <Text style={styles.metaText}>
                           {getReadableCategoryName(card.category)}
                         </Text>
-                        <Ionicons name="star" size={13} color="#F59E0B" style={styles.starIcon} />
+                        <Icon name="star" size={13} color="#F59E0B" style={styles.starIcon} />
                         <Text style={styles.metaText}>{card.rating?.toFixed(1) ?? '—'}</Text>
                       </View>
                       <Text style={styles.distanceText}>{card.distance || card.travelTime}</Text>
@@ -118,7 +118,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                         onPress={() => handleReconsider(card)}
                         activeOpacity={0.6}
                       >
-                        <Ionicons name="refresh-outline" size={16} color="#eb7825" />
+                        <Icon name="refresh-outline" size={16} color="#eb7825" />
                         <Text style={styles.actionText}>Reconsider</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -126,7 +126,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                         onPress={() => handleSave(card)}
                         activeOpacity={0.6}
                       >
-                        <Ionicons name="bookmark-outline" size={16} color="#eb7825" />
+                        <Icon name="bookmark-outline" size={16} color="#eb7825" />
                         <Text style={styles.actionText}>Save</Text>
                       </TouchableOpacity>
                     </View>

@@ -7,7 +7,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
 
@@ -124,8 +124,8 @@ export const NotificationBar: React.FC = () => {
     >
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Ionicons
-            name={getIcon() as any}
+          <Icon
+            name={getIcon()}
             size={20}
             color={notification.type === 'error' ? '#FF3B30' : 'white'}
           />
@@ -152,7 +152,7 @@ export const NotificationBar: React.FC = () => {
             style={styles.closeButton}
             onPress={hideNotification}
           >
-            <Ionicons
+            <Icon
               name="close"
               size={16}
               color={notification.type === 'error' ? '#FF3B30' : 'white'}

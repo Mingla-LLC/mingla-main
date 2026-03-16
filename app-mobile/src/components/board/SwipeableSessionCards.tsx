@@ -11,7 +11,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
@@ -132,7 +132,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   if (cards.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="images-outline" size={64} color="#ccc" />
+        <Icon name="images-outline" size={64} color="#ccc" />
         <Text style={styles.emptyText}>No saved cards yet</Text>
         <Text style={styles.emptySubtext}>
           Swipe right on cards to save them to this board
@@ -148,7 +148,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
         <Text style={styles.cardCountText}>{sortedCards.length} card{sortedCards.length !== 1 ? "s" : ""}</Text>
         {cards.length > 1 && (
           <View style={styles.scrollHint}>
-            <Ionicons name="arrow-forward" size={14} color="#9ca3af" />
+            <Icon name="arrow-forward" size={14} color="#9ca3af" />
             <Text style={styles.scrollHintText}>Scroll to browse</Text>
           </View>
         )}
@@ -163,7 +163,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             onPress={() => scrollCards("left")}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={18} color="#6b7280" />
+            <Icon name="chevron-back" size={18} color="#6b7280" />
           </TouchableOpacity>
         )}
 
@@ -197,7 +197,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 {/* Locked badge */}
                 {isCardLocked && (
                   <View style={styles.lockedBadge}>
-                    <Ionicons name="lock-closed" size={12} color="#FFFFFF" />
+                    <Icon name="lock-closed" size={12} color="#FFFFFF" />
                     <Text style={styles.lockedBadgeText}>Locked In</Text>
                   </View>
                 )}
@@ -224,13 +224,13 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     </Text>
                     <View style={styles.detailsBadges}>
                       <View style={styles.detailBadge}>
-                        <Ionicons name="location" size={11} color="white" />
+                        <Icon name="location" size={11} color="white" />
                         <Text style={styles.detailBadgeText}>
                           {parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "Nearby"}
                         </Text>
                       </View>
                       <View style={styles.detailBadge}>
-                        <Ionicons name="star" size={11} color="white" />
+                        <Icon name="star" size={11} color="white" />
                         <Text style={styles.detailBadgeText}>
                           {cardData.rating?.toFixed(1) || "4.5"}
                         </Text>
@@ -250,7 +250,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 <View style={styles.cardDetails}>
                   {/* Category */}
                   <View style={styles.categoryRow}>
-                    <Ionicons name={categoryIcon as any} size={14} color="#eb7825" />
+                    <Icon name={categoryIcon} size={14} color="#eb7825" />
                     <Text style={styles.categoryText}>{categoryLabel}</Text>
                   </View>
 
@@ -291,7 +291,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       onPress={() => onVote(card.id, "yes")}
                       disabled={isCardLocked}
                     >
-                      <Ionicons name="thumbs-up" size={15} color="white" />
+                      <Icon name="thumbs-up" size={15} color="white" />
                       <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
                     </TouchableOpacity>
 
@@ -306,7 +306,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       onPress={() => onVote(card.id, "no")}
                       disabled={isCardLocked}
                     >
-                      <Ionicons name="thumbs-down" size={15} color="#d63d1f" />
+                      <Icon name="thumbs-down" size={15} color="#d63d1f" />
                       <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
                     </TouchableOpacity>
 
@@ -343,7 +343,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             onPress={() => scrollCards("right")}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+            <Icon name="chevron-forward" size={18} color="#6b7280" />
           </TouchableOpacity>
         )}
       </View>

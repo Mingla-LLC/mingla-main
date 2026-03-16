@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Icon } from "../ui/Icon";
 import { BusynessData } from "../../services/busynessService";
 
 interface BusynessSectionProps {
@@ -43,14 +43,14 @@ export default function BusynessSection({
       <View style={styles.container}>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Ionicons name="car" size={14} color="#ea580c" />
+            <Icon name="car" size={14} color="#ea580c" />
           </View>
           <Text style={styles.label}>Traffic</Text>
           <ActivityIndicator size="small" color="#ea580c" />
         </View>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Ionicons name="stats-chart" size={14} color="#ea580c" />
+            <Icon name="stats-chart" size={14} color="#ea580c" />
           </View>
           <Text style={styles.label}>Busy Level</Text>
           <ActivityIndicator size="small" color="#ea580c" />
@@ -72,7 +72,7 @@ export default function BusynessSection({
       {(busynessData.trafficInfo || travelTime) && (
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Ionicons name="car" size={14} color="#ea580c" />
+            <Icon name="car" size={14} color="#ea580c" />
           </View>
           <Text style={styles.label}>Traffic</Text>
           <View style={styles.conditionBadge}>
@@ -88,7 +88,7 @@ export default function BusynessSection({
       {/* Busy Level Row */}
       <View style={styles.row}>
         <View style={styles.iconBadge}>
-          <Ionicons name="stats-chart" size={14} color="#ea580c" />
+          <Icon name="stats-chart" size={14} color="#ea580c" />
         </View>
         <Text style={styles.label}>Busy</Text>
         <View style={styles.conditionBadge}>

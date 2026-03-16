@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import { useAddExperienceToBoard, useRemoveExperienceFromBoard } from '../hooks/useBoardQueries';
 import { realtimeService } from '../services/realtimeService';
 import { useAppStore } from '../store/appStore';
@@ -186,12 +186,12 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Ionicons name="grid" size={20} color="#007AFF" />
+          <Icon name="grid" size={20} color="#007AFF" />
           <Text style={styles.headerTitle}>{board?.name}</Text>
         </View>
         {onClose && (
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
+            <Icon name="close" size={24} color="#666" />
           </TouchableOpacity>
         )}
       </View>
@@ -205,7 +205,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
               style={styles.inviteButton}
               onPress={handleInviteCollaborator}
             >
-              <Ionicons name="person-add" size={16} color="#007AFF" />
+              <Icon name="person-add" size={16} color="#007AFF" />
               <Text style={styles.inviteButtonText}>Invite</Text>
             </TouchableOpacity>
           </View>
@@ -214,7 +214,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
             {collaborators.map((collaborator) => (
               <View key={collaborator.id} style={styles.collaboratorItem}>
                 <View style={styles.collaboratorAvatar}>
-                  <Ionicons name="person" size={20} color="#666" />
+                  <Icon name="person" size={20} color="#666" />
                 </View>
                 <View style={styles.collaboratorInfo}>
                   <Text style={styles.collaboratorName}>
@@ -240,7 +240,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
           
           {experiences.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="compass-outline" size={48} color="#ccc" />
+              <Icon name="compass-outline" size={48} color="#ccc" />
               <Text style={styles.emptyStateText}>No experiences yet</Text>
               <Text style={styles.emptyStateSubtext}>
                 Add experiences to start planning together
@@ -258,7 +258,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
                   style={styles.removeButton}
                   onPress={() => handleRemoveExperience(boardExperience.experience_id)}
                 >
-                  <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                  <Icon name="trash-outline" size={16} color="#FF3B30" />
                 </TouchableOpacity>
               </View>
             ))

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './ui/Icon';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -160,7 +160,7 @@ export const Toast: React.FC<ToastProps> = ({
         activeOpacity={0.8}
       >
         <View style={styles.content}>
-          <Ionicons
+          <Icon
             name={config.icon}
             size={20}
             color={config.iconColor}

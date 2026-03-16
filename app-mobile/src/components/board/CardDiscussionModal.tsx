@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../ui/Icon';
 import { KeyboardAwareView } from '../ui/KeyboardAwareView';
 import { BoardMessageService, CardMessage } from '../../services/boardMessageService';
 import { realtimeService } from '../../services/realtimeService';
@@ -380,7 +380,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={20} color="#6B7280" />
+            <Icon name="close" size={20} color="#6B7280" />
           </TouchableOpacity>
         </View>
 
@@ -398,7 +398,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
           >
             {messages.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+                <Icon name="chatbubbles-outline" size={48} color="#ccc" />
                 <Text style={styles.emptyStateText}>No messages yet</Text>
                 <Text style={styles.emptyStateSubtext}>
                   Start discussing this card
@@ -458,13 +458,13 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
                             }}
                             style={styles.actionButton}
                           >
-                            <Ionicons name="create-outline" size={14} color="#666" />
+                            <Icon name="create-outline" size={14} color="#666" />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => handleDeleteMessage(message.id)}
                             style={styles.actionButton}
                           >
-                            <Ionicons name="trash-outline" size={14} color="#FF3B30" />
+                            <Icon name="trash-outline" size={14} color="#FF3B30" />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -499,7 +499,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
                   setMessageText('');
                 }}
               >
-                <Ionicons name="close" size={16} color="#666" />
+                <Icon name="close" size={16} color="#666" />
               </TouchableOpacity>
             </View>
           )}
@@ -528,7 +528,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
             {sending ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <Ionicons
+              <Icon
                 name={editingMessage ? 'checkmark' : 'send'}
                 size={20}
                 color="white"
