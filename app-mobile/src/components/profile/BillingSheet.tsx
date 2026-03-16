@@ -117,7 +117,8 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
 
   const currentRank = TIER_RANK[effectiveTier];
 
-  const SHEET_TOP = Math.round(Dimensions.get("window").height * 0.08);
+  const { height: windowHeight } = useWindowDimensions();
+  const SHEET_TOP = Math.round(windowHeight * 0.08);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

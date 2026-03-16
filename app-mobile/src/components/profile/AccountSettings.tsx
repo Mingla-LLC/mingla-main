@@ -577,7 +577,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               {notifPrefs.push_enabled && (
                 <>
                   <View style={styles.rowDivider} />
-                  <View style={styles.row}>
+                  <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Friends & Pairing</Text>
                       <Text style={styles.rowHint}>Friend requests, pair requests, and social updates</Text>
@@ -589,7 +589,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
 
                   <View style={styles.rowDivider} />
-                  <View style={styles.row}>
+                  <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Link Requests</Text>
                       <Text style={styles.rowHint}>When someone wants to link profiles with you</Text>
@@ -601,7 +601,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
 
                   <View style={styles.rowDivider} />
-                  <View style={styles.row}>
+                  <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Messages</Text>
                       <Text style={styles.rowHint}>Direct messages and session chat</Text>
@@ -613,7 +613,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
 
                   <View style={styles.rowDivider} />
-                  <View style={styles.row}>
+                  <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Sessions</Text>
                       <Text style={styles.rowHint}>Invites, member updates, and board activity</Text>
@@ -625,7 +625,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
                   </View>
 
                   <View style={styles.rowDivider} />
-                  <View style={styles.row}>
+                  <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
                       <Text style={styles.rowLabel}>Tips & Re-engagement</Text>
                       <Text style={styles.rowHint}>Occasional nudges, weekly digest, and recommendations</Text>
