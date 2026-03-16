@@ -105,8 +105,9 @@ const categories = [
 // Normalize legacy display-name categories (e.g. "Nature") to slug IDs (e.g. "nature")
 const CATEGORY_LABEL_TO_ID: Record<string, string> = {};
 categories.forEach(c => { CATEGORY_LABEL_TO_ID[c.label.toLowerCase()] = c.id; });
+const MAX_CATEGORIES = 3;
 const normalizeCategoryIds = (raw: string[]): string[] =>
-  raw.map(c => CATEGORY_LABEL_TO_ID[c.toLowerCase()] || c);
+  raw.map(c => CATEGORY_LABEL_TO_ID[c.toLowerCase()] || c).slice(0, MAX_CATEGORIES);
 
 // Travel modes matching database constraint
 const travelModes = [

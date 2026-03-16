@@ -354,10 +354,12 @@ function AppContent() {
             break;
           }
           case 'collaboration_invite_received': {
-            await supabase
-              .from('collaboration_invites')
-              .update({ status: 'accepted' })
-              .eq('id', data.inviteId as string);
+            // Use the full shared service — handles participant upsert, session activation, board creation
+            const { acceptCollaborationInvite } = await import('../src/services/collaborationInviteService');
+            await acceptCollaborationInvite({
+              userId: userIdRef.current!,
+              inviteId: data.inviteId as string,
+            });
             break;
           }
           case 'link_request_received': {
@@ -400,10 +402,12 @@ function AppContent() {
             break;
           }
           case 'collaboration_invite_received': {
-            await supabase
-              .from('collaboration_invites')
-              .update({ status: 'declined' })
-              .eq('id', data.inviteId as string);
+            // Use the full shared service for decline as well
+            const { declineCollaborationInvite } = await import('../src/services/collaborationInviteService');
+            await declineCollaborationInvite({
+              userId: userIdRef.current!,
+              inviteId: data.inviteId as string,
+            });
             break;
           }
           case 'link_request_received': {
@@ -1144,208 +1148,17 @@ function AppContent() {
     if (!user?.id) return;
     logger.action('Accept invite pressed', { sessionId });
     try {
-      // First, find the invite by session_id and user_id
-      const { data: invite, error: fetchError } = await supabase
-        .from('collaboration_invites')
-        .select(`
-          id,
-          session_id,
-          inviter_id,
-          invited_user_id,
-          collaboration_sessions!inner(name)
-        `)
-        .eq('session_id', sessionId)
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending')
-        .single();
+      const { acceptCollaborationInvite } = await import('../src/services/collaborationInviteService');
+      const result = await acceptCollaborationInvite({ userId: user.id, sessionId });
 
-      if (fetchError || !invite) {
-        console.error('Error fetching invite:', fetchError);
-        toastManager.error('Invite not found.');
+      if (!result.success) {
+        toastManager.error(result.error ?? 'Failed to accept invite.');
         return;
       }
 
-      // Get session name from the join
-      const sessionData = invite.collaboration_sessions as any;
-      const sessionName = Array.isArray(sessionData)
-        ? (sessionData[0] as any)?.name
-        : (sessionData as any)?.name || 'Session';
-
-      // Update invite status to accepted
-      const { error: updateError } = await supabase
-        .from('collaboration_invites')
-        .update({ status: 'accepted' })
-        .eq('id', invite.id)
-        .eq('invited_user_id', user.id);
-
-      if (updateError) {
-        console.error('Error updating invite:', updateError);
-        toastManager.error('Failed to accept invite.');
-        return;
-      }
-
-      // Add/update user as participant with has_accepted = true
-      const { error: participantError } = await supabase
-        .from('session_participants')
-        .upsert(
-          {
-            session_id: sessionId,
-            user_id: user.id,
-            has_accepted: true,
-            joined_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'session_id,user_id',
-          }
-        );
-
-      if (participantError) {
-        console.error('Error adding participant:', participantError);
-      }
-
-      // Check membership count to determine if session should become active
-      const { data: allParticipants, error: participantsError } = await supabase
-        .from('session_participants')
-        .select('has_accepted, user_id')
-        .eq('session_id', sessionId);
-
-      if (!participantsError && allParticipants) {
-        const acceptedMembers = allParticipants.filter((p: any) => p.has_accepted === true);
-        const acceptedCount = acceptedMembers.length;
-
-        // Session becomes active when at least 2 members have accepted
-        if (acceptedCount >= 2) {
-          // Check if board already exists for this session (concurrent accept protection)
-          const { data: currentSession } = await supabase
-            .from('collaboration_sessions')
-            .select('board_id, status')
-            .eq('id', sessionId)
-            .single();
-
-          let boardId: string | null = currentSession?.board_id || null;
-
-          if (currentSession?.board_id) {
-            // Board already created by concurrent accept — use existing board
-            boardId = currentSession.board_id;
-          } else {
-            // Create board (only if no board exists yet)
-            const { data: newBoard, error: boardError } = await supabase
-              .from('boards')
-              .insert({
-                name: sessionName,
-                description: `Collaborative board for ${sessionName}`,
-                created_by: user.id,
-                is_public: false,
-              })
-              .select('id')
-              .single();
-
-            if (boardError) {
-              console.error('Error creating board:', boardError);
-            } else {
-              boardId = newBoard.id;
-
-              // Atomically set board_id only if still NULL (optimistic locking)
-              const { data: updateResult } = await supabase
-                .from('collaboration_sessions')
-                .update({
-                  status: 'active',
-                  board_id: boardId,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', sessionId)
-                .is('board_id', null)
-                .select('id');
-
-              if (!updateResult || updateResult.length === 0) {
-                // Another accept already set board_id — use theirs, delete our orphan
-                const { data: existing } = await supabase
-                  .from('collaboration_sessions')
-                  .select('board_id')
-                  .eq('id', sessionId)
-                  .single();
-
-                if (existing?.board_id && existing.board_id !== boardId) {
-                  // Clean up our orphaned board
-                  await supabase.from('boards').delete().eq('id', boardId);
-                  boardId = existing.board_id;
-                }
-              }
-            }
-          }
-
-          // If session is still pending (no board creation happened), just activate it
-          if (!boardId && currentSession?.status === 'pending') {
-            await supabase
-              .from('collaboration_sessions')
-              .update({ status: 'active', updated_at: new Date().toISOString() })
-              .eq('id', sessionId)
-              .eq('status', 'pending');
-          }
-
-          // Add all accepted participants as board collaborators (idempotent)
-          if (boardId) {
-            const { data: sessionDetails } = await supabase
-              .from('collaboration_sessions')
-              .select('created_by')
-              .eq('id', sessionId)
-              .single();
-
-            for (const participant of acceptedMembers) {
-              await supabase
-                .from('board_collaborators')
-                .upsert({
-                  board_id: boardId,
-                  user_id: participant.user_id,
-                  role: participant.user_id === sessionDetails?.created_by ? 'owner' : 'collaborator'
-                }, {
-                  onConflict: 'board_id,user_id',
-                  ignoreDuplicates: true
-                });
-            }
-          }
-        }
-      }
-
-      // Create preference record for the accepting user (upsert for idempotency)
-      const { data: soloPrefs } = await supabase
-        .from('preferences')
-        .select('categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_type, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location')
-        .eq('profile_id', user.id)
-        .single();
-
-      const { error: preferencesError } = await supabase
-        .from('board_session_preferences')
-        .upsert({
-          session_id: sessionId,
-          user_id: user.id,
-          categories: soloPrefs?.categories ?? [],
-          intents: soloPrefs?.intents ?? [],
-          price_tiers: soloPrefs?.price_tiers ?? [],
-          budget_min: soloPrefs?.budget_min ?? 0,
-          budget_max: soloPrefs?.budget_max ?? 1000,
-          travel_mode: soloPrefs?.travel_mode ?? 'walking',
-          travel_constraint_type: 'time',
-          travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
-          date_option: soloPrefs?.date_option ?? null,
-          time_slot: soloPrefs?.time_slot ?? null,
-          exact_time: soloPrefs?.exact_time ?? null,
-          datetime_pref: soloPrefs?.datetime_pref ?? null,
-          use_gps_location: soloPrefs?.use_gps_location ?? true,
-          custom_location: soloPrefs?.custom_location ?? null,
-        }, {
-          onConflict: 'session_id,user_id',
-        });
-
-      if (preferencesError) {
-        console.error('Error creating preferences:', preferencesError);
-      }
-
-      // Refresh all sessions
+      // Refresh all sessions so the pill bar reflects the new active session
       await refreshAllSessions({ showLoading: true });
-      toastManager.success(`Joined "${sessionName}" successfully!`);
-
-      // V2: Server-side notification system handles invite acceptance notifications
+      toastManager.success(`Joined "${result.sessionName}" successfully!`);
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
@@ -1356,51 +1169,15 @@ function AppContent() {
     if (!user?.id) return;
     logger.action('Decline invite pressed', { sessionId });
     try {
-      // Find the invite by session_id and user_id
-      const { data: invite, error: fetchError } = await supabase
-        .from('collaboration_invites')
-        .select(`
-          id,
-          session_id,
-          inviter_id,
-          collaboration_sessions!inner(name)
-        `)
-        .eq('session_id', sessionId)
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending')
-        .single();
+      const { declineCollaborationInvite } = await import('../src/services/collaborationInviteService');
+      const result = await declineCollaborationInvite({ userId: user.id, sessionId });
 
-      if (fetchError || !invite) {
-        console.error('Error fetching invite:', fetchError);
-        toastManager.error('Invite not found.');
+      if (!result.success) {
+        toastManager.error(result.error ?? 'Failed to decline invite.');
         return;
       }
 
-      // Update invite status to declined
-      const { error: updateError } = await supabase
-        .from('collaboration_invites')
-        .update({ status: 'declined' })
-        .eq('id', invite.id)
-        .eq('invited_user_id', user.id);
-
-      if (updateError) {
-        console.error('Error updating invite:', updateError);
-        toastManager.error('Failed to decline invite.');
-        return;
-      }
-
-      // Remove user from session_participants if they were added
-      const { error: removeParticipantError } = await supabase
-        .from('session_participants')
-        .delete()
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id);
-
-      if (removeParticipantError) {
-        console.error('Error removing participant:', removeParticipantError);
-      }
-
-      // Refresh all sessions
+      // Refresh all sessions so the pill bar removes the declined invite
       await refreshAllSessions({ showLoading: true });
       toastManager.success('Invite declined.');
     } catch (error) {
@@ -1977,7 +1754,6 @@ function AppContent() {
             }}
             onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
             onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
-            onUpgrade={() => { logger.action('Open paywall from billing'); setShowPaywall(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             notificationsEnabled={notificationsEnabled}

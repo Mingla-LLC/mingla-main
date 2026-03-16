@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -73,34 +73,23 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Animation values
-  const nameOpacity = useRef(new Animated.Value(1)).current;
-  const editOpacity = useRef(new Animated.Value(0)).current;
+  // Shake animation (the only animation we keep — it's a single-view effect, no mount race)
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const lastNameInputRef = useRef<TextInput>(null);
 
   const startEditing = () => {
-    if (!isOwnProfile) return;
+    if (!isOwnProfile || !onSaveName) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditFirstName(firstName || '');
     setEditLastName(lastName || '');
     setNameError(null);
     setIsEditingName(true);
-
-    Animated.parallel([
-      Animated.timing(nameOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(editOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start();
   };
 
   const cancelEditing = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setNameError(null);
-    Animated.parallel([
-      Animated.timing(editOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(nameOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start(() => {
-      setIsEditingName(false);
-    });
+    setIsEditingName(false);
   };
 
   const saveName = async () => {
@@ -118,12 +107,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
     try {
       const success = await onSaveName(trimFirst, trimLast);
       if (success) {
-        Animated.parallel([
-          Animated.timing(editOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-          Animated.timing(nameOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-        ]).start(() => {
-          setIsEditingName(false);
-        });
+        setIsEditingName(false);
       } else {
         setNameError('Failed to save. Try again.');
         triggerShake();
@@ -143,14 +127,6 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
       Animated.timing(shakeAnim, { toValue: 0, duration: 75, useNativeDriver: true }),
     ]).start();
   };
-
-  // Reset edit state when name props change externally
-  useEffect(() => {
-    if (!isEditingName) {
-      nameOpacity.setValue(1);
-      editOpacity.setValue(0);
-    }
-  }, [firstName, lastName]);
 
   const gradientHeight = 180 + statusBarHeight;
   const inputRowMaxWidth = Math.min(SCREEN_WIDTH - 48, 340);
@@ -195,13 +171,15 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Name display / inline edit */}
+      {/* Name display / inline edit — conditional render with no opacity
+          animation layer. Only Animated.View is the edit container (for shake). */}
       {isEditingName ? (
-        <Animated.View style={[
-          styles.nameEditContainer,
-          { opacity: editOpacity, transform: [{ translateX: shakeAnim }] },
-          { maxWidth: inputRowMaxWidth },
-        ]}>
+        <Animated.View
+          style={[
+            styles.nameEditContainer,
+            { maxWidth: inputRowMaxWidth, transform: [{ translateX: shakeAnim }] },
+          ]}
+        >
           <View style={styles.inputRow}>
             <TextInput
               style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
@@ -213,8 +191,11 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               autoFocus
               editable={!isSavingName}
               returnKeyType="next"
+              onSubmitEditing={() => lastNameInputRef.current?.focus()}
+              blurOnSubmit={false}
             />
             <TextInput
+              ref={lastNameInputRef}
               style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
               value={editLastName}
               onChangeText={setEditLastName}
@@ -255,7 +236,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           {nameError && <Text style={styles.nameErrorText}>{nameError}</Text>}
         </Animated.View>
       ) : (
-        <Animated.View style={{ opacity: nameOpacity }}>
+        <View>
           {isOwnProfile ? (
             <TouchableOpacity
               style={styles.nameRow}
@@ -272,10 +253,8 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           ) : (
             <Text style={styles.name}>{displayName || 'User'}</Text>
           )}
-        </Animated.View>
+        </View>
       )}
-
-      {/* Username line REMOVED — hidden from user */}
 
       {(location || isOwnProfile) && (
         <View style={styles.locationRow}>
@@ -340,7 +319,7 @@ const styles = StyleSheet.create({
   // Name editing
   nameEditContainer: {
     alignItems: 'center', marginTop: 12, width: '100%',
-    paddingHorizontal: 24,
+    paddingHorizontal: 24, minHeight: 44,
   },
   inputRow: { flexDirection: 'row', gap: 8, width: '100%' },
   nameInput: {

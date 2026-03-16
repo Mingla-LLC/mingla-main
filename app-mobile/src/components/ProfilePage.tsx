@@ -36,7 +36,6 @@ interface ProfilePageProps {
   onNavigateToConnections?: () => void;
   onNavigateToPrivacyPolicy?: () => void;
   onNavigateToTermsOfService?: () => void;
-  onUpgrade?: () => void;
   savedExperiences?: number;
   boardsCount?: number;
   notificationsEnabled?: boolean;
@@ -56,7 +55,6 @@ export default function ProfilePage({
   onNavigateToConnections,
   onNavigateToPrivacyPolicy,
   onNavigateToTermsOfService,
-  onUpgrade,
   savedExperiences = 0,
   boardsCount = 0,
   notificationsEnabled = true,
@@ -355,10 +353,6 @@ export default function ProfilePage({
       <BillingSheet
         visible={showBillingSheet}
         onClose={() => setShowBillingSheet(false)}
-        onUpgrade={() => {
-          setShowBillingSheet(false);
-          onUpgrade?.();
-        }}
       />
     </View>
   );

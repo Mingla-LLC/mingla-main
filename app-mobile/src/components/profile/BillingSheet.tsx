@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   Text,
   View,
@@ -9,6 +9,8 @@ import {
   Modal,
   Pressable,
   Alert,
+  Platform,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import { Icon } from "../ui/Icon";
@@ -24,6 +26,8 @@ import {
   useReferralMonthsRemaining,
 } from "../../hooks/useSubscription";
 import type { SubscriptionTier } from "../../types/subscription";
+import { CustomPaywallScreen } from "../CustomPaywallScreen";
+import { getCustomerInfo } from "../../services/revenueCatService";
 
 // --- Tier configuration ---
 
@@ -74,24 +78,25 @@ const TIER_ORDER: SubscriptionTier[] = ["free", "pro", "elite"];
 
 const TIER_RANK: Record<SubscriptionTier, number> = { free: 0, pro: 1, elite: 2 };
 
-// --- CTA labels per upgrade path ---
+// --- CTA helpers ---
 
-const CTA_LABELS: Partial<Record<SubscriptionTier, string>> = {
-  pro: "Upgrade to Pro",
-  elite: "Go Elite",
-};
+function getCtaLabel(tier: SubscriptionTier, isUpgrade: boolean, isDowngrade: boolean): string {
+  if (tier === "free") return "Manage Subscription";
+  if (isUpgrade) return tier === "elite" ? "Upgrade to Elite" : "Upgrade to Pro";
+  if (isDowngrade && tier === "pro") return "Switch to Pro";
+  return "";
+}
 
 // --- Props ---
 
 interface BillingSheetProps {
   visible: boolean;
   onClose: () => void;
-  onUpgrade: () => void;
 }
 
 // --- Component ---
 
-export default function BillingSheet({ visible, onClose, onUpgrade }: BillingSheetProps) {
+export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const userId = user?.id;
@@ -102,6 +107,52 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
   const trialTotalDays = useTrialTotalDays(userId);
   const referralMonths = useReferralMonthsRemaining(userId);
   const { mutateAsync: restorePurchases, isPending: isRestoring } = useRestorePurchases();
+
+  // Internal paywall state for upgrade/downgrade flows
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallTier, setPaywallTier] = useState<"pro" | "elite">("pro");
+
+  const handleChangePlan = (tier: SubscriptionTier) => {
+    if (tier === "free") {
+      handleManageSubscription();
+      return;
+    }
+    // Safe: tier === "free" early-returns above, so only "pro" | "elite" reach here
+    setPaywallTier(tier as "pro" | "elite");
+    setShowPaywall(true);
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      const info = await getCustomerInfo();
+      const url = info.managementURL;
+      if (url) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      // Fall through to platform-specific fallback
+    }
+
+    // Fallback: open platform subscription management
+    const fallbackUrl = Platform.select({
+      ios: "https://apps.apple.com/account/subscriptions",
+      android: "https://play.google.com/store/account/subscriptions",
+    });
+    if (fallbackUrl) {
+      Linking.openURL(fallbackUrl).catch(() => {
+        Alert.alert(
+          "Unable to open",
+          "Please manage your subscription in your device's Settings.",
+        );
+      });
+    } else {
+      Alert.alert(
+        "Subscription Management",
+        "Please manage your subscription through your device's app store settings.",
+      );
+    }
+  };
 
   const handleRestore = async () => {
     try {
@@ -120,10 +171,16 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
   const { height: windowHeight } = useWindowDimensions();
   const SHEET_TOP = Math.round(windowHeight * 0.08);
 
+  const overlayTapStyle = useMemo(() => ({ height: SHEET_TOP }), [SHEET_TOP]);
+  const scrollContentStyle = useMemo(
+    () => ({ paddingBottom: Math.max(insets.bottom, 16) + 24 }),
+    [insets.bottom],
+  );
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={{ height: SHEET_TOP }} onPress={onClose} />
+        <Pressable style={overlayTapStyle} onPress={onClose} />
         <View style={styles.sheet}>
           {/* Drag handle */}
           <View style={styles.dragHandle} />
@@ -144,7 +201,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
           {/* Content */}
           <ScrollView
             style={styles.scrollContent}
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
+            contentContainerStyle={scrollContentStyle}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -187,7 +244,7 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
                       isCurrent={isCurrent}
                       isUpgrade={isUpgrade}
                       isDowngrade={isDowngrade}
-                      onUpgrade={onUpgrade}
+                      onChangePlan={handleChangePlan}
                     />
                   );
                 })}
@@ -211,6 +268,16 @@ export default function BillingSheet({ visible, onClose, onUpgrade }: BillingShe
               </>
             )}
           </ScrollView>
+
+          {/* Internal paywall for upgrade/downgrade */}
+          {userId && (
+            <CustomPaywallScreen
+              isVisible={showPaywall}
+              onClose={() => setShowPaywall(false)}
+              userId={userId}
+              initialTier={paywallTier}
+            />
+          )}
         </View>
       </View>
     </Modal>
@@ -300,12 +367,13 @@ interface TierCardProps {
   isCurrent: boolean;
   isUpgrade: boolean;
   isDowngrade: boolean;
-  onUpgrade: () => void;
+  onChangePlan: (tier: SubscriptionTier) => void;
 }
 
-function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onUpgrade }: TierCardProps) {
+function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: TierCardProps) {
   const config = TIERS[tier];
-  const ctaText = CTA_LABELS[tier] ?? "";
+  const ctaText = getCtaLabel(tier, isUpgrade, isDowngrade);
+  const showCta = !isCurrent && ctaText;
 
   return (
     <View style={[styles.tierCard, isCurrent && styles.tierCardCurrent]}>
@@ -340,21 +408,27 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onUpgrade }: TierCa
         ))}
       </View>
 
-      {/* CTA or downgrade note */}
-      {isUpgrade && ctaText ? (
+      {/* CTA for upgrade, downgrade, or manage */}
+      {showCta ? (
         <TouchableOpacity
-          style={styles.upgradeCta}
-          onPress={onUpgrade}
+          style={[
+            styles.upgradeCta,
+            isDowngrade && styles.downgradeCta,
+          ]}
+          onPress={() => onChangePlan(tier)}
           activeOpacity={0.8}
           accessibilityLabel={ctaText}
           accessibilityRole="button"
         >
-          <Text style={styles.upgradeCtaText}>{ctaText}</Text>
+          <Text
+            style={[
+              styles.upgradeCtaText,
+              isDowngrade && styles.downgradeCtaText,
+            ]}
+          >
+            {ctaText}
+          </Text>
         </TouchableOpacity>
-      ) : isDowngrade ? (
-        <Text style={styles.downgradeNote}>
-          Your current plan includes everything here and more.
-        </Text>
       ) : null}
     </View>
   );
@@ -568,12 +642,14 @@ const styles = StyleSheet.create({
   },
   upgradeCtaText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
 
-  // Downgrade note
-  downgradeNote: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#9ca3af",
-    textAlign: "center",
+  // Downgrade CTA
+  downgradeCta: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "#d1d5db",
+  },
+  downgradeCtaText: {
+    color: "#374151",
   },
 
   // Restore purchases

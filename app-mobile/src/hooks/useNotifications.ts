@@ -423,20 +423,25 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
   );
 
   // ── Accept/Decline Collaboration Invite ──
+  // Uses the shared service that handles the FULL acceptance flow:
+  // invite status → participant upsert → session activation → board creation → preferences seed.
+  // The old implementation only updated the invite status, which caused the session to vanish
+  // from the pill bar (invite no longer 'pending', but user never added as participant).
 
   const acceptCollaborationInviteAction = useCallback(
     async (inviteId: string, notificationId: string) => {
       if (!userId) return;
       addPendingAction(notificationId);
       try {
-        const { error } = await supabase
-          .from('collaboration_invites')
-          .update({ status: 'accepted' })
-          .eq('id', inviteId)
-          .eq('invited_user_id', userId);
-        if (error) throw error;
+        const { acceptCollaborationInvite } = await import('../services/collaborationInviteService');
+        const result = await acceptCollaborationInvite({ userId, inviteId });
+        if (!result.success) {
+          throw new Error(result.error ?? 'Failed to accept invite');
+        }
 
+        // Invalidate all session-related caches so the pill bar and board views refresh
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
         await deleteNotification(notificationId);
       } catch (err) {
         console.error('[useNotifications] acceptCollaborationInvite error:', err);
@@ -453,12 +458,11 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
       if (!userId) return;
       addPendingAction(notificationId);
       try {
-        const { error } = await supabase
-          .from('collaboration_invites')
-          .update({ status: 'declined' })
-          .eq('id', inviteId)
-          .eq('invited_user_id', userId);
-        if (error) throw error;
+        const { declineCollaborationInvite } = await import('../services/collaborationInviteService');
+        const result = await declineCollaborationInvite({ userId, inviteId });
+        if (!result.success) {
+          throw new Error(result.error ?? 'Failed to decline invite');
+        }
 
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
         await deleteNotification(notificationId);
