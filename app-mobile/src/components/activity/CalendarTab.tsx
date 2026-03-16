@@ -20,6 +20,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { mixpanelService } from "../../services/mixpanelService";
+import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -392,6 +393,11 @@ const CalendarTab = ({
         category: entryToReschedule.category,
         newScheduledDate: scheduledDateISO,
         dateOption,
+      });
+      logAppsFlyerEvent('experience_rescheduled', {
+        af_content_type: entryToReschedule.category,
+        new_date: scheduledDateISO,
+        date_option: dateOption,
       });
 
       // 5. Show success message

@@ -15,6 +15,7 @@ import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { mixpanelService } from "../../services/mixpanelService";
+import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
 
@@ -224,6 +225,11 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
           sessionName,
           invitedCount: selectedFriends.length,
           successCount,
+        });
+        logAppsFlyerEvent('collaboration_invite_sent', {
+          session_id: sessionId,
+          invited_count: selectedFriends.length,
+          success_count: successCount,
         });
         Alert.alert(
           "Invites Sent",

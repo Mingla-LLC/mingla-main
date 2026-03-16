@@ -15,6 +15,7 @@ import { Icon } from './ui/Icon';
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 
 interface FriendRequestsModalProps {
   isOpen: boolean;
@@ -85,6 +86,7 @@ export default function FriendRequestsModal({
           requestId,
           senderName,
         });
+        logAppsFlyerEvent('friend_request_accepted', { source: 'notification' });
       }
 
       // Reload requests after accepting

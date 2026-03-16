@@ -56,7 +56,7 @@ import {
   onForegroundNotification,
   onNotificationClicked,
 } from "../src/services/oneSignalService";
-import { initializeAppsFlyer, setAppsFlyerUserId } from "../src/services/appsFlyerService";
+import { initializeAppsFlyer, setAppsFlyerUserId, logAppsFlyerEvent } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
@@ -268,12 +268,30 @@ function AppContent() {
   }, []); // intentionally once
 
   // Set the AppsFlyer customer user ID when the user signs in.
+  // Fire af_complete_registration (first-time) or af_login (returning user).
+  const afEventFiredRef = useRef(false);
   useEffect(() => {
     if (isLoadingAuth) return;
     if (user?.id) {
       setAppsFlyerUserId(user.id);
+
+      // Fire attribution event once per auth session
+      if (!afEventFiredRef.current && profile) {
+        afEventFiredRef.current = true;
+        const method = (user as any).app_metadata?.provider === 'apple' ? 'apple' : 'google';
+        if (profile.has_completed_onboarding) {
+          logAppsFlyerEvent('af_login', { af_login_method: method });
+        } else {
+          logAppsFlyerEvent('af_complete_registration', {
+            af_registration_method: method,
+            country: profile.country || '',
+          });
+        }
+      }
+    } else {
+      afEventFiredRef.current = false;
     }
-  }, [user?.id, isLoadingAuth]);
+  }, [user?.id, isLoadingAuth, profile]);
   // ───────────────────────────────────────────────────────────────────────────
 
   // V2: Update user timezone on authentication for server-side quiet hours

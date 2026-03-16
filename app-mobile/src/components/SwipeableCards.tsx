@@ -35,6 +35,7 @@ import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -1095,6 +1096,13 @@ export default function SwipeableCards({
       category: currentRec.category,
       source: "home",
     });
+    logAppsFlyerEvent('af_content_view', {
+      af_content_type: currentRec.category,
+      af_content_id: currentRec.id,
+      af_price: (currentRec as any).estimatedCostPerPerson || 0,
+      source: 'home',
+      rating: currentRec.rating || 0,
+    });
 
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
@@ -1154,6 +1162,19 @@ export default function SwipeableCards({
     // The PanResponder ref check blocks swipes 21+ synchronously before animation.
     if (!isUnlimited) {
       await recordSwipe();
+    }
+
+    // ── AppsFlyer: save or dismiss ──
+    if (direction === 'right') {
+      logAppsFlyerEvent('af_add_to_wishlist', {
+        af_content_type: card.category,
+        af_price: (card as any).estimatedCostPerPerson || 0,
+        af_content_id: card.id,
+      });
+    } else {
+      logAppsFlyerEvent('card_dismissed', {
+        af_content_type: card.category,
+      });
     }
 
     try {

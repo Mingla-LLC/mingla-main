@@ -19,6 +19,7 @@ import { syncSubscriptionFromRC } from '../services/subscriptionService';
 import { subscriptionKeys } from '../hooks/useSubscription';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
+import { logAppsFlyerEvent } from '../services/appsFlyerService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -116,8 +117,12 @@ export function CustomPaywallScreen({
     if (isVisible) {
       setSelectedTier(initialTier);
       setSelectedPkgId(null);
+      logAppsFlyerEvent('paywall_viewed', {
+        trigger: feature || 'general',
+        current_tier: initialTier,
+      });
     }
-  }, [isVisible, initialTier]);
+  }, [isVisible, initialTier, feature]);
 
   // Reset package selection when switching tiers so the UI
   // always highlights the first package of the newly selected tier

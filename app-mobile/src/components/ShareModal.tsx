@@ -9,6 +9,7 @@ import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrenc
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../constants/priceTiers';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
+import { logAppsFlyerEvent } from '../services/appsFlyerService';
 
 
 interface ShareModalProps {
@@ -109,6 +110,7 @@ export default function ShareModal({
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
       mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_message' });
+      logAppsFlyerEvent('af_share', { af_content_type: 'copy_message' });
     } catch (err) {
       console.error('Failed to copy message:', err);
       Alert.alert('Error', 'Failed to copy message to clipboard');
@@ -120,6 +122,7 @@ export default function ShareModal({
     try {
       const message = personalizedMessage;
       mixpanelService.trackExperienceShared({ experienceTitle: title, method: platform });
+      logAppsFlyerEvent('af_share', { af_content_type: platform });
       
       switch (platform) {
         case 'messages':
@@ -360,6 +363,7 @@ export default function ShareModal({
                   onPress={() => {
                     Clipboard.setString(`Check out ${title} on Mingla!`);
                     mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
+                    logAppsFlyerEvent('af_share', { af_content_type: 'copy_link' });
                   }}
                 >
                   <Icon name='copy' size={24} color="black"/>

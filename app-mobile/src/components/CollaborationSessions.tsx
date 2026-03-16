@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { HapticFeedback } from '../utils/hapticFeedback';
 import { mixpanelService } from '../services/mixpanelService';
+import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import SessionViewModal from './SessionViewModal';
 import { supabase } from '../services/supabase';
 import { COUNTRIES, getDefaultCountryCode, getCountryByCode } from '../constants/countries';
@@ -213,6 +214,7 @@ export default function CollaborationSessions({
       setShowSessionViewModal(true);
       onSessionSelect(session.id);
       mixpanelService.trackSessionSwitched({ mode: 'session', sessionName: session.name });
+      logAppsFlyerEvent('session_switched', { mode: 'session' });
     }
   };
 
@@ -235,6 +237,7 @@ export default function CollaborationSessions({
         sessionName: newSessionName.trim(),
         invitedFriendsCount: selectedFriends.length,
       });
+      logAppsFlyerEvent('collaboration_session_created', { invited_count: selectedFriends.length });
       onCreateSession(newSessionName.trim(), selectedFriends, phoneInvitees.length > 0 ? phoneInvitees : undefined);
       setNewSessionName('');
       setSelectedFriends([]);
@@ -407,6 +410,7 @@ export default function CollaborationSessions({
           onPress={() => {
             onSoloSelect();
             mixpanelService.trackSessionSwitched({ mode: 'solo' });
+            logAppsFlyerEvent('session_switched', { mode: 'solo' });
           }}
           activeOpacity={0.7}
         >

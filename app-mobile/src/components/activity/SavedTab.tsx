@@ -20,6 +20,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { mixpanelService } from "../../services/mixpanelService";
+import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1452,6 +1453,12 @@ const SavedTab = ({
         category: cardToSchedule.category,
         source,
         scheduledDate: scheduledDateISO,
+      });
+      logAppsFlyerEvent('experience_scheduled', {
+        af_content_type: cardToSchedule.category,
+        af_date: scheduledDateISO,
+        source,
+        af_content_id: cardToSchedule.id,
       });
 
       // Show success toast

@@ -19,9 +19,11 @@ import {
   restorePurchases,
   addCustomerInfoListener,
   hasProEntitlement,
+  hasEliteEntitlement,
   loginRevenueCat,
   logoutRevenueCat,
 } from '../services/revenueCatService'
+import { logAppsFlyerEvent } from '../services/appsFlyerService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query keys
@@ -127,9 +129,19 @@ export function usePurchasePackage(): UseMutationResult<
 
   return useMutation({
     mutationFn: (pkg: PurchasesPackage) => purchasePackage(pkg),
-    onSuccess: ({ customerInfo }) => {
+    onSuccess: ({ customerInfo }, pkg) => {
       // Push the fresh CustomerInfo into the cache immediately
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
+
+      // ── AppsFlyer: subscription revenue event ──
+      const isElite = hasEliteEntitlement(customerInfo)
+      logAppsFlyerEvent('af_subscribe', {
+        af_revenue: pkg.product?.price ?? 0,
+        af_currency: pkg.product?.currencyCode ?? 'USD',
+        af_content_type: isElite ? 'elite' : 'pro',
+        af_content_id: pkg.identifier,
+        af_quantity: 1,
+      })
     },
   })
 }

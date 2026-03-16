@@ -24,7 +24,7 @@
 |-----------|------|--------|
 | SDK initialization | `appsFlyerService.ts:21` → `initializeAppsFlyer()` | Wired in `index.tsx:267` |
 | User ID linking | `appsFlyerService.ts:55` → `setAppsFlyerUserId()` | Wired in `index.tsx:274` |
-| Event logging function | `appsFlyerService.ts:77` → `logAppsFlyerEvent()` | **DEFINED but 0 callers — NO events flowing** |
+| Event logging function | `appsFlyerService.ts:77` → `logAppsFlyerEvent()` | **WIRED — 19 events across 11 files** |
 | Deep link listener | `appsFlyerService.ts:30` → `onDeepLinkListener: true` | Enabled but not routed to `deepLinkService.ts` |
 | Install conversion data | `appsFlyerService.ts:29` → `onInstallConversionDataListener: true` | Enabled but referral code not extracted |
 
@@ -216,3 +216,4 @@ These are product analytics, not attribution signals:
 | Date | Change | Trigger | Evidence |
 |------|--------|---------|----------|
 | 2026-03-16 | Initial creation — full 24-event map | AppsFlyer plan setup | All analytics service files, OnboardingFlow.tsx, useOnboardingStateMachine.ts, tierLimits.ts, subscriptions migration, referral_credits migration, process-referral edge function, revenueCatService.ts, useRevenueCat.ts, deepLinkService.ts, notify-lifecycle edge function |
+| 2026-03-16 | Wired 19 of 24 events across 11 files | Implementation | index.tsx, OnboardingFlow.tsx, SwipeableCards.tsx, SavedTab.tsx, CalendarTab.tsx, ShareModal.tsx, CollaborationSessions.tsx, InviteParticipantsModal.tsx, FriendsModal.tsx, FriendRequestsModal.tsx, usePairings.ts, useRevenueCat.ts, CustomPaywallScreen.tsx. Not wired: #12 preferences_updated (no call site), #13 af_invite (no call site), #17 referral_completed (server-side), #23 renewal (RC server integration), #24 trial_expired (needs new client logic) |

@@ -15,6 +15,7 @@ import type {
   SendPairRequestResponse,
 } from "../services/pairingService";
 import { customHolidayKeys } from "./useCustomHolidays";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 
 // ── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export function useSendPairRequest() {
   >({
     mutationFn: sendPairRequest,
     onSuccess: () => {
+      logAppsFlyerEvent('pair_request_sent', {});
       // Invalidate pills — the new request will appear there
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
@@ -135,6 +137,9 @@ export function useAcceptPairRequest() {
           if (data !== undefined) queryClient.setQueryData(key, data);
         }
       }
+    },
+    onSuccess: () => {
+      logAppsFlyerEvent('pair_request_accepted', {});
     },
     onSettled: () => {
       // Always refetch to ensure server truth, regardless of success/failure

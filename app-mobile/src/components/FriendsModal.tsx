@@ -24,6 +24,7 @@ import { useFriends, Friend, FriendRequest } from "../hooks/useFriends";
 import { useMutedUserIds, friendsKeys } from "../hooks/useFriendsQuery";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { muteService } from "../services/muteService";
 import { blockService } from "../services/blockService";
@@ -849,6 +850,7 @@ export default function FriendsModal({
             requestId,
             senderName,
           });
+          logAppsFlyerEvent('friend_request_accepted', { source: 'connections_page' });
         }
 
         // Catch up on collaboration invites revealed by the friend acceptance trigger

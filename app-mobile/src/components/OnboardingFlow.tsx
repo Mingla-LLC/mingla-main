@@ -37,6 +37,7 @@ import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../uti
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
+import { logAppsFlyerEvent } from '../services/appsFlyerService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
@@ -249,6 +250,18 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
         }).eq('id', userId)
 
         if (updateError) throw updateError
+
+        // ── AppsFlyer: onboarding complete + trial start ──
+        logAppsFlyerEvent('af_tutorial_completion', {
+          af_success: true,
+          af_content: 'onboarding',
+          gender: data.userGender || '',
+          country: data.userCountry || '',
+        })
+        logAppsFlyerEvent('af_start_trial', {
+          af_trial_type: 'elite_7day',
+          af_duration: 7,
+        })
 
         // Only clear persistence AFTER DB confirms success
         await clearOnboardingData()
@@ -653,6 +666,20 @@ const OnboardingFlow = ({
     ? (navState.step === 2 && navState.subStep === 'value_prop') ||
       (navState.step === 1 && navState.subStep === 'welcome')
     : (navState.step === 1 && navState.subStep === 'welcome')
+
+  // ── AppsFlyer: track each onboarding sub-step transition ──
+  const prevSubStepRef = useRef(navState.subStep)
+  useEffect(() => {
+    if (navState.subStep !== prevSubStepRef.current) {
+      // The PREVIOUS sub-step was completed — fire the event for it
+      logAppsFlyerEvent('onboarding_step_completed', {
+        step: navState.step,
+        step_name: `Step ${navState.step}`,
+        substep: prevSubStepRef.current,
+      })
+      prevSubStepRef.current = navState.subStep
+    }
+  }, [navState.step, navState.subStep])
 
   // ─── Stable Refs (prevent stale closures in timeouts) ───
   const goNextRef = useRef(goNext)
