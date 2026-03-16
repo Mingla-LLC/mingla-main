@@ -9,7 +9,7 @@ import {
   Modal,
   Pressable,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";

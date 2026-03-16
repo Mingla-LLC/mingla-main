@@ -13,7 +13,7 @@ import {
   AppState,
   LayoutAnimation,
   UIManager,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
@@ -407,16 +407,15 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
   };
 
   // --- Sheet sizing (matches BillingSheet pattern) ---
-  const SHEET_TOP = Math.round(Dimensions.get("window").height * 0.08);
+  const { height: windowHeight } = useWindowDimensions();
+  const SHEET_TOP = Math.round(windowHeight * 0.08);
 
   // --- Render ---
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { marginTop: SHEET_TOP }]}
-          onPress={() => {}}
-        >
+      <View style={styles.overlay}>
+        <Pressable style={{ height: SHEET_TOP }} onPress={onClose} />
+        <View style={styles.sheet}>
           {/* Drag handle */}
           <View style={styles.dragHandle} />
 
@@ -506,7 +505,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               onToggle={() => toggleSection("privacy")}
             >
               {/* Profile Visibility */}
-              <TouchableOpacity style={styles.row} onPress={handleCycleVisibility} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.row, styles.rowMultiline]} onPress={handleCycleVisibility} activeOpacity={0.7}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Profile Visibility</Text>
                   <Text style={styles.rowHint}>
@@ -528,7 +527,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               <View style={styles.rowDivider} />
 
               {/* Show Activity */}
-              <View style={styles.row}>
+              <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Show Activity</Text>
                   <Text style={styles.rowHint}>
@@ -543,7 +542,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               <View style={styles.rowDivider} />
 
               {/* Notifications - legacy toggle */}
-              <View style={styles.row}>
+              <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Notifications</Text>
                   <Text style={styles.rowHint}>Invites, boards, and messages</Text>
@@ -563,7 +562,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               onToggle={() => toggleSection("notifications")}
             >
               {/* Master toggle */}
-              <View style={styles.row}>
+              <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Push Notifications</Text>
                   <Text style={styles.rowHint}>Receive push notifications on your device</Text>
@@ -647,7 +646,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
               expanded={expandedSections.has("quietHours")}
               onToggle={() => toggleSection("quietHours")}
             >
-              <View style={styles.row}>
+              <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Quiet Hours</Text>
                   <Text style={styles.rowHint}>10 PM - 8 AM</Text>
@@ -657,7 +656,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
 
               <View style={styles.rowDivider} />
 
-              <View style={styles.row}>
+              <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
                   <Text style={styles.rowLabel}>Messages during quiet hours</Text>
                   <Text style={styles.rowHint}>Allow DMs between 10 PM - 8 AM</Text>
@@ -711,8 +710,8 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             </View>
 
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
 
       {/* --- Picker modals --- */}
 
@@ -1006,7 +1005,6 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
   },
   sheet: {
     flex: 1,
@@ -1082,16 +1080,19 @@ const styles = StyleSheet.create({
   // Rows
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingVertical: 14,
     paddingHorizontal: 16,
     minHeight: 48,
   },
+  rowMultiline: {
+    alignItems: "flex-start",
+  },
   rowDivider: { height: 1, backgroundColor: "#f3f4f6", marginHorizontal: 16 },
   rowLabel: { fontSize: 15, fontWeight: "500", color: "#111827", flex: 1 },
   rowLabelWrap: { flex: 1, marginRight: 16 },
-  rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 16, flexWrap: "wrap" },
-  rowRight: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1, flexShrink: 0 },
+  rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 16 },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 },
   rowValue: { fontSize: 14, fontWeight: "500", color: "#eb7825" },
   rowValueBold: { fontSize: 14, fontWeight: "700", color: "#eb7825" },
   rowValueMuted: { fontSize: 14, fontWeight: "500", color: "#6b7280" },

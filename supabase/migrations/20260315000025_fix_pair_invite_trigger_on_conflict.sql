@@ -15,11 +15,13 @@
 -- This crashes the trigger, which rolls back the entire profiles.phone UPDATE,
 -- producing: "Phone verified but save failed. Contact support."
 --
--- Fix: Replace ON CONFLICT (sender_id, receiver_id) DO NOTHING with a
--- NOT EXISTS guard + plain INSERT. This avoids the ON CONFLICT machinery entirely,
--- which is the only safe approach when the uniqueness constraint is partial.
--- A cancelled/declined pair_request does NOT block a new one (the partial index
--- excludes those statuses), so the INSERT will succeed in that case — correct behavior.
+-- Fix: Replace ON CONFLICT with a plain INSERT wrapped in
+-- BEGIN...EXCEPTION WHEN unique_violation THEN NULL; END;
+-- This is the only safe approach when the uniqueness constraint is partial —
+-- ON CONFLICT cannot reference partial indexes, and NOT EXISTS has a TOCTOU
+-- race under concurrent transactions. The EXCEPTION block catches 23505 at
+-- the storage engine level, restoring the atomic silent-skip behavior of
+-- the old ON CONFLICT DO NOTHING.
 
 CREATE OR REPLACE FUNCTION convert_pending_pair_invites_on_phone_verified()
 RETURNS TRIGGER AS $$
@@ -46,22 +48,21 @@ BEGIN
             END IF;
 
             -- Step 2: Create pair request, hidden until friend request is accepted.
-            -- Use NOT EXISTS instead of ON CONFLICT because the unique constraint
-            -- is a partial index (idx_pair_requests_unique_active) which cannot be
-            -- referenced by a bare ON CONFLICT (sender_id, receiver_id).
-            INSERT INTO pair_requests (
-                sender_id, receiver_id, status, visibility,
-                gated_by_friend_request_id, pending_display_name, pending_phone_e164
-            )
-            SELECT
-                v_invite.inviter_id, NEW.id, 'pending', 'hidden_until_friend',
-                v_friend_request_id, NULL, v_invite.phone_e164
-            WHERE NOT EXISTS (
-                SELECT 1 FROM pair_requests
-                WHERE sender_id = v_invite.inviter_id
-                  AND receiver_id = NEW.id
-                  AND status IN ('pending', 'accepted')
-            );
+            -- Plain INSERT wrapped in EXCEPTION because the unique constraint is a
+            -- partial index (idx_pair_requests_unique_active) which ON CONFLICT
+            -- cannot reference. The EXCEPTION block gives us atomic duplicate-safety.
+            BEGIN
+                INSERT INTO pair_requests (
+                    sender_id, receiver_id, status, visibility,
+                    gated_by_friend_request_id, pending_display_name, pending_phone_e164
+                )
+                VALUES (
+                    v_invite.inviter_id, NEW.id, 'pending', 'hidden_until_friend',
+                    v_friend_request_id, NULL, v_invite.phone_e164
+                );
+            EXCEPTION WHEN unique_violation THEN
+                NULL;  -- already exists — silent skip, same as ON CONFLICT DO NOTHING
+            END;
 
             -- Step 3: Mark invite as converted
             UPDATE pending_pair_invites
