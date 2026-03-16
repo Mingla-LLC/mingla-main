@@ -14,8 +14,19 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel, tierLabel } from '../../constants/priceTiers';
+import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
+
+const CURATED_ICON_MAP: Record<string, string> = {
+  'Adventurous':   'compass-outline',
+  'First Date':    'people-outline',
+  'Romantic':      'heart-outline',
+  'Friendly':      'people-outline',
+  'Group Fun':     'people-circle-outline',
+  'Picnic Dates':  'basket-outline',
+  'Take a Stroll': 'walk-outline',
+};
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH * 0.75;
@@ -240,17 +251,38 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 
             // ── Curated card layout (dark theme, multi-stop image strip) ──
             if (isCurated && Array.isArray(cardData.stops) && cardData.stops.length > 0) {
-              const stops = cardData.stops;
-              const avgRating = (stops.reduce((s: number, st: any) => s + (st.rating || 0), 0) / stops.length).toFixed(1);
+              const stops = cardData.stops as CuratedStop[];
+              const avgRating = (stops.reduce((s, st) => s + (st.rating || 0), 0) / stops.length).toFixed(1);
               const durationHrs = cardData.estimatedDurationMinutes
                 ? (cardData.estimatedDurationMinutes / 60).toFixed(1)
                 : null;
-              const priceText = cardData.totalPriceMin != null && cardData.totalPriceMax != null
-                ? cardData.totalPriceMin === 0 && cardData.totalPriceMax === 0
-                  ? "Free"
-                  : `$${cardData.totalPriceMin}–$${cardData.totalPriceMax}`
-                : "";
+
+              // Currency-aware pricing: use first stop's tier label, fallback to price range
+              const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
+              const currencyRate = getCurrencyRate(accountPreferences?.currency);
+              const firstStopTier = stops[0]?.priceTier;
+              const priceText = firstStopTier && TIER_BY_SLUG[firstStopTier]
+                ? formatTierLabel(firstStopTier, currencySymbol, currencyRate)
+                : cardData.totalPriceMin != null && cardData.totalPriceMax != null
+                  ? cardData.totalPriceMin === 0 && cardData.totalPriceMax === 0
+                    ? "Free"
+                    : `${currencySymbol}${Math.round(cardData.totalPriceMin * currencyRate)}–${currencySymbol}${Math.round(cardData.totalPriceMax * currencyRate)}`
+                  : "";
+
               const isSingleStop = stops.length === 1;
+              const curatedCategoryLabel = cardData.categoryLabel || "Adventurous";
+              const curatedCategoryIcon = CURATED_ICON_MAP[curatedCategoryLabel] || "compass-outline";
+
+              // First stop distance & travel time
+              const firstStop = stops[0];
+              const distanceKm = firstStop?.distanceFromUserKm;
+              const travelMin = firstStop?.travelTimeFromUserMin;
+              const formattedDistance = distanceKm != null && distanceKm > 0
+                ? parseAndFormatDistance(`${distanceKm.toFixed(1)} km`, accountPreferences?.measurementSystem)
+                : null;
+              const formattedTravelTime = travelMin != null && travelMin > 0
+                ? `${Math.round(travelMin)} min`
+                : null;
 
               return (
                 <TouchableOpacity
@@ -275,8 +307,8 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 
                   {/* Multi-stop image strip */}
                   <View style={styles.curatedImageStrip}>
-                    {stops.map((stop: any, idx: number) => (
-                      <View key={`${stop.placeId || idx}_${idx}`} style={styles.curatedImageWrapper}>
+                    {stops.map((stop, idx) => (
+                      <View key={`${stop.placeId}_${idx}`} style={styles.curatedImageWrapper}>
                         {stop.imageUrl ? (
                           <Image
                             source={{ uri: stop.imageUrl }}
@@ -299,8 +331,8 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   <View style={styles.curatedInfoSection}>
                     {/* Category badge */}
                     <View style={styles.curatedCategoryBadge}>
-                      <Icon name="compass-outline" size={12} color="#fff" />
-                      <Text style={styles.curatedCategoryText}>{cardData.categoryLabel || "Adventurous"}</Text>
+                      <Icon name={curatedCategoryIcon} size={12} color="#fff" />
+                      <Text style={styles.curatedCategoryText}>{curatedCategoryLabel}</Text>
                       <Text style={styles.curatedStopCountText}> · {stops.length} {stops.length === 1 ? "spot" : "stops"}</Text>
                     </View>
 
@@ -310,6 +342,20 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 
                     {/* Meta row */}
                     <View style={styles.curatedMetaRow}>
+                      {formattedDistance ? (
+                        <>
+                          <Icon name="location" size={11} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.curatedMetaText}> {formattedDistance}</Text>
+                          <Text style={styles.curatedMetaDot}> · </Text>
+                        </>
+                      ) : null}
+                      {formattedTravelTime ? (
+                        <>
+                          <Icon name="walk" size={11} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.curatedMetaText}> {formattedTravelTime}</Text>
+                          <Text style={styles.curatedMetaDot}> · </Text>
+                        </>
+                      ) : null}
                       {priceText ? (
                         <>
                           <Text style={styles.curatedMetaText}>{priceText}</Text>
@@ -326,6 +372,23 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       <Icon name="star" size={11} color="#F59E0B" />
                       <Text style={styles.curatedMetaText}> {avgRating} avg</Text>
                     </View>
+
+                    {/* RSVP Progress */}
+                    {rsvpCount.total > 0 && rsvpCount.responded > 0 && (
+                      <View style={styles.rsvpProgressRow}>
+                        <View style={styles.rsvpProgressBarBg}>
+                          <View
+                            style={[
+                              styles.rsvpProgressBarFill,
+                              { width: `${Math.min(100, (rsvpCount.responded / rsvpCount.total) * 100)}%` },
+                            ]}
+                          />
+                        </View>
+                        <Text style={[styles.rsvpProgressText, { color: "rgba(255,255,255,0.6)" }]}>
+                          {rsvpCount.responded}/{rsvpCount.total} attending
+                        </Text>
+                      </View>
+                    )}
 
                     {/* Vote buttons */}
                     {voteButtons}

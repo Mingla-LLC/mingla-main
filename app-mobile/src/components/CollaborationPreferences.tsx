@@ -33,6 +33,7 @@ import { getRate } from "../services/currencyService";
 import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { TRAVEL_TIME_PRESETS } from '../types/onboarding';
+import { MAX_CATEGORIES, MAX_INTENTS, normalizeCategoryArray, capIntents } from '../utils/categoryUtils';
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -201,8 +202,8 @@ export default function CollaborationPreferences({
       if (dbPreferences.categories || dbPreferences.intents) {
         // New schema: intents in dedicated column
         if (Array.isArray(dbPreferences.intents) && dbPreferences.intents.length > 0) {
-          setSelectedIntents(dbPreferences.intents);
-          setSelectedCategories(dbPreferences.categories || []);
+          setSelectedIntents(capIntents(dbPreferences.intents));
+          setSelectedCategories(normalizeCategoryArray(dbPreferences.categories || [], MAX_CATEGORIES));
         } else {
           // Backwards compat: split merged categories array
           const loadedIntents: string[] = [];
@@ -214,8 +215,8 @@ export default function CollaborationPreferences({
               loadedCategories.push(item);
             }
           });
-          setSelectedIntents(loadedIntents);
-          setSelectedCategories(loadedCategories);
+          setSelectedIntents(capIntents(loadedIntents));
+          setSelectedCategories(normalizeCategoryArray(loadedCategories, MAX_CATEGORIES));
         }
       }
       if (Array.isArray(dbPreferences.price_tiers) && dbPreferences.price_tiers.length > 0) {
@@ -319,7 +320,7 @@ export default function CollaborationPreferences({
         }
         return prev.filter((id) => id !== categoryId);
       }
-      if (prev.length >= 3) {
+      if (prev.length >= MAX_CATEGORIES) {
         capped = true;
         return prev;
       }
@@ -514,9 +515,13 @@ export default function CollaborationPreferences({
       const backCompatBudgetMax = highestTier?.max ?? 1000;
 
       const isGps = useLocation === "gps";
+      // Safety cap at save boundary — should already be ≤3/≤1 from toggle logic
+      const finalCategories = selectedCategories.slice(0, MAX_CATEGORIES);
+      const finalIntents = capIntents(selectedIntents);
+
       const dbPreferences: any = {
-        categories: selectedCategories,
-        intents: selectedIntents,
+        categories: finalCategories,
+        intents: finalIntents,
         price_tiers: selectedPriceTiers,
         budget_min: 0,
         budget_max: backCompatBudgetMax,
@@ -572,11 +577,11 @@ export default function CollaborationPreferences({
 
       // Also call the onSave callback for backward compatibility
       const preferences = {
-        selectedIntents,
+        selectedIntents: finalIntents,
         priceTiers: selectedPriceTiers,
         budgetMin: 0,
         budgetMax: backCompatBudgetMax,
-        selectedCategories,
+        selectedCategories: finalCategories,
         selectedDateOption,
         selectedTimeSlot,
         selectedDate: selectedDate?.toISOString(),

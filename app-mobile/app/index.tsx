@@ -1190,24 +1190,9 @@ function AppContent() {
     if (!user?.id) return;
     logger.action('Cancel invite pressed', { sessionId });
     try {
-      // Step 1: Cancel all pending invites for this session
-      const { error: inviteError } = await supabase
-        .from('collaboration_invites')
-        .update({ status: 'cancelled' })
-        .eq('session_id', sessionId)
-        .eq('status', 'pending');
-
-      if (inviteError) {
-        console.warn('[CancelInvite] Failed to cancel invites:', inviteError.message);
-      }
-
-      // Step 2: Remove all participants (in case CASCADE doesn't fire cleanly)
-      await supabase
-        .from('session_participants')
-        .delete()
-        .eq('session_id', sessionId);
-
-      // Step 3: Delete the session itself. Use .select() to verify rows were affected.
+      // Step 1: Delete the session. CASCADE atomically removes participants,
+      // invites, prefs, and all child rows in one statement. This is the
+      // primary operation — everything else is a safety net.
       const { data: deleted, error } = await supabase
         .from('collaboration_sessions')
         .delete()
@@ -1221,12 +1206,23 @@ function AppContent() {
       }
 
       if (!deleted || deleted.length === 0) {
-        console.warn('[CancelInvite] No rows deleted — session may not exist or user is not the creator. sessionId:', sessionId);
-        // Fallback: try removing the local pill state even if DB delete didn't match.
-        // The session might already be gone, or ownership changed.
+        // DELETE matched 0 rows — session already gone or user isn't creator.
+        // Clean up any orphaned invites/participants as a safety net.
+        console.warn('[CancelInvite] No rows deleted — cleaning up orphans. sessionId:', sessionId);
+
+        await supabase
+          .from('collaboration_invites')
+          .update({ status: 'cancelled' })
+          .eq('session_id', sessionId)
+          .eq('status', 'pending');
+
+        await supabase
+          .from('session_participants')
+          .delete()
+          .eq('session_id', sessionId);
       }
 
-      // Step 4: Refresh sessions to update the pill bar
+      // Step 2: Refresh sessions to update the pill bar
       await refreshAllSessions({ showLoading: true });
       toastManager.success('Invite cancelled.');
     } catch (error) {

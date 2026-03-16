@@ -3,6 +3,15 @@
  * Provides functions to convert category translation keys to readable names
  */
 
+/** Maximum number of category cards a user can select. */
+export const MAX_CATEGORIES = 3;
+
+/** Maximum number of curated/intent cards a user can select (radio behavior). */
+export const MAX_INTENTS = 1;
+
+/** Cap an intents array to MAX_INTENTS. Use at every load-from-DB and save boundary. */
+export const capIntents = (raw: string[]): string[] => raw.slice(0, MAX_INTENTS);
+
 /**
  * Convert translation key to readable category name
  */
@@ -13,6 +22,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     // New category slugs -> display names
     'nature': 'Nature',
     'first_meet': 'First Meet',
+    'picnic_park': 'Picnic',
     'picnic': 'Picnic',
     'drink': 'Drink',
     'casual_eats': 'Casual Eats',
@@ -77,7 +87,6 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'sip_and_chill': 'Drink',
     'screen_relax_old': 'Watch',
     'creative': 'Creative & Arts',
-    'creative_arts': 'Creative & Arts',
     'play_move': 'Play',
     'dining': 'Fine Dining',
     'casual eats': 'Casual Eats',
@@ -111,7 +120,7 @@ export const getCategorySlug = (categoryKey: string): string => {
   const nameToSlugMap: Record<string, string> = {
     'Nature': 'nature',
     'First Meet': 'first_meet',
-    'Picnic': 'picnic',
+    'Picnic': 'picnic_park',
     'Drink': 'drink',
     'Casual Eats': 'casual_eats',
     'Fine Dining': 'fine_dining',
@@ -131,7 +140,7 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Dining Experiences': 'fine_dining',
     'Wellness Dates': 'wellness',
     'Freestyle': 'nature',
-    'Picnics': 'picnic'
+    'Picnics': 'picnic_park'
   };
   
   return nameToSlugMap[readableName] || readableName.toLowerCase().replace(/\s+/g, '-');
@@ -147,6 +156,7 @@ export const getCategoryIcon = (categoryKey: string): string => {
   const iconMap: Record<string, string> = {
     'nature': 'leaf-outline',
     'first_meet': 'chatbubbles-outline',
+    'picnic_park': 'basket-outline',
     'picnic': 'basket-outline',
     'drink': 'wine-outline',
     'casual_eats': 'fast-food-outline',
@@ -207,7 +217,8 @@ export const getCategoryColor = (categoryKey: string): string => {
   const colorMap: Record<string, string> = {
     'nature': '#10B981',       // emerald
     'first_meet': '#6366F1',   // indigo
-    'picnic': '#84CC16',       // lime
+    'picnic_park': '#84CC16',  // lime
+    'picnic': '#84CC16',       // lime (legacy alias)
     'drink': '#F59E0B',        // amber
     'casual_eats': '#F97316',  // orange
     'fine_dining': '#7C3AED',  // violet

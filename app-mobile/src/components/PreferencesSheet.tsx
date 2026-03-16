@@ -55,6 +55,7 @@ import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTier
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
+import { MAX_CATEGORIES, MAX_INTENTS, normalizeCategoryArray, capIntents } from '../utils/categoryUtils';
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -101,14 +102,6 @@ const categories = [
   { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
   { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
 ];
-
-// Normalize legacy display-name categories (e.g. "Nature") to slug IDs (e.g. "nature")
-const CATEGORY_LABEL_TO_ID: Record<string, string> = {};
-categories.forEach(c => { CATEGORY_LABEL_TO_ID[c.label.toLowerCase()] = c.id; });
-const MAX_CATEGORIES = 3;
-const MAX_INTENTS = 1;
-const normalizeCategoryIds = (raw: string[]): string[] =>
-  raw.map(c => CATEGORY_LABEL_TO_ID[c.toLowerCase()] || c).slice(0, MAX_CATEGORIES);
 
 // Travel modes matching database constraint
 const travelModes = [
@@ -264,11 +257,11 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences — intents and categories are separate DB columns
-      const collabIntents = (
+      const collabIntents = capIntents(
         Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
-      ).slice(0, MAX_INTENTS);
+      );
       setSelectedIntents(collabIntents);
-      const collabCats = normalizeCategoryIds(
+      const collabCats = normalizeCategoryArray(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
       setSelectedCategories(collabCats);
@@ -322,11 +315,11 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
-      const soloIntents = (
+      const soloIntents = capIntents(
         Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
-      ).slice(0, MAX_INTENTS);
+      );
       setSelectedIntents(soloIntents);
-      const soloCats = normalizeCategoryIds(
+      const soloCats = normalizeCategoryArray(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
       );
       setSelectedCategories(soloCats);
@@ -743,7 +736,7 @@ export default function PreferencesSheet({
 
     // Safety cap — should already be ≤3/≤1 from toggle logic, but enforce at save boundary.
     const finalCategories = selectedCategories.slice(0, MAX_CATEGORIES);
-    const finalIntents = selectedIntents.slice(0, MAX_INTENTS);
+    const finalIntents = capIntents(selectedIntents);
 
     const preferences = {
       selectedIntents: finalIntents,

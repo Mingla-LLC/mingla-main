@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { categories } from '../../constants/categories';
+import { MAX_CATEGORIES, MAX_INTENTS, capIntents } from '../../utils/categoryUtils';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { getCurrencySymbol } from '../utils/formatters';
 import { getRate } from '../../services/currencyService';
@@ -51,10 +52,10 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
     { label: `${symbol}${formatNumberWithCommas(Math.round(150 * rate))}+`, min: 150, max: 1000 },
   ];
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    initialPreferences?.categories || []
+    (initialPreferences?.categories || []).slice(0, MAX_CATEGORIES)
   );
   const [selectedExperienceTypes, setSelectedExperienceTypes] = useState<string[]>(
-    initialPreferences?.experienceTypes || []
+    capIntents(initialPreferences?.experienceTypes || [])
   );
   const [selectedBudget, setSelectedBudget] = useState<{ min: number; max: number } | null>(
     initialPreferences?.budgetMin !== undefined && initialPreferences?.budgetMax !== undefined
@@ -66,10 +67,11 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
   );
 
   const handleCategoryToggle = (categorySlug: string) => {
+    if (!selectedCategories.includes(categorySlug) && selectedCategories.length >= MAX_CATEGORIES) return;
     const newCategories = selectedCategories.includes(categorySlug)
       ? selectedCategories.filter(c => c !== categorySlug)
       : [...selectedCategories, categorySlug];
-    
+
     setSelectedCategories(newCategories);
     updatePreferences({
       categories: newCategories,
@@ -81,10 +83,9 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
   };
 
   const handleExperienceTypeToggle = (typeId: string) => {
-    const newTypes = selectedExperienceTypes.includes(typeId)
-      ? selectedExperienceTypes.filter(t => t !== typeId)
-      : [...selectedExperienceTypes, typeId];
-    
+    // Radio behavior: deselect if already selected, otherwise replace (max 1)
+    const newTypes = selectedExperienceTypes.includes(typeId) ? [] : [typeId];
+
     setSelectedExperienceTypes(newTypes);
     updatePreferences({
       categories: selectedCategories,
