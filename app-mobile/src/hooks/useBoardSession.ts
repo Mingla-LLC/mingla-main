@@ -193,14 +193,33 @@ export const useBoardSession = (sessionId?: string) => {
 
         if (error) throw error;
 
+        const updatedUserPrefs = {
+          ...payload,
+          session_id: sessionId,
+          user_id: user.id,
+        } as BoardSessionPreferences;
+
         setPreferences(
           (prev) =>
             ({
               ...prev,
-              ...payload,
-              session_id: sessionId,
+              ...updatedUserPrefs,
             } as BoardSessionPreferences)
         );
+
+        // Optimistically update allParticipantPreferences so that
+        // RecommendationsContext detects the change immediately and
+        // invalidates the session deck without waiting for realtime.
+        setAllParticipantPreferences((prev) => {
+          const list = prev ?? [];
+          const idx = list.findIndex((p) => p.user_id === user.id);
+          if (idx >= 0) {
+            const updated = [...list];
+            updated[idx] = { ...updated[idx], ...updatedUserPrefs };
+            return updated;
+          }
+          return [...list, updatedUserPrefs];
+        });
       } catch (err: any) {
         setError(err.message || "Failed to update preferences");
         throw err;

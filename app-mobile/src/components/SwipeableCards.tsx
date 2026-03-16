@@ -103,11 +103,11 @@ function CardHeroImage({ uri, style }: { uri: string; style: any }) {
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
-    case 'transit': return 'bus';
+    case 'transit': return 'bus-outline';
     case 'bicycling':
-    case 'biking': return 'bicycle';
+    case 'biking': return 'bicycle-outline';
     case 'walking':
-    default: return 'walk';
+    default: return 'walk-outline';
   }
 }
 
@@ -184,7 +184,7 @@ interface SwipeableCardsProps {
 const getIconComponent = (iconName: string) => {
   // If iconName is already an Ionicons name (from getCategoryIcon), return it directly
   const ioniconsNames = [
-    "walk",
+    "walk-outline",
     "cafe",
     "restaurant",
     "film",
@@ -422,6 +422,7 @@ export default function SwipeableCards({
     isExhausted,
     isSlowBatchLoad,
     deckUIState,
+    collabTravelMode,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -463,6 +464,9 @@ export default function SwipeableCards({
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
+  // In collaboration mode, use the group's aggregated travel mode (majority vote).
+  // In solo mode, fall back to the user's own cached preferences.
+  const effectiveTravelMode = collabTravelMode ?? cachedPreferences?.travel_mode ?? userPreferences?.travelMode;
   const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 
   // Feature gating hooks
@@ -1679,7 +1683,7 @@ export default function SwipeableCards({
                         </View>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(effectiveTravelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {nextCard.travelTime}
                             </Text>
@@ -1784,7 +1788,7 @@ export default function SwipeableCards({
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
                     onSeePlan={handleCardExpand}
-                    travelMode={cachedPreferences?.travel_mode ?? userPreferences?.travelMode}
+                    travelMode={effectiveTravelMode}
                     measurementSystem={accountPreferences?.measurementSystem}
                   />
                 ) : (
@@ -1835,7 +1839,7 @@ export default function SwipeableCards({
                         </View>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(effectiveTravelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {currentRec.travelTime}
                             </Text>

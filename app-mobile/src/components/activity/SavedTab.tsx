@@ -432,6 +432,7 @@ const SavedTab = ({
     cardInfo: {
       flex: 1,
       minWidth: 0,
+      overflow: "hidden",
     },
     cardTitle: {
       fontSize: 16,
@@ -442,6 +443,29 @@ const SavedTab = ({
     cardSubtitle: {
       fontSize: 14,
       color: "#6b7280",
+      flexShrink: 1,
+    },
+    cardTitleRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      marginBottom: 4,
+    },
+    cardTitleTextWrap: {
+      flex: 1,
+      minWidth: 0,
+    },
+    cardSubtitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      gap: 4,
+      minWidth: 0,
+    },
+    recentlySavedWrap: {
+      alignItems: "flex-end",
+      flexShrink: 0,
+      marginLeft: 8,
     },
     recentlySavedText: {
       fontSize: 12,
@@ -457,6 +481,8 @@ const SavedTab = ({
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
+      flex: 1,
+      minWidth: 0,
     },
     statItem: {
       flexDirection: "row",
@@ -476,6 +502,7 @@ const SavedTab = ({
       fontSize: 14,
       fontWeight: "600",
       color: "#eb7825",
+      flexShrink: 1,
     },
     sourceIndicator: {
       marginTop: 4,
@@ -1857,26 +1884,19 @@ const SavedTab = ({
             </View>
 
             <View style={styles.cardInfo}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  marginBottom: 4,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{card.title}</Text>
+              <View style={styles.cardTitleRow}>
+                <View style={styles.cardTitleTextWrap}>
+                  <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">{card.title}</Text>
                   {/* Subtitle - use category or a default subtitle */}
-                  <View style={{flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 4}}>
+                  <View style={styles.cardSubtitleRow}>
                     <Icon name="heart" size={16} color="orange" />
-                    <Text style={styles.cardSubtitle}>
+                    <Text style={styles.cardSubtitle} numberOfLines={1} ellipsizeMode="tail">
                       {(card as any).subtitle || card.category || "Experience"}
                     </Text>
                   </View>
                 </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.recentlySavedText}>Recently saved</Text>
+                <View style={styles.recentlySavedWrap}>
+                  <Text style={styles.recentlySavedText} numberOfLines={1}>Recently saved</Text>
                 </View>
               </View>
 
@@ -1893,7 +1913,7 @@ const SavedTab = ({
                       {card.travelTime || "15m"}
                     </Text>
                   </View>
-                  <Text style={styles.priceText}>
+                  <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
                     {card.priceTier && TIER_BY_SLUG[card.priceTier as PriceTierSlug]
                       ? formatTierLabel(card.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency || "USD"), getCurrencyRate(accountPreferences?.currency || "USD"))
                       : card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}

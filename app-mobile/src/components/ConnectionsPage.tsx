@@ -33,6 +33,7 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNetworkMonitor } from "../services/networkMonitor";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -76,6 +77,9 @@ const CONNECTIONS_CACHE_VERSION = "v1";
 
 const getConversationsCacheKey = (userId: string) =>
   `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
+
+const getMessagesCacheKey = (conversationId: string) =>
+  `mingla:connections:messages:${CONNECTIONS_CACHE_VERSION}:${conversationId}`;
 
 export default function ConnectionsPageRefactored({
   onSendCollabInvite,
@@ -176,12 +180,16 @@ export default function ConnectionsPageRefactored({
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [showMessageInterface, setShowMessageInterface] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const conversationChannelRef = useRef<any>(null);
   const broadcastSeenIds = useRef(new Set<string>());
+
+  // ── Network state ──────────────────────────────────────
+  const { isConnected, isInternetReachable } = useNetworkMonitor();
+  const isOffline = !isConnected || !isInternetReachable;
 
   // Current user's display name — needed for broadcast payload
   const profile = useAppStore((state) => state.profile);
@@ -537,6 +545,40 @@ export default function ConnectionsPageRefactored({
     []
   );
 
+  // ── Persist messages to AsyncStorage (fire-and-forget) ──
+  const persistMessages = useCallback(
+    (conversationId: string, msgs: Message[]) => {
+      // Only persist real, successfully-sent messages — exclude optimistic
+      // temp messages and failed messages (ghost messages across sessions)
+      const persistable = msgs
+        .filter((m) => !m.id.startsWith("temp-") && !m.failed)
+        .slice(-100); // Cap to last 100 to avoid unbounded AsyncStorage growth
+      if (persistable.length === 0) return;
+      AsyncStorage.setItem(
+        getMessagesCacheKey(conversationId),
+        JSON.stringify(persistable)
+      ).catch((e) => console.warn("[ConnectionsPage] Message cache persist failed:", e));
+    },
+    []
+  );
+
+  // ── Hydrate messages from AsyncStorage ──────────────────
+  const hydrateMessages = useCallback(
+    async (conversationId: string): Promise<Message[]> => {
+      try {
+        const cached = await AsyncStorage.getItem(getMessagesCacheKey(conversationId));
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn("[ConnectionsPage] Message cache hydration failed:", e);
+      }
+      return [];
+    },
+    []
+  );
+
   // ── Select conversation from chat list ───────────────────
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
@@ -563,21 +605,44 @@ export default function ConnectionsPageRefactored({
       isOnline: otherParticipant?.is_online || false,
     };
 
-    // Check block status
-    const hasBlock = await blockService.hasBlockBetween(friend.id);
+    // Check block status — non-blocking: if network fails, default to false
+    // (user already sees the conversation in the list, safe to open it)
+    let hasBlock = false;
+    try {
+      hasBlock = await blockService.hasBlockBetween(friend.id);
+    } catch (e) {
+      console.warn("[ConnectionsPage] Block check failed (offline?), defaulting to unblocked:", e);
+    }
     setActiveChatIsBlocked(hasBlock);
 
     setActiveChat(friend);
     setCurrentConversationId(conversation.id);
 
-    // Load messages from cache or network
-    const cachedMessages = messagesCache[conversation.id];
+    // ── Offline-resilient message loading ──────────────────
+    // Priority: in-memory cache → AsyncStorage cache → network fetch
+    // Always open the chat immediately with whatever we have, then refresh in background.
+    const inMemoryCached = messagesCache[conversation.id];
+    let initialMessages: Message[] = [];
 
-    if (cachedMessages && cachedMessages.length > 0) {
-      setMessages(cachedMessages);
+    if (inMemoryCached && inMemoryCached.length > 0) {
+      initialMessages = inMemoryCached;
+    } else {
+      // Try AsyncStorage before hitting network
+      const storageCached = await hydrateMessages(conversation.id);
+      if (storageCached.length > 0) {
+        initialMessages = storageCached;
+        // Warm up in-memory cache
+        setMessagesCache((prev) => ({ ...prev, [conversation.id]: storageCached }));
+      }
+    }
+
+    if (initialMessages.length > 0) {
+      // We have cached messages — show them immediately
+      setMessages(initialMessages);
       setShowMessageInterface(true);
+      markConversationAsRead(conversation.id, user.id, initialMessages);
 
-      // Refresh in background
+      // Refresh in background (silently fails if offline)
       (async () => {
         try {
           const { messages: freshMsgs, error: msgError } =
@@ -586,12 +651,16 @@ export default function ConnectionsPageRefactored({
             const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
             setMessages(transformed);
             setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+            persistMessages(conversation.id, transformed);
+            markConversationAsRead(conversation.id, user.id, transformed);
           }
         } catch (e) {
-          console.error("Error refreshing messages:", e);
+          // Offline — user is already viewing cached messages, no action needed
+          console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
         }
       })();
     } else {
+      // No cache at all — must fetch from network
       try {
         const { messages: freshMsgs, error: msgError } =
           await messagingService.getMessages(conversation.id, user.id);
@@ -602,15 +671,19 @@ export default function ConnectionsPageRefactored({
           const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
           setMessages(transformed);
           setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+          persistMessages(conversation.id, transformed);
+          markConversationAsRead(conversation.id, user.id, transformed);
         }
       } catch (e) {
         console.error("Error loading messages:", e);
+        // Even on total failure, open the chat with empty messages
+        // so the user sees the interface and can retry when back online
         setMessages([]);
       }
       setShowMessageInterface(true);
     }
 
-    // Real-time subscription
+    // Real-time subscription (gracefully degrades if offline)
     setupRealtimeSubscription(conversation.id, user.id);
   };
 
@@ -619,10 +692,6 @@ export default function ConnectionsPageRefactored({
     if (!user?.id) return;
 
     const friendUserId = friend.friend_user_id || friend.id;
-
-    // Check block status
-    const hasBlock = await blockService.hasBlockBetween(friendUserId);
-    setActiveChatIsBlocked(hasBlock);
 
     const displayName =
       friend.display_name ||
@@ -643,11 +712,44 @@ export default function ConnectionsPageRefactored({
     setActiveChat(chatFriend);
     setFriendPickerVisible(false);
 
+    // Check block status — non-blocking
+    let hasBlock = false;
+    try {
+      hasBlock = await blockService.hasBlockBetween(friendUserId);
+    } catch (e) {
+      console.warn("[ConnectionsPage] Block check failed (offline?):", e);
+    }
+    setActiveChatIsBlocked(hasBlock);
+
     try {
       const { conversation, error: convError } =
         await messagingService.getOrCreateDirectConversation(user.id, friendUserId);
 
       if (convError || !conversation) {
+        // Network call failed — try to find an existing cached conversation
+        // for this friend so we can still open the chat offline
+        const cachedConv = conversations.find((c) =>
+          c.participants.some((p) => p.id === friendUserId)
+        );
+
+        if (cachedConv) {
+          // Found a cached conversation — open it with cached messages
+          setCurrentConversationId(cachedConv.id);
+          const storageCached = await hydrateMessages(cachedConv.id);
+          const inMemoryCached = messagesCache[cachedConv.id];
+          const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
+          setMessages(msgs);
+          if (msgs.length > 0) {
+            setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
+          }
+          setShowMessageInterface(true);
+          // Skip realtime when offline — reconnection useEffect will re-subscribe
+          if (!isOffline) {
+            setupRealtimeSubscription(cachedConv.id, user.id);
+          }
+          return;
+        }
+
         console.error("Error getting conversation:", convError);
         setActiveChat(null);
         return;
@@ -655,41 +757,159 @@ export default function ConnectionsPageRefactored({
 
       setCurrentConversationId(conversation.id);
 
-      // Load messages
-      const { messages: freshMsgs, error: msgError } =
-        await messagingService.getMessages(conversation.id, user.id);
-      if (msgError) {
-        setMessages([]);
+      // Load messages — offline-resilient: try cache first, then network
+      const inMemoryCached = messagesCache[conversation.id];
+      const storageCached = (inMemoryCached && inMemoryCached.length > 0)
+        ? [] : await hydrateMessages(conversation.id);
+      const cachedMsgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
+
+      if (cachedMsgs.length > 0) {
+        setMessages(cachedMsgs);
+        setMessagesCache((prev) => ({ ...prev, [conversation.id]: cachedMsgs }));
+        setShowMessageInterface(true);
+        markConversationAsRead(conversation.id, user.id, cachedMsgs);
+
+        // Refresh in background
+        (async () => {
+          try {
+            const { messages: freshMsgs, error: msgError } =
+              await messagingService.getMessages(conversation.id, user.id);
+            if (!msgError && freshMsgs) {
+              const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
+              setMessages(transformed);
+              setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+              persistMessages(conversation.id, transformed);
+              markConversationAsRead(conversation.id, user.id, transformed);
+            }
+          } catch (err) {
+            console.warn("[ConnectionsPage] Background refresh failed:", err);
+          }
+        })();
       } else {
-        const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
-        setMessages(transformed);
-        setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+        try {
+          const { messages: freshMsgs, error: msgError } =
+            await messagingService.getMessages(conversation.id, user.id);
+          if (msgError) {
+            setMessages([]);
+          } else {
+            const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
+            setMessages(transformed);
+            setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+            persistMessages(conversation.id, transformed);
+            markConversationAsRead(conversation.id, user.id, transformed);
+          }
+        } catch (err) {
+          setMessages([]);
+        }
+        setShowMessageInterface(true);
       }
 
-      setShowMessageInterface(true);
       setupRealtimeSubscription(conversation.id, user.id);
     } catch (e) {
-      console.error("Error creating conversation:", e);
-      setActiveChat(null);
+      // Total failure — still try to open from cached conversations list
+      const cachedConv = conversations.find((c) =>
+        c.participants.some((p) => p.id === friendUserId)
+      );
+
+      if (cachedConv) {
+        setCurrentConversationId(cachedConv.id);
+        const storageCached = await hydrateMessages(cachedConv.id);
+        const inMemoryCached = messagesCache[cachedConv.id];
+        const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
+        setMessages(msgs);
+        if (msgs.length > 0) {
+          setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
+        }
+        setShowMessageInterface(true);
+        // Skip realtime when offline — reconnection useEffect will re-subscribe
+        if (!isOffline) {
+          setupRealtimeSubscription(cachedConv.id, user.id);
+        }
+      } else {
+        console.error("Error creating conversation and no cache available:", e);
+        setActiveChat(null);
+      }
     }
   };
 
+  // ── Mark conversation as read (messages + local state) ──
+  // Called after messages are loaded — uses the actual loaded messages,
+  // not the stale messagesCache closure. Also zeroes the conversation's
+  // unread_count in local state so the tab badge updates immediately.
+  const markConversationAsRead = useCallback(
+    (conversationId: string, userId: string, loadedMessages: Message[]) => {
+      // 1. Collect unread message IDs from the loaded messages
+      const unreadIds = loadedMessages
+        .filter((msg) => !msg.isMe && msg.unread)
+        .map((msg) => msg.id);
+
+      // 2. Mark as read in the database
+      if (unreadIds.length > 0) {
+        messagingService.markAsRead(unreadIds, userId).catch(console.error);
+      }
+
+      // 3. Zero out unread_count in local conversations state so the badge
+      //    updates immediately (don't wait for the next fetchConversations)
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === conversationId
+            ? { ...conv, unread_count: 0 }
+            : conv
+        )
+      );
+    },
+    []
+  );
+
+  // ── Auto-persist messagesCache to AsyncStorage (debounced) ──
+  // Catches ALL mutation paths: send, receive, realtime, background refresh.
+  // 2-second debounce batches rapid mutations (send + confirm + reply)
+  // into a single AsyncStorage write, avoiding excessive serialization.
+  useEffect(() => {
+    if (!currentConversationId) return;
+    const msgs = messagesCache[currentConversationId];
+    if (!msgs || msgs.length === 0) return;
+
+    const timeout = setTimeout(() => {
+      persistMessages(currentConversationId, msgs);
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [messagesCache, currentConversationId, persistMessages]);
+
+  // ── Auto-refresh messages when network reconnects ───────
+  const prevIsOfflineRef = useRef(isOffline);
+  useEffect(() => {
+    const wasOffline = prevIsOfflineRef.current;
+    prevIsOfflineRef.current = isOffline;
+
+    // Just came back online while a chat is open — re-subscribe + refresh
+    if (wasOffline && !isOffline && currentConversationId && user?.id) {
+      // Re-establish realtime subscription (may have died or never been set up)
+      setupRealtimeSubscription(currentConversationId, user.id);
+
+      (async () => {
+        try {
+          const { messages: freshMsgs, error: msgError } =
+            await messagingService.getMessages(currentConversationId, user.id);
+          if (!msgError && freshMsgs) {
+            const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
+            setMessages(transformed);
+            setMessagesCache((prev) => ({ ...prev, [currentConversationId]: transformed }));
+            markConversationAsRead(currentConversationId, user.id, transformed);
+          }
+        } catch (e) {
+          console.warn("[ConnectionsPage] Reconnection refresh failed:", e);
+        }
+      })();
+
+      // Also refresh the conversations list
+      fetchConversations(user.id);
+    }
+  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations]);
+
   // ── Realtime subscription setup ──────────────────────────
   const setupRealtimeSubscription = (conversationId: string, userId: string) => {
-    // Mark unread as read
-    (async () => {
-      try {
-        const cached = messagesCache[conversationId] || [];
-        const unreadIds = cached
-          .filter((msg) => !msg.isMe && msg.unread)
-          .map((msg) => msg.id);
-        if (unreadIds.length > 0) {
-          messagingService.markAsRead(unreadIds, userId).catch(console.error);
-        }
-      } catch (e) {
-        console.error("Error marking as read:", e);
-      }
-    })();
 
     // Cleanup existing subscription
     if (conversationChannelRef.current) {
@@ -762,17 +982,17 @@ export default function ConnectionsPageRefactored({
             return { ...prev, [conversationId]: [...existing, transformedForCache] };
           });
 
-          // Conversation list update ALWAYS runs
+          // Conversation list update ALWAYS runs.
+          // Do NOT increment unread_count — the chat is open, so the message
+          // is immediately visible and marked as read below. Incrementing here
+          // would inflate the tab badge until the next fetchConversations.
           setConversations((prev) =>
             prev.map((conv) => {
               if (conv.id === conversationId) {
                 return {
                   ...conv,
                   last_message: newMessage,
-                  unread_count:
-                    newMessage.sender_id !== userId
-                      ? (conv.unread_count || 0) + 1
-                      : conv.unread_count,
+                  // Keep unread_count at 0 — user is actively viewing this chat
                 };
               }
               return conv;
@@ -838,8 +1058,15 @@ export default function ConnectionsPageRefactored({
   ) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
 
-    // Check block before sending
-    const hasBlock = await blockService.hasBlockBetween(activeChat.id);
+    // Check block before sending — non-blocking: if offline, allow the
+    // optimistic message through. RLS still enforces blocks server-side;
+    // the send will fail at the network layer and be marked as failed.
+    let hasBlock = false;
+    try {
+      hasBlock = await blockService.hasBlockBetween(activeChat.id);
+    } catch (e) {
+      console.warn("[ConnectionsPage] Block check failed (offline?), allowing send:", e);
+    }
     if (hasBlock) {
       Alert.alert(
         "Message Not Sent",
@@ -1439,6 +1666,7 @@ export default function ConnectionsPageRefactored({
             currentUserId={user?.id || null}
             currentUserName={currentUserDisplayName}
             broadcastSeenIds={broadcastSeenIds}
+            isOffline={isOffline}
           />
         </View>
 

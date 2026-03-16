@@ -500,7 +500,7 @@ export class ExperiencesService {
       'Wellness': 'body-outline',
       'Picnic': 'basket-outline',
       // v1 backwards compat
-      'Stroll': 'walk',
+      'Stroll': 'walk-outline',
       'Sip & Chill': 'cafe',
       'Screen & Relax': 'film',
       'Creative': 'brush',

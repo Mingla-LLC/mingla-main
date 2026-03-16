@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import {
@@ -71,6 +72,9 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   }>({ visible: false, messageId: "", top: 0 });
   const scrollViewRef = useRef<ScrollView>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Tracks mention label → user_id for popover-selected mentions in the current draft.
+  // Using a Map so we can prune stale entries when the user deletes the @mention text.
+  const pendingMentions = useRef<Map<string, string>>(new Map());
   const MESSAGES_PER_PAGE = 50;
 
   // Load messages with pagination
@@ -138,23 +142,30 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     setSending(true);
 
     try {
-      // Extract mentions from content (supports @[Display Name] and @username)
+      // Merge popover-tracked mentions with any manually-typed @mentions in the text.
+      // Popover selections are authoritative (tracked by user_id); text parsing is a fallback
+      // for @[Display Name] (legacy) and @word patterns typed without the popover.
+      const mentionSet = new Set<string>(pendingMentions.current.values());
+
       const mentionRegex = /@\[([^\]]+)\]|@(\w+)/g;
-      const mentions: string[] = [];
       let match;
       while ((match = mentionRegex.exec(content)) !== null) {
-        const mentionName = match[1] || match[2]; // [1] for bracket format, [2] for plain
+        const mentionName = match[1] || match[2];
         const participant = participants.find(
           (p) =>
             p.profiles?.username === mentionName ||
+            p.profiles?.first_name?.toLowerCase() === mentionName.toLowerCase() ||
             p.profiles?.display_name?.toLowerCase() === mentionName.toLowerCase() ||
             (p.profiles?.first_name && p.profiles?.last_name &&
               `${p.profiles.first_name} ${p.profiles.last_name}`.toLowerCase() === mentionName.toLowerCase())
         );
         if (participant) {
-          mentions.push(participant.user_id);
+          mentionSet.add(participant.user_id);
         }
       }
+
+      const mentions = Array.from(mentionSet);
+      pendingMentions.current.clear();
 
       const { data, error } = await BoardMessageService.sendBoardMessage({
         sessionId,
@@ -174,7 +185,10 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       }
 
       if (data) {
-        setMessages((prev) => [...prev, data]);
+        setMessages((prev) => {
+          if (prev.find((m) => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
         // Scroll to bottom
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -302,16 +316,44 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
   };
 
-  // Get participant name
+  // Get participant name — avoids exposing raw emails or auto-generated usernames
   const getParticipantName = (userId: string): string => {
     const participant = participants.find((p) => p.user_id === userId);
-    if (participant?.profiles?.display_name) {
-      return participant.profiles.display_name;
+    if (!participant?.profiles) return "Unknown";
+
+    const { display_name, first_name, last_name, username } = participant.profiles;
+
+    // Helper: detect email-like strings (e.g. "john@icloud.com" or email prefix + UUID suffix "john_a1b2")
+    const looksLikeEmail = (val: string | undefined | null): boolean => {
+      if (!val) return false;
+      if (val.includes("@")) return true;
+      // Auto-generated usernames: lowercase_word(s)_xxxx (4-char hex suffix from UUID)
+      if (/^[a-z0-9_.]+_[a-f0-9]{4}$/.test(val)) return true;
+      return false;
+    };
+
+    // Humanize an email-derived string: strip domain/@, strip UUID suffix, capitalize
+    const humanize = (val: string): string => {
+      let clean = val.includes("@") ? val.split("@")[0] : val;
+      // Strip trailing _xxxx UUID suffix
+      clean = clean.replace(/_[a-f0-9]{4}$/, "");
+      // Replace underscores/dots with spaces and capitalize each word
+      return clean
+        .replace(/[_.]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim() || "Unknown";
+    };
+
+    if (display_name && !looksLikeEmail(display_name)) return display_name;
+    if (first_name && !looksLikeEmail(first_name)) {
+      return last_name && !looksLikeEmail(last_name)
+        ? `${first_name} ${last_name}`
+        : first_name;
     }
-    if (participant?.profiles?.first_name && participant?.profiles?.last_name) {
-      return `${participant.profiles.first_name} ${participant.profiles.last_name}`;
-    }
-    return participant?.profiles?.username || "Unknown";
+    if (username && !looksLikeEmail(username)) return username;
+
+    // All fields are email-derived — humanize the best available
+    return humanize(display_name || username || "Unknown");
   };
 
   // Handle long-press to open emoji reaction picker
@@ -415,6 +457,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         const mentionedUser = participants.find(
           (p) =>
             p.profiles?.username === mentionName ||
+            p.profiles?.first_name?.toLowerCase() === mentionName.toLowerCase() ||
             p.profiles?.display_name?.toLowerCase() === mentionName.toLowerCase() ||
             (p.profiles?.first_name && p.profiles?.last_name &&
               `${p.profiles.first_name} ${p.profiles.last_name}`.toLowerCase() === mentionName.toLowerCase())
@@ -459,21 +502,36 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     return <Text style={styles.messageText}>{parts}</Text>;
   };
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates.
+  // Uses unregisterBoardCallbacks on cleanup instead of unsubscribe — the channel
+  // is shared with useBoardSession, useSessionVoting, etc. Destroying it here would
+  // kill real-time for the entire session when the user switches tabs.
   useEffect(() => {
     if (!sessionId) return;
 
-    const channel = realtimeService.subscribeToBoardSession(sessionId, {
-      onMessage: (message) => {
+    const callbacks = {
+      onMessage: (message: any) => {
         setMessages((prev) => {
-          // Check if message already exists
-          if (prev.find((m) => m.id === message.id)) return prev;
+          const idx = prev.findIndex((m) => m.id === message.id);
+          if (idx !== -1) {
+            // Message already exists — merge if the incoming version is richer
+            // (postgres_changes carries the full DB row; broadcast may lack profiles/reactions)
+            const existing = prev[idx];
+            const incomingIsRicher = !existing.profiles && message.profiles
+              || !existing.reactions && message.reactions;
+            if (incomingIsRicher) {
+              const updated = [...prev];
+              updated[idx] = { ...existing, ...message };
+              return updated;
+            }
+            return prev;
+          }
           return [...prev, message as BoardMessage];
         });
 
         // Mark as read if it's not from current user
-        if (message.user_id !== user?.id) {
-          BoardMessageService.markMessageAsRead(message.id, user?.id || "");
+        if (user?.id && message.user_id !== user.id) {
+          BoardMessageService.markMessageAsRead(message.id, user.id);
         }
 
         // Scroll to bottom
@@ -481,22 +539,24 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
       },
-      onTypingStart: (userId) => {
+      onTypingStart: (userId: string) => {
         if (userId !== user?.id) {
           setTypingUsers((prev) => new Set([...prev, userId]));
         }
       },
-      onTypingStop: (userId) => {
+      onTypingStop: (userId: string) => {
         setTypingUsers((prev) => {
           const newSet = new Set(prev);
           newSet.delete(userId);
           return newSet;
         });
       },
-    });
+    };
+
+    realtimeService.subscribeToBoardSession(sessionId, callbacks);
 
     return () => {
-      realtimeService.unsubscribe(`board_session:${sessionId}`);
+      realtimeService.unregisterBoardCallbacks(sessionId, callbacks);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
@@ -646,14 +706,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             const lastAtIndex = messageText.lastIndexOf("@");
             if (lastAtIndex !== -1) {
               const beforeAt = messageText.substring(0, lastAtIndex);
-              const displayName =
-                participant.profiles?.display_name ||
-                (participant.profiles?.first_name && participant.profiles?.last_name
-                  ? `${participant.profiles.first_name} ${participant.profiles.last_name}`
-                  : null) ||
-                participant.profiles?.username ||
-                'user';
-              const newText = `${beforeAt}@[${displayName}] `;
+              // Use first name only — single word, no brackets, clean UX.
+              // The user_id is tracked in pendingMentions so we never lose who was mentioned.
+              const mentionLabel =
+                participant.profiles?.first_name ||
+                participant.profiles?.display_name?.split(" ")[0] ||
+                participant.profiles?.username?.split("_")[0] ||
+                "user";
+              pendingMentions.current.set(mentionLabel, participant.user_id);
+              const newText = `${beforeAt}@${mentionLabel} `;
               setMessageText(newText);
             }
             setShowMentionPopover(false);
@@ -752,6 +813,13 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                 setCardTagSearchText("");
               }
 
+              // Prune stale pending mentions whose @label was deleted from the text
+              for (const [label] of pendingMentions.current) {
+                if (!text.includes(`@${label}`)) {
+                  pendingMentions.current.delete(label);
+                }
+              }
+
               if (!editingMessage) {
                 handleTyping();
               }
@@ -822,8 +890,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   messagesContent: {
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: Platform.OS === "android" ? 10 : 16,
+    paddingBottom: Platform.OS === "android" ? 8 : 12,
   },
   emptyState: {
     flex: 1,
@@ -845,7 +913,7 @@ const styles = StyleSheet.create({
   },
   messageWrapper: {
     flexDirection: "row",
-    marginBottom: 12,
+    marginBottom: Platform.OS === "android" ? 8 : 12,
     paddingHorizontal: 16,
     alignItems: "flex-start",
   },
@@ -853,9 +921,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: Platform.OS === "android" ? 30 : 36,
+    height: Platform.OS === "android" ? 30 : 36,
+    borderRadius: Platform.OS === "android" ? 15 : 18,
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
@@ -867,7 +935,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: "white",
-    fontSize: 15,
+    fontSize: Platform.OS === "android" ? 13 : 15,
     fontWeight: "700",
   },
   messageContent: {
@@ -880,14 +948,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   senderName: {
-    fontSize: 13,
+    fontSize: Platform.OS === "android" ? 12 : 13,
     fontWeight: "700",
     color: "#111827",
   },
   messageText: {
-    fontSize: 14,
+    fontSize: Platform.OS === "android" ? 13 : 14,
     color: "#1F2937",
-    lineHeight: 21,
+    lineHeight: Platform.OS === "android" ? 18 : 21,
     fontWeight: "400",
   },
   mentionText: {

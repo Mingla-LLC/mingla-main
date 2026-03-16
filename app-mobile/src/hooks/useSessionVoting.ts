@@ -304,6 +304,33 @@ export function useSessionVoting(
             user_id: userId,
             vote_type: voteType,
           });
+
+          // Notify card saver about the vote (fire-and-forget, only for positive votes)
+          if (voteType === 'up') {
+            import('../services/boardNotificationService').then(({ notifyCardVoted }) => {
+              // Look up card saver + session name + voter name in parallel
+              Promise.all([
+                supabase.from('board_saved_cards').select('saved_by, experience_data').eq('id', savedCardId).maybeSingle(),
+                supabase.from('collaboration_sessions').select('name').eq('id', sessionId).maybeSingle(),
+                supabase.from('profiles').select('display_name, first_name').eq('id', userId).maybeSingle(),
+              ]).then(([cardRes, sessionRes, profileRes]) => {
+                const cardData = cardRes.data;
+                if (cardData?.saved_by && cardData.saved_by !== userId) {
+                  const voterName = profileRes.data?.display_name || profileRes.data?.first_name || 'Someone';
+                  notifyCardVoted({
+                    sessionId,
+                    sessionName: sessionRes.data?.name || 'Session',
+                    userId: userId!,
+                    userName: voterName,
+                    savedCardId,
+                    cardName: (cardData.experience_data as Record<string, unknown>)?.title as string || undefined,
+                    cardSaverId: cardData.saved_by,
+                    voteType: 'up',
+                  });
+                }
+              });
+            }).catch(() => {});
+          }
         }
 
         // Realtime subscription handles reload — no setTimeout needed
@@ -457,6 +484,31 @@ export function useSessionVoting(
             user_id: userId,
             rsvp_status: rsvpStatus as 'attending' | 'not_attending',
           });
+
+          // Notify card saver about RSVP (fire-and-forget, only for 'attending')
+          if (rsvpStatus === 'attending') {
+            import('../services/boardNotificationService').then(({ notifyCardRsvp }) => {
+              Promise.all([
+                supabase.from('board_saved_cards').select('saved_by, experience_data').eq('id', savedCardId).maybeSingle(),
+                supabase.from('collaboration_sessions').select('name').eq('id', sessionId).maybeSingle(),
+                supabase.from('profiles').select('display_name, first_name').eq('id', userId).maybeSingle(),
+              ]).then(([cardRes, sessionRes, profileRes]) => {
+                const cardData = cardRes.data;
+                if (cardData?.saved_by && cardData.saved_by !== userId) {
+                  const rsvperName = profileRes.data?.display_name || profileRes.data?.first_name || 'Someone';
+                  notifyCardRsvp({
+                    sessionId,
+                    sessionName: sessionRes.data?.name || 'Session',
+                    userId: userId!,
+                    userName: rsvperName,
+                    savedCardId,
+                    cardName: (cardData.experience_data as Record<string, unknown>)?.title as string || undefined,
+                    cardSaverId: cardData.saved_by,
+                  });
+                }
+              });
+            }).catch(() => {});
+          }
         }
 
         // Note: DB trigger check_card_lock_in handles lock-in automatically.

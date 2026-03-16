@@ -8,6 +8,7 @@ import {
   Dimensions,
   Alert,
   Keyboard,
+  Platform,
 } from "react-native";
 import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -92,7 +93,9 @@ export default function CollaborationModule({
   onRefreshBoards,
 }: CollaborationModuleProps) {
   const insets = useSafeAreaInsets();
-  const SHEET_HEIGHT = SCREEN_HEIGHT - insets.top;
+  const SHEET_HEIGHT = Platform.OS === 'ios'
+    ? SCREEN_HEIGHT
+    : SCREEN_HEIGHT - insets.top;
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
   );
@@ -1029,7 +1032,7 @@ export default function CollaborationModule({
           onPress={onClose}
         />
 
-        <View style={[styles.sheetContent, { height: SHEET_HEIGHT, paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={[styles.sheetContent, { height: SHEET_HEIGHT, paddingTop: Platform.OS === 'ios' ? insets.top : 0, paddingBottom: Math.max(insets.bottom, 16) }]}>
           {/* Drag Handle */}
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
@@ -1206,8 +1209,8 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -8 },

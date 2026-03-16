@@ -59,7 +59,7 @@ interface SwipeableSessionCardsProps {
 
 const getIconComponent = (iconName: string) => {
   const ioniconsNames = [
-    "walk", "cafe", "restaurant", "film", "brush", "basketball", "wine",
+    "walk-outline", "cafe", "restaurant", "film", "brush", "basketball", "wine",
     "sparkles", "basket", "location", "leaf", "fitness", "eye", "heart",
     "calendar", "time", "star", "navigate", "color-palette", "bookmark",
   ];
@@ -332,11 +332,11 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     {/* Category badge */}
                     <View style={styles.curatedCategoryBadge}>
                       <Icon name={curatedCategoryIcon} size={12} color="#fff" />
-                      <Text style={styles.curatedCategoryText}>{curatedCategoryLabel}</Text>
+                      <Text style={styles.curatedCategoryText} numberOfLines={1}>{curatedCategoryLabel}</Text>
                       <Text style={styles.curatedStopCountText}> · {stops.length} {stops.length === 1 ? "spot" : "stops"}</Text>
                     </View>
 
-                    <Text style={styles.curatedTitle} numberOfLines={2}>
+                    <Text style={styles.curatedTitle} numberOfLines={2} ellipsizeMode="tail">
                       {cardData.title || "Untitled"}
                     </Text>
 
@@ -351,7 +351,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       ) : null}
                       {formattedTravelTime ? (
                         <>
-                          <Icon name="walk" size={11} color="rgba(255,255,255,0.7)" />
+                          <Icon name="walk-outline" size={11} color="rgba(255,255,255,0.7)" />
                           <Text style={styles.curatedMetaText}> {formattedTravelTime}</Text>
                           <Text style={styles.curatedMetaDot}> · </Text>
                         </>
@@ -427,24 +427,24 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   </View>
 
                   <View style={styles.titleOverlay}>
-                    <Text style={styles.cardTitle} numberOfLines={2}>
+                    <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
                       {cardData.title || "Untitled"}
                     </Text>
                     <View style={styles.detailsBadges}>
                       <View style={styles.detailBadge}>
                         <Icon name="location" size={11} color="white" />
-                        <Text style={styles.detailBadgeText}>
+                        <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
                           {parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "Nearby"}
                         </Text>
                       </View>
                       <View style={styles.detailBadge}>
                         <Icon name="star" size={11} color="white" />
-                        <Text style={styles.detailBadgeText}>
+                        <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
                           {cardData.rating?.toFixed(1) || "4.5"}
                         </Text>
                       </View>
                       <View style={styles.detailBadge}>
-                        <Text style={styles.detailBadgeText}>
+                        <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
                           {(cardData as any).priceTier && TIER_BY_SLUG[(cardData as any).priceTier as PriceTierSlug]
                             ? formatTierLabel((cardData as any).priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
                             : formatPriceRange(cardData.priceRange, accountPreferences?.currency) || "$"}
@@ -457,10 +457,10 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 <View style={styles.cardDetails}>
                   <View style={styles.categoryRow}>
                     <Icon name={categoryIcon} size={14} color="#eb7825" />
-                    <Text style={styles.categoryText}>{categoryLabel}</Text>
+                    <Text style={styles.categoryText} numberOfLines={1} ellipsizeMode="tail">{categoryLabel}</Text>
                   </View>
 
-                  <Text style={styles.description} numberOfLines={2}>
+                  <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">
                     {cardData.description || ""}
                   </Text>
 
@@ -678,6 +678,7 @@ const styles = StyleSheet.create({
   curatedMetaRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
   },
   curatedMetaText: {
     color: "rgba(255,255,255,0.7)",
@@ -742,25 +743,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
+    maxWidth: "45%",
   },
   detailBadgeText: {
     color: "white",
     fontSize: 11,
     fontWeight: "500",
+    flexShrink: 1,
   },
   cardDetails: {
     padding: 12,
     gap: 6,
+    overflow: "hidden",
   },
   categoryRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
+    minWidth: 0,
   },
   categoryText: {
     color: "#6b7280",
     fontSize: 13,
     fontWeight: "500",
+    flexShrink: 1,
   },
   description: {
     fontSize: 13,

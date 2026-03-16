@@ -55,7 +55,7 @@ export function curatedStopsToTimeline(stops: CuratedStop[]): TimelineStep[] {
     // Add travel step between stops (except after the last stop)
     if (index < stops.length - 1) {
       const nextStop = stops[index + 1];
-      const travelTime = nextStop.travelTimeFromPreviousStopMin || 15;
+      const travelTime = Math.round(nextStop.travelTimeFromPreviousStopMin || 15);
 
       timeline.push({
         step: stepNumber + 0.5, // Decimal step for travel segments

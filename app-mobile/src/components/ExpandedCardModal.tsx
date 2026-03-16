@@ -523,7 +523,7 @@ function MultiStopPlanView({
                       color="#6b7280"
                     />
                     <Text style={curatedStyles.travelText}>
-                      {stop.travelTimeFromPreviousStopMin} min
+                      {Math.round(stop.travelTimeFromPreviousStopMin)} min
                     </Text>
                   </View>
                   <View style={curatedStyles.travelLine} />
@@ -741,7 +741,10 @@ export default function ExpandedCardModal({
   onPicnicDataFetched,
   hideTravelTime,
 }: ExpandedCardModalProps) {
-  const { updateCardStrollData } = useRecommendations();
+  const { updateCardStrollData, collabTravelMode } = useRecommendations();
+  // In collaboration mode, use the group's aggregated travel mode (majority vote).
+  // In solo mode, fall back to the user's own preference.
+  const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode;
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
@@ -1071,7 +1074,7 @@ export default function ExpandedCardModal({
                     title={curatedCard.title}
                     address={curatedCard.stops[0]?.address}
                     priceRange={`$${curatedCard.totalPriceMin}–$${curatedCard.totalPriceMax}`}
-                    travelTime={`${Math.floor((curatedCard.estimatedDurationMinutes || 0) / 60)}h`}
+                    travelTime={curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined}
                     strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
                     routeDuration={curatedCard.estimatedDurationMinutes}
                   />
@@ -1229,7 +1232,7 @@ export default function ExpandedCardModal({
                   rating={card.rating}
                   distance={card.distance}
                   travelTime={hideTravelTime ? undefined : card.travelTime}
-                  travelMode={userPreferences?.travel_mode}
+                  travelMode={effectiveTravelMode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={(card as any).priceTier}

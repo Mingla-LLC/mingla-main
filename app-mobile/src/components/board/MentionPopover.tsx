@@ -33,13 +33,33 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
   const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 0;
 
   const getParticipantDisplayName = (participant: Participant): string => {
-    if (participant.profiles?.display_name) {
-      return participant.profiles.display_name;
+    const { display_name, first_name, last_name, username } = participant.profiles ?? {};
+
+    const looksLikeEmail = (val: string | undefined | null): boolean => {
+      if (!val) return false;
+      if (val.includes("@")) return true;
+      if (/^[a-z0-9_.]+_[a-f0-9]{4}$/.test(val)) return true;
+      return false;
+    };
+
+    const humanize = (val: string): string => {
+      let clean = val.includes("@") ? val.split("@")[0] : val;
+      clean = clean.replace(/_[a-f0-9]{4}$/, "");
+      return clean
+        .replace(/[_.]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim() || "Unknown";
+    };
+
+    if (display_name && !looksLikeEmail(display_name)) return display_name;
+    if (first_name && !looksLikeEmail(first_name)) {
+      return last_name && !looksLikeEmail(last_name)
+        ? `${first_name} ${last_name}`
+        : first_name;
     }
-    if (participant.profiles?.first_name && participant.profiles?.last_name) {
-      return `${participant.profiles.first_name} ${participant.profiles.last_name}`;
-    }
-    return participant.profiles?.username || 'Unknown';
+    if (username && !looksLikeEmail(username)) return username;
+
+    return humanize(display_name || username || "Unknown");
   };
 
   const getParticipantInitial = (participant: Participant): string => {
@@ -59,6 +79,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
         <FlatList
           data={participants}
           keyExtractor={(item) => item.user_id}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.participantItem}
@@ -98,7 +119,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: 300,
+    maxHeight: 180,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -109,12 +130,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#e1e5e9',
   },
   headerText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
   },
@@ -122,20 +144,20 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   list: {
-    maxHeight: 250,
+    maxHeight: 140,
   },
   participantItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#eb7825',
     justifyContent: 'center',
     alignItems: 'center',
@@ -143,17 +165,16 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   participantInfo: {
     flex: 1,
   },
   participantName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
     color: '#1a1a1a',
-    marginBottom: 2,
   },
   participantUsername: {
     fontSize: 13,

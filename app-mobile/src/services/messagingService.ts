@@ -537,7 +537,12 @@ export class MessagingService {
   }
 
   /**
-   * Send push notifications to message recipients
+   * Send notifications to message recipients via the notify-message → notify-dispatch
+   * pipeline. This inserts a row into the `notifications` table (powering the in-app
+   * notification center via Realtime) AND sends a push notification via OneSignal.
+   *
+   * Previously this called `send-message-email` which only sent a push — no DB row,
+   * no in-app notification, no preference/quiet-hours checks.
    */
   private async sendMessageNotifications(
     conversationId: string,
@@ -556,17 +561,6 @@ export class MessagingService {
         return;
       }
 
-      // Get sender profile
-      const { data: senderProfile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, username, email')
-        .eq('id', senderId)
-        .single();
-
-      const senderName = senderProfile?.first_name && senderProfile?.last_name
-        ? `${senderProfile.first_name} ${senderProfile.last_name}`
-        : senderProfile?.username || 'Someone';
-
       // Prepare message preview
       let messagePreview = message.content;
       if (message.message_type === 'image') {
@@ -579,46 +573,27 @@ export class MessagingService {
         messagePreview = messagePreview.substring(0, 50) + '...';
       }
 
-      // Send notifications to each recipient
+      // Send notification to each recipient via the full pipeline.
+      // notify-message → notify-dispatch handles:
+      //   1. Insert into `notifications` table (in-app notification via Realtime)
+      //   2. Push notification via OneSignal (with deepLink for tap-to-navigate)
+      //   3. Notification preference checks + quiet hours
+      //   4. Idempotency (2-min bucket prevents duplicate notifications)
       for (const participant of participants) {
-        const recipientId = participant.user_id;
-
-        // Send push notification via edge function (OneSignal handles delivery)
-        await this.sendEdgeFunctionNotification(recipientId, senderName, messagePreview, conversationId, senderProfile?.email);
+        supabase.functions.invoke('notify-message', {
+          body: {
+            type: 'direct_message',
+            senderId,
+            conversationId,
+            recipientId: participant.user_id,
+            messagePreview,
+          },
+        }).catch((err) =>
+          console.log('DM notification error (non-critical):', err)
+        );
       }
     } catch (error) {
       console.error('Error sending message notifications:', error);
-    }
-  }
-
-  /**
-   * Send push notification to recipient via edge function
-   * (Edge function now sends push notifications — email was removed in auth simplification)
-   */
-  private async sendEdgeFunctionNotification(
-    recipientId: string,
-    senderName: string,
-    messagePreview: string,
-    conversationId: string
-  ): Promise<void> {
-    try {
-      // Call Supabase Edge Function to send push notification.
-      // The edge function looks up the push token internally — no email lookup needed here.
-      const { error } = await supabase.functions.invoke('send-message-email', {
-        body: {
-          recipientId,
-          senderName,
-          messagePreview,
-          conversationId,
-        },
-      });
-
-      if (error) {
-        console.log('Push notification via Edge Function not available:', error.message);
-      }
-    } catch (error) {
-      // Silently fail — push notifications are non-critical
-      console.log('Push notification error (non-critical):', error);
     }
   }
 }

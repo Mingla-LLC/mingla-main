@@ -66,7 +66,7 @@ function generateStrollTimeline(
       title: 'Walk: Scenic Route',
       description: 'Enjoy a leisurely walk through the neighborhood, park, or waterfront',
       duration: '~30 min',
-      icon: 'walk',
+      icon: 'walk-outline',
     },
     {
       id: '3',

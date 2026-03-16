@@ -955,6 +955,20 @@ export function useAppHandlers(state: any) {
             });
         }
 
+        // Notify other participants that a card was saved (fire-and-forget)
+        if (savedCardData?.id) {
+          import('../services/boardNotificationService').then(({ notifyCardSaved }) => {
+            notifyCardSaved({
+              sessionId: sessionId!,
+              sessionName: currentSession.name || 'Session',
+              userId: user.id,
+              userName: profile?.display_name || profile?.first_name || 'Someone',
+              savedCardId: savedCardData.id,
+              cardName: card.title,
+            });
+          }).catch(() => {});
+        }
+
         // Invalidate savedCards query to trigger a refetch
         queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
 
@@ -972,6 +986,32 @@ export function useAppHandlers(state: any) {
         // IMPORTANT: Pass explicit source="solo" to ensure we use the current mode
         // Don't rely on card.source which might be stale from when card was created
         await savedCardsService.saveCard(user.id, card, "solo");
+
+        // Notify paired users about the save (fire-and-forget)
+        supabase
+          .from('pairings')
+          .select('user_a_id, user_b_id')
+          .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
+          .then(({ data: pairings }) => {
+            if (!pairings || pairings.length === 0) return;
+            for (const pairing of pairings) {
+              const partnerId = pairing.user_a_id === user.id
+                ? pairing.user_b_id
+                : pairing.user_a_id;
+              const uA = user.id < partnerId ? user.id : partnerId;
+              const uB = user.id < partnerId ? partnerId : user.id;
+              supabase.functions.invoke('notify-pair-activity', {
+                body: {
+                  type: 'paired_user_saved_card',
+                  pairId: `${uA}:${uB}`,
+                  actorId: user.id,
+                  recipientId: partnerId,
+                  cardId: card.id,
+                  cardName: card.title,
+                },
+              }).catch(() => {});
+            }
+          });
 
         // Invalidate savedCards query to trigger a refetch
         queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });

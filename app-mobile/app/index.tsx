@@ -124,6 +124,7 @@ function AppContent() {
     setShareData,
     currentMode,
     setCurrentMode,
+    initialSessionId,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
@@ -138,6 +139,8 @@ function AppContent() {
     setNotificationsEnabled,
     activityNavigation,
     setActivityNavigation,
+    deepLinkParams,
+    setDeepLinkParams,
     userIdentity,
     setUserIdentity,
     accountPreferences,
@@ -170,7 +173,18 @@ function AppContent() {
     setOnboardingData,
   } = state;
 
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Seed from storage so the pill bar highlights immediately on first render.
+  // initialSessionId is loaded from AsyncStorage in AppStateManager alongside currentMode.
+  // useState only captures the initial value at first render; the effect below syncs
+  // the stored value once it arrives (it's null until AsyncStorage resolves).
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(
+    initialSessionId
+  );
+  useEffect(() => {
+    if (initialSessionId !== null && currentSessionId === null) {
+      setCurrentSessionId(initialSessionId);
+    }
+  }, [initialSessionId, currentSessionId]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
@@ -325,11 +339,26 @@ function AppContent() {
           setCurrentPage: setCurrentPage as (page: string) => void,
           setBoardViewSessionId,
           setShowPaywall: (show: boolean) => setShowPaywall(show),
+          setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
         });
       } else if (navigationTarget) {
         // Fallback for old push format
         setCurrentPage(navigationTarget as any);
       }
+    }
+
+    /**
+     * Resolve entity ID from push data. Push payloads include the full
+     * notification data JSONB plus `notificationId` and `type` added by
+     * notify-dispatch. We check the type-specific key first, then fall
+     * back to `relatedId` (always populated by notify-dispatch).
+     */
+    function resolveEntityId(data: Record<string, unknown>, ...keys: string[]): string {
+      for (const key of keys) {
+        const val = data[key];
+        if (typeof val === 'string' && val) return val;
+      }
+      return '';
     }
 
     /** Handle push accept button (from system tray action) */
@@ -340,7 +369,7 @@ function AppContent() {
       try {
         switch (type) {
           case 'friend_request_received': {
-            const requestId = data.requestId as string;
+            const requestId = resolveEntityId(data, 'requestId', 'relatedId');
             if (requestId) {
               await supabase.rpc('accept_friend_request_atomic', {
                 p_request_id: requestId,
@@ -349,24 +378,26 @@ function AppContent() {
             break;
           }
           case 'pair_request_received': {
+            const requestId = resolveEntityId(data, 'requestId', 'relatedId');
             const { acceptPairRequest: acceptPairSvc } = await import('../src/services/pairingService');
-            await acceptPairSvc(data.requestId as string);
+            await acceptPairSvc(requestId);
             break;
           }
           case 'collaboration_invite_received': {
-            // Use the full shared service — handles participant upsert, session activation, board creation
+            const inviteId = resolveEntityId(data, 'inviteId', 'relatedId');
             const { acceptCollaborationInvite } = await import('../src/services/collaborationInviteService');
             await acceptCollaborationInvite({
               userId: userIdRef.current!,
-              inviteId: data.inviteId as string,
+              inviteId,
             });
             break;
           }
           case 'link_request_received': {
+            const linkId = resolveEntityId(data, 'linkId', 'relatedId');
             await supabase
               .from('link_requests')
               .update({ status: 'accepted' })
-              .eq('id', data.linkId as string);
+              .eq('id', linkId);
             break;
           }
         }
@@ -387,7 +418,7 @@ function AppContent() {
       try {
         switch (type) {
           case 'friend_request_received': {
-            const requestId = data.requestId as string;
+            const requestId = resolveEntityId(data, 'requestId', 'relatedId');
             if (requestId) {
               await supabase
                 .from('friend_requests')
@@ -397,24 +428,26 @@ function AppContent() {
             break;
           }
           case 'pair_request_received': {
+            const requestId = resolveEntityId(data, 'requestId', 'relatedId');
             const { declinePairRequest: declinePairSvc } = await import('../src/services/pairingService');
-            await declinePairSvc(data.requestId as string);
+            await declinePairSvc(requestId);
             break;
           }
           case 'collaboration_invite_received': {
-            // Use the full shared service for decline as well
+            const inviteId = resolveEntityId(data, 'inviteId', 'relatedId');
             const { declineCollaborationInvite } = await import('../src/services/collaborationInviteService');
             await declineCollaborationInvite({
               userId: userIdRef.current!,
-              inviteId: data.inviteId as string,
+              inviteId,
             });
             break;
           }
           case 'link_request_received': {
+            const linkId = resolveEntityId(data, 'linkId', 'relatedId');
             await supabase
               .from('link_requests')
               .update({ status: 'declined' })
-              .eq('id', data.linkId as string);
+              .eq('id', linkId);
             break;
           }
         }
@@ -426,22 +459,77 @@ function AppContent() {
       }
     }
 
-    // Navigation targets per notification type (fallback for old push format)
+    // Navigation targets per notification type (fallback when deepLink is absent).
+    // Every type allowed through the foreground handler (MESSAGE_TYPES below)
+    // MUST have an entry here so tapping the push always lands somewhere.
+    // Fallback navigation map — used when a push notification's deepLink is
+    // absent. Every notification type that could arrive as a push MUST have
+    // an entry here so tapping it always lands somewhere meaningful.
     const NAV_TARGETS: Record<string, string> = {
+      // Social
+      friend_request_received: "connections",
+      friend_request_accepted: "connections",
+      friend_request: "connections", // legacy
+      friend_accepted: "connections", // legacy
+      friend_joined_mingla: "connections",
+      pair_request_received: "discover",
+      pair_request_accepted: "discover",
+      paired_user_saved_card: "discover",
+      paired_user_visited: "discover",
+      link_request_received: "connections",
+      link_request_accepted: "connections",
+      // Collaboration / Sessions
       collaboration_invite_received: "home",
+      collaboration_invite_accepted: "home",
+      collaboration_invite_declined: "home",
       collaboration_invite_response: "home",
       collaboration_invite_sent: "home",
-      friend_request: "connections",
-      friend_accepted: "connections",
+      session_member_joined: "home",
+      session_member_left: "home",
+      board_card_saved: "home",
+      board_card_voted: "home",
+      board_card_rsvp: "home",
+      // DM notification types
+      direct_message_received: "connections",
+      message: "connections", // legacy type from send-message-email
+      // Board message types
+      board_message_received: "home",
+      board_message_mention: "home",
+      board_card_message: "home",
+      // Lifecycle
+      welcome: "home",
+      trial_ending: "home",
+      re_engagement: "home",
+      re_engagement_3d: "home",
+      re_engagement_7d: "home",
+      weekly_digest: "home",
+      // Calendar
+      calendar_reminder_tomorrow: "likes",
+      calendar_reminder_today: "likes",
+      // Referral
+      referral_credited: "home",
+      // Feedback
+      visit_feedback_prompt: "likes",
+      person_experiences_ready: "home",
+      voice_review_processed: "home",
     };
 
-    // Foreground: push arrives while app is open — suppress system tray.
-    // Do NOT navigate — Realtime delivers the in-app notification.
-    // Navigation only happens via onNotificationClicked (background/killed tap).
-    const removeForeground = onForegroundNotification((_data, prevent) => {
-      if (userIdRef.current) {
-        prevent(); // Suppress system tray — Realtime delivers in-app
+    // Foreground: push arrives while app is open.
+    // For DM notifications: let the system tray show the push so the user
+    // sees it even if they're on a different tab. The notification center
+    // also receives an in-app entry via Realtime (notifications table INSERT).
+    // For non-DM notifications: suppress system tray — Realtime delivers in-app.
+    const MESSAGE_TYPES = new Set(['direct_message_received', 'message', 'board_message_received', 'board_message_mention', 'board_card_message']);
+    const removeForeground = onForegroundNotification((data, prevent) => {
+      if (!userIdRef.current) return;
+
+      const notifType = data.type as string | undefined;
+      if (notifType && MESSAGE_TYPES.has(notifType)) {
+        // Let message pushes show in system tray — user wants to see them
+        return;
       }
+      // Suppress non-message pushes — Realtime delivers in-app notification
+      prevent();
     });
 
     // Background: user taps a push notification
@@ -576,6 +664,7 @@ function AppContent() {
         setCurrentPage: setCurrentPage as (page: string) => void,
         setBoardViewSessionId,
         setShowPaywall: (show: boolean) => setShowPaywall(show),
+        setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
       });
       pendingDeepLinkRef.current = null;
     }
@@ -769,6 +858,7 @@ function AppContent() {
         setCurrentPage: setCurrentPage as (page: string) => void,
         setBoardViewSessionId,
         setShowPaywall: (show: boolean) => setShowPaywall(show),
+        setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
       });
       return;
     }
@@ -1439,47 +1529,52 @@ function AppContent() {
   }, [isAuthenticated, user?.id]);
 
 
-  // Get session ID when in collaboration mode
+  // Verify / resolve session ID when in collaboration mode.
+  // The stored sessionId (via initialSessionId) gives instant pill highlighting;
+  // this effect confirms it against the database and corrects if stale.
+  // The `cancelled` flag prevents a slow DB response from overwriting a mode
+  // switch the user made while the request was in-flight.
   useEffect(() => {
+    let cancelled = false;
+
     const getSessionId = async () => {
-      // Check if solo mode is persisted in storage first
-      try {
-        const storedMode = await AsyncStorage.getItem("mingla_last_mode");
-        if (storedMode) {
-          const parsedMode = JSON.parse(storedMode);
-          if (parsedMode === "solo") {
-            // Solo mode is persisted, return early without fetching from database
-            setCurrentSessionId(null);
-            return;
-          }
-        }
-      } catch (error) {
-        console.error("Error checking last mode storage:", error);
+      if (currentMode === "solo" || currentMode === null) {
+        setCurrentSessionId(null);
+        return;
       }
 
-      if (currentMode !== "solo" && user?.id) {
-        // Try to get from active session
-        const activeSession = await SessionService.getActiveSession(user.id);
-        if (activeSession) {
-          setCurrentSessionId(activeSession.sessionId);
-        } else {
-          // Fallback: find session by name
-          const { data: sessions } = await supabase
-            .from("collaboration_sessions")
-            .select("id")
-            .eq("name", currentMode)
-            .limit(1);
-
-          if (sessions && sessions.length > 0) {
-            setCurrentSessionId(sessions[0].id);
-          }
-        }
-      } else {
+      if (!user?.id) {
         setCurrentSessionId(null);
+        return;
+      }
+
+      // Verify against database
+      const activeSession = await SessionService.getActiveSession(user.id);
+      if (cancelled) return;
+
+      if (activeSession) {
+        setCurrentSessionId(activeSession.sessionId);
+      } else {
+        // Fallback: find session by name
+        const { data: sessions } = await supabase
+          .from("collaboration_sessions")
+          .select("id")
+          .eq("name", currentMode)
+          .limit(1);
+
+        if (cancelled) return;
+
+        if (sessions && sessions.length > 0) {
+          setCurrentSessionId(sessions[0].id);
+        } else {
+          // Session no longer exists — fall back to solo
+          setCurrentSessionId(null);
+        }
       }
     };
 
     getSessionId();
+    return () => { cancelled = true; };
   }, [currentMode, user?.id]);
 
   // Show loading while checking authentication status

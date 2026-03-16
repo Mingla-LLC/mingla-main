@@ -440,7 +440,7 @@ export class RealtimeService {
           );
         }
       )
-      // Main board messages
+      // Main board messages (postgres_changes — fallback if broadcast is missed)
       .on(
         "postgres_changes",
         {
@@ -454,6 +454,14 @@ export class RealtimeService {
           dispatch('onMessage', payload.new);
         }
       )
+      // Main board messages (broadcast — instant delivery, primary path)
+      .on("broadcast", { event: "board_message" }, (envelope: any) => {
+        const data = envelope?.payload ?? envelope;
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast board_message`, { id: data?.id });
+        if (data?.id) {
+          dispatch('onMessage', data);
+        }
+      })
       // Card-specific messages
       .on(
         "postgres_changes",
@@ -487,13 +495,17 @@ export class RealtimeService {
         }
       )
       // Typing indicators via broadcast
-      .on("broadcast", { event: "typing_start" }, (payload) => {
-        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_start`, { userId: payload.userId });
-        dispatch('onTypingStart', payload.userId, payload.savedCardId);
+      // NOTE: Supabase broadcast callbacks receive the full envelope { event, type, payload }.
+      // The actual data we sent lives inside `envelope.payload`, not on the envelope itself.
+      .on("broadcast", { event: "typing_start" }, (envelope: any) => {
+        const data = envelope?.payload ?? envelope;
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_start`, { userId: data.userId });
+        dispatch('onTypingStart', data.userId, data.savedCardId);
       })
-      .on("broadcast", { event: "typing_stop" }, (payload) => {
-        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_stop`, { userId: payload.userId });
-        dispatch('onTypingStop', payload.userId, payload.savedCardId);
+      .on("broadcast", { event: "typing_stop" }, (envelope: any) => {
+        const data = envelope?.payload ?? envelope;
+        if (__DEV__) logger.realtime(`${sessionId} | broadcast typing_stop`, { userId: data.userId });
+        dispatch('onTypingStop', data.userId, data.savedCardId);
       })
       // Participants
       .on(
@@ -711,26 +723,29 @@ export class RealtimeService {
   // ===========================================
 
   /**
-   * Send message to board session (main discussion)
+   * Send message to board session (main discussion).
+   * Broadcasts the full message object so other participants receive it instantly
+   * without waiting for postgres_changes.
    */
   sendBoardMessage(
     sessionId: string,
     message: {
+      id: string;
+      session_id: string;
+      user_id: string;
       content: string;
-      mentions?: string[];
-      replyToId?: string;
+      mentions?: string[] | null;
+      reply_to_id?: string | null;
+      created_at: string;
+      updated_at: string;
     }
   ) {
     const channel = this.channels.get(`board_session:${sessionId}`);
     if (channel) {
-      // Message is saved to DB via API, this just broadcasts for optimistic updates
       channel.send({
         type: "broadcast",
-        event: "message_sent",
-        payload: {
-          ...message,
-          timestamp: new Date().toISOString(),
-        },
+        event: "board_message",
+        payload: message,
       });
     } else {
       this.queueAction(sessionId, "send_message", message);

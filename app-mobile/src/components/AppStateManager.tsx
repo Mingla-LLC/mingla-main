@@ -146,6 +146,9 @@ export function useAppState() {
   const [currentMode, setCurrentModeState] = useState<"solo" | string | null>(
     null
   );
+  // Session ID loaded from storage alongside currentMode — gives index.tsx an
+  // immediate value so the pill bar highlights correctly on first render.
+  const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
 
   // Wrapper to update currentMode and persist to storage
   const setCurrentMode = (mode: "solo" | string, sessionId?: string | null) => {
@@ -180,6 +183,10 @@ export function useAppState() {
     activeTab?: "saved" | "boards" | "calendar";
     discussionTab?: string;
   } | null>(null);
+
+  // Deep link params forwarded from notification taps / push clicks.
+  // Consumed once by the target page, then cleared.
+  const [deepLinkParams, setDeepLinkParams] = useState<Record<string, string> | null>(null);
 
   const [userIdentity, setUserIdentity] = useState<UserIdentity>({
     firstName: "",
@@ -367,17 +374,24 @@ export function useAppState() {
       // the previous user's real data during the brief window before fresh data loads.
       setBoardsSessions(DEFAULT_BOARDS_SESSIONS);
       setIsLoadingBoards(false);
+      // Clear stored mode/session seed so the next user doesn't inherit
+      // the previous user's pill-bar state during the brief pre-DB-verify window.
+      setInitialSessionId(null);
+      setCurrentModeState(null);
     }
   }, [user]);
 
-  // Initialize mode from storage on mount
+  // Initialize mode AND session ID from storage on mount
   useEffect(() => {
     const initializeMode = async () => {
       const stored = await safeAsyncStorageGet("mingla_last_mode", "solo");
       // Handle both old format (string) and new format (object)
       const storedMode =
         typeof stored === "string" ? stored : stored?.mode || "solo";
+      const storedSessionId =
+        typeof stored === "object" ? stored?.sessionId ?? null : null;
       setCurrentModeState(storedMode);
+      setInitialSessionId(storedSessionId);
     };
     initializeMode();
   }, []); // Run once on mount
@@ -833,6 +847,7 @@ export function useAppState() {
     setShareData,
     currentMode,
     setCurrentMode,
+    initialSessionId,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
@@ -847,6 +862,8 @@ export function useAppState() {
     setNotificationsEnabled,
     activityNavigation,
     setActivityNavigation,
+    deepLinkParams,
+    setDeepLinkParams,
     userIdentity,
     setUserIdentity,
     accountPreferences,

@@ -173,6 +173,27 @@ export async function acceptCollaborationInvite(
     console.error('[collaborationInviteService] Error adding participant:', participantError);
   }
 
+  // Notify other participants that this user joined (fire-and-forget).
+  // Uses dynamic import to avoid circular dependencies.
+  import('./boardNotificationService')
+    .then(({ notifyMemberJoined }) => {
+      // Get the user's display name for the notification
+      supabase
+        .from('profiles')
+        .select('display_name, first_name')
+        .eq('id', userId)
+        .maybeSingle()
+        .then(({ data: profile }) => {
+          notifyMemberJoined({
+            sessionId,
+            sessionName,
+            userId,
+            userName: profile?.display_name || profile?.first_name || 'Someone',
+          });
+        });
+    })
+    .catch(() => {});
+
   // ── Step 4: Activate session if ≥2 accepted ─────────────────────────────
 
   let boardId: string | null = null;

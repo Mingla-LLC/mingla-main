@@ -239,6 +239,7 @@ serve(async (req) => {
             data: {
               deepLink: "mingla://connections?tab=requests",
               type: "friend_request",
+              requestId: friendRequestId,
               senderId,
             },
             actorId: senderId,
@@ -538,6 +539,7 @@ serve(async (req) => {
             data: {
               deepLink: "mingla://connections?tab=requests",
               type: "friend_request",
+              requestId: friendRequestId,
               senderId,
             },
             actorId: senderId,

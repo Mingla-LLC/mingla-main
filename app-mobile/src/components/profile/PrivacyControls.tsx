@@ -138,7 +138,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = ({ onClose }) => 
       'dining': 'restaurant',
       'play_move': 'fitness',
       'creative': 'brush',
-      'stroll': 'walk',
+      'stroll': 'walk-outline',
       'screen_relax': 'tv',
       'casual_eats': 'fast-food',
       'freestyle': 'sparkles'

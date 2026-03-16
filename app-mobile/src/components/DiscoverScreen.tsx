@@ -2207,7 +2207,7 @@ export default function DiscoverScreen({
       placeId: card.placeId || card.id,
       title: card.title,
       category: card.experienceType,
-      categoryIcon: "walk",
+      categoryIcon: "walk-outline",
       description: card.description,
       fullDescription: card.description,
       image: card.image,

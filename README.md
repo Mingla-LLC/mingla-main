@@ -178,7 +178,8 @@ Pairing replaces the legacy Saved People system. Real behavior data (swipes, sav
 ### Connect Page
 
 - **Friends Management Modal** — two-tab modal (Friends with search + dropdown menu, Requests with accept/decline)
-- **Real-Time Messaging** — dual-channel delivery (Supabase broadcast + postgres_changes backup), deduplication, optimistic messages
+- **Real-Time Messaging** — dual-channel delivery (Supabase broadcast + postgres_changes backup), deduplication, optimistic messages, push notifications + in-app notifications for incoming DMs via `notify-message` → `notify-dispatch` pipeline
+- **Offline-resilient chat** — chats open instantly from AsyncStorage-persisted message cache when offline, with background refresh on reconnection. Block checks degrade gracefully (default to unblocked). Friend-picker flow falls back to cached conversations when `getOrCreateDirectConversation` fails. Amber offline banner in chat view.
 - **Compact Chat UI** — sender grouping, timestamp pills, read receipts (sent/delivered/read)
 - **Presence & Typing** — realtime online/offline status with 30-second heartbeat, typing indicators via broadcast
 - **Inverted FlatList** — standard chat pattern
@@ -420,12 +421,12 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `send-friend-accepted-notification` | Friend acceptance notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `send-collaboration-invite` | Session invite notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `notify-invite-response` | Invite response notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `send-message-email` | Push notification for new direct messages |
+| `send-message-email` | Legacy push notification for direct messages (superseded by `notify-message` pipeline) |
 | `send-pair-request` | Handles all 3 pairing tiers with Elite-only tier gating — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `notify-pair-request-visible` | Hidden pair request revealed notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
 | `process-referral` | Referral credit reconciliation + push notification |
 | `notify-dispatch` | Unified notification dispatch: preference checks, quiet hours (timezone-aware 10 PM - 8 AM), rate limiting, idempotency, push delivery via OneSignal, and server-side `notifications` table insert for Realtime sync |
-| `notify-message` | DM and board message notifications with rate-limited batching to prevent notification storms during active conversations |
+| `notify-message` | DM and board message notifications routed through `notify-dispatch` for full notification pipeline (in-app notification via Realtime, push via OneSignal, preference checks, quiet hours, rate-limited batching) |
 | `notify-calendar-reminder` | Cron-driven calendar reminders: tomorrow preview, day-of reminder, and post-event feedback prompt |
 | `notify-lifecycle` | Cron-driven lifecycle notifications: onboarding incomplete nudge, trial ending warning, re-engagement after inactivity, weekly digest |
 | `notify-pair-activity` | Paired user activity notifications: partner saved a card, partner visited a place |
@@ -560,10 +561,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Notifications System V2** — Server-side authoritative notification system with 30+ types, unified `notify-dispatch` edge function (preference enforcement, quiet hours, rate limiting, idempotency), redesigned notification center with filter tabs and action buttons, Supabase Realtime subscription for instant delivery, deep link navigation from push and in-app taps, and cron-driven calendar reminders and lifecycle nudges. 6 new edge functions, 3 new migrations, `useNotifications` hook, `deepLinkService`, and `notifications` + `notification_preferences` tables.
-- **Preference Intelligence System** — Multi-dimensional preference learning (category, price tier, time of day, distance), visit confirmation ("I went here"), paired saves/visits sharing, bilateral matching toggle, learning indicator toasts, and personalized badge.
-- **Monetization tier gating** — Full feature gating across Free/Pro/Elite tiers for curated cards, starting point, swipes, pairing, and collaboration sessions with dual-layer enforcement (client + server), custom branded paywall, and RevenueCat integration
-- **Performance overhaul** — Zero-wait app experience via stale-while-revalidate caching, adjacent-screen prefetching, image prefetching, edge function warming, 3-tier resume debounce, server-side realtime filtering, and 40-60% smaller card payloads
+- **Offline-resilient chat** — Chats now open instantly when offline by loading from AsyncStorage-persisted message cache. Messages persist across sessions via a `useEffect` that auto-syncs the in-memory cache to AsyncStorage on every update. Block checks degrade gracefully (default to unblocked on network failure). Friend-picker flow falls back to cached conversations. Auto-refresh on reconnection. Amber "You're offline" banner in MessageInterface.
+- **DM notification pipeline fix** — Direct message notifications now route through the full `notify-message` → `notify-dispatch` pipeline instead of the legacy `send-message-email` function. This means DMs now create in-app notifications (via `notifications` table + Realtime), send push notifications with correct deep links for tap-to-navigate, and respect user notification preferences and quiet hours.
+- **Chat badge fix** — Unread message badge on the Chats tab now clears immediately when messages are read, instead of staying stale. Fixed stale-closure bug where `markAsRead` was reading empty cached state, and fixed `unread_count` inflation from messages arriving while viewing a chat.
+- **Foreground push for messages** — Message-type push notifications (DMs, board messages) now show in the system tray even when the app is in the foreground, ensuring users always see incoming messages.
+- **Notifications System V2** — Server-side authoritative notification system with 30+ types, unified `notify-dispatch` edge function (preference enforcement, quiet hours, rate limiting, idempotency), redesigned notification center with filter tabs and action buttons, Supabase Realtime subscription for instant delivery, deep link navigation from push and in-app taps, and cron-driven calendar reminders and lifecycle nudges.
 
 ---
 

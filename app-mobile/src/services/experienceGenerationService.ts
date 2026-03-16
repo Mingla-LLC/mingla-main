@@ -700,7 +700,7 @@ export class ExperienceGenerationService {
    * Handles variations like "stroll", "Stroll", "take-a-stroll", "Take a Stroll"
    */
   private static getCategoryIcon(category: string): string {
-    if (!category) return "walk";
+    if (!category) return "walk-outline";
 
     // Normalize the category string: lowercase, replace hyphens with spaces, trim, remove extra spaces
     const normalized = category
@@ -722,7 +722,7 @@ export class ExperienceGenerationService {
       "creative & arts": "color-palette-outline",
       wellness: "body-outline",
       // v1 backwards compat
-      stroll: "walk",
+      stroll: "walk-outline",
       sip: "cafe",
       chill: "cafe",
       casual: "restaurant",
@@ -765,7 +765,7 @@ export class ExperienceGenerationService {
       Wellness: "body-outline",
       Picnic: "basket-outline",
       // v1 backwards compat
-      Stroll: "walk",
+      Stroll: "walk-outline",
       "Sip & Chill": "cafe",
       "Screen & Relax": "film",
       Creative: "brush",

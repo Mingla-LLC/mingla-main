@@ -189,11 +189,16 @@ export class BoardMessageService {
         profiles: profile || null,
       };
 
-      // Broadcast message
+      // Broadcast full message so other participants see it instantly
       realtimeService.sendBoardMessage(sessionId, {
+        id: message.id,
+        session_id: message.session_id,
+        user_id: message.user_id,
         content: message.content,
-        mentions: message.mentions || [],
-        replyToId: message.reply_to_id,
+        mentions: message.mentions || null,
+        reply_to_id: message.reply_to_id || null,
+        created_at: message.created_at,
+        updated_at: message.updated_at,
       });
 
       // Mark as read by sender
@@ -721,40 +726,25 @@ export class BoardMessageService {
   }
 
   /**
-   * Send notifications for board messages
+   * Send mention notifications via the notify-message → notify-dispatch pipeline.
+   * Creates in-app notification records AND sends push notifications in one call.
+   * Only fires for @mentioned users — general board message notifications are
+   * handled separately by notify-message's board_message type.
    */
   private static async sendBoardMessageNotifications(
     sessionId: string,
     senderId: string,
-    message: any,
-    messageWithProfile: BoardMessage
+    message: { id: string; content: string; mentions?: string[] | null },
+    _messageWithProfile: BoardMessage
   ): Promise<void> {
     try {
-      // Get session participants (excluding sender)
-      const { data: participants, error: participantsError } = await supabase
-        .from('session_participants')
-        .select('user_id')
-        .eq('session_id', sessionId)
-        .neq('user_id', senderId)
-        .eq('has_accepted', true);
+      const mentionedUserIds: string[] = Array.isArray(message.mentions)
+        ? message.mentions.filter((id: string) => id !== senderId)
+        : [];
 
-      if (participantsError || !participants || participants.length === 0) {
-        return;
-      }
+      if (mentionedUserIds.length === 0) return;
 
-      // Get sender profile
-      const senderName = messageWithProfile.profiles?.display_name ||
-        (messageWithProfile.profiles?.first_name && messageWithProfile.profiles?.last_name
-          ? `${messageWithProfile.profiles.first_name} ${messageWithProfile.profiles.last_name}`
-          : messageWithProfile.profiles?.username || 'Someone');
-
-      // Prepare message preview
-      let messagePreview = message.content;
-      if (messagePreview.length > 50) {
-        messagePreview = messagePreview.substring(0, 50) + '...';
-      }
-
-      // Get session name
+      // Get session name for the notification copy
       const { data: session } = await supabase
         .from('collaboration_sessions')
         .select('name')
@@ -763,50 +753,33 @@ export class BoardMessageService {
 
       const sessionName = session?.name || 'Board';
 
-      // Send mention notifications via edge function (OneSignal handles push delivery)
-      for (const participant of participants) {
-        const recipientId = participant.user_id;
-        const isMentioned = message.mentions && Array.isArray(message.mentions) && message.mentions.includes(recipientId);
-
-        if (isMentioned) {
-          await this.sendMentionEmailNotification(recipientId, senderName, messagePreview, sessionId, sessionName);
-        }
+      // Truncate preview client-side to avoid sending huge payloads
+      let messagePreview = message.content || '';
+      if (messagePreview.length > 100) {
+        messagePreview = messagePreview.substring(0, 99) + '\u2026';
       }
-    } catch (error) {
-      console.error('Error sending board message notifications:', error);
-    }
-  }
 
-  /**
-   * Send push notification for mentions via edge function
-   * (Edge function sends push notification — email was removed in auth simplification)
-   */
-  private static async sendMentionEmailNotification(
-    recipientId: string,
-    senderName: string,
-    messagePreview: string,
-    sessionId: string,
-    sessionName: string
-  ): Promise<void> {
-    try {
-      // Call Supabase Edge Function to send push notification.
-      // The edge function looks up the push token internally — no email lookup needed here.
-      const { error } = await supabase.functions.invoke('send-message-email', {
+      // Single call to notify-message with board_mention type.
+      // The edge function resolves sender profile, dispatches to notify-dispatch
+      // per mentioned user, which handles: in-app record, preferences, quiet hours,
+      // rate limiting, idempotency, and push delivery via OneSignal.
+      const { error } = await supabase.functions.invoke('notify-message', {
         body: {
-          recipientId,
-          senderName,
-          messagePreview: `${senderName} mentioned you: ${messagePreview}`,
-          conversationId: sessionId,
-          isMention: true,
+          type: 'board_mention',
+          senderId,
+          sessionId,
           sessionName,
+          messageId: message.id,
+          messagePreview,
+          mentionedUserIds,
         },
       });
 
       if (error) {
-        console.log('Push notification via Edge Function not available:', error.message);
+        console.warn('notify-message (board_mention) failed:', error.message || error);
       }
     } catch (error) {
-      console.log('Push notification error (non-critical):', error);
+      console.warn('Board mention notification error (non-critical):', error);
     }
   }
 }

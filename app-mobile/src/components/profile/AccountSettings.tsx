@@ -159,7 +159,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
       .from('notification_preferences')
       .select('*')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
       .then(({ data, error }) => {
         if (data && !error) {
           setNotifPrefs({
@@ -181,10 +181,14 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
     const prev = { ...notifPrefs };
     setNotifPrefs((p) => ({ ...p, [key]: value }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // UPSERT: creates the row if it doesn't exist (e.g., users who signed up
+    // before the auto-create trigger was deployed). ON CONFLICT updates the field.
     const { error } = await supabase
       .from('notification_preferences')
-      .update({ [key]: value, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id);
+      .upsert(
+        { user_id: user.id, [key]: value, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      );
     if (error) {
       setNotifPrefs(prev);
       Alert.alert("Error", "Failed to update notification setting.");
@@ -198,8 +202,10 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { error } = await supabase
       .from('notification_preferences')
-      .update({ dm_bypass_quiet_hours: value, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id);
+      .upsert(
+        { user_id: user.id, dm_bypass_quiet_hours: value, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      );
     if (error) {
       setDmBypassQuietHours(prev);
       Alert.alert("Error", "Failed to update quiet hours setting.");

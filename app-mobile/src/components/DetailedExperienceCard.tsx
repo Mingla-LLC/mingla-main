@@ -199,7 +199,7 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
       case 'dining':
         return 'wine';
       case 'stroll':
-        return 'walk';
+        return 'walk-outline';
       case 'sip':
         return 'cafe';
       case 'creative':

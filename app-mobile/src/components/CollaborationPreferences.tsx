@@ -572,6 +572,7 @@ export default function CollaborationPreferences({
 
       // Invalidate TanStack Query caches to trigger refetch
       queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["session-deck"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
 

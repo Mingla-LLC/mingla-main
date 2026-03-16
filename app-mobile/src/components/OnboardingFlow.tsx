@@ -69,7 +69,6 @@ import { categories } from '../constants/categories'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
 import { LanguagePickerModal } from './onboarding/LanguagePickerModal'
-import { CountryPickerModal } from './onboarding/CountryPickerModal'
 import {
   colors,
   typography,
@@ -705,7 +704,6 @@ const OnboardingFlow = ({
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   // saving state removed — save handlers (Path A/B) deleted
-  const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
@@ -732,7 +730,6 @@ const OnboardingFlow = ({
   // ─── Reset picker modals when navigating away from details ───
   useEffect(() => {
     if (navState.subStep !== 'details') {
-      setShowCountryPicker(false)
       setShowLanguagePicker(false)
       setShowDatePicker(false)
     }
@@ -1918,18 +1915,18 @@ const OnboardingFlow = ({
           <Text style={styles.headline}>Almost done.</Text>
           <Text style={styles.body}>Just the basics. We'll handle the rest.</Text>
 
-          {/* Country */}
+          {/* Country — auto-detected from phone number, non-editable */}
           <Text style={styles.fieldLabel}>Country</Text>
-          <Pressable
-            style={styles.detailsPickerButton}
-            onPress={() => setShowCountryPicker(true)}
-          >
-            <Text style={styles.detailsPickerText}>
+          <View style={[styles.detailsPickerButton, styles.detailsPickerLocked]}>
+            <Text style={[styles.detailsPickerText, { color: colors.text.secondary }]}>
               {getCountryByCode(data.userCountry)?.flag ?? ''}{' '}
               {getCountryByCode(data.userCountry)?.name ?? data.userCountry}
             </Text>
-            <Icon name="chevron-down" size={18} color={colors.text.secondary} />
-          </Pressable>
+            <View style={styles.detailsLockedBadge}>
+              <Icon name="lock-closed" size={12} color={colors.text.tertiary} />
+              <Text style={styles.detailsLockedText}>Auto</Text>
+            </View>
+          </View>
 
           {/* Date of Birth */}
           <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Date of birth</Text>
@@ -2013,14 +2010,6 @@ const OnboardingFlow = ({
             </Text>
             <Icon name="chevron-down" size={18} color={colors.text.secondary} />
           </Pressable>
-
-          {/* Country Picker Modal */}
-          <CountryPickerModal
-            visible={showCountryPicker}
-            onClose={() => setShowCountryPicker(false)}
-            onSelect={(code) => setData((p) => ({ ...p, userCountry: code }))}
-            selectedCode={data.userCountry}
-          />
 
           {/* Language Picker Modal */}
           <LanguagePickerModal
@@ -3212,6 +3201,25 @@ const styles = StyleSheet.create({
   detailsPickerHint: {
     ...typography.sm,
     color: colors.text.secondary,
+  },
+  detailsPickerLocked: {
+    backgroundColor: colors.gray[50],
+    borderColor: colors.gray[200],
+    borderStyle: 'dashed' as const,
+  },
+  detailsLockedBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 3,
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  detailsLockedText: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium as any,
+    color: colors.text.tertiary,
   },
   // ─── Segmented Control ───
   segmentedControl: {

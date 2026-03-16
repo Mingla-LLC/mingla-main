@@ -18,6 +18,8 @@ export interface NavigationHandlers {
   setShowPreferences?: (show: boolean) => void;
   setShowPaywall?: (show: boolean) => void;
   setViewingFriendProfileId?: (id: string) => void;
+  /** Forward deep link params to the target page (tab, conversationId, etc.) */
+  setDeepLinkParams?: (params: Record<string, string>) => void;
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────
@@ -100,6 +102,13 @@ export function executeDeepLink(
   if (!action) return;
 
   const { page, params } = action;
+
+  // Forward params so target pages can react (e.g., open specific tab,
+  // scroll to message, open conversation). Without this, params parsed
+  // from deep links like mingla://connections?tab=messages were discarded.
+  if (params && Object.keys(params).length > 0 && handlers.setDeepLinkParams) {
+    handlers.setDeepLinkParams(params);
+  }
 
   switch (page) {
     case 'home':

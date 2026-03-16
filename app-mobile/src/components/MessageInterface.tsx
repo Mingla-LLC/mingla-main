@@ -94,6 +94,7 @@ interface MessageInterfaceProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
+  isOffline?: boolean;
 }
 
 export default function MessageInterface({
@@ -119,6 +120,7 @@ export default function MessageInterface({
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
+  isOffline = false,
 }: MessageInterfaceProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -757,6 +759,16 @@ export default function MessageInterface({
         </View>
       </Modal>
 
+      {/* Offline Banner */}
+      {isOffline && !isBlocked && (
+        <View style={styles.offlineBanner}>
+          <Icon name="cloud-offline-outline" size={16} color="#92400e" />
+          <Text style={styles.offlineBannerText}>
+            You're offline — showing saved messages
+          </Text>
+        </View>
+      )}
+
       {/* Blocked User Banner */}
       {isBlocked && (
         <View style={styles.blockedBanner}>
@@ -1026,6 +1038,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "white",
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fef3c7",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#fde68a",
+    gap: 6,
+  },
+  offlineBannerText: {
+    fontSize: 13,
+    color: "#92400e",
+    fontWeight: "500",
   },
   blockedBanner: {
     flexDirection: "row",

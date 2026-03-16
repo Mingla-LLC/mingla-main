@@ -119,7 +119,7 @@ const ACTIONABLE_TYPES: Record<string, { acceptLabel: string; declineLabel?: str
   pair_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
   collaboration_invite_received: { acceptLabel: 'Join', declineLabel: 'Decline' },
   link_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
-  friend_joined_mingla: { acceptLabel: 'Add Friend' },
+  friend_joined_mingla: { acceptLabel: 'Connect' },
   trial_ending: { acceptLabel: 'Upgrade' },
   visit_feedback_prompt: { acceptLabel: 'Review' },
 };
@@ -293,30 +293,43 @@ export default function NotificationsModal({
       });
 
       try {
+        // Entity ID resolution: check data JSONB first, then fall back to the
+        // notification.related_id DB column. notify-dispatch always stores the
+        // entity ID in related_id, so this fallback ensures action buttons work
+        // even when an edge function omits the ID from the data JSONB payload
+        // (e.g., send-pair-request's friend_request_received path).
         switch (type) {
           case 'friend_request_received':
             await onAcceptFriendRequest?.(
-              (data?.requestId as string) || (data?.related_id as string) || '',
+              (data?.requestId as string) || notification.related_id || '',
               id
             );
             break;
           case 'pair_request_received':
             await onAcceptPairRequest?.(
-              (data?.requestId as string) || (data?.related_id as string) || '',
+              (data?.requestId as string) || notification.related_id || '',
               id
             );
             break;
           case 'collaboration_invite_received':
             await onAcceptCollaborationInvite?.(
-              (data?.inviteId as string) || (data?.related_id as string) || '',
+              (data?.inviteId as string) || notification.related_id || '',
               id
             );
             break;
           case 'link_request_received':
             await onAcceptLinkRequest?.(
-              (data?.linkId as string) || (data?.related_id as string) || '',
+              (data?.linkId as string) || notification.related_id || '',
               id
             );
+            break;
+          case 'friend_joined_mingla':
+          case 'trial_ending':
+          case 'visit_feedback_prompt':
+            // Single-action types: mark as read, close modal, navigate
+            if (!notification.is_read) onMarkAsRead(notification.id);
+            onClose();
+            onNotificationTap(notification);
             break;
           default:
             // For single-action types, tap navigates
@@ -349,25 +362,25 @@ export default function NotificationsModal({
         switch (type) {
           case 'friend_request_received':
             await onDeclineFriendRequest?.(
-              (data?.requestId as string) || (data?.related_id as string) || '',
+              (data?.requestId as string) || notification.related_id || '',
               id
             );
             break;
           case 'pair_request_received':
             await onDeclinePairRequest?.(
-              (data?.requestId as string) || (data?.related_id as string) || '',
+              (data?.requestId as string) || notification.related_id || '',
               id
             );
             break;
           case 'collaboration_invite_received':
             await onDeclineCollaborationInvite?.(
-              (data?.inviteId as string) || (data?.related_id as string) || '',
+              (data?.inviteId as string) || notification.related_id || '',
               id
             );
             break;
           case 'link_request_received':
             await onDeclineLinkRequest?.(
-              (data?.linkId as string) || (data?.related_id as string) || '',
+              (data?.linkId as string) || notification.related_id || '',
               id
             );
             break;

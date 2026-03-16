@@ -97,6 +97,8 @@ interface RecommendationsContextType {
   isExhausted: boolean;
   isSlowBatchLoad: boolean;
   deckUIState: DeckUIState;
+  /** Aggregated travel mode from collaboration session (majority vote). null in solo mode. */
+  collabTravelMode: string | null;
 }
 
 const RecommendationsContext = createContext<
@@ -842,10 +844,14 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     const queryEnabled = Boolean(userLocation && !isWaitingForSessionResolution);
 
-    if (hasCompletedFetchForCurrentMode && completionTimeoutRef.current) {
-      clearTimeout(completionTimeoutRef.current);
-      completionTimeoutRef.current = null;
-    }
+    // NOTE: Previously had early cleanup here that cleared completionTimeoutRef
+    // when hasCompletedFetchForCurrentMode was true. Removed because it raced
+    // with the mode transition effect: both effects run in the same render,
+    // the mode transition effect sets the timeout (ref = immediate), but state
+    // updates (setHasCompletedFetchForCurrentMode(false)) are queued — so this
+    // effect still saw the OLD state (true) and killed the freshly-set timeout.
+    // The timeout is already cleared inside the shouldMarkComplete block below,
+    // which is the only correct place to clear it.
 
     if (isModeTransitioning || !hasCompletedFetchForCurrentMode) {
       const queryFinished = isDeckBatchLoaded;
@@ -859,7 +865,11 @@ export const RecommendationsProvider: React.FC<
         // Settled state: all three loading flags are false regardless of data/null.
         // This fires when location resolves to null (no error, no data) — without it
         // the spinner runs forever in that case.
-        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading);
+        // Guard: skip during mode transitions — location & preferences are already
+        // loaded from the previous mode, so this would fire before the new mode's
+        // deck query has started, dropping the loading screen prematurely and
+        // flashing an empty state before cards arrive.
+        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isDeckFetching && !isModeTransitioning);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -877,6 +887,7 @@ export const RecommendationsProvider: React.FC<
     hasCompletedFetchForCurrentMode,
     isDeckBatchLoaded,
     isDeckLoading,
+    isDeckFetching,
     deckCards.length,
     recommendations.length,
     userLocation,
@@ -1075,6 +1086,7 @@ export const RecommendationsProvider: React.FC<
     isExhausted,
     isSlowBatchLoad,
     deckUIState,
+    collabTravelMode: isCollaborationMode ? (collabDeckParams?.travelMode ?? null) : null,
   };
 
   return (

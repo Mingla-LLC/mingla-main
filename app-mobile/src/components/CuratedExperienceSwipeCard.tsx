@@ -19,11 +19,11 @@ const CURATED_ICON_MAP: Record<string, string> = {
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
-    case 'transit': return 'bus';
+    case 'transit': return 'bus-outline';
     case 'bicycling':
-    case 'biking': return 'bicycle';
+    case 'biking': return 'bicycle-outline';
     case 'walking':
-    default: return 'walk';
+    default: return 'walk-outline';
   }
 }
 

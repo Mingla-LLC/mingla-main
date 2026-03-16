@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,7 +109,10 @@ serve(async (req) => {
       );
     }
 
-    // Already credited by the trigger — send push notification if we haven't yet
+    // Already credited by the trigger — send notification via the full pipeline.
+    // notify-dispatch handles: DB row insert (in-app), preference checks, quiet
+    // hours, rate limiting, AND push delivery. Previously this called sendPush
+    // directly, which skipped all of those and left nothing in the notification center.
     const { data: referredProfile } = await adminClient
       .from("profiles")
       .select("display_name, first_name")
@@ -120,15 +122,39 @@ serve(async (req) => {
     const referredName = referredProfile?.display_name || referredProfile?.first_name || "Your friend";
 
     try {
-      await sendPush({
-        targetUserId: referrer_id,
-        title: "You earned Elite time!",
-        body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
-        data: { type: "referral_credited", referred_id },
-        androidChannelId: "referral-rewards",
-      }).catch((err) => console.warn('[process-referral] Push failed:', err));
+      const notifyUrl = `${supabaseUrl}/functions/v1/notify-dispatch`;
+      const notifyResponse = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          userId: referrer_id,
+          type: "referral_credited",
+          title: "You earned Elite time!",
+          body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
+          data: {
+            deepLink: "mingla://subscription",
+            type: "referral_credited",
+            referredId: referred_id,
+            referredName,
+          },
+          actorId: referred_id,
+          relatedId: referred_id,
+          relatedType: "referral",
+          idempotencyKey: `referral_credited:${referrer_id}:${referred_id}`,
+          pushOverrides: {
+            androidChannelId: "referral-rewards",
+          },
+        }),
+      });
+      if (!notifyResponse.ok) {
+        const errText = await notifyResponse.text().catch(() => "unknown");
+        console.warn("[process-referral] notify-dispatch returned", notifyResponse.status, errText);
+      }
     } catch (pushError) {
-      console.error("Push notification failed:", pushError);
+      console.warn("[process-referral] notify-dispatch call failed:", pushError);
     }
 
     return new Response(
