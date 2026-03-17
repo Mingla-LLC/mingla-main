@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Layers, CreditCard, Star, Database, Trash2, Edit3, Eye, EyeOff,
   Save, RefreshCw, Mic, FileText, ChevronDown, ChevronUp, AlertCircle,
-  X, Power, PowerOff,
+  X, Power, PowerOff, Download, Image, CheckCircle, XCircle, Flag,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, StatCard } from "../components/ui/Card";
@@ -16,6 +16,9 @@ import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
 import { StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
+import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -49,38 +52,6 @@ const SENTIMENT_VARIANTS = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(dateStr) {
-  if (!dateStr) return "—";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
-  });
-}
-
-function truncate(str, len = 40) {
-  if (!str) return "—";
-  return str.length > len ? str.slice(0, len) + "…" : str;
-}
-
-/** Escape LIKE/ILIKE wildcards so user input is treated literally. */
-function escapeLike(str) {
-  return str.replace(/[%_\\]/g, "\\$&");
-}
-
 function countCategoryPlaces(categoryPlaces) {
   if (!categoryPlaces || typeof categoryPlaces !== "object") return { categories: 0, places: 0 };
   const keys = Object.keys(categoryPlaces);
@@ -99,10 +70,28 @@ function renderStars(rating) {
   return "★".repeat(Math.min(n, 5)) + "☆".repeat(Math.max(5 - n, 0));
 }
 
+// ─── Thumbnail Preview Modal ─────────────────────────────────────────────────
+
+function ThumbnailPreview({ src, alt, onClose }) {
+  if (!src) return null;
+  return (
+    <Modal open={!!src} onClose={onClose} title="Image Preview" size="lg">
+      <ModalBody>
+        <div className="flex items-center justify-center">
+          <img src={src} alt={alt || "Preview"} className="max-w-full max-h-[70vh] rounded-lg object-contain" />
+        </div>
+      </ModalBody>
+    </Modal>
+  );
+}
+
 // ─── Experiences Sub-View ────────────────────────────────────────────────────
 
 function ExperiencesSubView() {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const [experiences, setExperiences] = useState([]);
   const [expCount, setExpCount] = useState(0);
   const [expPage, setExpPage] = useState(0);
@@ -121,9 +110,17 @@ function ExperiencesSubView() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Bulk action loading
+  const [bulkActioning, setBulkActioning] = useState(false);
+
+  // Thumbnail preview
+  const [previewUrl, setPreviewUrl] = useState(null);
+
   const searchTimerRef = useRef(null);
 
-  // Debounce search
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
@@ -148,13 +145,15 @@ function ExperiencesSubView() {
 
       const { data, count, error } = await query;
       if (error) throw error;
+      if (!mountedRef.current) return;
       setExperiences(data || []);
       setExpCount(count ?? 0);
     } catch (err) {
+      if (!mountedRef.current) return;
       setExpError(err.message);
       addToast({ variant: "error", title: "Failed to load experiences", description: err.message });
     } finally {
-      setExpLoading(false);
+      if (mountedRef.current) setExpLoading(false);
     }
   }, [expPage, debouncedSearch, expCategoryFilter, addToast]);
 
@@ -188,6 +187,7 @@ function ExperiencesSubView() {
       const { error } = await supabase.from("experiences").update(updates).eq("id", editingExp.id);
       if (error) throw error;
       addToast({ variant: "success", title: "Experience updated" });
+      logAdminAction("content.edit", "experience", editingExp.id, { title: updates.title });
       setEditingExp(null);
       fetchExperiences();
     } catch (err) {
@@ -205,6 +205,7 @@ function ExperiencesSubView() {
       const { error } = await supabase.from("experiences").delete().eq("id", deleteId);
       if (error) throw error;
       addToast({ variant: "success", title: "Experience deleted" });
+      logAdminAction("content.delete", "experience", deleteId);
       setDeleteId(null);
       fetchExperiences();
     } catch (err) {
@@ -214,7 +215,40 @@ function ExperiencesSubView() {
     }
   };
 
+  // Bulk actions
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const ids = [...selectedIds];
+      const { error } = await supabase.from("experiences").delete().in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} experience(s) deleted` });
+      ids.forEach(id => logAdminAction("content.delete", "experience", id));
+      setSelectedIds(new Set());
+      fetchExperiences();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk delete failed", description: err.message });
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
   const columns = [
+    {
+      key: "image_url",
+      label: "",
+      width: "50px",
+      render: (_v, row) => row.image_url ? (
+        <button onClick={() => setPreviewUrl(row.image_url)} className="cursor-pointer">
+          <img src={row.image_url} alt="" className="w-10 h-10 rounded object-cover" />
+        </button>
+      ) : (
+        <div className="w-10 h-10 rounded bg-[var(--gray-100)] flex items-center justify-center">
+          <Image className="w-4 h-4 text-[var(--color-text-muted)]" />
+        </div>
+      ),
+    },
     {
       key: "title",
       label: "Title",
@@ -297,6 +331,17 @@ function ExperiencesSubView() {
         <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">{expCount} total</span>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-[var(--color-brand-50,#fff7ed)] border border-[var(--color-brand-200)]">
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">{selectedIds.size} selected</span>
+          <Button variant="danger" size="sm" icon={Trash2} loading={bulkActioning} onClick={handleBulkDelete}>
+            Delete Selected
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+        </div>
+      )}
+
       {/* Table */}
       <SectionCard noPadding>
         {expError && !expLoading ? (
@@ -313,6 +358,19 @@ function ExperiencesSubView() {
             loading={expLoading}
             emptyIcon={Layers}
             emptyMessage="No experiences found"
+            selectable
+            selectedIds={selectedIds}
+            onSelect={(id) => {
+              setSelectedIds(prev => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id); else next.add(id);
+                return next;
+              });
+            }}
+            onSelectAll={(allSelected) => {
+              if (allSelected) setSelectedIds(new Set());
+              else setSelectedIds(new Set(experiences.map(e => e.id)));
+            }}
             pagination={{
               page: expPage,
               pageSize: PAGE_SIZE,
@@ -369,6 +427,9 @@ function ExperiencesSubView() {
           <Button variant="danger" icon={Trash2} loading={deleting} onClick={confirmDelete}>Delete</Button>
         </ModalFooter>
       </Modal>
+
+      {/* Thumbnail Preview */}
+      <ThumbnailPreview src={previewUrl} onClose={() => setPreviewUrl(null)} />
     </div>
   );
 }
@@ -377,6 +438,9 @@ function ExperiencesSubView() {
 
 function CardPoolSubView() {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const [cards, setCards] = useState([]);
   const [cardCount, setCardCount] = useState(0);
   const [cardPage, setCardPage] = useState(0);
@@ -387,6 +451,13 @@ function CardPoolSubView() {
   const [cardLoading, setCardLoading] = useState(true);
   const [cardError, setCardError] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
+
+  // Thumbnail preview
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const searchTimerRef = useRef(null);
 
@@ -405,7 +476,7 @@ function CardPoolSubView() {
     try {
       let query = supabase
         .from("card_pool")
-        .select("id, title, category, card_type, rating, review_count, popularity_score, served_count, last_served_at, is_active, price_min, price_max, lat, lng, created_at", { count: "exact" })
+        .select("id, title, category, card_type, rating, review_count, popularity_score, served_count, last_served_at, is_active, price_min, price_max, lat, lng, image_url, created_at", { count: "exact" })
         .order("popularity_score", { ascending: false, nullsFirst: false })
         .range(cardPage * PAGE_SIZE, (cardPage + 1) * PAGE_SIZE - 1);
 
@@ -416,13 +487,15 @@ function CardPoolSubView() {
 
       const { data, count, error } = await query;
       if (error) throw error;
+      if (!mountedRef.current) return;
       setCards(data || []);
       setCardCount(count ?? 0);
     } catch (err) {
+      if (!mountedRef.current) return;
       setCardError(err.message);
       addToast({ variant: "error", title: "Failed to load card pool", description: err.message });
     } finally {
-      setCardLoading(false);
+      if (mountedRef.current) setCardLoading(false);
     }
   }, [cardPage, debouncedSearch, cardTypeFilter, cardActiveFilter, addToast]);
 
@@ -434,16 +507,85 @@ function CardPoolSubView() {
       const { error } = await supabase.from("card_pool").update({ is_active: !currentlyActive }).eq("id", id);
       if (error) throw error;
       addToast({ variant: "success", title: currentlyActive ? "Card deactivated" : "Card reactivated" });
-      // Optimistic update
+      logAdminAction("content.toggle_active", "card_pool", id, { is_active: !currentlyActive });
       setCards((prev) => prev.map((c) => c.id === id ? { ...c, is_active: !currentlyActive } : c));
     } catch (err) {
       addToast({ variant: "error", title: "Toggle failed", description: err.message });
     } finally {
-      setTogglingId(null);
+      if (mountedRef.current) setTogglingId(null);
+    }
+  };
+
+  // Bulk actions
+  const handleBulkActivate = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const ids = [...selectedIds];
+      const { error } = await supabase.from("card_pool").update({ is_active: true }).in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} card(s) activated` });
+      ids.forEach(id => logAdminAction("content.toggle_active", "card_pool", id, { is_active: true }));
+      setSelectedIds(new Set());
+      fetchCards();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk activate failed", description: err.message });
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const handleBulkDeactivate = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const ids = [...selectedIds];
+      const { error } = await supabase.from("card_pool").update({ is_active: false }).in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} card(s) deactivated` });
+      ids.forEach(id => logAdminAction("content.toggle_active", "card_pool", id, { is_active: false }));
+      setSelectedIds(new Set());
+      fetchCards();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk deactivate failed", description: err.message });
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const ids = [...selectedIds];
+      const { error } = await supabase.from("card_pool").delete().in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} card(s) deleted` });
+      ids.forEach(id => logAdminAction("content.delete", "card_pool", id));
+      setSelectedIds(new Set());
+      fetchCards();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk delete failed", description: err.message });
+    } finally {
+      setBulkActioning(false);
     }
   };
 
   const columns = [
+    {
+      key: "image_url",
+      label: "",
+      width: "50px",
+      render: (_v, row) => row.image_url ? (
+        <button onClick={() => setPreviewUrl(row.image_url)} className="cursor-pointer">
+          <img src={row.image_url} alt="" className="w-10 h-10 rounded object-cover" />
+        </button>
+      ) : (
+        <div className="w-10 h-10 rounded bg-[var(--gray-100)] flex items-center justify-center">
+          <Image className="w-4 h-4 text-[var(--color-text-muted)]" />
+        </div>
+      ),
+    },
     {
       key: "title",
       label: "Title",
@@ -564,6 +706,17 @@ function CardPoolSubView() {
         <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">{cardCount} total</span>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-[var(--color-brand-50,#fff7ed)] border border-[var(--color-brand-200)]">
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">{selectedIds.size} selected</span>
+          <Button variant="secondary" size="sm" icon={Eye} loading={bulkActioning} onClick={handleBulkActivate}>Activate</Button>
+          <Button variant="secondary" size="sm" icon={EyeOff} loading={bulkActioning} onClick={handleBulkDeactivate}>Deactivate</Button>
+          <Button variant="danger" size="sm" icon={Trash2} loading={bulkActioning} onClick={handleBulkDelete}>Delete Selected</Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+        </div>
+      )}
+
       {/* Table */}
       <SectionCard noPadding>
         {cardError && !cardLoading ? (
@@ -580,6 +733,19 @@ function CardPoolSubView() {
             loading={cardLoading}
             emptyIcon={CreditCard}
             emptyMessage="No cards found"
+            selectable
+            selectedIds={selectedIds}
+            onSelect={(id) => {
+              setSelectedIds(prev => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id); else next.add(id);
+                return next;
+              });
+            }}
+            onSelectAll={(allSelected) => {
+              if (allSelected) setSelectedIds(new Set());
+              else setSelectedIds(new Set(cards.map(c => c.id)));
+            }}
             pagination={{
               page: cardPage,
               pageSize: PAGE_SIZE,
@@ -591,6 +757,9 @@ function CardPoolSubView() {
           />
         )}
       </SectionCard>
+
+      {/* Thumbnail Preview */}
+      <ThumbnailPreview src={previewUrl} onClose={() => setPreviewUrl(null)} />
     </div>
   );
 }
@@ -599,6 +768,9 @@ function CardPoolSubView() {
 
 function ReviewsSubView() {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewPage, setReviewPage] = useState(0);
@@ -611,9 +783,10 @@ function ReviewsSubView() {
   const [deletingId, setDeletingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  // Whether the join approach works — useRef to avoid re-render/double-fetch on first failure
-  const joinFailedRef = useRef(false);
+  // Moderation
+  const [moderatingId, setModeratingId] = useState(null);
 
+  const joinFailedRef = useRef(false);
   const searchTimerRef = useRef(null);
 
   useEffect(() => {
@@ -632,7 +805,6 @@ function ReviewsSubView() {
       let data, count;
 
       if (!joinFailedRef.current) {
-        // Try FK join first
         let query = supabase
           .from("place_reviews")
           .select("*, reviewer:profiles!place_reviews_user_id_fkey(display_name, email)", { count: "exact" })
@@ -644,9 +816,7 @@ function ReviewsSubView() {
 
         const result = await query;
         if (result.error) {
-          // FK join failed — fall back to separate queries (ref avoids re-render)
           joinFailedRef.current = true;
-          // Don't return, fall through to fallback below
         } else {
           data = result.data;
           count = result.count;
@@ -654,7 +824,6 @@ function ReviewsSubView() {
       }
 
       if (joinFailedRef.current || data === undefined) {
-        // Fallback: fetch reviews without join, then fetch profiles separately
         let query = supabase
           .from("place_reviews")
           .select("*", { count: "exact" })
@@ -669,29 +838,24 @@ function ReviewsSubView() {
         data = result.data || [];
         count = result.count;
 
-        // Fetch reviewer profiles
         const userIds = [...new Set(data.filter((r) => r.user_id).map((r) => r.user_id))];
         if (userIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, display_name, email")
-            .in("id", userIds);
+          const { data: profiles } = await supabase.from("profiles").select("id, display_name, email").in("id", userIds);
           const profileMap = {};
           (profiles || []).forEach((p) => { profileMap[p.id] = p; });
-          data = data.map((r) => ({
-            ...r,
-            reviewer: profileMap[r.user_id] || null,
-          }));
+          data = data.map((r) => ({ ...r, reviewer: profileMap[r.user_id] || null }));
         }
       }
 
+      if (!mountedRef.current) return;
       setReviews(data || []);
       setReviewCount(count ?? 0);
     } catch (err) {
+      if (!mountedRef.current) return;
       setReviewError(err.message);
       addToast({ variant: "error", title: "Failed to load reviews", description: err.message });
     } finally {
-      setReviewLoading(false);
+      if (mountedRef.current) setReviewLoading(false);
     }
   }, [reviewPage, debouncedSearch, reviewSentimentFilter, addToast]);
 
@@ -703,13 +867,30 @@ function ReviewsSubView() {
       const { error } = await supabase.from("place_reviews").delete().eq("id", id);
       if (error) throw error;
       addToast({ variant: "success", title: "Review deleted" });
+      logAdminAction("content.delete", "place_review", id);
       setDeleteConfirmId(null);
       if (expandedReview === id) setExpandedReview(null);
       fetchReviews();
     } catch (err) {
       addToast({ variant: "error", title: "Delete failed", description: err.message });
     } finally {
-      setDeletingId(null);
+      if (mountedRef.current) setDeletingId(null);
+    }
+  };
+
+  // Moderation actions
+  const setModerationStatus = async (id, status) => {
+    setModeratingId(id);
+    try {
+      const { error } = await supabase.from("place_reviews").update({ moderation_status: status }).eq("id", id);
+      if (error) throw error;
+      addToast({ variant: "success", title: `Review ${status}` });
+      logAdminAction("content.edit", "place_review", id, { moderation_status: status });
+      setReviews((prev) => prev.map((r) => r.id === id ? { ...r, moderation_status: status } : r));
+    } catch (err) {
+      addToast({ variant: "error", title: "Moderation failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setModeratingId(null);
     }
   };
 
@@ -759,9 +940,7 @@ function ReviewsSubView() {
         return (
           <div className="flex flex-wrap gap-1">
             {themes.map((t, i) => (
-              <span key={i} className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-[var(--gray-100)] text-[var(--color-text-tertiary)]">
-                {t}
-              </span>
+              <span key={i} className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-[var(--gray-100)] text-[var(--color-text-tertiary)]">{t}</span>
             ))}
           </div>
         );
@@ -783,24 +962,27 @@ function ReviewsSubView() {
       render: (_v, row) => <span className="text-[var(--color-text-tertiary)] text-xs">{timeAgo(row.created_at)}</span>,
     },
     {
+      key: "moderation",
+      label: "Moderation",
+      render: (_v, row) => {
+        const isLoading = moderatingId === row.id;
+        return (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" icon={CheckCircle} loading={isLoading} onClick={() => setModerationStatus(row.id, "approved")} title="Approve" />
+            <Button variant="ghost" size="sm" icon={XCircle} loading={isLoading} onClick={() => setModerationStatus(row.id, "rejected")} title="Reject" className="text-[#ef4444]" />
+            <Button variant="ghost" size="sm" icon={Flag} loading={isLoading} onClick={() => setModerationStatus(row.id, "flagged")} title="Flag" className="text-[#f59e0b]" />
+          </div>
+        );
+      },
+    },
+    {
       key: "actions",
       label: "",
       width: "110px",
       render: (_v, row) => (
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={expandedReview === row.id ? ChevronUp : ChevronDown}
-            onClick={() => setExpandedReview(expandedReview === row.id ? null : row.id)}
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Trash2}
-            onClick={() => setDeleteConfirmId(row.id)}
-            className="text-[#ef4444] hover:text-[#ef4444]"
-          />
+          <Button variant="ghost" size="sm" icon={expandedReview === row.id ? ChevronUp : ChevronDown} onClick={() => setExpandedReview(expandedReview === row.id ? null : row.id)} />
+          <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setDeleteConfirmId(row.id)} className="text-[#ef4444] hover:text-[#ef4444]" />
         </div>
       ),
     },
@@ -808,8 +990,6 @@ function ReviewsSubView() {
 
   const from = reviewPage * PAGE_SIZE + 1;
   const to = Math.min((reviewPage + 1) * PAGE_SIZE, reviewCount);
-
-  // Find expanded review data
   const expandedData = expandedReview ? reviews.find((r) => r.id === expandedReview) : null;
 
   return (
@@ -868,7 +1048,6 @@ function ReviewsSubView() {
       {expandedData && (
         <SectionCard>
           <div className="space-y-4">
-            {/* Header */}
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
@@ -881,14 +1060,11 @@ function ReviewsSubView() {
               <Button variant="ghost" size="sm" icon={X} onClick={() => setExpandedReview(null)} />
             </div>
 
-            {/* Sentiment & Themes */}
             <div className="flex flex-wrap items-center gap-3">
               {expandedData.sentiment && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-[var(--color-text-secondary)]">Sentiment:</span>
-                  <Badge variant={SENTIMENT_VARIANTS[expandedData.sentiment] || "default"}>
-                    {expandedData.sentiment}
-                  </Badge>
+                  <Badge variant={SENTIMENT_VARIANTS[expandedData.sentiment] || "default"}>{expandedData.sentiment}</Badge>
                 </div>
               )}
               {Array.isArray(expandedData.themes) && expandedData.themes.length > 0 && (
@@ -903,7 +1079,6 @@ function ReviewsSubView() {
               )}
             </div>
 
-            {/* Transcription */}
             {expandedData.transcription && (
               <div>
                 <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">Transcription</h4>
@@ -913,7 +1088,6 @@ function ReviewsSubView() {
               </div>
             )}
 
-            {/* AI Summary */}
             {expandedData.ai_summary && (
               <div>
                 <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">AI Summary</h4>
@@ -923,7 +1097,6 @@ function ReviewsSubView() {
               </div>
             )}
 
-            {/* Processing Status & Audio */}
             <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--color-text-tertiary)]">
               {expandedData.processing_status && (
                 <span>
@@ -942,15 +1115,8 @@ function ReviewsSubView() {
               )}
             </div>
 
-            {/* Delete */}
             <div className="pt-2 border-t border-[var(--gray-200)]">
-              <Button
-                variant="danger"
-                size="sm"
-                icon={Trash2}
-                loading={deletingId === expandedData.id}
-                onClick={() => setDeleteConfirmId(expandedData.id)}
-              >
+              <Button variant="danger" size="sm" icon={Trash2} loading={deletingId === expandedData.id} onClick={() => setDeleteConfirmId(expandedData.id)}>
                 Delete Review
               </Button>
             </div>
@@ -978,6 +1144,9 @@ function ReviewsSubView() {
 
 function CuratedSubView() {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const [cache, setCache] = useState([]);
   const [cacheLoading, setCacheLoading] = useState(true);
   const [cacheError, setCacheError] = useState(null);
@@ -995,12 +1164,14 @@ function CuratedSubView() {
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
+      if (!mountedRef.current) return;
       setCache(data || []);
     } catch (err) {
+      if (!mountedRef.current) return;
       setCacheError(err.message);
       addToast({ variant: "error", title: "Failed to load cache", description: err.message });
     } finally {
-      setCacheLoading(false);
+      if (mountedRef.current) setCacheLoading(false);
     }
   }, [addToast]);
 
@@ -1017,30 +1188,31 @@ function CuratedSubView() {
         .eq("radius_m", radiusM);
       if (error) throw error;
       addToast({ variant: "success", title: "Cache entry deleted" });
+      logAdminAction("content.delete", "curated_places_cache", compositeKey);
       setCache((prev) => prev.filter((c) => !(c.location_key === locationKey && c.radius_m === radiusM)));
     } catch (err) {
       addToast({ variant: "error", title: "Delete failed", description: err.message });
     } finally {
-      setDeletingKey(null);
+      if (mountedRef.current) setDeletingKey(null);
     }
   };
 
   const clearAllCache = async () => {
     setClearing(true);
     try {
-      // Supabase requires a filter for delete; use gte on created_at to match all rows
       const { error } = await supabase
         .from("curated_places_cache")
         .delete()
         .gte("created_at", "1970-01-01T00:00:00Z");
       if (error) throw error;
       addToast({ variant: "success", title: "All cache entries cleared" });
+      logAdminAction("content.delete", "curated_places_cache", "all");
       setCache([]);
       setClearAllModal(false);
     } catch (err) {
       addToast({ variant: "error", title: "Clear failed", description: err.message });
     } finally {
-      setClearing(false);
+      if (mountedRef.current) setClearing(false);
     }
   };
 
@@ -1107,22 +1279,14 @@ function CuratedSubView() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" icon={RefreshCw} onClick={fetchCache}>Refresh</Button>
-        <Button
-          variant="danger"
-          size="sm"
-          icon={Trash2}
-          onClick={() => setClearAllModal(true)}
-          disabled={cache.length === 0}
-        >
+        <Button variant="danger" size="sm" icon={Trash2} onClick={() => setClearAllModal(true)} disabled={cache.length === 0}>
           Clear All Cache
         </Button>
         <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">{cache.length} entries</span>
       </div>
 
-      {/* Table */}
       <SectionCard noPadding>
         {cacheError && !cacheLoading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -1142,7 +1306,6 @@ function CuratedSubView() {
         )}
       </SectionCard>
 
-      {/* Clear All Confirmation */}
       <Modal open={clearAllModal} onClose={() => setClearAllModal(false)} title="Clear All Cache" size="sm" destructive>
         <ModalBody>
           <p className="text-sm text-[var(--color-text-secondary)]">
@@ -1167,10 +1330,7 @@ export function ContentModerationPage() {
     <div className="flex flex-col gap-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Content Moderation</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          Browse, edit, and manage experiences, cards, reviews, and cache
-        </p>
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Content</h1>
       </div>
 
       {/* Sub-tab navigation */}

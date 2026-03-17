@@ -4,7 +4,7 @@ import {
   ChevronLeft, Save, Ban, X, AlertTriangle, Clock, Globe, Mail,
   Phone, Hash, Heart, LayoutDashboard, Zap, Bookmark, UserPlus,
   UserMinus, MessageSquare, Calendar, Star, MousePointerClick,
-  Flag, MapPin, VolumeX, Link2,
+  Flag, MapPin, VolumeX, Link2, Download,
 } from "lucide-react";
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 import { StatCard, SectionCard } from "../components/ui/Card";
@@ -19,46 +19,22 @@ import { Avatar } from "../components/ui/Avatar";
 import { Spinner } from "../components/ui/Spinner";
 import { ListItemSkeleton, StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
+import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function timeAgo(dateStr) {
-  if (!dateStr) return "—";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
-  });
-}
-
-function formatDateTime(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function UserManagementPage() {
   const { addToast } = useToast();
+  const { session } = useAuth();
+
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // View state
   const [view, setView] = useState("list"); // "list" | "detail" | "impersonate"
@@ -73,9 +49,23 @@ export function UserManagementPage() {
   const [filters, setFilters] = useState({
     onboarding: "all",
     status: "all",
+    country: "all",
+    dateFrom: "",
+    dateTo: "",
   });
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState(null);
+
+  // Country options
+  const [countries, setCountries] = useState([]);
+
+  // Sort
+  const [sortKey, setSortKey] = useState("created_at");
+  const [sortDir, setSortDir] = useState("desc");
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
 
   // Stats state
   const [stats, setStats] = useState({ total: 0, active: 0, banned: 0, onboarded: 0, newThisWeek: 0 });
@@ -112,13 +102,13 @@ export function UserManagementPage() {
 
   // Action loading states
   const [banningId, setBanningId] = useState(null);
-  const [banConfirmId, setBanConfirmId] = useState(null); // user id awaiting ban confirmation
+  const [banConfirmModal, setBanConfirmModal] = useState(null); // user object for ban modal
 
   // Delete confirmation
   const [deleteModal, setDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const [deleteTargetUser, setDeleteTargetUser] = useState(null); // for list-view delete
+  const [deleteTargetUser, setDeleteTargetUser] = useState(null);
 
   // Impersonate state
   const [impersonateLoading, setImpersonateLoading] = useState(false);
@@ -134,6 +124,31 @@ export function UserManagementPage() {
 
   // Refs for cleanup
   const searchTimerRef = useRef(null);
+
+  // ─── URL hash param for cross-page navigation ──────────────────────────────
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const targetUserId = params.get("userId");
+    if (targetUserId) {
+      setSelectedUserId(targetUserId);
+      setView("detail");
+    }
+  }, []);
+
+  // ─── Fetch distinct countries on mount ────────────────────────────────────
+
+  useEffect(() => {
+    async function fetchCountries() {
+      try {
+        const { data } = await supabase.from("profiles").select("country").limit(50000);
+        if (!mountedRef.current) return;
+        const unique = [...new Set((data || []).map(r => r.country).filter(Boolean))].sort();
+        setCountries(unique);
+      } catch { /* ignore */ }
+    }
+    fetchCountries();
+  }, []);
 
   // ─── Search debounce ────────────────────────────────────────────────────────
 
@@ -159,11 +174,9 @@ export function UserManagementPage() {
       ]);
 
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const newRes = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", weekAgo);
+      const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", weekAgo);
 
+      if (!mountedRef.current) return;
       setStats({
         total: totalRes.count ?? 0,
         active: activeRes.count ?? 0,
@@ -174,7 +187,7 @@ export function UserManagementPage() {
     } catch (err) {
       addToast({ variant: "error", title: "Failed to load user stats", description: err.message });
     } finally {
-      setStatsLoading(false);
+      if (mountedRef.current) setStatsLoading(false);
     }
   }, [addToast]);
 
@@ -184,15 +197,15 @@ export function UserManagementPage() {
     setListLoading(true);
     setListError(null);
     try {
+      const ascending = sortDir === "asc";
       let query = supabase
         .from("profiles")
         .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at", { count: "exact" })
-        .order("created_at", { ascending: false })
+        .order(sortKey || "created_at", { ascending })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
       if (debouncedSearch) {
-        // Strip characters that break PostgREST .or() filter syntax
-        const safe = debouncedSearch.replace(/[,.()"\\]/g, "").trim();
+        const safe = escapeLike(debouncedSearch.trim());
         if (safe) {
           query = query.or(
             `display_name.ilike.%${safe}%,email.ilike.%${safe}%,username.ilike.%${safe}%,phone.ilike.%${safe}%`
@@ -203,25 +216,29 @@ export function UserManagementPage() {
       if (filters.onboarding === "incomplete") query = query.eq("has_completed_onboarding", false);
       if (filters.status === "active") query = query.eq("active", true);
       if (filters.status === "banned") query = query.eq("active", false);
+      if (filters.country && filters.country !== "all") query = query.eq("country", filters.country);
+      if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
+      if (filters.dateTo) query = query.lte("created_at", filters.dateTo + "T23:59:59Z");
 
       const { data, count, error } = await query;
       if (error) throw error;
+      if (!mountedRef.current) return;
       setUsers(data || []);
       setUserCount(count ?? 0);
     } catch (err) {
+      if (!mountedRef.current) return;
       setListError(err.message);
       addToast({ variant: "error", title: "Failed to load users", description: err.message });
     } finally {
-      setListLoading(false);
+      if (mountedRef.current) setListLoading(false);
     }
-  }, [page, debouncedSearch, filters, addToast]);
+  }, [page, debouncedSearch, filters, sortKey, sortDir, addToast]);
 
   // ─── User Detail Fetching ──────────────────────────────────────────────────
 
   const fetchUserDetail = useCallback(async (userId) => {
     setDetailLoading(true);
     try {
-      // Batch 1: core data
       const [profileRes, prefsRes, friendsRes, activityRes, sessionsRes, participationsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
         supabase.from("preferences").select("*").eq("profile_id", userId).maybeSingle(),
@@ -233,15 +250,13 @@ export function UserManagementPage() {
 
       if (profileRes.error) throw profileRes.error;
 
-      // Get boards via session_participants where session has a board_id
-      const boardIds = (participationsRes.data || [])
-        .filter(p => p.session?.board_id)
-        .map(p => p.session.board_id);
+      const boardIds = (participationsRes.data || []).filter(p => p.session?.board_id).map(p => p.session.board_id);
       const uniqueBoardIds = [...new Set(boardIds)];
       const boardsRes = uniqueBoardIds.length > 0
         ? await supabase.from("boards").select("*").in("id", uniqueBoardIds)
         : { data: [] };
 
+      if (!mountedRef.current) return;
       setUserDetail(profileRes.data);
       setUserPrefs(prefsRes.data);
       setUserFriends(friendsRes.data || []);
@@ -250,7 +265,7 @@ export function UserManagementPage() {
       setUserSessions(sessionsRes.data || []);
       setEditForm(profileRes.data || {});
 
-      // Batch 2: extended data (non-blocking)
+      // Batch 2: extended data
       const [
         savedExpRes, savedCardRes, savedPeopleRes,
         friendReqRes, friendLinksRes,
@@ -278,6 +293,7 @@ export function UserManagementPage() {
         supabase.from("preference_history").select("*").eq("profile_id", userId).order("changed_at", { ascending: false }).limit(30),
       ]);
 
+      if (!mountedRef.current) return;
       setUserSaves({ experiences: savedExpRes.data || [], cards: savedCardRes.data || [] });
       setUserSavedPeople(savedPeopleRes.data || []);
       setUserFriendRequests(friendReqRes.data || []);
@@ -296,7 +312,7 @@ export function UserManagementPage() {
     } catch (err) {
       addToast({ variant: "error", title: "Failed to load user details", description: err.message });
     } finally {
-      setDetailLoading(false);
+      if (mountedRef.current) setDetailLoading(false);
     }
   }, [addToast]);
 
@@ -308,13 +324,15 @@ export function UserManagementPage() {
       const { error } = await supabase.from("profiles").update({ active: false }).eq("id", userId);
       if (error) throw error;
       addToast({ variant: "success", title: "User banned" });
+      logAdminAction("user.ban", "user", userId);
+      setBanConfirmModal(null);
       fetchUsers();
       fetchStats();
       if (userDetail?.id === userId) fetchUserDetail(userId);
     } catch (err) {
       addToast({ variant: "error", title: "Failed to ban user", description: err.message });
     } finally {
-      setBanningId(null);
+      if (mountedRef.current) setBanningId(null);
     }
   }, [addToast, fetchUsers, fetchStats, fetchUserDetail, userDetail]);
 
@@ -324,13 +342,14 @@ export function UserManagementPage() {
       const { error } = await supabase.from("profiles").update({ active: true }).eq("id", userId);
       if (error) throw error;
       addToast({ variant: "success", title: "User unbanned" });
+      logAdminAction("user.unban", "user", userId);
       fetchUsers();
       fetchStats();
       if (userDetail?.id === userId) fetchUserDetail(userId);
     } catch (err) {
       addToast({ variant: "error", title: "Failed to unban user", description: err.message });
     } finally {
-      setBanningId(null);
+      if (mountedRef.current) setBanningId(null);
     }
   }, [addToast, fetchUsers, fetchStats, fetchUserDetail, userDetail]);
 
@@ -339,9 +358,42 @@ export function UserManagementPage() {
     setDeleting(true);
     const errors = [];
 
-    // 1. Delete from all user-related tables (order: dependents first, then core)
+    // CRITICAL: Try edge function first
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+
+      if (res.ok) {
+        // Edge function handled everything
+        logAdminAction("user.delete", "user", userId);
+        addToast({ variant: "success", title: "User fully deleted", description: "All data wiped via edge function." });
+        setDeleteModal(false);
+        setDeleteConfirmText("");
+        setDeleteTargetUser(null);
+        if (view === "detail") { setView("list"); setSelectedUserId(null); setUserDetail(null); }
+        fetchUsers();
+        fetchStats();
+        setDeleting(false);
+        return;
+      }
+
+      // Non-network error from edge function (e.g. 404 = not deployed) — fall through to cascade
+      if (!res.ok && res.status !== 0) {
+        console.warn("[Delete] Edge function returned", res.status, "— falling back to cascade delete");
+      }
+    } catch (networkErr) {
+      // Network error — edge function not deployed, fall through
+      console.warn("[Delete] Edge function network error — falling back to cascade delete:", networkErr.message);
+    }
+
+    // FALLBACK: Client-side cascade delete
     const tablesToDelete = [
-      // Board-related (deepest nesting first)
       { table: "board_card_message_reads", column: "user_id" },
       { table: "board_message_reads", column: "user_id" },
       { table: "board_card_messages", column: "user_id" },
@@ -355,15 +407,12 @@ export function UserManagementPage() {
       { table: "board_session_preferences", column: "user_id" },
       { table: "board_threads", column: "user_id" },
       { table: "activity_history", column: "user_id" },
-      // Collaboration
       { table: "collaboration_invites", column: "inviter_id" },
       { table: "collaboration_invites", column: "invitee_id" },
       { table: "session_participants", column: "user_id" },
-      // Messages & conversations
       { table: "message_reads", column: "user_id" },
       { table: "messages", column: "sender_id" },
       { table: "conversation_participants", column: "user_id" },
-      // Social
       { table: "friend_requests", column: "sender_id" },
       { table: "friend_requests", column: "receiver_id" },
       { table: "friend_links", column: "requester_id" },
@@ -374,24 +423,20 @@ export function UserManagementPage() {
       { table: "blocked_users", column: "blocked_user_id" },
       { table: "muted_users", column: "user_id" },
       { table: "muted_users", column: "muted_user_id" },
-      // Saves & people
       { table: "person_audio_clips", column: "user_id" },
       { table: "person_experiences", column: "user_id" },
       { table: "saved_people", column: "user_id" },
       { table: "saved_experiences", column: "user_id" },
       { table: "saved_card", column: "user_id" },
       { table: "saves", column: "user_id" },
-      // Cards & interactions
       { table: "board_cards", column: "added_by" },
       { table: "user_card_impressions", column: "user_id" },
       { table: "user_interactions", column: "user_id" },
       { table: "user_preference_learning", column: "user_id" },
-      // Calendar & reviews
       { table: "calendar_entries", column: "user_id" },
       { table: "scheduled_activities", column: "user_id" },
       { table: "place_reviews", column: "user_id" },
       { table: "experience_feedback", column: "user_id" },
-      // Analytics & safety
       { table: "user_sessions", column: "user_id" },
       { table: "user_activity", column: "user_id" },
       { table: "user_location_history", column: "user_id" },
@@ -400,23 +445,18 @@ export function UserManagementPage() {
       { table: "app_feedback", column: "user_id" },
       { table: "undo_actions", column: "user_id" },
       { table: "discover_daily_cache", column: "user_id" },
-      // Preferences
       { table: "preference_history", column: "profile_id" },
       { table: "preferences", column: "profile_id" },
     ];
 
-    // Delete from all tables in parallel batches of 6
     for (let i = 0; i < tablesToDelete.length; i += 6) {
       const batch = tablesToDelete.slice(i, i + 6);
       const results = await Promise.allSettled(
-        batch.map(({ table, column }) =>
-          supabase.from(table).delete().eq(column, userId)
-        )
+        batch.map(({ table, column }) => supabase.from(table).delete().eq(column, userId))
       );
       results.forEach((r, idx) => {
         if (r.status === "rejected" || r.value?.error) {
           const msg = r.status === "rejected" ? r.reason?.message : r.value?.error?.message;
-          // Don't fail on "relation does not exist" or permission errors — just log
           if (msg && !msg.includes("does not exist") && !msg.includes("permission denied")) {
             errors.push(`${batch[idx].table}: ${msg}`);
           }
@@ -424,38 +464,26 @@ export function UserManagementPage() {
       });
     }
 
-    // 2. Delete the profile itself
     const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId);
     if (profileError) errors.push(`profiles: ${profileError.message}`);
 
-    // 3. Try to delete the auth user via edge function
     try {
-      const { error: fnError } = await supabase.functions.invoke("delete-user", {
-        body: { user_id: userId },
-      });
+      const { error: fnError } = await supabase.functions.invoke("delete-user", { body: { user_id: userId } });
       if (fnError) errors.push(`auth (edge fn): ${fnError.message}`);
     } catch (fnErr) {
-      // Try admin API as fallback (requires service_role, may fail with anon key)
       try {
-        const res = await fetch(
-          `${SUPABASE_URL}/auth/v1/admin/users/${userId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-              apikey: SUPABASE_ANON_KEY,
-            },
-          }
-        );
-        if (!res.ok) {
-          errors.push(`auth (admin API): ${res.status} — may need service_role key`);
-        }
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+        });
+        if (!res.ok) errors.push(`auth (admin API): ${res.status} — may need service_role key`);
       } catch (adminErr) {
         errors.push(`auth: could not delete auth user — ${fnErr.message}`);
       }
     }
 
-    // Done — report results
+    logAdminAction("user.delete", "user", userId);
+
     if (errors.length === 0) {
       addToast({ variant: "success", title: "User fully deleted", description: "All data wiped from every table + auth removed." });
     } else {
@@ -469,19 +497,14 @@ export function UserManagementPage() {
     setDeleteModal(false);
     setDeleteConfirmText("");
     setDeleteTargetUser(null);
-    if (view === "detail") {
-      setView("list");
-      setSelectedUserId(null);
-      setUserDetail(null);
-    }
+    if (view === "detail") { setView("list"); setSelectedUserId(null); setUserDetail(null); }
     fetchUsers();
     fetchStats();
     setDeleting(false);
-  }, [addToast, fetchUsers, fetchStats, view]);
+  }, [addToast, fetchUsers, fetchStats, view, session]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!userDetail) return;
-    // Client-side validation: don't allow blanking critical fields
     if (!editForm.email?.trim()) {
       addToast({ variant: "error", title: "Email cannot be empty" });
       return;
@@ -506,19 +529,20 @@ export function UserManagementPage() {
       const { error } = await supabase.from("profiles").update(updates).eq("id", userDetail.id);
       if (error) throw error;
       addToast({ variant: "success", title: "Profile updated" });
+      logAdminAction("user.edit", "user", userDetail.id, { fields: Object.keys(updates) });
       setEditing(false);
       fetchUserDetail(userDetail.id);
       fetchUsers();
     } catch (err) {
       addToast({ variant: "error", title: "Failed to save changes", description: err.message });
     } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   }, [addToast, editForm, userDetail, fetchUserDetail, fetchUsers]);
 
-  // ─── Impersonate ────────────────────────────────────────────────────────────
+  // ─── Impersonate → "Preview Profile" ──────────────────────────────────────
 
-  const handleImpersonate = useCallback(async (userId) => {
+  const handlePreviewProfile = useCallback(async (userId) => {
     setImpersonateLoading(true);
     try {
       const [savedExpRes, savedCardsRes, prefsRes] = await Promise.all([
@@ -527,7 +551,6 @@ export function UserManagementPage() {
         supabase.from("preferences").select("*").eq("profile_id", userId).maybeSingle(),
       ]);
 
-      // Get boards
       const { data: participations } = await supabase
         .from("session_participants")
         .select("session:collaboration_sessions(board_id)")
@@ -539,6 +562,7 @@ export function UserManagementPage() {
         ? await supabase.from("boards").select("*").in("id", boardIds)
         : { data: [] };
 
+      if (!mountedRef.current) return;
       setImpersonateData({
         savedExperiences: savedExpRes.data || [],
         savedCards: savedCardsRes.data || [],
@@ -547,11 +571,49 @@ export function UserManagementPage() {
       });
       setView("impersonate");
     } catch (err) {
-      addToast({ variant: "error", title: "Failed to load impersonate data", description: err.message });
+      addToast({ variant: "error", title: "Failed to load profile preview", description: err.message });
     } finally {
-      setImpersonateLoading(false);
+      if (mountedRef.current) setImpersonateLoading(false);
     }
   }, [addToast]);
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+
+  const handleExport = useCallback(() => {
+    const cols = [
+      { key: "id", label: "ID" },
+      { key: "display_name", label: "Name" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "Phone" },
+      { key: "country", label: "Country" },
+      { key: "active", label: "Active" },
+      { key: "has_completed_onboarding", label: "Onboarded" },
+      { key: "created_at", label: "Created" },
+    ];
+    const { exported, capped } = exportCsv(cols, users, "users");
+    addToast({ variant: "success", title: `Exported ${exported} users${capped ? " (capped at 10k)" : ""}` });
+  }, [users, addToast]);
+
+  // ─── Bulk ban ──────────────────────────────────────────────────────────────
+
+  const handleBulkBan = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    try {
+      const ids = [...selectedIds];
+      const { error } = await supabase.from("profiles").update({ active: false }).in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} user(s) banned` });
+      ids.forEach(id => logAdminAction("user.ban", "user", id));
+      setSelectedIds(new Set());
+      fetchUsers();
+      fetchStats();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk ban failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setBulkActioning(false);
+    }
+  }, [selectedIds, addToast, fetchUsers, fetchStats]);
 
   // ─── Navigation helpers ─────────────────────────────────────────────────────
 
@@ -568,16 +630,35 @@ export function UserManagementPage() {
     setSelectedUserId(null);
     setUserDetail(null);
     setEditing(false);
+    // Clean URL hash
+    if (window.location.hash.includes("userId")) {
+      window.location.hash = "#/users";
+    }
   }, []);
 
   const backToDetail = useCallback(() => {
     setView("detail");
   }, []);
 
+  // ─── Sort handler ──────────────────────────────────────────────────────────
+
+  const handleSort = useCallback((key, dir) => {
+    setSortKey(key);
+    setSortDir(dir || "desc");
+    setPage(0);
+  }, []);
+
   // ─── Effects ────────────────────────────────────────────────────────────────
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // If URL had userId, trigger detail fetch
+  useEffect(() => {
+    if (view === "detail" && selectedUserId && !userDetail && !detailLoading) {
+      fetchUserDetail(selectedUserId);
+    }
+  }, [view, selectedUserId, userDetail, detailLoading, fetchUserDetail]);
 
   // ─── Delete Modal (shared across views) ─────────────────────────────────────
 
@@ -588,7 +669,7 @@ export function UserManagementPage() {
     <Modal
       open={deleteModal}
       onClose={() => { setDeleteModal(false); setDeleteConfirmText(""); setDeleteTargetUser(null); }}
-      title="PERMANENTLY Delete User"
+      title="Delete User Permanently"
       size="sm"
       destructive
     >
@@ -597,13 +678,7 @@ export function UserManagementPage() {
           <div className="flex items-start gap-3 p-3 bg-[var(--color-error-50)] rounded-lg">
             <AlertTriangle className="w-5 h-5 text-[#ef4444] shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-[#b91c1c]">FULL WIPE — This cannot be undone</p>
-              <p className="text-xs text-[#b91c1c] mt-1">
-                This will permanently delete <strong>{deleteUser?.display_name || "this user"}</strong> and
-                wipe ALL their data from every table in the database: profile, preferences, friends,
-                messages, saves, interactions, sessions, reviews, reports, calendar, location history,
-                boards, and auth account.
-              </p>
+              <p className="text-sm font-medium text-[#b91c1c]">All data for this user will be permanently deleted. This cannot be undone.</p>
             </div>
           </div>
           {confirmTarget ? (
@@ -632,7 +707,36 @@ export function UserManagementPage() {
           disabled={!confirmTarget || deleteConfirmText !== confirmTarget}
           onClick={() => handleFullDelete(deleteUser?.id)}
         >
-          Wipe Everything
+          Delete Permanently
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+
+  // ─── Ban Confirmation Modal ─────────────────────────────────────────────────
+
+  const banModalJSX = (
+    <Modal
+      open={!!banConfirmModal}
+      onClose={() => setBanConfirmModal(null)}
+      title="Ban User"
+      size="sm"
+      destructive
+    >
+      <ModalBody>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          Are you sure you want to ban <strong>{banConfirmModal?.display_name || banConfirmModal?.email || "this user"}</strong>? They will be unable to use the app.
+        </p>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={() => setBanConfirmModal(null)}>Cancel</Button>
+        <Button
+          variant="danger"
+          icon={Ban}
+          loading={banningId === banConfirmModal?.id}
+          onClick={() => handleBan(banConfirmModal?.id)}
+        >
+          Ban User
         </Button>
       </ModalFooter>
     </Modal>
@@ -669,42 +773,11 @@ export function UserManagementPage() {
               View
             </Button>
             {row.active !== false ? (
-              banConfirmId === row.id ? (
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={banningId === row.id}
-                    onClick={() => { handleBan(row.id); setBanConfirmId(null); }}
-                  >
-                    Confirm
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setBanConfirmId(null)}
-                  >
-                    No
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={Ban}
-                  onClick={() => setBanConfirmId(row.id)}
-                >
-                  Ban
-                </Button>
-              )
+              <Button variant="ghost" size="sm" icon={Ban} onClick={() => setBanConfirmModal(row)}>
+                Ban
+              </Button>
             ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={UserCheck}
-                loading={banningId === row.id}
-                onClick={() => handleUnban(row.id)}
-              >
+              <Button variant="ghost" size="sm" icon={UserCheck} loading={banningId === row.id} onClick={() => handleUnban(row.id)}>
                 Unban
               </Button>
             )}
@@ -722,6 +795,7 @@ export function UserManagementPage() {
       {
         key: "display_name",
         label: "Name",
+        sortable: true,
         render: (val, row) => (
           <div className="min-w-0">
             <button
@@ -736,7 +810,11 @@ export function UserManagementPage() {
           </div>
         ),
       },
-      { key: "email", label: "Email" },
+      {
+        key: "email",
+        label: "Email",
+        sortable: true,
+      },
       {
         key: "phone",
         label: "Phone",
@@ -757,6 +835,7 @@ export function UserManagementPage() {
       {
         key: "country",
         label: "Country",
+        sortable: true,
         width: "100px",
         render: (val) => val ? <Badge variant="outline">{val}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>,
       },
@@ -789,6 +868,7 @@ export function UserManagementPage() {
       {
         key: "created_at",
         label: "Joined",
+        sortable: true,
         width: "100px",
         render: (val) => (
           <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(val)}</span>
@@ -799,11 +879,11 @@ export function UserManagementPage() {
     return (
       <div className="flex flex-col gap-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">User Management</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Browse, search, and manage all Mingla users
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Users</h1>
+          </div>
+          <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>Export</Button>
         </div>
 
         {/* Stats */}
@@ -848,7 +928,50 @@ export function UserManagementPage() {
             <option value="active">Active</option>
             <option value="banned">Banned</option>
           </select>
+          <select
+            value={filters.country}
+            onChange={(e) => { setFilters(f => ({ ...f, country: e.target.value })); setPage(0); }}
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5] transition-all duration-150"
+          >
+            <option value="all">All Countries</option>
+            {countries.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(e) => { setFilters(f => ({ ...f, dateFrom: e.target.value })); setPage(0); }}
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg"
+            placeholder="From"
+          />
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={(e) => { setFilters(f => ({ ...f, dateTo: e.target.value })); setPage(0); }}
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg"
+            placeholder="To"
+          />
         </div>
+
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-[var(--color-brand-50,#fff7ed)] border border-[var(--color-brand-200)]">
+            <span className="text-sm font-medium text-[var(--color-text-primary)]">{selectedIds.size} selected</span>
+            <Button variant="danger" size="sm" icon={Ban} loading={bulkActioning} onClick={handleBulkBan}>Ban Selected</Button>
+            <Button variant="secondary" size="sm" icon={Download} onClick={() => {
+              const selected = users.filter(u => selectedIds.has(u.id));
+              const cols = [
+                { key: "id", label: "ID" },
+                { key: "display_name", label: "Name" },
+                { key: "email", label: "Email" },
+                { key: "country", label: "Country" },
+                { key: "created_at", label: "Created" },
+              ];
+              exportCsv(cols, selected, "selected_users");
+              addToast({ variant: "success", title: `Exported ${selected.length} users` });
+            }}>Export</Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+          </div>
+        )}
 
         {/* Table */}
         <DataTable
@@ -858,6 +981,22 @@ export function UserManagementPage() {
           emptyIcon={Users}
           emptyMessage={listError ? `Error: ${listError}` : debouncedSearch ? "No users match your search" : "No users found"}
           emptyAction={listError ? <Button variant="link" onClick={fetchUsers}>Retry</Button> : undefined}
+          sortKey={sortKey}
+          sortDirection={sortDir}
+          onSort={handleSort}
+          selectable
+          selectedIds={selectedIds}
+          onSelect={(id) => {
+            setSelectedIds(prev => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              return next;
+            });
+          }}
+          onSelectAll={(allSelected) => {
+            if (allSelected) setSelectedIds(new Set());
+            else setSelectedIds(new Set(users.map(u => u.id)));
+          }}
           pagination={{
             page,
             pageSize: PAGE_SIZE,
@@ -868,6 +1007,7 @@ export function UserManagementPage() {
           }}
         />
         {deleteModalJSX}
+        {banModalJSX}
       </div>
     );
   }
@@ -937,7 +1077,7 @@ export function UserManagementPage() {
                 Unban
               </Button>
             ) : (
-              <Button variant="secondary" size="sm" icon={Ban} loading={banningId === userDetail.id} onClick={() => handleBan(userDetail.id)}>
+              <Button variant="secondary" size="sm" icon={Ban} onClick={() => setBanConfirmModal(userDetail)}>
                 Ban
               </Button>
             )}
@@ -988,8 +1128,8 @@ export function UserManagementPage() {
                 )}
               </div>
             </div>
-            <Button variant="secondary" size="sm" icon={Eye} loading={impersonateLoading} onClick={() => handleImpersonate(userDetail.id)}>
-              Impersonate
+            <Button variant="secondary" size="sm" icon={Eye} loading={impersonateLoading} onClick={() => handlePreviewProfile(userDetail.id)}>
+              Preview Profile
             </Button>
           </div>
         </SectionCard>
@@ -1025,21 +1165,11 @@ export function UserManagementPage() {
                 <Input label="Visibility Mode" value={editForm.visibility_mode || ""} onChange={(e) => setEditForm(f => ({ ...f, visibility_mode: e.target.value }))} />
                 <div className="flex flex-col gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.has_completed_onboarding ?? false}
-                      onChange={(e) => setEditForm(f => ({ ...f, has_completed_onboarding: e.target.checked }))}
-                      className="w-4 h-4 accent-[#f97316] cursor-pointer"
-                    />
+                    <input type="checkbox" checked={editForm.has_completed_onboarding ?? false} onChange={(e) => setEditForm(f => ({ ...f, has_completed_onboarding: e.target.checked }))} className="w-4 h-4 accent-[#f97316] cursor-pointer" />
                     <span className="text-sm text-[var(--color-text-primary)]">Has Completed Onboarding</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.active ?? true}
-                      onChange={(e) => setEditForm(f => ({ ...f, active: e.target.checked }))}
-                      className="w-4 h-4 accent-[#f97316] cursor-pointer"
-                    />
+                    <input type="checkbox" checked={editForm.active ?? true} onChange={(e) => setEditForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-[#f97316] cursor-pointer" />
                     <span className="text-sm text-[var(--color-text-primary)]">Active (uncheck to ban)</span>
                   </label>
                 </div>
@@ -1095,38 +1225,29 @@ export function UserManagementPage() {
           </SectionCard>
         )}
 
-        {/* Saves Tab */}
         {detailTab === "saves" && (
           <div className="flex flex-col gap-4">
             <SectionCard title={`Saved Experiences (${userSaves.experiences.length})`}>
               {userSaves.experiences.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "title", label: "Title", render: (v) => v || "—" },
-                    { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
-                    { key: "place_name", label: "Place", render: (v) => v || "—" },
-                    { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userSaves.experiences}
-                  emptyMessage="No saved experiences"
-                />
+                <DataTable columns={[
+                  { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+                  { key: "title", label: "Title", render: (v) => v || "—" },
+                  { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
+                  { key: "place_name", label: "Place", render: (v) => v || "—" },
+                  { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userSaves.experiences} emptyMessage="No saved experiences" />
               ) : (
                 <EmptyState icon={Bookmark} message="No saved experiences" />
               )}
             </SectionCard>
             <SectionCard title={`Saved Cards (${userSaves.cards.length})`}>
               {userSaves.cards.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "card_pool_id", label: "Card Pool ID", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
-                    { key: "title", label: "Title", render: (v) => v || "—" },
-                    { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userSaves.cards}
-                  emptyMessage="No saved cards"
-                />
+                <DataTable columns={[
+                  { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+                  { key: "card_pool_id", label: "Card Pool ID", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
+                  { key: "title", label: "Title", render: (v) => v || "—" },
+                  { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userSaves.cards} emptyMessage="No saved cards" />
               ) : (
                 <EmptyState icon={Heart} message="No saved cards" />
               )}
@@ -1134,326 +1255,80 @@ export function UserManagementPage() {
           </div>
         )}
 
-        {/* Friend Requests Tab */}
-        {detailTab === "requests" && (
-          <SectionCard title={`Friend Requests (${userFriendRequests.length})`}>
-            {userFriendRequests.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userFriendRequests.map((r, i) => {
-                  const isSender = r.sender_id === userDetail.id;
-                  const other = isSender ? r.receiver : r.sender;
-                  return (
-                    <div key={r.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <Avatar src={other?.avatar_url} name={other?.display_name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {isSender ? "Sent to" : "Received from"} {other?.display_name || "Unknown"}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
-                          {other?.email || "—"} &middot; {formatDateTime(r.created_at)}
-                        </p>
-                      </div>
-                      <Badge variant={r.status === "accepted" ? "success" : r.status === "pending" ? "warning" : "default"}>
-                        {r.status || "unknown"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState icon={UserPlus} message="No friend requests" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "requests" && <DetailListSection title={`Friend Requests (${userFriendRequests.length})`} items={userFriendRequests} emptyIcon={UserPlus} emptyMsg="No friend requests" renderItem={(r) => { const isSender = r.sender_id === userDetail.id; const other = isSender ? r.receiver : r.sender; return <SimpleListItem key={r.id} avatar={other} label={`${isSender ? "Sent to" : "Received from"} ${other?.display_name || "Unknown"}`} sub={`${other?.email || "—"} · ${formatDateTime(r.created_at)}`} badge={<Badge variant={r.status === "accepted" ? "success" : r.status === "pending" ? "warning" : "default"}>{r.status || "unknown"}</Badge>} />; }} />}
 
-        {/* Friend Links Tab */}
-        {detailTab === "links" && (
-          <SectionCard title={`Friend Links (${userFriendLinks.length})`}>
-            {userFriendLinks.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userFriendLinks.map((l, i) => {
-                  const isRequester = l.requester_id === userDetail.id;
-                  const other = isRequester ? l.addressee : l.requester;
-                  return (
-                    <div key={l.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <Avatar src={other?.avatar_url} name={other?.display_name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {isRequester ? "Linked to" : "Linked from"} {other?.display_name || "Unknown"}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
-                          {other?.email || "—"} &middot; {formatDateTime(l.created_at)}
-                        </p>
-                      </div>
-                      <Badge variant={l.status === "accepted" ? "success" : l.status === "pending" ? "warning" : "error"}>
-                        {l.status || "unknown"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState icon={Link2} message="No friend links" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "links" && <DetailListSection title={`Friend Links (${userFriendLinks.length})`} items={userFriendLinks} emptyIcon={Link2} emptyMsg="No friend links" renderItem={(l) => { const isReq = l.requester_id === userDetail.id; const other = isReq ? l.addressee : l.requester; return <SimpleListItem key={l.id} avatar={other} label={`${isReq ? "Linked to" : "Linked from"} ${other?.display_name || "Unknown"}`} sub={`${other?.email || "—"} · ${formatDateTime(l.created_at)}`} badge={<Badge variant={l.status === "accepted" ? "success" : l.status === "pending" ? "warning" : "error"}>{l.status || "unknown"}</Badge>} />; }} />}
 
-        {/* Saved People Tab */}
         {detailTab === "people" && (
           <SectionCard title={`Saved People (${userSavedPeople.length})`}>
             {userSavedPeople.length > 0 ? (
-              <DataTable
-                columns={[
-                  { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                  { key: "name", label: "Name", render: (v) => v || "—" },
-                  { key: "relationship", label: "Relationship", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
-                  { key: "linked_user_id", label: "Linked", render: (v) => v ? <Badge variant="success" dot>Yes</Badge> : <span className="text-[var(--color-text-muted)]">No</span> },
-                  { key: "created_at", label: "Added", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                ]}
-                rows={userSavedPeople}
-                emptyMessage="No saved people"
-              />
+              <DataTable columns={[
+                { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+                { key: "name", label: "Name", render: (v) => v || "—" },
+                { key: "relationship", label: "Relationship", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
+                { key: "linked_user_id", label: "Linked", render: (v) => v ? <Badge variant="success" dot>Yes</Badge> : <span className="text-[var(--color-text-muted)]">No</span> },
+                { key: "created_at", label: "Added", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+              ]} rows={userSavedPeople} emptyMessage="No saved people" />
             ) : (
               <EmptyState icon={Users} message="No saved people" />
             )}
           </SectionCard>
         )}
 
-        {/* Blocked & Muted Tab */}
         {detailTab === "blocked" && (
           <div className="flex flex-col gap-4">
-            <SectionCard title={`Blocked Users (${userBlocked.length})`}>
-              {userBlocked.length > 0 ? (
-                <div className="divide-y divide-[var(--gray-200)]">
-                  {userBlocked.map((b, i) => (
-                    <div key={b.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <Avatar src={b.blocked?.avatar_url} name={b.blocked?.display_name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {b.blocked?.display_name || "Unknown"}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">{b.blocked?.email || "—"}</p>
-                      </div>
-                      <Badge variant="error">Blocked</Badge>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState icon={UserMinus} message="No blocked users" />
-              )}
-            </SectionCard>
-            <SectionCard title={`Muted Users (${userMuted.length})`}>
-              {userMuted.length > 0 ? (
-                <div className="divide-y divide-[var(--gray-200)]">
-                  {userMuted.map((m, i) => (
-                    <div key={m.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <Avatar src={m.muted?.avatar_url} name={m.muted?.display_name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {m.muted?.display_name || "Unknown"}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">{m.muted?.email || "—"}</p>
-                      </div>
-                      <Badge variant="warning">Muted</Badge>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState icon={VolumeX} message="No muted users" />
-              )}
-            </SectionCard>
+            <DetailListSection title={`Blocked Users (${userBlocked.length})`} items={userBlocked} emptyIcon={UserMinus} emptyMsg="No blocked users" renderItem={(b) => <SimpleListItem key={b.id} avatar={b.blocked} label={b.blocked?.display_name || "Unknown"} sub={b.blocked?.email || "—"} badge={<Badge variant="error">Blocked</Badge>} />} />
+            <DetailListSection title={`Muted Users (${userMuted.length})`} items={userMuted} emptyIcon={VolumeX} emptyMsg="No muted users" renderItem={(m) => <SimpleListItem key={m.id} avatar={m.muted} label={m.muted?.display_name || "Unknown"} sub={m.muted?.email || "—"} badge={<Badge variant="warning">Muted</Badge>} />} />
           </div>
         )}
 
-        {/* Messages Tab */}
-        {detailTab === "messages" && (
-          <SectionCard title={`Conversations (${userConversations.length})`}>
-            {userConversations.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userConversations.map((c, i) => (
-                  <div key={c.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="w-8 h-8 rounded-full bg-[var(--gray-100)] flex items-center justify-center shrink-0">
-                      <MessageSquare className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] font-mono truncate">
-                        {c.conversation?.id?.slice(0, 8) || c.conversation_id?.slice(0, 8) || "—"}...
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        Created {formatDateTime(c.conversation?.created_at || c.created_at)}
-                        {c.conversation?.updated_at && ` · Updated ${timeAgo(c.conversation.updated_at)}`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={MessageSquare} message="No conversations" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "messages" && <DetailListSection title={`Conversations (${userConversations.length})`} items={userConversations} emptyIcon={MessageSquare} emptyMsg="No conversations" renderItem={(c) => <SimpleListItem key={c.id} iconComp={MessageSquare} label={`${c.conversation?.id?.slice(0, 8) || c.conversation_id?.slice(0, 8) || "—"}...`} sub={`Created ${formatDateTime(c.conversation?.created_at || c.created_at)}${c.conversation?.updated_at ? ` · Updated ${timeAgo(c.conversation.updated_at)}` : ""}`} mono />} />}
 
-        {detailTab === "friends" && (
-          <SectionCard title={`Friends (${userFriends.length})`}>
-            {userFriends.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userFriends.map((f, i) => (
-                  <div key={f.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <Avatar src={f.friend?.avatar_url} name={f.friend?.display_name} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                        {f.friend?.display_name || "Unknown"}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)] truncate">
-                        {f.friend?.email || "—"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={Users} message="No friends yet" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "friends" && <DetailListSection title={`Friends (${userFriends.length})`} items={userFriends} emptyIcon={Users} emptyMsg="No friends yet" renderItem={(f) => <SimpleListItem key={f.id} avatar={f.friend} label={f.friend?.display_name || "Unknown"} sub={f.friend?.email || "—"} />} />}
 
-        {detailTab === "boards" && (
-          <SectionCard title={`Boards (${userBoards.length})`}>
-            {userBoards.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userBoards.map((b, i) => (
-                  <div key={b.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-                      <LayoutDashboard className="w-4 h-4 text-[#f97316]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                        {b.name || "Unnamed Board"}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        Created {timeAgo(b.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={LayoutDashboard} message="Not part of any boards" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "boards" && <DetailListSection title={`Boards (${userBoards.length})`} items={userBoards} emptyIcon={LayoutDashboard} emptyMsg="Not part of any boards" renderItem={(b) => <SimpleListItem key={b.id} iconComp={LayoutDashboard} label={b.name || "Unnamed Board"} sub={`Created ${timeAgo(b.created_at)}`} />} />}
 
-        {detailTab === "activity" && (
-          <SectionCard title="Recent Activity">
-            {userActivity.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userActivity.map((a, i) => (
-                  <div key={a.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="w-8 h-8 rounded-full bg-[var(--gray-100)] flex items-center justify-center shrink-0">
-                      <Activity className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        {a.activity_type && <Badge variant="default">{a.activity_type}</Badge>}
-                        <p className="text-sm text-[var(--color-text-primary)] truncate">
-                          {a.title || a.description || "Activity"}
-                        </p>
-                      </div>
-                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                        {formatDateTime(a.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={Activity} message="No recent activity" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "activity" && <DetailListSection title="Recent Activity" items={userActivity} emptyIcon={Activity} emptyMsg="No recent activity" renderItem={(a) => <SimpleListItem key={a.id} iconComp={Activity} label={a.title || a.description || "Activity"} sub={formatDateTime(a.created_at)} badge={a.activity_type ? <Badge variant="default">{a.activity_type}</Badge> : null} />} />}
 
-        {detailTab === "sessions" && (
-          <SectionCard title="Session History">
-            {userSessions.length > 0 ? (
-              <div className="divide-y divide-[var(--gray-200)]">
-                {userSessions.map((s, i) => (
-                  <div key={s.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="w-8 h-8 rounded-full bg-[var(--gray-100)] flex items-center justify-center shrink-0">
-                      <Clock className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-[var(--color-text-primary)]">
-                        {s.session_type || "Session"}
-                      </p>
-                      <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)] mt-0.5">
-                        <span>Started {formatDateTime(s.started_at)}</span>
-                        {s.ended_at && <span>Ended {formatDateTime(s.ended_at)}</span>}
-                        {s.interaction_count != null && <span>{s.interaction_count} interactions</span>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={Clock} message="No session history" />
-            )}
-          </SectionCard>
-        )}
+        {detailTab === "sessions" && <DetailListSection title="Session History" items={userSessions} emptyIcon={Clock} emptyMsg="No session history" renderItem={(s) => <SimpleListItem key={s.id} iconComp={Clock} label={s.session_type || "Session"} sub={`Started ${formatDateTime(s.started_at)}${s.ended_at ? ` · Ended ${formatDateTime(s.ended_at)}` : ""}${s.interaction_count != null ? ` · ${s.interaction_count} interactions` : ""}`} />} />}
 
-        {/* Calendar Tab */}
         {detailTab === "calendar" && (
           <SectionCard title={`Calendar Entries (${userCalendar.length})`}>
             {userCalendar.length > 0 ? (
-              <DataTable
-                columns={[
-                  { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                  { key: "title", label: "Title", render: (v) => v || "—" },
-                  { key: "scheduled_date", label: "Date", render: (v) => v ? formatDate(v) : "—" },
-                  { key: "status", label: "Status", render: (v) => v ? <Badge variant={v === "completed" ? "success" : v === "cancelled" ? "error" : "warning"}>{v}</Badge> : "—" },
-                  { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                ]}
-                rows={userCalendar}
-                emptyMessage="No calendar entries"
-              />
+              <DataTable columns={[
+                { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+                { key: "title", label: "Title", render: (v) => v || "—" },
+                { key: "scheduled_date", label: "Date", render: (v) => v ? formatDate(v) : "—" },
+                { key: "status", label: "Status", render: (v) => v ? <Badge variant={v === "completed" ? "success" : v === "cancelled" ? "error" : "warning"}>{v}</Badge> : "—" },
+                { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+              ]} rows={userCalendar} emptyMessage="No calendar entries" />
             ) : (
               <EmptyState icon={Calendar} message="No calendar entries" />
             )}
           </SectionCard>
         )}
 
-        {/* Reviews & Feedback Tab */}
         {detailTab === "reviews" && (
           <div className="flex flex-col gap-4">
             <SectionCard title={`Place Reviews (${userReviews.length})`}>
               {userReviews.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "place_name", label: "Place", render: (v) => v || "—" },
-                    { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
-                    { key: "sentiment", label: "Sentiment", render: (v) => v ? <Badge variant={v === "positive" ? "success" : v === "negative" ? "error" : "warning"}>{v}</Badge> : "—" },
-                    { key: "transcription", label: "Review", render: (v) => v ? <span className="truncate block max-w-[200px]">{v}</span> : "—" },
-                    { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userReviews}
-                  emptyMessage="No reviews"
-                />
+                <DataTable columns={[
+                  { key: "place_name", label: "Place", render: (v) => v || "—" },
+                  { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
+                  { key: "sentiment", label: "Sentiment", render: (v) => v ? <Badge variant={v === "positive" ? "success" : v === "negative" ? "error" : "warning"}>{v}</Badge> : "—" },
+                  { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userReviews} emptyMessage="No reviews" />
               ) : (
                 <EmptyState icon={Star} message="No place reviews" />
               )}
             </SectionCard>
             <SectionCard title={`Experience Feedback (${userFeedback.length})`}>
               {userFeedback.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
-                    { key: "message", label: "Message", render: (v) => v ? <span className="truncate block max-w-[300px]">{v}</span> : "—" },
-                    { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userFeedback}
-                  emptyMessage="No feedback"
-                />
+                <DataTable columns={[
+                  { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
+                  { key: "message", label: "Message", render: (v) => v ? <span className="truncate block max-w-[300px]">{v}</span> : "—" },
+                  { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userFeedback} emptyMessage="No feedback" />
               ) : (
                 <EmptyState icon={Star} message="No experience feedback" />
               )}
@@ -1461,59 +1336,42 @@ export function UserManagementPage() {
           </div>
         )}
 
-        {/* Interactions Tab */}
         {detailTab === "interactions" && (
           <SectionCard title={`User Interactions (${userInteractions.length})`}>
             {userInteractions.length > 0 ? (
-              <DataTable
-                columns={[
-                  { key: "interaction_type", label: "Type", render: (v) => v ? <Badge variant="default">{v}</Badge> : "—" },
-                  { key: "card_pool_id", label: "Card", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
-                  { key: "place_id", label: "Place ID", render: (v) => v ? <span className="font-mono text-xs truncate block max-w-[100px]">{v}</span> : "—" },
-                  { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
-                  { key: "created_at", label: "When", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                ]}
-                rows={userInteractions}
-                emptyMessage="No interactions"
-              />
+              <DataTable columns={[
+                { key: "interaction_type", label: "Type", render: (v) => v ? <Badge variant="default">{v}</Badge> : "—" },
+                { key: "card_pool_id", label: "Card", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
+                { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
+                { key: "created_at", label: "When", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+              ]} rows={userInteractions} emptyMessage="No interactions" />
             ) : (
               <EmptyState icon={MousePointerClick} message="No interactions recorded" />
             )}
           </SectionCard>
         )}
 
-        {/* Reports & App Feedback Tab */}
         {detailTab === "reports" && (
           <div className="flex flex-col gap-4">
             <SectionCard title={`User Reports (${userReports.length})`}>
               {userReports.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "reporter_id", label: "Direction", render: (v) => v === userDetail.id ? <Badge variant="warning">Reported by user</Badge> : <Badge variant="error">User was reported</Badge> },
-                    { key: "reason", label: "Reason", render: (v) => v || "—" },
-                    { key: "status", label: "Status", render: (v) => v ? <Badge variant={v === "resolved" ? "success" : v === "dismissed" ? "default" : "warning"}>{v}</Badge> : "—" },
-                    { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userReports}
-                  emptyMessage="No reports"
-                />
+                <DataTable columns={[
+                  { key: "reporter_id", label: "Direction", render: (v) => v === userDetail.id ? <Badge variant="warning">Reported by user</Badge> : <Badge variant="error">User was reported</Badge> },
+                  { key: "reason", label: "Reason", render: (v) => v || "—" },
+                  { key: "status", label: "Status", render: (v) => v ? <Badge variant={v === "resolved" ? "success" : v === "dismissed" ? "default" : "warning"}>{v}</Badge> : "—" },
+                  { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userReports} emptyMessage="No reports" />
               ) : (
                 <EmptyState icon={Flag} message="No reports" />
               )}
             </SectionCard>
             <SectionCard title={`App Feedback (${userAppFeedback.length})`}>
               {userAppFeedback.length > 0 ? (
-                <DataTable
-                  columns={[
-                    { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                    { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
-                    { key: "message", label: "Message", render: (v) => v ? <span className="truncate block max-w-[300px]">{v}</span> : "—" },
-                    { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-                  ]}
-                  rows={userAppFeedback}
-                  emptyMessage="No app feedback"
-                />
+                <DataTable columns={[
+                  { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
+                  { key: "message", label: "Message", render: (v) => v ? <span className="truncate block max-w-[300px]">{v}</span> : "—" },
+                  { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+                ]} rows={userAppFeedback} emptyMessage="No app feedback" />
               ) : (
                 <EmptyState icon={Star} message="No app feedback" />
               )}
@@ -1521,42 +1379,31 @@ export function UserManagementPage() {
           </div>
         )}
 
-        {/* Location History Tab */}
         {detailTab === "location" && (
           <SectionCard title={`Location History (${userLocationHistory.length})`}>
             {userLocationHistory.length > 0 ? (
-              <DataTable
-                columns={[
-                  { key: "latitude", label: "Lat", render: (v) => v != null ? Number(v).toFixed(4) : "—" },
-                  { key: "longitude", label: "Lng", render: (v) => v != null ? Number(v).toFixed(4) : "—" },
-                  { key: "city", label: "City", render: (v) => v || "—" },
-                  { key: "country", label: "Country", render: (v) => v || "—" },
-                  { key: "recorded_at", label: "Recorded", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(v)}</span> },
-                ]}
-                rows={userLocationHistory}
-                emptyMessage="No location history"
-              />
+              <DataTable columns={[
+                { key: "latitude", label: "Lat", render: (v) => v != null ? Number(v).toFixed(4) : "—" },
+                { key: "longitude", label: "Lng", render: (v) => v != null ? Number(v).toFixed(4) : "—" },
+                { key: "city", label: "City", render: (v) => v || "—" },
+                { key: "country", label: "Country", render: (v) => v || "—" },
+                { key: "recorded_at", label: "Recorded", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(v)}</span> },
+              ]} rows={userLocationHistory} emptyMessage="No location history" />
             ) : (
               <EmptyState icon={MapPin} message="No location history" />
             )}
           </SectionCard>
         )}
 
-        {/* Preference History Tab */}
         {detailTab === "prefhistory" && (
           <SectionCard title={`Preference History (${userPrefHistory.length})`}>
             {userPrefHistory.length > 0 ? (
-              <DataTable
-                columns={[
-                  { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                  { key: "field_changed", label: "Field", render: (v) => v || "—" },
-                  { key: "old_value", label: "Old Value", render: (v) => v != null ? <span className="truncate block max-w-[150px]">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span> : "—" },
-                  { key: "new_value", label: "New Value", render: (v) => v != null ? <span className="truncate block max-w-[150px]">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span> : "—" },
-                  { key: "changed_at", label: "Changed", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(v)}</span> },
-                ]}
-                rows={userPrefHistory}
-                emptyMessage="No preference history"
-              />
+              <DataTable columns={[
+                { key: "field_changed", label: "Field", render: (v) => v || "—" },
+                { key: "old_value", label: "Old Value", render: (v) => v != null ? <span className="truncate block max-w-[150px]">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span> : "—" },
+                { key: "new_value", label: "New Value", render: (v) => v != null ? <span className="truncate block max-w-[150px]">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span> : "—" },
+                { key: "changed_at", label: "Changed", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(v)}</span> },
+              ]} rows={userPrefHistory} emptyMessage="No preference history" />
             ) : (
               <EmptyState icon={Clock} message="No preference change history" />
             )}
@@ -1564,33 +1411,31 @@ export function UserManagementPage() {
         )}
 
         {deleteModalJSX}
+        {banModalJSX}
       </div>
     );
   }
 
-  // ─── Render: Impersonate View ───────────────────────────────────────────────
+  // ─── Render: Preview Profile View ──────────────────────────────────────────
 
   if (view === "impersonate") {
     return (
       <div className="flex flex-col gap-6">
-        {/* Top bar */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={backToDetail}>Back to User Detail</Button>
         </div>
 
-        {/* Impersonate header */}
         <div className="flex items-center gap-3 p-4 bg-[var(--color-info-50)] border border-[var(--color-info-200)] rounded-lg">
           <Eye className="w-5 h-5 text-[#3b82f6] shrink-0" />
           <div>
             <p className="text-sm font-medium text-[#1d4ed8]">
-              Viewing as: {userDetail?.display_name || "Unknown"}
+              Previewing: {userDetail?.display_name || "Unknown"}
               {userDetail?.username && <span className="font-normal"> (@{userDetail.username})</span>}
             </p>
             <p className="text-xs text-[#1d4ed8] mt-0.5">All data below is read-only and shows what this user would see</p>
           </div>
         </div>
 
-        {/* Preferences */}
         <SectionCard title="Their Preferences">
           {impersonateData.preferences ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
@@ -1618,42 +1463,31 @@ export function UserManagementPage() {
           )}
         </SectionCard>
 
-        {/* Saved Experiences */}
         <SectionCard title={`Their Saved Experiences (${impersonateData.savedExperiences.length})`}>
           {impersonateData.savedExperiences.length > 0 ? (
-            <DataTable
-              columns={[
-                { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                { key: "title", label: "Title", render: (v) => v || "—" },
-                { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
-                { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-              ]}
-              rows={impersonateData.savedExperiences}
-              emptyMessage="No saved experiences"
-            />
+            <DataTable columns={[
+              { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+              { key: "title", label: "Title", render: (v) => v || "—" },
+              { key: "category", label: "Category", render: (v) => v ? <Badge variant="brand">{v}</Badge> : "—" },
+              { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+            ]} rows={impersonateData.savedExperiences} emptyMessage="No saved experiences" />
           ) : (
             <EmptyState icon={Heart} message="No saved experiences" />
           )}
         </SectionCard>
 
-        {/* Saved Cards */}
         <SectionCard title={`Their Saved Cards (${impersonateData.savedCards.length})`}>
           {impersonateData.savedCards.length > 0 ? (
-            <DataTable
-              columns={[
-                { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
-                { key: "card_pool_id", label: "Card Pool ID", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
-                { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-              ]}
-              rows={impersonateData.savedCards}
-              emptyMessage="No saved cards"
-            />
+            <DataTable columns={[
+              { key: "id", label: "ID", width: "80px", render: (v) => <span className="font-mono text-xs">{v?.slice(0, 8)}...</span> },
+              { key: "card_pool_id", label: "Card Pool ID", render: (v) => v ? <span className="font-mono text-xs">{v.slice(0, 8)}...</span> : "—" },
+              { key: "created_at", label: "Saved", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+            ]} rows={impersonateData.savedCards} emptyMessage="No saved cards" />
           ) : (
             <EmptyState icon={Heart} message="No saved cards" />
           )}
         </SectionCard>
 
-        {/* Boards */}
         <SectionCard title={`Their Boards (${impersonateData.boards.length})`}>
           {impersonateData.boards.length > 0 ? (
             <div className="divide-y divide-[var(--gray-200)]">
@@ -1663,12 +1497,8 @@ export function UserManagementPage() {
                     <LayoutDashboard className="w-4 h-4 text-[#f97316]" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                      {b.name || "Unnamed Board"}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      Created {timeAgo(b.created_at)}
-                    </p>
+                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{b.name || "Unnamed Board"}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">Created {timeAgo(b.created_at)}</p>
                   </div>
                 </div>
               ))}
@@ -1707,6 +1537,39 @@ function EmptyState({ icon: Icon, message }) {
     <div className="flex flex-col items-center justify-center py-8 gap-2">
       <Icon className="h-8 w-8 text-[var(--gray-300)]" />
       <p className="text-sm text-[var(--color-text-tertiary)]">{message}</p>
+    </div>
+  );
+}
+
+function DetailListSection({ title, items, emptyIcon: EmptyIcon, emptyMsg, renderItem }) {
+  return (
+    <SectionCard title={title}>
+      {items.length > 0 ? (
+        <div className="divide-y divide-[var(--gray-200)]">
+          {items.map((item, i) => renderItem(item, i))}
+        </div>
+      ) : (
+        <EmptyState icon={EmptyIcon} message={emptyMsg} />
+      )}
+    </SectionCard>
+  );
+}
+
+function SimpleListItem({ avatar, iconComp: IconComp, label, sub, badge, mono }) {
+  return (
+    <div className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+      {avatar ? (
+        <Avatar src={avatar?.avatar_url} name={avatar?.display_name} size="sm" />
+      ) : IconComp ? (
+        <div className="w-8 h-8 rounded-full bg-[var(--gray-100)] flex items-center justify-center shrink-0">
+          <IconComp className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+        </div>
+      ) : null}
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm font-medium text-[var(--color-text-primary)] truncate ${mono ? "font-mono" : ""}`}>{label}</p>
+        {sub && <p className="text-xs text-[var(--color-text-muted)] truncate">{sub}</p>}
+      </div>
+      {badge}
     </div>
   );
 }

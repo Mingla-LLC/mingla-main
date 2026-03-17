@@ -1,10 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
-import { Database, Search, AlertCircle, ChevronDown, ChevronRight, PanelLeftOpen, X } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Database, Search, AlertCircle, ChevronDown, ChevronRight, PanelLeftOpen, X, Download } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { TABLES, TABLE_CATEGORIES } from "../lib/constants";
 import { DataTable } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import {
+  timeAgo, formatDate, formatDateTime, formatRelativeTime, formatFullDate, truncate, escapeLike,
+} from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,7 +21,7 @@ function formatCellValue(value, key) {
     return <span className="text-[var(--color-text-muted)] italic">null</span>;
   }
   if (typeof value === "object") {
-    return <Badge variant="info">JSON</Badge>;
+    return <Badge variant="info" className="cursor-pointer">JSON</Badge>;
   }
   if (typeof value === "boolean") {
     return <Badge variant={value ? "success" : "error"} dot>{value ? "true" : "false"}</Badge>;
@@ -50,6 +56,13 @@ function formatCellValue(value, key) {
 }
 
 export function TableBrowserPage() {
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const [selected, setSelected] = useState("profiles");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +73,13 @@ export function TableBrowserPage() {
   const [tableCounts, setTableCounts] = useState({});
   const [collapsedCategories, setCollapsedCategories] = useState({});
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Sorting
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
+
+  // JSON expansion modal
+  const [jsonModal, setJsonModal] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -86,45 +106,87 @@ export function TableBrowserPage() {
     return () => { mounted = false; };
   }, []);
 
-  const loadData = useCallback(async (table, pg) => {
+  const loadData = useCallback(async (table, pg, sk, sd) => {
     setLoading(true);
     setError(null);
     try {
       const from = pg * PAGE_SIZE;
-      const { data, count, error: queryError } = await supabase
+      let query = supabase
         .from(table)
-        .select("*", { count: "exact" })
-        .range(from, from + PAGE_SIZE - 1);
+        .select("*", { count: "exact" });
+
+      // Apply sorting
+      if (sk) {
+        query = query.order(sk, { ascending: sd === "asc" });
+      }
+
+      query = query.range(from, from + PAGE_SIZE - 1);
+
+      const { data, count, error: queryError } = await query;
       if (queryError) throw queryError;
-      setRows(data || []);
-      setTotal(count || 0);
+      if (mountedRef.current) {
+        setRows(data || []);
+        setTotal(count || 0);
+      }
     } catch (err) {
-      setError(err.message || "Failed to load table data");
-      setRows([]);
-      setTotal(0);
+      if (mountedRef.current) {
+        setError(err.message || "Failed to load table data");
+        setRows([]);
+        setTotal(0);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadData(selected, page); }, [selected, page, loadData]);
+  useEffect(() => { loadData(selected, page, sortKey, sortDir); }, [selected, page, sortKey, sortDir, loadData]);
 
   const handleSelectTable = (table) => {
     if (table === selected) { setMobileSidebarOpen(false); return; }
     setSelected(table);
     setPage(0);
+    setSortKey(null);
+    setSortDir("asc");
     setMobileSidebarOpen(false);
+  };
+
+  const handleSort = (key, dir) => {
+    setSortKey(key);
+    setSortDir(dir || "asc");
+    setPage(0);
   };
 
   const toggleCategory = (label) => {
     setCollapsedCategories((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
+  const handleCellClick = (value, key) => {
+    if (typeof value === "object" && value !== null) {
+      setJsonModal({ key, value });
+    }
+  };
+
+  const handleExport = () => {
+    if (rows.length === 0) return;
+    const exportColumns = Object.keys(rows[0]).map(key => ({ key, label: key }));
+    exportCsv(exportColumns, rows, `table_${selected}`);
+  };
+
   const columns = rows.length
     ? Object.keys(rows[0]).map((key) => ({
         key,
         label: key,
-        render: (value) => formatCellValue(value, key),
+        sortable: true,
+        render: (value) => {
+          if (typeof value === "object" && value !== null) {
+            return (
+              <button onClick={() => setJsonModal({ key, value })} className="cursor-pointer">
+                <Badge variant="info">JSON</Badge>
+              </button>
+            );
+          }
+          return formatCellValue(value, key);
+        },
       }))
     : [];
 
@@ -249,6 +311,9 @@ export function TableBrowserPage() {
               <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{selected}</h2>
               <Badge variant="outline">{total.toLocaleString()} rows</Badge>
             </div>
+            <Button variant="secondary" size="sm" icon={Download} onClick={handleExport} disabled={rows.length === 0}>
+              Export CSV
+            </Button>
           </div>
 
           {error && !loading ? (
@@ -259,7 +324,7 @@ export function TableBrowserPage() {
                   <p className="text-sm font-medium text-[var(--color-text-primary)]">Failed to load table</p>
                   <p className="text-xs text-[var(--color-text-tertiary)] mt-1 max-w-md">{error}</p>
                 </div>
-                <Button variant="link" onClick={() => loadData(selected, page)}>Try again</Button>
+                <Button variant="link" onClick={() => loadData(selected, page, sortKey, sortDir)}>Try again</Button>
               </div>
             </div>
           ) : (
@@ -269,7 +334,10 @@ export function TableBrowserPage() {
               loading={loading}
               striped
               emptyIcon={Database}
-              emptyMessage={`No rows in ${selected}`}
+              emptyMessage="This table is empty."
+              sortKey={sortKey}
+              sortDirection={sortDir}
+              onSort={handleSort}
               pagination={
                 total > 0
                   ? { page, total, pageSize: PAGE_SIZE, from, to, onChange: setPage }
@@ -279,6 +347,21 @@ export function TableBrowserPage() {
           )}
         </div>
       </div>
+
+      {/* JSON Expansion Modal */}
+      <Modal open={!!jsonModal} onClose={() => setJsonModal(null)} title={jsonModal ? `JSON: ${jsonModal.key}` : ""} size="md">
+        <ModalBody>
+          {jsonModal && (
+            <pre className="p-4 rounded-lg text-xs font-mono overflow-auto max-h-[60vh] whitespace-pre-wrap"
+              style={{ backgroundColor: "var(--color-background-secondary)", color: "var(--color-text-primary)" }}>
+              {JSON.stringify(jsonModal.value, null, 2)}
+            </pre>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => setJsonModal(null)}>Close</Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }

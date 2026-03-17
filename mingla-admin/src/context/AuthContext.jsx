@@ -121,15 +121,25 @@ export function AuthProvider({ children }) {
    */
   const fetchDynamicAdmins = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("email, status")
-        .in("status", ["active", "invited"]);
+      // Use SECURITY DEFINER RPC that only exposes email + status (not full table)
+      const { data, error } = await supabase.rpc("get_admin_emails");
       if (error) {
-        // Table may not exist yet — that's OK, fall back to hardcoded list
-        if (error.code !== "42P01" && !error.message?.includes("does not exist")) {
-          console.error("Failed to fetch admin_users:", error.message);
+        // RPC may not exist yet — fall back to direct table query, then hardcoded list
+        if (error.code === "PGRST202" || error.message?.includes("does not exist")) {
+          // Try direct table query as fallback (pre-migration)
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("admin_users")
+            .select("email, status")
+            .in("status", ["active", "invited"]);
+          if (fallbackError) {
+            if (fallbackError.code !== "42P01" && !fallbackError.message?.includes("does not exist")) {
+              console.error("Failed to fetch admin_users:", fallbackError.message);
+            }
+            return [];
+          }
+          return (fallbackData || []).map((a) => a.email);
         }
+        console.error("Failed to fetch admin emails:", error.message);
         return [];
       }
       return (data || []).map((a) => a.email);
@@ -145,12 +155,10 @@ export function AuthProvider({ children }) {
    * Otherwise, sign them out (leaked session without 2FA).
    */
   const handleUnverifiedSession = useCallback(async (sess) => {
-    console.log("session: ", sess);
     const email = sess.user?.email;
     if (!email) return;
 
     const isInvited = await checkIsInvitedAdmin(email);
-    console.log("isInvited: ", isInvited);
     if (isInvited) {
       // Magic link invite — show password setup screen
       setInviteSetup(sess);

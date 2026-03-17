@@ -1,15 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield,
-  UserPlus,
-  UserCheck,
-  UserX,
-  Mail,
-  AlertCircle,
-  Crown,
-  Copy,
-  Check,
+  Shield, UserPlus, UserCheck, UserX, Mail,
+  AlertCircle, Crown, Copy, Check, Clock,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, AlertCard } from "../components/ui/Card";
@@ -17,9 +10,15 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { DataTable } from "../components/ui/Table";
 import { ListItemSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import {
+  timeAgo, formatDate, formatDateTime, formatRelativeTime, formatFullDate, truncate, escapeLike,
+} from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const SETUP_SQL = `-- Run this in Supabase SQL Editor to create the admin_users table
 CREATE TABLE IF NOT EXISTS admin_users (
@@ -64,6 +63,13 @@ const staggerItem = {
 export function AdminPage() {
   const { addToast } = useToast();
   const { session } = useAuth();
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tableExists, setTableExists] = useState(true);
@@ -81,6 +87,11 @@ export function AdminPage() {
   // SQL copy
   const [copied, setCopied] = useState(false);
 
+  // Activity modal
+  const [activityTarget, setActivityTarget] = useState(null);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
   const currentEmail = session?.user?.email?.toLowerCase();
 
   // Fetch admins
@@ -96,7 +107,6 @@ export function AdminPage() {
       .then(({ data, error: queryError }) => {
         if (!mounted) return;
         if (queryError) {
-          // Table doesn't exist yet
           if (queryError.code === "42P01" || queryError.message?.includes("does not exist")) {
             setTableExists(false);
           } else {
@@ -115,6 +125,29 @@ export function AdminPage() {
 
   const refetch = () => setFetchKey((k) => k + 1);
 
+  // Fetch activity for admin
+  const fetchActivity = useCallback(async (email) => {
+    setActivityLoading(true);
+    try {
+      const { data } = await supabase
+        .from("admin_audit_log")
+        .select("*")
+        .eq("admin_email", email)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (mountedRef.current) setActivityLogs(data || []);
+    } catch {
+      if (mountedRef.current) setActivityLogs([]);
+    } finally {
+      if (mountedRef.current) setActivityLoading(false);
+    }
+  }, []);
+
+  const openActivity = (admin) => {
+    setActivityTarget(admin);
+    fetchActivity(admin.email);
+  };
+
   // Invite a new admin
   const handleInvite = useCallback(async (e) => {
     e.preventDefault();
@@ -126,11 +159,9 @@ export function AdminPage() {
       return;
     }
 
-    // Check if already exists
     const existing = admins.find((a) => a.email.toLowerCase() === email);
     if (existing) {
       if (existing.status === "revoked") {
-        // Re-invite revoked admin
         setInviting(true);
         try {
           const { error: updateError } = await supabase
@@ -139,18 +170,17 @@ export function AdminPage() {
             .eq("id", existing.id);
           if (updateError) throw updateError;
 
-          // Send them an invite email (creates Supabase Auth account if needed)
           const { error: otpError } = await supabase.auth.signInWithOtp({
             email,
             options: { shouldCreateUser: true },
           });
           if (otpError) {
-            console.error("Invite email failed:", otpError.message);
-            addToast({ variant: "success", title: "Admin re-invited", description: `${email} re-invited, but the invite email failed to send. They can still log in if they have an account.` });
+            addToast({ variant: "success", title: "Admin re-invited", description: `${email} re-invited, but the invite email failed to send.` });
           } else {
             addToast({ variant: "success", title: "Admin re-invited", description: `Invite email sent to ${email}` });
           }
 
+          await logAdminAction("admin.invite", "admin_user", existing.id, { email, reinvite: true });
           setInviteEmail("");
           refetch();
         } catch (err) {
@@ -166,27 +196,24 @@ export function AdminPage() {
 
     setInviting(true);
     try {
-      const { error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await supabase
         .from("admin_users")
-        .insert({
-          email,
-          role: "admin",
-          status: "invited",
-          invited_by: currentEmail,
-        });
+        .insert({ email, role: "admin", status: "invited", invited_by: currentEmail })
+        .select()
+        .single();
       if (insertError) throw insertError;
 
-      // Send them an invite email (creates Supabase Auth account if needed)
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
         options: { shouldCreateUser: true },
       });
       if (otpError) {
-        console.error("Invite email failed:", otpError.message);
-        addToast({ variant: "success", title: "Admin added", description: `${email} added but invite email failed to send. They can still log in if they have a Supabase Auth account.` });
+        addToast({ variant: "success", title: "Admin added", description: `${email} added but invite email failed to send.` });
       } else {
         addToast({ variant: "success", title: "Invite sent!", description: `${email} will receive an email with login access` });
       }
+
+      await logAdminAction("admin.invite", "admin_user", insertData?.id, { email });
       setInviteEmail("");
       refetch();
     } catch (err) {
@@ -205,6 +232,7 @@ export function AdminPage() {
         .eq("id", admin.id);
       if (updateError) throw updateError;
       addToast({ variant: "success", title: "Admin activated", description: `${admin.email} is now active` });
+      await logAdminAction("admin.accept", "admin_user", admin.id, { email: admin.email });
       refetch();
     } catch (err) {
       addToast({ variant: "error", title: "Accept failed", description: err.message });
@@ -222,6 +250,7 @@ export function AdminPage() {
         .eq("id", revokeTarget.id);
       if (updateError) throw updateError;
       addToast({ variant: "success", title: "Admin revoked", description: `${revokeTarget.email} can no longer log in` });
+      await logAdminAction("admin.revoke", "admin_user", revokeTarget.id, { email: revokeTarget.email });
       setRevokeTarget(null);
       refetch();
     } catch (err) {
@@ -252,10 +281,7 @@ export function AdminPage() {
     return (
       <div className="flex flex-col gap-8">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Admin Management</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Invite and manage admin users
-          </p>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Admin Users</h1>
         </div>
 
         <AlertCard variant="warning" title="Setup Required">
@@ -269,12 +295,7 @@ export function AdminPage() {
         <SectionCard
           title="Setup SQL"
           action={
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={copied ? Check : Copy}
-              onClick={handleCopySQL}
-            >
+            <Button variant="secondary" size="sm" icon={copied ? Check : Copy} onClick={handleCopySQL}>
               {copied ? "Copied!" : "Copy SQL"}
             </Button>
           }
@@ -298,10 +319,7 @@ export function AdminPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Admin Management</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Invite, accept, and manage admin dashboard users
-          </p>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Admin Users</h1>
         </div>
         <Badge variant="outline">{activeAdmins.length} active</Badge>
       </div>
@@ -319,13 +337,7 @@ export function AdminPage() {
               helper="They'll receive an invite email and a Supabase Auth account will be created for them"
             />
           </div>
-          <Button
-            type="submit"
-            variant="primary"
-            icon={UserPlus}
-            loading={inviting}
-            disabled={!inviteEmail.trim()}
-          >
+          <Button type="submit" variant="primary" icon={UserPlus} loading={inviting} disabled={!inviteEmail.trim()}>
             Invite
           </Button>
         </form>
@@ -351,9 +363,7 @@ export function AdminPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <Badge variant="warning" dot>invited</Badge>
                         {admin.invited_by && (
-                          <span className="text-[10px] text-[var(--color-text-muted)]">
-                            by {admin.invited_by}
-                          </span>
+                          <span className="text-[10px] text-[var(--color-text-muted)]">by {admin.invited_by}</span>
                         )}
                         <span className="text-[10px] text-[var(--color-text-muted)]">
                           {new Date(admin.created_at).toLocaleDateString()}
@@ -361,22 +371,8 @@ export function AdminPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={UserCheck}
-                        onClick={() => handleAccept(admin)}
-                      >
-                        Accept
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={UserX}
-                        onClick={() => setRevokeTarget(admin)}
-                      >
-                        Revoke
-                      </Button>
+                      <Button variant="primary" size="sm" icon={UserCheck} onClick={() => handleAccept(admin)}>Accept</Button>
+                      <Button variant="ghost" size="sm" icon={UserX} onClick={() => setRevokeTarget(admin)}>Revoke</Button>
                     </div>
                   </div>
                 </motion.div>
@@ -431,7 +427,13 @@ export function AdminPage() {
                           {isSelf && <Badge variant="info">you</Badge>}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant={isOwner ? "brand" : "success"} dot>{admin.role}</Badge>
+                          <Badge variant={isOwner ? "brand" : "success"} dot>
+                            {isOwner ? (
+                              <span className="flex items-center gap-1"><Crown className="h-3 w-3" /> Owner</span>
+                            ) : (
+                              <span className="flex items-center gap-1"><Shield className="h-3 w-3" /> Admin</span>
+                            )}
+                          </Badge>
                           {admin.accepted_at && (
                             <span className="text-[10px] text-[var(--color-text-muted)]">
                               since {new Date(admin.accepted_at).toLocaleDateString()}
@@ -439,16 +441,16 @@ export function AdminPage() {
                           )}
                         </div>
                       </div>
-                      {!isOwner && !isSelf && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={UserX}
-                          onClick={() => setRevokeTarget(admin)}
-                        >
-                          Revoke
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button variant="ghost" size="sm" icon={Clock} onClick={() => openActivity(admin)}>
+                          Activity
                         </Button>
-                      )}
+                        {!isOwner && !isSelf && (
+                          <Button variant="ghost" size="sm" icon={UserX} onClick={() => setRevokeTarget(admin)}>
+                            Revoke
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 );
@@ -458,7 +460,7 @@ export function AdminPage() {
         )}
       </SectionCard>
 
-      {/* Revoked Admins (collapsed) */}
+      {/* Revoked Admins */}
       {revokedAdmins.length > 0 && (
         <SectionCard
           title="Revoked"
@@ -485,6 +487,7 @@ export function AdminPage() {
                         .eq("id", admin.id);
                       if (err) throw err;
                       addToast({ variant: "success", title: "Re-invited", description: `${admin.email} re-invited` });
+                      await logAdminAction("admin.invite", "admin_user", admin.id, { email: admin.email, reinvite: true });
                       refetch();
                     } catch (err) {
                       addToast({ variant: "error", title: "Failed", description: err.message });
@@ -500,12 +503,7 @@ export function AdminPage() {
       )}
 
       {/* Revoke Confirmation Modal */}
-      <Modal
-        open={!!revokeTarget}
-        onClose={() => setRevokeTarget(null)}
-        title="Revoke Admin Access"
-        destructive
-      >
+      <Modal open={!!revokeTarget} onClose={() => setRevokeTarget(null)} title="Revoke Admin Access" destructive>
         <ModalBody>
           <p className="text-sm text-[var(--color-text-secondary)]">
             Are you sure you want to revoke dashboard access for{" "}
@@ -520,6 +518,49 @@ export function AdminPage() {
           <Button variant="danger" icon={UserX} loading={revoking} onClick={handleRevoke}>
             Revoke Access
           </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Activity Modal */}
+      <Modal
+        open={!!activityTarget}
+        onClose={() => { setActivityTarget(null); setActivityLogs([]); }}
+        title={activityTarget ? `Activity: ${activityTarget.email}` : "Activity"}
+        size="lg"
+      >
+        <ModalBody>
+          {activityLoading ? (
+            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-[#f97316] border-t-transparent rounded-full animate-spin" /></div>
+          ) : activityLogs.length === 0 ? (
+            <p className="text-sm text-[var(--color-text-tertiary)] text-center py-8">No activity recorded.</p>
+          ) : (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {activityLogs.map((log) => (
+                <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-background-secondary)]">
+                  <Clock className="h-4 w-4 text-[var(--color-text-tertiary)] mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-[var(--color-text-primary)]">{log.action}</p>
+                    {log.target_type && (
+                      <p className="text-xs text-[var(--color-text-tertiary)]">
+                        {log.target_type}{log.target_id ? `: ${log.target_id}` : ""}
+                      </p>
+                    )}
+                    {log.metadata && Object.keys(log.metadata).length > 0 && (
+                      <p className="text-xs text-[var(--color-text-tertiary)] font-mono mt-0.5">
+                        {JSON.stringify(log.metadata)}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">
+                    {formatRelativeTime(log.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => { setActivityTarget(null); setActivityLogs([]); }}>Close</Button>
         </ModalFooter>
       </Modal>
     </div>

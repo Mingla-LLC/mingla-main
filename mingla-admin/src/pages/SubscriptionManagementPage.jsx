@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   CreditCard, Crown, Zap, UserCheck, Shield, Clock, Search,
   ChevronLeft, ChevronRight, X, AlertTriangle, History, Gift,
-  Ban, Check, RefreshCw,
+  Ban, Check, RefreshCw, Download,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { StatCard, SectionCard } from "../components/ui/Card";
@@ -16,26 +16,14 @@ import { Spinner } from "../components/ui/Spinner";
 import { StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-  });
-}
-
-function formatDateTime(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 function timeRemaining(dateStr) {
   if (!dateStr) return "—";
@@ -84,15 +72,18 @@ export function SubscriptionManagementPage() {
   const [stats, setStats] = useState({ total: 0, free: 0, pro: 0, elite: 0, overrides: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
+  // Expiring overrides alert
+  const [expiringCount, setExpiringCount] = useState(0);
+
   // Grant modal
   const [grantModal, setGrantModal] = useState(false);
-  const [grantTarget, setGrantTarget] = useState(null); // { user_id, display_name }
+  const [grantTarget, setGrantTarget] = useState(null);
   const [grantForm, setGrantForm] = useState({ tier: "pro", reason: "", duration_days: 30 });
   const [granting, setGranting] = useState(false);
 
   // Revoke modal
   const [revokeModal, setRevokeModal] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState(null); // full row
+  const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
 
   // History modal
@@ -139,7 +130,6 @@ export function SubscriptionManagementPage() {
 
       const { data, error } = await supabase.rpc("admin_list_subscriptions", params);
       if (error) {
-        // PGRST202 = function not found (migration not run)
         if (error.code === "PGRST202") {
           setSetupNeeded(true);
           return;
@@ -160,12 +150,34 @@ export function SubscriptionManagementPage() {
     }
   }, [page, debouncedSearch, tierFilter, addToast]);
 
-  // ─── Fetch stats ────────────────────────────────────────────────────────────
+  // ─── Fetch stats via RPC ──────────────────────────────────────────────────────
 
   const fetchStats = useCallback(async () => {
     if (setupNeeded) { setStatsLoading(false); return; }
     setStatsLoading(true);
     try {
+      // Try dedicated stats RPC first
+      const { data: rpcStats, error: rpcErr } = await supabase.rpc("admin_subscription_stats");
+      if (!rpcErr && rpcStats) {
+        if (!mountedRef.current) return;
+        // rpcStats may be a single row or array
+        const s = Array.isArray(rpcStats) ? rpcStats[0] : rpcStats;
+        if (s) {
+          setStats({
+            total: s.total ?? 0,
+            free: s.free ?? 0,
+            pro: s.pro ?? 0,
+            elite: s.elite ?? 0,
+            overrides: s.overrides ?? 0,
+          });
+          setStatsLoading(false);
+          return;
+        }
+      }
+
+      // PGRST202 fallback: compute from full list
+      if (rpcErr && rpcErr.code !== "PGRST202") throw rpcErr;
+
       const { data, error } = await supabase.rpc("admin_list_subscriptions", {
         p_limit: 10000,
         p_offset: 0,
@@ -193,6 +205,23 @@ export function SubscriptionManagementPage() {
     }
   }, [setupNeeded]);
 
+  // ─── Fetch expiring overrides ─────────────────────────────────────────────────
+
+  useEffect(() => {
+    async function checkExpiring() {
+      try {
+        const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        const { count } = await supabase
+          .from("admin_subscription_overrides")
+          .select("*", { count: "exact", head: true })
+          .eq("is_active", true)
+          .lt("expires_at", threeDaysFromNow);
+        if (mountedRef.current) setExpiringCount(count ?? 0);
+      } catch { /* ignore */ }
+    }
+    checkExpiring();
+  }, []);
+
   useEffect(() => {
     fetchSubscriptions();
   }, [fetchSubscriptions]);
@@ -219,6 +248,7 @@ export function SubscriptionManagementPage() {
       });
       if (error) throw error;
       addToast({ variant: "success", title: "Override granted", description: `${grantForm.tier} tier for ${grantForm.duration_days} days` });
+      logAdminAction("subscription.grant_override", "subscription", grantTarget.user_id, { tier: grantForm.tier, duration_days: grantForm.duration_days, reason: grantForm.reason.trim() });
       setGrantModal(false);
       setGrantForm({ tier: "pro", reason: "", duration_days: 30 });
       setGrantTarget(null);
@@ -238,7 +268,6 @@ export function SubscriptionManagementPage() {
     if (!revokeTarget) return;
     setRevoking(true);
     try {
-      // We need the override ID — fetch history to get the active one
       const { data: history, error: hErr } = await supabase.rpc("admin_get_override_history", {
         p_user_id: revokeTarget.user_id,
       });
@@ -255,6 +284,7 @@ export function SubscriptionManagementPage() {
       });
       if (error) throw error;
       addToast({ variant: "success", title: "Override revoked", description: `${revokeTarget.display_name}'s override has been revoked` });
+      logAdminAction("subscription.revoke_override", "subscription", revokeTarget.user_id, { display_name: revokeTarget.display_name });
       setRevokeModal(false);
       setRevokeTarget(null);
       fetchSubscriptions();
@@ -287,14 +317,32 @@ export function SubscriptionManagementPage() {
     }
   };
 
+  // ─── Export ─────────────────────────────────────────────────────────────────
+
+  const handleExport = useCallback(() => {
+    const cols = [
+      { key: "user_id", label: "User ID" },
+      { key: "display_name", label: "Name" },
+      { key: "phone", label: "Phone" },
+      { key: "effective_tier", label: "Effective Tier" },
+      { key: "raw_tier", label: "RC Tier" },
+      { key: "has_admin_override", label: "Has Override" },
+      { key: "admin_override_tier", label: "Override Tier" },
+      { key: "admin_override_expires_at", label: "Override Expires" },
+      { key: "trial_ends_at", label: "Trial Ends" },
+      { key: "created_at", label: "Joined" },
+    ];
+    const { exported, capped } = exportCsv(cols, subscriptions, "subscriptions");
+    addToast({ variant: "success", title: `Exported ${exported} rows${capped ? " (capped at 10k)" : ""}` });
+  }, [subscriptions, addToast]);
+
   // ─── Setup Screen ───────────────────────────────────────────────────────────
 
   if (setupNeeded) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscription Management</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">Manage user tiers and admin overrides</p>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscriptions</h1>
         </div>
         <SectionCard title="Setup Required" subtitle="Run the migration to enable subscription management">
           <div className="space-y-4">
@@ -343,7 +391,6 @@ export function SubscriptionManagementPage() {
 
   // ─── Pagination ──────────────────────────────────────────────────────────────
 
-  const totalPages = Math.ceil((subscriptions.length === PAGE_SIZE ? (page + 2) * PAGE_SIZE : (page * PAGE_SIZE + subscriptions.length)) / PAGE_SIZE);
   const hasMore = subscriptions.length === PAGE_SIZE;
 
   // ─── Table columns ──────────────────────────────────────────────────────────
@@ -351,7 +398,8 @@ export function SubscriptionManagementPage() {
   const columns = [
     {
       key: "display_name",
-      header: "User",
+      label: "User",
+      sortable: true,
       render: (_val, row) => (
         <div>
           <p className="font-medium text-[var(--color-text-primary)]">{row.display_name || "—"}</p>
@@ -361,12 +409,13 @@ export function SubscriptionManagementPage() {
     },
     {
       key: "effective_tier",
-      header: "Effective Tier",
+      label: "Effective Tier",
+      sortable: true,
       render: (_val, row) => <TierBadge tier={row.effective_tier} />,
     },
     {
       key: "raw_tier",
-      header: "RC Tier",
+      label: "RC Tier",
       render: (_val, row) => (
         <span className="text-sm text-[var(--color-text-secondary)]">
           {row.raw_tier || "free"}
@@ -375,7 +424,7 @@ export function SubscriptionManagementPage() {
     },
     {
       key: "has_admin_override",
-      header: "Override",
+      label: "Override",
       render: (_val, row) => row.has_admin_override ? (
         <div>
           <Badge variant="brand">
@@ -392,7 +441,7 @@ export function SubscriptionManagementPage() {
     },
     {
       key: "trial_ends_at",
-      header: "Trial",
+      label: "Trial",
       render: (_val, row) => row.trial_ends_at ? (
         <div>
           <p className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.trial_ends_at)}</p>
@@ -404,14 +453,15 @@ export function SubscriptionManagementPage() {
     },
     {
       key: "created_at",
-      header: "Joined",
+      label: "Joined",
+      sortable: true,
       render: (_val, row) => (
         <span className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.created_at)}</span>
       ),
     },
     {
       key: "actions",
-      header: "",
+      label: "",
       render: (_val, row) => (
         <div className="flex gap-1">
           <Button variant="ghost" size="sm" onClick={() => {
@@ -442,10 +492,22 @@ export function SubscriptionManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscription Management</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">View tiers, grant overrides, manage subscriptions</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscriptions</h1>
+        </div>
+        <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
+          Export
+        </Button>
       </div>
+
+      {/* Expiring overrides alert */}
+      {expiringCount > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
+          <AlertTriangle className="h-4 w-4 text-[var(--color-warning-600)]" />
+          <span className="text-sm text-[var(--color-text-primary)]">{expiringCount} override{expiringCount > 1 ? "s" : ""} expiring within 3 days</span>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

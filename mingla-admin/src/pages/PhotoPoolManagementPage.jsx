@@ -16,6 +16,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { logAdminAction } from "../lib/auditLog";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,9 @@ export function PhotoPoolManagementPage() {
   const [fillModal, setFillModal] = useState(false);
   const [fillTarget, setFillTarget] = useState({ category: "", lat: "", lng: "", radius_m: 5000, max_results: 60 });
   const [fillSubmitting, setFillSubmitting] = useState(false);
+
+  // Refresh confirm modal (replaces window.confirm)
+  const [refreshConfirm, setRefreshConfirm] = useState(null); // { mode, count, cost }
 
   // Backfill log
   const [logData, setLogData] = useState({ rows: [], total: 0 });
@@ -308,16 +312,15 @@ export function PhotoPoolManagementPage() {
 
   // ─── Place Refresh ──────────────────────────────────────────────────────────
 
-  const triggerPlaceRefresh = async (mode) => {
+  const openRefreshConfirm = (mode) => {
     const rh = overview?.refresh_health || {};
     const count = mode === "recently_served" ? rh.recently_served_and_stale : rh.stale_7d;
     const cost = mode === "recently_served" ? rh.refresh_cost_recently_served_usd : rh.refresh_cost_all_stale_usd;
+    setRefreshConfirm({ mode, count: count ?? 0, cost: cost ?? 0 });
+  };
 
-    const confirmed = window.confirm(
-      `This will make ${count ?? 0} Google Place Details calls.\nEstimated cost: $${(cost ?? 0).toFixed(2)}.\n\nProceed?`
-    );
-    if (!confirmed) return;
-
+  const triggerPlaceRefresh = async (mode) => {
+    setRefreshConfirm(null);
     setBackfillRunning(true);
     try {
       const { data, error: rpcErr } = await supabase.rpc("admin_trigger_place_refresh", {
@@ -401,7 +404,7 @@ export function PhotoPoolManagementPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Photo & Pool Management</h1>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Photos</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-1">Monitor photo storage and pool coverage</p>
         </div>
         <SectionCard title="Setup Required" subtitle="Run the migration to enable photo pool management">
@@ -448,7 +451,7 @@ export function PhotoPoolManagementPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Photo & Pool Management</h1>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Photos</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-1">Monitor photo storage, pool coverage, and backfill operations</p>
         </div>
         <Button variant="secondary" onClick={fetchOverview} disabled={loading}>
@@ -574,8 +577,8 @@ export function PhotoPoolManagementPage() {
           {activeTab === "refresh" && (
             <RefreshSection
               refreshHealth={refreshHealth}
-              onRefreshRecentlyServed={() => triggerPlaceRefresh("recently_served")}
-              onRefreshAllStale={() => triggerPlaceRefresh("all_stale")}
+              onRefreshRecentlyServed={() => openRefreshConfirm("recently_served")}
+              onRefreshAllStale={() => openRefreshConfirm("all_stale")}
               backfillRunning={backfillRunning}
               loading={loading}
             />
@@ -596,6 +599,25 @@ export function PhotoPoolManagementPage() {
           )}
         </>
       )}
+
+      {/* Refresh Confirm Modal */}
+      <Modal
+        open={!!refreshConfirm}
+        onClose={() => setRefreshConfirm(null)}
+        title="Refresh Places"
+        destructive
+      >
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            This will make <strong>{refreshConfirm?.count}</strong> Google API calls.
+            Estimated cost: <strong>${(refreshConfirm?.cost ?? 0).toFixed(2)}</strong>.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setRefreshConfirm(null)}>Cancel</Button>
+          <Button variant="danger" onClick={() => triggerPlaceRefresh(refreshConfirm?.mode)}>Refresh</Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Fill Category Modal */}
       <Modal open={fillModal} onClose={() => setFillModal(false)} title="Fill Category" size="md">

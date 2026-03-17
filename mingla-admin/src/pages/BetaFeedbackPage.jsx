@@ -3,7 +3,7 @@ import {
   Mic, MessageSquare, Bug, Lightbulb, AlertTriangle, HelpCircle,
   ChevronLeft, ChevronRight, Search, X, RefreshCw,
   Save, Clock, Smartphone, MapPin,
-  CheckCircle, Eye, Archive, XCircle,
+  CheckCircle, Eye, Archive, XCircle, Download,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { StatCard, SectionCard } from "../components/ui/Card";
@@ -15,10 +15,16 @@ import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
 import { StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
+import {
+  timeAgo, formatDate, formatDateTime, formatRelativeTime, formatFullDate, truncate, escapeLike,
+} from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 const AUDIO_URL_EXPIRY_SECONDS = 3600;
+const MAX_AUDIO_RETRIES = 2;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,31 +45,6 @@ const STATUS_CONFIG = {
 const STATUSES = ["new", "reviewed", "actioned", "dismissed"];
 const CATEGORIES = ["bug", "feature_request", "ux_issue", "general"];
 
-function formatRelativeTime(dateStr) {
-  if (!dateStr) return "—";
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  if (diffMs < 0) return "just now";
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
-
-function formatAbsoluteDate(dateStr) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
 function formatDuration(ms) {
   if (!ms || ms <= 0) return "0:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -83,6 +64,14 @@ function formatSessionDuration(ms) {
   return `${hours}h ${remainingMinutes}m`;
 }
 
+function formatAbsoluteDate(dateStr) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleString("en-US", {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
 function CategoryBadge({ category }) {
   const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.general;
   const Icon = config.icon;
@@ -99,13 +88,14 @@ function StatusBadge({ status }) {
   return <Badge variant={config.variant}>{config.label}</Badge>;
 }
 
-// ─── Audio Player Component ──────────────────────────────────────────────────
+// ─── Audio Player Component with Auto-Retry ──────────────────────────────────
 
 function AudioPlayer({ audioPath }) {
   const audioRef = useRef(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [error, setError] = useState(null);
+  const retryCountRef = useRef(0);
 
   const fetchSignedUrl = useCallback(async () => {
     if (!audioPath) {
@@ -121,24 +111,35 @@ function AudioPlayer({ audioPath }) {
       if (storageError) throw storageError;
       if (!data?.signedUrl) throw new Error("No signed URL returned");
       setAudioUrl(data.signedUrl);
+      retryCountRef.current = 0;
     } catch (err) {
       console.error("[BetaFeedback] audio URL error:", err);
-      setError("Failed to load audio");
+      setError("Could not load audio. Click retry or wait for auto-retry.");
     } finally {
       setLoadingUrl(false);
     }
   }, [audioPath]);
 
-  // Fetch URL on mount
   useEffect(() => {
     fetchSignedUrl();
+  }, [fetchSignedUrl]);
+
+  const handleAudioError = useCallback(() => {
+    if (retryCountRef.current < MAX_AUDIO_RETRIES) {
+      retryCountRef.current++;
+      setAudioUrl(null);
+      fetchSignedUrl();
+    } else {
+      setAudioUrl(null);
+      setError("Audio failed after retries. Click retry to try again.");
+    }
   }, [fetchSignedUrl]);
 
   if (error) {
     return (
       <div className="flex items-center gap-2">
         <p className="text-xs text-[var(--color-error-500)]">{error}</p>
-        <Button variant="ghost" size="sm" onClick={fetchSignedUrl}>
+        <Button variant="ghost" size="sm" onClick={() => { retryCountRef.current = 0; fetchSignedUrl(); }}>
           <RefreshCw className="h-3 w-3" />
         </Button>
       </div>
@@ -148,7 +149,7 @@ function AudioPlayer({ audioPath }) {
   if (loadingUrl) {
     return (
       <div className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-        <Spinner className="h-4 w-4" /> Loading audio…
+        <Spinner className="h-4 w-4" /> Loading audio...
       </div>
     );
   }
@@ -164,10 +165,7 @@ function AudioPlayer({ audioPath }) {
         preload="metadata"
         className="h-8 flex-1"
         style={{ minWidth: 200 }}
-        onError={() => {
-          setAudioUrl(null);
-          setError("Audio expired — click refresh");
-        }}
+        onError={handleAudioError}
       />
     </div>
   );
@@ -178,7 +176,6 @@ function AudioPlayer({ audioPath }) {
 export function BetaFeedbackPage() {
   const { addToast } = useToast();
 
-  // List state
   const [feedback, setFeedback] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -189,22 +186,22 @@ export function BetaFeedbackPage() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState(null);
 
-  // Stats
   const [stats, setStats] = useState({ total: 0, new: 0, reviewed: 0, actioned: 0, dismissed: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Detail modal
   const [detailModal, setDetailModal] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
 
-  // Notes editing
   const [editingNotes, setEditingNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
-  // Status update
-  const [updatingStatus, setUpdatingStatus] = useState(null); // feedback_id being updated
+  const [updatingStatus, setUpdatingStatus] = useState(null);
 
-  // Refs
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+
   const searchTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -239,7 +236,7 @@ export function BetaFeedbackPage() {
       if (categoryFilter) query = query.eq("category", categoryFilter);
       if (debouncedSearch) {
         query = query.or(
-          `user_display_name.ilike.%${debouncedSearch}%,user_email.ilike.%${debouncedSearch}%`
+          `user_display_name.ilike.%${escapeLike(debouncedSearch)}%,user_email.ilike.%${escapeLike(debouncedSearch)}%`
         );
       }
 
@@ -253,7 +250,7 @@ export function BetaFeedbackPage() {
       setFeedback(data || []);
       setTotal(count ?? 0);
     } catch (err) {
-      console.error("[BetaFeedback] fetch error:", err.message, err.code, err.details, err);
+      console.error("[BetaFeedback] fetch error:", err.message);
       if (mountedRef.current) {
         setListError(err.message);
         addToast({ variant: "error", title: "Failed to load feedback", description: err.message });
@@ -268,7 +265,6 @@ export function BetaFeedbackPage() {
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
-      // Fetch counts per status in parallel
       const [totalRes, newRes, reviewedRes, actionedRes, dismissedRes] = await Promise.all([
         supabase.from("beta_feedback").select("id", { count: "exact", head: true }),
         supabase.from("beta_feedback").select("id", { count: "exact", head: true }).eq("status", "new"),
@@ -294,6 +290,9 @@ export function BetaFeedbackPage() {
   useEffect(() => { fetchFeedback(); }, [fetchFeedback]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
+  // Clear selection on page/filter change
+  useEffect(() => { setSelectedIds(new Set()); }, [page, statusFilter, categoryFilter, debouncedSearch]);
+
   // ─── Update status ────────────────────────────────────────────────────────
 
   const handleStatusChange = async (feedbackId, newStatus) => {
@@ -305,17 +304,42 @@ export function BetaFeedbackPage() {
         .eq("id", feedbackId);
       if (error) throw error;
       addToast({ variant: "success", title: "Status updated", description: `Changed to ${newStatus}` });
-      // Update local state for immediate feedback
       setFeedback(prev => prev.map(f => f.id === feedbackId ? { ...f, status: newStatus } : f));
       if (detailItem?.id === feedbackId) {
         setDetailItem(prev => ({ ...prev, status: newStatus }));
       }
-      fetchStats(); // Refresh counts
+      await logAdminAction("feedback.update_status", "beta_feedback", feedbackId, { newStatus });
+      fetchStats();
     } catch (err) {
       console.error("[BetaFeedback] status update error:", err);
       addToast({ variant: "error", title: "Failed to update status", description: err.message });
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  // ─── Bulk status update ──────────────────────────────────────────────────
+
+  const handleBulkStatusUpdate = async () => {
+    if (selectedIds.size === 0 || !bulkStatus) return;
+    setBulkUpdating(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const { error } = await supabase
+        .from("beta_feedback")
+        .update({ status: bulkStatus })
+        .in("id", ids);
+      if (error) throw error;
+      addToast({ variant: "success", title: `${ids.length} items updated to ${bulkStatus}` });
+      setFeedback(prev => prev.map(f => ids.includes(f.id) ? { ...f, status: bulkStatus } : f));
+      await logAdminAction("feedback.update_status", "beta_feedback", null, { ids, newStatus: bulkStatus, count: ids.length });
+      setSelectedIds(new Set());
+      setBulkStatus("");
+      fetchStats();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk update failed", description: err.message });
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -334,14 +358,29 @@ export function BetaFeedbackPage() {
       setDetailItem(prev => ({ ...prev, admin_notes: editingNotes }));
       setFeedback(prev => prev.map(f => f.id === detailItem.id ? { ...f, admin_notes: editingNotes } : f));
     } catch (err) {
-      console.error("[BetaFeedback] save notes error:", err);
       addToast({ variant: "error", title: "Failed to save notes", description: err.message });
     } finally {
       setSavingNotes(false);
     }
   };
 
-  // ─── Open detail ──────────────────────────────────────────────────────────
+  // ─── Export ────────────────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const exportColumns = [
+      { key: "created_at", label: "Date" },
+      { key: "user_display_name", label: "User" },
+      { key: "user_email", label: "Email" },
+      { key: "category", label: "Category" },
+      { key: "status", label: "Status" },
+      { key: "audio_duration_ms", label: "Duration (ms)" },
+      { key: "device_os", label: "OS" },
+      { key: "device_model", label: "Model" },
+      { key: "app_version", label: "Version" },
+      { key: "admin_notes", label: "Admin Notes" },
+    ];
+    exportCsv(exportColumns, feedback, "beta_feedback");
+  };
 
   const openDetail = (item) => {
     setDetailItem(item);
@@ -349,29 +388,52 @@ export function BetaFeedbackPage() {
     setDetailModal(true);
   };
 
-  // ─── Pagination ────────────────────────────────────────────────────────────
-
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const hasMore = (page + 1) * PAGE_SIZE < total;
 
-  // ─── Derive audio path from full storage path ──────────────────────────────
-  // audio_path stores: beta-feedback/{userId}/{filename}.m4a
-  // createSignedUrl needs path relative to bucket, so strip the bucket prefix if present
   function getRelativeAudioPath(audioPath) {
     if (!audioPath) return null;
-    // If the path starts with the bucket name, strip it
-    if (audioPath.startsWith("beta-feedback/")) {
-      return audioPath.slice("beta-feedback/".length);
-    }
+    if (audioPath.startsWith("beta-feedback/")) return audioPath.slice("beta-feedback/".length);
     return audioPath;
   }
+
+  // ─── Selection helpers ──────────────────────────────────────────────────────
+
+  const handleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = feedback.map(f => f.id);
+    const allSelected = allIds.every(id => selectedIds.has(id));
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(allIds));
+  };
 
   // ─── Table columns ──────────────────────────────────────────────────────────
 
   const columns = [
     {
+      key: "_select",
+      label: "",
+      width: "40px",
+      render: (_val, row) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(row.id)}
+          onChange={() => handleSelect(row.id)}
+          className="rounded cursor-pointer"
+        />
+      ),
+    },
+    {
       key: "created_at",
-      header: "Date",
+      label: "Date",
       render: (_val, row) => (
         <div title={formatAbsoluteDate(row.created_at)}>
           <p className="text-sm text-[var(--color-text-primary)]">{formatRelativeTime(row.created_at)}</p>
@@ -381,7 +443,7 @@ export function BetaFeedbackPage() {
     },
     {
       key: "user_display_name",
-      header: "User",
+      label: "User",
       render: (_val, row) => (
         <div>
           <p className="font-medium text-[var(--color-text-primary)]">{row.user_display_name || "—"}</p>
@@ -391,24 +453,22 @@ export function BetaFeedbackPage() {
     },
     {
       key: "category",
-      header: "Category",
+      label: "Category",
       render: (_val, row) => <CategoryBadge category={row.category} />,
     },
     {
       key: "audio_duration_ms",
-      header: "Duration",
+      label: "Duration",
       render: (_val, row) => (
         <div className="flex items-center gap-1.5">
           <Mic className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
-          <span className="text-sm text-[var(--color-text-secondary)]">
-            {formatDuration(row.audio_duration_ms)}
-          </span>
+          <span className="text-sm text-[var(--color-text-secondary)]">{formatDuration(row.audio_duration_ms)}</span>
         </div>
       ),
     },
     {
       key: "device",
-      header: "Device",
+      label: "Device",
       render: (_val, row) => (
         <div className="flex items-center gap-1.5">
           <Smartphone className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
@@ -420,14 +480,12 @@ export function BetaFeedbackPage() {
     },
     {
       key: "app_version",
-      header: "Version",
-      render: (_val, row) => (
-        <span className="text-sm text-[var(--color-text-secondary)]">{row.app_version || "—"}</span>
-      ),
+      label: "Version",
+      render: (_val, row) => <span className="text-sm text-[var(--color-text-secondary)]">{row.app_version || "—"}</span>,
     },
     {
       key: "status",
-      header: "Status",
+      label: "Status",
       render: (_val, row) => (
         <select
           value={row.status || "new"}
@@ -435,15 +493,13 @@ export function BetaFeedbackPage() {
           disabled={updatingStatus === row.id}
           className="text-sm rounded-md border border-[var(--color-border)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] px-2 py-1 cursor-pointer"
         >
-          {STATUSES.map(s => (
-            <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-          ))}
+          {STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
         </select>
       ),
     },
     {
       key: "actions",
-      header: "",
+      label: "",
       render: (_val, row) => (
         <Button variant="ghost" size="sm" onClick={() => openDetail(row)}>
           <Eye className="h-4 w-4" />
@@ -457,11 +513,13 @@ export function BetaFeedbackPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Beta Feedback</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          Browse, play, and manage audio feedback from beta testers
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Feedback</h1>
+        </div>
+        <Button variant="secondary" size="sm" icon={Download} onClick={handleExport} disabled={feedback.length === 0}>
+          Export CSV
+        </Button>
       </div>
 
       {/* Stats */}
@@ -490,7 +548,6 @@ export function BetaFeedbackPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {/* Status filter */}
           {[null, ...STATUSES].map((s) => (
             <button
               key={s ?? "all"}
@@ -527,6 +584,25 @@ export function BetaFeedbackPage() {
         ))}
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-brand-50)] border border-[var(--color-brand-200)]">
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">{selectedIds.size} selected</span>
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="text-sm rounded-md border border-[var(--color-border)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] px-2 py-1"
+          >
+            <option value="">Change status to...</option>
+            {STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
+          </select>
+          <Button variant="primary" size="sm" onClick={handleBulkStatusUpdate} disabled={!bulkStatus} loading={bulkUpdating}>
+            Apply
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+        </div>
+      )}
+
       {/* Table */}
       <SectionCard>
         {listError ? (
@@ -543,7 +619,6 @@ export function BetaFeedbackPage() {
               loading={listLoading}
               emptyMessage="No beta feedback found"
             />
-            {/* Pagination */}
             {!listLoading && feedback.length > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
                 <p className="text-sm text-[var(--color-text-tertiary)]">
@@ -641,9 +716,7 @@ export function BetaFeedbackPage() {
                   Audio Recording ({formatDuration(detailItem.audio_duration_ms)})
                 </h4>
                 <div className="p-3 rounded-lg" style={{ backgroundColor: "var(--color-background-secondary)" }}>
-                  <AudioPlayer
-                    audioPath={getRelativeAudioPath(detailItem.audio_path)}
-                  />
+                  <AudioPlayer audioPath={getRelativeAudioPath(detailItem.audio_path)} />
                 </div>
               </div>
 
@@ -651,7 +724,6 @@ export function BetaFeedbackPage() {
               <div>
                 <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Admin</h4>
                 <div className="space-y-3">
-                  {/* Status */}
                   <div>
                     <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Status</label>
                     <select
@@ -660,13 +732,9 @@ export function BetaFeedbackPage() {
                       disabled={updatingStatus === detailItem.id}
                       className="w-full text-sm rounded-md border border-[var(--color-border)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] px-3 py-2 cursor-pointer"
                     >
-                      {STATUSES.map(s => (
-                        <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-                      ))}
+                      {STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
                     </select>
                   </div>
-
-                  {/* Notes */}
                   <div>
                     <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Admin Notes</label>
                     <textarea
@@ -689,8 +757,6 @@ export function BetaFeedbackPage() {
                       </Button>
                     </div>
                   </div>
-
-                  {/* Timestamps */}
                   <div className="flex gap-4 text-xs text-[var(--color-text-tertiary)] pt-2 border-t border-[var(--color-border)]">
                     <span>Submitted: {formatAbsoluteDate(detailItem.created_at)}</span>
                     {detailItem.updated_at && detailItem.updated_at !== detailItem.created_at && (

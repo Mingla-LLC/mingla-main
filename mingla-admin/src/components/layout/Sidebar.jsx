@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard,
   Database,
@@ -14,16 +14,21 @@ import {
   CreditCard,
   Camera,
   Mic,
+  Rocket,
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   X,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { NAV_ITEMS } from "../../lib/constants";
+import { NAV_GROUPS } from "../../lib/constants";
 import minglaLogo from "../../assets/mingla-logo.png";
 
-const ICON_MAP = { LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers, BarChart3, Mail, Settings, CreditCard, Camera, Mic };
+const ICON_MAP = {
+  LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,
+  BarChart3, Mail, Settings, CreditCard, Camera, Mic, Rocket,
+};
 
 export function Sidebar({
   activeTab,
@@ -34,6 +39,13 @@ export function Sidebar({
   onMobileClose,
 }) {
   const { session, signOut } = useAuth();
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    const initial = {};
+    NAV_GROUPS.forEach((g) => {
+      if (g.collapsible) initial[g.label] = true;
+    });
+    return initial;
+  });
 
   const stableOnMobileClose = useCallback(onMobileClose, [onMobileClose]);
   useEffect(() => {
@@ -46,6 +58,50 @@ export function Sidebar({
     } catch (err) {
       console.error("Sign out failed:", err.message);
     }
+  };
+
+  const toggleGroup = (label) => {
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  const renderNavItem = (item) => {
+    const Icon = ICON_MAP[item.icon] || LayoutDashboard;
+    const isActive = activeTab === item.id;
+
+    return (
+      <button
+        key={item.id}
+        onClick={() => onTabChange(item.id)}
+        role="listitem"
+        aria-current={isActive ? "page" : undefined}
+        className={[
+          "group relative flex items-center h-11 rounded-lg text-sm font-medium overflow-hidden",
+          "transition-all duration-150 cursor-pointer",
+          collapsed ? "justify-center px-0" : "px-3",
+          isActive
+            ? "bg-white/10 text-white"
+            : "text-[var(--sidebar-text)] hover:bg-white/[0.08] hover:text-white",
+        ].join(" ")}
+      >
+        {isActive && (
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] bg-[#f97316] rounded-r-full" />
+        )}
+        <Icon className="h-5 w-5 shrink-0" />
+        <span
+          className={[
+            "overflow-hidden whitespace-nowrap truncate transition-all duration-200 ease-out",
+            collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-3",
+          ].join(" ")}
+        >
+          {item.label}
+        </span>
+        {collapsed && (
+          <div className="absolute left-full ml-2 px-2 py-1 text-xs font-medium text-white bg-[var(--sidebar-bg)] rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+            {item.label}
+          </div>
+        )}
+      </button>
+    );
   };
 
   const sidebarContent = (
@@ -66,44 +122,37 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto" role="navigation" aria-label="Main navigation">
-        <div className="flex flex-col gap-1" role="list">
-          {NAV_ITEMS.map((item) => {
-            const Icon = ICON_MAP[item.icon] || LayoutDashboard;
-            const isActive = activeTab === item.id;
+        <div className="flex flex-col gap-0.5" role="list">
+          {NAV_GROUPS.map((group, gi) => {
+            const isGroupCollapsed = group.collapsible && collapsedGroups[group.label];
 
             return (
-              <button
-                key={item.id}
-                onClick={() => onTabChange(item.id)}
-                role="listitem"
-                aria-current={isActive ? "page" : undefined}
-                className={[
-                  "group relative flex items-center h-11 rounded-lg text-sm font-medium overflow-hidden",
-                  "transition-all duration-150 cursor-pointer",
-                  collapsed ? "justify-center px-0" : "px-3",
-                  isActive
-                    ? "bg-white/10 text-white"
-                    : "text-[var(--sidebar-text)] hover:bg-white/[0.08] hover:text-white",
-                ].join(" ")}
-              >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] bg-[#f97316] rounded-r-full" />
-                )}
-                <Icon className="h-5 w-5 shrink-0" />
-                <span
-                  className={[
-                    "overflow-hidden whitespace-nowrap truncate transition-all duration-200 ease-out",
-                    collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-3",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </span>
-                {collapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 text-xs font-medium text-white bg-[var(--sidebar-bg)] rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                    {item.label}
+              <div key={group.label || `group-${gi}`}>
+                {group.label && !collapsed && (
+                  <div
+                    className={[
+                      "flex items-center justify-between",
+                      "text-[10px] font-semibold uppercase tracking-wider",
+                      "text-[var(--sidebar-text)] opacity-50 px-3 pt-4 pb-1",
+                      group.collapsible ? "cursor-pointer hover:opacity-70 transition-opacity" : "",
+                    ].join(" ")}
+                    onClick={group.collapsible ? () => toggleGroup(group.label) : undefined}
+                    role={group.collapsible ? "button" : undefined}
+                    aria-expanded={group.collapsible ? !isGroupCollapsed : undefined}
+                  >
+                    <span>{group.label}</span>
+                    {group.collapsible && (
+                      <ChevronDown
+                        className={[
+                          "h-3 w-3 transition-transform duration-200",
+                          isGroupCollapsed ? "-rotate-90" : "",
+                        ].join(" ")}
+                      />
+                    )}
                   </div>
                 )}
-              </button>
+                {!isGroupCollapsed && group.items.map(renderNavItem)}
+              </div>
             );
           })}
         </div>
@@ -155,7 +204,6 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile Overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm lg:hidden animate-[overlay-fade-in_200ms_ease-out]"
@@ -164,7 +212,6 @@ export function Sidebar({
         />
       )}
 
-      {/* Mobile Sidebar */}
       <aside
         className={[
           "fixed top-0 left-0 h-full w-[260px] bg-[var(--sidebar-bg)]",
@@ -183,7 +230,6 @@ export function Sidebar({
         {sidebarContent}
       </aside>
 
-      {/* Desktop Sidebar */}
       <aside
         className={[
           "hidden lg:flex flex-col shrink-0 h-screen bg-[var(--sidebar-bg)]",
