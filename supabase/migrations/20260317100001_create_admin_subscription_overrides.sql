@@ -19,15 +19,16 @@ CREATE TABLE IF NOT EXISTS admin_subscription_overrides (
 );
 
 -- Index for fast lookup during tier resolution
-CREATE INDEX idx_admin_overrides_user_active
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_user_active
   ON admin_subscription_overrides (user_id, expires_at)
   WHERE revoked_at IS NULL;
 
 -- Index for admin browsing
-CREATE INDEX idx_admin_overrides_granted_by
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_granted_by
   ON admin_subscription_overrides (granted_by);
 
 -- Auto-update updated_at
+DROP TRIGGER IF EXISTS set_admin_overrides_updated_at ON admin_subscription_overrides;
 CREATE TRIGGER set_admin_overrides_updated_at
   BEFORE UPDATE ON admin_subscription_overrides
   FOR EACH ROW
@@ -39,6 +40,7 @@ CREATE TRIGGER set_admin_overrides_updated_at
 ALTER TABLE admin_subscription_overrides ENABLE ROW LEVEL SECURITY;
 
 -- Regular users can read their own overrides (so mobile can display "gifted by admin" badge)
+DROP POLICY IF EXISTS "Users can read own overrides" ON admin_subscription_overrides;
 CREATE POLICY "Users can read own overrides"
   ON admin_subscription_overrides FOR SELECT
   USING (auth.uid() = user_id);

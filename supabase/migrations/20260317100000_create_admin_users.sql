@@ -21,9 +21,13 @@ ON CONFLICT (email) DO NOTHING;
 ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 
 -- Allow anon read (needed for login check before auth)
+DROP POLICY IF EXISTS "Allow anon read" ON public.admin_users;
 CREATE POLICY "Allow anon read" ON public.admin_users FOR SELECT USING (true);
 
 -- Allow authenticated users to manage admins
+DROP POLICY IF EXISTS "Allow authenticated insert" ON public.admin_users;
 CREATE POLICY "Allow authenticated insert" ON public.admin_users FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow authenticated update" ON public.admin_users;
 CREATE POLICY "Allow authenticated update" ON public.admin_users FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Allow authenticated delete" ON public.admin_users;
 CREATE POLICY "Allow authenticated delete" ON public.admin_users FOR DELETE TO authenticated USING (true);

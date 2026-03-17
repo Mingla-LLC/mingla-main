@@ -46,6 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_backfill_log_status
 
 ALTER TABLE public.admin_backfill_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role_all_backfill_log" ON public.admin_backfill_log;
 CREATE POLICY "service_role_all_backfill_log" ON public.admin_backfill_log
   FOR ALL USING (auth.role() = 'service_role');
 
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS public.admin_config (
 
 ALTER TABLE public.admin_config ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role_all_admin_config" ON public.admin_config;
 CREATE POLICY "service_role_all_admin_config" ON public.admin_config
   FOR ALL USING (auth.role() = 'service_role');
 
