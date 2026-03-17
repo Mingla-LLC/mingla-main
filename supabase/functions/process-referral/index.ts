@@ -140,6 +140,7 @@ serve(async (req) => {
                   eventTime,
                   bundleIdentifier: device.app_id,
                 }),
+                signal: AbortSignal.timeout(5000),
               }).then(async (res) => {
                 if (!res.ok) {
                   const body = await res.text().catch(() => "unknown");

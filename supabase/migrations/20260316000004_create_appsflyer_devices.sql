@@ -32,3 +32,8 @@ CREATE POLICY "appsflyer_devices_select_own"
 CREATE POLICY "appsflyer_devices_update_own"
   ON appsflyer_devices FOR UPDATE
   USING (auth.uid() = user_id);
+
+-- Users can delete their own device rows (logout / device cleanup)
+CREATE POLICY "appsflyer_devices_delete_own"
+  ON appsflyer_devices FOR DELETE
+  USING (auth.uid() = user_id);
