@@ -10,6 +10,10 @@
 --         future duplicates.
 -- ============================================
 
+-- Disable preference history trigger to prevent NOT NULL violations
+-- during cascade deletes (some preferences rows have NULL profile_id)
+ALTER TABLE public.preferences DISABLE TRIGGER trigger_preference_history;
+
 -- Step 1: Remove obvious ghosts (incomplete onboarding + no phone)
 DELETE FROM public.profiles
 WHERE has_completed_onboarding = false
@@ -30,6 +34,9 @@ WHERE email IS NOT NULL
              (phone IS NOT NULL) DESC,  -- prefer profile with verified phone
              created_at DESC             -- then most recent
   );
+
+-- Re-enable preference history trigger
+ALTER TABLE public.preferences ENABLE TRIGGER trigger_preference_history;
 
 -- Step 3: Add unique constraint on email (NULLs are exempt by default in Postgres)
 ALTER TABLE public.profiles
