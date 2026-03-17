@@ -56,7 +56,7 @@ import {
   onForegroundNotification,
   onNotificationClicked,
 } from "../src/services/oneSignalService";
-import { initializeAppsFlyer, setAppsFlyerUserId, logAppsFlyerEvent } from "../src/services/appsFlyerService";
+import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
@@ -274,6 +274,7 @@ function AppContent() {
     if (isLoadingAuth) return;
     if (user?.id) {
       setAppsFlyerUserId(user.id);
+      registerAppsFlyerDevice(user.id);
 
       // Fire attribution event once per auth session
       if (!afEventFiredRef.current && profile) {

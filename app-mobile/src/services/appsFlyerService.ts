@@ -1,5 +1,6 @@
 import appsFlyer from 'react-native-appsflyer'
 import { Platform } from 'react-native'
+import { supabase } from './supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -7,6 +8,7 @@ import { Platform } from 'react-native'
 
 const AF_DEV_KEY = 'W29Z6cqfWKvML3FdQAX27E'
 const AF_IOS_APP_ID = '6760440898'
+const AF_ANDROID_APP_ID = 'com.mingla.app.v2'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Initialization
@@ -60,6 +62,54 @@ export function setAppsFlyerUserId(userId: string): void {
     })
   } catch (e) {
     console.warn('[AppsFlyer] setCustomerUserId failed:', e)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device registration (S2S support)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve the SDK-generated AppsFlyer UID and upsert it into
+ * `appsflyer_devices` so edge functions can send S2S events
+ * (e.g. referral_completed) without the device being online.
+ *
+ * Fire-and-forget — failures are logged but never block auth flow.
+ */
+export function registerAppsFlyerDevice(userId: string): void {
+  if (!_initialized) return
+  try {
+    appsFlyer.getAppsFlyerUID((err, uid) => {
+      if (err || !uid) {
+        console.warn('[AppsFlyer] getAppsFlyerUID failed:', err)
+        return
+      }
+
+      const platform = Platform.OS as 'ios' | 'android'
+      const appId = platform === 'ios' ? AF_IOS_APP_ID : AF_ANDROID_APP_ID
+
+      supabase
+        .from('appsflyer_devices')
+        .upsert(
+          {
+            user_id: userId,
+            appsflyer_uid: uid,
+            platform,
+            app_id: appId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,appsflyer_uid' },
+        )
+        .then(({ error }) => {
+          if (error) {
+            console.warn('[AppsFlyer] Device registration failed:', error.message)
+          } else if (__DEV__) {
+            console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`)
+          }
+        })
+    })
+  } catch (e) {
+    console.warn('[AppsFlyer] registerAppsFlyerDevice failed:', e)
   }
 }
 

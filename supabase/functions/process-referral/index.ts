@@ -109,6 +109,55 @@ serve(async (req) => {
       );
     }
 
+    // ── AppsFlyer S2S: referral_completed ──────────────────────────────────
+    // Fire to every registered device for the referrer. Non-blocking — a
+    // failed attribution call must never break the referral notification flow.
+    const afDevKey = Deno.env.get("APPSFLYER_DEV_KEY") ?? "";
+    if (afDevKey) {
+      try {
+        const { data: devices } = await adminClient
+          .from("appsflyer_devices")
+          .select("appsflyer_uid, platform, app_id")
+          .eq("user_id", referrer_id);
+
+        if (devices && devices.length > 0) {
+          const eventTime = new Date().toISOString().replace("T", " ").slice(0, 19);
+          await Promise.allSettled(
+            devices.map((device) =>
+              fetch(`https://api2.appsflyer.com/inappevent/${device.app_id}`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  authentication: afDevKey,
+                },
+                body: JSON.stringify({
+                  appsflyer_id: device.appsflyer_uid,
+                  customer_user_id: referrer_id,
+                  eventName: "referral_completed",
+                  eventValue: JSON.stringify({
+                    referred_user_id: referred_id,
+                  }),
+                  eventTime,
+                  bundleIdentifier: device.app_id,
+                }),
+              }).then(async (res) => {
+                if (!res.ok) {
+                  const body = await res.text().catch(() => "unknown");
+                  console.warn(
+                    `[process-referral] AppsFlyer S2S failed (${device.platform}):`,
+                    res.status,
+                    body,
+                  );
+                }
+              })
+            ),
+          );
+        }
+      } catch (afError) {
+        console.warn("[process-referral] AppsFlyer S2S error:", afError);
+      }
+    }
+
     // Already credited by the trigger — send notification via the full pipeline.
     // notify-dispatch handles: DB row insert (in-app), preference checks, quiet
     // hours, rate limiting, AND push delivery. Previously this called sendPush

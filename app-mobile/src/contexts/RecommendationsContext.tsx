@@ -305,18 +305,24 @@ export const RecommendationsProvider: React.FC<
 
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
-    // Use actual prefs if available, otherwise apply a sensible fallback deck so the
-    // spinner doesn't block forever when preferences fail to load (e.g. network timeout).
-    const effectivePrefs = userPrefs ?? {
-      categories: ["nature", "casual_eats", "drink"],
-    };
-    const cats = effectivePrefs.categories ?? [];
+    const cats = userPrefs?.categories ?? [];
     const ints = (userPrefs as UserPreferences | undefined)?.intents ?? [];
-    // If still loading (not yet settled), return null to wait.
-    // Once preferences query has settled (data or error), always return a valid deck.
+
+    // Still loading and nothing to show yet — wait for preferences to settle.
     if (cats.length === 0 && ints.length === 0 && isLoadingPreferences) return null;
+
+    // Determine categories: respect the user's explicit selection.
+    // Default categories ONLY apply when preferences genuinely have no signal at all
+    // (no categories AND no intents) — i.e. a brand-new user or a network failure.
+    // When the user has intents but zero categories, that's an intentional choice
+    // ("show me only curated experiences") — empty categories must stay empty.
+    const hasAnySignal = cats.length > 0 || ints.length > 0;
     return {
-      categories: cats.length > 0 ? cats : ["nature", "casual_eats", "drink"],
+      categories: cats.length > 0
+        ? cats
+        : hasAnySignal
+          ? []                                      // user chose intents only — respect that
+          : ["nature", "casual_eats", "drink"],     // true empty state — sensible default
       // Radio behavior: max 1 intent. DB may have stale multi-intent data from
       // legacy saves — cap here to prevent over-fetching curated pools.
       intents: ints.slice(0, 1),
