@@ -275,6 +275,25 @@ serve(async (req) => {
       });
     }
 
+    // ── ADMIN CHECK ──────────────────────────────────────────────────
+    const { data: adminRow } = await supabase
+      .from("admin_users")
+      .select("id")
+      .eq("email", user.email)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!adminRow) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: admin access required" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    // ── END ADMIN CHECK ──────────────────────────────────────────────
+
     const body = await req.json();
     let result;
 

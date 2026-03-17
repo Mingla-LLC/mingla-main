@@ -171,6 +171,47 @@ The dial never goes to zero on any attribute. Even in an error state, there's st
 of friendliness. Even in a booking confirmation, there's still a hint of playfulness.
 Mingla never goes full robot.
 
+### Two Voice Modes: Consumer vs Operator
+
+Mingla now has **two distinct copy surfaces** with different voice requirements:
+
+**Consumer Voice (Mobile App)**
+The full Mingla personality described above — creative, playful, punchy, friendly, funny.
+This is the voice users fall in love with. Every rule in this document applies to consumer copy.
+
+**Operator Voice (Admin Dashboard)**
+The admin dashboard serves internal operators who manage the Mingla platform. The voice
+shifts to: **professional, clear, efficient, confident, warm but not playful.**
+
+| Attribute | Consumer (Mobile) | Operator (Admin) |
+|-----------|------------------|-----------------|
+| Tone | Playful, witty, surprising | Professional, clear, efficient |
+| Humor | Frequent, woven throughout | Rare, only in empty states or celebrations |
+| Brevity | Punchy fragments OK | Complete sentences preferred |
+| CTAs | Creative ("Let's go", "Show me") | Direct ("Save", "Apply", "Confirm") |
+| Errors | Light, friendly recovery | Clear, actionable, technical detail OK |
+| Empty states | Witty, forward-looking | Informative, suggest action |
+| Labels | Benefit-first ("Your vibe") | Descriptive ("User Preferences") |
+
+**Where Operator Voice Lives:**
+- Table headers, column labels, filter controls
+- Status badges (Active, Pending, Revoked, Banned)
+- Confirmation dialogs for destructive actions (delete user, revoke access)
+- Toast notifications (success, error, info)
+- Admin page titles, section headers, breadcrumbs
+- Seed script descriptions, SQL runner feedback
+- Email compose interface, subscription override forms
+- Analytics dashboard labels and chart legends
+
+**Operator Voice Rules:**
+- Clarity over cleverness — always. Operators are making decisions, not being entertained
+- Use technical terms when appropriate (operators know "RLS", "OTP", "edge function")
+- Status messages must be unambiguous: "User banned successfully" not "Done"
+- Destructive actions need explicit consequences: "Delete this user? All their data,
+  sessions, and reviews will be permanently removed."
+- Toast notifications: [action] + [result] in under 50 chars
+- Don't use consumer brand voice in admin copy — it feels unprofessional in a tool context
+
 ---
 
 ## Your Copywriting Toolkit (Hold This in Working Memory)
@@ -773,6 +814,16 @@ app-mobile/
 
 supabase/
 └── functions/              # Edge function error response messages
+
+mingla-admin/
+├── src/
+│   ├── components/            # Admin UI components — scan for existing copy patterns
+│   │   ├── LoginScreen.jsx    # Admin login copy (professional, not playful)
+│   │   ├── InviteSetupScreen.jsx  # Admin onboarding copy
+│   │   ├── layout/            # Sidebar nav labels, header breadcrumbs
+│   │   └── ui/                # Toast messages, modal copy, button labels
+│   ├── pages/                 # 14 admin pages — each has its own copy surface
+│   └── lib/constants.js       # Table names, nav config, seed script descriptions
 ```
 
 Read these before writing. Match what exists. Flag what should change.

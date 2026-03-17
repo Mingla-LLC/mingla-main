@@ -37,30 +37,57 @@ specification is precise enough that the implementor cannot misinterpret it.
 
 ---
 
-## The Mingla Stack
+## The Mingla Monorepo
 
-Hold this in working memory for every task. Architectural violations against these
-constraints are a common source of bugs.
+Mingla is a **monorepo with three domains** sharing a Supabase backend. Before any task,
+determine which domain(s) are affected. A database change may impact both frontends. An
+edge function change may require admin panel updates.
 
-**Mobile**: React Native (Expo), TypeScript strict mode, React Query (server state),
+### Domain 1: Mobile (`app-mobile/`)
+
+React Native (Expo), TypeScript strict mode, React Query (server state),
 Zustand (client state only), StyleSheet.create (no inline styles), custom state-driven
 navigation (no React Navigation), expo-haptics, expo-location, expo-calendar.
 
-**Backend**: Supabase (Postgres + Auth + Realtime + Storage), 25 Deno Edge Functions,
+### Domain 2: Admin Dashboard (`mingla-admin/`)
+
+React 19, Vite, JSX (no TypeScript), Tailwind CSS v4, Framer Motion, Recharts, Leaflet.
+State via React Context (AuthContext, ThemeContext, ToastContext) — NOT React Query or
+Zustand. Direct Supabase JS client calls — NOT through a services layer. 3-layer auth
+(email allowlist → password → OTP 2FA). 14 feature pages, 14 reusable UI components,
+CSS custom properties design system in `globals.css`.
+
+### Domain 3: Backend (`supabase/`) — Shared
+
+Supabase (Postgres + Auth + Realtime + Storage), 60+ Deno Edge Functions,
 OpenAI GPT-4o-mini (structured JSON).
 
-**External APIs**: Google Places API (New), Google Distance Matrix, OpenWeatherMap,
+### External APIs
+
+Google Places API (New), Google Distance Matrix, OpenWeatherMap,
 BestTime.app, Resend, Expo Push, Stripe Connect, OpenTable, Eventbrite, Viator.
 
-**Hard rules** (violations frequently cause bugs):
-- All third-party API calls route through edge functions — never from mobile
+### Hard Rules (violations frequently cause bugs)
+
+**All domains:**
 - RLS enforces all database access — no exceptions
+- All third-party API calls route through edge functions — never from any frontend
+
+**Mobile-specific:**
 - React Query manages server state; Zustand stores only client-side state
 - AsyncStorage persists both React Query cache and Zustand stores
 - TypeScript strict mode everywhere — no `any`, no `@ts-ignore`
-- Google Places API uses only v1 endpoints (Nearby Search, Text Search, Place Details)
-  with `X-Goog-Api-Key` header, explicit `X-Goog-FieldMask`, minimal fields, 24h caching,
-  and batched distance matrix calls
+- StyleSheet.create() for all styles — no inline style objects
+- Google Places API uses only v1 endpoints with `X-Goog-Api-Key` header, explicit
+  `X-Goog-FieldMask`, minimal fields, 24h caching, batched distance matrix calls
+
+**Admin-specific:**
+- React Context for state — no React Query, no Zustand
+- Direct Supabase client queries (no services abstraction layer)
+- Tailwind v4 utility classes — no inline styles, no StyleSheet
+- CSS custom properties for design tokens — not JS constants
+- `mounted` flag guards on all async operations to prevent state updates after unmount
+- Framer Motion AnimatePresence for page transitions
 
 ---
 
@@ -84,10 +111,13 @@ Ask these three questions in a single popup:
 
 **What area is affected?**
 - Mobile UI / Components
-- Hooks / React Query / State
+- Admin Dashboard UI / Pages
+- Hooks / React Query / State (Mobile)
+- Context / State (Admin)
 - Services / Edge Functions / API
-- Database / RLS / Migrations
+- Database / RLS / Migrations (impacts both frontends)
 - Full architecture / Multiple layers
+- Cross-domain (mobile + admin + backend)
 - Not sure yet
 
 **What's the end goal?**
@@ -131,7 +161,9 @@ have a concrete symptom and expected behavior.
 Trace the data flow backwards from the user's symptom through every layer:
 
 ```
-User Symptom → Component → Hook → Service → Edge Function → Database + RLS → Migration
+**Mobile:** User Symptom → Component → Hook → Service → Edge Function → Database + RLS → Migration
+**Admin:** User Symptom → Page → Context/Direct Query → Edge Function (if any) → Database + RLS → Migration
+**Cross-domain:** Trace through BOTH frontends when the affected layer is shared (DB, edge functions)
 ```
 
 Produce an **Investigation Manifest** — an explicit list of every file you will inspect.
@@ -210,20 +242,29 @@ confidence in your diagnosis.
 Read every file listed. For each file, inspect for the failure patterns most common at
 that layer:
 
-- **Components**: wrong props, missing loading/error/empty states, stale closures, incorrect
-  conditional rendering, layout bugs
-- **Hooks**: wrong React Query keys, missing query key parameters, incorrect cache
+- **Mobile Components**: wrong props, missing loading/error/empty states, stale closures,
+  incorrect conditional rendering, layout bugs
+- **Mobile Hooks**: wrong React Query keys, missing query key parameters, incorrect cache
   invalidation, stale data after mutations, wrong `enabled` conditions
-- **Services**: malformed queries, wrong table/column names, missing `.maybeSingle()` where
-  `.single()` will throw, incorrect filters, missing error handling
+- **Mobile Services**: malformed queries, wrong table/column names, missing `.maybeSingle()`
+  where `.single()` will throw, incorrect filters, missing error handling
+- **Admin Pages**: missing `mounted` flag guards on async operations, Context state not
+  updating across components, missing error/loading/empty states, stale data after
+  mutations without refetch, auth state leaks between page transitions, missing dark mode
+  CSS variable coverage, Leaflet map initialization issues
+- **Admin Auth**: suppressed session handling bugs, 2FA completion flag not set correctly,
+  brute-force lockout localStorage corruption, admin allowlist out of sync with
+  `admin_users` table
 - **Edge Functions**: input validation gaps, wrong HTTP methods, missing auth checks,
   incorrect response shapes, unhandled API errors
 - **Google Places API**: wrong endpoint version, missing field mask, excessive fields
   requested, missing caching, unbatched distance calls
 - **Database / RLS**: missing or overly permissive policies, wrong column types, missing
-  constraints, migration ordering issues
-- **State / Persistence**: AsyncStorage shape mismatches after schema changes, Zustand
-  stores holding server data, React Query and Zustand fighting over the same data
+  constraints, migration ordering issues — **check impact on BOTH frontends**
+- **Mobile State / Persistence**: AsyncStorage shape mismatches after schema changes,
+  Zustand stores holding server data, React Query and Zustand fighting over the same data
+- **Admin State**: React Context not propagating updates, localStorage persistence bugs
+  (theme, auth, lockout), missing error boundaries on page level
 
 ### Step 5 — Classify Every Finding
 
@@ -441,13 +482,18 @@ Structure:
 ## Success Criteria
 [Numbered list of observable outcomes that prove the feature works]
 
+## Affected Domains
+[Which domains this feature touches: Mobile / Admin / Backend / Cross-domain]
+[For cross-domain features, specify exactly what each domain needs]
+
 ## Database Changes
 [Exact SQL for migrations, schema, RLS policies, indexes]
+[Note: database changes affect BOTH frontends — specify impact on each]
 
 ## Edge Functions
 [For each function: name, method, route, request/response types, validation, errors]
 
-## Mobile Implementation
+## Mobile Implementation (if applicable)
 
 ### Services
 [For each service: file path, function signatures, queries, error handling]
@@ -458,8 +504,19 @@ Structure:
 ### Components
 [For each component: file, props, states, renders, interactions]
 
+## Admin Implementation (if applicable)
+
+### Pages
+[For each page: file path, what changes, data fetching approach]
+
+### Components
+[For each component: file, props, Tailwind classes, states]
+
+### Context Changes
+[Any changes to AuthContext, ThemeContext, ToastContext]
+
 ## Implementation Order
-[Numbered sequence — database first, then edge functions, then services, hooks, components]
+[Numbered sequence — database first, then edge functions, then mobile, then admin]
 
 ## Test Cases
 [For each test case: scenario, input, expected output, layer tested]

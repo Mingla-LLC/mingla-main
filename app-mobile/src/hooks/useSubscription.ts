@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getSubscription, getReferralCredits, getReferralStats } from '../services/subscriptionService'
+import { getSubscription, getReferralCredits, getReferralStats, getEffectiveTierFromServer } from '../services/subscriptionService'
 import {
   SubscriptionTier,
   getEffectiveTier,
@@ -23,6 +23,7 @@ export const subscriptionKeys = {
   detail: (userId: string) => [...subscriptionKeys.all, userId] as const,
   referrals: (userId: string) => [...subscriptionKeys.all, 'referrals', userId] as const,
   referralStats: (userId: string) => [...subscriptionKeys.all, 'referral-stats', userId] as const,
+  serverTier: (userId: string) => [...subscriptionKeys.all, 'server-tier', userId] as const,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +58,24 @@ export function useReferralStats(userId: string | undefined) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Server tier hook (admin overrides)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches the authoritative tier from the server-side get_effective_tier() RPC.
+ * This includes admin subscription overrides which the client-side logic cannot see.
+ * staleTime matches useSubscription (5 min) — admin overrides are not time-critical.
+ */
+export function useServerTier(userId: string | undefined) {
+  return useQuery({
+    queryKey: subscriptionKeys.serverTier(userId ?? ''),
+    queryFn: () => getEffectiveTierFromServer(userId!),
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Unified tier hook
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -68,20 +87,36 @@ export function useReferralStats(userId: string | undefined) {
  * Sources (in priority order):
  *   1. RevenueCat CustomerInfo  — active entitlement (Elite checked first, then Pro)
  *   2. Supabase subscription    — active trial or referral bonus months → 'elite'
- *   3. Fallback                 → 'free'
+ *   3. Server-side RPC          — admin subscription overrides (Priority 0 on server)
+ *   4. Fallback                 → 'free'
  *
- * This hook is safe to call from any component; it won't cause extra network
- * requests because both underlying queries are cached in React Query.
+ * Takes the higher of client-side and server-side tiers so neither source
+ * can downgrade the user.
  */
 export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
   const { data: customerInfo } = useCustomerInfo()
   const { data: subscription } = useSubscription(userId)
+  const { data: serverTier } = useServerTier(userId)
   const profile = useAppStore((s) => s.profile)
-  return getEffectiveTier(
+
+  // Client-side tier (RevenueCat + Supabase subscriptions table)
+  const clientTier = getEffectiveTier(
     customerInfo ?? null,
     subscription ?? null,
     profile?.has_completed_onboarding ?? undefined,
   )
+
+  // Server tier includes admin overrides — take the higher of the two
+  if (serverTier && serverTier !== 'free') {
+    const tierRank: Record<string, number> = { free: 0, pro: 1, elite: 2 }
+    const serverRank = tierRank[serverTier] ?? 0
+    const clientRank = tierRank[clientTier] ?? 0
+    if (serverRank > clientRank) {
+      return serverTier as SubscriptionTier
+    }
+  }
+
+  return clientTier
 }
 
 /**

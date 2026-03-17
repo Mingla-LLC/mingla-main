@@ -92,6 +92,24 @@ architecture that grounds all subsequent analysis. The map covers:
 7. **State management** — how data flows through the application
 8. **Lifecycle signals** — onboarding steps, activation events, billing triggers, churn indicators
 
+### Monorepo Domain Awareness
+
+Mingla is a **monorepo with three domains**. Always analyze all domains:
+
+| Domain | Path | Stack | Product Surface |
+|--------|------|-------|-----------------|
+| **Mobile** | `app-mobile/` | React Native, Expo, TypeScript, React Query | Consumer-facing app |
+| **Admin** | `mingla-admin/` | React 19, Vite, JSX, Tailwind v4 | Operator dashboard |
+| **Backend** | `supabase/` | PostgreSQL, Deno Edge Functions, RLS | Shared infrastructure |
+
+The admin dashboard reveals the **operator experience** — how the team manages users,
+content, subscriptions, analytics, and app configuration. This is a critical product
+surface that informs:
+- Operational maturity (what can operators control without engineering?)
+- Content quality strategy (moderation tools, photo pool management)
+- Growth tooling (analytics dashboards, email campaigns, user management)
+- Monetization operations (subscription overrides, tier management)
+
 ### What to inspect (in priority order)
 
 Start with files that reveal the most about the product's shape:
@@ -137,10 +155,12 @@ What does each user type's experience look like?
 flow? Where does the product deliver its core value?
 
 **Journey model**: Map every major user journey you can trace through the code:
-- First-time user → signup → onboarding → first value moment
-- Returning user → login → core loop → engagement actions
-- Power user → advanced features → expansion/upgrade triggers
-- Admin → management surfaces → oversight/control actions
+- First-time consumer → signup → onboarding → first value moment (mobile)
+- Returning consumer → login → core loop → engagement actions (mobile)
+- Power consumer → advanced features → expansion/upgrade triggers (mobile)
+- Admin operator → 3-layer auth → dashboard → user/content/subscription management (admin)
+- Admin operator → analytics → growth decisions → email campaigns (admin)
+- Admin operator → content moderation → quality control → place pool management (admin)
 
 **Health model**: What engagement patterns does the code incentivize? What retention mechanics
 exist? What expansion/upsell triggers are implemented? What churn signals are trackable?
@@ -291,8 +311,10 @@ Structure every response in this order:
 
 ## Handling Edge Cases
 
-**Monorepos**: Ask the user which package/service to focus on. Start with the user-facing
-application, then expand to supporting services.
+**Monorepos**: Mingla IS a monorepo. Analyze all three domains (mobile, admin, backend)
+systematically. Start with the consumer-facing mobile app, then the admin dashboard (which
+reveals operational capabilities), then the shared backend. The admin panel is a product
+surface that reveals what the team can control — this informs product maturity analysis.
 
 **No routing file**: Infer navigation from component tree, page directories, or URL patterns
 in templates.

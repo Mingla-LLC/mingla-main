@@ -28,26 +28,48 @@ Your loyalty is to the codebase, not to the implementor's feelings.
 
 ---
 
-## The Mingla Stack (Hold This in Working Memory)
+## The Mingla Monorepo (Hold This in Working Memory)
 
-**Mobile:** React Native (Expo), TypeScript strict mode, React Query (server state), Zustand
-(client state), StyleSheet (no inline styles, no styled-components), custom state-driven
-navigation (no React Navigation library), `expo-haptics`, `expo-location`, `expo-calendar`
+Mingla is a **monorepo with three domains** sharing a Supabase backend. When testing,
+always determine which domain(s) are affected and test cross-domain impact for any
+database or edge function changes.
 
-**Backend:** Supabase (PostgreSQL + Auth JWT+RLS + Realtime WebSocket + Storage),
-25 Deno edge functions, OpenAI GPT-4o-mini (structured JSON output)
+### Domain 1: Mobile (`app-mobile/`)
 
-**External APIs:** Google Places API (New), Google Distance Matrix, OpenWeatherMap,
-BestTime.app, Resend, Expo Push, Stripe Connect, OpenTable, Eventbrite, Viator
+React Native (Expo), TypeScript strict mode, React Query (server state), Zustand
+(client state), StyleSheet (no inline styles), custom state-driven navigation,
+`expo-haptics`, `expo-location`, `expo-calendar`
 
-**Key Architecture Rules (violations = automatic FAIL):**
-- All third-party API calls go through edge functions — NEVER from mobile directly
+### Domain 2: Admin Dashboard (`mingla-admin/`)
+
+React 19, Vite, JSX (no TypeScript), Tailwind CSS v4, Framer Motion, Recharts, Leaflet.
+State via React Context (AuthContext, ThemeContext, ToastContext). Direct Supabase JS
+client calls. 3-layer auth (email allowlist → password → OTP 2FA). 14 feature pages.
+
+### Domain 3: Backend (`supabase/`) — Shared
+
+Supabase (PostgreSQL + Auth JWT+RLS + Realtime WebSocket + Storage),
+60+ Deno edge functions, OpenAI GPT-4o-mini (structured JSON output)
+
+### Key Architecture Rules (violations = automatic FAIL)
+
+**All domains:**
+- All third-party API calls go through edge functions — NEVER from any frontend
 - RLS on every table — no exceptions
+
+**Mobile-specific:**
 - React Query for all server state; Zustand only for client-only persisted state
 - TypeScript strict mode — no `any`, no `as unknown as`, no `@ts-ignore`
 - StyleSheet.create() for all styles — no inline style objects
 - Named exports for components, default exports for screens
 - No React Navigation — custom state-driven navigation only
+
+**Admin-specific:**
+- React Context for state — no React Query, no Zustand
+- Direct Supabase client queries — no services abstraction
+- Tailwind v4 — no inline styles, no StyleSheet
+- CSS custom properties for design tokens
+- `mounted` flag on all async operations
 
 ---
 
@@ -176,6 +198,35 @@ For every SQL migration:
 | Indexes | Columns used in WHERE clauses or JOINs have indexes |
 | Column types | Match existing conventions (UUID for IDs, TIMESTAMPTZ for timestamps, TEXT not VARCHAR) |
 | Migration is idempotent | Uses `IF NOT EXISTS` or won't fail if run twice |
+
+### 1.8 Admin Dashboard Audit (if applicable)
+
+For every new or modified admin page/component:
+
+| Check | What to Verify |
+|-------|----------------|
+| Auth guard | Page is only accessible to authenticated admin users |
+| mounted flag | All async operations guarded by `mounted` ref to prevent state updates after unmount |
+| Dark mode | All custom styles work in both light and dark themes (CSS variables, not hardcoded colors) |
+| Error states | Every data fetch has loading, error, and empty state handling |
+| XSS prevention | No dangerouslySetInnerHTML, user input is sanitized before display |
+| SQL injection | SeedPage custom SQL runner is not exposed to non-admin users, inputs are validated |
+| Supabase client | Uses the shared client from `lib/supabase.js`, not creating new instances |
+| UI components | Uses existing components from `components/ui/` instead of creating duplicates |
+| Responsive | Layout works at common desktop viewport sizes |
+| Accessibility | Interactive elements have proper ARIA attributes, focus management on modals |
+
+### 1.9 Cross-Domain Impact Audit
+
+When a database migration or edge function changes:
+
+| Check | What to Verify |
+|-------|----------------|
+| Mobile impact | Does the change break any mobile service, hook, or component? |
+| Admin impact | Does the change break any admin page that reads the affected table? |
+| RLS consistency | Do RLS policies work for both mobile users (via JWT) and admin users? |
+| Column changes | If columns are added/renamed/removed, are BOTH frontends updated? |
+| Edge function contract | If request/response shape changes, are BOTH consumers updated? |
 
 ---
 

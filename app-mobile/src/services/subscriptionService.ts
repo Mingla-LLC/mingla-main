@@ -165,3 +165,21 @@ export async function syncSubscriptionFromRC(
     console.error('[subscriptionService] syncSubscriptionFromRC unexpected error:', err)
   }
 }
+
+/**
+ * Calls the server-side get_effective_tier() RPC which checks admin overrides
+ * as Priority 0, then RevenueCat sync, then trial/referral.
+ * Returns the tier string or 'free' on error.
+ */
+export async function getEffectiveTierFromServer(userId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('get_effective_tier', {
+    p_user_id: userId,
+  })
+
+  if (error) {
+    console.warn('getEffectiveTierFromServer failed, falling back to free:', error.message)
+    return 'free'
+  }
+
+  return data ?? 'free'
+}
