@@ -1,0 +1,277 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   MINGLA ADMIN DASHBOARD — DESIGN TOKENS
+   ═══════════════════════════════════════════════════════════════ */
+
+@theme {
+  --color-brand-50:  #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
+
+  --color-success-50:  #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  --color-error-50:  #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+
+  --color-info-50:  #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow:     0 2px 6px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg:  0 12px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-xl:  0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.06);
+
+  --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+:root {
+  --brand-orange:         #eb7825;
+  --brand-gradient-start: #FF7043;
+  --brand-gradient-end:   #FF5722;
+
+  --color-background-primary:   #ffffff;
+  --color-background-secondary: #faf8f6;
+  --color-background-tertiary:  #f5f0ec;
+
+  --color-text-primary:   #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary:  #6b7280;
+  --color-text-inverse:   #ffffff;
+  --color-text-muted:     #9ca3af;
+
+  --gray-50:  #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  --transition-fast:   150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow:   300ms ease;
+
+  --z-dropdown: 10;
+  --z-sticky:   20;
+  --z-overlay:  30;
+  --z-modal:    40;
+  --z-toast:    50;
+
+  --sidebar-width:           260px;
+  --sidebar-collapsed-width: 72px;
+  --sidebar-bg:              var(--gray-900);
+  --sidebar-text:            var(--gray-300);
+  --sidebar-text-active:     var(--color-text-inverse);
+  --sidebar-hover:           rgba(255, 255, 255, 0.08);
+  --sidebar-active:          #f97316;
+
+  --header-height: 64px;
+  --header-bg:     var(--color-background-primary);
+  --header-border: var(--gray-200);
+
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+  --space-2xl: 48px;
+
+  --content-max-width: 1280px;
+
+  --table-header-bg:  var(--gray-50);
+  --table-border:     var(--gray-200);
+  --table-row-hover:  var(--gray-50);
+  --table-stripe:     var(--color-background-secondary);
+}
+
+[data-theme="dark"] {
+  --color-background-primary:   #0f1117;
+  --color-background-secondary: #1a1d27;
+  --color-background-tertiary:  #242833;
+
+  --color-text-primary:   #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary:  #6b7280;
+
+  --gray-50:  #1a1d27;
+  --gray-100: #242833;
+  --gray-200: #2d3241;
+  --gray-300: #3d4354;
+  --gray-400: #6b7280;
+  --gray-500: #9ca3af;
+  --gray-600: #d1d5db;
+  --gray-700: #e5e7eb;
+  --gray-800: #f3f4f6;
+  --gray-900: #f3f4f6;
+
+  --color-success-50: rgba(34, 197, 94, 0.1);
+  --color-success-700: #4ade80;
+  --color-error-50: rgba(239, 68, 68, 0.1);
+  --color-error-700: #fca5a5;
+  --color-warning-50: rgba(245, 158, 11, 0.1);
+  --color-warning-700: #fbbf24;
+  --color-info-50: rgba(59, 130, 246, 0.1);
+  --color-info-700: #93c5fd;
+  --color-brand-50: rgba(249, 115, 22, 0.1);
+  --color-brand-700: #fb923c;
+
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --shadow:     0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.15);
+  --shadow-lg:  0 12px 24px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow-xl:  0 20px 40px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2);
+
+  --sidebar-bg:    #0a0c12;
+  --header-bg:     #0f1117;
+  --header-border: #2d3241;
+
+  --table-header-bg: #1a1d27;
+  --table-border:    #2d3241;
+  --table-row-hover: #1a1d27;
+  --table-stripe:    #141720;
+}
+
+/* ─── Global Reset & Base ─── */
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: var(--color-text-primary);
+    background-color: var(--color-background-secondary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+
+  ::selection { background: #ffedd5; color: #7c2d12; }
+  [data-theme="dark"] ::selection {
+    background: rgba(249, 115, 22, 0.3);
+    color: var(--color-text-primary);
+  }
+
+  :focus-visible { outline: 2px solid #f97316; outline-offset: 2px; }
+}
+
+/* ─── Animations ─── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes overlay-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 50%, var(--gray-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+[data-theme="dark"] .skeleton-shimmer {
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Login Animations ─── */
+@keyframes loginCardIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes loginFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes loginShake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-1px); }
+}
+@keyframes loginBgDrift {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.98); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+.login-screen-bg { background-color: #ffffff; min-height: 100dvh; }
+[data-theme="dark"] .login-screen-bg { background-color: var(--color-background-primary); }
+
+.login-bg-pattern {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, var(--gray-200) 1px, transparent 0);
+  background-size: 40px 40px; opacity: 0.4; pointer-events: none;
+}
+.login-bg-glow {
+  position: absolute; top: 20%; left: 50%; width: 600px; height: 600px;
+  transform: translate(-50%, -30%);
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.06) 0%, transparent 70%);
+  pointer-events: none; animation: loginBgDrift 20s ease-in-out infinite;
+}
+[data-theme="dark"] .login-bg-pattern { opacity: 0.15; }
+[data-theme="dark"] .login-bg-glow {
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.04) 0%, transparent 70%);
+}

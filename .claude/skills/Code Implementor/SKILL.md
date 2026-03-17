@@ -800,9 +800,13 @@ supabase/
 Start every implementation by listing the files you'll touch, reading them, then proceeding.
 
 ## Migration File Naming
-Before creating any new Supabase migration file, always check the latest existing migration version by listing the supabase/migrations/ directory sorted by name. Use the next sequential number after the highest existing version. Never reuse an existing version number. Format: YYYYMMDDNNNNNN_description.sql (e.g., 20260303000010_my_migration.sql). If the last file is 000009, the next must be 000010.
+**Use timestamp-based naming to avoid collisions across developers and branches.**
 
-If multiple migrations are being created in a single session, increment sequentially from the first one created (e.g., 000016, 000017, 000018). Always re-check the directory before each new file.
+Generate migration files using `supabase migration new <description>` which auto-creates a timestamp-prefixed file (e.g., `20260317143022_add_place_refresh.sql`). If the Supabase CLI is unavailable, manually name the file using the current UTC datetime: `YYYYMMDDHHMMSS_description.sql`.
+
+**Why timestamps, not sequential numbers:** Multiple implementors working from different repos/branches can independently create migrations without naming collisions. Two developers would need to create a file at the exact same second to conflict — practically impossible. Timestamps also sort correctly since they are lexicographically ordered.
+
+If multiple migrations are being created in a single session, space them at least 1 second apart (the CLI handles this automatically). Always `git pull` the target branch before creating migrations to see what others have committed.
 
 ---
 

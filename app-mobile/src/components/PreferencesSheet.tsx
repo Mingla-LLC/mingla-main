@@ -24,6 +24,7 @@ import { Icon } from './ui/Icon';
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
 import { offlineService } from "../services/offlineService";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { usePreferencesData } from "../hooks/usePreferencesData";
 import {
@@ -796,6 +797,11 @@ export default function PreferencesSheet({
             await Promise.resolve(onSave(preferences));
           }
         }
+        logAppsFlyerEvent('preferences_updated', {
+          is_collaboration: isCollaborationMode,
+          categories_count: finalCategories.length,
+          intents_count: finalIntents.length,
+        });
       } catch (error) {
         console.warn("[PreferencesSheet] Background save failed:", error);
       }

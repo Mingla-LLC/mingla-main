@@ -58,6 +58,7 @@ import {
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
+import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
 import AppLoadingScreen from '../src/components/AppLoadingScreen';
@@ -293,6 +294,9 @@ function AppContent() {
       afEventFiredRef.current = false;
     }
   }, [user?.id, isLoadingAuth, profile]);
+
+  // Fire trial_expired_no_conversion once if trial lapsed without converting.
+  useTrialExpiryTracking(user?.id);
   // ───────────────────────────────────────────────────────────────────────────
 
   // V2: Update user timezone on authentication for server-side quiet hours

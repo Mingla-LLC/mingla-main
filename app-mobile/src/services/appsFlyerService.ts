@@ -79,7 +79,7 @@ export function setAppsFlyerUserId(userId: string): void {
 export function registerAppsFlyerDevice(userId: string): void {
   if (!_initialized) return
   try {
-    appsFlyer.getAppsFlyerUID((err, uid) => {
+    appsFlyer.getAppsFlyerUID((err: any, uid: string) => {
       if (err || !uid) {
         console.warn('[AppsFlyer] getAppsFlyerUID failed:', err)
         return

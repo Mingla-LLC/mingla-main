@@ -125,10 +125,18 @@ serve(async (req) => {
         }
       }
 
+      // Save verified phone to profiles (source of truth — must succeed)
       const { error: updateError } = await serviceClient
         .from('profiles')
         .update({ phone })
         .eq('id', user.id)
+
+      // Sync to auth.users for dashboard visibility (non-fatal, awaited to avoid Deno isolate termination)
+      try {
+        await serviceClient.auth.admin.updateUserById(user.id, { phone })
+      } catch (err) {
+        console.warn('[verify-otp] Failed to sync phone to auth.users:', err.message)
+      }
 
       if (updateError) {
         // Handle UNIQUE constraint violation (final safety net)

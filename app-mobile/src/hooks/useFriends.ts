@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase, trackedInvoke } from "../services/supabase";
 import { blockService } from "../services/blockService";
 import { useAppStore } from "../store/appStore";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import {
   useFriendsList,
   useFriendRequests as useFriendRequestsQuery,
@@ -216,6 +217,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
             }
           }
         }
+
+        // Attribution + analytics — DB write already succeeded.
+        logAppsFlyerEvent('af_invite', { af_type: 'friend_request' });
 
         // Notifications are side effects — DB write already succeeded.
         try {

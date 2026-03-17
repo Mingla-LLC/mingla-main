@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSubscription, getReferralCredits, getReferralStats } from '../services/subscriptionService'
 import {
@@ -10,6 +11,8 @@ import {
 } from '../types/subscription'
 import { useCustomerInfo } from './useRevenueCat'
 import { useAppStore } from '../store/appStore'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { logAppsFlyerEvent } from '../services/appsFlyerService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query keys
@@ -110,4 +113,45 @@ export function useTrialTotalDays(userId: string | undefined): number {
 export function useReferralMonthsRemaining(userId: string | undefined): number {
   const { data: subscription } = useSubscription(userId)
   return getReferralMonthsRemaining(subscription ?? null)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trial expiry attribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AF_TRIAL_EXPIRED_KEY = 'af_trial_expired_logged'
+
+/**
+ * Fires `trial_expired_no_conversion` exactly once per user when:
+ *   - trialEndsAt is in the past
+ *   - tier is 'free' (user did not convert)
+ *
+ * Uses AsyncStorage to persist the "already fired" flag so the event
+ * survives app restarts and never double-fires.
+ */
+export function useTrialExpiryTracking(userId: string | undefined): void {
+  const { data: subscription } = useSubscription(userId)
+  const tier = useEffectiveTier(userId)
+  const firedRef = useRef(false)
+
+  useEffect(() => {
+    if (!subscription || !userId || firedRef.current) return
+    if (tier !== 'free') return
+    if (!subscription.trialEndsAt) return
+    if (new Date(subscription.trialEndsAt) >= new Date()) return
+
+    const storageKey = `${AF_TRIAL_EXPIRED_KEY}:${userId}`
+
+    AsyncStorage.getItem(storageKey).then((value) => {
+      if (value) {
+        firedRef.current = true
+        return
+      }
+      logAppsFlyerEvent('trial_expired_no_conversion', {
+        trial_days: getTrialTotalDays(subscription),
+      })
+      firedRef.current = true
+      AsyncStorage.setItem(storageKey, '1').catch(() => {})
+    }).catch(() => {})
+  }, [subscription, tier, userId])
 }
