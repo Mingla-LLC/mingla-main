@@ -310,12 +310,12 @@ function SearchImportView({ addToast }) {
               "w-5 h-5 rounded border flex items-center justify-center transition-colors",
               isExisting
                 ? "border-[var(--gray-200)] bg-[var(--gray-100)] cursor-not-allowed"
-                : "border-[var(--gray-300)] cursor-pointer hover:border-[#f97316]",
+                : "border-[var(--gray-300)] cursor-pointer hover:border-[var(--color-brand-500)]",
             ].join(" ")}
             aria-label={selectedPlaces.has(row.googlePlaceId) ? "Deselect" : "Select"}
           >
             {selectedPlaces.has(row.googlePlaceId) && (
-              <Check className="w-3.5 h-3.5 text-[#f97316]" />
+              <Check className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />
             )}
           </button>
         );
@@ -697,8 +697,8 @@ function BrowsePoolView({ addToast }) {
     {
       key: "_select", label: "", width: "40px",
       render: (_, row) => (
-        <button onClick={() => toggleRowSelect(row.id)} className="w-5 h-5 rounded border border-[var(--gray-300)] flex items-center justify-center cursor-pointer hover:border-[#f97316] transition-colors" aria-label={selectedRows.has(row.id) ? "Deselect" : "Select"}>
-          {selectedRows.has(row.id) && <Check className="w-3.5 h-3.5 text-[#f97316]" />}
+        <button onClick={() => toggleRowSelect(row.id)} className="w-5 h-5 rounded border border-[var(--gray-300)] flex items-center justify-center cursor-pointer hover:border-[var(--color-brand-500)] transition-colors" aria-label={selectedRows.has(row.id) ? "Deselect" : "Select"}>
+          {selectedRows.has(row.id) && <Check className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />}
         </button>
       ),
     },
@@ -757,7 +757,7 @@ function BrowsePoolView({ addToast }) {
         <div className="flex items-center gap-1">
           {["active", "inactive", "all"].map((f) => (
             <button key={f} onClick={() => { setPoolFilter(f); setPoolPage(0); }}
-              className={["px-3 py-1.5 text-xs font-medium rounded-full border cursor-pointer transition-all duration-150", poolFilter === f ? "bg-[#f97316] text-white border-[#f97316]" : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] border-[var(--gray-300)] hover:border-[var(--gray-400)]"].join(" ")}
+              className={["px-3 py-1.5 text-xs font-medium rounded-full border cursor-pointer transition-all duration-150", poolFilter === f ? "bg-[var(--color-brand-500)] text-white border-[var(--color-brand-500)]" : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] border-[var(--gray-300)] hover:border-[var(--gray-400)]"].join(" ")}
             >{f.charAt(0).toUpperCase() + f.slice(1)}</button>
           ))}
         </div>

@@ -22,7 +22,7 @@ export const SearchInput = forwardRef(function SearchInput(
           "bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
           "border border-[var(--gray-300)] rounded-lg outline-none",
           "transition-all duration-150",
-          "focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5]",
+          "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
         ].join(" ")}
         {...props}
       />

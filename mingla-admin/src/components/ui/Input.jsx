@@ -26,7 +26,7 @@ export const Input = forwardRef(function Input(
             isPassword ? "pl-3 pr-10" : "px-3",
             error
               ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-2 focus:ring-[#fee2e2]"
-              : "border-[var(--gray-300)] focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5]",
+              : "border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
             className,
           ].join(" ")}
           onFocus={onFocus}
@@ -69,7 +69,7 @@ export const Textarea = forwardRef(function Textarea(
           "border rounded-lg outline-none resize-y transition-all duration-150",
           error
             ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-2 focus:ring-[#fee2e2]"
-            : "border-[var(--gray-300)] focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5]",
+            : "border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
           className,
         ].join(" ")}
         onFocus={onFocus}
@@ -93,7 +93,7 @@ export function Toggle({ label, checked, onChange, disabled = false }) {
         onClick={() => onChange?.(!checked)}
         className={[
           "relative inline-flex w-11 h-6 shrink-0 rounded-full transition-colors duration-150",
-          checked ? "bg-[#f97316]" : "bg-[var(--gray-300)]",
+          checked ? "bg-[var(--color-brand-500)]" : "bg-[var(--gray-300)]",
           disabled ? "cursor-not-allowed" : "cursor-pointer",
         ].join(" ")}
       >

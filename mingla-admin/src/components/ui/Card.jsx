@@ -5,14 +5,14 @@ export function StatCard({ icon: Icon, label, value, trend, trendUp, className =
     <div
       className={[
         "bg-[var(--color-background-primary)] border border-[var(--gray-200)]",
-        "border-l-[3px] border-l-[#f97316] rounded-xl p-5",
+        "border-l-[3px] border-l-[var(--color-brand-500)] rounded-xl p-5",
         "transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] p-4",
         className,
       ].join(" ")}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          {Icon && <Icon className="w-[18px] h-[18px] text-[#f97316]" />}
+          {Icon && <Icon className="w-[18px] h-[18px] text-[var(--color-brand-500)]" />}
         </div>
         {trend && (
           <span className={`text-xs font-semibold ${trendUp ? "text-[#22c55e]" : "text-[#ef4444]"}`}>

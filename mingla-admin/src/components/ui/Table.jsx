@@ -107,7 +107,7 @@ export function DataTable({
                     checked={allVisibleSelected}
                     ref={(el) => { if (el) el.indeterminate = someVisibleSelected; }}
                     onChange={() => onSelectAll?.(!allVisibleSelected)}
-                    className="h-4 w-4 rounded border-[var(--gray-300)] text-[#f97316] focus:ring-[#f97316] cursor-pointer"
+                    className="h-4 w-4 rounded border-[var(--gray-300)] text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] cursor-pointer"
                   />
                 </th>
               )}
@@ -134,9 +134,9 @@ export function DataTable({
                         "transition-opacity duration-150",
                       ].join(" ")}>
                         {activeSortKey === col.key && activeSortDir === "asc" ? (
-                          <ChevronUp className="h-3 w-3 text-[#f97316]" />
+                          <ChevronUp className="h-3 w-3 text-[var(--color-brand-500)]" />
                         ) : activeSortKey === col.key && activeSortDir === "desc" ? (
-                          <ChevronDown className="h-3 w-3 text-[#f97316]" />
+                          <ChevronDown className="h-3 w-3 text-[var(--color-brand-500)]" />
                         ) : (
                           <ChevronUp className="h-3 w-3" />
                         )}
@@ -188,7 +188,7 @@ export function DataTable({
                           type="checkbox"
                           checked={isSelected || false}
                           onChange={() => onSelect?.(rowId, !isSelected)}
-                          className="h-4 w-4 rounded border-[var(--gray-300)] text-[#f97316] focus:ring-[#f97316] cursor-pointer"
+                          className="h-4 w-4 rounded border-[var(--gray-300)] text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)] cursor-pointer"
                         />
                       </td>
                     )}
@@ -249,7 +249,7 @@ export function DataTable({
                     "flex items-center justify-center h-8 w-8 rounded-lg text-sm font-medium",
                     "cursor-pointer transition-all duration-150",
                     p === pagination.page
-                      ? "bg-[#f97316] text-white"
+                      ? "bg-[var(--color-brand-500)] text-white"
                       : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
                   ].join(" ")}
                 >

@@ -26,6 +26,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
   useEffect(() => {
     if (!open) return;
     clearTimeout(debounceRef.current);
+    let cancelled = false;
 
     if (query.length < 2) {
       setDbResults({ users: [], places: [] });
@@ -40,6 +41,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
           supabase.from("profiles").select("id, display_name, email").ilike("display_name", q).limit(5),
           supabase.from("place_pool").select("id, name, address").ilike("name", q).limit(5),
         ]);
+        if (cancelled) return;
         setDbResults({
           users: usersRes.data || [],
           places: placesRes.data || [],
@@ -47,11 +49,11 @@ export function CommandPalette({ open, onClose, onNavigate }) {
       } catch {
         // Silently fail — search is best-effort
       } finally {
-        setDbLoading(false);
+        if (!cancelled) setDbLoading(false);
       }
     }, 300);
 
-    return () => clearTimeout(debounceRef.current);
+    return () => { clearTimeout(debounceRef.current); cancelled = true; };
   }, [query, open]);
 
   // Client-side page filter (instant)

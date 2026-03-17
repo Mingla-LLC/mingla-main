@@ -18,7 +18,7 @@ export function Breadcrumbs({ items }) {
               ) : (
                 <button
                   onClick={item.onClick}
-                  className="text-[var(--color-text-tertiary)] hover:text-[#f97316] transition-colors duration-150 cursor-pointer"
+                  className="text-[var(--color-text-tertiary)] hover:text-[var(--color-brand-500)] transition-colors duration-150 cursor-pointer"
                 >
                   {item.label}
                 </button>

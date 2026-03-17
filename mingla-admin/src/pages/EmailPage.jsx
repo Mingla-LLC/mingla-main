@@ -22,7 +22,8 @@ import {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-send-email`;
+const SUPABASE_BASE = import.meta.env.VITE_SUPABASE_URL || "";
+const EDGE_FUNCTION_URL = SUPABASE_BASE ? `${SUPABASE_BASE}/functions/v1/admin-send-email` : "";
 
 const SUB_TABS = [
   { id: "compose", label: "Compose" },

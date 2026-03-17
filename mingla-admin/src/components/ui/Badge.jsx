@@ -10,7 +10,7 @@ const VARIANTS = {
 
 const DOT_COLORS = {
   default: "bg-[var(--gray-500)]",
-  brand:   "bg-[#f97316]",
+  brand:   "bg-[var(--color-brand-500)]",
   success: "bg-[#22c55e]",
   warning: "bg-[#f59e0b]",
   error:   "bg-[#ef4444]",

@@ -249,7 +249,7 @@ export function TableBrowserPage() {
                 placeholder="Filter tables..."
                 value={tableFilter}
                 onChange={(e) => setTableFilter(e.target.value)}
-                className="w-full h-8 pl-8 pr-2 text-xs bg-[var(--color-background-secondary)] border border-[var(--gray-200)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[#f97316] transition-colors duration-150"
+                className="w-full h-8 pl-8 pr-2 text-xs bg-[var(--color-background-secondary)] border border-[var(--gray-200)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-brand-500)] transition-colors duration-150"
               />
             </div>
           </div>
@@ -285,7 +285,7 @@ export function TableBrowserPage() {
                           "w-full flex items-center justify-between pr-3 py-1.5 text-left text-xs cursor-pointer",
                           "transition-all duration-150 border-l-[3px]",
                           isActive
-                            ? "border-l-[#f97316] bg-[var(--color-brand-50)] text-[var(--color-brand-700)] pl-[25px] font-medium"
+                            ? "border-l-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)] pl-[25px] font-medium"
                             : "border-l-transparent text-[var(--color-text-secondary)] pl-[28px] hover:bg-[var(--gray-50)]",
                         ].join(" ")}
                       >

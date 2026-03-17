@@ -84,7 +84,7 @@ export function Sidebar({
         ].join(" ")}
       >
         {isActive && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] bg-[#f97316] rounded-r-full" />
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] bg-[var(--color-brand-500)] rounded-r-full" />
         )}
         <Icon className="h-5 w-5 shrink-0" />
         <span

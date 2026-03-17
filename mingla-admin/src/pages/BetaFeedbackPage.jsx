@@ -92,10 +92,13 @@ function StatusBadge({ status }) {
 
 function AudioPlayer({ audioPath }) {
   const audioRef = useRef(null);
+  const playerMountedRef = useRef(true);
   const [audioUrl, setAudioUrl] = useState(null);
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [error, setError] = useState(null);
   const retryCountRef = useRef(0);
+
+  useEffect(() => () => { playerMountedRef.current = false; }, []);
 
   const fetchSignedUrl = useCallback(async () => {
     if (!audioPath) {
@@ -110,13 +113,15 @@ function AudioPlayer({ audioPath }) {
         .createSignedUrl(audioPath, AUDIO_URL_EXPIRY_SECONDS);
       if (storageError) throw storageError;
       if (!data?.signedUrl) throw new Error("No signed URL returned");
+      if (!playerMountedRef.current) return;
       setAudioUrl(data.signedUrl);
       retryCountRef.current = 0;
     } catch (err) {
       console.error("[BetaFeedback] audio URL error:", err);
+      if (!playerMountedRef.current) return;
       setError("Could not load audio. Click retry or wait for auto-retry.");
     } finally {
-      setLoadingUrl(false);
+      if (playerMountedRef.current) setLoadingUrl(false);
     }
   }, [audioPath]);
 

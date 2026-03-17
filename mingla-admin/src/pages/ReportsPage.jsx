@@ -205,7 +205,7 @@ export function ReportsPage() {
       label: "Reason",
       render: (_v, row) => (
         <button
-          className="text-sm font-medium text-[var(--color-text-primary)] hover:text-[#f97316] transition-colors cursor-pointer text-left"
+          className="text-sm font-medium text-[var(--color-text-primary)] hover:text-[var(--color-brand-500)] transition-colors cursor-pointer text-left"
           onClick={() => openDetail(row)}
         >
           {truncate(row.reason, 50)}
@@ -317,7 +317,7 @@ export function ReportsPage() {
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium",
                 "cursor-pointer transition-all duration-150 border",
                 isActive
-                  ? "bg-[#f97316] text-white border-[#f97316]"
+                  ? "bg-[var(--color-brand-500)] text-white border-[var(--color-brand-500)]"
                   : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] border-[var(--gray-200)] hover:border-[var(--gray-300)]",
               ].join(" ")}
             >
@@ -338,7 +338,7 @@ export function ReportsPage() {
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium",
                 "cursor-pointer transition-all duration-150 border",
                 isActive
-                  ? "bg-[#f97316] text-white border-[#f97316]"
+                  ? "bg-[var(--color-brand-500)] text-white border-[var(--color-brand-500)]"
                   : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] border-[var(--gray-200)] hover:border-[var(--gray-300)]",
               ].join(" ")}
             >
@@ -431,7 +431,7 @@ export function ReportsPage() {
                     <p className="text-sm text-[var(--color-text-primary)]">{reporterName}</p>
                     {detailReport.reporter_id && (
                       <button
-                        className="text-xs text-[#f97316] hover:underline mt-1 cursor-pointer"
+                        className="text-xs text-[var(--color-brand-500)] hover:underline mt-1 cursor-pointer"
                         onClick={() => {
                           setDetailReport(null);
                           window.location.hash = `#/users?userId=${detailReport.reporter_id}`;
@@ -446,7 +446,7 @@ export function ReportsPage() {
                     <p className="text-sm text-[var(--color-text-primary)]">{reportedName}</p>
                     {detailReport.reported_user_id && (
                       <button
-                        className="text-xs text-[#f97316] hover:underline mt-1 cursor-pointer"
+                        className="text-xs text-[var(--color-brand-500)] hover:underline mt-1 cursor-pointer"
                         onClick={() => {
                           setDetailReport(null);
                           window.location.hash = `#/users?userId=${detailReport.reported_user_id}`;

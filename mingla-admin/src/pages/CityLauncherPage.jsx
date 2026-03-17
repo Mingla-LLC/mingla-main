@@ -109,6 +109,9 @@ export function CityLauncherPage() {
             city,
             country: "",
             postcode: zipcode,
+            lat: lat ? Number(lat) : undefined,
+            lng: lng ? Number(lng) : undefined,
+            radius: radius * 1000,
           }),
         });
         if (res.ok) {
@@ -133,7 +136,7 @@ export function CityLauncherPage() {
     const newIds = new Set(allResults.filter((p) => !p._duplicate).map((p) => p.google_place_id));
     setSelectedPlaces(newIds);
     setSearching(false);
-  }, [city, zipcode, selectedCategories]);
+  }, [city, zipcode, lat, lng, radius, selectedCategories]);
 
   useEffect(() => {
     if (step === 1 && searchResults.length === 0 && !searching) {
@@ -170,11 +173,15 @@ export function CityLauncherPage() {
       for (let i = 0; i < toImport.length; i += BATCH) {
         if (!mountedRef.current) return;
         const batch = toImport.slice(i, i + BATCH);
-        await fetch(`${SUPABASE_URL}/functions/v1/admin-place-search`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-place-search`, {
           method: "POST",
           headers,
           body: JSON.stringify({ action: "push", places: batch }),
         });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`Import batch failed (${res.status}): ${body || "Unknown error"}`);
+        }
         setImportProgress({ done: Math.min(i + BATCH, toImport.length), total: toImport.length });
       }
 
@@ -238,7 +245,7 @@ export function CityLauncherPage() {
             <div className={[
               "flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-colors",
               i < step ? "bg-green-500 text-white"
-                : i === step ? "bg-[#f97316] text-white"
+                : i === step ? "bg-[var(--color-brand-500)] text-white"
                 : "bg-[var(--gray-200)] text-[var(--color-text-tertiary)]",
             ].join(" ")}>
               {i < step ? <CheckCircle className="h-4 w-4" /> : i + 1}
@@ -285,7 +292,7 @@ export function CityLauncherPage() {
                     type="checkbox"
                     checked={selectedCategories.has(cat)}
                     onChange={() => toggleCategory(cat)}
-                    className="h-4 w-4 rounded border-[var(--gray-300)] text-[#f97316] focus:ring-[#f97316]"
+                    className="h-4 w-4 rounded border-[var(--gray-300)] text-[var(--color-brand-500)] focus:ring-[var(--color-brand-500)]"
                   />
                   {CATEGORY_LABELS[cat] || cat}
                 </label>
@@ -369,7 +376,7 @@ export function CityLauncherPage() {
               </p>
               <div className="w-full max-w-md bg-[var(--gray-200)] rounded-full h-2">
                 <div
-                  className="bg-[#f97316] h-2 rounded-full transition-all duration-300"
+                  className="bg-[var(--color-brand-500)] h-2 rounded-full transition-all duration-300"
                   style={{ width: `${importProgress.total ? (importProgress.done / importProgress.total) * 100 : 0}%` }}
                 />
               </div>
@@ -416,7 +423,7 @@ export function CityLauncherPage() {
         <SectionCard title="Ready to launch">
           {launched ? (
             <div className="flex flex-col items-center gap-4 py-12">
-              <Rocket className="h-16 w-16 text-[#f97316]" />
+              <Rocket className="h-16 w-16 text-[var(--color-brand-500)]" />
               <h2 className="text-xl font-bold text-[var(--color-text-primary)]">{city} is live!</h2>
               <p className="text-sm text-[var(--color-text-secondary)]">
                 {importedPlaces.length} places are now visible to users.

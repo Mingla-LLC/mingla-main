@@ -800,7 +800,7 @@ export function UserManagementPage() {
           <div className="min-w-0">
             <button
               onClick={() => openDetail(row.id)}
-              className="text-sm font-medium text-[var(--color-text-primary)] hover:text-[#f97316] transition-colors cursor-pointer text-left truncate block max-w-full"
+              className="text-sm font-medium text-[var(--color-text-primary)] hover:text-[var(--color-brand-500)] transition-colors cursor-pointer text-left truncate block max-w-full"
             >
               {val || "—"}
             </button>
@@ -913,7 +913,7 @@ export function UserManagementPage() {
           <select
             value={filters.onboarding}
             onChange={(e) => { setFilters(f => ({ ...f, onboarding: e.target.value })); setPage(0); }}
-            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5] transition-all duration-150"
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] transition-all duration-150"
           >
             <option value="all">All Onboarding</option>
             <option value="completed">Completed</option>
@@ -922,7 +922,7 @@ export function UserManagementPage() {
           <select
             value={filters.status}
             onChange={(e) => { setFilters(f => ({ ...f, status: e.target.value })); setPage(0); }}
-            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5] transition-all duration-150"
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] transition-all duration-150"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -931,7 +931,7 @@ export function UserManagementPage() {
           <select
             value={filters.country}
             onChange={(e) => { setFilters(f => ({ ...f, country: e.target.value })); setPage(0); }}
-            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[#f97316] focus:ring-2 focus:ring-[#ffedd5] transition-all duration-150"
+            className="h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg outline-none cursor-pointer focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] transition-all duration-150"
           >
             <option value="all">All Countries</option>
             {countries.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1137,8 +1137,8 @@ export function UserManagementPage() {
         {/* Edit bar */}
         {editing && (
           <div className="flex items-center gap-2 p-3 bg-[var(--color-brand-50)] border border-[var(--color-brand-200)] rounded-lg">
-            <Edit3 className="w-4 h-4 text-[#f97316] shrink-0" />
-            <span className="text-sm text-[#f97316] font-medium flex-1">Editing profile — changes will be saved to the database</span>
+            <Edit3 className="w-4 h-4 text-[var(--color-brand-500)] shrink-0" />
+            <span className="text-sm text-[var(--color-brand-500)] font-medium flex-1">Editing profile — changes will be saved to the database</span>
             <Button variant="primary" size="sm" icon={Save} loading={saving} onClick={handleSaveEdit}>
               Save Changes
             </Button>
@@ -1165,11 +1165,11 @@ export function UserManagementPage() {
                 <Input label="Visibility Mode" value={editForm.visibility_mode || ""} onChange={(e) => setEditForm(f => ({ ...f, visibility_mode: e.target.value }))} />
                 <div className="flex flex-col gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={editForm.has_completed_onboarding ?? false} onChange={(e) => setEditForm(f => ({ ...f, has_completed_onboarding: e.target.checked }))} className="w-4 h-4 accent-[#f97316] cursor-pointer" />
+                    <input type="checkbox" checked={editForm.has_completed_onboarding ?? false} onChange={(e) => setEditForm(f => ({ ...f, has_completed_onboarding: e.target.checked }))} className="w-4 h-4 accent-[var(--color-brand-500)] cursor-pointer" />
                     <span className="text-sm text-[var(--color-text-primary)]">Has Completed Onboarding</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={editForm.active ?? true} onChange={(e) => setEditForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-[#f97316] cursor-pointer" />
+                    <input type="checkbox" checked={editForm.active ?? true} onChange={(e) => setEditForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-[var(--color-brand-500)] cursor-pointer" />
                     <span className="text-sm text-[var(--color-text-primary)]">Active (uncheck to ban)</span>
                   </label>
                 </div>
@@ -1494,7 +1494,7 @@ export function UserManagementPage() {
               {impersonateData.boards.map((b, i) => (
                 <div key={b.id || i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="w-8 h-8 rounded-lg bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-                    <LayoutDashboard className="w-4 h-4 text-[#f97316]" />
+                    <LayoutDashboard className="w-4 h-4 text-[var(--color-brand-500)]" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{b.name || "Unnamed Board"}</p>

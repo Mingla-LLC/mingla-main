@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 
 const VARIANTS = {
   primary:
-    "bg-[#f97316] text-white border-transparent hover:bg-[#ea580c] active:bg-[#c2410c]",
+    "bg-[var(--color-brand-500)] text-white border-transparent hover:bg-[var(--color-brand-600)] active:bg-[var(--color-brand-700)]",
   secondary:
     "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border-[var(--gray-300)] hover:bg-[var(--gray-50)] active:bg-[var(--gray-100)]",
   ghost:
@@ -11,7 +11,7 @@ const VARIANTS = {
   danger:
     "bg-[#ef4444] text-white border-transparent hover:bg-[#dc2626] active:bg-[#b91c1c]",
   link:
-    "bg-transparent text-[#f97316] border-transparent hover:underline p-0 h-auto",
+    "bg-transparent text-[var(--color-brand-500)] border-transparent hover:underline p-0 h-auto",
 };
 
 const SIZES = {
@@ -45,7 +45,7 @@ export const Button = forwardRef(function Button(
       className={[
         "inline-flex items-center justify-center font-semibold border",
         "transition-all duration-150 ease-out select-none",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
         VARIANTS[variant] || VARIANTS.primary,
         variant === "link" ? "" : SIZES[size] || SIZES.md,
         isIconOnly && variant !== "link"

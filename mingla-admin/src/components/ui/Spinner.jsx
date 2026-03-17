@@ -12,7 +12,7 @@ export function Spinner({ size = "md", className = "" }) {
         SIZES[size] || SIZES.md,
         className,
       ].join(" ")}
-      style={{ borderTopColor: "#f97316" }}
+      style={{ borderTopColor: "var(--color-brand-500)" }}
       role="status"
       aria-label="Loading"
     />

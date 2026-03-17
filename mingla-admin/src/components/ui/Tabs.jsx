@@ -16,7 +16,7 @@ export function Tabs({ tabs, activeTab, onChange, className = "" }) {
               className={[
                 "px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-150 -mb-px",
                 isActive
-                  ? "text-[#f97316] border-b-2 border-[#f97316]"
+                  ? "text-[var(--color-brand-500)] border-b-2 border-[var(--color-brand-500)]"
                   : "text-[var(--color-text-tertiary)] border-b-2 border-transparent hover:text-[var(--color-text-secondary)]",
               ].join(" ")}
             >

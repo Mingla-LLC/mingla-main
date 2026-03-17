@@ -416,7 +416,7 @@ export function AdminPage() {
                       <div className={[
                         "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
                         isOwner
-                          ? "bg-[var(--color-brand-50)] text-[#f97316]"
+                          ? "bg-[var(--color-brand-50)] text-[var(--color-brand-500)]"
                           : "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
                       ].join(" ")}>
                         {isOwner ? <Crown className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
@@ -530,7 +530,7 @@ export function AdminPage() {
       >
         <ModalBody>
           {activityLoading ? (
-            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-[#f97316] border-t-transparent rounded-full animate-spin" /></div>
+            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-[var(--color-brand-500)] border-t-transparent rounded-full animate-spin" /></div>
           ) : activityLogs.length === 0 ? (
             <p className="text-sm text-[var(--color-text-tertiary)] text-center py-8">No activity recorded.</p>
           ) : (

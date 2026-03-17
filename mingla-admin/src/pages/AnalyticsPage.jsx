@@ -36,7 +36,7 @@ const TIME_RANGES = [
 ];
 
 const CHART_COLORS = {
-  primary: "#f97316",
+  primary: "var(--color-brand-500)",
   teal: "#4ECDC4",
   yellow: "#FFD93D",
   red: "#FF6B6B",
@@ -123,7 +123,7 @@ function GrowthSubView({ days, addToast }) {
   const [signups, setSignups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [setupNeeded, setSetupNeeded] = useState(false);
+  // setupNeeded removed — PGRST202 falls back to client-side queries
   const [retryCount, setRetryCount] = useState(0);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -201,7 +201,6 @@ function GrowthSubView({ days, addToast }) {
     if (addToast) addToast({ variant: "success", title: `Exported ${exported} rows` });
   };
 
-  if (setupNeeded) return <SetupScreen message="Growth analytics RPC not found." />;
   if (error) return <ErrorState message={error} onRetry={() => { setError(null); setRetryCount(c => c + 1); }} />;
   if (loading) return <LoadingState />;
 

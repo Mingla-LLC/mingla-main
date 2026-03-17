@@ -498,7 +498,7 @@ export function PhotoPoolManagementPage() {
             </div>
             <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#f97316] rounded-full transition-all duration-300"
+                className="h-full bg-[var(--color-brand-500)] rounded-full transition-all duration-300"
                 style={{
                   width: `${backfillStatus.total_places > 0
                     ? ((backfillStatus.success_count + backfillStatus.failure_count) / backfillStatus.total_places * 100)
@@ -1145,7 +1145,7 @@ function CostsSection({ costMonitor, weeklyCosts, loading }) {
                   <span className="text-[10px] text-[var(--color-text-tertiary)]">{formatCurrency(cost)}</span>
                   <div className="w-full flex items-end" style={{ height: "120px" }}>
                     <div
-                      className="w-full bg-[#f97316] rounded-t-sm transition-all duration-300"
+                      className="w-full bg-[var(--color-brand-500)] rounded-t-sm transition-all duration-300"
                       style={{ height: `${Math.max(height, 2)}%` }}
                       title={`${formatDate(week.week_start)}: ${formatCurrency(cost)} (${week.operation_count} ops)`}
                     />
