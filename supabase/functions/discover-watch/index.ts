@@ -74,20 +74,11 @@ function estimateTravelMin(distKm: number, mode: string): number {
 }
 
 function getPhotoUrl(place: any): string {
-  const photo = place.photos?.[0];
-  if (!photo?.name) return '';
-  return `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`;
+  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 }
 
 function getAllPhotoUrls(place: any, max = 5): string[] {
-  return (place.photos || [])
-    .slice(0, max)
-    .map((p: any) =>
-      p.name
-        ? `https://places.googleapis.com/v1/${p.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
-        : null
-    )
-    .filter(Boolean);
+  return [];
 }
 
 function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenNow: boolean } {

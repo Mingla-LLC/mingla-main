@@ -200,9 +200,7 @@ async function findGroceryStore(
       .map((place: any) => {
         // Extract photo reference from new API format
         const primaryPhoto = place.photos?.[0];
-        const imageUrl = primaryPhoto?.name
-          ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${GOOGLE_API_KEY}`
-          : null;
+        const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
         // Calculate distance from picnic location
         const distance = calculateDistance(

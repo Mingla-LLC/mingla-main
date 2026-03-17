@@ -9,6 +9,30 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const BUCKET = 'place-photos';
+
+const DEFAULT_PLACEHOLDER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+
+const CATEGORY_PLACEHOLDERS: Record<string, string> = {
+  'Nature': 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80',
+  'First Meet': 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&q=80',
+  'Picnic & Park': 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800&q=80',
+  'Drink': 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80',
+  'Casual Eats': 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80',
+  'Fine Dining': 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80',
+  'Watch': 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&q=80',
+  'Creative Arts': 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800&q=80',
+  'Play': 'https://images.unsplash.com/photo-1526481280693-3bfa7568e0f3?w=800&q=80',
+  'Wellness': 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&q=80',
+  'Groceries & Flowers': 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=800&q=80',
+  'Work & Business': 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&q=80',
+};
+
+export function getPlaceholderForCategory(category?: string | null): string {
+  if (category && CATEGORY_PLACEHOLDERS[category]) {
+    return CATEGORY_PLACEHOLDERS[category];
+  }
+  return DEFAULT_PLACEHOLDER;
+}
 const MAX_PHOTOS = 5;
 const DOWNLOAD_TIMEOUT_MS = 8000;
 
@@ -115,18 +139,13 @@ export function resolvePhotoUrl(
   storedPhotoUrls: string[] | null | undefined,
   googlePhotoName: string | null | undefined,
   apiKey: string,
-  fallback: string = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80',
+  fallback?: string,
+  category?: string | null,
 ): string {
-  // Prefer stored Supabase URL
   if (storedPhotoUrls && storedPhotoUrls.length > 0 && storedPhotoUrls[0]) {
     return storedPhotoUrls[0];
   }
-  // Fall back to Google URL construction
-  if (googlePhotoName) {
-    return `https://places.googleapis.com/v1/${googlePhotoName}/media?maxWidthPx=800&key=${apiKey}`;
-  }
-  // Last resort
-  return fallback;
+  return fallback || getPlaceholderForCategory(category);
 }
 
 /**
@@ -141,23 +160,10 @@ export function resolveAllPhotoUrls(
 ): string[] {
   const urls: string[] = [];
 
-  // Add stored URLs first
   if (storedPhotoUrls) {
     for (const url of storedPhotoUrls) {
       if (url && urls.length < max) urls.push(url);
     }
   }
-
-  // Fill remaining from Google references (if stored URLs are incomplete)
-  if (urls.length < max && googlePhotos) {
-    for (const photo of googlePhotos) {
-      if (urls.length >= max) break;
-      if (photo.name) {
-        const googleUrl = `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${apiKey}`;
-        if (!urls.includes(googleUrl)) urls.push(googleUrl);
-      }
-    }
-  }
-
   return urls;
 }

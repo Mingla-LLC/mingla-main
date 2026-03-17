@@ -209,9 +209,7 @@ function mapGooglePlaceToCard(
 ): Card {
   const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY") ?? "";
   const photoRef = p.photos?.[0]?.name;
-  const imageUrl = photoRef
-    ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=400&key=${googleApiKey}`
-    : null;
+  const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
   return {
     id: p.id ?? "",
@@ -824,9 +822,7 @@ serve(async (req: Request) => {
               const topPlaces = places.slice(0, 3);
               for (const p of topPlaces) {
                 const photoRef = p.photos?.[0]?.name;
-                const imageUrl = photoRef
-                  ? `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=400&key=${googleApiKey}`
-                  : null;
+                const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
                 cards.push({
                   id: p.id ?? "",

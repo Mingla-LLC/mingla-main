@@ -2584,16 +2584,11 @@ function topPlace(places: any[]): any | null {
 function getPhotoUrl(place: any): string {
   const photo = place.photos?.[0];
   if (!photo?.name) return '';
-  return `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`;
+  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 }
 
 function getAllPhotoUrls(place: any, max: number = 5): string[] {
-  const photos = place.photos;
-  if (!Array.isArray(photos) || photos.length === 0) return [];
-  return photos
-    .slice(0, max)
-    .filter((p: any) => p?.name)
-    .map((p: any) => `https://places.googleapis.com/v1/${p.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`);
+  return [];
 }
 
 function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenNow: boolean } {

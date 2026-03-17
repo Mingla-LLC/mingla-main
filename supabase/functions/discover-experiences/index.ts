@@ -680,9 +680,7 @@ serve(async (req) => {
             const storedUrls = place.stored_photo_urls;
             const imageUrl = (storedUrls && storedUrls.length > 0)
               ? storedUrls[0]
-              : (place.photos?.[0]?.name
-                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-                : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80');
+              : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
             const parsedOH = place.opening_hours || null;
             const isOpenNow = parsedOH?._isOpenNow ?? null;
@@ -1295,18 +1293,9 @@ function transformPlaceToDiscoverPlace(
 ): DiscoverPlace {
   // Extract photo URL
   const primaryPhoto = place.photos?.[0];
-  const imageUrl = primaryPhoto?.name
-    ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-    : null;
+  const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
-  const images = (place.photos || [])
-    .slice(0, 5)
-    .map((photo: any) =>
-      photo.name
-        ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-        : null
-    )
-    .filter((img: string | null): img is string => img !== null);
+  const images: string[] = [];
 
   // Convert price level to min/max using shared tier system
   const priceRange = priceLevelToRange(place.priceLevel);

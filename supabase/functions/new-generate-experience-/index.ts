@@ -369,19 +369,9 @@ async function fetchGooglePlaces(
       if (places.length > 0) {
         const transformed = places.map((place: any) => {
           const primaryPhoto = place.photos?.[0];
-          const imageUrl = primaryPhoto?.name
-            ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-            : null;
+          const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
-          const images =
-            place.photos
-              ?.slice(0, 5)
-              .map((photo: any) => {
-                return photo.name
-                  ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-                  : null;
-              })
-              .filter((img: string | null) => img !== null) || [];
+          const images: string[] = [];
 
           const priceRange = priceLevelToRange(place.priceLevel);
 
@@ -475,19 +465,9 @@ async function fetchGooglePlaces(
         if (data.places?.length) {
           const places = data.places.map((place: any) => {
             const primaryPhoto = place.photos?.[0];
-            const imageUrl = primaryPhoto?.name
-              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-              : null;
+            const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
-            const images =
-              place.photos
-                ?.slice(0, 5)
-                .map((photo: any) => {
-                  return photo.name
-                    ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-                    : null;
-                })
-                .filter((img: string | null) => img !== null) || [];
+            const images: string[] = [];
 
             const priceRange2 = priceLevelToRange(place.priceLevel);
 

@@ -91,9 +91,7 @@ serve(async (req) => {
     // Transform from new Places API format to our experience format
     const normalizedPlaces = rawPlaces.slice(0, 20).map((place: any) => {
       const primaryPhoto = place.photos?.[0];
-      const imageUrl = primaryPhoto?.name
-        ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${apiKey}`
-        : `https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400`;
+      const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
       // Map priceLevel to range using shared tier system
       const priceRange = priceLevelToRange(place.priceLevel);

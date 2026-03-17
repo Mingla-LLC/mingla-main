@@ -601,75 +601,7 @@ serve(async (req: Request) => {
       `[get-person-hero-cards] Mapped ${cards.length} cards — types: [${cards.map(c => c.cardType).join(", ")}]`,
     );
 
-    // --- Gap-fill if < 6 cards ---
-    if (cards.length < 6) {
-      console.log(
-        `[get-person-hero-cards] Only ${cards.length} cards from pool, attempting gap-fill`,
-      );
-
-      try {
-        // Import and use serveCardsFromPipeline for gap-fill
-        const { serveCardsFromPipeline } = await import("../_shared/cardPoolService.ts");
-        const googleApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
-
-        if (googleApiKey) {
-          const gapCount = 6 - cards.length;
-          const gapResult = await serveCardsFromPipeline(
-            {
-              supabaseAdmin: adminClient,
-              userId,
-              lat: location.latitude,
-              lng: location.longitude,
-              radiusMeters: 50000,
-              categories: resolvedCategories,
-              budgetMin: 0,
-              budgetMax: 99999,
-              limit: gapCount,
-              excludeCardIds: cards.map((c) => c.id),
-            },
-            googleApiKey,
-          );
-
-          if (gapResult.cards.length > 0) {
-            console.log(
-              `[get-person-hero-cards] Gap-fill added ${gapResult.cards.length} cards from pipeline`,
-            );
-
-            // Re-run RPC to get fresh results including gap-filled cards
-            const { data: rpcRows2 } = await adminClient.rpc(
-              "query_person_hero_cards",
-              {
-                p_user_id: userId,
-                p_person_id: effectivePersonId,
-                p_lat: location.latitude,
-                p_lng: location.longitude,
-                p_categories: resolvedCategories,
-                p_curated_experience_type: effectiveCuratedType,
-                p_initial_radius_meters: initialRadius,
-                p_max_radius_meters: maxRadius,
-              },
-            );
-
-            if (rpcRows2 && rpcRows2.length > 0) {
-              // Deduplicate: merge gap-fill results with original cards by ID
-              const existingIds = new Set(cards.map((c) => c.id));
-              const newCards = rpcRows2
-                .filter((row: { card: Record<string, unknown> }) => !existingIds.has(row.card.id as string))
-                .map((row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
-                  mapPoolCardToCard(row.card, row.card_type),
-                );
-              cards = [...cards, ...newCards];
-              console.log(
-                `[get-person-hero-cards] Merged after gap-fill: ${cards.length} cards (${newCards.length} new) — types: [${cards.map(c => c.cardType).join(", ")}]`,
-              );
-            }
-          }
-        }
-      } catch (gapFillError) {
-        // Gap-fill failure is non-fatal — return pool-only results
-        console.warn("[get-person-hero-cards] Gap-fill failed:", gapFillError);
-      }
-    }
+    // Gap-fill removed — pool is admin-managed only. Serve what we have.
 
     // ── Place pool fallback — fill remaining gaps from existing places ──
     if (cards.length < 6 && adminClient) {
@@ -717,9 +649,7 @@ serve(async (req: Request) => {
             const storedUrls = place.stored_photo_urls;
             const imageUrl = (storedUrls && storedUrls.length > 0)
               ? storedUrls[0]
-              : (place.photos?.[0]?.name
-                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${Deno.env.get("GOOGLE_MAPS_API_KEY") || ""}`
-                : null);
+              : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
             ppCards.push({
               id: gpid,

@@ -65,7 +65,7 @@ interface CardResponse {
 
 // ── Photo URL builder ────────────────────────────────────────────────────────
 function buildPhotoUrl(photoName: string): string {
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`;
+  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 }
 
 serve(async (req: Request) => {

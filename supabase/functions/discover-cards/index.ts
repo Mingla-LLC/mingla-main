@@ -29,16 +29,13 @@ import { enrichCardsWithCopy } from '../_shared/copyEnrichmentService.ts';
  *
  * Pipeline:
  *   1. Pool-first: query card_pool for ALL requested categories at once
- *   2. Gap fill: if pool < 80% of limit, fetch missing from Google API
- *   3. AI descriptions OFF critical path: return immediately with fallbacks,
- *      then fire-and-forget OpenAI enrichment to card_pool
- *   4. Batch upsert results to place_pool + card_pool
- *   5. Record user impressions for served cards
+ *   2. Serve from pool (pool is admin-managed, no runtime Google API calls)
+ *   3. Record user impressions for served cards
  *
  * Supports:
  *   - Multi-category in one request (e.g. ["Nature", "Drink", "Casual Eats"])
  *   - Offset pagination via batchSeed * limit
- *   - warmPool mode: fetch + store, return empty
+ *   - warmPool mode: disabled (returns empty immediately)
  *   - Travel constraint-based radius calculation
  *   - Budget, datetime, distance filtering
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -130,18 +127,11 @@ const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd6
 function getPhotoUrl(place: any): string {
   const photo = place.photos?.[0];
   if (!photo?.name) return FALLBACK_IMAGE;
-  return `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`;
+  return FALLBACK_IMAGE;
 }
 
 function getAllPhotoUrls(place: any, max = 5): string[] {
-  return (place.photos || [])
-    .slice(0, max)
-    .map((p: any) =>
-      p.name
-        ? `https://places.googleapis.com/v1/${p.name}/media?maxHeightPx=800&maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
-        : null
-    )
-    .filter(Boolean);
+  return [];
 }
 
 function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenNow: boolean | null } {
@@ -497,31 +487,12 @@ serve(async (req: Request) => {
     // Threshold raised to 80% of limit to ensure full batches after dedup.
     const poolOffset = (batchSeed || 0) * limit;
 
-    // ── Warm-pool maturity gate — skip Google when pool is already full ────
+    // ── Warm-pool: return immediately (pool is admin-managed, no Google searches) ──
     if (userId && body.warmPool) {
-      const maturity = await checkPoolMaturity(supabaseAdmin, {
-        lat: location.lat,
-        lng: location.lng,
-        radiusMeters,
-        categories,
-        cardType: 'single',
-        minCardsPerCategory: 5,
-        minTotalCards: Math.max(limit, 50),
-      });
-
-      if (maturity.isMature) {
-        console.log(`[discover-cards] Warm pool skipped — pool already mature: ${maturity.totalCards} cards, ${maturity.categoryCoverage}/${maturity.totalCategories} categories`);
-        return new Response(
-          JSON.stringify({
-            cards: [],
-            total: maturity.totalCards,
-            source: 'warm',
-            poolMature: true,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      // else: pool not mature, fall through to existing warm-pool logic
+      return new Response(
+        JSON.stringify({ cards: [], total: 0, source: 'disabled', message: 'Warm pool is disabled. Pool is admin-managed.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (userId && !body.warmPool) {
@@ -544,27 +515,16 @@ serve(async (req: Request) => {
         const poolResult = await serveCardsFromPipeline(
           poolParams,
           GOOGLE_PLACES_API_KEY,
-          { travelMode, skipGapFill: true },
+          { travelMode },
         );
 
         // CF-003 fix: serve any pool result > 0, not just >= 80%
-        // serveCardsFromPipeline already gap-fills from Google when pool is short
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards (Fix 3)
           const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
           const scoredPoolCards = scorePoolCards(timeFilteredCards);
           console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
-
-          // Fire-and-forget: fill pool gaps for categories with shortages (next request benefits)
-          const cardsPerCat = Math.ceil(limit / categories.length);
-          const gapCategories = categories.filter(cat => {
-            const catCards = scoredPoolCards.filter((c: any) => c.category === cat);
-            return catCards.length < cardsPerCat;
-          });
-          if (gapCategories.length > 0) {
-            fillPoolGapsAsync(supabaseAdmin, GOOGLE_PLACES_API_KEY, gapCategories, location, radiusMeters, categoryTypeMap).catch(() => {});
-          }
 
           // RC-003 fix: use the pipeline's hasMore (based on unseen count), not raw totalPoolSize
           return new Response(JSON.stringify({
@@ -703,15 +663,10 @@ serve(async (req: Request) => {
             const storedUrls = place.stored_photo_urls;
             const imageUrl = (storedUrls && storedUrls.length > 0)
               ? storedUrls[0]
-              : (place.photos?.[0]?.name
-                ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}`
-                : FALLBACK_IMAGE);
+              : FALLBACK_IMAGE;
             const images = (storedUrls && storedUrls.length > 0)
               ? storedUrls.slice(0, 5)
-              : (place.photos || [])
-                .slice(0, 5)
-                .map((p: any) => p.name ? `https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=800&key=${GOOGLE_PLACES_API_KEY}` : null)
-                .filter(Boolean);
+              : [];
 
             const distKm = haversine(location.lat, location.lng, place.lat, place.lng);
             const travelMin = estimateTravelMin(distKm, travelMode);
@@ -841,9 +796,6 @@ serve(async (req: Request) => {
         },
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-
-    // ── Handle warmPool request ───────────────────────────────────────────
-    const isWarmPool = !!body.warmPool;
 
     // categoryTypeMap already built above (before pool-first path)
     const totalTypes = Object.values(categoryTypeMap).reduce((sum, t) => sum + t.length, 0);
@@ -1007,7 +959,7 @@ serve(async (req: Request) => {
     // batch 2 at 6 PM would have more open places). This keeps batch generation alive.
     const hasMore = (offset + limit) < totalBeforeTimeFilter;
 
-    if (batch.length === 0 && !isWarmPool) {
+    if (batch.length === 0) {
       return new Response(
         JSON.stringify({
           cards: [], total: totalAvailable, source: 'api',
@@ -1078,17 +1030,6 @@ serve(async (req: Request) => {
     const elapsed = Date.now() - t0;
     const source: string = apiCallsMade > 0 ? (cacheHits > 0 ? 'mixed' : 'api') : 'cache';
     console.log(`[discover-cards] Done in ${elapsed}ms: ${scoredCards.length} cards, ${apiCallsMade} API calls`);
-
-    // ── warmPool: return empty response after storing ─────────────────────
-    if (isWarmPool) {
-      // Store to pool in background then return empty
-      storeResultsInPoolBatched(supabaseAdmin, batch, scoredCards, categories, userId, true);
-
-      return new Response(
-        JSON.stringify({ cards: [], total: totalAvailable, source: 'warm' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // ── Fire-and-forget: store results + enrich with AI descriptions ──────
     storeResultsInPoolBatched(supabaseAdmin, batch, scoredCards, categories, userId);
@@ -1399,47 +1340,3 @@ function storeResultsInPoolBatched(
   })();
 }
 
-// ── Background Gap-Fill (fire-and-forget) ─────────────────────────────────
-// Populates the card pool for categories that had fewer cards than expected.
-// Called after returning the pool response so the NEXT request benefits.
-async function fillPoolGapsAsync(
-  supabaseAdmin: any,
-  googleApiKey: string,
-  gapCats: string[],
-  location: { lat: number; lng: number },
-  radiusMeters: number,
-  categoryTypeMap: Record<string, string[]>,
-): Promise<void> {
-  try {
-    const subset: Record<string, string[]> = {};
-    for (const cat of gapCats) {
-      if (categoryTypeMap[cat]) subset[cat] = categoryTypeMap[cat];
-    }
-    if (Object.keys(subset).length === 0) return;
-
-    const { results } = await batchSearchByCategory(
-      supabaseAdmin, googleApiKey, subset,
-      location.lat, location.lng, radiusMeters,
-      { maxResultsPerCategory: 20, rankPreference: 'POPULARITY' },
-    );
-
-    let totalStored = 0;
-    for (const [category, places] of Object.entries(results)) {
-      if (!places || places.length === 0) continue;
-      // Apply per-category price floor before storing — prevents cheap places
-      // from being stored as Fine Dining then filtered out every request.
-      const minTier = CATEGORY_MIN_PRICE_TIER[category];
-      const qualified = minTier
-        ? places.filter((p: any) => tierMeetsMinimum(p.priceLevel, minTier))
-        : places;
-      if (qualified.length > 0) {
-        await expandPoolWithNewPlaces(supabaseAdmin, qualified, category);
-        totalStored += qualified.length;
-      }
-    }
-
-    console.log(`[discover-cards] Background gap-fill: stored ${totalStored} places for ${gapCats.join(', ')}`);
-  } catch (err) {
-    console.warn('[discover-cards] Background gap-fill failed:', (err as any)?.message || err);
-  }
-}

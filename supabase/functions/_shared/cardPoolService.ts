@@ -46,10 +46,10 @@ export interface PoolQueryResult {
   totalPoolSize: number;           // DEPRECATED — kept for backward compat; equals totalUnseenCount now
   totalUnseenCount: number;        // total UNSEEN cards remaining in pool after this batch
   hasMore: boolean;                // true if more unseen cards exist beyond this batch
-  diagnostics?: {                  // gap-fill diagnostics for client-side logging
-    reason: string;                // why Google was queried (or "pool sufficient")
-    gapCategories: string[];       // which categories needed gap-fill from Google
-    apiCallsMade: number;          // number of Google API calls made
+  diagnostics?: {                  // pipeline diagnostics for client-side logging
+    reason: string;                // why the pool was sufficient or short
+    gapCategories: string[];       // categories that were short (informational only)
+    apiCallsMade: number;          // always 0 (Google calls are admin-managed now)
     poolQueried: number;           // how many came from pool before gap analysis
     limitRequested: number;        // the limit that was requested
   };
@@ -124,13 +124,6 @@ export async function checkPoolMaturity(
     totalCategories: categories.length,
     categoryBreakdown,
   };
-}
-
-// ── Helper: Photo URL construction (prefers stored Supabase URLs) ────────────
-
-function buildPhotoUrl(photoName: string, apiKey: string): string {
-  if (!photoName) return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&key=${apiKey}`;
 }
 
 // ── Step 1: Get user's preference timestamp ─────────────────────────────────
@@ -275,7 +268,7 @@ export async function upsertPlaceToPool(
   return data?.id || null;
 }
 
-// ── Step 4: Insert a card into card_pool ────────────────────────────────────
+// ── Step 3: Insert a card into card_pool ────────────────────────────────────
 
 export async function insertCardToPool(
   supabaseAdmin: SupabaseClient,
@@ -369,7 +362,7 @@ export async function insertCardToPool(
   return data?.id || null;
 }
 
-// ── Step 5: Record impressions ──────────────────────────────────────────────
+// ── Step 4: Record impressions ──────────────────────────────────────────────
 
 export async function recordImpressions(
   supabaseAdmin: SupabaseClient,
@@ -390,7 +383,7 @@ export async function recordImpressions(
   }
 }
 
-// ── Step 6: Update served counts ────────────────────────────────────────────
+// ── Step 5: Update served counts ────────────────────────────────────────────
 
 async function updateServedCounts(
   supabaseAdmin: SupabaseClient,
@@ -404,7 +397,7 @@ async function updateServedCounts(
     .then(() => {}, () => {});
 }
 
-// ── Step 7: Build a single card from a place_pool entry ─────────────────────
+// ── Step 6: Build a single card from a place_pool entry ─────────────────────
 
 function buildSingleCardFromPlace(
   place: any,
@@ -546,7 +539,7 @@ function resolveOpeningHours(openingHours: any): { hours: Record<string, string>
   return { hours: null, isOpenNow: null };
 }
 
-// ── Step 8: Convert a card_pool row to the API response format ──────────────
+// ── Step 7: Convert a card_pool row to the API response format ──────────────
 
 function poolCardToApiCard(
   card: any,
@@ -683,7 +676,6 @@ export async function serveCardsFromPipeline(
     travelMode?: string;
     travelConstraintValue?: number;
     datetimePref?: string;
-    skipGapFill?: boolean;
   }
 ): Promise<PoolQueryResult> {
   const {
@@ -766,321 +758,37 @@ export async function serveCardsFromPipeline(
     };
   }
 
-  // ── skipGapFill: return pool-only results immediately ────────────────
-  if (options?.skipGapFill) {
-    const served = poolCards.slice(0, limit);
-    const servedIds = served.map((c: any) => c.id);
-    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+  // ── Pool insufficient: serve what we have ───────────────────────────
+  const served = poolCards.slice(0, limit);
+  const servedIds = served.map((c: any) => c.id);
+  const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
 
-    // Record impressions for pool cards we're serving
-    if (servedIds.length > 0) {
-      await recordImpressions(supabaseAdmin, userId, servedIds);
-      updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
-      supabaseAdmin.rpc('increment_user_engagement', {
-        p_user_id: userId,
-        p_field: 'total_cards_seen',
-        p_amount: servedIds.length,
-      }).then(() => {}, () => {});
-      incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
-    }
-
-    const remainingUnseen = Math.max(0, totalUnseenCount - served.length);
-
-    console.log(`[card-pool] skipGapFill: served ${apiCards.length} from pool (0 API calls) in ${Date.now() - startTime}ms`);
-    return {
-      cards: apiCards,
-      fromPool: apiCards.length,
-      fromApi: 0,
-      totalPoolSize,
-      totalUnseenCount: remainingUnseen,
-      hasMore: remainingUnseen > 0,
-      diagnostics: {
-        reason: `skipGapFill=true — served ${apiCards.length} from pool (${poolCards.length} available, needed ${limit})`,
-        gapCategories: [],
-        apiCallsMade: 0,
-        poolQueried: poolCards.length,
-        limitRequested: limit,
-      },
-    };
-  }
-
-  // ── STEP 4: Gap analysis ──────────────────────────────────────────────
-  const categoryCount: Record<string, number> = {};
-  for (const card of poolCards) {
-    categoryCount[card.category] = (categoryCount[card.category] || 0) + 1;
-  }
-
-  const cardsPerCategory = Math.max(2, Math.ceil(limit / Math.max(resolvedCats.length, 1)));
-  const neededCategories: string[] = [];
-  for (const cat of resolvedCats) {
-    if ((categoryCount[cat] || 0) < cardsPerCategory) {
-      neededCategories.push(cat);
-    }
-  }
-
-  console.log(`[card-pool] Gap: need more cards for [${neededCategories}]`);
-
-  // ── STEP 5: Fetch from Google for missing categories ──────────────────
-  const gapCards: any[] = [];
-  let apiCallCount = 0;
-
-  if (neededCategories.length > 0 && googleApiKey) {
-    // Build category → types map and search all in one API call per category
-    const categoryTypes = getCategoryTypeMap(neededCategories);
-
-    const { results: catResults, apiCallsMade } = await batchSearchByCategory(
-      supabaseAdmin,
-      googleApiKey,
-      categoryTypes,
-      lat,
-      lng,
-      radiusMeters,
-      { maxResultsPerCategory: 20, ttlHours: 24 }
-    );
-    apiCallCount = apiCallsMade;
-
-    // Track google_place_ids already in pool cards to avoid duplicates
-    const servedPlaceIds = new Set(poolCards.map((c: any) => c.google_place_id).filter(Boolean));
-
-    // ── Phase 1: Collect raw places + build card data (no DB calls) ──────
-    interface PendingPlace {
-      place: any;
-      category: string;
-      placeType: string;
-    }
-
-    const pendingPlaces: PendingPlace[] = [];
-
-    for (const [category, places] of Object.entries(catResults)) {
-      if (!places || places.length === 0) continue;
-
-      for (const place of places) {
-        const googlePlaceId = place.id;
-        if (!googlePlaceId || servedPlaceIds.has(googlePlaceId)) continue;
-        if (!place.location?.latitude || !place.location?.longitude) continue;
-        servedPlaceIds.add(googlePlaceId);
-
-        pendingPlaces.push({ place, category, placeType: place.primaryType || place.types?.[0] || 'place' });
-      }
-    }
-
-    // ── Phase 2: Batch upsert all places to place_pool (1 DB call) ──────
-    const placeRows = pendingPlaces.map(({ place }) => {
-      const priceRange = priceLevelToRange(place.priceLevel);
-      const photos = (place.photos || []).map((p: any) => ({
-        name: p.name,
-        widthPx: p.widthPx,
-        heightPx: p.heightPx,
-      }));
-      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
-
-      return {
-        google_place_id: place.id,
-        name: place.displayName?.text || 'Unknown Place',
-        address: place.formattedAddress || '',
-        lat: place.location?.latitude ?? 0,
-        lng: place.location?.longitude ?? 0,
-        types: place.types || [],
-        primary_type: place.primaryType || place.types?.[0] || null,
-        rating: place.rating || 0,
-        review_count: place.userRatingCount || 0,
-        price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
-        price_min: priceRange.min,
-        price_max: priceRange.max,
-        opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
-        photos,
-        website: place.websiteUri || null,
-        raw_google_data: place,
-        fetched_via: 'nearby_search',
-        price_tier: googleLevelToTierSlug(place.priceLevel),
-        last_detail_refresh: new Date().toISOString(),
-        refresh_failures: 0,
-        is_active: true,
-      };
-    });
-
-    const placePoolIdMap: Record<string, string> = {};
-    if (placeRows.length > 0) {
-      const { data: upsertedPlaces, error: placeError } = await supabaseAdmin
-        .from('place_pool')
-        .upsert(placeRows, { onConflict: 'google_place_id' })
-        .select('id, google_place_id');
-
-      if (placeError) {
-        console.warn('[card-pool] Batch place upsert error:', placeError.message);
-      }
-      if (upsertedPlaces) {
-        for (const row of upsertedPlaces) {
-          placePoolIdMap[row.google_place_id] = row.id;
-        }
-      }
-    }
-
-    // ── Phase 3: Batch upsert all cards to card_pool (1 DB call) ────────
-    // Fire-and-forget: download photos to Supabase Storage for all new places
-    for (const { place } of pendingPlaces) {
-      if (place.photos?.length > 0 && googleApiKey) {
-        downloadAndStorePhotos(supabaseAdmin, place.id, place.photos, googleApiKey).catch(() => {});
-      }
-    }
-
-    const cardRows = pendingPlaces.map(({ place, category }) => {
-      const priceRange = priceLevelToRange(place.priceLevel);
-      // Use Google URLs for now — Supabase URLs will be available on next serve
-      // after downloadAndStorePhotos completes in background
-      const imageUrl = resolvePhotoUrl(null, place.photos?.[0]?.name, googleApiKey);
-      const images = resolveAllPhotoUrls(null, place.photos, googleApiKey);
-      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
-      const popularityScore = (place.rating || 0) * Math.log10((place.userRatingCount || 0) + 1);
-
-      return {
-        card_type: 'single' as const,
-        place_pool_id: placePoolIdMap[place.id] || null,
-        google_place_id: place.id,
-        title: place.displayName?.text || 'Unknown Place',
-        category,
-        categories: [category],
-        description: `A great ${category} spot to explore.`,
-        highlights: ['Highly Rated', 'Popular Choice'],
-        image_url: imageUrl,
-        images: images as string[],
-        address: place.formattedAddress || '',
-        lat: place.location?.latitude ?? 0,
-        lng: place.location?.longitude ?? 0,
-        rating: place.rating || 0,
-        review_count: place.userRatingCount || 0,
-        price_min: priceRange.min,
-        price_max: priceRange.max,
-        opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
-        website: place.websiteUri || null,
-        price_tier: googleLevelToTierSlug(place.priceLevel),
-        popularity_score: popularityScore,
-        is_active: true,
-      };
-    });
-
-    const cardPoolIdMap: Record<string, string> = {};
-    if (cardRows.length > 0) {
-      const { data: insertedCards, error: cardError } = await supabaseAdmin
-        .from('card_pool')
-        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: false })
-        .select('id, google_place_id');
-
-      if (cardError) {
-        console.warn('[card-pool] Batch card insert error (may be duplicates):', cardError.message);
-      }
-      if (insertedCards) {
-        for (const row of insertedCards) {
-          cardPoolIdMap[row.google_place_id] = row.id;
-        }
-      }
-    }
-
-    // ── Phase 4: Build API-format gapCards (no DB calls) ────────────────
-    for (const { place, category } of pendingPlaces) {
-      const googlePlaceId = place.id;
-      const priceRange = priceLevelToRange(place.priceLevel);
-      const imageUrl = resolvePhotoUrl(null, place.photos?.[0]?.name, googleApiKey);
-      const images = resolveAllPhotoUrls(null, place.photos, googleApiKey);
-      const title = place.displayName?.text || 'Unknown Place';
-      const rating = place.rating || 0;
-      const reviewCount = place.userRatingCount || 0;
-      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
-      const placeLat = place.location?.latitude ?? 0;
-      const placeLng = place.location?.longitude ?? 0;
-      const distKm = (place.location?.latitude != null && place.location?.longitude != null)
-        ? Math.round(haversine(lat, lng, placeLat, placeLng) * 100) / 100
-        : 0;
-      const travelMin = estimateTravelMin(distKm, options?.travelMode);
-
-      gapCards.push({
-        id: googlePlaceId,
-        placeId: googlePlaceId,
-        title,
-        category,
-        matchScore: 85,
-        image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
-        images: images.length > 0 ? images : [imageUrl].filter(Boolean),
-        rating,
-        reviewCount,
-        priceMin: priceRange.min,
-        priceMax: priceRange.max,
-        distanceKm: distKm,
-        travelTimeMin: travelMin,
-        isOpenNow: parsedOH.isOpenNow,
-        openingHours: parsedOH.hours,
-        description: `A great ${category} spot to explore.`,
-        highlights: ['Highly Rated', 'Popular Choice'],
-        address: place.formattedAddress || '',
-        lat: placeLat,
-        lng: placeLng,
-        placeType: place.primaryType || place.types?.[0] || 'place',
-        placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
-        website: place.websiteUri || null,
-        priceTier: googleLevelToTierSlug(place.priceLevel),
-        matchFactors: {},
-        _poolCardId: cardPoolIdMap[googlePlaceId],
-      });
-    }
-
-    // ── Budget leak post-filter: exclude gap cards outside selected tiers ──
-    const priceTiers = params.priceTiers;
-    if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
-      gapCards = gapCards.filter(card => {
-        const cardTier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
-        return priceTiers.includes(cardTier as PriceTierSlug);
-      });
-    }
-  }
-
-  // ── STEP 6: Combine pool + fresh cards ────────────────────────────────
-  const poolApiCards = poolCards.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
-  const allCards = [...poolApiCards, ...gapCards].slice(0, limit);
-
-  // Record impressions SYNCHRONOUSLY (CF-002 fix)
-  const allPoolIds = allCards
-    .map((c: any) => c._poolCardId)
-    .filter((id: string | undefined) => id);
-  if (allPoolIds.length > 0) {
-    await recordImpressions(supabaseAdmin, userId, allPoolIds);
-    updateServedCounts(supabaseAdmin, allPoolIds).catch(() => {});
+  // Record impressions for pool cards we're serving
+  if (servedIds.length > 0) {
+    await recordImpressions(supabaseAdmin, userId, servedIds);
+    updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,
       p_field: 'total_cards_seen',
-      p_amount: allCards.length,
+      p_amount: servedIds.length,
     }).then(() => {}, () => {});
-    incrementPlaceImpressions(supabaseAdmin, allPoolIds).catch(() => {});
+    incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
   }
 
-  if (allPoolIds.length === 0 && allCards.length > 0) {
-    supabaseAdmin.rpc('increment_user_engagement', {
-      p_user_id: userId,
-      p_field: 'total_cards_seen',
-      p_amount: allCards.length,
-    }).then(() => {}, () => {});
-  }
+  const remainingUnseen = Math.max(0, totalUnseenCount - served.length);
 
-  // hasMore: unseen count minus what we just served, plus API cards signal
-  const remainingUnseen = Math.max(0, totalUnseenCount - poolApiCards.length);
-  const hasMoreCards = remainingUnseen > 0 || gapCards.length >= limit;
-
-  const gapReason = neededCategories.length > 0
-    ? `Pool had ${poolCards.length}/${limit} cards — gap-filled [${neededCategories.join(', ')}] from Google (${apiCallCount} API calls)`
-    : `Pool had ${poolCards.length}/${limit} cards — no gap-fill needed`;
-
-  console.log(`[card-pool] Pipeline done: ${poolApiCards.length} from pool + ${gapCards.length} from API (${apiCallCount} API calls) in ${Date.now() - startTime}ms`);
-
+  console.log(`[card-pool] Pool-only: served ${apiCards.length} from pool (0 API calls) in ${Date.now() - startTime}ms`);
   return {
-    cards: allCards,
-    fromPool: poolApiCards.length,
-    fromApi: gapCards.length,
+    cards: apiCards,
+    fromPool: apiCards.length,
+    fromApi: 0,
     totalPoolSize,
     totalUnseenCount: remainingUnseen,
-    hasMore: hasMoreCards,
+    hasMore: remainingUnseen > 0,
     diagnostics: {
-      reason: gapReason,
-      gapCategories: neededCategories,
-      apiCallsMade: apiCallCount,
+      reason: `Pool had ${poolCards.length}/${limit} cards — served pool-only`,
+      gapCategories: [],
+      apiCallsMade: 0,
       poolQueried: poolCards.length,
       limitRequested: limit,
     },

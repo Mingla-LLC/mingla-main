@@ -427,66 +427,10 @@ class DeckService {
     };
   }
 
-  /** Pre-warm ALL active pill pools — ONE call for categories, individual for curated */
-  async warmDeckPool(params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
+  /** Pre-warm is disabled — pool is now admin-managed, no autonomous Google calls */
+  async warmDeckPool(_params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
     lastWarmPoolTimestamp = Date.now();
-    const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
-    const categoryPills = pills.filter(p => p.type === 'category');
-    const curatedPills = pills.filter(p => p.type === 'curated');
-
-    const warmPromises: Promise<void>[] = [];
-
-    // ONE warm call for all categories (with 15s timeout)
-    if (categoryPills.length > 0) {
-      const categoryNames = categoryPills.map(p =>
-        PILL_TO_CATEGORY_NAME[p.id] || p.id
-      );
-      let warmTimer: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        warmTimer = setTimeout(() => {
-          const err = new Error('discover-cards timed out after 15s');
-          err.name = 'AbortError';
-          reject(err);
-        }, 15000);
-      });
-      warmPromises.push(
-        Promise.race([
-          trackedInvoke('discover-cards', {
-            body: {
-              categories: categoryNames,
-              location: params.location,
-              priceTiers: params.priceTiers,
-              budgetMax: params.budgetMax,
-              travelMode: params.travelMode,
-              travelConstraintType: params.travelConstraintType,
-              travelConstraintValue: params.travelConstraintValue,
-              datetimePref: params.datetimePref,
-              dateOption: params.dateOption,
-              timeSlot: params.timeSlot,
-              warmPool: true,
-              limit: 40,
-            },
-          }),
-          timeoutPromise,
-        ]).then(() => {}).catch(() => {}).finally(() => { clearTimeout(warmTimer); })
-      );
-    }
-
-    // Warm curated pools individually
-    for (const pill of curatedPills) {
-      warmPromises.push(
-        curatedExperiencesService.warmPool({
-          experienceType: pill.id as any,
-          location: params.location,
-          budgetMax: params.budgetMax,
-          travelMode: params.travelMode,
-          travelConstraintType: params.travelConstraintType as string,
-          travelConstraintValue: params.travelConstraintValue,
-        }).catch(() => {})
-      );
-    }
-
-    await Promise.all(warmPromises);
+    // No-op: warm pool concept is dead. Admins manage the pool directly.
   }
 }
 
