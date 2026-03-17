@@ -12,14 +12,16 @@ A mobile app for planning social outings — combining pool-first card serving, 
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 60 Deno serverless functions |
+| Edge Functions | 61 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
+| Email | Resend (admin email sending) |
 | Payments | RevenueCat (subscription management) + Stripe Connect |
 | Push Notifications | OneSignal (FCM v1 + APNs) |
 | Analytics | Mixpanel (event tracking, user identification) |
+| Admin Dashboard | React 19, Vite, Tailwind CSS v4, Framer Motion, Recharts, Leaflet |
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
 | SVG | react-native-svg |
@@ -61,13 +63,22 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 60 Deno edge functions
+│   ├── functions/                      # 61 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
+│   │   ├── admin-send-email/          # Admin email sending via Resend
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 221 SQL migration files
+│   ├── migrations/                    # 222 SQL migration files
 │   └── config.toml
 │
-├── mingla-admin/                       # Admin tooling
+├── mingla-admin/                       # Admin dashboard (React 19 + Vite + Tailwind v4)
+│   └── src/
+│       ├── pages/                     # 14 feature pages (Overview, Users, Subscriptions, Analytics,
+│       │                              #   Content Moderation, Photos, Beta Feedback, Place Pool,
+│       │                              #   Email, Reports, Admin Users, App Config, Table Browser, Seed/Scripts)
+│       ├── components/ui/             # 14 reusable UI components
+│       ├── context/                   # AuthContext, ThemeContext, ToastContext
+│       └── lib/                       # Supabase client, constants, auth helpers
+│
 ├── backend/                            # Backend utilities
 └── oauth-redirect/                     # Static OAuth callback page
 ```
@@ -92,7 +103,7 @@ Server-side authoritative notification system replacing the previous AsyncStorag
 
 ### Subscription Tiers & Feature Gating
 
-Mingla operates on a 3-tier subscription model: Free, Pro, and Elite. Feature gating is enforced at both client-side (instant UX feedback) and server-side (tamper-proof enforcement via SQL functions).
+Mingla operates on a 3-tier subscription model: Free, Pro, and Elite. Feature gating is enforced at both client-side (instant UX feedback) and server-side (tamper-proof enforcement via SQL functions). The mobile app resolves tier using both client-side (RevenueCat + Supabase) and server-side (get_effective_tier RPC) sources, taking the higher of the two to ensure admin overrides and RevenueCat entitlements never downgrade each other.
 
 | Feature | Free | Pro | Elite |
 |---------|------|-----|-------|
@@ -108,6 +119,25 @@ Mingla operates on a 3-tier subscription model: Free, Pro, and Elite. Feature ga
 **Pricing:** Pro ($2/wk, $5/mo, $50/yr) · Elite ($3/wk, $9.99/mo, $80/yr)
 
 A custom branded paywall (CustomPaywallScreen) shows tier comparison, contextual headers based on the triggering feature, and handles RevenueCat purchases with Supabase sync.
+
+### Admin Dashboard
+
+A full-featured admin panel for managing the Mingla platform:
+
+- **Overview** — key metrics and system health
+- **Users** — user management, bans, subscription overrides
+- **Subscriptions** — subscription analytics and management
+- **Analytics** — usage data and trends
+- **Content Moderation** — review and moderate user content
+- **Photos** — photo pool management
+- **Beta Feedback** — user feedback review
+- **Place Pool** — place data management with active/inactive toggling
+- **Email** — compose and send emails (individual or bulk) via Resend, with segment targeting and send history
+- **Reports** — generated reports
+- **Admin Users** — admin user management (restricted to active admins only)
+- **App Config** — feature flags, app configuration key-value store, and third-party integration management
+- **Table Browser** — direct database table browsing
+- **Seed/Scripts** — data seeding and utility scripts
 
 ### Onboarding Flow (7-Step State Machine)
 
@@ -333,8 +363,8 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 
 | Table | Purpose |
 |-------|---------|
-| `notifications` | Server-side authoritative notification storage. Columns include user_id, type (30+ types), title, body, data (JSONB for deep links and metadata), read status, action state (pending/accepted/declined), idempotency_key, created_at. Synced to clients via Supabase Realtime subscription. This is the single source of truth for all in-app notifications. |
-| `notification_preferences` | Per-user granular notification toggles by type, quiet hours enabled/start/end, and `dm_bypass_quiet_hours` column for allowing DM notifications to bypass quiet hours |
+| `notifications` | Server-side authoritative notification storage. 30+ types, deep link data, read/action state, idempotency. Single source of truth for all in-app notifications via Supabase Realtime. |
+| `notification_preferences` | Per-user granular notification toggles by type, quiet hours, `dm_bypass_quiet_hours` |
 | `user_push_tokens` | Legacy Expo push tokens (unused — OneSignal manages tokens internally) |
 
 ### Collaboration Tables
@@ -363,11 +393,22 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `discover_daily_cache` | Cached discover feed results |
 | `curated_places_cache` | Cached curated experience places |
 
+### Admin Tables
+
+| Table | Purpose |
+|-------|---------|
+| `admin_users` | Admin user accounts with email allowlist and active/revoked status. RLS restricted to active admins for all mutations. |
+| `admin_subscription_overrides` | Admin-granted subscription tier overrides (consumed by `get_effective_tier()` RPC) |
+| `feature_flags` | Feature flag key-value store with enabled/disabled toggle. Readable by all authenticated users, writable by admins only. |
+| `app_config` | App configuration key-value store with typed values (string, number, boolean, json). Readable by all, writable by admins. |
+| `integrations` | Third-party integration registry with enabled status and API key previews (last 4 chars only). Admin-only access. |
+| `admin_email_log` | Sent email audit log with recipient type, segment filter, send/fail counts, and status tracking. Admin-only access. |
+
 ### Key SQL Functions (Tier Gating)
 
 | Function | Purpose |
 |----------|---------|
-| `get_effective_tier(user_id)` | Returns 'free', 'pro', or 'elite' based on RC sync + trial + referral |
+| `get_effective_tier(user_id)` | Returns 'free', 'pro', or 'elite' based on admin overrides + RC sync + trial + referral |
 | `get_tier_limits(tier)` | Returns JSONB with all tier limit constants |
 | `increment_daily_swipe_count(user_id)` | Atomic upsert of daily swipe counter |
 | `get_remaining_swipes(user_id)` | Returns remaining swipes, limit, used count, reset time |
@@ -397,18 +438,18 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation with AI teaser text for locked display |
 | `get-personalized-cards` | Personalized card retrieval based on swipe data |
-| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows. Supports `mode: "default" \| "shuffle" \| "bilateral"` with multi-dimension preference blending (category, price tier, distance), confidence thresholds, and custom holiday 50/50 blend |
-| `get-holiday-cards` | Holiday card sourcing, primarily for "Generate More" requests via GPT-4o-mini |
-| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini (~80 char) with occasion-aware suggestions |
-| `generate-holiday-categories` | AI-generated 6-category slot sets for holidays via GPT-4o-mini |
+| `get-person-hero-cards` | Pool-first card serving for person hero section and holiday rows |
+| `get-holiday-cards` | Holiday card sourcing via GPT-4o-mini |
+| `generate-ai-summary` | AI birthday/gift summary via GPT-4o-mini |
+| `generate-holiday-categories` | AI-generated 6-category slot sets for holidays |
 | `discover-experiences` | Explore/discover tab |
-| `discover-cards` | Discover card generation with swipe limit enforcement and curated card stripping for free users |
+| `discover-cards` | Discover card generation with swipe limit enforcement |
 | `generate-session-deck` | Server-side synchronized deck generation for collaboration sessions |
 | `discover-[category]` | Per-category discover endpoints (12 functions) |
 | `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
 | `warm-cache` | Pre-stocks place_pool + card_pool for frequently accessed locations |
-| `keep-warm` | Cron-driven ping to keep 6 critical function isolates warm (every 5 min) |
+| `keep-warm` | Cron-driven ping to keep 6 critical function isolates warm |
 
 ### Social and Notifications
 
@@ -417,20 +458,20 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `lookup-phone` | Phone number lookup for friend search |
 | `search-users` | Username-based user search |
 | `send-phone-invite` | Validate phone, create pending invite, send SMS via Twilio |
-| `send-friend-request-email` | Friend request notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `send-friend-accepted-notification` | Friend acceptance notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `send-collaboration-invite` | Session invite notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `notify-invite-response` | Invite response notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `send-message-email` | Legacy push notification for direct messages (superseded by `notify-message` pipeline) |
-| `send-pair-request` | Handles all 3 pairing tiers with Elite-only tier gating — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
-| `notify-pair-request-visible` | Hidden pair request revealed notification — routes through `notify-dispatch` for preference checks, quiet hours, and push delivery |
+| `send-friend-request-email` | Friend request notification via `notify-dispatch` |
+| `send-friend-accepted-notification` | Friend acceptance notification via `notify-dispatch` |
+| `send-collaboration-invite` | Session invite notification via `notify-dispatch` |
+| `notify-invite-response` | Invite response notification via `notify-dispatch` |
+| `send-message-email` | Legacy push notification for direct messages |
+| `send-pair-request` | All 3 pairing tiers with Elite-only gating via `notify-dispatch` |
+| `notify-pair-request-visible` | Hidden pair request revealed notification via `notify-dispatch` |
 | `process-referral` | Referral credit reconciliation + push notification |
-| `notify-dispatch` | Unified notification dispatch: preference checks, quiet hours (timezone-aware 10 PM - 8 AM), rate limiting, idempotency, push delivery via OneSignal, and server-side `notifications` table insert for Realtime sync |
-| `notify-message` | DM and board message notifications routed through `notify-dispatch` for full notification pipeline (in-app notification via Realtime, push via OneSignal, preference checks, quiet hours, rate-limited batching) |
-| `notify-calendar-reminder` | Cron-driven calendar reminders: tomorrow preview, day-of reminder, and post-event feedback prompt |
-| `notify-lifecycle` | Cron-driven lifecycle notifications: onboarding incomplete nudge, trial ending warning, re-engagement after inactivity, weekly digest |
-| `notify-pair-activity` | Paired user activity notifications: partner saved a card, partner visited a place |
-| `notify-referral-credited` | Referral reward notification fired via pg_net trigger when a referral credit is recorded |
+| `notify-dispatch` | Unified notification dispatch: preferences, quiet hours, rate limiting, idempotency, push via OneSignal |
+| `notify-message` | DM and board message notifications via `notify-dispatch` |
+| `notify-calendar-reminder` | Cron-driven calendar reminders |
+| `notify-lifecycle` | Cron-driven lifecycle notifications |
+| `notify-pair-activity` | Paired user activity notifications |
+| `notify-referral-credited` | Referral reward notification via pg_net trigger |
 
 ### Authentication
 
@@ -450,7 +491,13 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 | `get-companion-stops` | Companion stop suggestions for itineraries |
 | `get-picnic-grocery` | Picnic and grocery place suggestions |
 | `night-out-experiences` | Night out experience generation |
-| `admin-place-search` | Admin place search utility |
+| `admin-place-search` | Admin place search utility (admin-only, rejects non-admin callers with 403) |
+
+### Admin
+
+| Function | Purpose |
+|----------|---------|
+| `admin-send-email` | Admin email sending via Resend. Supports individual send, bulk send with segment targeting, recipient estimation, and provider health check. |
 
 ### Utilities
 
@@ -458,8 +505,8 @@ A `__DEV__`-only full-firehose activity tracker with color-coded domain prefixes
 |----------|---------|
 | `ai-reason` | AI reasoning endpoint |
 | `weather` | Weather forecast data |
-| `get-paired-saves` | Paginated paired user's saved cards with category filtering and pairing verification |
-| `record-visit` | Records visit + triggers preference learning (weight 0.35). Upserts user_visits, inserts user_interactions |
+| `get-paired-saves` | Paginated paired user's saved cards with category filtering |
+| `record-visit` | Records visit + triggers preference learning (weight 0.35) |
 | `process-voice-review` | Voice review transcription |
 | `delete-user` | Account deletion |
 | `backfill-place-websites` | Backfill missing place websites in card pool |
@@ -493,6 +540,7 @@ TWILIO_VERIFY_SERVICE_SID
 TWILIO_FROM_PHONE (or TWILIO_MESSAGING_SERVICE_SID)
 ONESIGNAL_APP_ID
 ONESIGNAL_REST_API_KEY
+RESEND_API_KEY
 ```
 
 ### RevenueCat (configured in-code)
@@ -530,8 +578,9 @@ supabase db push
 # 5. Deploy edge functions
 supabase functions deploy
 
-# 6. Configure Twilio env vars in Supabase dashboard
+# 6. Configure secrets in Supabase dashboard
 #    TWILIO_FROM_PHONE or TWILIO_MESSAGING_SERVICE_SID
+#    RESEND_API_KEY (required for admin email sending)
 
 # 7. Configure RevenueCat products in dashboard
 #    Create 6 products, map to entitlements, set up offerings
@@ -561,11 +610,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Offline-resilient chat** — Chats now open instantly when offline by loading from AsyncStorage-persisted message cache. Messages persist across sessions via a `useEffect` that auto-syncs the in-memory cache to AsyncStorage on every update. Block checks degrade gracefully (default to unblocked on network failure). Friend-picker flow falls back to cached conversations. Auto-refresh on reconnection. Amber "You're offline" banner in MessageInterface.
-- **DM notification pipeline fix** — Direct message notifications now route through the full `notify-message` → `notify-dispatch` pipeline instead of the legacy `send-message-email` function. This means DMs now create in-app notifications (via `notifications` table + Realtime), send push notifications with correct deep links for tap-to-navigate, and respect user notification preferences and quiet hours.
-- **Chat badge fix** — Unread message badge on the Chats tab now clears immediately when messages are read, instead of staying stale. Fixed stale-closure bug where `markAsRead` was reading empty cached state, and fixed `unread_count` inflation from messages arriving while viewing a chat.
-- **Foreground push for messages** — Message-type push notifications (DMs, board messages) now show in the system tray even when the app is in the foreground, ensuring users always see incoming messages.
-- **Notifications System V2** — Server-side authoritative notification system with 30+ types, unified `notify-dispatch` edge function (preference enforcement, quiet hours, rate limiting, idempotency), redesigned notification center with filter tabs and action buttons, Supabase Realtime subscription for instant delivery, deep link navigation from push and in-app taps, and cron-driven calendar reminders and lifecycle nudges.
+- **Admin security hardening** — `admin_users` RLS policies now restrict INSERT/UPDATE/DELETE to active admins only (previously any authenticated user could escalate). `admin-place-search` edge function now rejects non-admin callers with 403.
+- **Place pool admin updates** — Added UPDATE RLS policy for `place_pool` restricted to active admins, enabling the PlacePoolBuilderPage active/inactive toggle to persist.
+- **Server-side tier resolution** — Mobile app now fetches tier from `get_effective_tier()` RPC and takes the higher of client-side and server-side tiers, ensuring admin subscription overrides are reflected in the app.
+- **Admin email system** — New `admin-send-email` edge function enables the EmailPage to send individual and bulk emails via Resend with segment targeting.
+- **Admin config tables** — Created `feature_flags`, `app_config`, `integrations`, and `admin_email_log` tables with proper RLS, making AppConfigPage and EmailPage fully functional.
 
 ---
 
