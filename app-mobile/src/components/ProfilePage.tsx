@@ -29,6 +29,7 @@ import AccountSettings from "./profile/AccountSettings";
 import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import BetaFeedbackButton from "./BetaFeedbackButton";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -309,6 +310,9 @@ export default function ProfilePage({
               isLast
             />
           </View>
+
+          {/* 5. Beta Feedback (conditional — only for beta testers) */}
+          <BetaFeedbackButton />
 
           {/* 6. Legal Footer */}
           <View style={styles.legalRow}>

@@ -306,7 +306,7 @@ export const RecommendationsProvider: React.FC<
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
     const cats = userPrefs?.categories ?? [];
-    const ints = (userPrefs as UserPreferences | undefined)?.intents ?? [];
+    const ints = userPrefs?.intents ?? [];
 
     // Still loading and nothing to show yet — wait for preferences to settle.
     if (cats.length === 0 && ints.length === 0 && isLoadingPreferences) return null;

@@ -1,6 +1,6 @@
 # Mingla
 
-A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 25 Deno edge functions.
+A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 27 Deno edge functions.
 
 ## Tech Stack
 
@@ -10,7 +10,7 @@ A mobile-first experience discovery and planning app — swipe, save, and go. Bu
 | Server state | React Query |
 | Client state | Zustand + AsyncStorage persistence |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge functions | 25 Deno edge functions |
+| Edge functions | 27 Deno edge functions |
 | AI | OpenAI GPT-4o-mini (structured JSON output) |
 | Maps | Google Places API (New) |
 | Events | Ticketmaster Discovery API v2 |
@@ -35,8 +35,15 @@ app-mobile/
       ExpandedCardModal.tsx # Full card detail view
       DiscoverScreen.tsx   # Explore + Night Out tabs
       AppStateManager.tsx  # Root state orchestrator
-    hooks/                 # ~28 React Query hooks
-    services/              # ~53 service files (Supabase + API)
+      BetaFeedbackButton.tsx   # Conditional feedback button (beta testers only)
+      BetaFeedbackModal.tsx    # Audio recording + category + submit flow
+      FeedbackHistorySheet.tsx # Past submissions list with playback
+    hooks/                 # ~29 React Query hooks
+      useBetaFeedback.ts   # Beta tester check, feedback history, submit mutation
+    services/              # ~56 service files (Supabase + API)
+      betaFeedbackService.ts  # FeedbackRecorder class, upload, submit, history
+      deviceInfoService.ts    # Device metadata collection (OS, model, app version)
+      sessionTracker.ts       # App session duration tracker
     contexts/              # 3 React contexts (Recommendations, Navigation, etc.)
     store/                 # Zustand store (appStore.ts)
     types/                 # TypeScript types (database + domain)
@@ -47,18 +54,17 @@ app-mobile/
       throttledGeocode.ts  # Centralized throttled/cached reverse geocoding wrapper
 
 supabase/
-  functions/               # 25 Deno edge functions
+  functions/               # 27 Deno edge functions
     _shared/               # Shared modules (categoryPlaceTypes, cardPoolService, placesCache)
-  migrations/              # 30+ SQL migration files
+    submit-feedback/       # Beta feedback submission (validates beta tester, denormalizes user data)
+    admin-feedback/        # Admin CRUD for feedback (list, get, update status, add notes, audio URLs)
+  migrations/              # 40+ SQL migration files
 ```
 
 ## Features
 
 - **AI-powered swipe discovery** — preference-driven cards served from a card pool pipeline (zero API cost on cache hit)
-- **12 experience categories** — Nature, First Meet (3-group: cafes + activities + culture), Picnic (7 outdoor park/garden types), Drink (2-group: alcohol + non-alcohol), Casual Eats, Fine Dining (11-type), Watch (9-type), Creative & Arts (14-type: art, culture, museums, live performance), Play (18-type: bowling, arcades, amusement parks, go-karting, mini golf, dance halls, casinos, cycling parks, water parks, roller coasters, planetariums), Wellness (5-type: spa, massage_spa, massage, sauna, resort_hotel + 42-type exclusion + 14 text search keywords), Groceries & Flowers (8-type: grocery_store, supermarket, food_store, market, asian_grocery_store, farmers_market, hypermarket, discount_supermarket + 38-type exclusion + 14 text search keywords), Work & Business (7-type: coworking_space, business_center, library, cafe, coffee_shop, tea_house, hotel + 38-type exclusion + 13 text search keywords)
-- **First Meet 3-group alternation** — interleaved cafe/activity/culture types produce diverse cards (bowling alleys, art galleries, parks alongside coffee shops)
-- **Drink 2-group alternation** — interleaved alcohol/non-alcohol types (bars, cocktail bars, breweries alongside coffee shops, tea houses, juice bars)
-- **Picnic unified 7-type array** — park, city_park, picnic_ground, state_park, botanical_garden, garden, nature_preserve — consistent across all 10 edge function surfaces with 38-type exclude list
+- **12 experience categories** — Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
 - **5 intent types** — Romantic, First Dates, Group Fun, Business, Solo Adventure (with curated multi-stop itineraries)
 - **Ticketmaster Night Out** — real event cards with genre/date/price filtering and in-app ticketing
 - **Collaboration sessions** — real-time boards with live participant updates
@@ -66,14 +72,14 @@ supabase/
 - **Glassmorphism onboarding UI** — frosted glass bottom bar (expo-blur on iOS), full-width CTA with orange glow shadow, staggered text reveal animation
 - **Holiday experiences** — seasonal curated content with archive/delete
 - **Card pool pipeline** — place_pool + card_pool + user_card_impressions for efficient serving
-- **Centralized geocoding** — all reverse geocoding goes through a single throttled wrapper with 1.5s rate limiting, LRU cache (50 entries, 30-min TTL), deduplication of concurrent requests, and automatic rate-limit retry
-- **GPS + manual location** — HTTP-based forward geocoding (geocodingService), null-safe location handling, error/denied state distinction in onboarding
+- **Beta tester feedback system** — audio recording (up to 5 min), category selection, device/context metadata collection, submission history with playback. Admin API for triage via separate admin repo.
+- **Centralized geocoding** — all reverse geocoding goes through a single throttled wrapper with rate limiting, LRU cache, and deduplication
 
 ## Database Schema (Key Tables)
 
 | Table | Purpose |
 |-------|---------|
-| profiles | User profiles (auth-linked) |
+| profiles | User profiles (auth-linked, includes `is_beta_tester` and `is_admin` flags) |
 | preferences | User preferences (categories, budget, transport, travel time) |
 | boards / board_members | Collaborative experience boards |
 | experiences / saved_experiences | Place data and user saves |
@@ -82,6 +88,7 @@ supabase/
 | user_card_impressions | Tracks seen cards for freshness |
 | ticketmaster_events_cache | 2-hour TTL event cache |
 | holidays | Seasonal experiences with archive |
+| beta_feedback | Beta tester audio feedback submissions with device/context metadata |
 
 ## Edge Functions (Key)
 
@@ -90,23 +97,19 @@ supabase/
 | new-generate-experience- | Main card generation (Google Places + OpenAI) |
 | generate-curated-experiences | Multi-stop itinerary cards |
 | generate-session-experiences | Collaboration session cards |
-| generate-experiences | Solo experience generation |
-| discover-experiences | Explore tab discovery |
-| discover-picnic-park | Dedicated Picnic Park card system |
-| discover-drink | Dedicated Drink venue card system |
-| discover-fine-dining | Dedicated Fine Dining card system |
-| discover-creative-arts | Dedicated Creative & Arts card system (14 types + 11 text search keywords) |
-| discover-play | Dedicated Play card system (18 types + 11 text search keywords + 27-type exclusion filter) |
-| discover-wellness | Dedicated Wellness card system (5 types + 7 text search keywords + 42-type exclusion filter) |
 | discover-cards | Discover tab card serving |
 | recommendations-enhanced | Recommendation scoring engine |
-| recommendations | Legacy recommendation engine |
-| generate-person-experiences | Person-based experience generation |
 | ticketmaster-events | Ticketmaster API proxy |
 | refresh-place-pool | Daily pool refresh (free Place Details) |
-| holiday-experiences | Seasonal content |
+| submit-feedback | Beta feedback submission (validates beta tester, denormalizes user snapshot) |
+| admin-feedback | Admin CRUD for feedback (list, get, update status, add notes, signed audio URLs) |
 
-All edge functions import category-to-place-type mappings and exclusion lists from `_shared/categoryPlaceTypes.ts` — the single source of truth. All 12 categories have per-category excluded types. All intent-specific exclusion lists in generate-curated-experiences spread from `GLOBAL_EXCLUDED_PLACE_TYPES` to auto-inherit future global additions.
+## Storage Buckets
+
+| Bucket | Purpose |
+|--------|---------|
+| voice-reviews | Place review audio clips (1-year signed URLs) |
+| beta-feedback | Beta tester feedback audio (1-hour signed URLs, private, RLS-protected) |
 
 ## Environment Variables
 
@@ -137,8 +140,13 @@ cd supabase
 supabase functions serve
 ```
 
+Run pending migrations:
+```bash
+supabase db push
+```
+
 ## Recent Changes
 
-- **Work & Business keywords overhaul** — expanded from 3 to 7 Google Place types (added coworking_space, business_center, library, hotel). Added 38-type exclusion filter (play venues, nightlife, sports/fitness, kids/water, retail, transport). Mobile coreAnchors now exactly 7 types matching server canonical (was 3). 13 text search keywords including coworking space, business center, library, hotel lobby, conference room.
-- **hotel vs resort_hotel distinction** — `hotel` (business/city hotels) added to Work & Business. `resort_hotel` (spa/resort hotels) remains in Wellness. Different Google Place types with zero overlap.
-- **Work & Business excluded types simplified** — removed redundant `casino`, `bar`, `cocktail_bar` from exclusions (Google won't return these for coworking_space/library queries). New 38-type list focuses on adjacent businesses that could appear near work venues.
+- **Beta tester feedback system** — full audio feedback pipeline: 4 SQL migrations (profile flags, beta_feedback table, RLS policies, storage bucket), 2 new edge functions (submit-feedback, admin-feedback), 3 new services (betaFeedbackService, deviceInfoService, sessionTracker), React Query hook, and 3 UI components (BetaFeedbackModal, FeedbackHistorySheet, BetaFeedbackButton) integrated into ProfilePage
+- **Admin API contract** — admin-feedback edge function provides list/get/update_status/add_note/get_audio_url actions for the separate admin repo to consume
+- **No new dependencies** — uses expo-device and expo-constants (already installed) for device metadata
