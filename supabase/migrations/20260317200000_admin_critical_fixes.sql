@@ -1,4 +1,16 @@
 -- =============================================================
+-- Ensure update_updated_at_column() trigger function exists
+-- (standard Supabase utility — may not exist on fresh environments)
+-- =============================================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================
 -- CRIT-1: Fix admin_users RLS — restrict mutations to active admins
 -- =============================================================
 
@@ -27,6 +39,21 @@ CREATE POLICY "admin_update_admin_users" ON public.admin_users
       WHERE au.email = auth.email()
         AND au.status = 'active'
     )
+  );
+
+-- New: Invited admins can self-activate their own row (invite acceptance flow)
+-- Without this, the UPDATE policy above blocks invited admins from transitioning
+-- to 'active' because they aren't active yet. Scoped tightly: only their own row,
+-- only when current status is 'invited', only setting status to 'active'.
+CREATE POLICY "self_activate_admin_users" ON public.admin_users
+  FOR UPDATE TO authenticated
+  USING (
+    email = auth.email()
+    AND status = 'invited'
+  )
+  WITH CHECK (
+    email = auth.email()
+    AND status = 'active'
   );
 
 -- New: Only active admins can DELETE

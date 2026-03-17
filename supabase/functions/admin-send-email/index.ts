@@ -120,6 +120,21 @@ serve(async (req) => {
         fromEmail || "noreply@usemingla.com"
       );
 
+      // Log to admin_email_log
+      await supabase.from("admin_email_log").insert({
+        subject,
+        body: emailBody,
+        from_name: fromName || "Mingla",
+        from_email: fromEmail || "noreply@usemingla.com",
+        recipient_type: "individual",
+        recipient_email: to,
+        recipient_count: 1,
+        sent_count: result.ok ? 1 : 0,
+        failed_count: result.ok ? 0 : 1,
+        status: result.ok ? "sent" : "failed",
+        sent_by: user.id,
+      });
+
       return jsonResponse({
         sent: result.ok ? 1 : 0,
         failed: result.ok ? 0 : 1,
@@ -169,6 +184,21 @@ serve(async (req) => {
           if (errors.length < 10) errors.push(`${r.email}: ${result.error}`);
         }
       }
+
+      // Log to admin_email_log
+      await supabase.from("admin_email_log").insert({
+        subject,
+        body: emailBody,
+        from_name: fromName || "Mingla",
+        from_email: fromEmail || "noreply@usemingla.com",
+        recipient_type: "bulk",
+        segment_filter: segment || null,
+        recipient_count: (recipients || []).length,
+        sent_count: sent,
+        failed_count: failed,
+        status: failed === 0 ? "sent" : sent === 0 ? "failed" : "partial",
+        sent_by: user.id,
+      });
 
       return jsonResponse({ sent, failed, errors });
     }
