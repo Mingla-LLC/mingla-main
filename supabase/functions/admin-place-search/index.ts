@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { timeoutFetch } from "../_shared/timeoutFetch.ts";
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -18,10 +19,8 @@ const FIELD_MASK = [
   "places.regularOpeningHours",
   "places.photos",
   "places.websiteUri",
+  "places.businessStatus",
 ].join(",");
-
-const DETAIL_FIELD_MASK =
-  "id,displayName,formattedAddress,location,types,primaryType,rating,userRatingCount,priceLevel,regularOpeningHours,photos,websiteUri";
 
 const PRICE_LEVEL_MAP: Record<string, { tier: string; min: number; max: number }> = {
   PRICE_LEVEL_FREE: { tier: "chill", min: 0, max: 0 },
@@ -88,7 +87,7 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
 
 // deno-lint-ignore no-explicit-any
 async function handleSearch(body: any) {
-  const { textQuery, city, country, postcode, maxResults } = body;
+  const { textQuery, city, country, postcode, maxResults, lat, lng, radius } = body;
   const locationParts = [city, postcode, country].filter(Boolean).join(", ");
   const fullQuery = textQuery
     ? `${textQuery} in ${locationParts}`
@@ -98,7 +97,24 @@ async function handleSearch(body: any) {
     throw new Error("At least one of city or country must be provided.");
   }
 
-  const response = await fetch(
+  // Build request body with optional locationBias
+  // deno-lint-ignore no-explicit-any
+  const requestBody: any = {
+    textQuery: fullQuery,
+    maxResultCount: Math.min(maxResults || 20, 20),
+    languageCode: "en",
+  };
+
+  if (lat != null && lng != null && radius != null) {
+    requestBody.locationBias = {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: radius,
+      },
+    };
+  }
+
+  const response = await timeoutFetch(
     "https://places.googleapis.com/v1/places:searchText",
     {
       method: "POST",
@@ -107,11 +123,8 @@ async function handleSearch(body: any) {
         "X-Goog-Api-Key": GOOGLE_API_KEY,
         "X-Goog-FieldMask": FIELD_MASK,
       },
-      body: JSON.stringify({
-        textQuery: fullQuery,
-        maxResultCount: Math.min(maxResults || 20, 20),
-        languageCode: "en",
-      }),
+      body: JSON.stringify(requestBody),
+      timeoutMs: 10000,
     }
   );
 
@@ -181,66 +194,7 @@ async function handlePush(body: any) {
   };
 }
 
-// deno-lint-ignore no-explicit-any
-async function handleRefresh(body: any) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { googlePlaceIds } = body;
-
-  if (!Array.isArray(googlePlaceIds) || googlePlaceIds.length === 0) {
-    throw new Error("No place IDs provided to refresh.");
-  }
-
-  let refreshed = 0;
-  const errors: string[] = [];
-
-  for (const placeId of googlePlaceIds) {
-    try {
-      const response = await fetch(
-        `https://places.googleapis.com/v1/places/${placeId}?languageCode=en`,
-        {
-          headers: {
-            "X-Goog-Api-Key": GOOGLE_API_KEY,
-            "X-Goog-FieldMask": DETAIL_FIELD_MASK,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        errors.push(`Failed to refresh ${placeId}: ${response.status}`);
-        // Increment refresh_failures
-        const { data: existing } = await supabase
-          .from("place_pool")
-          .select("refresh_failures")
-          .eq("google_place_id", placeId)
-          .single();
-        await supabase
-          .from("place_pool")
-          .update({
-            refresh_failures: (existing?.refresh_failures ?? 0) + 1,
-          })
-          .eq("google_place_id", placeId);
-        continue;
-      }
-
-      const gPlace = await response.json();
-      const transformed = transformGooglePlace(gPlace);
-      // Don't overwrite first_fetched_at — only update refreshable fields
-      const { ...updateFields } = transformed;
-
-      await supabase
-        .from("place_pool")
-        .update(updateFields)
-        .eq("google_place_id", placeId);
-
-      refreshed++;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      errors.push(`Error refreshing ${placeId}: ${msg}`);
-    }
-  }
-
-  return { refreshed, failed: errors.length, errors };
-}
+// NOTE: "refresh" action removed — use admin-refresh-places edge function instead.
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -304,9 +258,7 @@ serve(async (req) => {
       case "push":
         result = await handlePush(body);
         break;
-      case "refresh":
-        result = await handleRefresh(body);
-        break;
+      // "refresh" action removed — use admin-refresh-places instead
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${body.action}` }),

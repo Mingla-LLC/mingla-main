@@ -137,11 +137,26 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 | `admin_analytics_retention()` | Weekly cohort retention matrix |
 | `admin_analytics_funnel()` | Signup → onboard → interact → board funnel |
 | `admin_analytics_geo()` | User count by country |
+| `admin_edit_place()` | SECURITY DEFINER — selective place update with card cascade |
+| `admin_city_place_stats()` | Server-side per-city place aggregates (totals, photos, staleness, by-category) |
+| `admin_city_card_stats()` | Server-side per-city card aggregates (by type, category, gaps) |
 | `admin_seed_demo_profiles()` | Insert demo test profiles |
 | `admin_clear_expired_caches()` | Clean expired cache entries |
 | `admin_reset_inactive_sessions()` | Deactivate stale collaboration sessions |
 | `admin_clear_demo_data()` | Remove demo profiles |
 | `admin_exec_sql()` | Owner-only arbitrary SQL execution |
+
+### Admin Seeding Pipeline
+
+**Design principle:** Cities are broken into a hex-grid of tiles. Each tile × category = one Google Nearby Search call with explicit type filtering. No Text Search for structured seeding.
+
+1. **Tile-based seeding** — `admin-seed-places` edge function. Cities defined with center + radius. Grid generated with spacing = tile_radius × 1.4. Default tile radius: 1500m. Each tile gets 13 category searches.
+2. **$70 hard cap** — `preview_cost` action calculates search + estimated photo cost. Returns `exceedsHardCap: true` if over $70. `seed` action requires `acknowledgeHardCap: true` to proceed over cap.
+3. **Post-fetch filters** — reject permanently closed, reject no photos, reject global excluded types (gym, fitness_center, dog_park). No-rating places are allowed.
+4. **Selective upsert** — re-seeding preserves admin-edited fields (`price_tier`, `is_active`, `stored_photo_urls`). Only Google-sourced fields are refreshed. Two-step: insert-new then batch-update-existing.
+5. **Structured error logging** — every tile failure logged in `seeding_operations.error_details` JSONB with tile_id, category, HTTP status, response body (truncated to 500 chars), error type, timestamp.
+6. **City status flow** — `draft` → `seeding` → `seeded` → `launched`. Only transitions to "seeded" when places are actually inserted. Falls back to "draft" on total failure.
+7. **Seeding tables** — `seeding_cities` (city definitions with google_place_id), `seeding_tiles` (tile grid, CASCADE on city delete), `seeding_operations` (per-category operation logs).
 
 ### Mobile App Features
 
@@ -262,9 +277,8 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **Admin Pool Management Phase 1** — New tile-based seeding infrastructure: `seeding_cities`, `seeding_tiles`, `seeding_operations` tables. `admin-seed-places` edge function (generate_tiles, preview_cost with $70 cap, seed with Nearby Search + selective upsert + structured error logging). Fixed `admin-place-search` (locationBias, businessStatus, timeoutFetch). New RPCs: `admin_edit_place`, `admin_city_place_stats`, `admin_city_card_stats`. Country backfill on existing places.
 - **Category migration (12 → 13)** — Split Groceries & Flowers into Flowers (visible) + Groceries (hidden). Added Live Performance (split from Watch). Renamed Nature → Nature & Views, Picnic → Picnic Park. Removed Work & Business. SQL backfill + 60+ alias maps for backward compatibility.
 - **Curated generator overhaul** — Replaced 7 per-type generators (3,254 lines) with 1 generic pool-only generator (~900 lines). Zero Google API calls. Deleted Friendly experience type. Added Flowers optional stop, cascading hours filter, dog_park exclusion.
 - **Card generation/serving separation** — Extracted `generate-single-cards` from `discover-cards`, stripped `discover-cards` to pool-only (1342→416 lines, zero external API calls). Generation and serving are now fully decoupled.
 - **Card photo resolution fix** — `poolCardToApiCard` resolves photos from `place_pool.stored_photo_urls` only. No Unsplash fallbacks, no Google API keys to client.
-- **Admin Dashboard Overhaul** — grouped sidebar navigation, hash-based URL routing, Cmd+K global search, column sorting, CSV export, audit logging
-- **City Launcher** — 5-step wizard for seeding cities with place search, import, and review
