@@ -100,8 +100,8 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **Subscriptions** — server-side stats via RPC, expiring override alerts, column sorting, CSV export
 - **Analytics** — 5 server-side RPCs (growth, engagement, retention, funnel, geo), custom date range, Leaflet map on geography tab
 - **Content** — image thumbnails, bulk actions, review moderation (approve/reject/flag)
-- **Place Pool** — 6-tab management: tile-based seeding, Leaflet map view, browse/filter/edit pool, photo management with batch download, stale review, stats with seeding history
-- **Card Pool** — 4-tab management: launch readiness checklist with per-category traffic lights, card generation (single + curated), browse/filter cards, gap analysis (places without cards, category gaps, cross-city comparison)
+- **Place Pool** — 6-tab management: tile-based seeding with cost preview, Leaflet map view with status-colored tiles (gray/blue/green/red) and coverage gap detection (orange dashed), browse/filter/edit pool with rating filter, photo management with tile/category/rating filters and partial batch controls with cost estimates, stale review, stats with seeding history
+- **Card Pool** — 4-tab management: launch readiness (SVG gauge, 7-step checklist, 13-category traffic lights, Launch button), card generation (single + curated + per-category), browse/filter cards, gap analysis (places without cards, category gaps, cross-city comparison with places/cards/photos/spend per city)
 - **Feedback** — audio auto-retry on 403, bulk status update
 - **Email** — database-backed templates, city/tier/activity segments, rate limiting (100/day), send history export
 - **Reports** — severity classification, profile display (not UUIDs), detail modal, cross-page user navigation
@@ -156,6 +156,17 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 5. **Structured error logging** — every tile failure logged in `seeding_operations.error_details` JSONB with tile_id, category, HTTP status, response body (truncated to 500 chars), error type, timestamp.
 6. **City status flow** — `draft` → `seeding` → `seeded` → `launched`. Only transitions to "seeded" when places are actually inserted. Falls back to "draft" on total failure.
 7. **Seeding tables** — `seeding_cities` (city definitions with google_place_id), `seeding_tiles` (tile grid, CASCADE on city delete), `seeding_operations` (per-category operation logs).
+
+### Admin Dashboard — Pool Management
+
+Two full-featured pages replacing three old ones (PlacePoolBuilderPage, CityLauncherPage, PhotoPoolManagementPage).
+
+1. **Two pages** — Place Pool Management (seed, map, browse, photos, stale, stats) and Card Pool Management (readiness, generate, browse, gaps).
+2. **City selector** — Google Places Autocomplete validates cities. Auto-generates hex-grid tiles on save.
+3. **Map view** — Leaflet with tile grid overlay, category-coded pins (13 colors), status coloring (gray=unseeded, blue=partial, green=full, red=errors), coverage gap detection (orange dashed for tiles with <5 places).
+4. **Photo management** — integrated into Place Pool with tile/category/rating filters, sort by rating or impressions, partial batch downloads with limit control and cost estimates.
+5. **Launch readiness** — 7-step checklist (tiles, places ≥50, photos ≥80%, single cards, curated ≥10, categories ≥8/13, spend ≤$70), 13-category traffic lights, SVG readiness gauge, Launch button gated on all-green.
+6. **Cross-city comparison** — when no city selected, Gap Analysis shows all cities with places, cards, photo %, and spend vs $70 cap side-by-side.
 
 ### Mobile App Features
 

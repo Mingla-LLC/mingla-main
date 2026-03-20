@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Rocket, Play, Layers, BarChart3, CheckCircle, XCircle, AlertTriangle,
-  Loader2, RefreshCw, DollarSign, Eye, Star, ChevronRight,
+  Rocket, Play, Layers, CheckCircle, XCircle, AlertTriangle, ChevronRight,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { Tabs } from "../components/ui/Tabs";
@@ -313,6 +311,53 @@ function BrowseCardsTab({ city }) {
   );
 }
 
+// ── Cross-City Comparison (for Gap tab when no city selected) ────────────────
+
+function CrossCityComparison({ cities }) {
+  const [cityStats, setCityStats] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stats = {};
+      for (const c of cities) {
+        const [{ data: ps }, { data: cs }, { data: ops }] = await Promise.all([
+          supabase.rpc("admin_city_place_stats", { p_city_id: c.id }),
+          supabase.rpc("admin_city_card_stats", { p_city_id: c.id }),
+          supabase.from("seeding_operations").select("estimated_cost_usd").eq("city_id", c.id),
+        ]);
+        if (cancelled) return;
+        const spend = (ops || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0);
+        stats[c.id] = { places: ps?.total_places || 0, cards: (cs?.total_single_cards || 0) + (cs?.total_curated_cards || 0), photoPct: ps?.total_places ? Math.round(((ps?.with_photos || 0) / ps.total_places) * 100) : 0, spend };
+      }
+      if (!cancelled) { setCityStats(stats); setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [cities]);
+
+  const columns = [
+    { key: "name", label: "City", render: (r) => `${r.name}, ${r.country}` },
+    { key: "status", label: "Status", render: (r) => <Badge variant={r.status === "launched" ? "success" : r.status === "seeded" ? "info" : "default"}>{r.status}</Badge> },
+    { key: "places", label: "Places", render: (r) => cityStats[r.id]?.places ?? "—" },
+    { key: "cards", label: "Cards", render: (r) => cityStats[r.id]?.cards ?? "—" },
+    { key: "photos", label: "Photo %", render: (r) => {
+      const pct = cityStats[r.id]?.photoPct;
+      return pct != null ? <Badge variant={pct >= 80 ? "success" : pct >= 50 ? "warning" : "error"}>{pct}%</Badge> : "—";
+    }},
+    { key: "spend", label: "Spend / $70", render: (r) => {
+      const spend = cityStats[r.id]?.spend;
+      return spend != null ? <span className={spend > 70 ? "text-[var(--color-error-700)] font-medium" : ""}>${spend.toFixed(2)}</span> : "—";
+    }},
+  ];
+
+  return (
+    <SectionCard title="Cross-City Comparison">
+      <DataTable columns={columns} rows={cities} loading={loading} emptyMessage="No cities" />
+    </SectionCard>
+  );
+}
+
 // ── Tab 4: Gap Analysis ──────────────────────────────────────────────────────
 
 function GapTab({ city, placeStats, cardStats, allCities, onRefresh }) {
@@ -351,18 +396,7 @@ function GapTab({ city, placeStats, cardStats, allCities, onRefresh }) {
   if (!city) {
     // Cross-city comparison
     if (!allCities?.length) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No cities defined.</div>;
-    return (
-      <SectionCard title="Cross-City Comparison">
-        <div className="space-y-2">
-          {allCities.map((c) => (
-            <div key={c.id} className="flex items-center gap-4 py-2 border-b border-[var(--gray-100)] text-sm">
-              <span className="font-medium w-40 truncate">{c.name}, {c.country}</span>
-              <Badge variant={c.status === "launched" ? "success" : c.status === "seeded" ? "info" : "default"}>{c.status}</Badge>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    );
+    return <CrossCityComparison cities={allCities} />;
   }
 
   return (

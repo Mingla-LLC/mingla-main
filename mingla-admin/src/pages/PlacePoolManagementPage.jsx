@@ -1,13 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Globe, Map, Search, Camera, Clock, BarChart3, Plus, RefreshCw, Play,
-  ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Loader2,
-  Filter, Download, Star, ImageOff, Eye, Trash2, Edit3, MapPin, DollarSign,
+  Globe, Search, Camera, Clock, Plus, RefreshCw, Play,
+  ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
+  Download, ImageOff, Eye, Edit3, DollarSign,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { Tabs } from "../components/ui/Tabs";
@@ -431,7 +429,34 @@ function SeedTab({ city, tiles, onRefresh }) {
 
 // ── Tab 2: Map View ──────────────────────────────────────────────────────────
 
-function MapTab({ city, tiles, places }) {
+function getTileStatus(tile, ops, placesNearTile) {
+  // Check if any ops had errors for this tile
+  const hasErrors = ops.some((o) =>
+    o.error_details?.tile_errors?.some((e) => e.tile_id === tile.id)
+  );
+  if (hasErrors) return "error";
+
+  // Count unique categories seeded for this tile
+  const seededCats = new Set(
+    ops.filter((o) => o.tile_id === tile.id && o.status === "completed").map((o) => o.seeding_category)
+  );
+  // Also count from places within tile radius (more reliable)
+  const catsFromPlaces = new Set(placesNearTile.map((p) => p.seeding_category).filter(Boolean));
+  const totalCats = new Set([...seededCats, ...catsFromPlaces]);
+
+  if (totalCats.size >= 13) return "full";
+  if (totalCats.size > 0) return "partial";
+  return "unseeded";
+}
+
+const TILE_STATUS_STYLES = {
+  unseeded: { color: "#9ca3af", fillOpacity: 0.08, weight: 1 },
+  partial: { color: "#60a5fa", fillOpacity: 0.10, weight: 1.5 },
+  full: { color: "#22c55e", fillOpacity: 0.12, weight: 1.5 },
+  error: { color: "#ef4444", fillOpacity: 0.08, weight: 2, dashArray: "4 2" },
+};
+
+function MapTab({ city, tiles, places, seedingOps }) {
   const [visibleCats, setVisibleCats] = useState(new Set(ALL_CATEGORIES));
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to view the map.</div>;
@@ -439,8 +464,30 @@ function MapTab({ city, tiles, places }) {
   const center = [city.center_lat, city.center_lng];
   const filteredPlaces = places.filter((p) => visibleCats.has(p.seeding_category));
 
+  // Pre-compute places near each tile (within tile radius) for status + gap detection
+  const tileData = tiles.map((t) => {
+    const nearbyPlaces = places.filter((p) => {
+      const dLat = (p.lat - t.center_lat) * 111320;
+      const dLng = (p.lng - t.center_lng) * 111320 * Math.cos((t.center_lat * Math.PI) / 180);
+      return Math.sqrt(dLat * dLat + dLng * dLng) <= t.radius_m;
+    });
+    const status = getTileStatus(t, seedingOps || [], nearbyPlaces);
+    // Coverage gap: <5 places in any visible category
+    const hasGap = nearbyPlaces.length > 0 && nearbyPlaces.length < 5;
+    return { ...t, status, nearbyCount: nearbyPlaces.length, hasGap };
+  });
+
   return (
     <div className="space-y-4">
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-[var(--color-text-secondary)]">
+        <span><span className="inline-block w-3 h-3 rounded-full bg-[#9ca3af] mr-1" />Unseeded</span>
+        <span><span className="inline-block w-3 h-3 rounded-full bg-[#60a5fa] mr-1" />Partial</span>
+        <span><span className="inline-block w-3 h-3 rounded-full bg-[#22c55e] mr-1" />Fully Seeded</span>
+        <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#ef4444] mr-1" />Errors</span>
+        <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#f59e0b] mr-1" />Coverage Gap (&lt;5 places)</span>
+      </div>
+
       {/* Category filter pills */}
       <div className="flex flex-wrap gap-1.5">
         {ALL_CATEGORIES.map((id) => (
@@ -466,10 +513,18 @@ function MapTab({ city, tiles, places }) {
           <Circle center={center} radius={city.coverage_radius_km * 1000}
             pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
 
-          {/* Tile circles */}
-          {tiles.map((t) => (
+          {/* Tile circles with status coloring */}
+          {tileData.map((t) => (
             <Circle key={t.id} center={[t.center_lat, t.center_lng]} radius={t.radius_m}
-              pathOptions={{ color: "#3b82f6", fillOpacity: 0.05, weight: 1 }} />
+              pathOptions={TILE_STATUS_STYLES[t.status] || TILE_STATUS_STYLES.unseeded}>
+              <Popup><div className="text-xs">Tile #{t.tile_index} · {t.nearbyCount} places · {t.status}</div></Popup>
+            </Circle>
+          ))}
+
+          {/* Coverage gap warning circles (orange dashed outline) */}
+          {tileData.filter((t) => t.hasGap && t.status !== "unseeded").map((t) => (
+            <Circle key={`gap-${t.id}`} center={[t.center_lat, t.center_lng]} radius={t.radius_m}
+              pathOptions={{ color: "#f59e0b", fillOpacity: 0, weight: 2, dashArray: "6 3" }} />
           ))}
 
           {/* Place pins */}
@@ -500,7 +555,7 @@ function BrowseTab({ city, onRefresh }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", nameSearch: "" });
+  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", minRating: "", nameSearch: "" });
   const [editPlace, setEditPlace] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", price_tier: "", is_active: true });
   const [saving, setSaving] = useState(false);
@@ -516,6 +571,7 @@ function BrowseTab({ city, onRefresh }) {
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
     else if (filters.photoStatus === "missing") q = q.or("stored_photo_urls.is.null,stored_photo_urls.eq.{}");
     if (filters.priceTier) q = q.eq("price_tier", filters.priceTier);
+    if (filters.minRating) q = q.gte("rating", parseFloat(filters.minRating));
     if (filters.nameSearch) q = q.ilike("name", `%${filters.nameSearch}%`);
     q = q.order("created_at", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -595,6 +651,12 @@ function BrowseTab({ city, onRefresh }) {
             {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        <div>
+          <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
+          <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
+            className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(1); }} />
+        </div>
         <div className="flex-1 min-w-[200px]">
           <Input label="Search" value={filters.nameSearch} placeholder="Place name..."
             onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(1); }} />
@@ -632,24 +694,50 @@ function BrowseTab({ city, onRefresh }) {
 
 // ── Tab 4: Photo Management ──────────────────────────────────────────────────
 
-function PhotoTab({ city, stats }) {
+function PhotoTab({ city, stats, tiles }) {
   const { addToast } = useToast();
-  const [missing, setMissing] = useState([]);
+  const [allMissing, setAllMissing] = useState([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [filterCat, setFilterCat] = useState("");
+  const [filterTile, setFilterTile] = useState("");
+  const [filterMinRating, setFilterMinRating] = useState("");
+  const [sortBy, setSortBy] = useState("rating"); // "rating" or "impressions"
+  const [batchLimit, setBatchLimit] = useState("");
 
   useEffect(() => {
     if (!city) return;
     setLoading(true);
     supabase.from("place_pool")
-      .select("id, name, rating, seeding_category, photos")
+      .select("id, name, rating, seeding_category, photos, lat, lng, impression_count")
       .eq("city_id", city.id).eq("is_active", true)
       .or("stored_photo_urls.is.null,stored_photo_urls.eq.{}")
       .not("photos", "is", null)
       .order("rating", { ascending: false, nullsFirst: false })
-      .limit(100)
-      .then(({ data }) => { setMissing(data || []); setLoading(false); });
+      .limit(500)
+      .then(({ data }) => { setAllMissing(data || []); setLoading(false); });
   }, [city]);
+
+  // Apply client-side filters
+  const filtered = allMissing.filter((p) => {
+    if (filterCat && p.seeding_category !== filterCat) return false;
+    if (filterMinRating && (p.rating || 0) < parseFloat(filterMinRating)) return false;
+    if (filterTile && tiles.length > 0) {
+      const tile = tiles.find((t) => t.id === filterTile);
+      if (tile) {
+        const dLat = (p.lat - tile.center_lat) * 111320;
+        const dLng = (p.lng - tile.center_lng) * 111320 * Math.cos((tile.center_lat * Math.PI) / 180);
+        if (Math.sqrt(dLat * dLat + dLng * dLng) > tile.radius_m) return false;
+      }
+    }
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === "impressions") return (b.impression_count || 0) - (a.impression_count || 0);
+    return (b.rating || 0) - (a.rating || 0);
+  });
+
+  const batchPlaces = batchLimit ? filtered.slice(0, parseInt(batchLimit) || filtered.length) : filtered;
+  const batchCost = batchPlaces.length * 5 * 0.007;
 
   const triggerDownload = async (placeIds) => {
     setDownloading(true);
@@ -684,15 +772,63 @@ function PhotoTab({ city, stats }) {
         <StatCard icon={Eye} label="Coverage" value={`${photoPct}%`} trend={pctColor(photoPct) === "success" ? "Good" : "Low"} trendUp={photoPct >= 80} />
       </div>
 
-      <SectionCard title={`Missing Photos (${missing.length})`}
-        action={<Button size="sm" icon={Download} loading={downloading}
-          onClick={() => triggerDownload(missing.map((p) => p.id))}
-          disabled={missing.length === 0}>
-          Batch Download ({missing.length} · {formatCost(missing.length * 5 * 0.007)})
-        </Button>}>
+      <SectionCard title={`Missing Photos (${filtered.length} of ${allMissing.length})`}>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-end mb-4">
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Tile</label>
+            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={filterTile} onChange={(e) => setFilterTile(e.target.value)}>
+              <option value="">All Tiles</option>
+              {tiles.map((t) => <option key={t.id} value={t.id}>Tile #{t.tile_index}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
+            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+              <option value="">All</option>
+              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
+            <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
+              className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={filterMinRating} onChange={(e) => setFilterMinRating(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Sort By</label>
+            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="rating">Rating (highest first)</option>
+              <option value="impressions">Impressions (most seen first)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Batch controls */}
+        <div className="flex items-end gap-3 mb-4 p-3 bg-[var(--gray-50)] rounded-lg">
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Batch Limit (top N)</label>
+            <input type="number" min="1" placeholder="All"
+              className="block mt-1 w-24 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={batchLimit} onChange={(e) => setBatchLimit(e.target.value)} />
+          </div>
+          <div className="text-sm text-[var(--color-text-secondary)]">
+            {batchPlaces.length} places × 5 photos × $0.007 = <strong>{formatCost(batchCost)}</strong>
+          </div>
+          <Button size="sm" icon={Download} loading={downloading}
+            onClick={() => triggerDownload(batchPlaces.map((p) => p.id))}
+            disabled={batchPlaces.length === 0}>
+            Batch Download ({batchPlaces.length})
+          </Button>
+        </div>
+
+        {/* List */}
         {loading ? <div className="text-sm text-[var(--color-text-secondary)]">Loading...</div> : (
           <div className="max-h-96 overflow-y-auto space-y-1">
-            {missing.map((p) => (
+            {filtered.map((p) => (
               <div key={p.id} className="flex justify-between items-center px-2 py-1.5 text-sm border-b border-[var(--gray-100)]">
                 <div>
                   <span className="font-medium">{p.name}</span>
@@ -703,7 +839,7 @@ function PhotoTab({ city, stats }) {
                   onClick={() => triggerDownload([p.id])}>Download</Button>
               </div>
             ))}
-            {missing.length === 0 && <p className="text-sm text-[var(--color-text-secondary)]">All places have photos!</p>}
+            {filtered.length === 0 && <p className="text-sm text-[var(--color-text-secondary)]">All places have photos (or no matches)!</p>}
           </div>
         )}
       </SectionCard>
@@ -839,6 +975,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
   const [places, setPlaces] = useState([]); // for map
   const [stats, setStats] = useState(null);
   const [spendTotal, setSpendTotal] = useState(0);
+  const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -867,15 +1004,16 @@ export function PlacePoolManagementPage({ onTabChange }) {
       .then(({ data }) => { if (mountedRef.current) setPlaces(data || []); });
   }, [selectedCity, refreshKey]);
 
-  // Load stats
+  // Load stats + seeding ops
   useEffect(() => {
-    if (!selectedCity) { setStats(null); setSpendTotal(0); return; }
+    if (!selectedCity) { setStats(null); setSpendTotal(0); setSeedingOps([]); return; }
     supabase.rpc("admin_city_place_stats", { p_city_id: selectedCity.id })
       .then(({ data }) => { if (mountedRef.current) setStats(data); });
-    // Spend total
-    supabase.from("seeding_operations").select("estimated_cost_usd").eq("city_id", selectedCity.id)
+    supabase.from("seeding_operations").select("*").eq("city_id", selectedCity.id)
       .then(({ data }) => {
-        if (mountedRef.current) setSpendTotal((data || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0));
+        if (!mountedRef.current) return;
+        setSeedingOps(data || []);
+        setSpendTotal((data || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0));
       });
   }, [selectedCity, refreshKey]);
 
@@ -893,9 +1031,9 @@ export function PlacePoolManagementPage({ onTabChange }) {
 
       <div className="mt-4">
         {activeTab === "seed" && <SeedTab city={selectedCity} tiles={tiles} onRefresh={refresh} />}
-        {activeTab === "map" && <MapTab city={selectedCity} tiles={tiles} places={places} />}
+        {activeTab === "map" && <MapTab city={selectedCity} tiles={tiles} places={places} seedingOps={seedingOps} />}
         {activeTab === "browse" && <BrowseTab city={selectedCity} onRefresh={refresh} />}
-        {activeTab === "photos" && <PhotoTab city={selectedCity} stats={stats} />}
+        {activeTab === "photos" && <PhotoTab city={selectedCity} stats={stats} tiles={tiles} />}
         {activeTab === "stale" && <StaleTab city={selectedCity} />}
         {activeTab === "stats" && <StatsTab city={selectedCity} stats={stats} />}
       </div>
