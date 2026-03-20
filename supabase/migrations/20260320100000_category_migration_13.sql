@@ -68,7 +68,7 @@ WHERE 'Work & Business' = ANY(categories);
 -- Part 3: User preferences migration
 -- ═══════════════════════════════════════════════════════════════════════════════
 
-UPDATE public.profiles
+UPDATE public.preferences
 SET categories = (
   SELECT array_agg(
     CASE
