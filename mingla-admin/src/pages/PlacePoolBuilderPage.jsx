@@ -21,6 +21,7 @@ import {
   Globe, MapPin, Search, Upload, RefreshCw, Check,
   Map, List, Database, Zap, BarChart3, Star,
   Eye, EyeOff, ChevronDown, AlertCircle, Pencil,
+  ShieldAlert, Clock, XCircle, CheckCircle, RotateCcw,
 } from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ const PAGE_SIZE = 20;
 const SUB_TABS = [
   { id: "search", label: "Search & Import" },
   { id: "browse", label: "Browse Pool" },
+  { id: "stale", label: "Stale Review" },
   { id: "stats", label: "Pool Stats" },
 ];
 
@@ -119,6 +121,7 @@ export function PlacePoolBuilderPage() {
       <div role="tabpanel" id={`tabpanel-${subTab}`} aria-labelledby={`tab-${subTab}`}>
         {subTab === "search" && <SearchImportView addToast={addToast} />}
         {subTab === "browse" && <BrowsePoolView addToast={addToast} />}
+        {subTab === "stale" && <StaleReviewView addToast={addToast} />}
         {subTab === "stats" && <PoolStatsView />}
       </div>
     </div>
@@ -586,9 +589,12 @@ function BrowsePoolView({ addToast }) {
     }
     setTogglingIds((prev) => new Set(prev).add(row.id));
     try {
-      const { error } = await supabase.from("place_pool").update({ is_active: true }).eq("id", row.id);
+      const { data: result, error } = await supabase.rpc("admin_reactivate_place", {
+        p_place_id: row.id, p_reason: "Reactivated from Browse Pool",
+      });
       if (error) throw error;
-      addToast({ variant: "success", title: `${row.name} reactivated` });
+      if (result?.error) throw new Error(result.error);
+      addToast({ variant: "success", title: `${row.name} reactivated (${result.cards_reactivated} cards restored)` });
       await logAdminAction("place.toggle_active", "place_pool", row.id, { name: row.name, is_active: true });
       fetchPool();
     } catch (err) {
@@ -606,9 +612,12 @@ function BrowsePoolView({ addToast }) {
     setDeactivateTarget(null);
     setTogglingIds((prev) => new Set(prev).add(row.id));
     try {
-      const { error } = await supabase.from("place_pool").update({ is_active: false }).eq("id", row.id);
+      const { data: result, error } = await supabase.rpc("admin_deactivate_place", {
+        p_place_id: row.id, p_reason: "Deactivated from Browse Pool",
+      });
       if (error) throw error;
-      addToast({ variant: "success", title: `${row.name} deactivated` });
+      if (result?.error) throw new Error(result.error);
+      addToast({ variant: "success", title: `${row.name} deactivated (${result.cards_deactivated} cards removed)` });
       await logAdminAction("place.toggle_active", "place_pool", row.id, { name: row.name, is_active: false });
       fetchPool();
     } catch (err) {
@@ -649,10 +658,12 @@ function BrowsePoolView({ addToast }) {
     if (selectedRows.size === 0) return;
     try {
       const ids = Array.from(selectedRows);
-      const { error } = await supabase.from("place_pool").update({ is_active: false }).in("id", ids);
+      const { data: result, error } = await supabase.rpc("admin_bulk_deactivate_places", {
+        p_place_ids: ids, p_reason: "Bulk deactivated from Browse Pool",
+      });
       if (error) throw error;
-      addToast({ variant: "success", title: `${ids.length} places deactivated` });
-      await logAdminAction("place.toggle_active", "place_pool", null, { count: ids.length, is_active: false });
+      addToast({ variant: "success", title: `${result.places_deactivated} places deactivated (${result.cards_deactivated} cards removed)` });
+      await logAdminAction("place.toggle_active", "place_pool", null, { count: result.places_deactivated, is_active: false });
       setSelectedRows(new Set());
       fetchPool();
     } catch (err) {
@@ -847,6 +858,388 @@ function BrowsePoolView({ addToast }) {
         <ModalFooter>
           <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
           <Button variant="primary" loading={editSaving} onClick={handleSaveEdit}>Save Changes</Button>
+        </ModalFooter>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Stale Review Sub-view ───────────────────────────────────────────────────
+
+const ADMIN_REFRESH_URL =
+  import.meta.env.VITE_SUPABASE_URL + "/functions/v1/admin-refresh-places";
+
+const STALE_FILTER_OPTIONS = [
+  { id: "all", label: "All Stale" },
+  { id: "active_only", label: "Active Only" },
+  { id: "recently_served", label: "Recently Served" },
+  { id: "critical", label: "Critical (>30d)" },
+  { id: "inactive_only", label: "Inactive" },
+];
+
+const STALE_SORT_OPTIONS = [
+  { id: "staleness", label: "Most Stale First" },
+  { id: "failures", label: "Most Failures First" },
+  { id: "recently_served", label: "Recently Served First" },
+  { id: "name", label: "Name A–Z" },
+];
+
+const TIER_BADGE = {
+  critical: { variant: "error", label: "Critical" },
+  warning: { variant: "warning", label: "Warning" },
+  stale: { variant: "info", label: "Stale" },
+  fresh: { variant: "success", label: "Fresh" },
+};
+
+function StaleReviewView({ addToast }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("active_only");
+  const [sortBy, setSortBy] = useState("staleness");
+  const [page, setPage] = useState(0);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [actionLoading, setActionLoading] = useState(new Set());
+  const [reasonModal, setReasonModal] = useState(null); // { type, placeId, placeName }
+  const [reasonText, setReasonText] = useState("");
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const fetchStale = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: result, error } = await supabase.rpc("admin_list_stale_places", {
+        p_filter: filter,
+        p_sort_by: sortBy,
+        p_page: page,
+        p_page_size: PAGE_SIZE,
+      });
+      if (error) throw error;
+      if (mountedRef.current) setData(result);
+    } catch (err) {
+      console.error("Failed to fetch stale places:", err.message);
+      if (mountedRef.current) addToast({ variant: "error", title: "Failed to load stale places", description: err.message });
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [filter, sortBy, page, addToast]);
+
+  useEffect(() => { fetchStale(); }, [fetchStale]);
+
+  // Reset page when filter/sort changes
+  useEffect(() => { setPage(0); setSelectedIds(new Set()); }, [filter, sortBy]);
+
+  // ─── Actions ─────────────────────────────────────────────────────────
+
+  const handleDeactivate = useCallback(async (placeId, placeName, reason) => {
+    setActionLoading((prev) => new Set(prev).add(placeId));
+    try {
+      const { data: result, error } = await supabase.rpc("admin_deactivate_place", {
+        p_place_id: placeId,
+        p_reason: reason || null,
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      addToast({ variant: "success", title: `${placeName} deactivated (${result.cards_deactivated} cards removed)` });
+      await logAdminAction("place.stale_deactivate", "place_pool", placeId, { name: placeName, reason });
+      fetchStale();
+    } catch (err) {
+      addToast({ variant: "error", title: "Deactivation failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setActionLoading((prev) => { const next = new Set(prev); next.delete(placeId); return next; });
+    }
+  }, [addToast, fetchStale]);
+
+  const handleReactivate = useCallback(async (placeId, placeName, reason) => {
+    setActionLoading((prev) => new Set(prev).add(placeId));
+    try {
+      const { data: result, error } = await supabase.rpc("admin_reactivate_place", {
+        p_place_id: placeId,
+        p_reason: reason || null,
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      addToast({ variant: "success", title: `${placeName} reactivated (${result.cards_reactivated} cards restored)` });
+      await logAdminAction("place.stale_reactivate", "place_pool", placeId, { name: placeName, reason });
+      fetchStale();
+    } catch (err) {
+      addToast({ variant: "error", title: "Reactivation failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setActionLoading((prev) => { const next = new Set(prev); next.delete(placeId); return next; });
+    }
+  }, [addToast, fetchStale]);
+
+  const handleRefreshSingle = useCallback(async (placeId, placeName) => {
+    setActionLoading((prev) => new Set(prev).add(placeId));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { addToast({ variant: "error", title: "Not authenticated." }); return; }
+
+      const response = await fetch(ADMIN_REFRESH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "refresh_single", placePoolId: placeId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Refresh failed");
+      if (result.success) {
+        addToast({ variant: "success", title: `${placeName} refreshed` });
+      } else {
+        addToast({ variant: "warning", title: `Refresh issue: ${result.error}` });
+      }
+      fetchStale();
+    } catch (err) {
+      addToast({ variant: "error", title: "Refresh failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setActionLoading((prev) => { const next = new Set(prev); next.delete(placeId); return next; });
+    }
+  }, [addToast, fetchStale]);
+
+  const handleBulkDeactivate = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const { data: result, error } = await supabase.rpc("admin_bulk_deactivate_places", {
+        p_place_ids: Array.from(selectedIds),
+        p_reason: "Bulk stale deactivation from admin review",
+      });
+      if (error) throw error;
+      addToast({ variant: "success", title: `${result.places_deactivated} places deactivated` });
+      await logAdminAction("place.stale_bulk_deactivate", "place_pool", null, { count: result.places_deactivated });
+      setSelectedIds(new Set());
+      fetchStale();
+    } catch (err) {
+      addToast({ variant: "error", title: "Bulk deactivation failed", description: err.message });
+    }
+  }, [selectedIds, addToast, fetchStale]);
+
+  const handleTriggerBatchRefresh = useCallback(async (mode) => {
+    setRefreshingAll(true);
+    try {
+      // Step 1: create backfill log entry via RPC
+      const { data: triggerResult, error: triggerErr } = await supabase.rpc("admin_trigger_place_refresh", {
+        p_mode: mode,
+      });
+      if (triggerErr) throw triggerErr;
+      if (triggerResult?.status === "already_running") {
+        addToast({ variant: "warning", title: "A refresh is already running" });
+        return;
+      }
+      if (triggerResult?.status === "nothing_to_do") {
+        addToast({ variant: "info", title: "No stale places to refresh" });
+        return;
+      }
+
+      addToast({ variant: "info", title: `Refresh queued: ${triggerResult.total_places} places (~$${triggerResult.estimated_cost_usd})` });
+
+      // Step 2: execute the refresh via edge function
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { addToast({ variant: "error", title: "Not authenticated." }); return; }
+
+      const response = await fetch(ADMIN_REFRESH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "process" }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Refresh execution failed");
+
+      addToast({ variant: "success", title: `Refresh done: ${result.refreshed} refreshed, ${result.failed} failed` });
+      await logAdminAction("place.batch_refresh", "place_pool", null, { mode, ...result });
+      fetchStale();
+    } catch (err) {
+      addToast({ variant: "error", title: "Batch refresh failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setRefreshingAll(false);
+    }
+  }, [addToast, fetchStale]);
+
+  const confirmReasonAction = useCallback(() => {
+    if (!reasonModal) return;
+    const { type, placeId, placeName } = reasonModal;
+    setReasonModal(null);
+    if (type === "deactivate") handleDeactivate(placeId, placeName, reasonText);
+    else if (type === "reactivate") handleReactivate(placeId, placeName, reasonText);
+    setReasonText("");
+  }, [reasonModal, reasonText, handleDeactivate, handleReactivate]);
+
+  const toggleRowSelect = useCallback((id) => {
+    setSelectedIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }, []);
+
+  // ─── Render ──────────────────────────────────────────────────────────
+
+  const places = data?.places || [];
+  const summary = data?.summary || {};
+  const total = data?.total || 0;
+  const paginationFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const paginationTo = Math.min((page + 1) * PAGE_SIZE, total);
+
+  function formatHours(hours) {
+    if (hours == null) return "—";
+    if (hours < 24) return `${Math.round(hours)}h`;
+    const days = Math.round(hours / 24);
+    return `${days}d`;
+  }
+
+  const staleColumns = useMemo(() => [
+    {
+      key: "_select", label: "", width: "40px",
+      render: (_, row) => (
+        <button onClick={() => toggleRowSelect(row.id)}
+          className="w-5 h-5 rounded border border-[var(--gray-300)] flex items-center justify-center cursor-pointer hover:border-[var(--color-brand-500)] transition-colors"
+          aria-label={selectedIds.has(row.id) ? "Deselect" : "Select"}>
+          {selectedIds.has(row.id) && <Check className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />}
+        </button>
+      ),
+    },
+    { key: "name", label: "Name", width: "180px", render: (val) => <span className="font-medium truncate">{val || "—"}</span> },
+    {
+      key: "staleness_tier", label: "Staleness", width: "100px",
+      render: (val) => {
+        const cfg = TIER_BADGE[val] || TIER_BADGE.stale;
+        return <Badge variant={cfg.variant} dot>{cfg.label}</Badge>;
+      },
+    },
+    {
+      key: "hours_since_refresh", label: "Since Refresh", width: "100px",
+      render: (val) => <span className="text-[var(--color-text-secondary)]">{formatHours(val)}</span>,
+    },
+    {
+      key: "refresh_failures", label: "Failures", width: "70px",
+      render: (val) => val > 0 ? <span className="text-[var(--color-error-600)] font-medium">{val}</span> : <span className="text-[var(--color-text-muted)]">0</span>,
+    },
+    {
+      key: "is_active", label: "Serving", width: "80px",
+      render: (val) => <Badge variant={val ? "success" : "error"} dot>{val ? "Active" : "Off"}</Badge>,
+    },
+    {
+      key: "recently_served", label: "Served", width: "70px",
+      render: (val) => val ? <span className="text-[var(--color-warning-600)] font-semibold">Yes</span> : <span className="text-[var(--color-text-muted)]">No</span>,
+    },
+    {
+      key: "primary_type", label: "Type", width: "110px",
+      render: (val) => val ? <Badge variant="outline">{val.replace(/_/g, " ")}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>,
+    },
+    {
+      key: "_actions", label: "Actions", width: "180px",
+      render: (_, row) => (
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" icon={RefreshCw}
+            loading={actionLoading.has(row.id)}
+            onClick={() => handleRefreshSingle(row.id, row.name)}
+            aria-label="Refresh this place" />
+          {row.is_active ? (
+            <Button size="sm" variant="ghost" icon={XCircle}
+              loading={actionLoading.has(row.id)}
+              onClick={() => { setReasonText(""); setReasonModal({ type: "deactivate", placeId: row.id, placeName: row.name }); }}
+              aria-label="Deactivate this place" />
+          ) : (
+            <Button size="sm" variant="ghost" icon={CheckCircle}
+              loading={actionLoading.has(row.id)}
+              onClick={() => { setReasonText(""); setReasonModal({ type: "reactivate", placeId: row.id, placeName: row.name }); }}
+              aria-label="Reactivate this place" />
+          )}
+        </div>
+      ),
+    },
+  ], [selectedIds, actionLoading, toggleRowSelect, handleRefreshSingle]);
+
+  return (
+    <div className="space-y-5">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="text-center p-3 rounded-lg bg-[var(--color-background-secondary)]">
+          <p className="text-2xl font-bold text-[var(--color-text-primary)]">{summary.total_stale ?? 0}</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">Total Stale</p>
+        </div>
+        <div className="text-center p-3 rounded-lg bg-[var(--color-background-secondary)]">
+          <p className="text-2xl font-bold text-[var(--color-warning-600)]">{summary.active_stale ?? 0}</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">Active & Stale</p>
+        </div>
+        <div className="text-center p-3 rounded-lg bg-[var(--color-background-secondary)]">
+          <p className="text-2xl font-bold text-[var(--color-error-600)]">{summary.critical_count ?? 0}</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">Critical ({">"}30d)</p>
+        </div>
+        <div className="text-center p-3 rounded-lg bg-[var(--color-background-secondary)]">
+          <p className="text-2xl font-bold text-[var(--color-brand-500)]">{summary.recently_served_stale ?? 0}</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">Served & Stale</p>
+        </div>
+      </div>
+
+      {/* Batch Actions */}
+      <SectionCard title="Batch Actions" subtitle="Refresh stale places via Google Places API ($0.005 per call)">
+        <div className="flex flex-wrap gap-3">
+          <Button variant="primary" size="sm" icon={RefreshCw} loading={refreshingAll}
+            disabled={refreshingAll || (summary.recently_served_stale ?? 0) === 0}
+            onClick={() => handleTriggerBatchRefresh("recently_served")}>
+            Refresh Recently Served ({summary.recently_served_stale ?? 0})
+          </Button>
+          <Button variant="secondary" size="sm" icon={RefreshCw} loading={refreshingAll}
+            disabled={refreshingAll || (summary.active_stale ?? 0) === 0}
+            onClick={() => handleTriggerBatchRefresh("all_stale")}>
+            Refresh All Stale ({summary.active_stale ?? 0})
+          </Button>
+          {selectedIds.size > 0 && (
+            <Button variant="danger" size="sm" icon={EyeOff} onClick={handleBulkDeactivate}>
+              Deactivate {selectedIds.size} Selected
+            </Button>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Filters & Sort */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="flex items-center gap-1 flex-wrap">
+          {STALE_FILTER_OPTIONS.map((f) => (
+            <button key={f.id} onClick={() => setFilter(f.id)}
+              className={["px-3 py-1.5 text-xs font-medium rounded-full border cursor-pointer transition-all duration-150",
+                filter === f.id
+                  ? "bg-[var(--color-brand-500)] text-white border-[var(--color-brand-500)]"
+                  : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] border-[var(--gray-300)] hover:border-[var(--gray-400)]"
+              ].join(" ")}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+          className="text-xs px-3 py-1.5 rounded-lg border bg-transparent"
+          style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", backgroundColor: "var(--color-background-primary)" }}>
+          {STALE_SORT_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      {/* Table */}
+      <DataTable
+        columns={staleColumns} rows={places} loading={loading}
+        emptyIcon={ShieldAlert}
+        emptyMessage={filter === "all" ? "No stale places detected. Everything looks fresh." : "No stale places match this filter."}
+        striped
+        pagination={{ page, pageSize: PAGE_SIZE, total, from: paginationFrom, to: paginationTo, onChange: setPage }}
+      />
+
+      {/* Reason Modal (deactivate/reactivate) */}
+      <Modal open={!!reasonModal} onClose={() => setReasonModal(null)}
+        title={reasonModal?.type === "deactivate" ? "Deactivate Place" : "Reactivate Place"}
+        destructive={reasonModal?.type === "deactivate"} size="sm">
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)] mb-3">
+            {reasonModal?.type === "deactivate"
+              ? <>Deactivate <strong className="text-[var(--color-text-primary)]">{reasonModal?.placeName}</strong>? This removes it and its cards from circulation.</>
+              : <>Reactivate <strong className="text-[var(--color-text-primary)]">{reasonModal?.placeName}</strong>? This restores it and its cards to circulation.</>
+            }
+          </p>
+          <Input label="Reason (optional)" value={reasonText} onChange={(e) => setReasonText(e.target.value)}
+            placeholder="e.g., Permanently closed, data quality issue, etc." />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setReasonModal(null)}>Cancel</Button>
+          <Button variant={reasonModal?.type === "deactivate" ? "danger" : "primary"} onClick={confirmReasonAction}>
+            {reasonModal?.type === "deactivate" ? "Deactivate" : "Reactivate"}
+          </Button>
         </ModalFooter>
       </Modal>
     </div>

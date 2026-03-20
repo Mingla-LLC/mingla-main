@@ -55,4 +55,9 @@ export const ACTION_LABELS = {
   "photo.backfill": "Triggered photo backfill",
   "city.launch": "Launched city",
   "city.import": "Imported city places",
+  "place.stale_deactivate": "Deactivated stale place",
+  "place.stale_reactivate": "Reactivated stale place",
+  "place.stale_bulk_deactivate": "Bulk deactivated stale places",
+  "place.batch_refresh": "Batch refreshed stale places",
+  "place.refresh_single": "Refreshed single place",
 };

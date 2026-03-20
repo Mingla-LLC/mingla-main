@@ -360,7 +360,7 @@ DECLARE
   v_user_id UUID;
   v_places_deactivated INTEGER;
   v_cards_deactivated INTEGER;
-  v_pid UUID;
+  v_actually_deactivated UUID[];
 BEGIN
   SELECT is_admin_user() INTO v_is_admin;
   IF NOT v_is_admin THEN
@@ -373,33 +373,33 @@ BEGIN
     RETURN jsonb_build_object('error', 'No place IDs provided');
   END IF;
 
-  -- Deactivate places
+  -- Deactivate places — capture which ones actually changed
   WITH deactivated AS (
     UPDATE place_pool SET is_active = false, updated_at = now()
     WHERE id = ANY(p_place_ids) AND is_active = true
     RETURNING id
   )
-  SELECT COUNT(*) INTO v_places_deactivated FROM deactivated;
+  SELECT array_agg(id), COUNT(*) INTO v_actually_deactivated, v_places_deactivated FROM deactivated;
 
-  -- Cascade: deactivate linked cards
+  -- Cascade: deactivate linked cards (only for actually-deactivated places)
   WITH deactivated_cards AS (
     UPDATE card_pool SET is_active = false
-    WHERE place_pool_id = ANY(p_place_ids) AND is_active = true
+    WHERE place_pool_id = ANY(COALESCE(v_actually_deactivated, '{}')) AND is_active = true
     RETURNING id
   )
   SELECT COUNT(*) INTO v_cards_deactivated FROM deactivated_cards;
 
-  -- Audit: one row per place
-  FOREACH v_pid IN ARRAY p_place_ids LOOP
+  -- Audit: one row per place that was ACTUALLY deactivated (not already-inactive ones)
+  IF v_actually_deactivated IS NOT NULL THEN
     INSERT INTO place_admin_actions (place_id, action_type, acted_by, reason, metadata)
-    VALUES (v_pid, 'bulk_deactivate', v_user_id, p_reason,
-      jsonb_build_object('batch_size', array_length(p_place_ids, 1)));
-  END LOOP;
+    SELECT unnest(v_actually_deactivated), 'bulk_deactivate', v_user_id, p_reason,
+      jsonb_build_object('batch_size', v_places_deactivated);
+  END IF;
 
   RETURN jsonb_build_object(
     'success', true,
-    'places_deactivated', v_places_deactivated,
-    'cards_deactivated', v_cards_deactivated
+    'places_deactivated', COALESCE(v_places_deactivated, 0),
+    'cards_deactivated', COALESCE(v_cards_deactivated, 0)
   );
 END;
 $$;
