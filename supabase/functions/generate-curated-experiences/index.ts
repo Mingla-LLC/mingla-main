@@ -26,6 +26,30 @@ let supabaseAdmin: ReturnType<typeof createClient>;
 
 const GLOBAL_EXCLUDED = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
 
+// Build Google type → slug lookup from seedingCategories
+const GOOGLE_TYPE_TO_SLUG: Record<string, string> = {};
+for (const cat of Object.values(SEEDING_CATEGORY_MAP)) {
+  for (const type of cat.includedTypes) {
+    // First category to claim a type wins (order matters for overlapping types)
+    if (!GOOGLE_TYPE_TO_SLUG[type]) {
+      GOOGLE_TYPE_TO_SLUG[type] = cat.id;
+    }
+  }
+}
+// Override overlapping types to match backfill logic
+// These types appear in multiple categories — assign to their primary category
+GOOGLE_TYPE_TO_SLUG['grocery_store'] = 'groceries';
+GOOGLE_TYPE_TO_SLUG['supermarket'] = 'groceries';
+GOOGLE_TYPE_TO_SLUG['wine_bar'] = 'drink';
+GOOGLE_TYPE_TO_SLUG['lounge_bar'] = 'drink';
+GOOGLE_TYPE_TO_SLUG['bistro'] = 'casual_eats';
+GOOGLE_TYPE_TO_SLUG['italian_restaurant'] = 'casual_eats';
+GOOGLE_TYPE_TO_SLUG['seafood_restaurant'] = 'casual_eats';
+
+function googleTypeToSlug(googleType: string): string {
+  return GOOGLE_TYPE_TO_SLUG[googleType] || 'casual_eats'; // safe fallback
+}
+
 // ── Session preference aggregation (for collaboration mode) ────────────────
 
 const SESSION_INTENT_IDS = new Set([
@@ -322,7 +346,7 @@ async function queryPlacePool(
 
   const { data, error } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls')
+    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id')
     .eq('is_active', true)
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
@@ -408,6 +432,7 @@ function buildPoolStop(
     estimatedDurationMinutes: STOP_DURATION_MINUTES[placeType] || DEFAULT_STOP_DURATION,
     ...(opts?.optional ? { optional: true } : {}),
     ...(opts?.dismissible ? { dismissible: true } : {}),
+    cityId: place.city_id || null,
   };
 }
 
@@ -1154,14 +1179,20 @@ serve(async (req) => {
             const stopPlacePoolIds = stops.map((s: any) => s.placePoolId).filter(Boolean);
             const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
 
+            // Resolve category slug and city_id from first main stop
+            const stopCategorySlug = mainStops[0]?.placeType
+              ? googleTypeToSlug(mainStops[0].placeType)
+              : 'casual_eats';
+            const stopCityId = mainStops[0]?.cityId || null;
+
             return {
               row: {
                 card_type: 'curated' as const,
                 place_pool_id: null,
                 google_place_id: mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 title: card.title || `${experienceType} Experience`,
-                category: mainStops[0]?.placeType || 'Nature',
-                categories: mainStops.map((s: any) => s.placeType).filter(Boolean),
+                category: stopCategorySlug,
+                categories: mainStops.map((s: any) => googleTypeToSlug(s.placeType || 'restaurant')),
                 description: card.tagline || '',
                 highlights: [],
                 image_url: mainStops[0]?.imageUrl || null,
@@ -1187,6 +1218,7 @@ serve(async (req) => {
                 estimated_duration_minutes: card.estimatedDurationMinutes || 0,
                 shopping_list: card.shoppingList || null,
                 teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${mainStops.length} curated stops`,
+                city_id: stopCityId,
               },
               stopPlacePoolIds,
               stopGooglePlaceIds,

@@ -3,6 +3,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { insertCardToPool } from '../_shared/cardPoolService.ts';
 import { resolveCategories, ALL_CATEGORY_NAMES, getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+import { SEEDING_CATEGORIES } from '../_shared/seedingCategories.ts';
+
+// Display name → slug reverse map for category normalization
+const DISPLAY_NAME_TO_SLUG: Record<string, string> = {};
+for (const cat of SEEDING_CATEGORIES) {
+  DISPLAY_NAME_TO_SLUG[cat.label] = cat.id;
+}
+
+function categoryToSlug(displayName: string): string {
+  return DISPLAY_NAME_TO_SLUG[displayName] || displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-single-cards  –  Admin-only batch card generator
@@ -138,7 +149,7 @@ serve(async (req: Request) => {
         // ── Query place_pool for this category ───────────────────────
         const { data: places, error: queryError } = await supabaseAdmin
           .from('place_pool')
-          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls')
+          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id')
           .eq('is_active', true)
           .gte('lat', location.lat - latDelta)
           .lte('lat', location.lat + latDelta)
@@ -198,13 +209,14 @@ serve(async (req: Request) => {
 
           // ── Build and insert card ────────────────────────────────
           try {
+            const categorySlug = categoryToSlug(category);
             const cardId = await insertCardToPool(supabaseAdmin, {
               placePoolId: place.id,
               googlePlaceId: place.google_place_id,
               cardType: 'single',
               title: place.name,
-              category: category,
-              categories: [category],
+              category: categorySlug,
+              categories: [categorySlug],
               description: getFallbackDescription(category, place.primary_type || 'place'),
               imageUrl: place.stored_photo_urls[0],
               images: place.stored_photo_urls.slice(0, 5),
@@ -218,6 +230,7 @@ serve(async (req: Request) => {
               priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
               openingHours: place.opening_hours,
               website: place.website,
+              cityId: place.city_id,
             });
 
             if (cardId) {

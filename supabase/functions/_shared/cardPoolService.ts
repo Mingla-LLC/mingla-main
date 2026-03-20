@@ -301,6 +301,7 @@ export async function insertCardToPool(
     website?: string | null;
     priceTier?: PriceTierSlug;
     priceLevel?: string;
+    cityId?: string | null;
   }
 ): Promise<string | null> {
   // CRIT-001: Curated cards with no stops are invalid — reject before insert
@@ -331,6 +332,7 @@ export async function insertCardToPool(
     price_max: cardData.priceMax ?? 0,
     opening_hours: cardData.openingHours || null,
     website: cardData.website || null,
+    city_id: cardData.cityId || null,
     price_tier: cardData.priceTier ?? googleLevelToTierSlug(cardData.priceLevel),
     popularity_score: popularityScore,
     is_active: true,
