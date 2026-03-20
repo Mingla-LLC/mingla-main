@@ -209,13 +209,6 @@ const IntentSelectionStep = ({
       experienceType: "Romantic",
     },
     {
-      id: "friendly",
-      title: "Find Friendly Activities",
-      icon: "people-outline",
-      description: "Fun activities with friends",
-      experienceType: "Friendly",
-    },
-    {
       id: "group-fun",
       title: "Find Activities for Groups",
       icon: "people-outline",
@@ -247,8 +240,6 @@ const IntentSelectionStep = ({
       case "first-date":
       case "romantic":
         return "heart-outline";
-      case "friendly":
-        return "people-outline"; // Two people concept
       case "group-fun":
         return "people-outline"; // Three+ people concept
       case "picnic-dates":

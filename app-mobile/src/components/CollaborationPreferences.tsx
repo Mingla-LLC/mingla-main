@@ -53,7 +53,6 @@ const experienceTypes = [
   { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
   { id: "first-date",    label: "First Date",    icon: "people-outline" },
   { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
-  { id: "friendly",      label: "Friendly",       icon: "people-outline" },
   { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
   { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
@@ -197,7 +196,7 @@ export default function CollaborationPreferences({
     if (isOpen && dbPreferences) {
       // Map database preferences to component state
       const INTENT_IDS = new Set([
-        "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
+        "adventurous", "first-date", "romantic", "group-fun", "picnic-dates", "take-a-stroll",
       ]);
       if (dbPreferences.categories || dbPreferences.intents) {
         // New schema: intents in dedicated column

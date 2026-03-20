@@ -11,7 +11,7 @@ export const GENDER_OPTIONS: Array<{ value: GenderOption; label: string }> = [
   { value: 'prefer-not-to-say', label: 'Prefer not to say' },
 ]
 
-export type CardSectionType = 'romantic' | 'adventurous' | 'friendly' | 'category'
+export type CardSectionType = 'romantic' | 'adventurous' | 'category'
 
 export interface HolidayCardSection {
   label: string

@@ -679,7 +679,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'nature': {
       'first-date': 'Scenic park walk + gelato nearby — low pressure, easy conversation.',
       'romantic': 'Sunset stroll along the waterfront ending at a cozy wine bar.',
-      'friendly': 'Group garden walk + taco truck outside the park gates.',
       'adventurous': 'Botanical garden stroll with coffee to-go from nearby café.',
       'group-fun': 'City mural walk with food truck rally at the finish line.',
       'picnic-dates': 'Picnic blanket in the botanical garden with a cheese board.',
@@ -688,7 +687,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'drink': {
       'first-date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
       'romantic': 'Wine bar with a 6-glass tasting flight and live acoustic music.',
-      'friendly': 'Neighborhood brewery with board games and casual vibes.',
       'adventurous': 'Specialty coffee roastery — perfect for journaling or reading.',
       'group-fun': 'Cocktail lounge with large tables and happy hour pitchers.',
       'picnic-dates': 'Grab-and-go juice bar near the park.',
@@ -697,7 +695,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'casual_eats': {
       'first-date': 'Casual ramen shop — low-key and easy for a first meet.',
       'romantic': 'Late-night taco truck crawl for two under string lights.',
-      'friendly': 'Food truck rally — great for trying different bites with friends.',
       'adventurous': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
       'group-fun': 'Pizza-by-the-slice joint with outdoor benches for the crew.',
       'picnic-dates': 'Deli sandwich pickup before heading to the park.',
@@ -706,7 +703,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'watch': {
       'first-date': 'Indie cinema showing a cult classic at 7pm.',
       'romantic': 'Drive-in double feature — bring blankets and snacks.',
-      'friendly': 'Comedy club lineup — group tickets available.',
       'adventurous': 'Arthouse screening — perfect for solo movie lovers.',
       'group-fun': 'Big-screen watch party of the championship game.',
       'picnic-dates': 'Outdoor movie screening with picnic blankets.',
@@ -715,7 +711,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'creative_arts': {
       'first-date': 'Sip & Paint night with wine included — playful and low-stakes.',
       'romantic': 'Couples pottery class — make something together to keep.',
-      'friendly': 'Cooking class for friends — team up to make pasta or dumplings.',
       'adventurous': 'Saturday candle-making workshop — take home your own creation.',
       'group-fun': 'Escape-room style craft workshop — collaborate on a challenge.',
       'picnic-dates': 'Flower-arranging workshop then picnic with your bouquet.',
@@ -724,7 +719,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'play': {
       'first-date': 'Glow-in-the-dark mini golf — fun, flirty, and interactive.',
       'romantic': 'Evening skate date — rent skates and glide under the lights.',
-      'friendly': 'Arcade night — grab tokens and compete in games.',
       'adventurous': 'Solo bouldering session — day pass includes gear rental.',
       'group-fun': 'Bowling alley with neon lights — lane reservations for 6.',
       'picnic-dates': 'Frisbee in the park followed by a picnic spread.',
@@ -733,7 +727,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'fine_dining': {
       'first-date': 'Modern bistro with prix fixe menu, $65 per person.',
       'romantic': 'Omakase counter with 10 seats — chef\'s choice, candlelit ambience.',
-      'friendly': 'Family-style rooftop dinner with shared plates.',
       'adventurous': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
       'group-fun': 'Wine-pairing dinner with large communal table.',
       'picnic-dates': 'Charcuterie board to-go from the bistro, eaten parkside.',
@@ -742,7 +735,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'wellness': {
       'first-date': 'Couples yoga followed by herbal tea lounge.',
       'romantic': 'Day spa package with sauna + massage for two.',
-      'friendly': 'Group sound bath meditation — mats provided.',
       'adventurous': 'Sunset yoga in the park — solo mats welcome.',
       'group-fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
       'picnic-dates': 'Outdoor yoga session then picnic under the trees.',
@@ -751,7 +743,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'first_meet': {
       'first-date': 'Cozy café with board games — low-stakes and easy to chat.',
       'romantic': 'Wine-and-cheese tasting in a candlelit cellar.',
-      'friendly': 'Coffee shop with large tables — easy group hangout.',
       'adventurous': 'Quirky themed café — conversation starters built in.',
       'group-fun': 'Trivia night at the local pub — team up and compete.',
       'picnic-dates': 'Farmers market browse then park bench chat.',
@@ -760,7 +751,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'picnic': {
       'first-date': 'Picnic blanket by the lake with sandwiches and lemonade.',
       'romantic': 'Sunset picnic with wine, cheese, and fairy lights.',
-      'friendly': 'Group picnic potluck in the park — everyone brings a dish.',
       'adventurous': 'Solo picnic with a good book at the botanical garden.',
       'group-fun': 'BBQ picnic at the park pavilion — games and grilling.',
       'picnic-dates': 'Full picnic spread at the nicest park in town.',
@@ -769,7 +759,6 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
     'groceries_flowers': {
       'first-date': 'Farmers market stroll — sample together, buy flowers.',
       'romantic': 'Pick up flowers and ingredients, cook dinner together.',
-      'friendly': 'Group grocery run for a cooking night — split the bill.',
       'adventurous': 'Specialty grocery store exploration — find something new.',
       'group-fun': 'Farmers market haul then group potluck prep.',
       'picnic-dates': 'Grocery run for picnic supplies then head to the park.',
@@ -1404,14 +1393,6 @@ export const CURATED_EXPERIENCES = [
     icon: 'heart-outline',
     color: '#EC4899',
     description: 'A curated romantic evening',
-    isImplemented: true,
-  },
-  {
-    id: 'friendly',
-    displayName: 'Friendly',
-    icon: 'people-outline',
-    color: '#3B82F6',
-    description: 'Casual hangouts with close friends',
     isImplemented: true,
   },
   {

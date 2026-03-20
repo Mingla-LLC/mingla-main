@@ -47,7 +47,6 @@ const ALL_EXPERIENCE_TYPES = [
   "Adventurous",
   "First Date",
   "Romantic",
-  "Friendly",
   "Group Fun",
   "Business",
 ];

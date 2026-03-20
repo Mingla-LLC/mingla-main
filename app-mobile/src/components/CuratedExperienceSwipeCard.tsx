@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
@@ -10,7 +10,6 @@ const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
   'First Date':    'people-outline',
   'Romantic':      'heart-outline',
-  'Friendly':      'people-outline',
   'Group Fun':     'people-circle-outline',
   'Picnic Dates':  'basket-outline',
   'Take a Stroll': 'walk-outline',
@@ -35,23 +34,28 @@ interface Props {
 }
 
 export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem }: Props) {
-  const avgRating = (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1);
+  // Track dismissed optional stops (e.g., Flowers)
+  const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
+  const visibleStops = card.stops.filter((_, idx) => !dismissedStops.has(idx));
+
+  const avgRating = (visibleStops.reduce((s, st) => s + st.rating, 0) / visibleStops.length).toFixed(1);
   const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
-  // Show tier label from the first stop's priceTier, or fallback to price range
-  const firstStopTier = card.stops[0]?.priceTier;
+  // Show tier label from the first non-optional stop's priceTier, or fallback to price range
+  const firstMainStop = visibleStops.find(s => !s.optional);
+  const firstStopTier = firstMainStop?.priceTier || visibleStops[0]?.priceTier;
   const priceText = firstStopTier
     ? tierLabel(firstStopTier)
     : card.totalPriceMin === 0 && card.totalPriceMax === 0
       ? 'Free'
       : `$${card.totalPriceMin}–${card.totalPriceMax}`;
 
-  const isSingleStop = card.stops.length === 1;
+  const isSingleStop = visibleStops.length === 1;
   const categoryLabel = card.categoryLabel || 'Adventurous';
   const categoryIcon = CURATED_ICON_MAP[categoryLabel] || 'compass-outline';
   const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
 
   // First stop distance & travel time (most relevant to the user)
-  const firstStop = card.stops[0];
+  const firstStop = visibleStops[0];
   const distanceKm = firstStop?.distanceFromUserKm;
   const travelMin = firstStop?.travelTimeFromUserMin;
   const formattedDistance = distanceKm != null && distanceKm > 0
@@ -65,24 +69,44 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
     <View style={styles.card}>
       {/* Image strip — adapts to any number of stops */}
       <View style={styles.imageStrip}>
-        {card.stops.map((stop, idx) => (
-          <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
-            {stop.imageUrl ? (
-              <Image
-                source={{ uri: stop.imageUrl }}
-                style={styles.stopImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.stopImage, styles.imagePlaceholder]} />
-            )}
-            {!isSingleStop && (
-              <View style={styles.stopBadge}>
-                <Text style={styles.stopBadgeText}>{idx + 1}</Text>
-              </View>
-            )}
-          </View>
-        ))}
+        {visibleStops.map((stop, idx) => {
+          const isOptional = stop.optional && stop.dismissible;
+          const originalIdx = card.stops.indexOf(stop);
+          return (
+            <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
+              {stop.imageUrl ? (
+                <Image
+                  source={{ uri: stop.imageUrl }}
+                  style={styles.stopImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.stopImage, styles.imagePlaceholder]} />
+              )}
+              {!isSingleStop && (
+                <View style={styles.stopBadge}>
+                  {isOptional ? (
+                    <Icon name="flower-outline" size={12} color="#fff" />
+                  ) : (
+                    <Text style={styles.stopBadgeText}>{idx + 1}</Text>
+                  )}
+                </View>
+              )}
+              {isOptional && (
+                <TrackedTouchableOpacity
+                  logComponent="CuratedExperienceSwipeCard"
+                  style={styles.dismissButton}
+                  onPress={() => setDismissedStops(prev => new Set([...prev, originalIdx]))}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Dismiss optional stop"
+                  accessibilityRole="button"
+                >
+                  <Icon name="close" size={12} color="#fff" />
+                </TrackedTouchableOpacity>
+              )}
+            </View>
+          );
+        })}
       </View>
 
       {/* Card info */}
@@ -91,7 +115,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
         <View style={styles.categoryBadge}>
           <Icon name={categoryIcon} size={12} color="#fff" />
           <Text style={styles.categoryText}>{categoryLabel}</Text>
-          <Text style={styles.stopCountText}> · {card.stops.length} {card.stops.length === 1 ? 'spot' : 'stops'}</Text>
+          <Text style={styles.stopCountText}> · {visibleStops.length} {visibleStops.length === 1 ? 'spot' : 'stops'}</Text>
         </View>
 
         {/* Title */}
@@ -152,6 +176,17 @@ const styles = StyleSheet.create({
   },
   imagePlaceholder: {
     backgroundColor: '#2C2C2E',
+  },
+  dismissButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stopBadge: {
     position: 'absolute',

@@ -16,7 +16,6 @@ const WELLNESS_SECTION: HolidayCardSection = { label: 'Wellness', type: 'categor
 const PLAY_SECTION: HolidayCardSection = { label: 'Play', type: 'category', categorySlug: 'play' }
 const PICNIC_SECTION: HolidayCardSection = { label: 'Picnic', type: 'category', categorySlug: 'picnic' }
 const DRINK_SECTION: HolidayCardSection = { label: 'Drink', type: 'category', categorySlug: 'drink' }
-const FRIENDLY_SECTION: HolidayCardSection = { label: 'Friendly', type: 'friendly' }
 const WATCH_SECTION: HolidayCardSection = { label: 'Watch', type: 'category', categorySlug: 'watch' }
 const CREATIVE_ARTS_SECTION: HolidayCardSection = { label: 'Creative & Arts', type: 'category', categorySlug: 'creative_arts' }
 
@@ -24,7 +23,6 @@ const CREATIVE_ARTS_SECTION: HolidayCardSection = { label: 'Creative & Arts', ty
 export const DEFAULT_PERSON_SECTIONS: HolidayCardSection[] = [
   ROMANTIC_SECTION,
   ADVENTUROUS_SECTION,
-  FRIENDLY_SECTION,
   FINE_DINING_SECTION,
   WATCH_SECTION,
   PLAY_SECTION,
@@ -138,5 +136,4 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
 export const INTENT_CATEGORY_MAP: Record<string, string[]> = {
   romantic: ['first_meet', 'drink', 'picnic', 'wellness', 'nature'],
   adventurous: ['nature', 'play', 'creative_arts', 'casual_eats', 'drink', 'first_meet', 'picnic', 'watch', 'wellness', 'groceries_flowers', 'work_business'],
-  friendly: ['play', 'casual_eats', 'drink', 'nature', 'creative_arts', 'picnic', 'watch'],
 }

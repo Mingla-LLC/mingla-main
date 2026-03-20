@@ -2,7 +2,7 @@ import { supabase, trackedInvoke } from './supabase';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 
 interface GenerateCuratedParams {
-  experienceType: 'adventurous' | 'first-date' | 'romantic' | 'friendly' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
+  experienceType: 'adventurous' | 'first-date' | 'romantic' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
   location: { lat: number; lng: number };
   budgetMin: number;
   budgetMax: number;

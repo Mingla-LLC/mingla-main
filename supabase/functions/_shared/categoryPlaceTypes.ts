@@ -105,152 +105,11 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
 export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
   'gym',
   'fitness_center',
+  'dog_park',
 ];
 
-/**
- * Additional place types excluded specifically for the Romantic intent.
- * These are kid/family-oriented venues inappropriate for intimate dates.
- * Applied on top of GLOBAL_EXCLUDED_PLACE_TYPES.
- */
-export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
-  ...GLOBAL_EXCLUDED_PLACE_TYPES,
-  'indoor_playground',
-  'amusement_park',
-  'water_park',
-  'amusement_center',
-  'playground',
-  'children_store',
-  'child_care_agency',
-  'preschool',
-  // Retail / store exclusions
-  'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-  'building_materials_store', 'butcher_shop', 'cell_phone_store',
-  'clothing_store', 'convenience_store', 'cosmetics_store',
-  'department_store', 'discount_store', 'discount_supermarket',
-  'electronics_store', 'farmers_market', 'flea_market',
-  'food_store', 'furniture_store', 'garden_center',
-  'general_store', 'gift_shop', 'hardware_store',
-  'health_food_store', 'home_goods_store', 'home_improvement_store',
-  'hypermarket', 'jewelry_store', 'liquor_store',
-  'market', 'pet_store', 'shoe_store',
-  'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-  'tea_store', 'thrift_store', 'toy_store',
-  'warehouse_store', 'wholesaler', 'womens_clothing_store',
-];
-
-/**
- * Per-intent exclusion lists. Each intent excludes retail/store types
- * on top of the global exclusions. picnic-dates is intentionally excluded
- * from this list (no retail filtering).
- */
-export const INTENT_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
-  'adventurous': [
-    ...GLOBAL_EXCLUDED_PLACE_TYPES,
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-  'first-date': [
-    ...GLOBAL_EXCLUDED_PLACE_TYPES,
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-  'romantic': ROMANTIC_EXCLUDED_PLACE_TYPES,
-  'friendly': [
-    ...GLOBAL_EXCLUDED_PLACE_TYPES,
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-  'group-fun': [
-    ...GLOBAL_EXCLUDED_PLACE_TYPES,
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-  'take-a-stroll': [
-    ...GLOBAL_EXCLUDED_PLACE_TYPES,
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-};
-
-/**
- * Get the exclusion list for an intent string. Falls back to GLOBAL_EXCLUDED_PLACE_TYPES
- * if the intent is unrecognized.
- */
-export function getExcludedTypesForIntent(intent: string | undefined): string[] {
-  if (!intent) return GLOBAL_EXCLUDED_PLACE_TYPES;
-  return INTENT_EXCLUDED_PLACE_TYPES[intent.toLowerCase()] ?? GLOBAL_EXCLUDED_PLACE_TYPES;
-}
-
-/**
- * Filters out places whose `types` array contains any globally or
- * intent-specifically excluded type. Call this on EVERY batch of
- * Google Places results before scoring, caching, or returning.
- */
-export function filterExcludedPlaces(
-  places: Array<{ types?: string[] }>,
-  intentExcluded?: string[],
-): Array<{ types?: string[] }> {
-  const excluded = new Set(intentExcluded ?? GLOBAL_EXCLUDED_PLACE_TYPES);
-  return places.filter((place) => {
-    if (!place.types) return true;
-    return !place.types.some((t) => excluded.has(t));
-  });
-}
+// Per-intent exclusion lists REMOVED — all exclusions are now global-only.
+// Category-specific exclusions live in seedingCategories.ts (excludedPrimaryTypes).
 
 // ── Alias mapping: handles all case/format variations ────────────────────────
 // Maps every known variation to the canonical display name above.
@@ -392,7 +251,6 @@ export const INTENT_IDS = new Set([
   'adventurous',
   'first-date',
   'romantic',
-  'friendly',
   'group-fun',
   'picnic-dates',
   'take-a-stroll',

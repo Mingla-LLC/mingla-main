@@ -467,7 +467,7 @@ export const allMockRecommendations: Recommendation[] = [
     ],
     travelTime: '15m',
     distance: '4.2 km',
-    experienceType: 'Friendly',
+    experienceType: 'Group Fun',
     priceRange: '$30-60',
     highlights: ['Couples Classes', 'Meditation Corner', 'Aromatherapy', 'Beginner Friendly'],
     fullDescription: 'Connect with your partner or friend through mindful movement and meditation in a serene environment.',

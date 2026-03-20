@@ -50,9 +50,6 @@ export function sectionsToSlugsAndType(sections: HolidayCardSection[]): {
     } else if (section.type === "adventurous") {
       categorySlugs.push("adventurous");
       if (!curatedExperienceType) curatedExperienceType = "adventurous";
-    } else if (section.type === "friendly") {
-      categorySlugs.push("friendly");
-      if (!curatedExperienceType) curatedExperienceType = "friendly";
     }
   }
 

@@ -22,7 +22,6 @@ const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
   'First Date':    'people-outline',
   'Romantic':      'heart-outline',
-  'Friendly':      'people-outline',
   'Group Fun':     'people-circle-outline',
   'Picnic Dates':  'basket-outline',
   'Take a Stroll': 'walk-outline',

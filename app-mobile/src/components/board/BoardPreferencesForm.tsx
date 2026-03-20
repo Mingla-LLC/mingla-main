@@ -31,7 +31,6 @@ const experienceTypes = [
   { id: 'adventurous', label: 'Adventurous', icon: 'compass-outline' },
   { id: 'first-date', label: 'First Date', icon: 'heart-outline' },
   { id: 'romantic', label: 'Romantic', icon: 'heart' },
-  { id: 'friendly', label: 'Friendly', icon: 'people-outline' },
   { id: 'group-fun', label: 'Group Fun', icon: 'people' },
   { id: 'picnic-dates', label: 'Picnic Dates', icon: 'basket-outline' },
   { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline' },

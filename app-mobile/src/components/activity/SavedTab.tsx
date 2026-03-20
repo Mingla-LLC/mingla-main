@@ -1741,7 +1741,6 @@ const SavedTab = ({
       'adventurous': 'Adventurous',
       'first-date': 'First Date',
       'romantic': 'Romantic',
-      'friendly': 'Friendly',
       'group-fun': 'Group Fun',
       'picnic-dates': 'Picnic Dates',
       'take-a-stroll': 'Take a Stroll',

@@ -6,7 +6,6 @@ export type CuratedExperienceType =
   | 'adventurous'
   | 'first-date'
   | 'romantic'
-  | 'friendly'
   | 'group-fun'
   | 'picnic-dates'
   | 'take-a-stroll';

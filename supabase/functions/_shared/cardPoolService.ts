@@ -8,13 +8,9 @@
  */
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchByCategory } from './placesCache.ts';
 import {
   getPlaceTypesForCategory,
-  getCategoryTypeMap,
   resolveCategories,
-  filterExcludedPlaces,
-  getExcludedTypesForIntent,
   GLOBAL_EXCLUDED_PLACE_TYPES,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
@@ -731,10 +727,8 @@ export async function serveCardsFromPipeline(
   // Belt-and-suspenders: the SQL query_pool_cards already excludes globally
   // banned types, but pool cards lack a full `types` array — only `primary_type`
   // is available. This filter catches any card whose primary_type is banned
-  // (e.g. gym, fitness_center) even if the SQL-level filter was bypassed.
-  const excludedTypes = getExcludedTypesForIntent(experienceType);
+  // (e.g. gym, fitness_center, dog_park) even if the SQL-level filter was bypassed.
   const globalSet = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
-  const excludedSet = new Set(excludedTypes);
 
   poolCards = poolCards.filter((card: any) => {
     // Check primary_type against global exclusions (works on pool cards)
@@ -743,11 +737,11 @@ export async function serveCardsFromPipeline(
     if (card.card_type === 'curated' && card.stops) {
       return !card.stops.some((stop: any) => {
         const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
-        return stopTypes.some((t: string) => excludedSet.has(t));
+        return stopTypes.some((t: string) => globalSet.has(t));
       });
     }
     const types = card.types ?? card.place_types ?? [];
-    return !types.some((t: string) => excludedSet.has(t));
+    return !types.some((t: string) => globalSet.has(t));
   });
 
   // ── STEP 3: If pool has enough → serve directly ───────────────────────

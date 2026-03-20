@@ -253,8 +253,6 @@ function CompactCard({
       ? "heart-outline"
       : experienceType === "adventurous"
       ? "compass-outline"
-      : experienceType === "friendly"
-      ? "people-outline"
       : "sparkles-outline"
     : getCatIcon(category);
 

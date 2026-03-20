@@ -63,8 +63,6 @@ export function slotsToSections(slots: CategorySlot[]): HolidayCardSection[] {
           ? "romantic"
           : slot.experienceType === "adventurous"
           ? "adventurous"
-          : slot.experienceType === "friendly"
-          ? "friendly"
           : "romantic"; // conservative fallback
 
       return {

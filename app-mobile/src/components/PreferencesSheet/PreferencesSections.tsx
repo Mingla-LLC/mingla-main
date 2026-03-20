@@ -18,7 +18,6 @@ const EXPERIENCE_TYPE_DESCRIPTIONS: Record<string, string> = {
   "adventurous":   "Something unexpected \u2014 for the ones who don\u2019t play it safe",
   "first-date":    "Easy, low-key spots where conversation flows naturally",
   "romantic":      "Intimate moments that actually feel special",
-  "friendly":      "Good times with your people \u2014 no agenda required",
   "group-fun":     "The more the merrier \u2014 activities the whole crew will love",
   "picnic-dates":  "We\u2019ll curate the spread \u2014 you just show up and enjoy",
   "take-a-stroll": "A scenic route with a great bite at each end",

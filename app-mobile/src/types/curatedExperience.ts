@@ -26,6 +26,9 @@ export interface CuratedStop {
   travelModeFromPreviousStop: string | null;
   aiDescription: string;
   estimatedDurationMinutes: number;
+  optional?: boolean;
+  dismissible?: boolean;
+  role?: string;
 }
 
 export interface CuratedExperienceCard {

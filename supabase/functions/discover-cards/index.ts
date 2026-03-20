@@ -147,6 +147,76 @@ function filterByDateTime(
   });
 }
 
+// ── Cascading Hours Filter for Curated Cards ───────────────────────────────
+// Before serving curated cards, check that each stop is open when the user
+// would actually arrive there (accounting for previous stop duration + travel).
+
+const CURATED_STOP_DURATION: Record<string, number> = {
+  park: 60, botanical_garden: 60, hiking_area: 90, beach: 90,
+  national_park: 90, state_park: 90, garden: 45,
+  bar: 60, pub: 60, wine_bar: 60, cocktail_bar: 60, brewery: 60,
+  restaurant: 60, fine_dining_restaurant: 90, french_restaurant: 90,
+  steak_house: 90, italian_restaurant: 75, seafood_restaurant: 60,
+  movie_theater: 150, art_gallery: 60, museum: 90,
+  performing_arts_theater: 120, concert_hall: 120, opera_house: 150,
+  bowling_alley: 60, karaoke: 90, video_arcade: 60,
+  amusement_center: 60, amusement_park: 180,
+  spa: 90, massage_spa: 90,
+  cafe: 30, coffee_shop: 30, bakery: 20,
+  grocery_store: 30, supermarket: 30, florist: 15,
+  picnic_ground: 120,
+};
+
+const ALWAYS_OPEN_TYPES = new Set([
+  'park', 'national_park', 'state_park', 'hiking_area', 'beach',
+  'botanical_garden', 'city_park', 'garden', 'nature_preserve',
+  'picnic_ground', 'scenic_spot', 'tourist_attraction', 'plaza',
+  'lake', 'river', 'woods', 'mountain_peak',
+]);
+
+function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): boolean {
+  // Always-open outdoor types
+  const pType = stop.placeType || '';
+  if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
+  const oh = stop.openingHours;
+  if (!oh || typeof oh !== 'object') return true; // No data → assume open
+
+  const dayName = DAY_NAMES[dayOfWeek];
+  const dayText = oh[dayName];
+  if (!dayText) return true;
+
+  const parsed = parseHoursText(dayText);
+  if (!parsed) return false; // "Closed" or unparseable
+  return hour >= parsed.open && hour < parsed.close;
+}
+
+function filterCuratedByStopHours(
+  cards: any[],
+  startHour: number,
+  dayOfWeek: number,
+): any[] {
+  return cards.filter(card => {
+    if (card.cardType !== 'curated' || !card.stops?.length) return true;
+
+    let currentHour = startHour;
+    for (let i = 0; i < card.stops.length; i++) {
+      const stop = card.stops[i];
+      if (stop.optional) continue; // Skip optional stops in timing calc
+
+      if (!isStopOpenAtHour(stop, currentHour, dayOfWeek)) return false;
+
+      // Advance clock: stop duration + travel to next stop
+      const duration = CURATED_STOP_DURATION[stop.placeType] || 45;
+      const travelToNext = (i < card.stops.length - 1)
+        ? (card.stops[i + 1]?.travelTimeFromPreviousStopMin || 15)
+        : 0;
+      currentHour += (duration + travelToNext) / 60;
+    }
+    return true;
+  });
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -352,7 +422,33 @@ serve(async (req: Request) => {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
           const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
-          const scoredPoolCards = scorePoolCards(timeFilteredCards);
+
+          // Apply cascading hours filter to curated cards
+          let hoursFilteredCards = timeFilteredCards;
+          {
+            const targetDate = datetimePref ? new Date(datetimePref) : new Date();
+            let startHour: number;
+            if (_exactTime) {
+              const etMatch = _exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+              if (etMatch) {
+                let h = parseInt(etMatch[1]);
+                const ampm = etMatch[3].toUpperCase();
+                if (ampm === 'PM' && h !== 12) h += 12;
+                if (ampm === 'AM' && h === 12) h = 0;
+                startHour = h;
+              } else {
+                startHour = targetDate.getHours();
+              }
+            } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+              startHour = TIME_SLOT_RANGES[timeSlot].start;
+            } else {
+              startHour = targetDate.getHours();
+            }
+            const dayOfWeek = targetDate.getDay();
+            hoursFilteredCards = filterCuratedByStopHours(hoursFilteredCards, startHour, dayOfWeek);
+          }
+
+          const scoredPoolCards = scorePoolCards(hoursFilteredCards);
           console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
 
           return new Response(JSON.stringify({
