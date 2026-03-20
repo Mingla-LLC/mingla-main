@@ -19,7 +19,10 @@ export function SeedPage() {
   const { addToast } = useToast();
   const { session } = useAuth();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(null);

@@ -90,7 +90,10 @@ function ThumbnailPreview({ src, alt, onClose }) {
 function ExperiencesSubView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [experiences, setExperiences] = useState([]);
   const [expCount, setExpCount] = useState(0);
@@ -439,7 +442,10 @@ function ExperiencesSubView() {
 function CardPoolSubView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [cards, setCards] = useState([]);
   const [cardCount, setCardCount] = useState(0);
@@ -769,7 +775,10 @@ function CardPoolSubView() {
 function ReviewsSubView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
@@ -1145,7 +1154,10 @@ function ReviewsSubView() {
 function CuratedSubView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [cache, setCache] = useState([]);
   const [cacheLoading, setCacheLoading] = useState(true);

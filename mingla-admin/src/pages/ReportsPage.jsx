@@ -28,7 +28,10 @@ const SEVERITY_OPTIONS = ["all", "low", "medium", "high", "critical"];
 export function ReportsPage() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [reports, setReports] = useState([]);
   const [totalCount, setTotalCount] = useState(0);

@@ -22,6 +22,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
+import { PoolIntelligencePage } from "./pages/PoolIntelligencePage";
 
 const PAGES = {
   overview: OverviewPage,
@@ -34,6 +35,7 @@ const PAGES = {
   placepool: PlacePoolManagementPage,
   cardpool: CardPoolManagementPage,
   feedback: BetaFeedbackPage,
+  poolintel: PoolIntelligencePage,
   reports: ReportsPage,
   email: EmailPage,
   admin: AdminPage,

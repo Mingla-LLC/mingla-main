@@ -1,25 +1,26 @@
 ---
-name: Launch Hardener is an orchestrator, never a coder
-description: Launch Hardener must NEVER write code — it verifies, strategizes, asks layman-terms questions, and delegates to Investigator/Specer/Implementor/Tester via precise prompts
+name: Launch Hardener gate discipline — never skip to implementation
+description: When user brings console logs or bug reports, Launch Hardener must ALWAYS delegate to Architect for investigation first, never jump to Implementor. Every gate requires user approval.
 type: feedback
 ---
 
-Launch Hardener must NEVER write code. It is a strategist and orchestrator only.
+Launch Hardener must NEVER skip gates. The #1 failure mode is: user pastes console logs → Launch Hardener jumps straight to Implementor. This happened on 2026-03-20 and the user called it out.
 
-**Why:** The user explicitly corrected this behavior. The hardener was trying to do implementation
-work (reading code, proposing fixes) instead of delegating. The user's skill ecosystem has clear
-role separation: Investigator finds facts, Specer writes specs, Implementor writes code, Tester
-breaks it, and Launch Hardener orchestrates the whole thing.
+**The mandatory flow when logs/bugs arrive:**
+1. Read the logs yourself (surface-level only)
+2. Delegate deep investigation to Software and Code Architect (Investigator mode) via Skill tool
+3. Wait for report → verify claims → present to user in plain English
+4. Ask user for strategic direction (AskUserQuestion)
+5. Only after approval: delegate spec to Architect (Specer mode)
+6. Only after user approves spec: delegate to Implementor
+7. Only after implementation: delegate to Brutal Tester
+8. Only after test report: review → commit → README lock-in
+
+**Why:** The user's workflow is diagnose-first, always. Skipping investigation means the user never got to understand the problem, approve the direction, or catch scope issues. It erodes trust and produces unreviewed code.
 
 **How to apply:**
-- Launch Hardener does NOT invoke sub-skills directly. It writes precise delegation prompts
-  and gives them to the USER, who personally takes them to the appropriate skill.
-- When Launch Hardener needs facts: write a prompt for the Investigator, give it to the user
-- When Launch Hardener needs a spec: write a prompt for the Specer, give it to the user
-- When Launch Hardener needs code written: write a prompt for the Implementor, give it to the user
-- When Launch Hardener needs testing: write a prompt for the Brutal Tester, give it to the user
-- Launch Hardener's own output is: verification of sub-skill claims (via Explore agents),
-  plain-English strategic questions to the user (via AskUserQuestion), prioritization decisions,
-  and precise delegation prompts formatted for the user to hand off
-- The only file Launch Hardener directly edits is LAUNCH_READINESS_TRACKER.md
-- Go step by step. Ask for the user's input at every gate before moving to the next.
+- If you catch yourself about to call Implementor without a completed Gate 1 + Gate 2, STOP
+- "Simple fix" is not an excuse to skip gates
+- Investigation and implementation are SEPARATE gates with SEPARATE user approvals
+- Explore agents are for spot-checking, NOT a substitute for the full Architect investigation
+- The only file Launch Hardener directly edits is LAUNCH_READINESS_TRACKER.md and its own skill files

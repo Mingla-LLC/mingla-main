@@ -126,7 +126,10 @@ function GrowthSubView({ days, addToast }) {
   // setupNeeded removed — PGRST202 falls back to client-side queries
   const [retryCount, setRetryCount] = useState(0);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,7 +251,10 @@ function EngagementSubView({ days }) {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,7 +424,10 @@ function RetentionSubView() {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -578,7 +587,10 @@ function FunnelSubView() {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -753,7 +765,10 @@ function GeoSubView({ addToast }) {
   const [CircleMarker, setCircleMarker] = useState(null);
   const [LeafletTooltip, setLeafletTooltip] = useState(null);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Dynamically import leaflet
   useEffect(() => {

@@ -34,7 +34,10 @@ export function UserManagementPage() {
   const { session } = useAuth();
 
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // View state
   const [view, setView] = useState("list"); // "list" | "detail" | "impersonate"

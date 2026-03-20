@@ -450,7 +450,10 @@ function GapTab({ city, placeStats, cardStats, allCities, onRefresh }) {
 export function CardPoolManagementPage({ onTabChange }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [activeTab, setActiveTab] = useState("readiness");
   const [cities, setCities] = useState([]);

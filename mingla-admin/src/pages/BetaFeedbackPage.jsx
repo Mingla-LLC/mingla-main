@@ -98,7 +98,10 @@ function AudioPlayer({ audioPath }) {
   const [error, setError] = useState(null);
   const retryCountRef = useRef(0);
 
-  useEffect(() => () => { playerMountedRef.current = false; }, []);
+  useEffect(() => {
+    playerMountedRef.current = true;
+    return () => { playerMountedRef.current = false; };
+  }, []);
 
   const fetchSignedUrl = useCallback(async () => {
     if (!audioPath) {

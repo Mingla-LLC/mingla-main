@@ -219,7 +219,12 @@ function AddCityModal({ open, onClose, onSave }) {
       setForm({ name: "", country: "", countryCode: "", googlePlaceId: "", lat: "", lng: "", radius: "10", tileRadius: "1500" });
       setSelected(false);
     } catch (err) {
-      alert(err.message);
+      const msg = (err.message || "").toLowerCase();
+      if (msg.includes("duplicate") || msg.includes("unique")) {
+        alert("This city already exists in your pool. Select it from the dropdown instead.");
+      } else {
+        alert(err.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -1023,7 +1028,10 @@ function StatsTab({ city, stats }) {
 
 export function PlacePoolManagementPage({ onTabChange }) {
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [activeTab, setActiveTab] = useState("seed");
   const [cities, setCities] = useState([]);

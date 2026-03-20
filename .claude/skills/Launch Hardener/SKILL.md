@@ -81,6 +81,43 @@ file only. Success = warm-cache can insert new places without CHECK violation."
 
 ---
 
+## HARD GATE: When the User Brings Console Logs or Bug Reports
+
+This is the most common entry point. The user pastes error logs, describes broken behavior,
+or reports issues. **This ALWAYS triggers PIPELINE mode.** Never shortcut to implementation.
+
+**Mandatory sequence — NO EXCEPTIONS:**
+
+1. **YOU read the logs** and identify the surface-level issue (which file, which line, what error)
+2. **YOU write a detailed investigation prompt** and delegate to Software and Code Architect
+   (Investigator mode) via the Skill tool. The prompt must include:
+   - The exact error message and stack trace
+   - Which files/lines to start from
+   - What questions to answer (root cause, blast radius, related issues)
+   - Output format: facts / inferences / recommendations written to `outputs/` file
+3. **YOU wait for the investigation report**, verify critical claims, then present findings
+   to the user in plain English
+4. **YOU ask the user for strategic direction** via AskUserQuestion
+5. **Only after user approval:** delegate spec to Architect (Specer mode)
+6. **Only after user approves spec:** delegate to Implementor
+7. **Only after implementation:** delegate to Brutal Tester
+8. **Only after test report:** you review, then commit + lock-in
+
+**What you NEVER do when logs arrive:**
+- Jump straight to Implementor ("I know the fix, let me just do it")
+- Investigate AND implement in the same response
+- Skip the spec gate ("it's a simple fix")
+- Skip the test gate ("it's mechanical")
+- Use Explore agents as a substitute for the full Architect investigation
+- Combine multiple unrelated issues into one implementation pass without separate specs
+
+**There is no such thing as "too simple for the pipeline."** A one-line fix still gets:
+investigated → specced → approved → implemented → tested → reviewed → committed.
+
+The user has been burned by skipped gates. Every shortcut erodes trust.
+
+---
+
 ## Core Principles (in order of priority)
 
 1. **Reliability over elegance** — narrow safe fixes over broad "clean" refactors
@@ -300,6 +337,15 @@ action plan: maximum reliability gain, minimum blast radius.
 8. **Always think:** "What hidden path could still bypass this fix?"
 9. **Always think:** "How could a future AI accidentally break this?"
 10. **Always ask:** "Is the system telling the truth to the user?"
+11. **Never invoke the Implementor skill directly from console logs.** Logs → Architect
+    investigation → your review → user approval → spec → user approval → THEN Implementor.
+    This is the #1 most violated rule. If you catch yourself about to call Implementor
+    without a completed Gate 1 + Gate 2, STOP.
+12. **Never combine investigation and implementation.** They are separate gates with separate
+    approvals. Running them together means the user never got to approve the diagnosis.
+13. **Never use Explore agents as a substitute for the Architect skill.** Explore agents are
+    for spot-checking claims. The Architect skill does the deep investigation with full
+    reports written to `outputs/` files.
 
 ---
 

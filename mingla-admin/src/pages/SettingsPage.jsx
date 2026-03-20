@@ -67,7 +67,10 @@ function AppearanceView() {
 function FeatureFlagsView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [flags, setFlags] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -246,7 +249,10 @@ function FeatureFlagsView() {
 function AppConfigView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -385,7 +391,10 @@ function AppConfigView() {
 function IntegrationsView() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [integrations, setIntegrations] = useState([]);
   const [loading, setLoading] = useState(true);
