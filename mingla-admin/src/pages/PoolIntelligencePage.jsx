@@ -148,10 +148,10 @@ function GeographicInventoryTab({ onSelectCity }) {
       ),
     },
     {
-      key: "status", label: "Status",
+      key: "city_status", label: "Status",
       render: (_, r) => {
         const v = { draft: "default", seeding: "warning", seeded: "info", launched: "success" };
-        return <Badge variant={v[r.status] || "default"}>{r.status}</Badge>;
+        return <Badge variant={v[r.city_status] || "default"}>{r.city_status}</Badge>;
       },
     },
     { key: "active_places", label: "Places", sortable: true },
