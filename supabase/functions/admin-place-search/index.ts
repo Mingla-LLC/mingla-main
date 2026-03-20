@@ -10,6 +10,7 @@ const FIELD_MASK = [
   "places.id",
   "places.displayName",
   "places.formattedAddress",
+  "places.addressComponents",
   "places.location",
   "places.types",
   "places.primaryType",
@@ -82,6 +83,7 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
+    seeding_category: null as string | null,
   };
 }
 
@@ -135,28 +137,37 @@ async function handleSearch(body: any) {
 
   const data = await response.json();
   // deno-lint-ignore no-explicit-any
-  const places = (data.places || []).map((p: any) => ({
-    googlePlaceId: p.id,
-    name: p.displayName?.text || "Unknown",
-    address: p.formattedAddress || "",
-    lat: p.location?.latitude,
-    lng: p.location?.longitude,
-    types: p.types || [],
-    primaryType: p.primaryType || null,
-    rating: p.rating || null,
-    reviewCount: p.userRatingCount || 0,
-    priceLevel: p.priceLevel || null,
-    openingHours: p.regularOpeningHours || null,
-    photos: (p.photos || []).map(
-      (ph: { name?: string; widthPx?: number; heightPx?: number }) => ({
-        name: ph.name,
-        widthPx: ph.widthPx,
-        heightPx: ph.heightPx,
-      })
-    ),
-    website: p.websiteUri || null,
-    rawGoogleData: p,
-  }));
+  const places = (data.places || []).map((p: any) => {
+    // Extract country and country code from addressComponents
+    // deno-lint-ignore no-explicit-any
+    const countryComponent = (p.addressComponents || []).find((c: any) =>
+      (c.types || []).includes("country")
+    );
+    return {
+      googlePlaceId: p.id,
+      name: p.displayName?.text || "Unknown",
+      address: p.formattedAddress || "",
+      lat: p.location?.latitude,
+      lng: p.location?.longitude,
+      country: countryComponent?.longText || null,
+      countryCode: countryComponent?.shortText || null,
+      types: p.types || [],
+      primaryType: p.primaryType || null,
+      rating: p.rating || null,
+      reviewCount: p.userRatingCount || 0,
+      priceLevel: p.priceLevel || null,
+      openingHours: p.regularOpeningHours || null,
+      photos: (p.photos || []).map(
+        (ph: { name?: string; widthPx?: number; heightPx?: number }) => ({
+          name: ph.name,
+          widthPx: ph.widthPx,
+          heightPx: ph.heightPx,
+        })
+      ),
+      website: p.websiteUri || null,
+      rawGoogleData: p,
+    };
+  });
 
   return { places, totalFound: places.length };
 }
@@ -164,7 +175,7 @@ async function handleSearch(body: any) {
 // deno-lint-ignore no-explicit-any
 async function handlePush(body: any) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { places } = body;
+  const { places, seedingCategory } = body;
 
   if (!Array.isArray(places) || places.length === 0) {
     throw new Error("No places provided to push.");
@@ -175,7 +186,12 @@ async function handlePush(body: any) {
     if (!p.rawGoogleData) {
       throw new Error(`Missing rawGoogleData for place: ${p.name || "unknown"}`);
     }
-    return transformGooglePlace(p.rawGoogleData);
+    const row = transformGooglePlace(p.rawGoogleData);
+    // Apply seeding category from admin selection (or per-place override)
+    if (p.seedingCategory || seedingCategory) {
+      row.seeding_category = p.seedingCategory || seedingCategory;
+    }
+    return row;
   });
 
   const { data, error } = await supabase

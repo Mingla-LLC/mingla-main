@@ -43,6 +43,33 @@ const CATEGORY_LABELS = {
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
 
+// Client-side mapping from Google types → Mingla seeding category (mirrors seedingCategories.ts)
+const TYPE_TO_CATEGORY = {
+  spa: "wellness", massage_spa: "wellness", sauna: "wellness", wellness_center: "wellness", yoga_studio: "wellness",
+  fine_dining_restaurant: "fine_dining", french_restaurant: "fine_dining", italian_restaurant: "fine_dining", steak_house: "fine_dining", seafood_restaurant: "fine_dining",
+  movie_theater: "watch",
+  performing_arts_theater: "live_performance", concert_hall: "live_performance", opera_house: "live_performance", philharmonic_hall: "live_performance", amphitheatre: "live_performance", comedy_club: "live_performance", event_venue: "live_performance", arena: "live_performance", live_music_venue: "live_performance",
+  art_gallery: "creative_arts", art_museum: "creative_arts", art_studio: "creative_arts", museum: "creative_arts", history_museum: "creative_arts", cultural_center: "creative_arts", cultural_landmark: "creative_arts", sculpture: "creative_arts", library: "creative_arts",
+  amusement_center: "play", bowling_alley: "play", miniature_golf_course: "play", go_karting_venue: "play", paintball_center: "play", video_arcade: "play", karaoke: "play", amusement_park: "play", ice_skating_rink: "play", indoor_playground: "play",
+  florist: "flowers",
+  grocery_store: "groceries", supermarket: "groceries",
+  bar: "drink", cocktail_bar: "drink", lounge_bar: "drink", wine_bar: "drink", pub: "drink", brewery: "drink", beer_garden: "drink", brewpub: "drink", night_club: "drink",
+  book_store: "first_meet", cafe: "first_meet", coffee_shop: "first_meet", tea_house: "first_meet", bakery: "first_meet", dessert_shop: "first_meet", juice_shop: "first_meet", bistro: "first_meet", ice_cream_shop: "first_meet",
+  picnic_ground: "picnic_park",
+  beach: "nature_views", botanical_garden: "nature_views", garden: "nature_views", hiking_area: "nature_views", national_park: "nature_views", nature_preserve: "nature_views", park: "nature_views", scenic_spot: "nature_views", state_park: "nature_views", observation_deck: "nature_views", tourist_attraction: "nature_views", garden_center: "nature_views", farm: "nature_views",
+  restaurant: "casual_eats", brunch_restaurant: "casual_eats", breakfast_restaurant: "casual_eats", diner: "casual_eats", sandwich_shop: "casual_eats", pizza_restaurant: "casual_eats", hamburger_restaurant: "casual_eats", mexican_restaurant: "casual_eats", mediterranean_restaurant: "casual_eats", thai_restaurant: "casual_eats", vegetarian_restaurant: "casual_eats",
+};
+
+function guessCategory(place) {
+  // Try primaryType first (most specific)
+  if (place.primaryType && TYPE_TO_CATEGORY[place.primaryType]) return TYPE_TO_CATEGORY[place.primaryType];
+  // Then try types array
+  for (const t of (place.types || [])) {
+    if (TYPE_TO_CATEGORY[t]) return TYPE_TO_CATEGORY[t];
+  }
+  return "";
+}
+
 const PRICE_TIERS = ["chill", "comfy", "bougie", "lavish"];
 
 const HARD_CAP_USD = 70;
@@ -120,6 +147,7 @@ function AddCityModal({ open, onClose, onSave }) {
   const [form, setForm] = useState({ name: "", country: "", countryCode: "", googlePlaceId: "", lat: "", lng: "", radius: "10", tileRadius: "1500" });
   const [saving, setSaving] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [selected, setSelected] = useState(false);
   const debounceRef = useRef(null);
 
   // Google Places Autocomplete via edge function
@@ -135,23 +163,36 @@ function AddCityModal({ open, onClose, onSave }) {
 
   const handleNameChange = (val) => {
     setForm((f) => ({ ...f, name: val }));
+    if (selected) setSelected(false);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchCity(val), 400);
   };
 
   const selectSuggestion = (place) => {
-    const parts = (place.address || "").split(",");
-    const country = parts[parts.length - 1]?.trim() || "";
     setForm((f) => ({
       ...f,
       name: place.name,
-      country,
+      country: place.country || (place.address || "").split(",").pop()?.trim() || "",
+      countryCode: place.countryCode || "",
       googlePlaceId: place.googlePlaceId,
       lat: String(place.lat),
       lng: String(place.lng),
     }));
     setSuggestions([]);
+    setSelected(true);
   };
+
+  const latNum = parseFloat(form.lat);
+  const lngNum = parseFloat(form.lng);
+  const radiusNum = parseFloat(form.radius);
+  const tileRadiusNum = parseInt(form.tileRadius);
+  const isValid =
+    form.name.trim() &&
+    form.country.trim() &&
+    !isNaN(latNum) && latNum >= -90 && latNum <= 90 &&
+    !isNaN(lngNum) && lngNum >= -180 && lngNum <= 180 &&
+    !isNaN(radiusNum) && radiusNum > 0 &&
+    !isNaN(tileRadiusNum) && tileRadiusNum > 0;
 
   const handleSave = async () => {
     setSaving(true);
@@ -161,10 +202,10 @@ function AddCityModal({ open, onClose, onSave }) {
         name: form.name,
         country: form.country,
         country_code: form.countryCode || null,
-        center_lat: parseFloat(form.lat),
-        center_lng: parseFloat(form.lng),
-        coverage_radius_km: parseFloat(form.radius),
-        tile_radius_m: parseInt(form.tileRadius),
+        center_lat: latNum,
+        center_lng: lngNum,
+        coverage_radius_km: radiusNum,
+        tile_radius_m: tileRadiusNum,
       }).select().single();
       if (error) throw error;
 
@@ -176,6 +217,7 @@ function AddCityModal({ open, onClose, onSave }) {
       onSave(city);
       onClose();
       setForm({ name: "", country: "", countryCode: "", googlePlaceId: "", lat: "", lng: "", radius: "10", tileRadius: "1500" });
+      setSelected(false);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -199,12 +241,12 @@ function AddCityModal({ open, onClose, onSave }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} />
-            <Input label="Country Code" value={form.countryCode} onChange={(e) => setForm((f) => ({ ...f, countryCode: e.target.value }))} />
+            <Input label="Country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} disabled={selected} />
+            <Input label="Country Code" value={form.countryCode} onChange={(e) => setForm((f) => ({ ...f, countryCode: e.target.value }))} disabled={selected && !!form.countryCode} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Center Lat" type="number" value={form.lat} onChange={(e) => setForm((f) => ({ ...f, lat: e.target.value }))} />
-            <Input label="Center Lng" type="number" value={form.lng} onChange={(e) => setForm((f) => ({ ...f, lng: e.target.value }))} />
+            <Input label="Center Lat" type="number" value={form.lat} onChange={(e) => setForm((f) => ({ ...f, lat: e.target.value }))} disabled={selected} />
+            <Input label="Center Lng" type="number" value={form.lng} onChange={(e) => setForm((f) => ({ ...f, lng: e.target.value }))} disabled={selected} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Coverage Radius (km)" type="number" value={form.radius} onChange={(e) => setForm((f) => ({ ...f, radius: e.target.value }))} />
@@ -214,7 +256,7 @@ function AddCityModal({ open, onClose, onSave }) {
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!form.name || !form.lat || !form.lng}>Save & Generate Tiles</Button>
+        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!isValid}>Save & Generate Tiles</Button>
       </ModalFooter>
     </Modal>
   );
@@ -280,6 +322,8 @@ function SeedTab({ city, tiles, onRefresh }) {
     }
   };
 
+  const [adHocCategories, setAdHocCategories] = useState({});
+
   const handleAdHocSearch = async () => {
     if (!adHocQuery.trim()) return;
     setSearching(true);
@@ -291,14 +335,19 @@ function SeedTab({ city, tiles, onRefresh }) {
           ...(city && { lat: city.center_lat, lng: city.center_lng, radius: city.coverage_radius_km * 1000 }),
         },
       });
-      setAdHocResults(data?.places || []);
-    } catch { setAdHocResults([]); }
+      const places = data?.places || [];
+      setAdHocResults(places);
+      // Auto-map categories for each result
+      const cats = {};
+      places.forEach((p, i) => { cats[i] = guessCategory(p); });
+      setAdHocCategories(cats);
+    } catch { setAdHocResults([]); setAdHocCategories({}); }
     finally { setSearching(false); }
   };
 
-  const pushToPool = async (places) => {
+  const pushToPool = async (places, category) => {
     const { error } = await supabase.functions.invoke("admin-place-search", {
-      body: { action: "push", places },
+      body: { action: "push", places, seedingCategory: category || null },
     });
     if (error) addToast({ variant: "error", title: "Push failed" });
     else { addToast({ variant: "success", title: `Pushed ${places.length} place(s)` }); onRefresh(); }
@@ -410,12 +459,20 @@ function SeedTab({ city, tiles, onRefresh }) {
             {adHocResults.length > 0 && (
               <div className="space-y-2">
                 {adHocResults.map((p, i) => (
-                  <div key={i} className="flex justify-between items-center p-2 border rounded-lg text-sm">
-                    <div>
+                  <div key={i} className="flex items-center gap-2 p-2 border rounded-lg text-sm">
+                    <div className="flex-1 min-w-0">
                       <strong>{p.name}</strong>
                       <span className="ml-2 text-[var(--color-text-secondary)]">{p.address?.substring(0, 60)}</span>
                     </div>
-                    <Button size="sm" onClick={() => pushToPool([p])}>Push to Pool</Button>
+                    <select
+                      className="rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1 text-xs min-w-[130px]"
+                      value={adHocCategories[i] || ""}
+                      onChange={(e) => setAdHocCategories((prev) => ({ ...prev, [i]: e.target.value }))}
+                    >
+                      <option value="">No Category</option>
+                      {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                    </select>
+                    <Button size="sm" onClick={() => pushToPool([{ ...p, seedingCategory: adHocCategories[i] || null }], adHocCategories[i])}>Push</Button>
                   </div>
                 ))}
               </div>
@@ -601,16 +658,16 @@ function BrowseTab({ city, onRefresh }) {
   };
 
   const columns = [
-    { key: "name", label: "Name", sortable: true, render: (r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => openEdit(r)}>{r.name}</button> },
-    { key: "seeding_category", label: "Category", render: (r) => r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]}</span> : "—" },
-    { key: "rating", label: "Rating", sortable: true, render: (r) => r.rating ? `★ ${r.rating}` : "—" },
-    { key: "price_tier", label: "Price", render: (r) => r.price_tier ? <Badge variant="outline">{r.price_tier}</Badge> : "—" },
-    { key: "photos", label: "Photos", render: (r) => {
+    { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => openEdit(r)}>{r.name}</button> },
+    { key: "seeding_category", label: "Category", render: (_, r) => r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]}</span> : "—" },
+    { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
+    { key: "price_tier", label: "Price", render: (_, r) => r.price_tier ? <Badge variant="outline">{r.price_tier}</Badge> : "—" },
+    { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;
       return <Badge variant={n > 0 ? "success" : "error"}>{n}</Badge>;
     }},
-    { key: "is_active", label: "Status", render: (r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
-    { key: "actions", label: "", render: (r) => <Button size="sm" variant="ghost" icon={Edit3} onClick={() => openEdit(r)} /> },
+    { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
+    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} onClick={() => openEdit(r)} /> },
   ];
 
   return (
@@ -875,11 +932,11 @@ function StaleTab({ city }) {
 
   const columns = [
     { key: "name", label: "Name", sortable: true },
-    { key: "seeding_category", label: "Category", render: (r) => CATEGORY_LABELS[r.seeding_category] || "—" },
-    { key: "rating", label: "Rating", render: (r) => r.rating ? `★ ${r.rating}` : "—" },
-    { key: "last_detail_refresh", label: "Last Refresh", sortable: true, render: (r) => new Date(r.last_detail_refresh).toLocaleDateString() },
-    { key: "refresh_failures", label: "Failures", render: (r) => r.refresh_failures || 0 },
-    { key: "actions", label: "", render: (r) => <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => refreshPlace(r.id)}>Refresh</Button> },
+    { key: "seeding_category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.seeding_category] || "—" },
+    { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
+    { key: "last_detail_refresh", label: "Last Refresh", sortable: true, render: (_, r) => new Date(r.last_detail_refresh).toLocaleDateString() },
+    { key: "refresh_failures", label: "Failures", render: (_, r) => r.refresh_failures || 0 },
+    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => refreshPlace(r.id)}>Refresh</Button> },
   ];
 
   return (
@@ -913,15 +970,15 @@ function StatsTab({ city, stats }) {
   const byCat = stats?.by_seeding_category || {};
 
   const opColumns = [
-    { key: "created_at", label: "Date", sortable: true, render: (r) => new Date(r.created_at).toLocaleDateString() },
-    { key: "seeding_category", label: "Category", render: (r) => CATEGORY_LABELS[r.seeding_category] || r.seeding_category },
+    { key: "created_at", label: "Date", sortable: true, render: (_, r) => new Date(r.created_at).toLocaleDateString() },
+    { key: "seeding_category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.seeding_category] || r.seeding_category },
     { key: "google_api_calls", label: "API Calls" },
     { key: "places_returned", label: "Found" },
     { key: "places_new_inserted", label: "New" },
     { key: "places_duplicate_skipped", label: "Dupes" },
-    { key: "estimated_cost_usd", label: "Cost", render: (r) => formatCost(r.estimated_cost_usd) },
-    { key: "status", label: "Status", render: (r) => <Badge variant={r.status === "completed" ? "success" : r.status === "failed" ? "error" : "warning"}>{r.status}</Badge> },
-    { key: "errors", label: "Errors", render: (r) => {
+    { key: "estimated_cost_usd", label: "Cost", render: (_, r) => formatCost(r.estimated_cost_usd) },
+    { key: "status", label: "Status", render: (_, r) => <Badge variant={r.status === "completed" ? "success" : r.status === "failed" ? "error" : "warning"}>{r.status}</Badge> },
+    { key: "errors", label: "Errors", render: (_, r) => {
       const count = r.error_details?.summary?.failed_calls || 0;
       return count > 0 ? (
         <details className="text-xs">

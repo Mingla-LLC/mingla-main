@@ -258,11 +258,11 @@ function BrowseCardsTab({ city }) {
 
   const columns = [
     { key: "title", label: "Title", sortable: true },
-    { key: "card_type", label: "Type", render: (r) => <Badge variant={r.card_type === "curated" ? "brand" : "default"}>{r.card_type}</Badge> },
-    { key: "category", label: "Category", render: (r) => r.category || (r.categories?.[0]) || "—" },
-    { key: "image_url", label: "Photo", render: (r) => r.image_url ? <img src={r.image_url} className="w-10 h-10 rounded object-cover" alt="" /> : <Badge variant="error">None</Badge> },
-    { key: "is_active", label: "Status", render: (r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
-    { key: "actions", label: "", render: (r) => (
+    { key: "card_type", label: "Type", render: (_, r) => <Badge variant={r.card_type === "curated" ? "brand" : "default"}>{r.card_type}</Badge> },
+    { key: "category", label: "Category", render: (_, r) => r.category || (r.categories?.[0]) || "—" },
+    { key: "image_url", label: "Photo", render: (_, r) => r.image_url ? <img src={r.image_url} className="w-10 h-10 rounded object-cover" alt="" /> : <Badge variant="error">None</Badge> },
+    { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
+    { key: "actions", label: "", render: (_, r) => (
       <Button size="sm" variant={r.is_active ? "danger" : "primary"} onClick={() => toggleActive(r)}>
         {r.is_active ? "Deactivate" : "Reactivate"}
       </Button>
@@ -337,15 +337,15 @@ function CrossCityComparison({ cities }) {
   }, [cities]);
 
   const columns = [
-    { key: "name", label: "City", render: (r) => `${r.name}, ${r.country}` },
-    { key: "status", label: "Status", render: (r) => <Badge variant={r.status === "launched" ? "success" : r.status === "seeded" ? "info" : "default"}>{r.status}</Badge> },
-    { key: "places", label: "Places", render: (r) => cityStats[r.id]?.places ?? "—" },
-    { key: "cards", label: "Cards", render: (r) => cityStats[r.id]?.cards ?? "—" },
-    { key: "photos", label: "Photo %", render: (r) => {
+    { key: "name", label: "City", render: (_, r) => `${r.name}, ${r.country}` },
+    { key: "status", label: "Status", render: (_, r) => <Badge variant={r.status === "launched" ? "success" : r.status === "seeded" ? "info" : "default"}>{r.status}</Badge> },
+    { key: "places", label: "Places", render: (_, r) => cityStats[r.id]?.places ?? "—" },
+    { key: "cards", label: "Cards", render: (_, r) => cityStats[r.id]?.cards ?? "—" },
+    { key: "photos", label: "Photo %", render: (_, r) => {
       const pct = cityStats[r.id]?.photoPct;
       return pct != null ? <Badge variant={pct >= 80 ? "success" : pct >= 50 ? "warning" : "error"}>{pct}%</Badge> : "—";
     }},
-    { key: "spend", label: "Spend / $70", render: (r) => {
+    { key: "spend", label: "Spend / $70", render: (_, r) => {
       const spend = cityStats[r.id]?.spend;
       return spend != null ? <span className={spend > 70 ? "text-[var(--color-error-700)] font-medium" : ""}>${spend.toFixed(2)}</span> : "—";
     }},
