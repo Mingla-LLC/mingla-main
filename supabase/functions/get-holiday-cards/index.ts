@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getPlaceTypesForCategory, resolveCategory, ALL_CATEGORY_NAMES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
+import { resolveCategory, ALL_CATEGORY_NAMES } from "../_shared/categoryPlaceTypes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,150 +93,6 @@ function validateCategory(input: string): string {
   const resolved = resolveCategory(input);
   if (resolved && ALL_CATEGORY_NAMES.includes(resolved)) return resolved;
   return "Casual Eats";
-}
-
-// ── GPT helper ───────────────────────────────────────────────────────────────
-
-async function callGpt(
-  systemPrompt: string,
-  userPrompt: string,
-  maxTokens: number,
-): Promise<string | null> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) return null;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.3,
-        max_tokens: maxTokens,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-// ── Google Places fallback (shared) ──────────────────────────────────────────
-
-async function googlePlacesFallback(
-  categoryDisplayName: string,
-  location: { latitude: number; longitude: number },
-  limit: number,
-): Promise<GooglePlace[]> {
-  const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
-  if (!googleApiKey) return [];
-
-  const includedTypes = getPlaceTypesForCategory(categoryDisplayName);
-  if (includedTypes.length === 0) return [];
-
-  const typesToSend = includedTypes.slice(0, 5);
-
-  try {
-    const placesRes = await fetch(
-      "https://places.googleapis.com/v1/places:searchNearby",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": googleApiKey,
-          "X-Goog-FieldMask":
-            "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location,places.websiteUri",
-        },
-        body: JSON.stringify({
-          includedTypes: typesToSend,
-          excludedTypes: getExcludedTypesForCategory(categoryDisplayName),
-          maxResultCount: limit,
-          locationRestriction: {
-            circle: {
-              center: {
-                latitude: location.latitude,
-                longitude: location.longitude,
-              },
-              radius: 10000,
-            },
-          },
-          rankPreference: "POPULARITY",
-        }),
-      }
-    );
-
-    if (placesRes.ok) {
-      const placesData: { places?: GooglePlace[] } = await placesRes.json();
-      return placesData.places ?? [];
-    }
-  } catch {
-    // Silently skip on Google Places failure
-  }
-  return [];
-}
-
-interface GooglePlace {
-  id?: string;
-  displayName?: { text?: string };
-  rating?: number;
-  priceLevel?: string;
-  formattedAddress?: string;
-  photos?: Array<{ name?: string }>;
-  location?: { latitude?: number; longitude?: number };
-  websiteUri?: string;
-}
-
-function mapGooglePlaceToCard(
-  p: GooglePlace,
-  categoryDisplayName: string,
-  categorySlug: string,
-  cardType: "single" | "curated" = "single",
-): Card {
-  const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY") ?? "";
-  const photoRef = p.photos?.[0]?.name;
-  const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
-
-  return {
-    id: p.id ?? "",
-    title: p.displayName?.text ?? "Unknown",
-    category: categoryDisplayName,
-    categorySlug,
-    imageUrl,
-    rating: p.rating ?? null,
-    priceLevel: p.priceLevel ?? null,
-    address: p.formattedAddress ?? null,
-    googlePlaceId: p.id ?? null,
-    lat: p.location?.latitude ?? null,
-    lng: p.location?.longitude ?? null,
-    priceTier: derivePriceTier(null, p.priceLevel ?? null),
-    description: `A great ${categoryDisplayName} spot to explore.`,
-    cardType,
-    tagline: null,
-    stops: 0,
-    stopsData: null,
-    totalPriceMin: null,
-    totalPriceMax: null,
-    website: p.websiteUri ?? null,
-    estimatedDurationMinutes: null,
-    experienceType: null,
-    categories: null,
-    shoppingList: null,
-  };
 }
 
 function mapPoolCardToResponseCard(
@@ -442,34 +298,9 @@ serve(async (req: Request) => {
 
       const descMatchIdx = resolvedSlugs.indexOf("description_match");
       if (descMatchIdx !== -1) {
-        let matchedCategory: string | null = null;
-
-        if (description.length >= 10) {
-          const gptResult = await callGpt(
-            'Given a person description, pick the single best experience category from this list: Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business. Return JSON: { "category": "string" }',
-            `Description: ${description}`,
-            50,
-          );
-
-          if (gptResult) {
-            try {
-              const parsed = JSON.parse(gptResult);
-              if (parsed.category) {
-                matchedCategory = validateCategory(parsed.category);
-              }
-            } catch {
-              // GPT returned non-JSON; ignore
-            }
-          }
-        }
-
-        if (!matchedCategory) {
-          // No description or GPT failed — pick random fallback
-          const fallbacks = ["Casual Eats", "Drink", "Nature"];
-          matchedCategory = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-        }
-
-        // Convert display name to slug format for consistent slug storage
+        // Deterministic fallback — no GPT needed
+        const fallbacks = ["Casual Eats", "Drink", "Nature"];
+        const matchedCategory = fallbacks[Math.floor(Math.random() * fallbacks.length)];
         resolvedSlugs[descMatchIdx] = matchedCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "");
       }
 
@@ -517,18 +348,6 @@ serve(async (req: Request) => {
           }
         }
 
-        // Google Places fallback if no card found for this category
-        if (!heroCards.some((c) => c.categorySlug === cat.slug)) {
-          const places = await googlePlacesFallback(cat.displayName, location, 5);
-          for (const p of places) {
-            const card = mapGooglePlaceToCard(p, cat.displayName, cat.slug, "single");
-            if (!excludeSet.has(card.id)) {
-              excludeSet.add(card.id);
-              heroCards.push(card);
-              break; // Only need 1 per category
-            }
-          }
-        }
       }
 
       // Step 3: Query curated card
@@ -597,31 +416,10 @@ serve(async (req: Request) => {
     // MODE: generate_more
     // =====================================================================
     if (effectiveMode === "generate_more") {
-      // Step 1: Use GPT to extract up to 3 categories from description
+      // Resolve categories from request slugs (no GPT)
       let resolvedCategories: string[] = [];
 
-      if (description.length >= 10) {
-        const gptResult = await callGpt(
-          'Given a person description, pick up to 3 experience categories from this list that best match their interests: Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business. Return JSON: { "categories": ["string"] }',
-          `Description: ${description}`,
-          100,
-        );
-
-        if (gptResult) {
-          try {
-            const parsed = JSON.parse(gptResult);
-            if (Array.isArray(parsed.categories)) {
-              resolvedCategories = parsed.categories
-                .map((c: string) => validateCategory(c))
-                .filter((c: string, i: number, arr: string[]) => arr.indexOf(c) === i); // dedupe
-            }
-          } catch {
-            // GPT returned non-JSON; ignore
-          }
-        }
-      }
-
-      // If 0 resolved, fall back to categorySlugs from request
+      // Fall back to categorySlugs from request
       if (resolvedCategories.length === 0) {
         resolvedCategories = categorySlugs
           .map((slug) => resolveCategory(slug) ?? validateCategory(slug))
@@ -697,24 +495,6 @@ serve(async (req: Request) => {
         if (generateMoreCards.length >= maxTotal) break;
       }
 
-      // Google Places fallback if total < 5
-      if (generateMoreCards.length < maxTotal) {
-        for (const catName of resolvedCategories) {
-          if (generateMoreCards.length >= maxTotal) break;
-
-          const places = await googlePlacesFallback(catName, location, 5);
-          for (const p of places) {
-            if (generateMoreCards.length >= maxTotal) break;
-            const placeId = p.id ?? "";
-            if (excludeSet.has(placeId)) continue;
-            excludeSet.add(placeId);
-
-            const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-            generateMoreCards.push(mapGooglePlaceToCard(p, catName, slug, "single"));
-          }
-        }
-      }
-
       // hasMore = pool had more cards than we actually used from it
       const hasMore = totalAvailable > poolCardsUsed;
 
@@ -771,92 +551,8 @@ serve(async (req: Request) => {
         for (const chosen of sorted.slice(0, 3)) {
           cards.push(mapPoolCardToResponseCard(chosen, resolved.slug));
         }
-      } else {
-        // --- Fallback: Google Places Nearby Search ---
-        const googleApiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
-        if (!googleApiKey) {
-          // Skip this category if no API key
-          continue;
-        }
-
-        const includedTypes = getPlaceTypesForCategory(resolved.displayName);
-        if (includedTypes.length === 0) continue;
-
-        // Google Places API limits includedTypes — use first 5 types
-        const typesToSend = includedTypes.slice(0, 5);
-
-        try {
-          const placesRes = await fetch(
-            "https://places.googleapis.com/v1/places:searchNearby",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": googleApiKey,
-                "X-Goog-FieldMask":
-                  "places.id,places.displayName,places.rating,places.priceLevel,places.formattedAddress,places.photos,places.location,places.websiteUri",
-              },
-              body: JSON.stringify({
-                includedTypes: typesToSend,
-                excludedTypes: getExcludedTypesForCategory(resolved.displayName),
-                maxResultCount: 5,
-                locationRestriction: {
-                  circle: {
-                    center: {
-                      latitude: location.latitude,
-                      longitude: location.longitude,
-                    },
-                    radius: 10000,
-                  },
-                },
-                rankPreference: "POPULARITY",
-              }),
-            }
-          );
-
-          if (placesRes.ok) {
-            const placesData: { places?: GooglePlace[] } = await placesRes.json();
-            const places: GooglePlace[] = placesData.places ?? [];
-
-            if (places.length > 0) {
-              const topPlaces = places.slice(0, 3);
-              for (const p of topPlaces) {
-                const photoRef = p.photos?.[0]?.name;
-                const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
-
-                cards.push({
-                  id: p.id ?? "",
-                  title: p.displayName?.text ?? "Unknown",
-                  category: resolved.displayName,
-                  categorySlug: resolved.slug,
-                  imageUrl,
-                  rating: p.rating ?? null,
-                  priceLevel: p.priceLevel ?? null,
-                  address: p.formattedAddress ?? null,
-                  googlePlaceId: p.id ?? null,
-                  lat: p.location?.latitude ?? null,
-                  lng: p.location?.longitude ?? null,
-                  priceTier: derivePriceTier(null, p.priceLevel ?? null),
-                  description: `A great ${resolved.displayName} spot to explore.`,
-                  cardType: "single",
-                  tagline: null,
-                  stops: 0,
-                  stopsData: null,
-                  totalPriceMin: null,
-                  totalPriceMax: null,
-                  website: p.websiteUri ?? null,
-                  estimatedDurationMinutes: null,
-                  experienceType: null,
-                  categories: null,
-                  shoppingList: null,
-                });
-              }
-            }
-          }
-        } catch (_placesErr) {
-          // Silently skip this category on Google Places failure
-        }
       }
+      // No else — if pool is empty for this category, skip it
     }
 
     return new Response(JSON.stringify({ cards, hasMore: false }), {

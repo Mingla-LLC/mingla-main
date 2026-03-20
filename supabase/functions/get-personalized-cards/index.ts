@@ -1,14 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  getPlaceTypesForCategory,
   resolveCategory,
 } from "../_shared/categoryPlaceTypes.ts";
-import {
-  upsertPlaceToPool,
-  insertCardToPool,
-} from "../_shared/cardPoolService.ts";
-import { googleLevelToTierSlug } from "../_shared/priceTiers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,18 +10,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY");
-
 // ── UUID validation ──────────────────────────────────────────────────────────
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Default fallback category ────────────────────────────────────────────────
 const DEFAULT_PAD_CATEGORY = "Fine Dining";
-
-// ── Google Places field mask ─────────────────────────────────────────────────
-const FIELD_MASK =
-  "places.id,places.displayName,places.location,places.rating,places.priceLevel,places.photos,places.formattedAddress";
 
 // ── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -61,11 +49,6 @@ interface CardResponse {
     address: string;
     imageUrl: string | null;
   }>;
-}
-
-// ── Photo URL builder ────────────────────────────────────────────────────────
-function buildPhotoUrl(photoName: string): string {
-  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 }
 
 serve(async (req: Request) => {
@@ -449,7 +432,7 @@ serve(async (req: Request) => {
   }
 });
 
-// ── Helper: Fetch best card from card_pool or Google Places fallback ─────────
+// ── Helper: Fetch best card from card_pool ───────────────────────────────────
 
 async function fetchBestCard(
   supabaseAdmin: any,
@@ -509,113 +492,6 @@ async function fetchBestCard(
     };
   }
 
-  // ── Google Places fallback ───────────────────────────────────────────────
-  if (!GOOGLE_PLACES_API_KEY) {
-    console.warn("No GOOGLE_PLACES_API_KEY, skipping fallback for:", resolvedCategory);
-    return null;
-  }
-
-  const placeTypes = getPlaceTypesForCategory(resolvedCategory);
-  if (placeTypes.length === 0) {
-    console.warn("No place types for category:", resolvedCategory);
-    return null;
-  }
-
-  // Use first 3 types for the search
-  const includedTypes = placeTypes.slice(0, 3);
-
-  try {
-    const searchBody = {
-      includedTypes,
-      locationRestriction: {
-        circle: {
-          center: { latitude: lat, longitude: lng },
-          radius: radiusMeters,
-        },
-      },
-      maxResultCount: 5,
-      rankPreference: "POPULARITY",
-    };
-
-    const searchResponse = await fetch(
-      "https://places.googleapis.com/v1/places:searchNearby",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-          "X-Goog-FieldMask": FIELD_MASK,
-        },
-        body: JSON.stringify(searchBody),
-      }
-    );
-
-    if (!searchResponse.ok) {
-      console.error("Google Places error:", searchResponse.status, await searchResponse.text());
-      return null;
-    }
-
-    const searchData = await searchResponse.json();
-    const places = searchData.places || [];
-
-    if (places.length === 0) {
-      return null;
-    }
-
-    // Pick highest-rated result
-    const bestPlace = places.sort(
-      (a: any, b: any) => (b.rating || 0) - (a.rating || 0)
-    )[0];
-
-    // Upsert into place_pool and card_pool (fire-and-forget for pool storage)
-    const placePoolId = await upsertPlaceToPool(
-      supabaseAdmin,
-      bestPlace,
-      GOOGLE_PLACES_API_KEY,
-      "personalized_search"
-    );
-
-    if (placePoolId) {
-      insertCardToPool(supabaseAdmin, {
-        placePoolId,
-        googlePlaceId: bestPlace.id,
-        cardType: "single",
-        title: bestPlace.displayName?.text || "Unknown Place",
-        category: resolvedCategory,
-        categories: [resolvedCategory],
-        description: `A great ${resolvedCategory} spot.`,
-        highlights: ["Personalized Pick", "Top Rated"],
-        imageUrl: bestPlace.photos?.[0]?.name
-          ? buildPhotoUrl(bestPlace.photos[0].name)
-          : undefined,
-        address: bestPlace.formattedAddress || "",
-        lat: bestPlace.location?.latitude || 0,
-        lng: bestPlace.location?.longitude || 0,
-        rating: bestPlace.rating || 0,
-        reviewCount: bestPlace.userRatingCount || 0,
-        priceTier: googleLevelToTierSlug(bestPlace.priceLevel),
-      }).catch((e: any) => console.warn("Pool insert error:", e));
-    }
-
-    const photoName = bestPlace.photos?.[0]?.name;
-    const imageUrl = photoName ? buildPhotoUrl(photoName) : null;
-
-    return {
-      id: bestPlace.id,
-      title: bestPlace.displayName?.text || "Unknown Place",
-      category: resolvedCategory,
-      imageUrl,
-      rating: bestPlace.rating || null,
-      priceLevel: typeof bestPlace.priceLevel === "string" ? bestPlace.priceLevel : null,
-      location: {
-        latitude: bestPlace.location?.latitude || 0,
-        longitude: bestPlace.location?.longitude || 0,
-      },
-      address: bestPlace.formattedAddress || null,
-      googlePlaceId: bestPlace.id,
-    };
-  } catch (fetchErr: any) {
-    console.error("Google Places fetch error:", fetchErr);
-    return null;
-  }
+  // Pool empty for this category — return null (no Google fallback)
+  return null;
 }
