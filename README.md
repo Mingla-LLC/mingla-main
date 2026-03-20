@@ -160,7 +160,7 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 
 - **discover-cards** — Pool-only card serving. Zero external API calls. Reads `card_pool`, applies 5-factor scoring personalized per user, filters by datetime/budget/price tier, returns cards. If pool is empty, returns `{ cards: [], hasMore: false }` HTTP 200 — not an error.
 - **generate-single-cards** — Admin-triggered batch generator. Reads `place_pool`, writes single cards to `card_pool` with photos from `stored_photo_urls`. Skips places without downloaded photos. Dedup by `google_place_id`. Supports `dryRun` for safe testing.
-- **generate-curated-experiences** — Admin-triggered. Combines multiple places into multi-stop itinerary cards with OpenAI enrichment.
+- **generate-curated-experiences** — Admin-triggered. One generic `generateCardsForType()` reads `place_pool` exclusively (zero Google calls) and builds multi-stop itinerary cards with OpenAI enrichment. All stop categories come from `_shared/seedingCategories.ts`.
 - **Scoring stays at serve time.** Generators write raw card data (no `matchScore`, no `scoringFactors`). `discover-cards` applies scoring per request based on user preferences.
 - **All card-serving functions are card_pool-only.** This includes `discover-cards`, `discover-experiences`, `get-personalized-cards`, `get-holiday-cards`, and `get-person-hero-cards`. None make Google API, OpenAI, or `place_pool` calls at serve time. If `card_pool` is empty for a query, the function returns an empty array (HTTP 200), not an error.
 - **No Google API calls at serve time.** All Google interaction (place seeding, photo downloads) happens in the admin pipeline. The serving layer never touches Google.
@@ -181,7 +181,19 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **Serve-time resolution:** `query_pool_cards` JOINs `place_pool` to get stored photos. `poolCardToApiCard` uses `resolvePhotoUrl()` to prefer stored URLs.
 - **No Unsplash anywhere:** When no stored photo exists, cards receive `image: null`. Mobile handles its own placeholder. No silent Unsplash substitution in the pipeline.
 - **No API keys to client:** Google API URLs with embedded keys must never reach mobile. All photos served as Supabase Storage URLs only.
-- **Curated stop photos:** Resolved from `place_pool.stored_photo_urls` post-upsert via `storedPhotoMap` in `generate-curated-experiences`. `getPhotoUrl`/`getAllPhotoUrls` stubs return null by design — photos are patched after the batch place upsert.
+- **Curated stop photos:** Resolved directly from `place_pool.stored_photo_urls` via `queryPlacePool()`. Places without photos are skipped at query time.
+
+### Curated Experience Generation
+
+**Design principle:** Zero Google API calls at generation time. All places come from `place_pool`. If the pool is empty for a category, the generator returns fewer cards — the admin must seed first.
+
+- **Single generic generator** — one `generateCardsForType()` function driven by declarative `ExperienceTypeDef` configs. No per-type generator functions.
+- **6 experience types** — adventurous, first-date, romantic, group-fun, picnic-dates, take-a-stroll. Friendly is deleted.
+- **Category-based stops** — all stops reference the 13 seeding categories from `_shared/seedingCategories.ts`. No hardcoded type arrays anywhere in the generator.
+- **Serve-time hours enforcement** — curated cards filtered in `discover-cards` if any stop would be closed at the user's calculated arrival time (cascading through stop durations + travel times).
+- **Flowers stop** — optional/dismissible on Romantic and First Date. Always included by default. Mobile renders with flower icon + dismiss button.
+- **Picnic reverse proximity** — finds the park first (anchor), then queries grocery and flowers within 3km of the park.
+- **Global exclusions** — `gym`, `fitness_center`, `dog_park` excluded from all card serving (code + SQL `query_pool_cards`).
 
 ---
 
@@ -222,8 +234,8 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **Curated generator overhaul** — Replaced 7 per-type generators (3,254 lines) with 1 generic pool-only generator (~900 lines). Zero Google API calls. Deleted Friendly experience type. Added Flowers optional stop, cascading hours filter, dog_park exclusion.
 - **Card generation/serving separation** — Extracted `generate-single-cards` from `discover-cards`, stripped `discover-cards` to pool-only (1342→416 lines, zero external API calls). Generation and serving are now fully decoupled.
 - **Card photo resolution fix** — `poolCardToApiCard` resolves photos from `place_pool.stored_photo_urls` only. No Unsplash fallbacks, no Google API keys to client.
 - **Admin Dashboard Overhaul** — grouped sidebar navigation, hash-based URL routing, Cmd+K global search, column sorting, CSV export, audit logging
-- **Security hardening** — admin_users anon SELECT replaced with SECURITY DEFINER RPC, user delete moved to server-side edge function
 - **City Launcher** — 5-step wizard for seeding cities with place search, import, and review
