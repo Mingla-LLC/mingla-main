@@ -301,7 +301,7 @@ export function CityLauncherPage() {
           </div>
 
           <div className="flex justify-end">
-            <Button icon={ChevronRight} iconRight disabled={!canProceedStep1} onClick={() => setStep(1)}>
+            <Button iconRight={ChevronRight} disabled={!canProceedStep1} onClick={() => setStep(1)}>
               Search Places
             </Button>
           </div>
@@ -358,7 +358,7 @@ export function CityLauncherPage() {
 
           <div className="flex justify-between mt-4">
             <Button variant="secondary" icon={ChevronLeft} onClick={() => setStep(0)}>Back</Button>
-            <Button icon={ChevronRight} iconRight disabled={selectedPlaces.size === 0} onClick={() => setStep(2)}>
+            <Button iconRight={ChevronRight} disabled={selectedPlaces.size === 0} onClick={() => setStep(2)}>
               Import {selectedPlaces.size} Places
             </Button>
           </div>
@@ -387,7 +387,7 @@ export function CityLauncherPage() {
               <p className="text-sm text-[var(--color-text-primary)] font-medium">
                 {importedPlaces.length} places imported successfully
               </p>
-              <Button icon={ChevronRight} iconRight onClick={() => setStep(3)}>Review</Button>
+              <Button iconRight={ChevronRight} onClick={() => setStep(3)}>Review</Button>
             </div>
           )}
         </SectionCard>
@@ -413,7 +413,7 @@ export function CityLauncherPage() {
 
           <div className="flex justify-between mt-4">
             <Button variant="secondary" icon={ChevronLeft} onClick={() => setStep(2)}>Back</Button>
-            <Button icon={ChevronRight} iconRight onClick={() => setStep(4)}>Proceed to Launch</Button>
+            <Button iconRight={ChevronRight} onClick={() => setStep(4)}>Proceed to Launch</Button>
           </div>
         </SectionCard>
       )}
