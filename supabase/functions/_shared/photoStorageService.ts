@@ -114,8 +114,10 @@ export async function downloadAndStorePhotos(
       // Individual photo failure is non-fatal — skip and continue
       if ((err as any)?.name === 'AbortError') {
         console.warn(`[photo-storage] Download timeout for ${safePlaceId}/${i}`);
+      } else {
+        console.error(`[photo-storage] Download error for ${safePlaceId}/${i}:`,
+          err instanceof Error ? err.message : String(err));
       }
-      // Other errors are silently skipped
     }
   }
 
@@ -125,7 +127,10 @@ export async function downloadAndStorePhotos(
       .from('place_pool')
       .update({ stored_photo_urls: storedUrls })
       .eq('google_place_id', googlePlaceId)
-      .catch(() => {}); // Non-fatal
+      .catch((err) => {
+        console.error(`[photo-storage] DB update failed for ${googlePlaceId}:`,
+          err instanceof Error ? err.message : String(err));
+      });
   }
 
   return storedUrls;

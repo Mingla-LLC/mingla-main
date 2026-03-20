@@ -213,6 +213,25 @@ async function cleanupUserData(
       safeDelete("user_activity", "user_id", userId),
     ]);
 
+    // ── Anonymize beta_feedback: scrub PII but preserve the feedback record ──
+    // Must run BEFORE profile deletion (Step 4) — after SET NULL fires,
+    // user_id becomes NULL and we can't identify which rows to scrub.
+    try {
+      const { error } = await adminClient
+        .from("beta_feedback")
+        .update({
+          user_display_name: null,
+          user_email: null,
+          user_phone: null,
+        })
+        .eq("user_id", userId);
+      if (error) {
+        console.warn("Warning: Could not anonymize beta_feedback:", error.message);
+      }
+    } catch (err) {
+      console.warn("Warning: Could not anonymize beta_feedback:", err);
+    }
+
     // ── Batch 2: Social data (all independent) ──
     await Promise.allSettled([
       safeDeleteOr("friends", `user_id.eq.${userId},friend_user_id.eq.${userId}`),

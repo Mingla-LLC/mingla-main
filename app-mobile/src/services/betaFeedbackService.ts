@@ -22,7 +22,7 @@ export interface SubmitFeedbackRequest {
 
 export interface BetaFeedback {
   id: string;
-  user_id: string;
+  user_id: string | null;
   category: FeedbackCategory;
   audio_path: string;
   audio_url: string | null;
