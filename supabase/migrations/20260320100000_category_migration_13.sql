@@ -58,37 +58,11 @@ SET categories = array_remove(categories, 'Work & Business')
 WHERE 'Work & Business' = ANY(categories);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Part 2: place_pool category renaming
+-- Part 2: place_pool — SKIPPED
+-- place_pool has no 'category' column. It uses types[] and primary_type.
+-- The seeding_category column is added by migration 20260320200000 and
+-- populated at seed time by admin-seed-places, not backfilled here.
 -- ═══════════════════════════════════════════════════════════════════════════════
-
-UPDATE public.place_pool
-SET category = 'Nature & Views'
-WHERE category = 'Nature';
-
-UPDATE public.place_pool
-SET category = 'Picnic Park'
-WHERE category = 'Picnic';
-
--- Groceries & Flowers places → check primary_type
-UPDATE public.place_pool
-SET category = 'Flowers'
-WHERE category = 'Groceries & Flowers'
-  AND primary_type = 'florist';
-
-UPDATE public.place_pool
-SET category = 'Groceries'
-WHERE category = 'Groceries & Flowers'
-  AND primary_type != 'florist';
-
--- Catch remaining
-UPDATE public.place_pool
-SET category = 'Flowers'
-WHERE category = 'Groceries & Flowers';
-
--- Work & Business → First Meet (closest match)
-UPDATE public.place_pool
-SET category = 'First Meet'
-WHERE category = 'Work & Business';
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Part 3: User preferences migration
