@@ -307,6 +307,12 @@ export async function insertCardToPool(
     priceLevel?: string;
   }
 ): Promise<string | null> {
+  // CRIT-001: Curated cards with no stops are invalid — reject before insert
+  if (cardData.cardType === 'curated' && (!cardData.stopPlacePoolIds || cardData.stopPlacePoolIds.length === 0)) {
+    console.warn('[card-pool] Rejected curated card with zero stopPlacePoolIds');
+    return null;
+  }
+
   const popularityScore = (cardData.rating || 0) * Math.log10((cardData.reviewCount || 0) + 1);
 
   const row: any = {
@@ -334,10 +340,8 @@ export async function insertCardToPool(
     is_active: true,
   };
 
-  // Curated-specific fields
+  // Curated-specific fields (stop references now live in card_pool_stops)
   if (cardData.cardType === 'curated') {
-    row.stop_place_pool_ids = cardData.stopPlacePoolIds || [];
-    row.stop_google_place_ids = cardData.stopGooglePlaceIds || [];
     row.curated_pairing_key = cardData.curatedPairingKey || null;
     row.experience_type = cardData.experienceType || null;
     row.stops = cardData.stops || null;
@@ -359,7 +363,30 @@ export async function insertCardToPool(
     return null;
   }
 
-  return data?.id || null;
+  const cardId = data?.id || null;
+
+  // Insert normalized stop references for curated cards
+  if (cardId && cardData.cardType === 'curated' && cardData.stopPlacePoolIds?.length) {
+    const stopRows = cardData.stopPlacePoolIds.map((placePoolId: string, i: number) => ({
+      card_pool_id: cardId,
+      place_pool_id: placePoolId,
+      google_place_id: cardData.stopGooglePlaceIds?.[i] || '',
+      stop_order: i,
+    }));
+
+    const { error: stopsError } = await supabaseAdmin
+      .from('card_pool_stops')
+      .insert(stopRows);
+
+    if (stopsError) {
+      console.error('[card-pool] Insert stops error:', stopsError.message);
+      // Card without stops is invalid — delete it
+      await supabaseAdmin.from('card_pool').delete().eq('id', cardId);
+      return null;
+    }
+  }
+
+  return cardId;
 }
 
 // ── Step 4: Record impressions ──────────────────────────────────────────────

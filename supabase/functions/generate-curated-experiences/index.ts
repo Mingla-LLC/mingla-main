@@ -3056,51 +3056,54 @@ serve(async (req) => {
             }
           }
 
-          // 3. Collect ALL card rows
-          const cardRows = cards.map((card: any, cardIndex: number) => {
+          // 3. Collect card rows + stop metadata for normalized insertion
+          const cardEntries = cards.map((card: any, cardIndex: number) => {
             const stops = card.stops || [];
             const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
             const stopPlacePoolIds = stopGooglePlaceIds.map((gpid: string) => placePoolIdMap[gpid]).filter(Boolean);
             const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
 
             return {
-              card_type: 'curated' as const,
-              place_pool_id: null,
-              google_place_id: stops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              title: card.title || `${experienceType} Experience`,
-              category: stops[0]?.placeType || 'Nature',
-              categories: stops.map((s: any) => s.placeType).filter(Boolean),
-              description: card.tagline || '',
-              highlights: [],
-              image_url: stops[0]?.imageUrl || null,
-              images: stops.map((s: any) => s.imageUrl).filter(Boolean),
-              address: stops[0]?.address || '',
-              lat: stops[0]?.lat || location.lat,
-              lng: stops[0]?.lng || location.lng,
-              rating: Math.min(5, (card.matchScore || 85) / 20),
-              review_count: 0,
-              price_min: card.totalPriceMin || 0,
-              price_max: card.totalPriceMax || 0,
-              price_tier: stops[0]?.priceTier || 'comfy',
-              opening_hours: null,
-              website: null,
-              popularity_score: popularityScore,
-              is_active: true,
-              stop_place_pool_ids: stopPlacePoolIds,
-              stop_google_place_ids: stopGooglePlaceIds,
-              curated_pairing_key: card.pairingKey || null,
-              experience_type: experienceType,
-              stops: card.stops,
-              tagline: card.tagline || '',
-              total_price_min: card.totalPriceMin || 0,
-              total_price_max: card.totalPriceMax || 0,
-              estimated_duration_minutes: card.estimatedDurationMinutes || 0,
-              shopping_list: card.shoppingList || null,
-              teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${stops.length} curated stops`,
+              row: {
+                card_type: 'curated' as const,
+                place_pool_id: null,
+                google_place_id: stops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                title: card.title || `${experienceType} Experience`,
+                category: stops[0]?.placeType || 'Nature',
+                categories: stops.map((s: any) => s.placeType).filter(Boolean),
+                description: card.tagline || '',
+                highlights: [],
+                image_url: stops[0]?.imageUrl || null,
+                images: stops.map((s: any) => s.imageUrl).filter(Boolean),
+                address: stops[0]?.address || '',
+                lat: stops[0]?.lat || location.lat,
+                lng: stops[0]?.lng || location.lng,
+                rating: Math.min(5, (card.matchScore || 85) / 20),
+                review_count: 0,
+                price_min: card.totalPriceMin || 0,
+                price_max: card.totalPriceMax || 0,
+                price_tier: stops[0]?.priceTier || 'comfy',
+                opening_hours: null,
+                website: null,
+                popularity_score: popularityScore,
+                is_active: true,
+                curated_pairing_key: card.pairingKey || null,
+                experience_type: experienceType,
+                stops: card.stops,
+                tagline: card.tagline || '',
+                total_price_min: card.totalPriceMin || 0,
+                total_price_max: card.totalPriceMax || 0,
+                estimated_duration_minutes: card.estimatedDurationMinutes || 0,
+                shopping_list: card.shoppingList || null,
+                teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${stops.length} curated stops`,
+              },
+              stopPlacePoolIds,
+              stopGooglePlaceIds,
             };
           });
 
-          // 4. Batch upsert cards (1 DB call)
+          // 4. Insert cards + normalized stops (card_pool_stops)
+          const cardRows = cardEntries.map((e: any) => e.row);
           if (cardRows.length > 0) {
             const { data: insertedCards, error: cardError } = await poolAdmin
               .from('card_pool')
@@ -3111,10 +3114,71 @@ serve(async (req) => {
               console.warn('[curated-v2] Batch card insert error:', cardError.message);
             }
 
-            // 5. Record impressions
+            // Insert normalized stop rows for each card
+            if (insertedCards?.length) {
+              const stopRows: any[] = [];
+              for (const inserted of insertedCards) {
+                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
+                if (!entry) continue;
+                for (let i = 0; i < entry.stopPlacePoolIds.length; i++) {
+                  stopRows.push({
+                    card_pool_id: inserted.id,
+                    place_pool_id: entry.stopPlacePoolIds[i],
+                    google_place_id: entry.stopGooglePlaceIds[i] || '',
+                    stop_order: i,
+                  });
+                }
+              }
+              if (stopRows.length > 0) {
+                const { error: stopsError } = await poolAdmin
+                  .from('card_pool_stops')
+                  .upsert(stopRows, { onConflict: 'card_pool_id,place_pool_id', ignoreDuplicates: true });
+                if (stopsError) {
+                  console.warn('[curated-v2] Batch stops insert error:', stopsError.message);
+                }
+              }
+
+              // CRIT-001: Atomic cleanup — delete any curated cards with missing or partial stops.
+              // A card is invalid if its actual stop count doesn't match expected count.
+              const insertedIds = insertedCards.map((c: any) => c.id);
+              const { data: stopCounts } = await poolAdmin
+                .from('card_pool_stops')
+                .select('card_pool_id')
+                .in('card_pool_id', insertedIds);
+
+              // Count actual stops per card
+              const actualStopCounts: Record<string, number> = {};
+              for (const row of (stopCounts || [])) {
+                actualStopCounts[row.card_pool_id] = (actualStopCounts[row.card_pool_id] || 0) + 1;
+              }
+
+              // Build expected stop counts from cardEntries
+              const expectedStopCounts: Record<string, number> = {};
+              for (const inserted of insertedCards) {
+                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
+                expectedStopCounts[inserted.id] = entry?.stopPlacePoolIds?.length || 0;
+              }
+
+              // Delete cards where actual < expected (includes zero stops and partial stops)
+              const invalidIds = insertedIds.filter((id: string) =>
+                (actualStopCounts[id] || 0) < (expectedStopCounts[id] || 1)
+              );
+              if (invalidIds.length > 0) {
+                await poolAdmin.from('card_pool').delete().in('id', invalidIds);
+                console.warn(`[curated-v2] CRIT-001: Deleted ${invalidIds.length} curated cards with missing/partial stops`);
+              }
+            }
+
+            // 5. Record impressions (only for cards that survived the orphan cleanup)
             if (!warmPool && poolUserId !== 'anonymous' && insertedCards?.length) {
-              const servedIds = insertedCards.slice(0, limit).map((c: any) => c.id);
-              await recordImpressions(poolAdmin, poolUserId, servedIds);
+              const { data: survivingCards } = await poolAdmin
+                .from('card_pool')
+                .select('id')
+                .in('id', insertedCards.map((c: any) => c.id));
+              const servedIds = (survivingCards || []).slice(0, limit).map((c: any) => c.id);
+              if (servedIds.length > 0) {
+                await recordImpressions(poolAdmin, poolUserId, servedIds);
+              }
             }
 
             console.log(`[curated-v2] Batch stored ${placeRows.length} places + ${cardRows.length} cards in pool`);
