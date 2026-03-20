@@ -165,6 +165,16 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **All card-serving functions are card_pool-only.** This includes `discover-cards`, `discover-experiences`, `get-personalized-cards`, `get-holiday-cards`, and `get-person-hero-cards`. None make Google API, OpenAI, or `place_pool` calls at serve time. If `card_pool` is empty for a query, the function returns an empty array (HTTP 200), not an error.
 - **No Google API calls at serve time.** All Google interaction (place seeding, photo downloads) happens in the admin pipeline. The serving layer never touches Google.
 
+### Preferences → Deck Pipeline
+
+**Behavioral contract for how user preferences flow through to card serving.**
+
+- **exactTime is always forwarded** — when the user picks a specific time (Today / Weekend / Pick a Date), it flows from PreferencesSheet → useDeckCards → discover-cards request. "Now" sends the current timestamp.
+- **Collab time aggregation** — `date_option` and `time_slot` use majority vote; `exact_time` uses earliest. All three are forwarded to discover-cards.
+- **CTA gating** — "Lock It In" is disabled when required fields are incomplete. "Today" / "This Weekend" require a time slot. "Pick a Date" requires date AND time. "Now" has no time requirement.
+- **Travel mode from card** — travel time and mode icon come from the card response (server-calculated), not from the user's current preference setting. Fallback to current pref for older cached cards.
+- **Solo / collab parity** — both modes send the same time parameters to discover-cards.
+
 ### Card Photo Resolution
 
 - **Source of truth:** `place_pool.stored_photo_urls` — Supabase Storage URLs downloaded from Google Places by admin.
