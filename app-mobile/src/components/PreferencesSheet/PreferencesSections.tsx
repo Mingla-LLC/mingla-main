@@ -125,22 +125,22 @@ ExperienceTypesSection.displayName = "ExperienceTypesSection";
 
 // Helper descriptions for each category
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  nature: "Trails, parks, gardens \u2014 fresh air and good scenery",
+  nature: "Trails, parks, gardens, scenic views \u2014 fresh air and good scenery",
   first_meet: "Relaxed spots made for first impressions",
   picnic_park: "The best nearby parks for spreading out a blanket",
   drink: "Cocktail bars, cozy caf\u00e9s, neighborhood pubs",
   casual_eats: "Street food, quick bites, and laid-back dining",
   fine_dining: "The nice places \u2014 dress up a little",
-  watch: "Movies, live shows, theatre, game day",
-  creative_arts: "Galleries, museums, comedy, live music",
+  watch: "Movie theaters for a fun shared evening",
+  live_performance: "Concert halls, theaters, opera \u2014 live entertainment",
+  creative_arts: "Galleries, museums, cultural landmarks",
   play: "Arcades, bowling, escape rooms \u2014 bring your competitive side",
   wellness: "Spas, saunas, and places that melt the stress away",
-  groceries_flowers: "Markets, specialty shops, and everything in between",
-  work_business: "Caf\u00e9s, coworking spots, and quiet places to lock in",
+  flowers: "Florists and flower shops for fresh bouquets",
 };
 
 // IDs of categories that need wider pills due to long labels
-const WIDE_CATEGORY_IDS = new Set(["groceries_flowers", "creative_arts", "work_business"]);
+const WIDE_CATEGORY_IDS = new Set(["live_performance", "creative_arts"]);
 
 /**
  * Memoized Categories Section

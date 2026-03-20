@@ -127,34 +127,36 @@ const getNextOccurrence = (dateStr: string): { date: Date; daysAway: number } =>
 
 // Category icons mapping (v3 category system)
 const categoryIcons: { [key: string]: string } = {
+  "Nature & Views": "leaf-outline",
   "Nature": "leaf-outline",
   "First Meet": "chatbubbles-outline",
+  "Picnic Park": "basket-outline",
   "Picnic": "basket-outline",
   "Drink": "wine-outline",
   "Casual Eats": "fast-food-outline",
   "Fine Dining": "restaurant-outline",
   "Watch": "film-outline",
+  "Live Performance": "musical-notes-outline",
   "Creative & Arts": "color-palette-outline",
   "Play": "game-controller-outline",
   "Wellness": "body-outline",
-  "Groceries & Flowers": "cart-outline",
-  "Work & Business": "briefcase-outline",
+  "Flowers": "flower-outline",
 };
 
 // All experience categories (v3 category system — matches categoryPlaceTypes.ts)
 const ALL_CATEGORIES = [
-  "Nature",
+  "Nature & Views",
   "First Meet",
-  "Picnic",
+  "Picnic Park",
   "Drink",
   "Casual Eats",
   "Fine Dining",
   "Watch",
+  "Live Performance",
   "Creative & Arts",
   "Play",
   "Wellness",
-  "Groceries & Flowers",
-  "Work & Business",
+  "Flowers",
 ];
 
 interface DiscoverCache {

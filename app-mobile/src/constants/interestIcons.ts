@@ -20,11 +20,11 @@ import {
   Hamburger,
   ChefHat,
   Clapperboard,
+  Music,
   Palette,
   Target,
   Sparkles,
-  ShoppingCart,
-  Briefcase,
+  Flower2,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -49,9 +49,9 @@ export const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   casual_eats: Hamburger,
   fine_dining: ChefHat,
   watch: Clapperboard,
+  live_performance: Music,
   creative_arts: Palette,
   play: Target,
   wellness: Sparkles,
-  groceries_flowers: ShoppingCart,
-  work_business: Briefcase,
+  flowers: Flower2,
 };

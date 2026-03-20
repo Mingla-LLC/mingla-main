@@ -4,6 +4,7 @@ import { recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   ALL_CATEGORY_NAMES,
   CATEGORY_MIN_PRICE_TIER,
+  HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
 import { priceTierFromAmount, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 
@@ -83,18 +84,21 @@ serve(async (req) => {
 
     // Map from preference IDs (snake_case) to discover category labels
     const PREF_ID_TO_DISCOVER_CATEGORY: Record<string, string> = {
-      nature: "Nature",
+      nature: "Nature & Views",
       first_meet: "First Meet",
-      picnic: "Picnic",
+      picnic_park: "Picnic Park",
+      picnic: "Picnic Park",           // legacy compat
       drink: "Drink",
       casual_eats: "Casual Eats",
       fine_dining: "Fine Dining",
       watch: "Watch",
+      live_performance: "Live Performance",
       creative_arts: "Creative & Arts",
       play: "Play",
       wellness: "Wellness",
-      groceries_flowers: "Groceries & Flowers",
-      work_business: "Work & Business",
+      flowers: "Flowers",
+      groceries_flowers: "Flowers",    // legacy compat
+      // groceries intentionally omitted — hidden category
     };
 
     // Resolve heroCategories through the same 3-step pipeline as selectedCategories
@@ -119,8 +123,8 @@ serve(async (req) => {
       }
     }
 
-    // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
-    let categoriesToFetch = ALL_CATEGORY_NAMES;
+    // Resolve which categories to fetch: filter by user selection, exclude hidden
+    let categoriesToFetch = ALL_CATEGORY_NAMES.filter(c => !HIDDEN_CATEGORIES.has(c));
     if (selectedCategories && selectedCategories.length > 0) {
       const resolvedLabels = new Set<string>();
       for (const cat of selectedCategories) {
@@ -128,7 +132,7 @@ serve(async (req) => {
         if (resolved) resolvedLabels.add(resolved);
       }
       if (resolvedLabels.size > 0) {
-        categoriesToFetch = ALL_CATEGORY_NAMES.filter((c) => resolvedLabels.has(c));
+        categoriesToFetch = ALL_CATEGORY_NAMES.filter((c) => resolvedLabels.has(c) && !HIDDEN_CATEGORIES.has(c));
       }
       console.log(`Filtered categories: ${categoriesToFetch.join(", ")} (from ${selectedCategories.length} requested)`);
     } else {

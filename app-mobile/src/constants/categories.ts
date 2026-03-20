@@ -41,10 +41,10 @@ export interface Category {
 export const categories: Category[] = [
   {
     slug: 'nature',
-    name: 'Nature',
+    name: 'Nature & Views',
     icon: '🌿',
-    description: 'Natural landscapes — parks, lakes, hiking trails, mountains, and wildlife',
-    detailedDescription: 'National parks, lakes, rivers, mountain peaks, hiking trails, botanical gardens, scenic spots, campgrounds, and wildlife areas. Perfect for fresh air, adventure, and connection with the outdoors.',
+    description: 'Natural landscapes — parks, lakes, hiking trails, scenic views, and wildlife',
+    detailedDescription: 'National parks, lakes, rivers, mountain peaks, hiking trails, botanical gardens, scenic spots, observation decks, and wildlife areas. Perfect for fresh air, adventure, and connection with the outdoors.',
     expectedActivities: [
       'Parks, gardens, national parks, and state parks',
       'Lakes, rivers, mountains, and scenic spots',
@@ -68,7 +68,7 @@ export const categories: Category[] = [
     logic: {
       hardFilter: 'Must be an outdoor natural setting',
       hierarchy: {
-        broad: 'Nature',
+        broad: 'Nature & Views',
         niche: ['Parks & Gardens', 'Lakes & Rivers', 'Mountains & Hiking', 'Wildlife & Reserves']
       },
       fallbackBehavior: 'If no nature spots within range, suggest closest park or botanical garden.'
@@ -319,21 +319,16 @@ export const categories: Category[] = [
     slug: 'watch',
     name: 'Watch',
     icon: '🎬',
-    description: 'Movie theaters, concert halls, comedy clubs, live music venues, and performing arts',
-    detailedDescription: 'Venues centered on watching and being entertained together. Movie theaters, concert halls, opera houses, comedy clubs, live music venues, amphitheatres, and karaoke for a fun shared evening.',
+    description: 'Movie theaters for a fun shared evening',
+    detailedDescription: 'Movie theaters for a classic, low-effort outing. Grab popcorn and enjoy the latest releases or indie screenings together.',
     expectedActivities: [
-      'Movie theaters',
-      'Comedy clubs and stand-up shows',
-      'Concert halls and live music',
-      'Opera houses and performing arts',
-      'Karaoke'
+      'Movie theaters and cinema screenings',
+      'Indie films and special screenings',
     ],
     apiMapping: {
       googleMaps: {
         coreAnchors: [
-          'movie_theater', 'performing_arts_theater', 'concert_hall',
-          'opera_house', 'philharmonic_hall', 'amphitheatre',
-          'comedy_club', 'live_music_venue', 'karaoke',
+          'movie_theater',
         ],
         attributes: ['entertainment', 'indoor', 'seated'],
         excludedAttributes: [
@@ -352,26 +347,70 @@ export const categories: Category[] = [
         ]
       },
       eventbrite: {
-        eventTypes: ['film_screenings', 'comedy_nights', 'movie_events', 'concerts', 'opera_events', 'live_music']
+        eventTypes: ['film_screenings', 'movie_events']
       }
     },
     logic: {
-      hardFilter: 'Must be an entertainment or performance venue',
+      hardFilter: 'Must be a movie theater',
       hierarchy: {
         broad: 'Watch',
-        niche: ['Movies', 'Comedy Shows', 'Concerts', 'Opera', 'Live Music', 'Karaoke', 'Special Screenings']
+        niche: ['Movies', 'Special Screenings']
       },
-      fallbackBehavior: 'If no movie theater found, show nearest comedy club or performing arts venue.'
+      fallbackBehavior: 'If no movie theater found, show nearest cinema.'
     },
     ux: {
       activeColor: '#3B82F6',
-      subcategories: ['Movies', 'Comedy Shows', 'Concerts', 'Opera', 'Live Music', 'Karaoke', 'Special Screenings'],
-      contextualPreview: 'Comedy club with a headliner tonight — doors at 7pm.'
+      subcategories: ['Movies', 'Special Screenings'],
+      contextualPreview: 'New release at the cinema tonight — showtime at 7pm.'
     },
     activityType: 'stationary',
     duration: 'medium',
     compatibleWith: ['drink', 'casual_eats', 'fine_dining', 'first_meet'],
     incompatibleWith: ['nature', 'picnic_park', 'wellness']
+  },
+  {
+    slug: 'live_performance',
+    name: 'Live Performance',
+    icon: '🎭',
+    description: 'Concert halls, theaters, opera houses, and live shows',
+    detailedDescription: 'Live entertainment venues — performing arts theaters, concert halls, opera houses, philharmonic halls, and amphitheatres for unforgettable shared experiences.',
+    expectedActivities: [
+      'Concert halls and live music',
+      'Opera houses and performing arts theaters',
+      'Amphitheatres and philharmonic halls',
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'performing_arts_theater', 'concert_hall', 'opera_house',
+          'philharmonic_hall', 'amphitheatre',
+        ],
+        attributes: ['live', 'performance', 'entertainment'],
+        excludedAttributes: [
+          'museum', 'art_gallery', 'bar', 'restaurant', 'gym',
+        ],
+      },
+      eventbrite: {
+        eventTypes: ['concerts', 'theater', 'opera', 'live_music'],
+      },
+    },
+    logic: {
+      hardFilter: 'Must be a live performance venue',
+      hierarchy: {
+        broad: 'Live Performance',
+        niche: ['Concert Halls', 'Theaters', 'Opera Houses', 'Amphitheatres'],
+      },
+      fallbackBehavior: 'If no live performance venue found, show nearest concert hall or theater.',
+    },
+    ux: {
+      activeColor: '#8B5CF6',
+      subcategories: ['Concert Halls', 'Theaters', 'Opera Houses', 'Amphitheatres'],
+      contextualPreview: 'Live show at the theater tonight — doors at 7pm.',
+    },
+    activityType: 'stationary',
+    duration: 'medium',
+    compatibleWith: ['drink', 'fine_dining', 'casual_eats'],
+    incompatibleWith: ['nature', 'picnic_park', 'wellness'],
   },
   {
     slug: 'creative_arts',
@@ -515,97 +554,45 @@ export const categories: Category[] = [
     incompatibleWith: ['play', 'drink', 'watch', 'casual_eats', 'fine_dining']
   },
   {
-    slug: 'groceries_flowers',
-    name: 'Groceries & Flowers',
-    icon: '🛒',
-    description: 'Grocery stores, supermarkets, markets, and specialty food stores for everyday shopping.',
-    detailedDescription: 'Discover nearby grocery stores, supermarkets, Asian grocery stores, farmers markets, hypermarkets, and discount stores. Perfect for picking up ingredients, fresh produce, or stocking up on essentials.',
+    slug: 'flowers',
+    name: 'Flowers',
+    icon: '💐',
+    description: 'Florists, flower shops, and fresh bouquets',
+    detailedDescription: 'Florists and flower shops for fresh bouquets, arrangements, and surprise gifts. Perfect as a stop before a date or special occasion.',
     expectedActivities: [
-      'Grocery shopping and market visits',
-      'Fresh produce and specialty food browsing',
-      'Asian grocery and international food stores',
-      'Farmers markets and discount supermarkets',
+      'Florists and flower shops',
+      'Fresh bouquets and arrangements',
+      'Gift flowers for special occasions',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: [
-          'grocery_store', 'supermarket', 'food_store', 'market',
-          'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
-        ],
-        attributes: ['wheelchair_accessible_entrance'],
+        coreAnchors: ['florist', 'grocery_store', 'supermarket'],
+        attributes: ['flowers', 'fresh', 'gifts'],
         excludedAttributes: [
-          'fast_food_restaurant', 'restaurant', 'spa', 'gym',
-          'amusement_park', 'movie_theater', 'convenience_store',
+          'restaurant', 'bar', 'gym', 'shopping_mall',
         ],
       },
       eventbrite: {
         eventTypes: [],
-        tags: [],
       },
     },
     logic: {
-      hardFilter: 'Must be a grocery store, supermarket, food store, or market',
+      hardFilter: 'Must be a florist or store with fresh flowers',
       hierarchy: {
-        broad: 'Shopping & Errands',
-        niche: ['Grocery Stores', 'Supermarkets', 'Markets', 'Asian Grocery', 'Farmers Markets'],
+        broad: 'Flowers',
+        niche: ['Florists', 'Flower Shops'],
       },
-      fallbackBehavior: 'If no specialty store found, show nearest grocery store or supermarket.',
+      fallbackBehavior: 'If no florist found, show nearest grocery store with a floral department.',
     },
     ux: {
-      activeColor: '#22C55E',
-      subcategories: ['Grocery Stores', 'Supermarkets', 'Markets', 'Asian Grocery', 'Farmers Markets'],
-      contextualPreview: 'Fresh groceries, produce, and market finds nearby.',
+      activeColor: '#F472B6',
+      subcategories: ['Florists', 'Flower Shops'],
+      contextualPreview: 'Fresh roses from a local florist — 5 minutes away.',
     },
-    compatibleWith: ['nature', 'picnic', 'casual_eats'],
-    incompatibleWith: ['fine_dining', 'play', 'watch', 'wellness'],
     activityType: 'stationary',
     duration: 'short',
-  },
-  {
-    slug: 'work_business',
-    name: 'Work & Business',
-    icon: '💼',
-    description: 'Coworking spaces, business centers, libraries, cafes, and hotels for work and meetings',
-    detailedDescription: 'Coworking spaces, business centers, libraries, coffee shops, tea houses, and hotel lobbies. Ideal for remote work, business meetings, study sessions, or getting things done.',
-    expectedActivities: [
-      'Coworking spaces and business centers',
-      'Libraries for quiet focused work',
-      'Coffee shops and cafes with WiFi',
-      'Hotel lobbies for professional meetings',
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: [
-          'coworking_space', 'business_center', 'library',
-          'cafe', 'coffee_shop', 'tea_house', 'hotel',
-        ],
-        attributes: ['quiet', 'wifi', 'work-friendly'],
-        excludedAttributes: [
-          'night_club', 'karaoke', 'gym', 'amusement_park',
-          'shopping_mall', 'grocery_store', 'stadium',
-        ],
-      },
-      eventbrite: {
-        eventTypes: ['networking', 'business_events', 'workshops']
-      }
-    },
-    logic: {
-      hardFilter: 'Must be a work-friendly venue: coworking space, business center, library, cafe, or hotel',
-      hierarchy: {
-        broad: 'Work & Business',
-        niche: ['Coworking Spaces', 'Business Centers', 'Libraries', 'Coffee Shops', 'Hotels'],
-      },
-      fallbackBehavior: 'If no coworking space or business center found, show nearest cafe or library.'
-    },
-    ux: {
-      activeColor: '#64748B',
-      subcategories: ['Coworking Spaces', 'Business Centers', 'Libraries', 'Coffee Shops', 'Hotels'],
-      contextualPreview: 'Coworking space with fast WiFi — perfect for a productive afternoon.'
-    },
-    activityType: 'stationary',
-    duration: 'medium',
-    compatibleWith: ['first_meet', 'drink'],
-    incompatibleWith: ['play', 'nature', 'picnic_park']
+    compatibleWith: ['fine_dining', 'first_meet', 'nature', 'picnic_park'],
+    incompatibleWith: ['play', 'watch'],
   }
 ];
 
@@ -748,7 +735,7 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Farmers market browse then park bench chat.',
       'take-a-stroll': 'Coffee walk through the neighborhood — keep it casual.'
     },
-    'picnic': {
+    'picnic_park': {
       'first-date': 'Picnic blanket by the lake with sandwiches and lemonade.',
       'romantic': 'Sunset picnic with wine, cheese, and fairy lights.',
       'adventurous': 'Solo picnic with a good book at the botanical garden.',
@@ -756,12 +743,20 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Full picnic spread at the nicest park in town.',
       'take-a-stroll': 'Picnic spot with a walking trail loop nearby.'
     },
-    'groceries_flowers': {
+    'live_performance': {
+      'first-date': 'Comedy show with great energy — perfect ice breaker.',
+      'romantic': 'Orchestra concert followed by a late-night drink.',
+      'adventurous': 'Open-mic night — you might even get on stage.',
+      'group-fun': 'Concert with the crew — grab floor tickets.',
+      'picnic-dates': 'Outdoor amphitheatre show with blankets and snacks.',
+      'take-a-stroll': 'Evening walk to the theater district for a live show.'
+    },
+    'flowers': {
       'first-date': 'Farmers market stroll — sample together, buy flowers.',
-      'romantic': 'Pick up flowers and ingredients, cook dinner together.',
-      'adventurous': 'Specialty grocery store exploration — find something new.',
-      'group-fun': 'Farmers market haul then group potluck prep.',
-      'picnic-dates': 'Grocery run for picnic supplies then head to the park.',
+      'romantic': 'Pick up a bouquet on the way to surprise your date.',
+      'adventurous': 'Artisan florist workshop — arrange your own bouquet.',
+      'group-fun': 'Flower market haul then brunch with the crew.',
+      'picnic-dates': 'Grab fresh flowers for the picnic spread.',
       'take-a-stroll': 'Flower shop visit on a neighborhood walk.'
     }
   };

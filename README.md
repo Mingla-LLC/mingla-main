@@ -197,6 +197,34 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 
 ---
 
+## Category System
+
+Mingla uses **13 categories** — 12 visible to users + 1 hidden:
+
+| # | Slug | Display Name | Visible |
+|---|------|-------------|---------|
+| 1 | `nature` | Nature & Views | Yes |
+| 2 | `first_meet` | First Meet | Yes |
+| 3 | `picnic_park` | Picnic Park | Yes |
+| 4 | `drink` | Drink | Yes |
+| 5 | `casual_eats` | Casual Eats | Yes |
+| 6 | `fine_dining` | Fine Dining | Yes |
+| 7 | `watch` | Watch | Yes |
+| 8 | `live_performance` | Live Performance | Yes |
+| 9 | `creative_arts` | Creative & Arts | Yes |
+| 10 | `play` | Play | Yes |
+| 11 | `wellness` | Wellness | Yes |
+| 12 | `flowers` | Flowers | Yes |
+| 13 | `groceries` | Groceries | **Hidden** |
+
+**Key rules:**
+- **Groceries is hidden** — exists in the system for curated picnic stops but never shown to users (not in preferences, not in category pills, excluded from regular card serving via `query_pool_cards`).
+- **Single source of truth** — all category definitions live in `_shared/seedingCategories.ts` (seeding) and `_shared/categoryPlaceTypes.ts` (serving/aliases). No hardcoded lists elsewhere.
+- **Backward compatibility** — alias maps in `categoryPlaceTypes.ts` resolve old slugs (`groceries_flowers`, `work_business`, `Nature`, `Picnic`) to new categories. No user data breaks on migration.
+- **Work & Business removed** — not a date category, not seeded, not served.
+
+---
+
 ## Environment Variables
 
 ### Mobile (`app-mobile/.env`)
@@ -234,6 +262,7 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **Category migration (12 → 13)** — Split Groceries & Flowers into Flowers (visible) + Groceries (hidden). Added Live Performance (split from Watch). Renamed Nature → Nature & Views, Picnic → Picnic Park. Removed Work & Business. SQL backfill + 60+ alias maps for backward compatibility.
 - **Curated generator overhaul** — Replaced 7 per-type generators (3,254 lines) with 1 generic pool-only generator (~900 lines). Zero Google API calls. Deleted Friendly experience type. Added Flowers optional stop, cascading hours filter, dog_park exclusion.
 - **Card generation/serving separation** — Extracted `generate-single-cards` from `discover-cards`, stripped `discover-cards` to pool-only (1342→416 lines, zero external API calls). Generation and serving are now fully decoupled.
 - **Card photo resolution fix** — `poolCardToApiCard` resolves photos from `place_pool.stored_photo_urls` only. No Unsplash fallbacks, no Google API keys to client.

@@ -24,18 +24,19 @@ const corsHeaders = {
 
 // ── Category Fallback Descriptions (copied from discover-cards) ──────────────
 const CATEGORY_FALLBACK_DESCRIPTIONS: Record<string, string> = {
-  'Nature': 'A beautiful [placeType] perfect for outdoor exploration.',
+  'Nature & Views': 'A beautiful [placeType] perfect for outdoor exploration.',
   'Drink': 'A popular [placeType] spot with great ambiance for drinks.',
   'Casual Eats': 'A well-loved [placeType] serving delicious casual fare.',
   'Fine Dining': 'An upscale [placeType] offering a refined dining experience.',
   'First Meet': 'A welcoming [placeType] ideal for a first meeting.',
-  'Picnic': 'A lovely [placeType] perfect for a relaxing picnic outing.',
-  'Watch': 'An exciting [placeType] for a fun entertainment experience.',
+  'Picnic Park': 'A lovely [placeType] perfect for a relaxing picnic outing.',
+  'Watch': 'An exciting [placeType] for a fun movie experience.',
+  'Live Performance': 'An exciting [placeType] for live entertainment.',
   'Creative & Arts': 'An inspiring [placeType] for creative exploration.',
   'Play': 'A thrilling [placeType] for fun and adventure.',
   'Wellness': 'A serene [placeType] for relaxation and wellness.',
-  'Groceries & Flowers': 'A convenient [placeType] for all your essentials.',
-  'Work & Business': 'A professional [placeType] for productive meetings.',
+  'Flowers': 'A lovely [placeType] for fresh flowers and bouquets.',
+  'Groceries': 'A convenient [placeType] for all your essentials.',
 };
 
 function formatPlaceType(type: string): string {

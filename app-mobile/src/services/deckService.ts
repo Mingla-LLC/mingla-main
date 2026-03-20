@@ -47,7 +47,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'groceries_flowers' | 'work_business' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'live_performance' | 'creative_arts' | 'play' | 'wellness' | 'flowers' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
@@ -60,18 +60,18 @@ interface DeckPill {
 
 // ── Pill ID → display name for the unified edge function ─────────────────
 const PILL_TO_CATEGORY_NAME: Record<string, string> = {
-  nature: 'Nature',
+  nature: 'Nature & Views',
   first_meet: 'First Meet',
-  picnic_park: 'Picnic',
+  picnic_park: 'Picnic Park',
   drink: 'Drink',
   casual_eats: 'Casual Eats',
   fine_dining: 'Fine Dining',
   watch: 'Watch',
+  live_performance: 'Live Performance',
   creative_arts: 'Creative & Arts',
   play: 'Play',
   wellness: 'Wellness',
-  groceries_flowers: 'Groceries & Flowers',
-  work_business: 'Work & Business',
+  flowers: 'Flowers',
 };
 
 /**
@@ -157,6 +157,8 @@ class DeckService {
     // slugs, underscored slugs) so no category silently falls through.
     const CATEGORY_PILL_MAP: Record<string, string> = {
       'nature': 'nature',
+      'nature & views': 'nature',
+      'nature_views': 'nature',
       'first meet': 'first_meet',
       'first_meet': 'first_meet',
       'picnic park': 'picnic_park',
@@ -173,13 +175,17 @@ class DeckService {
       'creative_arts': 'creative_arts',
       'play': 'play',
       'wellness': 'wellness',
-      'groceries & flowers': 'groceries_flowers',
-      'groceries flowers': 'groceries_flowers',
-      'groceries_flowers': 'groceries_flowers',
-      'work & business': 'work_business',
-      'work_business': 'work_business',
-      'work business': 'work_business',
-      'work and business': 'work_business',
+      'live performance': 'live_performance',
+      'live_performance': 'live_performance',
+      'flowers': 'flowers',
+      // Legacy compat
+      'groceries & flowers': 'flowers',
+      'groceries flowers': 'flowers',
+      'groceries_flowers': 'flowers',
+      'work & business': 'first_meet',
+      'work_business': 'first_meet',
+      'work business': 'first_meet',
+      'work and business': 'first_meet',
       // Legacy category names (pre-v2) → map to current slugs
       'play & move': 'play',
       'play and move': 'play',

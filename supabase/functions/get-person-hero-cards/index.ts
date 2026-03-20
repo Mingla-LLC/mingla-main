@@ -123,13 +123,14 @@ const DISTANCE_RADIUS_MAP: Record<string, { initial: number; max: number }> = {
 // ── Intent → category mapping (matches mobile holidays.ts) ─────────────────
 
 const INTENT_CATEGORY_MAP: Record<string, string[]> = {
-  romantic: ["first_meet", "drink", "picnic", "wellness", "nature"],
+  romantic: ["first_meet", "drink", "picnic_park", "wellness", "nature"],
   adventurous: [
     "nature", "play", "creative_arts", "casual_eats", "drink",
-    "first_meet", "picnic", "watch", "wellness", "groceries_flowers",
-    "work_business",
+    "first_meet", "picnic_park", "watch", "live_performance",
+    "wellness", "flowers",
   ],
-  friendly: ["play", "casual_eats", "drink", "nature", "creative_arts", "picnic", "watch"],
+  friendly: ["play", "casual_eats", "drink", "nature", "creative_arts",
+    "picnic_park", "watch", "live_performance"],
 };
 
 // ── Main handler ────────────────────────────────────────────────────────────

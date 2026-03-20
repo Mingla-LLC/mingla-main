@@ -113,18 +113,19 @@ interface PersonHolidayViewProps {
 // ── Category icon mapping (matches DiscoverScreen) ──────────────────────────
 
 const CATEGORY_ICONS: Record<string, string> = {
+  "Nature & Views": "leaf-outline",
   Nature: "leaf-outline",
   "First Meet": "chatbubbles-outline",
-  Picnic: "basket-outline",
+  "Picnic Park": "basket-outline",
   Drink: "wine-outline",
   "Casual Eats": "fast-food-outline",
   "Fine Dining": "restaurant-outline",
   Watch: "film-outline",
+  "Live Performance": "musical-notes-outline",
   "Creative & Arts": "color-palette-outline",
   Play: "game-controller-outline",
   Wellness: "body-outline",
-  "Groceries & Flowers": "cart-outline",
-  "Work & Business": "briefcase-outline",
+  Flowers: "flower-outline",
 };
 
 function getCatIcon(category: string): string {

@@ -2763,16 +2763,17 @@ function getCategoryIcon(slug: string): string {
   const iconMap: Record<string, string> = {
     nature: 'leaf-outline',
     first_meet: 'chatbubbles-outline',
+    picnic_park: 'basket-outline',
     picnic: 'basket-outline',
     drink: 'wine-outline',
     casual_eats: 'fast-food-outline',
     fine_dining: 'restaurant-outline',
     watch: 'film-outline',
+    live_performance: 'musical-notes-outline',
     creative_arts: 'color-palette-outline',
     play: 'game-controller-outline',
     wellness: 'body-outline',
-    groceries_flowers: 'cart-outline',
-    work_business: 'briefcase-outline',
+    flowers: 'flower-outline',
   }
   return iconMap[slug] || 'ellipse-outline'
 }

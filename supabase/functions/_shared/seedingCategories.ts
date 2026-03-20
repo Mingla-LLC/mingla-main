@@ -5,9 +5,8 @@
  * Shared by both admin seeding (place_pool population) and curated
  * experience generation (place_pool queries).
  *
- * These do NOT map 1:1 to Mingla's 12 app categories — intentional.
- * "Groceries & Flowers" splits into 2 seeding categories.
- * "Live Performance" is separate from "Watch".
+ * Maps 1:1 to Mingla's 13 app categories (12 visible + 1 hidden).
+ * Each seeding category maps to exactly one app category.
  */
 
 // ── Interface ─────────────────────────────────────────────────────────────────
@@ -27,7 +26,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   {
     id: 'nature_views',
     label: 'Nature & Views',
-    appCategory: 'Nature',
+    appCategory: 'Nature & Views',
     appCategorySlug: 'nature',
     includedTypes: [
       'beach', 'botanical_garden', 'garden', 'hiking_area', 'national_park',
@@ -62,8 +61,8 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   {
     id: 'picnic_park',
     label: 'Picnic Park',
-    appCategory: 'Picnic',
-    appCategorySlug: 'picnic',
+    appCategory: 'Picnic Park',
+    appCategorySlug: 'picnic_park',
     includedTypes: ['picnic_ground', 'park'],
     excludedPrimaryTypes: [
       'dog_park', 'playground', 'athletic_field', 'sports_complex', 'sports_club',
@@ -143,8 +142,8 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   {
     id: 'live_performance',
     label: 'Live Performance',
-    appCategory: 'Creative & Arts',
-    appCategorySlug: 'creative_arts',
+    appCategory: 'Live Performance',
+    appCategorySlug: 'live_performance',
     includedTypes: [
       'performing_arts_theater', 'concert_hall', 'opera_house',
       'philharmonic_hall', 'amphitheatre',
@@ -207,8 +206,8 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   {
     id: 'flowers',
     label: 'Flowers',
-    appCategory: 'Groceries & Flowers',
-    appCategorySlug: 'groceries_flowers',
+    appCategory: 'Flowers',
+    appCategorySlug: 'flowers',
     includedTypes: ['florist', 'grocery_store', 'supermarket'],
     excludedPrimaryTypes: [
       'market', 'shopping_mall', 'store', 'restaurant', 'fine_dining_restaurant',
@@ -220,8 +219,8 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   {
     id: 'groceries',
     label: 'Groceries',
-    appCategory: 'Groceries & Flowers',
-    appCategorySlug: 'groceries_flowers',
+    appCategory: 'Groceries',
+    appCategorySlug: 'groceries',
     includedTypes: ['grocery_store', 'supermarket'],
     excludedPrimaryTypes: [
       'florist', 'garden_center', 'restaurant', 'fine_dining_restaurant',

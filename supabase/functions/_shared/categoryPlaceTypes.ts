@@ -1,21 +1,17 @@
 /**
  * Unified Mingla Category → Google Places API (New) type mappings.
  *
- * Extracted from: new-generate-experience-, discover-experiences,
- * generate-curated-experiences, holiday-experiences, night-out-experiences,
- * generate-session-experiences.
- *
+ * 13 categories: 12 visible + 1 hidden (Groceries).
  * Use this as the SINGLE SOURCE OF TRUTH for category → place type lookups.
  * The first type in each array is the "primary" type used for pool seeding.
  */
 
 // ── Primary mapping: Display Name → Google Place types ──────────────────────
 export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
-  'Nature': [
-    'national_park', 'state_park', 'nature_preserve', 'wildlife_refuge',
-    'wildlife_park', 'scenic_spot', 'garden', 'botanical_garden',
-    'park', 'lake', 'river', 'island', 'mountain_peak',
-    'woods', 'hiking_area', 'campground', 'picnic_ground',
+  'Nature & Views': [
+    'beach', 'botanical_garden', 'garden', 'hiking_area', 'national_park',
+    'nature_preserve', 'park', 'scenic_spot', 'state_park', 'observation_deck',
+    'tourist_attraction',
   ],
   'First Meet': [
     // Interleaved: Group1 (café), Group2 (activity), Group3 (culture/outdoor)
@@ -30,9 +26,8 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'donut_shop', 'dance_hall', 'garden',
     'breakfast_restaurant', 'brunch_restaurant',
   ],
-  'Picnic': [
-    'park', 'city_park', 'picnic_ground', 'state_park',
-    'botanical_garden', 'garden', 'nature_preserve',
+  'Picnic Park': [
+    'picnic_ground', 'park',
   ],
   'Drink': [
     // Interleaved: Group1 (alcohol), Group2 (non-alcohol)
@@ -67,9 +62,11 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'japanese_restaurant', 'greek_restaurant',
   ],
   'Watch': [
-    'movie_theater', 'performing_arts_theater', 'concert_hall',
-    'opera_house', 'philharmonic_hall', 'amphitheatre',
-    'comedy_club', 'live_music_venue', 'karaoke',
+    'movie_theater',
+  ],
+  'Live Performance': [
+    'performing_arts_theater', 'concert_hall', 'opera_house',
+    'philharmonic_hall', 'amphitheatre',
   ],
   'Creative & Arts': [
     'art_gallery', 'art_museum', 'art_studio', 'museum', 'history_museum',
@@ -87,13 +84,11 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
   'Wellness': [
     'spa', 'massage_spa', 'massage', 'sauna', 'resort_hotel',
   ],
-  'Groceries & Flowers': [
-    'grocery_store', 'supermarket', 'food_store', 'market',
-    'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
+  'Flowers': [
+    'florist', 'grocery_store', 'supermarket',
   ],
-  'Work & Business': [
-    'coworking_space', 'business_center', 'library',
-    'cafe', 'coffee_shop', 'tea_house', 'hotel',
+  'Groceries': [
+    'grocery_store', 'supermarket',
   ],
 };
 
@@ -114,41 +109,63 @@ export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
 // ── Alias mapping: handles all case/format variations ────────────────────────
 // Maps every known variation to the canonical display name above.
 const CATEGORY_ALIASES: Record<string, string> = {
-  // Slug forms
-  'nature': 'Nature',
+  // ── New canonical slug → display name ──────────────────────────
+  'nature': 'Nature & Views',
+  'nature_views': 'Nature & Views',
+  'nature-views': 'Nature & Views',
+  'nature & views': 'Nature & Views',
+  'nature_and_views': 'Nature & Views',
   'first_meet': 'First Meet',
   'first-meet': 'First Meet',
   'firstmeet': 'First Meet',
-  'picnic': 'Picnic',
-  'picnic_park': 'Picnic',
-  'picnic-park': 'Picnic',
-  'picnic park': 'Picnic',
+  'picnic_park': 'Picnic Park',
+  'picnic-park': 'Picnic Park',
+  'picnic park': 'Picnic Park',
+  'picnic': 'Picnic Park',        // legacy "Picnic" resolves to "Picnic Park"
   'drink': 'Drink',
   'casual_eats': 'Casual Eats',
   'casual-eats': 'Casual Eats',
   'casualeats': 'Casual Eats',
+  'casual eats': 'Casual Eats',
   'fine_dining': 'Fine Dining',
   'fine-dining': 'Fine Dining',
   'finedining': 'Fine Dining',
+  'fine dining': 'Fine Dining',
   'watch': 'Watch',
+  'live_performance': 'Live Performance',
+  'live-performance': 'Live Performance',
+  'live performance': 'Live Performance',
+  'liveperformance': 'Live Performance',
   'creative_arts': 'Creative & Arts',
   'creative-arts': 'Creative & Arts',
   'creativearts': 'Creative & Arts',
   'creative & arts': 'Creative & Arts',
   'play': 'Play',
   'wellness': 'Wellness',
-  'groceries_flowers': 'Groceries & Flowers',
-  'groceries & flowers': 'Groceries & Flowers',
-  'groceries-flowers': 'Groceries & Flowers',
-  'groceriesflowers': 'Groceries & Flowers',
-  'work_business': 'Work & Business',
-  'work-business': 'Work & Business',
-  'workbusiness': 'Work & Business',
-  'work & business': 'Work & Business',
-  'work and business': 'Work & Business',
-  'work_and_business': 'Work & Business',
+  'flowers': 'Flowers',
+  'groceries': 'Groceries',
 
-  // Old category system (backwards compat)
+  // ── Backward compat: old combined category ─────────────────────
+  'groceries_flowers': 'Flowers',   // old slug resolves to Flowers (visible)
+  'groceries & flowers': 'Flowers',
+  'groceries-flowers': 'Flowers',
+  'groceriesflowers': 'Flowers',
+
+  // ── Removed categories → best match ────────────────────────────
+  'work_business': 'First Meet',    // Work removed; coworking-like → First Meet
+  'work-business': 'First Meet',
+  'workbusiness': 'First Meet',
+  'work & business': 'First Meet',
+  'work and business': 'First Meet',
+  'work_and_business': 'First Meet',
+
+  // ── Old display names → new display names ─────────────────────
+  'Nature': 'Nature & Views',
+  'Picnic': 'Picnic Park',
+  'Groceries & Flowers': 'Flowers',
+  'Work & Business': 'First Meet',
+
+  // ── Old category system (backwards compat) ─────────────────────
   'sip & chill': 'Drink',
   'sip_and_chill': 'Drink',
   'sip-and-chill': 'Drink',
@@ -156,10 +173,10 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'sip_&_chill': 'Drink',
   'sip-&-chill': 'Drink',
   'sipchill': 'Drink',
-  'stroll': 'Nature',
-  'take a stroll': 'Nature',
-  'take-a-stroll': 'Nature',
-  'take_a_stroll': 'Nature',
+  'stroll': 'Nature & Views',
+  'take a stroll': 'Nature & Views',
+  'take-a-stroll': 'Nature & Views',
+  'take_a_stroll': 'Nature & Views',
   'dining experiences': 'Fine Dining',
   'dining_experiences': 'Fine Dining',
   'dining-experiences': 'Fine Dining',
@@ -181,11 +198,10 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'play&move': 'Play',
   'playmove': 'Play',
   'play_&_move': 'Play',
-  'casual eats': 'Casual Eats',
-  'picnics': 'Picnic',
+  'picnics': 'Picnic Park',
   'wellness dates': 'Wellness',
   'wellness_dates': 'Wellness',
-  'freestyle': 'Nature',
+  'freestyle': 'Nature & Views',
 
   // Short forms used by legacy recommendation endpoints
   'sip': 'Drink',
@@ -204,6 +220,9 @@ export function resolveCategory(input: string): string | null {
   // Alias lookup (lowercase)
   const alias = CATEGORY_ALIASES[input.toLowerCase()];
   if (alias) return alias;
+  // Also check exact-case aliases (for "Nature", "Picnic" etc.)
+  const exactAlias = CATEGORY_ALIASES[input];
+  if (exactAlias) return exactAlias;
   return null;
 }
 
@@ -266,6 +285,14 @@ export function filterOutIntents(categories: string[]): string[] {
 // ── All canonical category display names ──────────────────────────────────────
 export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
 
+/** Categories that exist in the system but are never shown to users */
+export const HIDDEN_CATEGORIES: Set<string> = new Set(['Groceries']);
+
+/** Visible categories only — use for user-facing lists */
+export const VISIBLE_CATEGORY_NAMES = ALL_CATEGORY_NAMES.filter(
+  c => !HIDDEN_CATEGORIES.has(c)
+);
+
 // ── Per-category minimum price tier ───────────────────────────────────────────
 // Categories listed here require places to meet a minimum Google price level.
 // Places with null/unknown priceLevel are excluded from these categories.
@@ -303,104 +330,56 @@ export function getTextKeywords(category: string): string[] | null {
 
 // ── Per-category excluded types ───────────────────────────────────────────────
 
+// Common retail/store exclusion list shared across categories
+const RETAIL_EXCLUSIONS = [
+  'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
+  'building_materials_store', 'butcher_shop', 'cell_phone_store',
+  'clothing_store', 'convenience_store', 'cosmetics_store',
+  'department_store', 'discount_store', 'discount_supermarket',
+  'electronics_store', 'farmers_market', 'flea_market',
+  'food_store', 'furniture_store', 'garden_center',
+  'general_store', 'gift_shop', 'hardware_store',
+  'health_food_store', 'home_goods_store', 'home_improvement_store',
+  'hypermarket', 'jewelry_store', 'liquor_store',
+  'market', 'pet_store', 'shoe_store',
+  'shopping_mall', 'sporting_goods_store', 'sportswear_store',
+  'tea_store', 'thrift_store', 'toy_store',
+  'warehouse_store', 'wholesaler', 'womens_clothing_store',
+];
+
 /**
  * Per-category excluded types — venues that are inappropriate
  * for a specific category context even if Google returns them.
  * Applied as post-fetch filter alongside GLOBAL_EXCLUDED_PLACE_TYPES.
  */
 export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
-  'Nature': [
+  'Nature & Views': [
     'movie_theater', 'video_arcade', 'bowling_alley', 'casino',
     'night_club', 'karaoke', 'amusement_center', 'amusement_park',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
     'store',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'First Meet': [
     'night_club', 'bar', 'cocktail_bar', 'lounge_bar', 'brewery', 'brewpub',
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'indoor_playground', 'water_park',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
-  'Picnic': [
+  'Picnic Park': [
     'dog_park', 'amusement_park', 'water_park',
     'bar', 'night_club', 'casino', 'movie_theater', 'video_arcade',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Drink': [
     'fine_dining_restaurant', 'spa', 'sauna', 'amusement_park', 'water_park',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Casual Eats': [
     'fine_dining_restaurant', 'bar', 'night_club', 'spa',
     'grocery_store', 'supermarket',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Fine Dining': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
@@ -414,43 +393,7 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Romantic exclusions (fine dining is often romantic context)
     'indoor_playground', 'amusement_center', 'playground',
     'children_store', 'child_care_agency', 'preschool',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
-  ],
-  'Creative & Arts': [
-    'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
-    'amusement_park', 'water_park', 'spa', 'sauna', 'night_club',
-    'store',
-    'sports_complex', 'sports_club',
-    'stadium', 'race_course', 'tennis_court', 'swimming_pool',
-    'parking', 'parking_lot', 'parking_garage',
-    'bus_station', 'train_station', 'transit_station', 'airport',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Watch': [
     'store',
@@ -463,20 +406,30 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Transit / infrastructure
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
+  ],
+  'Live Performance': [
+    'store',
+    // Sports / active
+    'sports_complex', 'sports_club', 'stadium', 'race_course',
+    'tennis_court', 'swimming_pool', 'skateboard_park',
+    // Grocery / utility
+    'grocery_store', 'supermarket',
+    'gas_station', 'car_repair', 'car_wash',
+    // Transit / infrastructure
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+    ...RETAIL_EXCLUSIONS,
+  ],
+  'Creative & Arts': [
+    'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
+    'amusement_park', 'water_park', 'spa', 'sauna', 'night_club',
+    'store',
+    'sports_complex', 'sports_club',
+    'stadium', 'race_course', 'tennis_court', 'swimming_pool',
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Play': [
     'store',
@@ -488,20 +441,7 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
   'Wellness': [
     // Sports/fitness
@@ -519,22 +459,9 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Medical
     'doctor', 'dentist', 'medical_clinic', 'medical_center',
     'medical_lab', 'hospital', 'general_hospital',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    ...RETAIL_EXCLUSIONS,
   ],
-  'Groceries & Flowers': [
+  'Flowers': [
     // Low-end food / restaurants
     'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'sandwich_shop', 'buffet_restaurant', 'food_court', 'diner', 'restaurant',
@@ -555,35 +482,26 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     // Convenience/general (not focused grocery destinations)
     'convenience_store', 'general_store',
   ],
-  'Work & Business': [
+  'Groceries': [
+    // Low-end food / restaurants
+    'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+    'sandwich_shop', 'buffet_restaurant', 'food_court', 'diner', 'restaurant',
     // Play venues
     'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
     'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
-    // Nightlife
-    'night_club', 'karaoke',
+    // Entertainment
+    'movie_theater',
+    // Wellness
+    'spa', 'massage_spa', 'massage', 'sauna', 'wellness_center',
+    // Personal care
+    'hair_salon', 'beauty_salon',
     // Sports/fitness
-    'gym', 'fitness_center', 'sports_complex', 'sports_club',
-    'stadium', 'tennis_court', 'swimming_pool', 'race_course',
-    // Kids/water
-    'indoor_playground', 'childrens_camp', 'water_park',
-    'store', 'grocery_store', 'supermarket',
+    'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
     // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    // Retail / store exclusions
-    'asian_grocery_store', 'auto_parts_store', 'bicycle_store',
-    'building_materials_store', 'butcher_shop', 'cell_phone_store',
-    'clothing_store', 'convenience_store', 'cosmetics_store',
-    'department_store', 'discount_store', 'discount_supermarket',
-    'electronics_store', 'farmers_market', 'flea_market',
-    'food_store', 'furniture_store', 'garden_center',
-    'general_store', 'gift_shop', 'hardware_store',
-    'health_food_store', 'home_goods_store', 'home_improvement_store',
-    'hypermarket', 'jewelry_store', 'liquor_store',
-    'market', 'pet_store', 'shoe_store',
-    'shopping_mall', 'sporting_goods_store', 'sportswear_store',
-    'tea_store', 'thrift_store', 'toy_store',
-    'warehouse_store', 'wholesaler', 'womens_clothing_store',
+    // Convenience/general (not focused grocery destinations)
+    'convenience_store', 'general_store',
   ],
 };
 
@@ -601,7 +519,7 @@ export function getExcludedTypesForCategory(category: string): string[] {
  * Extended exclusion set for discovery/browse contexts where
  * utility businesses should never appear.
  * NOTE: Does NOT include grocery_store or supermarket — those are valid
- * for the Groceries & Flowers category.
+ * for the Flowers and Groceries categories.
  */
 export const DISCOVER_EXCLUDED_PLACE_TYPES: string[] = [
   ...GLOBAL_EXCLUDED_PLACE_TYPES,

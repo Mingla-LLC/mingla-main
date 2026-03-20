@@ -6,6 +6,7 @@ import {
 import {
   resolveCategories,
   CATEGORY_MIN_PRICE_TIER,
+  HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
 import { slugMeetsMinimum, PriceTierSlug } from '../_shared/priceTiers.ts';
 import { scoreCards } from '../_shared/scoringService.ts';
@@ -272,8 +273,9 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Resolve categories to canonical names ─────────────────────────────
-    const categories = resolveCategories(rawCategories);
+    // ── Resolve categories to canonical names, filter out hidden ──────────
+    const categories = resolveCategories(rawCategories)
+      .filter(c => !HIDDEN_CATEGORIES.has(c));
     if (categories.length === 0) {
       return new Response(
         JSON.stringify({ error: `No recognized categories in: ${rawCategories.join(', ')}`, cards: [] }),

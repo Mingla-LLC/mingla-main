@@ -85,13 +85,14 @@ const experienceTypes = [
 
 // Categories with exact icons from image
 const categories = [
-  { id: "nature", label: "Nature", icon: "leaf-outline" },
+  { id: "nature", label: "Nature & Views", icon: "leaf-outline" },
   { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
   { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
   { id: "drink", label: "Drink", icon: "wine-outline" },
   { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
   { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
   { id: "watch", label: "Watch", icon: "film-outline" },
+  { id: "live_performance", label: "Live Performance", icon: "musical-notes-outline" },
   {
     id: "creative_arts",
     label: "Creative & Arts",
@@ -99,8 +100,7 @@ const categories = [
   },
   { id: "play", label: "Play", icon: "game-controller-outline" },
   { id: "wellness", label: "Wellness", icon: "body-outline" },
-  { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
-  { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
+  { id: "flowers", label: "Flowers", icon: "flower-outline" },
 ];
 
 // Travel modes matching database constraint

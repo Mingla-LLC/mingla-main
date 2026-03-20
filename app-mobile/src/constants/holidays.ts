@@ -134,6 +134,6 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
 
 // Intent → category slugs mapping for intent-based card sections
 export const INTENT_CATEGORY_MAP: Record<string, string[]> = {
-  romantic: ['first_meet', 'drink', 'picnic', 'wellness', 'nature'],
-  adventurous: ['nature', 'play', 'creative_arts', 'casual_eats', 'drink', 'first_meet', 'picnic', 'watch', 'wellness', 'groceries_flowers', 'work_business'],
+  romantic: ['first_meet', 'drink', 'picnic_park', 'wellness', 'nature'],
+  adventurous: ['nature', 'play', 'creative_arts', 'casual_eats', 'drink', 'first_meet', 'picnic_park', 'watch', 'live_performance', 'wellness', 'flowers'],
 }
