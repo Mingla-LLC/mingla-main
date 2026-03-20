@@ -154,6 +154,14 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **AI Recommendations** — pool-first card serving, per-category queries, impression rotation, haversine travel estimation.
 - **7-Step Onboarding** — state machine with phone verification, preference selection, friend/pairing setup, collaboration creation.
 
+### Card Photo Resolution
+
+- **Source of truth:** `place_pool.stored_photo_urls` — Supabase Storage URLs downloaded from Google Places by admin.
+- **Serve-time resolution:** `query_pool_cards` JOINs `place_pool` to get stored photos. `poolCardToApiCard` uses `resolvePhotoUrl()` to prefer stored URLs.
+- **No Unsplash anywhere:** When no stored photo exists, cards receive `image: null`. Mobile handles its own placeholder. No silent Unsplash substitution in the pipeline.
+- **No API keys to client:** Google API URLs with embedded keys must never reach mobile. All photos served as Supabase Storage URLs only.
+- **Curated stop photos:** Resolved from `place_pool.stored_photo_urls` post-upsert via `storedPhotoMap` in `generate-curated-experiences`. `getPhotoUrl`/`getAllPhotoUrls` stubs return null by design — photos are patched after the batch place upsert.
+
 ---
 
 ## Environment Variables
