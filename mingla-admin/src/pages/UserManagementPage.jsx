@@ -9,7 +9,7 @@ import {
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 import { StatCard, SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
+import { Input, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { SearchInput } from "../components/ui/SearchInput";
 import { DataTable } from "../components/ui/Table";
@@ -69,6 +69,7 @@ export function UserManagementPage() {
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkActioning, setBulkActioning] = useState(false);
+  const [betaTogglingIds, setBetaTogglingIds] = useState(new Set());
 
   // Stats state
   const [stats, setStats] = useState({ total: 0, active: 0, banned: 0, onboarded: 0, newThisWeek: 0 });
@@ -144,7 +145,7 @@ export function UserManagementPage() {
   useEffect(() => {
     async function fetchCountries() {
       try {
-        const { data } = await supabase.from("profiles").select("country").limit(50000);
+        const { data } = await supabase.from("profiles").select("country").neq("account_type", "admin").limit(50000);
         if (!mountedRef.current) return;
         const unique = [...new Set((data || []).map(r => r.country).filter(Boolean))].sort();
         setCountries(unique);
@@ -170,14 +171,14 @@ export function UserManagementPage() {
     setStatsLoading(true);
     try {
       const [totalRes, activeRes, bannedRes, onboardedRes] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("active", true),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("active", false),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("has_completed_onboarding", true),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).neq("account_type", "admin"),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).neq("account_type", "admin").eq("active", true),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).neq("account_type", "admin").eq("active", false),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).neq("account_type", "admin").eq("has_completed_onboarding", true),
       ]);
 
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", weekAgo);
+      const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).neq("account_type", "admin").gte("created_at", weekAgo);
 
       if (!mountedRef.current) return;
       setStats({
@@ -204,6 +205,7 @@ export function UserManagementPage() {
       let query = supabase
         .from("profiles")
         .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at, is_beta_tester", { count: "exact" })
+        .neq("account_type", "admin")
         .order(sortKey || "created_at", { ascending })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -619,6 +621,33 @@ export function UserManagementPage() {
     }
   }, [selectedIds, addToast, fetchUsers, fetchStats]);
 
+  const handleBetaToggle = useCallback(async (userId, currentValue) => {
+    const newValue = !currentValue;
+
+    // Optimistic update
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_beta_tester: newValue } : u));
+    setBetaTogglingIds(prev => { const next = new Set(prev); next.add(userId); return next; });
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_beta_tester: newValue })
+        .eq("id", userId);
+      if (error) throw error;
+      logAdminAction("user.beta_toggle", "user", userId, { is_beta_tester: newValue });
+    } catch (err) {
+      // Revert on failure
+      if (mountedRef.current) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_beta_tester: currentValue } : u));
+      }
+      addToast({ variant: "error", title: "Failed to update beta status", description: err.message });
+    } finally {
+      if (mountedRef.current) {
+        setBetaTogglingIds(prev => { const next = new Set(prev); next.delete(userId); return next; });
+      }
+    }
+  }, [addToast]);
+
   // ─── Navigation helpers ─────────────────────────────────────────────────────
 
   const openDetail = useCallback((userId) => {
@@ -873,10 +902,14 @@ export function UserManagementPage() {
         key: "is_beta_tester",
         label: "Beta",
         width: "80px",
-        render: (val) => val ? (
-          <Badge variant="brand">Beta</Badge>
-        ) : (
-          <span className="text-[var(--color-text-muted)]">—</span>
+        render: (val, row) => (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Toggle
+              checked={!!val}
+              onChange={() => handleBetaToggle(row.id, val)}
+              disabled={betaTogglingIds.has(row.id)}
+            />
+          </div>
         ),
       },
       {
