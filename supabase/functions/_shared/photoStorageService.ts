@@ -139,13 +139,13 @@ export function resolvePhotoUrl(
   storedPhotoUrls: string[] | null | undefined,
   googlePhotoName: string | null | undefined,
   apiKey: string,
-  fallback?: string,
+  fallback?: string | null,
   category?: string | null,
-): string {
+): string | null {
   if (storedPhotoUrls && storedPhotoUrls.length > 0 && storedPhotoUrls[0]) {
     return storedPhotoUrls[0];
   }
-  return fallback || getPlaceholderForCategory(category);
+  return fallback || null;
 }
 
 /**

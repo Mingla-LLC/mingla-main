@@ -2581,12 +2581,14 @@ function topPlace(places: any[]): any | null {
   return [...places].sort((a, b) => scorePlace(b) - scorePlace(a))[0];
 }
 
-function getPhotoUrl(place: any): string {
-  const photo = place.photos?.[0];
-  if (!photo?.name) return '';
-  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+// Returns null — photos are resolved from place_pool.stored_photo_urls at serve time
+// via poolCardToApiCard, and patched onto stops post-upsert via storedPhotoMap.
+// These stubs exist because the function signature is called throughout stop-building code.
+function getPhotoUrl(place: any): string | null {
+  return null;
 }
 
+// Returns [] — see getPhotoUrl comment above for rationale.
 function getAllPhotoUrls(place: any, max: number = 5): string[] {
   return [];
 }
@@ -3018,6 +3020,35 @@ serve(async (req) => {
             }
           }
 
+          // 2a. Fetch stored_photo_urls for all upserted places and patch stop photos
+          const upsertedGpids = Object.keys(placePoolIdMap);
+          if (upsertedGpids.length > 0) {
+            const { data: photoData } = await poolAdmin
+              .from('place_pool')
+              .select('google_place_id, stored_photo_urls')
+              .in('google_place_id', upsertedGpids);
+
+            const storedPhotoMap: Record<string, string[]> = {};
+            if (photoData) {
+              for (const row of photoData) {
+                if (row.stored_photo_urls?.length > 0) {
+                  storedPhotoMap[row.google_place_id] = row.stored_photo_urls;
+                }
+              }
+            }
+
+            // Patch stop imageUrl/imageUrls with stored photos from place_pool
+            for (const card of cards) {
+              if (!card.stops) continue;
+              for (const stop of card.stops) {
+                const gpid = stop.placeId;
+                if (!gpid || !storedPhotoMap[gpid]) continue;
+                stop.imageUrl = storedPhotoMap[gpid][0];
+                stop.imageUrls = storedPhotoMap[gpid].slice(0, 5);
+              }
+            }
+          }
+
           // 2b. Generate teaser texts for locked curated card display
           const teaserTexts: string[] = [];
           if (OPENAI_API_KEY) {
@@ -3107,7 +3138,7 @@ serve(async (req) => {
           if (cardRows.length > 0) {
             const { data: insertedCards, error: cardError } = await poolAdmin
               .from('card_pool')
-              .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
+              .upsert(cardRows, { onConflict: 'google_place_id' })
               .select('id, google_place_id');
 
             if (cardError) {
@@ -3132,7 +3163,7 @@ serve(async (req) => {
               if (stopRows.length > 0) {
                 const { error: stopsError } = await poolAdmin
                   .from('card_pool_stops')
-                  .upsert(stopRows, { onConflict: 'card_pool_id,place_pool_id', ignoreDuplicates: true });
+                  .upsert(stopRows, { onConflict: 'card_pool_id,place_pool_id' });
                 if (stopsError) {
                   console.warn('[curated-v2] Batch stops insert error:', stopsError.message);
                 }

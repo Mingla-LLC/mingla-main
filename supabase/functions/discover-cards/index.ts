@@ -122,15 +122,14 @@ function estimateTravelMin(distKm: number, mode: string): number {
   return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
 }
 
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
-function getPhotoUrl(place: any): string {
-  const photo = place.photos?.[0];
-  if (!photo?.name) return FALLBACK_IMAGE;
-  return FALLBACK_IMAGE;
+function getPhotoUrl(place: any): string | null {
+  if (place.stored_photo_urls?.length > 0) return place.stored_photo_urls[0];
+  return null;
 }
 
 function getAllPhotoUrls(place: any, max = 5): string[] {
+  if (place.stored_photo_urls?.length > 0) return place.stored_photo_urls.slice(0, max);
   return [];
 }
 
@@ -663,7 +662,7 @@ serve(async (req: Request) => {
             const storedUrls = place.stored_photo_urls;
             const imageUrl = (storedUrls && storedUrls.length > 0)
               ? storedUrls[0]
-              : FALLBACK_IMAGE;
+              : null;
             const images = (storedUrls && storedUrls.length > 0)
               ? storedUrls.slice(0, 5)
               : [];
@@ -682,7 +681,7 @@ serve(async (req: Request) => {
               title: place.name,
               category,
               matchScore: 85,
-              image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+              image: imageUrl || null,
               images: images.length > 0 ? images : [imageUrl].filter(Boolean),
               rating: place.rating || 0,
               reviewCount: place.review_count || 0,
