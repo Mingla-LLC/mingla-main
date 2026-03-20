@@ -123,6 +123,15 @@ ALTER TABLE public.card_pool DROP COLUMN IF EXISTS stop_google_place_ids;
 -- (query_pool_cards is replaced in full — it was last defined in
 -- 20260315000006_trim_pool_card_payload.sql)
 
+-- Drop the old overload (13-param version from 20260303200001) that lacks
+-- the p_price_tiers parameter. Adding DEFAULT to p_budget_max created a
+-- second overload; Postgres won't let us REVOKE/GRANT by bare name while
+-- both exist.
+DROP FUNCTION IF EXISTS public.query_pool_cards(
+  UUID, TEXT[], DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION,
+  INTEGER, TEXT, TEXT, TIMESTAMPTZ, UUID[], INTEGER, INTEGER
+);
+
 CREATE OR REPLACE FUNCTION public.query_pool_cards(
   p_user_id UUID,
   p_categories TEXT[],
