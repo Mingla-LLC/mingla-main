@@ -61,20 +61,19 @@ Mingla/
 ├── mingla-admin/                        # Admin dashboard (React 19 + Vite + Tailwind v4)
 │   └── src/
 │       ├── App.jsx                      # Root with hash routing + Cmd+K
-│       ├── pages/                       # 15 feature pages
+│       ├── pages/                       # 13 feature pages
 │       │   ├── OverviewPage.jsx         # Dashboard with trends, alerts, activity
 │       │   ├── UserManagementPage.jsx   # Users with filters, bulk actions, server-side delete
 │       │   ├── SubscriptionManagementPage.jsx  # Subscriptions with server-side stats
 │       │   ├── AnalyticsPage.jsx        # Analytics with server-side RPCs + Leaflet map
 │       │   ├── ContentModerationPage.jsx # Content with image preview, bulk actions, review moderation
-│       │   ├── PhotoPoolManagementPage.jsx  # Photo pool management
+│       │   ├── PlacePoolManagementPage.jsx  # Place pool: 6 tabs (seed, map, browse, photos, stale, stats)
+│       │   ├── CardPoolManagementPage.jsx   # Card pool: 4 tabs (readiness, generate, browse, gaps)
 │       │   ├── BetaFeedbackPage.jsx     # Feedback with audio retry, bulk status
-│       │   ├── PlacePoolBuilderPage.jsx # Place pool with dedup, edit modal
 │       │   ├── EmailPage.jsx            # Email with DB templates, rate limits, segments
 │       │   ├── ReportsPage.jsx          # Reports with severity, profiles, cross-nav
 │       │   ├── AdminPage.jsx            # Admin users with roles, activity logs
 │       │   ├── SettingsPage.jsx         # Settings (theme + feature flags + config + integrations)
-│       │   ├── CityLauncherPage.jsx     # 5-step city seeding wizard
 │       │   ├── TableBrowserPage.jsx     # Table browser with sorting, JSON expand
 │       │   └── SeedPage.jsx             # Database tools with named RPCs
 │       ├── components/
@@ -101,14 +100,14 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **Subscriptions** — server-side stats via RPC, expiring override alerts, column sorting, CSV export
 - **Analytics** — 5 server-side RPCs (growth, engagement, retention, funnel, geo), custom date range, Leaflet map on geography tab
 - **Content** — image thumbnails, bulk actions, review moderation (approve/reject/flag)
-- **Photos** — photo health dashboard, category backfill with progress, place refresh with cost confirmation
+- **Place Pool** — 6-tab management: tile-based seeding, Leaflet map view, browse/filter/edit pool, photo management with batch download, stale review, stats with seeding history
+- **Card Pool** — 4-tab management: launch readiness checklist with per-category traffic lights, card generation (single + curated), browse/filter cards, gap analysis (places without cards, category gaps, cross-city comparison)
 - **Feedback** — audio auto-retry on 403, bulk status update
-- **Places** — deduplication enforcement, post-import editing, map view
 - **Email** — database-backed templates, city/tier/activity segments, rate limiting (100/day), send history export
 - **Reports** — severity classification, profile display (not UUIDs), detail modal, cross-page user navigation
 - **Admin Users** — role display (Owner/Admin), per-admin activity log
 - **Settings** — theme toggle (light/dark/system), feature flags, app config, integrations
-- **City Launcher** — 5-step wizard: define area → search → import → review → launch
+- **Database Tools** — named RPC scripts with confirmation modals
 - **Table Browser** — sortable columns, JSON cell expansion, CSV export
 - **Database Tools** — named RPC scripts with confirmation modals, owner-only custom SQL
 

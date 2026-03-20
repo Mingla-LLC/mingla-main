@@ -13,16 +13,15 @@ import { TableBrowserPage } from "./pages/TableBrowserPage";
 import { SeedPage } from "./pages/SeedPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AdminPage } from "./pages/AdminPage";
-import { PlacePoolBuilderPage } from "./pages/PlacePoolBuilderPage";
+import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
+import { CardPoolManagementPage } from "./pages/CardPoolManagementPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { ContentModerationPage } from "./pages/ContentModerationPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
-import { PhotoPoolManagementPage } from "./pages/PhotoPoolManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
-import { CityLauncherPage } from "./pages/CityLauncherPage";
 
 const PAGES = {
   overview: OverviewPage,
@@ -32,14 +31,13 @@ const PAGES = {
   content: ContentModerationPage,
   tables: TableBrowserPage,
   seed: SeedPage,
-  placepool: PlacePoolBuilderPage,
-  photopool: PhotoPoolManagementPage,
+  placepool: PlacePoolManagementPage,
+  cardpool: CardPoolManagementPage,
   feedback: BetaFeedbackPage,
   reports: ReportsPage,
   email: EmailPage,
   admin: AdminPage,
   settings: SettingsPage,
-  citylauncher: CityLauncherPage,
 };
 
 function getTabFromHash() {

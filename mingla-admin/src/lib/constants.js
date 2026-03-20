@@ -114,8 +114,8 @@ export const NAV_GROUPS = [
     label: "Content",
     items: [
       { id: "content", label: "Moderation", icon: "Layers" },
-      { id: "placepool", label: "Places", icon: "Globe" },
-      { id: "photopool", label: "Photos", icon: "Camera" },
+      { id: "placepool", label: "Place Pool", icon: "Globe" },
+      { id: "cardpool", label: "Card Pool", icon: "Layers" },
     ],
   },
   {
@@ -135,7 +135,6 @@ export const NAV_GROUPS = [
   {
     label: "Launch Tools",
     items: [
-      { id: "citylauncher", label: "City Launcher", icon: "Rocket" },
       { id: "seed", label: "Database Tools", icon: "Terminal" },
     ],
   },
