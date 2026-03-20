@@ -415,6 +415,7 @@ export const RecommendationsProvider: React.FC<
     datetimePref: userPrefs?.datetime_pref,
     dateOption: userPrefs?.date_option ?? 'now',
     timeSlot: userPrefs?.time_slot ?? null,
+    exactTime: userPrefs?.exact_time ?? null,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&

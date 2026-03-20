@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import {
   Text,
   View,
@@ -183,9 +183,6 @@ export default function PreferencesSheet({
     null
   );
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedWeekendDay, setSelectedWeekendDay] = useState<
-    "saturday" | "sunday" | null
-  >(null);
   const [exactTime, setExactTime] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
@@ -474,18 +471,15 @@ export default function PreferencesSheet({
     if (option === "Now") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
-      setSelectedWeekendDay(null);
       setExactTime("");
     } else if (option === "Today") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
-      setSelectedWeekendDay(null);
     } else if (option === "This Weekend") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
     } else if (option === "Pick a Date") {
       setSelectedTimeSlot(null);
-      setSelectedWeekendDay(null);
     }
   }, []);
 
@@ -646,6 +640,42 @@ export default function PreferencesSheet({
       }).catch(() => {});
     }
   }, [user?.id, setProfile]);
+
+  const isFormComplete = useMemo(() => {
+    const hasPills = selectedCategories.length > 0 || selectedIntents.length > 0;
+    const hasBudget = selectedPriceTiers.length > 0;
+
+    let hasDateTime = true;
+    if (selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') {
+      hasDateTime = !!selectedTimeSlot || !!exactTime;
+    } else if (selectedDateOption === 'Pick a Date') {
+      hasDateTime = !!selectedDate && (!!selectedTimeSlot || !!exactTime);
+    }
+    // "Now" requires nothing extra
+
+    const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
+
+    return hasPills && hasBudget && hasDateTime && hasTravel;
+  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlot, exactTime, selectedDate, constraintValue]);
+
+  const ctaHintText = useMemo(() => {
+    if (!isFormComplete) {
+      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && !selectedTimeSlot && !exactTime) {
+        return 'Pick a time to continue';
+      }
+      if (selectedDateOption === 'Pick a Date' && !selectedDate) {
+        return 'Pick a date to continue';
+      }
+      if (selectedDateOption === 'Pick a Date' && selectedDate && !selectedTimeSlot && !exactTime) {
+        return 'Pick a time to continue';
+      }
+      if (typeof constraintValue !== 'number' || constraintValue < 5) {
+        return 'Set travel time to continue';
+      }
+      return 'Complete your preferences';
+    }
+    return null;
+  }, [isFormComplete, selectedDateOption, selectedTimeSlot, exactTime, selectedDate, constraintValue]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 0;
@@ -1012,8 +1042,13 @@ export default function PreferencesSheet({
           <View style={styles.footerButtonsContainer}>
             <TouchableOpacity
               onPress={handleApplyPreferences}
-              style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}
-              disabled={isSaving}
+              style={[
+                styles.applyButton,
+                (isSaving || !isFormComplete) && styles.applyButtonDisabled,
+              ]}
+              disabled={isSaving || !isFormComplete}
+              accessibilityLabel={ctaHintText ?? 'Lock It In'}
+              accessibilityState={{ disabled: isSaving || !isFormComplete }}
             >
               {isSaving ? (
                 <View style={styles.buttonLoadingContainer}>
@@ -1022,7 +1057,7 @@ export default function PreferencesSheet({
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  Lock It In {countChanges() > 0 ? `(${countChanges()})` : ""}
+                  {ctaHintText ?? `Lock It In ${countChanges() > 0 ? `(${countChanges()})` : ""}`}
                 </Text>
               )}
             </TouchableOpacity>

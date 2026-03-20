@@ -40,6 +40,7 @@ export interface DeckParams {
   datetimePref?: string;
   dateOption?: string;
   timeSlot?: string | null;
+  exactTime?: string | null;
   batchSeed?: number;
   limit?: number;
 }
@@ -105,6 +106,7 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     priceRange: priceText,
     distance: distanceKm > 0 ? `${distanceKm.toFixed(1)} km` : '',
     travelTime: travelTimeMin > 0 ? `${Math.round(travelTimeMin)} min` : '',
+    travelMode: card.travelMode || undefined,
     experienceType,
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
@@ -275,6 +277,7 @@ class DeckService {
                 datetimePref: params.datetimePref,
                 dateOption: params.dateOption,
                 timeSlot: params.timeSlot,
+                exactTime: params.exactTime,
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
               },

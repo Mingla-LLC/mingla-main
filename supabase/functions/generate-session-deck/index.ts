@@ -38,6 +38,9 @@ interface AggregatedPrefs {
   travelConstraintValue: number;
   datetimePref: string | null;
   location: { lat: number; lng: number } | null;
+  dateOption: string;
+  timeSlot: string | null;
+  exactTime: string | null;
 }
 
 function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
@@ -53,6 +56,9 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
       travelConstraintValue: 30,
       datetimePref: null,
       location: null,
+      dateOption: 'now',
+      timeSlot: null,
+      exactTime: null,
     };
   }
 
@@ -117,6 +123,28 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     location = { lat: avgLat, lng: avgLng };
   }
 
+  // Date option: majority vote
+  const dateOption = majorityVote(
+    rows.map((r: any) => r.date_option || 'now'),
+    'now'
+  );
+
+  // Time slot: majority vote among non-null values
+  const timeSlotValues = rows
+    .map((r: any) => r.time_slot || r.time_of_day)
+    .filter((v: any): v is string => v != null);
+  const timeSlot = timeSlotValues.length > 0
+    ? majorityVote(timeSlotValues, timeSlotValues[0])
+    : null;
+
+  // Exact time: earliest among non-null values
+  const exactTimeValues = rows
+    .map((r: any) => r.exact_time)
+    .filter((v: any): v is string => v != null && v !== '');
+  const exactTime = exactTimeValues.length > 0
+    ? exactTimeValues.sort()[0]
+    : null;
+
   return {
     categories: Array.from(categorySet),
     intents: Array.from(intentSet),
@@ -128,6 +156,9 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     travelConstraintValue,
     datetimePref: datetimes.length > 0 ? datetimes[0] : null,
     location,
+    dateOption,
+    timeSlot,
+    exactTime,
   };
 }
 
@@ -144,6 +175,9 @@ async function computePreferencesHash(prefs: AggregatedPrefs): Promise<string> {
     travelConstraintValue: prefs.travelConstraintValue,
     datetimePref: prefs.datetimePref,
     location: prefs.location,
+    dateOption: prefs.dateOption,
+    timeSlot: prefs.timeSlot,
+    exactTime: prefs.exactTime,
   });
 
   const encoder = new TextEncoder();
@@ -347,7 +381,9 @@ serve(async (req: Request) => {
             travelMode: aggregated.travelMode,
             travelConstraintValue: aggregated.travelConstraintValue,
             datetimePref: aggregated.datetimePref,
-            dateOption: aggregated.datetimePref ? 'specific' : 'now',
+            dateOption: aggregated.dateOption,
+            timeSlot: aggregated.timeSlot,
+            exactTime: aggregated.exactTime,
             batchSeed,
             limit: 20,
             priceTiers: aggregated.priceTiers,

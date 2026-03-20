@@ -1704,7 +1704,7 @@ export default function SwipeableCards({
                         </View>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(effectiveTravelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {nextCard.travelTime}
                             </Text>
@@ -1860,7 +1860,7 @@ export default function SwipeableCards({
                         </View>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(effectiveTravelMode)} size={12} color="white" />
+                            <Icon name={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {currentRec.travelTime}
                             </Text>

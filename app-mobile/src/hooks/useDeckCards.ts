@@ -32,6 +32,7 @@ interface UseDeckCardsParams {
   datetimePref?: string;
   dateOption?: string;
   timeSlot?: string | null;
+  exactTime?: string | null;
   batchSeed: number;
   enabled: boolean;
 }
@@ -98,6 +99,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       normalizedDatetime,
       params.dateOption ?? 'now',
       params.timeSlot ?? '',
+      params.exactTime ?? '',
       params.batchSeed,
     ],
     queryFn: () =>

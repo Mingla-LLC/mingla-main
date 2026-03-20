@@ -56,6 +56,7 @@ export interface Recommendation {
     time: number;
     popularity: number;
   };
+  travelMode?: string;
   oneLiner?: string | null;
   tip?: string | null;
   shoppingList?: string[];
