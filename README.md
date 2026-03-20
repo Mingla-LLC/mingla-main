@@ -68,6 +68,7 @@ Mingla/
 │       │   ├── AnalyticsPage.jsx        # Analytics with server-side RPCs + Leaflet map
 │       │   ├── ContentModerationPage.jsx # Content with image preview, bulk actions, review moderation
 │       │   ├── PlacePoolManagementPage.jsx  # Place pool: 6 tabs (seed, map, browse, photos, stale, stats)
+│       │   ├── PoolIntelligencePage.jsx    # Pool Intelligence: 5-tab drill-down (geo, categories, grid, uncat, cards)
 │       │   ├── CardPoolManagementPage.jsx   # Card pool: 4 tabs (readiness, generate, browse, gaps)
 │       │   ├── BetaFeedbackPage.jsx     # Feedback with audio retry, bulk status
 │       │   ├── EmailPage.jsx            # Email with DB templates, rate limits, segments
@@ -137,6 +138,13 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 | `admin_analytics_funnel()` | Signup → onboard → interact → board funnel |
 | `admin_analytics_geo()` | User count by country |
 | `admin_edit_place()` | SECURITY DEFINER — selective place update with card cascade |
+| `admin_country_overview()` | Per-country aggregates from actual place_pool data |
+| `admin_country_city_overview(TEXT)` | Per-city aggregates within a country |
+| `admin_pool_category_health(TEXT, TEXT)` | Category maturity scoped by country/city |
+| `admin_virtual_tile_intelligence(TEXT, TEXT)` | Virtual ~500m neighborhood grid from bounding box |
+| `admin_uncategorized_places(TEXT, TEXT, INT, INT)` | Paginated uncategorized places by country/city |
+| `admin_card_pool_intelligence(TEXT, TEXT)` | Card pool metrics scoped by country/city |
+| `admin_assign_place_category(UUID[], TEXT)` | Bulk category assignment for places |
 | `admin_city_place_stats()` | Server-side per-city place aggregates (totals, photos, staleness, by-category) |
 | `admin_city_card_stats()` | Server-side per-city card aggregates (by type, category, gaps) |
 | `admin_seed_demo_profiles()` | Insert demo test profiles |
@@ -167,6 +175,20 @@ Two full-featured pages replacing three old ones (PlacePoolBuilderPage, CityLaun
 4. **Photo management** — integrated into Place Pool with tile/category/rating filters, sort by rating or impressions, partial batch downloads with limit control and cost estimates.
 5. **Launch readiness** — 7-step checklist (tiles, places ≥50, photos ≥80%, single cards, curated ≥10, categories ≥8/13, spend ≤$70), 13-category traffic lights, SVG readiness gauge, Launch button gated on all-green.
 6. **Cross-city comparison** — when no city selected, Gap Analysis shows all cities with places, cards, photo %, and spend vs $70 cap side-by-side.
+
+### Admin Dashboard — Pool Intelligence
+
+A seeding-independent database exploration tool. Shows what exists in `place_pool` and `card_pool` — segmented by country, city, neighborhood, and category. Has nothing to do with seeding. The admin uses this to understand the current state, then goes to the seeding pages to act.
+
+1. **Country-first navigation** — top-level filter reads `DISTINCT country` from actual `place_pool.country` values (not `seeding_cities`). Breadcrumb: All Countries → Country → City.
+2. **Geographic Inventory** — default tab. Shows country table (places, cards, photos, categories, uncategorized count, city count). Click a country to see its cities. Click a city to drill into categories.
+3. **Category Maturity** — per-category breakdown scoped by country and optionally city. Shows place count, card count (single + curated), photo coverage, avg rating, health status. Health = green (≥80% of places have cards), yellow (≥50%), red (<50%).
+4. **Neighborhood Grid** — virtual ~500m tile grid computed on-the-fly from the bounding box of places in a city. No storage, no seeding dependency. Table view + grid view toggle. Any city with places gets a grid automatically.
+5. **Uncategorized Places** — paginated list of places with NULL `seeding_category`, filterable by country/city. Bulk category assignment via `admin_assign_place_category` RPC with 13-slug validation.
+6. **Card Pool Intelligence** — card metrics scoped by country/city. Active/inactive, single/curated, orphaned cards (parent place deleted), stale cards (not refreshed 30+ days), image coverage, serving stats, per-category JSONB breakdown.
+7. **Every metric has a plain-English subtitle** — "Active Cards: Cards available to show users", "Orphaned Cards: Cards whose parent place was deactivated or deleted", etc.
+8. **Data sources** — `place_pool.country` and `place_pool.city` (TEXT columns, backfilled from seeding_cities names, Google addressComponents, and address parsing). `card_pool.country` and `card_pool.city` denormalized for direct filtering. Zero JOINs to seeding tables at runtime.
+9. **Virtual tiles** — computed per-request from bounding box using floor division (~0.0045° latitude ≈ 500m, longitude adjusted by cosine). Deterministic: same places = same grid. No `seeding_tiles` dependency.
 
 ### Mobile App Features
 
@@ -287,8 +309,6 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
-- **Admin Pool Management Phase 1** — New tile-based seeding infrastructure: `seeding_cities`, `seeding_tiles`, `seeding_operations` tables. `admin-seed-places` edge function (generate_tiles, preview_cost with $70 cap, seed with Nearby Search + selective upsert + structured error logging). Fixed `admin-place-search` (locationBias, businessStatus, timeoutFetch). New RPCs: `admin_edit_place`, `admin_city_place_stats`, `admin_city_card_stats`. Country backfill on existing places.
-- **Category migration (12 → 13)** — Split Groceries & Flowers into Flowers (visible) + Groceries (hidden). Added Live Performance (split from Watch). Renamed Nature → Nature & Views, Picnic → Picnic Park. Removed Work & Business. SQL backfill + 60+ alias maps for backward compatibility.
-- **Curated generator overhaul** — Replaced 7 per-type generators (3,254 lines) with 1 generic pool-only generator (~900 lines). Zero Google API calls. Deleted Friendly experience type. Added Flowers optional stop, cascading hours filter, dog_park exclusion.
-- **Card generation/serving separation** — Extracted `generate-single-cards` from `discover-cards`, stripped `discover-cards` to pool-only (1342→416 lines, zero external API calls). Generation and serving are now fully decoupled.
-- **Card photo resolution fix** — `poolCardToApiCard` resolves photos from `place_pool.stored_photo_urls` only. No Unsplash fallbacks, no Google API keys to client.
+- **Card Image Pipeline Fix** — All 10 category discover functions gutted to pool-only (~70 lines each, down from ~500). Removed all legacy Google API fallback code (`getPhotoUrl`, `batchSearchPlaces`, `getAllPhotoUrls`). Added error logging to 3 silent `.catch(() => {})` sites. New `backfill-place-photos` edge function re-downloads photos for places with empty `stored_photo_urls`. SQL migration backfills `card_pool.image_url` from `place_pool.stored_photo_urls` for cards with Unsplash/NULL images.
+- **Pool Intelligence V2** — Complete rewrite: country-first navigation (All Countries → Country → City), zero seeding dependencies, virtual ~500m neighborhood grid computed from place bounding boxes, 6 new RPCs using TEXT country/city filters instead of UUID city_id, `place_pool.city` column with 3-pass backfill, `card_pool.city`/`country` columns, plain-English metric labels on every stat.
+- **Beta Feedback preserved on user deletion** — Changed `beta_feedback.user_id` FK from `ON DELETE CASCADE` to `ON DELETE SET NULL`. The `delete-user` edge function now scrubs PII before profile deletion while preserving all feedback metadata, audio recordings, and admin notes.
