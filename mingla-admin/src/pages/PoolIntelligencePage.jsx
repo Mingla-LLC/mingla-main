@@ -33,7 +33,7 @@ const TOTAL_CATEGORIES = Object.keys(CATEGORY_LABELS).length;
 const TABS = [
   { id: "geographic", label: "Geographic Inventory" },
   { id: "categories", label: "Category Maturity" },
-  { id: "tiles", label: "Tile Detail" },
+  { id: "tiles", label: "Neighborhood Grid" },
   { id: "uncategorized", label: "Uncategorized Places" },
   { id: "cards", label: "Card Pool" },
 ];
@@ -71,38 +71,47 @@ function relativeTime(dateStr) {
   return `${days}d ago`;
 }
 
-function ErrorBanner({ error }) {
+function ErrorBanner({ error, onRetry }) {
   if (!error) return null;
   return (
-    <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg">
-      Failed to load data: {error}
+    <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg flex items-center justify-between">
+      <span>Failed to load data: {error}</span>
+      {onRetry && (
+        <button onClick={onRetry} className="text-xs font-medium underline cursor-pointer ml-3">
+          Retry
+        </button>
+      )}
     </div>
   );
 }
 
-// ── CityFilterBar ────────────────────────────────────────────────────────────
+// ── CountryFilterBar ─────────────────────────────────────────────────────────
 
-function CityFilterBar({ selectedCity, cities, onSelectCity, onClearCity }) {
+function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
   const items = [
-    { label: "All Cities", onClick: onClearCity },
-    ...(selectedCity ? [{ label: `${selectedCity.city_name}, ${selectedCity.country}` }] : []),
+    { label: "All Countries", onClick: () => { onClearCountry(); } },
+    ...(selectedCountry ? [
+      selectedCity
+        ? { label: selectedCountry, onClick: () => { onClearCity(); } }
+        : { label: selectedCountry },
+    ] : []),
+    ...(selectedCity ? [{ label: selectedCity }] : []),
   ];
 
   return (
     <div className="flex items-center gap-3 mb-2">
       <Breadcrumbs items={items} />
-      {!selectedCity && cities.length > 0 && (
+      {!selectedCountry && countries.length > 0 && (
         <select
           className="ml-auto rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
           value=""
           onChange={(e) => {
-            const city = cities.find((c) => c.city_id === e.target.value);
-            if (city) onSelectCity(city);
+            if (e.target.value) onSelectCountry(e.target.value);
           }}
         >
-          <option value="">Jump to city...</option>
-          {cities.map((c) => (
-            <option key={c.city_id} value={c.city_id}>{c.city_name}, {c.country}</option>
+          <option value="">Jump to country...</option>
+          {countries.map((c) => (
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
       )}
@@ -112,116 +121,20 @@ function CityFilterBar({ selectedCity, cities, onSelectCity, onClearCity }) {
 
 // ── Tab 1: Geographic Inventory ──────────────────────────────────────────────
 
-function GeographicInventoryTab({ onSelectCity }) {
+function GeographicInventoryTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    setLoading(true);
-    setError(null);
-    supabase.rpc("admin_pool_intelligence_overview").then(({ data, error: err }) => {
-      if (!mountedRef.current) return;
-      if (err) setError(err.message);
-      else setRows(data || []);
-      setLoading(false);
-    });
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const totalPlaces = rows.reduce((s, r) => s + (r.active_places || 0), 0);
-  const avgPhotos = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.photo_pct || 0), 0) / rows.length) : 0;
-  const avgReadiness = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.readiness_pct || 0), 0) / rows.length) : 0;
-
-  const columns = [
-    {
-      key: "city_name", label: "City", sortable: true,
-      render: (_, r) => (
-        <button
-          onClick={() => onSelectCity(r)}
-          className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left"
-        >
-          {r.city_name}, {r.country}
-        </button>
-      ),
-    },
-    {
-      key: "city_status", label: "Status",
-      render: (_, r) => {
-        const v = { draft: "default", seeding: "warning", seeded: "info", launched: "success" };
-        return <Badge variant={v[r.city_status] || "default"}>{r.city_status}</Badge>;
-      },
-    },
-    { key: "active_places", label: "Places", sortable: true },
-    { key: "photo_pct", label: "Photos", sortable: true, render: (_, r) => pctBadge(r.photo_pct) },
-    {
-      key: "category_coverage", label: "Categories", sortable: true,
-      render: (_, r) => {
-        const pct = Math.round((r.category_coverage / TOTAL_CATEGORIES) * 100);
-        return <span>{r.category_coverage}/{TOTAL_CATEGORIES} {pctBadge(pct)}</span>;
-      },
-    },
-    { key: "total_cards", label: "Cards", sortable: true },
-    { key: "freshness_pct", label: "Freshness", sortable: true, render: (_, r) => pctBadge(r.freshness_pct) },
-    {
-      key: "seeding_spend", label: "Spend", sortable: true,
-      render: (_, r) => {
-        const over = r.seeding_spend > 70;
-        return <span className={over ? "text-[var(--color-error-700)] font-medium" : ""}>${(r.seeding_spend || 0).toFixed(2)}</span>;
-      },
-    },
-    { key: "readiness_pct", label: "Readiness", sortable: true, render: (_, r) => pctBadge(r.readiness_pct) },
-  ];
-
-  // Row background styling based on readiness
-  const styledRows = rows.map((r) => ({
-    ...r,
-    _key: r.city_id,
-    _rowClassName:
-      r.readiness_pct < 50 ? "bg-red-50/40 dark:bg-red-950/10"
-        : r.readiness_pct < 80 ? "bg-yellow-50/40 dark:bg-yellow-950/10"
-        : "bg-green-50/30 dark:bg-green-950/10",
-  }));
-
-  return (
-    <div className="space-y-6">
-      <ErrorBanner error={error} />
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard icon={Globe} label="Cities" value={rows.length} />
-        <StatCard icon={Layers} label="Total Places" value={totalPlaces} />
-        <StatCard icon={Camera} label="Avg Photo Coverage" value={`${avgPhotos}%`}
-          trend={avgPhotos >= 80 ? "Good" : "Low"} trendUp={avgPhotos >= 80} />
-        <StatCard icon={TrendingUp} label="Avg Readiness" value={`${avgReadiness}%`}
-          trend={avgReadiness >= 80 ? "Launch Ready" : avgReadiness >= 50 ? "In Progress" : "Early"}
-          trendUp={avgReadiness >= 80} />
-      </div>
-      <SectionCard title="All Cities" subtitle={`${rows.length} cities · ${totalPlaces} places`}>
-        <DataTable columns={columns} rows={styledRows} loading={loading}
-          emptyMessage="No cities defined yet. Add cities in the Place Pool page." emptyIcon={Globe} />
-      </SectionCard>
-    </div>
-  );
-}
-
-// ── Tab 2: Category Maturity ─────────────────────────────────────────────────
-
-function CategoryMaturityTab({ selectedCity }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const mountedRef = useRef(true);
-  const cityMode = !!selectedCity;
-
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     mountedRef.current = true;
     setLoading(true);
     setError(null);
 
-    const rpcCall = cityMode
-      ? supabase.rpc("admin_city_category_maturity", { p_city_id: selectedCity.city_id })
-      : supabase.rpc("admin_pool_category_health");
+    const rpcCall = selectedCountry
+      ? supabase.rpc("admin_country_city_overview", { p_country: selectedCountry })
+      : supabase.rpc("admin_country_overview");
 
     rpcCall.then(({ data, error: err }) => {
       if (!mountedRef.current) return;
@@ -229,22 +142,180 @@ function CategoryMaturityTab({ selectedCity }) {
       else setRows(data || []);
       setLoading(false);
     });
+  }, [selectedCountry]);
+
+  useEffect(() => {
+    fetchData();
     return () => { mountedRef.current = false; };
-  }, [selectedCity?.city_id]);
+  }, [fetchData]);
+
+  // ── Country mode (no country selected) ──
+  if (!selectedCountry) {
+    const totalPlaces = rows.reduce((s, r) => s + (Number(r.active_places) || 0), 0);
+    const avgPhotos = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.photo_pct || 0), 0) / rows.length) : 0;
+    const totalCards = rows.reduce((s, r) => s + (Number(r.total_cards) || 0), 0);
+
+    const columns = [
+      {
+        key: "country", label: "Country", sortable: true,
+        render: (_, r) => (
+          <button
+            onClick={() => onSelectCountry(r.country)}
+            className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left"
+          >
+            {r.country}
+          </button>
+        ),
+      },
+      { key: "active_places", label: "Active Places", sortable: true },
+      { key: "photo_pct", label: "Photo Coverage", sortable: true, render: (_, r) => pctBadge(r.photo_pct) },
+      {
+        key: "category_coverage", label: "Categories", sortable: true,
+        render: (_, r) => `${r.category_coverage}/${TOTAL_CATEGORIES}`,
+      },
+      { key: "total_cards", label: "Cards", sortable: true },
+      {
+        key: "uncategorized_count", label: "Uncategorized", sortable: true,
+        render: (_, r) => Number(r.uncategorized_count) > 0
+          ? <span className="text-[var(--color-warning-600)] font-medium">{r.uncategorized_count}</span>
+          : <span className="text-[var(--color-success-700)]">0</span>,
+      },
+      { key: "city_count", label: "Cities", sortable: true },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <ErrorBanner error={error} onRetry={fetchData} />
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard icon={Globe} label="Countries" value={rows.length} />
+          <StatCard icon={Layers} label="Total Active Places" value={totalPlaces.toLocaleString()} />
+          <StatCard icon={Camera} label="Avg Photo Coverage" value={`${avgPhotos}%`}
+            trend={avgPhotos >= 80 ? "Good" : "Low"} trendUp={avgPhotos >= 80} />
+          <StatCard icon={CreditCard} label="Total Cards" value={totalCards.toLocaleString()} />
+        </div>
+        <SectionCard title="All Countries" subtitle={`${rows.length} countries · ${totalPlaces.toLocaleString()} places`}>
+          <DataTable columns={columns} rows={rows} loading={loading}
+            emptyMessage="No places in the database yet. Seed places from the Place Pool page." emptyIcon={Globe} />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // ── City mode (country selected) ──
+  const totalPlaces = rows.reduce((s, r) => s + (Number(r.active_places) || 0), 0);
+  const avgPhotos = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.photo_pct || 0), 0) / rows.length) : 0;
+  const totalUncategorized = rows.reduce((s, r) => s + (Number(r.uncategorized_count) || 0), 0);
+
+  const columns = [
+    {
+      key: "city_name", label: "City", sortable: true,
+      render: (_, r) => {
+        const isUnknown = r.city_name === "Unknown City";
+        return (
+          <button
+            onClick={() => onSelectCity(r.city_name)}
+            className={`text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left ${isUnknown ? "italic" : ""}`}
+          >
+            {r.city_name}
+          </button>
+        );
+      },
+    },
+    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "photo_pct", label: "Photo Coverage", sortable: true, render: (_, r) => pctBadge(r.photo_pct) },
+    {
+      key: "category_coverage", label: "Categories", sortable: true,
+      render: (_, r) => `${r.category_coverage}/${TOTAL_CATEGORIES}`,
+    },
+    { key: "total_cards", label: "Cards", sortable: true },
+    {
+      key: "avg_rating", label: "Avg Rating", sortable: true,
+      render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—",
+    },
+    { key: "freshness_pct", label: "Freshness", sortable: true, render: (_, r) => pctBadge(r.freshness_pct) },
+    {
+      key: "uncategorized_count", label: "Uncategorized", sortable: true,
+      render: (_, r) => Number(r.uncategorized_count) > 0
+        ? <span className="text-[var(--color-warning-600)] font-medium">{r.uncategorized_count}</span>
+        : <span className="text-[var(--color-success-700)]">0</span>,
+    },
+  ];
+
+  const styledRows = rows.map((r) => ({
+    ...r,
+    _key: r.city_name,
+    _rowClassName:
+      r.photo_pct < 50 ? "bg-red-50/40 dark:bg-red-950/10"
+        : r.photo_pct < 80 ? "bg-yellow-50/40 dark:bg-yellow-950/10"
+        : "bg-green-50/30 dark:bg-green-950/10",
+  }));
+
+  return (
+    <div className="space-y-6">
+      <ErrorBanner error={error} onRetry={fetchData} />
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={MapPin} label="Cities" value={rows.length} />
+        <StatCard icon={Layers} label="Total Active Places" value={totalPlaces.toLocaleString()} />
+        <StatCard icon={Camera} label="Avg Photo Coverage" value={`${avgPhotos}%`}
+          trend={avgPhotos >= 80 ? "Good" : "Low"} trendUp={avgPhotos >= 80} />
+        <StatCard icon={Tag} label="Uncategorized" value={totalUncategorized}
+          trend={totalUncategorized === 0 ? "Clean" : "Needs Work"} trendUp={totalUncategorized === 0} />
+      </div>
+      <SectionCard title={`Cities in ${selectedCountry}`} subtitle={`${rows.length} cities · ${totalPlaces.toLocaleString()} places`}>
+        <DataTable columns={columns} rows={styledRows} loading={loading}
+          emptyMessage={`No places found in ${selectedCountry}.`} emptyIcon={MapPin} />
+      </SectionCard>
+    </div>
+  );
+}
+
+// ── Tab 2: Category Maturity ─────────────────────────────────────────────────
+
+function CategoryMaturityTab({ selectedCountry, selectedCity }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+
+  const fetchData = useCallback(() => {
+    mountedRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    const params = {};
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
+
+    supabase.rpc("admin_pool_category_health", params).then(({ data, error: err }) => {
+      if (!mountedRef.current) return;
+      if (err) setError(err.message);
+      else setRows(data || []);
+      setLoading(false);
+    });
+  }, [selectedCountry, selectedCity]);
+
+  useEffect(() => {
+    fetchData();
+    return () => { mountedRef.current = false; };
+  }, [fetchData]);
 
   const healthy = rows.filter((r) => r.health === "green").length;
   const critical = rows.filter((r) => r.health === "red").length;
-  const totalCards = rows.reduce((s, r) => s + (r.total_cards || 0), 0);
+  const totalCards = rows.reduce((s, r) => s + (Number(r.total_cards) || 0), 0);
   const avgPhoto = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.photo_pct || 0), 0) / rows.length) : 0;
+
+  const scope = selectedCity
+    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
+    : selectedCountry
+    ? <strong>{selectedCountry}</strong>
+    : "Global";
 
   const columns = [
     { key: "category", label: "Category", sortable: true, render: (_, r) => categoryDot(r.category) },
     { key: "active_places", label: "Places", sortable: true },
     { key: "total_cards", label: "Cards", sortable: true },
-    ...(cityMode ? [
-      { key: "single_cards", label: "Single", sortable: true },
-      { key: "curated_cards", label: "Curated", sortable: true },
-    ] : []),
+    { key: "single_cards", label: "Single", sortable: true },
+    { key: "curated_cards", label: "Curated", sortable: true },
     { key: "photo_pct", label: "Photos", sortable: true, render: (_, r) => pctBadge(r.photo_pct) },
     {
       key: "avg_rating", label: "Rating", sortable: true,
@@ -252,21 +323,17 @@ function CategoryMaturityTab({ selectedCity }) {
     },
     {
       key: "places_needing_cards", label: "Need Cards", sortable: true,
-      render: (_, r) => r.places_needing_cards > 0
+      render: (_, r) => Number(r.places_needing_cards) > 0
         ? <span className="text-[var(--color-warning-600)] font-medium">{r.places_needing_cards}</span>
         : <span className="text-[var(--color-success-700)]">0</span>,
     },
     { key: "health", label: "Health", render: (_, r) => healthBadge(r.health) },
   ];
 
-  const modeText = cityMode
-    ? <>Showing categories for <strong>{selectedCity.city_name}</strong></>
-    : "Showing all categories globally";
-
   return (
     <div className="space-y-6">
-      <ErrorBanner error={error} />
-      <p className="text-sm text-[var(--color-text-secondary)]">{modeText}</p>
+      <ErrorBanner error={error} onRetry={fetchData} />
+      <p className="text-sm text-[var(--color-text-secondary)]">Showing categories for {scope}</p>
       <div className="grid grid-cols-4 gap-4">
         <StatCard icon={CheckCircle} label="Healthy Categories" value={`${healthy}/${TOTAL_CATEGORIES}`}
           trend={healthy >= 10 ? "Strong" : "Gaps"} trendUp={healthy >= 10} />
@@ -277,58 +344,66 @@ function CategoryMaturityTab({ selectedCity }) {
       </div>
       <SectionCard title="Category Health Matrix" subtitle="Card coverage relative to active places per category">
         <DataTable columns={columns} rows={rows} loading={loading}
-          emptyMessage={cityMode ? `No categorized places in ${selectedCity.city_name} yet.` : "No category data"}
+          emptyMessage="No categorized places found. Assign categories from the Uncategorized tab."
           emptyIcon={Layers} />
       </SectionCard>
     </div>
   );
 }
 
-// ── Tab 3: Tile Detail ───────────────────────────────────────────────────────
+// ── Tab 3: Neighborhood Grid ─────────────────────────────────────────────────
 
-function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
+function NeighborhoodGridTab({ selectedCountry, selectedCity, onSwitchToGeographic }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState("table");
   const mountedRef = useRef(true);
 
-  useEffect(() => {
-    if (!selectedCity) return;
+  const fetchData = useCallback(() => {
+    if (!selectedCountry || !selectedCity) return;
     mountedRef.current = true;
     setLoading(true);
     setError(null);
-    supabase.rpc("admin_tile_intelligence", { p_city_id: selectedCity.city_id }).then(({ data, error: err }) => {
+    supabase.rpc("admin_virtual_tile_intelligence", {
+      p_country: selectedCountry,
+      p_city: selectedCity,
+    }).then(({ data, error: err }) => {
       if (!mountedRef.current) return;
       if (err) setError(err.message);
       else setRows(data || []);
       setLoading(false);
     });
-    return () => { mountedRef.current = false; };
-  }, [selectedCity?.city_id]);
+  }, [selectedCountry, selectedCity]);
 
-  if (!selectedCity) {
+  useEffect(() => {
+    fetchData();
+    return () => { mountedRef.current = false; };
+  }, [fetchData]);
+
+  if (!selectedCountry || !selectedCity) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <Grid3X3 className="h-12 w-12 text-[var(--gray-300)]" />
-        <p className="text-sm text-[var(--color-text-tertiary)]">Select a city from Geographic Inventory to see tile details.</p>
+        <p className="text-sm text-[var(--color-text-tertiary)] max-w-md text-center">
+          Select a city from Geographic Inventory to see the neighborhood grid. Each cell represents a ~500m area showing place density and category coverage.
+        </p>
         <Button variant="secondary" size="sm" onClick={onSwitchToGeographic}>Go to Geographic Inventory</Button>
       </div>
     );
   }
 
-  const totalTiles = rows.length;
-  const seededTiles = rows.filter((r) => r.seeded).length;
-  const avgPlaces = totalTiles > 0 ? Math.round(rows.reduce((s, r) => s + (r.active_places || 0), 0) / totalTiles) : 0;
+  const totalCells = rows.length;
+  const avgPlaces = totalCells > 0 ? Math.round(rows.reduce((s, r) => s + (Number(r.active_places) || 0), 0) / totalCells) : 0;
+  const maxDensity = totalCells > 0 ? Math.max(...rows.map((r) => Number(r.active_places) || 0)) : 0;
 
   const columns = [
-    { key: "tile_index", label: "Tile #", sortable: true },
     {
       key: "row_idx", label: "Position", sortable: true,
-      render: (_, r) => `R${r.row_idx} C${r.col_idx}`,
+      render: (_, r) => `(${r.row_idx}, ${r.col_idx})`,
     },
     { key: "active_places", label: "Places", sortable: true },
-    { key: "with_photos", label: "Photos", sortable: true },
+    { key: "with_photos", label: "With Photos", sortable: true },
     {
       key: "category_count", label: "Categories", sortable: true,
       render: (_, r) => `${r.category_count}/${TOTAL_CATEGORIES}`,
@@ -338,14 +413,8 @@ function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
       render: (_, r) => r.top_category ? (CATEGORY_LABELS[r.top_category] || r.top_category) : "—",
     },
     {
-      key: "seeded", label: "Seeded",
-      render: (_, r) => r.seeded
-        ? <span className="text-[var(--color-success-700)]">✓</span>
-        : <span className="text-[var(--color-error-700)]">✗</span>,
-    },
-    {
-      key: "last_seeded_at", label: "Last Seeded", sortable: true,
-      render: (_, r) => relativeTime(r.last_seeded_at),
+      key: "avg_rating", label: "Avg Rating", sortable: true,
+      render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—",
     },
   ];
 
@@ -359,7 +428,7 @@ function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
   }, [rows]);
 
   function tileColor(places) {
-    if (places === 0) return "bg-[var(--gray-200)]";
+    if (!places || places === 0) return "bg-[var(--gray-200)]";
     if (places <= 4) return "bg-orange-300";
     if (places <= 9) return "bg-lime-400";
     return "bg-green-500";
@@ -367,19 +436,16 @@ function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
 
   return (
     <div className="space-y-6">
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error} onRetry={fetchData} />
       <div className="grid grid-cols-3 gap-4">
-        <StatCard icon={Grid3X3} label="Total Tiles" value={totalTiles} />
-        <StatCard icon={CheckCircle} label="Seeded Tiles"
-          value={`${seededTiles}/${totalTiles}`}
-          trend={totalTiles > 0 ? `${Math.round((seededTiles / totalTiles) * 100)}%` : "0%"}
-          trendUp={seededTiles >= totalTiles * 0.8} />
-        <StatCard icon={MapPin} label="Avg Places/Tile" value={avgPlaces} />
+        <StatCard icon={Grid3X3} label="Grid Cells" value={totalCells} />
+        <StatCard icon={MapPin} label="Avg Places/Cell" value={avgPlaces} />
+        <StatCard icon={TrendingUp} label="Max Density" value={maxDensity} />
       </div>
 
       <SectionCard
-        title={`Tiles for ${selectedCity.city_name}`}
-        subtitle={`${totalTiles} tiles`}
+        title={`Neighborhood Grid for ${selectedCity}`}
+        subtitle={`${totalCells} areas with places`}
         action={
           <div className="flex gap-1">
             <Button variant={viewMode === "table" ? "primary" : "ghost"} size="sm" icon={List}
@@ -391,26 +457,28 @@ function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
       >
         {viewMode === "table" ? (
           <DataTable columns={columns} rows={rows} loading={loading}
-            emptyMessage="No tiles found for this city." emptyIcon={Grid3X3} />
+            emptyMessage={`No active places found in ${selectedCity}.`} emptyIcon={Grid3X3} />
         ) : (
           <div className="max-h-96 overflow-y-auto p-2">
             {loading ? (
-              <div className="text-center py-8 text-[var(--color-text-secondary)]">Loading tiles...</div>
+              <div className="text-center py-8 text-[var(--color-text-secondary)]">Loading grid...</div>
             ) : rows.length === 0 ? (
-              <div className="text-center py-8 text-[var(--color-text-tertiary)]">No tiles found.</div>
+              <div className="text-center py-8 text-[var(--color-text-tertiary)]">No active places found in {selectedCity}.</div>
             ) : (
               <div className="inline-grid gap-1" style={{ gridTemplateColumns: `repeat(${maxCol + 1}, 2.5rem)` }}>
                 {Array.from({ length: maxRow + 1 }, (_, ri) =>
                   Array.from({ length: maxCol + 1 }, (_, ci) => {
                     const tile = tileMap[`${ri}-${ci}`];
-                    if (!tile) return <div key={`${ri}-${ci}`} className="w-10 h-10" />;
+                    const places = tile ? Number(tile.active_places) : 0;
                     return (
                       <div
-                        key={tile.tile_id}
-                        className={`w-10 h-10 rounded flex items-center justify-center text-xs font-medium cursor-default ${tileColor(tile.active_places)}`}
-                        title={`Tile #${tile.tile_index}: ${tile.active_places} places, ${tile.category_count} categories, ${tile.seeded ? "seeded" : "not seeded"}`}
+                        key={`${ri}-${ci}`}
+                        className={`w-10 h-10 rounded flex items-center justify-center text-xs font-medium cursor-default ${tileColor(places)}`}
+                        title={tile
+                          ? `Area (${ri},${ci}): ${tile.active_places} places, ${tile.category_count} categories, top: ${CATEGORY_LABELS[tile.top_category] || tile.top_category || "none"}`
+                          : `Area (${ri},${ci}): empty`}
                       >
-                        {tile.tile_index}
+                        {places > 0 ? places : ""}
                       </div>
                     );
                   })
@@ -426,7 +494,7 @@ function TileDetailTab({ selectedCity, onSwitchToGeographic }) {
 
 // ── Tab 4: Uncategorized Places ──────────────────────────────────────────────
 
-function UncategorizedPlacesTab({ selectedCity }) {
+function UncategorizedPlacesTab({ selectedCountry, selectedCity }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -444,7 +512,8 @@ function UncategorizedPlacesTab({ selectedCity }) {
     setLoading(true);
     setError(null);
     const params = { p_limit: pageSize, p_offset: page * pageSize };
-    if (selectedCity) params.p_city_id = selectedCity.city_id;
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
 
     supabase.rpc("admin_uncategorized_places", params).then(({ data, error: err }) => {
       if (!mountedRef.current) return;
@@ -454,15 +523,15 @@ function UncategorizedPlacesTab({ selectedCity }) {
       setTotalCount(result.length > 0 ? Number(result[0].total_count) : 0);
       setLoading(false);
     });
-  }, [selectedCity?.city_id, page]);
+  }, [selectedCountry, selectedCity, page]);
 
   useEffect(() => {
     fetchData();
     return () => { mountedRef.current = false; };
   }, [fetchData]);
 
-  // Reset page when city changes
-  useEffect(() => { setPage(0); setSelectedIds(new Set()); }, [selectedCity?.city_id]);
+  // Reset page when filters change
+  useEffect(() => { setPage(0); setSelectedIds(new Set()); }, [selectedCountry, selectedCity]);
 
   const handleSelect = useCallback((id, checked) => {
     setSelectedIds((prev) => {
@@ -521,8 +590,11 @@ function UncategorizedPlacesTab({ selectedCity }) {
       key: "rating", label: "Rating",
       render: (_, r) => r.rating ? `★ ${r.rating}` : "—",
     },
+    ...(!selectedCountry ? [{
+      key: "country", label: "Country",
+    }] : []),
     ...(!selectedCity ? [{
-      key: "city_name", label: "City",
+      key: "city", label: "City",
     }] : []),
     {
       key: "is_active", label: "Active",
@@ -535,9 +607,9 @@ function UncategorizedPlacesTab({ selectedCity }) {
 
   return (
     <div className="space-y-6">
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error} onRetry={fetchData} />
       <div className="grid grid-cols-1 gap-4">
-        <StatCard icon={Tag} label="Total Uncategorized Places" value={totalCount} />
+        <StatCard icon={Tag} label="Total Uncategorized" value={totalCount} />
       </div>
 
       <SectionCard title="Uncategorized Places" subtitle={totalCount > 0 ? `${totalCount} places without a category` : ""}>
@@ -550,7 +622,7 @@ function UncategorizedPlacesTab({ selectedCity }) {
           onSelect={handleSelect}
           onSelectAll={handleSelectAll}
           getRowId={(r) => r.id}
-          emptyMessage="No uncategorized places found. All places have categories assigned."
+          emptyMessage="All places have categories assigned — nothing to do here."
           emptyIcon={CheckCircle}
           pagination={totalCount > pageSize ? {
             page,
@@ -595,30 +667,42 @@ function UncategorizedPlacesTab({ selectedCity }) {
 
 // ── Tab 5: Card Pool Intelligence ────────────────────────────────────────────
 
-function CardPoolIntelligenceTab({ selectedCity }) {
+function CardPoolIntelligenceTab({ selectedCountry, selectedCity }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
-  const cityMode = !!selectedCity;
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     mountedRef.current = true;
     setLoading(true);
     setError(null);
-    const params = selectedCity ? { p_city_id: selectedCity.city_id } : {};
+    const params = {};
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
+
     supabase.rpc("admin_card_pool_intelligence", params).then(({ data: result, error: err }) => {
       if (!mountedRef.current) return;
       if (err) { setError(err.message); setLoading(false); return; }
       setData(Array.isArray(result) ? result[0] : result);
       setLoading(false);
     });
+  }, [selectedCountry, selectedCity]);
+
+  useEffect(() => {
+    fetchData();
     return () => { mountedRef.current = false; };
-  }, [selectedCity?.city_id]);
+  }, [fetchData]);
 
   if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading card pool data...</div>;
-  if (error) return <ErrorBanner error={error} />;
+  if (error) return <ErrorBanner error={error} onRetry={fetchData} />;
   if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No card pool data available.</div>;
+
+  const scope = selectedCity
+    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
+    : selectedCountry
+    ? <strong>{selectedCountry}</strong>
+    : "global card pool metrics";
 
   const byCat = data.by_category || {};
   const catRows = Object.entries(byCat).map(([slug, stats]) => ({
@@ -658,7 +742,7 @@ function CardPoolIntelligenceTab({ selectedCity }) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-[var(--color-text-secondary)]">
-        {cityMode ? <>Showing card pool for <strong>{selectedCity.city_name}</strong></> : "Showing global card pool metrics"}
+        Showing card pool for {scope}
       </p>
 
       <div className="grid grid-cols-4 gap-4">
@@ -713,51 +797,85 @@ function CardPoolIntelligenceTab({ selectedCity }) {
 
 export function PoolIntelligencePage() {
   const [activeTab, setActiveTab] = useState("geographic");
+  const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedCity, setSelectedCity] = useState(null);
-  const [cities, setCities] = useState([]);
+  const [countries, setCountries] = useState([]);
   const mountedRef = useRef(true);
 
-  // Load cities once for the dropdown
+  // Load country list for dropdown
   useEffect(() => {
     mountedRef.current = true;
-    supabase.rpc("admin_pool_intelligence_overview").then(({ data }) => {
+    supabase.rpc("admin_country_overview").then(({ data }) => {
       if (!mountedRef.current) return;
-      if (data) setCities(data);
+      if (data) setCountries(data.map((r) => r.country));
     });
     return () => { mountedRef.current = false; };
   }, []);
 
-  const selectCity = useCallback((city) => {
-    setSelectedCity(city);
-    if (activeTab === "geographic") setActiveTab("categories");
-  }, [activeTab]);
+  const selectCountry = useCallback((country) => {
+    setSelectedCountry(country);
+    setSelectedCity(null);
+  }, []);
 
-  const clearCity = useCallback(() => setSelectedCity(null), []);
+  const selectCity = useCallback((cityName) => {
+    setSelectedCity(cityName);
+    setActiveTab("categories");
+  }, []);
+
+  const clearCountry = useCallback(() => {
+    setSelectedCountry(null);
+    setSelectedCity(null);
+  }, []);
+
+  const clearCity = useCallback(() => {
+    setSelectedCity(null);
+  }, []);
 
   return (
     <div className="space-y-4 py-6">
       <div className="flex items-center justify-between mb-2">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Pool Intelligence</h2>
-          <p className="text-sm text-[var(--color-text-secondary)]">Drill-down intelligence: geography → categories → tiles → uncategorized → card pool.</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">Drill-down intelligence: geography → categories → neighborhoods → uncategorized → card pool.</p>
         </div>
       </div>
 
-      <CityFilterBar
+      <CountryFilterBar
+        selectedCountry={selectedCountry}
         selectedCity={selectedCity}
-        cities={cities}
-        onSelectCity={selectCity}
+        countries={countries}
+        onSelectCountry={selectCountry}
+        onClearCountry={clearCountry}
         onClearCity={clearCity}
       />
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
       <div className="mt-4">
-        {activeTab === "geographic" && <GeographicInventoryTab onSelectCity={selectCity} />}
-        {activeTab === "categories" && <CategoryMaturityTab selectedCity={selectedCity} />}
-        {activeTab === "tiles" && <TileDetailTab selectedCity={selectedCity} onSwitchToGeographic={() => setActiveTab("geographic")} />}
-        {activeTab === "uncategorized" && <UncategorizedPlacesTab selectedCity={selectedCity} />}
-        {activeTab === "cards" && <CardPoolIntelligenceTab selectedCity={selectedCity} />}
+        {activeTab === "geographic" && (
+          <GeographicInventoryTab
+            selectedCountry={selectedCountry}
+            selectedCity={selectedCity}
+            onSelectCountry={selectCountry}
+            onSelectCity={selectCity}
+          />
+        )}
+        {activeTab === "categories" && (
+          <CategoryMaturityTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
+        {activeTab === "tiles" && (
+          <NeighborhoodGridTab
+            selectedCountry={selectedCountry}
+            selectedCity={selectedCity}
+            onSwitchToGeographic={() => setActiveTab("geographic")}
+          />
+        )}
+        {activeTab === "uncategorized" && (
+          <UncategorizedPlacesTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
+        {activeTab === "cards" && (
+          <CardPoolIntelligenceTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
       </div>
     </div>
   );
