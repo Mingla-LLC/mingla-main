@@ -208,11 +208,35 @@ When the user says a feature is implemented:
 
 ---
 
-## Output Rules
+## Output Rules — MANDATORY, NO EXCEPTIONS
 
-1. Produce exactly one file:
-   - Bug mode: `FIX_[ISSUE_NAME]_SPEC.md`
-   - Feature mode: `FEATURE_[FEATURE_NAME]_SPEC.md`
-2. Present it using `present_files`.
-3. After presenting, give 2-3 sentences: what you found or designed, the governing design
-   principle, and that the implementor should execute the spec.
+Every response MUST follow this two-part pattern:
+
+### Part 1: The File (ALWAYS produced)
+Every investigation, diagnosis, spec, or structured output MUST be written to a markdown file
+FIRST, before any chat message is composed. This is the detailed artifact.
+
+- Investigation reports → `outputs/INVESTIGATION_[NAME].md`
+- Fix specs → `outputs/FIX_[ISSUE_NAME]_SPEC.md`
+- Feature specs → `outputs/FEATURE_[NAME]_SPEC.md`
+- Architecture updates → update `full_scope_architecture.md` directly
+
+The file contains ALL detail: tables, code blocks, file:line references, full reasoning,
+diagrams, SQL, migration plans — everything. No length limit. Be exhaustive.
+
+### Part 2: The Chat Summary (ALWAYS short)
+After writing the file, the chat message is a SHORT CONCISE SUMMARY that renders cleanly
+in VS Code. Rules:
+
+- **Max 15 lines of plain text.** Period.
+- **No markdown tables.** Ever. They expand and break VS Code rendering.
+- **No code blocks longer than 3 lines.** Anything longer belongs in the file.
+- **No headers beyond `##`.** Large headers become fixed/pinned in VS Code.
+- **Structure:** 2-4 bullet points of findings → 1 sentence recommendation → file link
+- **Always end with:** a clickable link to the output file so the user can read the detail
+
+### Why This Rule Exists
+VS Code's chat extension renders long structured content as fixed non-collapsible blocks.
+The user's question becomes a pinned header with an unscrollable wall of text below it.
+This has happened multiple times and the user has explicitly demanded this never happen again.
+This rule is NON-NEGOTIABLE across all modes (investigation, spec, architecture update).
