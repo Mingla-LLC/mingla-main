@@ -10,6 +10,7 @@ import { Button } from "../components/ui/Button";
 import { AlertCard } from "../components/ui/Card";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { logAdminAction } from "../lib/auditLog";
 
 const ICON_MAP = { UserPlus, Trash2, RefreshCw, Eraser };

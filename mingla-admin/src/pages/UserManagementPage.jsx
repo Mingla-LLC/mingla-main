@@ -200,7 +200,7 @@ export function UserManagementPage() {
       const ascending = sortDir === "asc";
       let query = supabase
         .from("profiles")
-        .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at", { count: "exact" })
+        .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at, is_beta_tester", { count: "exact" })
         .order(sortKey || "created_at", { ascending })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -525,6 +525,7 @@ export function UserManagementPage() {
         visibility_mode: editForm.visibility_mode,
         country: editForm.country,
         account_type: editForm.account_type,
+        is_beta_tester: editForm.is_beta_tester,
       };
       const { error } = await supabase.from("profiles").update(updates).eq("id", userDetail.id);
       if (error) throw error;
@@ -866,6 +867,16 @@ export function UserManagementPage() {
         ),
       },
       {
+        key: "is_beta_tester",
+        label: "Beta",
+        width: "80px",
+        render: (val) => val ? (
+          <Badge variant="brand">Beta</Badge>
+        ) : (
+          <span className="text-[var(--color-text-muted)]">—</span>
+        ),
+      },
+      {
         key: "created_at",
         label: "Joined",
         sortable: true,
@@ -1126,6 +1137,9 @@ export function UserManagementPage() {
                 {userDetail.account_type && (
                   <Badge variant="info">{userDetail.account_type}</Badge>
                 )}
+                {userDetail.is_beta_tester && (
+                  <Badge variant="brand">Beta Tester</Badge>
+                )}
               </div>
             </div>
             <Button variant="secondary" size="sm" icon={Eye} loading={impersonateLoading} onClick={() => handlePreviewProfile(userDetail.id)}>
@@ -1172,6 +1186,10 @@ export function UserManagementPage() {
                     <input type="checkbox" checked={editForm.active ?? true} onChange={(e) => setEditForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-[var(--color-brand-500)] cursor-pointer" />
                     <span className="text-sm text-[var(--color-text-primary)]">Active (uncheck to ban)</span>
                   </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={editForm.is_beta_tester ?? false} onChange={(e) => setEditForm(f => ({ ...f, is_beta_tester: e.target.checked }))} className="w-4 h-4 accent-[var(--color-brand-500)] cursor-pointer" />
+                    <span className="text-sm text-[var(--color-text-primary)]">Beta Tester</span>
+                  </label>
                 </div>
               </div>
             ) : (
@@ -1188,6 +1206,7 @@ export function UserManagementPage() {
                 <ProfileField icon={Users} label="Last Name" value={userDetail.last_name} />
                 <ProfileField icon={Users} label="Gender" value={userDetail.gender} />
                 <ProfileField icon={Heart} label="Birthday" value={userDetail.birthday} />
+                <ProfileField icon={Zap} label="Beta Tester" value={userDetail.is_beta_tester ? "Yes" : "No"} />
                 <ProfileField icon={Clock} label="Created" value={formatDateTime(userDetail.created_at)} />
                 <ProfileField icon={Clock} label="Updated" value={formatDateTime(userDetail.updated_at)} />
               </div>

@@ -214,7 +214,9 @@ export function SubscriptionManagementPage() {
         const { count } = await supabase
           .from("admin_subscription_overrides")
           .select("*", { count: "exact", head: true })
-          .eq("is_active", true)
+          .is("revoked_at", null)
+          .lte("starts_at", new Date().toISOString())
+          .gt("expires_at", new Date().toISOString())
           .lt("expires_at", threeDaysFromNow);
         if (mountedRef.current) setExpiringCount(count ?? 0);
       } catch { /* ignore */ }
