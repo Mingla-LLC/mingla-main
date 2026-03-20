@@ -154,6 +154,16 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **AI Recommendations** — pool-first card serving, per-category queries, impression rotation, haversine travel estimation.
 - **7-Step Onboarding** — state machine with phone verification, preference selection, friend/pairing setup, collaboration creation.
 
+### Card Generation & Serving Architecture
+
+**Design principle:** Card serving is read-only. Card generation is a separate admin-triggered process. Scoring is a serving concern.
+
+- **discover-cards** — Pool-only card serving. Zero external API calls. Reads `card_pool`, applies 5-factor scoring personalized per user, filters by datetime/budget/price tier, returns cards. If pool is empty, returns `{ cards: [], hasMore: false }` HTTP 200 — not an error.
+- **generate-single-cards** — Admin-triggered batch generator. Reads `place_pool`, writes single cards to `card_pool` with photos from `stored_photo_urls`. Skips places without downloaded photos. Dedup by `google_place_id`. Supports `dryRun` for safe testing.
+- **generate-curated-experiences** — Admin-triggered. Combines multiple places into multi-stop itinerary cards with OpenAI enrichment.
+- **Scoring stays at serve time.** Generators write raw card data (no `matchScore`, no `scoringFactors`). `discover-cards` applies scoring per request based on user preferences.
+- **No Google API calls at serve time.** All Google interaction (place seeding, photo downloads) happens in the admin pipeline. The serving layer never touches Google.
+
 ### Card Photo Resolution
 
 - **Source of truth:** `place_pool.stored_photo_urls` — Supabase Storage URLs downloaded from Google Places by admin.
@@ -201,8 +211,8 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
-- **Admin Dashboard Overhaul** — grouped sidebar navigation, hash-based URL routing (browser back/forward), Cmd+K global search, column sorting on all tables, CSV export, audit logging for every admin action
-- **Security hardening** — admin_users anon SELECT replaced with SECURITY DEFINER RPC, user delete moved to server-side edge function, custom SQL restricted to owner role, all seed scripts use named RPCs
-- **New pages** — City Launcher (5-step wizard for seeding cities), Settings (merged App Config with theme toggle)
-- **Analytics server-side** — 5 RPCs replace 50K-row client-side computation
-- **Copy overhaul** — consistent headers, actionable empty states, no vendor names, no screaming caps
+- **Card generation/serving separation** — Extracted `generate-single-cards` from `discover-cards`, stripped `discover-cards` to pool-only (1342→416 lines, zero external API calls). Generation and serving are now fully decoupled.
+- **Card photo resolution fix** — `poolCardToApiCard` resolves photos from `place_pool.stored_photo_urls` only. No Unsplash fallbacks, no Google API keys to client.
+- **Admin Dashboard Overhaul** — grouped sidebar navigation, hash-based URL routing, Cmd+K global search, column sorting, CSV export, audit logging
+- **Security hardening** — admin_users anon SELECT replaced with SECURITY DEFINER RPC, user delete moved to server-side edge function
+- **City Launcher** — 5-step wizard for seeding cities with place search, import, and review
