@@ -242,6 +242,8 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Flowers stop** — optional/dismissible on Romantic and First Date. Always included by default. Mobile renders with flower icon + dismiss button.
 - **Picnic reverse proximity** — finds the park first (anchor), then queries grocery and flowers within 3km of the park.
 - **Global exclusions** — `gym`, `fitness_center`, `dog_park` excluded from all card serving (code + SQL `query_pool_cards`).
+- **Per-category exclusions (hardened 2026-03-21)** — `category_type_exclusions` table (~697 rows) maps each of the 13 categories to their excluded Google Places types. `query_pool_cards` checks the user's selected categories against the place's types via NOT EXISTS join — if the place has a type excluded for the queried category, the card is filtered out. Exclusions are based on what the user is browsing (v_slug_categories), not what the card is tagged with. Empty category filter = no per-category exclusions, only globals. Admin-auditable: `SELECT * FROM category_type_exclusions WHERE category_slug = ?`.
+- **Seeding post-fetch filter (hardened 2026-03-21)** — `admin-seed-places` `applyPostFetchFilters` checks ALL `types[]` (not just `primaryType`) against the full exclusion set (global + category-specific) via `getExcludedTypesForCategory()`. Prevents excluded-type places from entering `place_pool` at seeding time.
 
 ---
 
@@ -275,8 +277,15 @@ Mingla uses **13 categories** — 12 visible to users + 1 hidden:
 - **Canonical storage format is SLUGS** — `card_pool.categories` stores slugs (e.g., `nature_views`, `casual_eats`). This is the source of truth for category identity in the database.
 - **Strict SQL normalization** — `query_pool_cards` accepts both display names and slugs but normalizes strictly to the 13 known category slugs via an exhaustive CASE expression. Unknown values are silently dropped — no fuzzy matching, no fallback conversion.
 - **Pill = what you get** — when a user selects a category pill, they must only see cards from that exact category. No cross-contamination from loose matching. Enforced at SQL level.
-- **Adding a new category requires** — adding WHEN branches for both display name AND slug to the CASE expression in `query_pool_cards`, plus entries in `seedingCategories.ts` and `categoryPlaceTypes.ts`.
-- **Must never happen** — storing display names in `card_pool.categories`, using a regex fallback for unknown categories, or bypassing the CASE normalization.
+- **Adding a new category requires** — adding WHEN branches for both display name AND slug to the CASE expression in `query_pool_cards`, plus entries in `seedingCategories.ts`, `categoryPlaceTypes.ts`, and rows in `category_type_exclusions` table.
+- **Must never happen** — storing display names in `card_pool.categories`, using a regex fallback for unknown categories, bypassing the CASE normalization, or serving cards with excluded types for the queried category.
+
+**Exclusion contract (hardened 2026-03-21):**
+- **Three enforcement layers** — (1) Google API excludedPrimaryTypes at query time, (2) post-fetch filter checks ALL types against category + global exclusions before inserting into place_pool, (3) SQL NOT EXISTS in query_pool_cards checks place types against category_type_exclusions table at serve time.
+- **Schema-enforced** — `category_type_exclusions` table is the runtime source of truth. No code path can bypass it. Auditable via direct SQL query.
+- **User-centric filtering** — exclusions are checked against the user's selected categories (v_slug_categories), not the card's own category tags. A card tagged for multiple categories is only filtered by the category the user is browsing.
+- **Global exclusions are independent** — gym, fitness_center, dog_park are always excluded regardless of category, via separate v_excluded_types check.
+- **Must never happen** — serving a card whose place has types excluded for the queried category, checking exclusions against cp.categories instead of v_slug_categories, or removing the category_type_exclusions table without replacing its enforcement.
 
 ---
 

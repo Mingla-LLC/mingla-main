@@ -52,6 +52,7 @@
 | Category system (13 categories) | A | 2026-03-21 | Commits 6c7b2429, e42429af. Test reports: TEST_REPORT_CATEGORY_MIGRATION.md, TEST_REPORT_CATEGORY_CONTRACT.md | 12→13 migration complete. **Category contract hardened:** strict slug normalization in query_pool_cards (26 CASE branches, ELSE NULL for unknowns). Hidden categories fixed to slug format. Curated card labels restored via EXPERIENCE_TYPE_LABELS. 21/21 tests green. README locked in. |
 | Admin seeding pipeline (backend) | A | 2026-03-20 | Commit 1bab3a10 | 3 new tables, seeding edge function, admin-place-search fixed. README locked in. |
 | Admin pool management (UI) | A | 2026-03-20 | Commits 9af5b5e4, 9493a697 | Place Pool (6 tabs: seed, map, browse, photos, stale, stats) + Card Pool (4 tabs: readiness, generate, browse, gaps). Map with tile status coloring + coverage gaps. Photo filters + batch controls. 3 old pages killed. README locked in. |
+| Per-category exclusion enforcement | A | 2026-03-21 | Commit 984f8be7. Test report: TEST_REPORT_EXCLUSION_ENFORCEMENT.md | category_type_exclusions table (~697 rows, 13 categories). query_pool_cards per-category NOT EXISTS using v_slug_categories. admin-seed-places post-fetch filter checks ALL types. 22/22 tests green. README locked in. |
 | Card rendering (all types) | F | — | Unaudited | — |
 | Swipe mechanics | F | — | Unaudited | Swipe limit exists |
 | Empty pool state | B | 2026-03-20 | Commits f1880d93, 7dbeb362 | All 5 serving functions return HTTP 200 with empty array when pool empty. Tested on device for discover-cards. |
