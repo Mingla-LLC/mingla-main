@@ -7,7 +7,7 @@ import {
   ALL_SEEDING_CATEGORY_IDS,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
-import { GLOBAL_EXCLUDED_PLACE_TYPES } from "../_shared/categoryPlaceTypes.ts";
+import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
 // Three actions:
@@ -198,10 +198,17 @@ interface FilterResult {
 }
 
 // deno-lint-ignore no-explicit-any
-function applyPostFetchFilters(places: any[]): FilterResult {
+function applyPostFetchFilters(places: any[], categoryId: string): FilterResult {
   let rejectedNoPhotos = 0;
   let rejectedClosed = 0;
   let rejectedExcludedType = 0;
+
+  // PER-CATEGORY TYPE EXCLUSION (Block 2 — hardened 2026-03-21)
+  // Checks ALL types (not just primaryType) against full exclusion set.
+  // getExcludedTypesForCategory returns global + category-specific exclusions.
+  // This prevents places with excluded secondary types from entering the pool.
+  const excludedTypes = getExcludedTypesForCategory(categoryId);
+  const excludedSet = new Set(excludedTypes);
 
   // deno-lint-ignore no-explicit-any
   const passed = places.filter((p: any) => {
@@ -215,8 +222,9 @@ function applyPostFetchFilters(places: any[]): FilterResult {
       rejectedNoPhotos++;
       return false;
     }
-    // Reject global excluded types
-    if (p.primaryType && GLOBAL_EXCLUDED_PLACE_TYPES.includes(p.primaryType)) {
+    // Check ALL types (not just primaryType) against full exclusion set (global + category-specific)
+    const placeTypes: string[] = p.types ?? [];
+    if (placeTypes.some((t: string) => excludedSet.has(t))) {
       rejectedExcludedType++;
       return false;
     }
@@ -465,7 +473,7 @@ async function seedCategory(
 
       // Apply post-fetch filters
       const { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType } =
-        applyPostFetchFilters(places);
+        applyPostFetchFilters(places, config.id);
       totalRejectedNoPhotos += rejectedNoPhotos;
       totalRejectedClosed += rejectedClosed;
       totalRejectedExcludedType += rejectedExcludedType;
