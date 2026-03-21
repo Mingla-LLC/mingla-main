@@ -1,0 +1,41 @@
+# === Environment (real secrets only — .env.example is fine to track) ===
+.env
+.env.local
+.env*.local
+
+# === macOS ===
+.DS_Store
+
+# === Expo ===
+.expo/
+
+# === Node ===
+node_modules/
+
+# === Build output ===
+dist/
+build/
+web-build/
+
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Debug logs ===
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# === TypeScript ===
+*.tsbuildinfo
+
+# === Native (signing keys) ===
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
