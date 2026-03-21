@@ -59,7 +59,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
-  datetime_pref: new Date().toISOString(),
+  datetime_pref: null,
 });
 
 interface RecommendationsContextType {
@@ -291,7 +291,7 @@ export const RecommendationsProvider: React.FC<
           travelMode: userPrefs.travel_mode ?? 'walking',
           travelConstraintType: 'time' as const,
           travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
-          datetimePref: userPrefs.datetime_pref,
+          datetimePref: userPrefs.datetime_pref ?? undefined,
           dateOption: userPrefs.date_option ?? 'now',
           timeSlot: userPrefs.time_slot ?? null,
         }).then(() => {
@@ -412,7 +412,7 @@ export const RecommendationsProvider: React.FC<
     travelMode: userPrefs?.travel_mode ?? 'walking',
     travelConstraintType: 'time' as const,
     travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
-    datetimePref: userPrefs?.datetime_pref,
+    datetimePref: userPrefs?.datetime_pref ?? undefined,
     dateOption: userPrefs?.date_option ?? 'now',
     timeSlot: userPrefs?.time_slot ?? null,
     exactTime: userPrefs?.exact_time ?? null,
@@ -625,16 +625,6 @@ export const RecommendationsProvider: React.FC<
 
     return () => clearTimeout(safetyTimer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Deck batch history: detect pref changes → reset ──────────────────
-  useEffect(() => {
-    if (!userPrefs) return;
-    const newHash = computePrefsHash(userPrefs);
-    if (newHash && newHash !== deckPrefsHash) {
-      resetDeckHistory(newHash);
-      lastSyncedBatchIndexRef.current = -1;
-    }
-  }, [userPrefs, deckPrefsHash, resetDeckHistory]);
 
   // ── Deck batch history: store arriving batches ───────────────────────
   useEffect(() => {

@@ -236,6 +236,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 
 - **Single generic generator** — one `generateCardsForType()` function driven by declarative `ExperienceTypeDef` configs. No per-type generator functions.
 - **6 experience types** — adventurous, first-date, romantic, group-fun, picnic-dates, take-a-stroll. Friendly is deleted.
+- **Curated card labels (hardened 2026-03-21)** — `poolCardToApiCard` reconstructs `categoryLabel` from `card.experience_type` using `EXPERIENCE_TYPE_LABELS` mapping (must match `CURATED_TYPE_LABELS` in generator). Single cards use `category` slug resolved by mobile via `getReadableCategoryName()`. These are two separate paths — do not unify them.
 - **Category-based stops** — all stops reference the 13 seeding categories from `_shared/seedingCategories.ts`. No hardcoded type arrays anywhere in the generator.
 - **Serve-time hours enforcement** — curated cards filtered in `discover-cards` if any stop would be closed at the user's calculated arrival time (cascading through stop durations + travel times).
 - **Flowers stop** — optional/dismissible on Romantic and First Date. Always included by default. Mobile renders with flower icon + dismiss button.
@@ -269,6 +270,13 @@ Mingla uses **13 categories** — 12 visible to users + 1 hidden:
 - **Single source of truth** — all category definitions live in `_shared/seedingCategories.ts` (seeding) and `_shared/categoryPlaceTypes.ts` (serving/aliases). No hardcoded lists elsewhere.
 - **Backward compatibility** — alias maps in `categoryPlaceTypes.ts` resolve old slugs (`groceries_flowers`, `work_business`, `Nature`, `Picnic`) to new categories. No user data breaks on migration.
 - **Work & Business removed** — not a date category, not seeded, not served.
+
+**Category format contract (hardened 2026-03-21):**
+- **Canonical storage format is SLUGS** — `card_pool.categories` stores slugs (e.g., `nature_views`, `casual_eats`). This is the source of truth for category identity in the database.
+- **Strict SQL normalization** — `query_pool_cards` accepts both display names and slugs but normalizes strictly to the 13 known category slugs via an exhaustive CASE expression. Unknown values are silently dropped — no fuzzy matching, no fallback conversion.
+- **Pill = what you get** — when a user selects a category pill, they must only see cards from that exact category. No cross-contamination from loose matching. Enforced at SQL level.
+- **Adding a new category requires** — adding WHEN branches for both display name AND slug to the CASE expression in `query_pool_cards`, plus entries in `seedingCategories.ts` and `categoryPlaceTypes.ts`.
+- **Must never happen** — storing display names in `card_pool.categories`, using a regex fallback for unknown categories, or bypassing the CASE normalization.
 
 ---
 

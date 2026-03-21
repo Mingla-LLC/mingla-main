@@ -28,7 +28,7 @@ export interface UserPreferences {
   travel_mode: string;
   travel_constraint_type: 'time';
   travel_constraint_value: number;
-  datetime_pref: string;
+  datetime_pref: string | null;
   date_option?: string | null;
   time_slot?: string | null;
   exact_time?: string | null;

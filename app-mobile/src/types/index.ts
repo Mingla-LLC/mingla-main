@@ -193,7 +193,7 @@ export interface Preferences {
   travel_mode: string;
   travel_constraint_type: 'time';
   travel_constraint_value: number;
-  datetime_pref: string;
+  datetime_pref: string | null;
   date_option?: string | null; // "now", "today", "weekend", "custom"
   time_slot?: string | null; // "brunch", "afternoon", "dinner", "lateNight"
   created_at: string;

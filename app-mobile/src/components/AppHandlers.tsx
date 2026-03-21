@@ -626,7 +626,7 @@ export function useAppHandlers(state: any) {
         exact_time: preferences.exactTime || null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
-          : new Date().toISOString(),
+          : null,
       };
 
       if (preferences.custom_location !== undefined) {

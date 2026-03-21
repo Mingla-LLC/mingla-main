@@ -640,6 +640,48 @@ export default function PreferencesSheet({
     }
   }, [user?.id, setProfile]);
 
+  const hasChanges = useMemo(() => {
+    if (!initialPreferences) return false;
+
+    const arraysEqual = (a: any[], b: any[]) => {
+      if (a.length !== b.length) return false;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((val, idx) => val === sortedB[idx]);
+    };
+
+    const datesEqual = (a: Date | null, b: Date | null) => {
+      if (a === null && b === null) return true;
+      if (a === null || b === null) return false;
+      return a.getTime() === b.getTime();
+    };
+
+    if (!arraysEqual(selectedIntents, initialPreferences.selectedIntents)) return true;
+    if (!arraysEqual([...selectedPriceTiers].sort(), [...(initialPreferences.selectedPriceTiers || [])].sort())) return true;
+    if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories)) return true;
+    if (selectedDateOption !== initialPreferences.selectedDateOption) return true;
+    if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) return true;
+    if (exactTime !== initialPreferences.exactTime) return true;
+    if (!datesEqual(selectedDate, initialPreferences.selectedDate)) return true;
+    if (travelMode !== initialPreferences.travelMode) return true;
+    if (constraintValue !== initialPreferences.constraintValue) return true;
+    if (searchLocation !== initialPreferences.searchLocation) return true;
+
+    return false;
+  }, [
+    initialPreferences,
+    selectedIntents,
+    selectedPriceTiers,
+    selectedCategories,
+    selectedDateOption,
+    selectedTimeSlot,
+    exactTime,
+    selectedDate,
+    travelMode,
+    constraintValue,
+    searchLocation,
+  ]);
+
   const isFormComplete = useMemo(() => {
     const hasPills = selectedCategories.length > 0 || selectedIntents.length > 0;
     const hasBudget = selectedPriceTiers.length > 0;
@@ -835,21 +877,13 @@ export default function PreferencesSheet({
         console.warn("[PreferencesSheet] Background save failed:", error);
       }
 
-      // Invalidate AFTER onSave runs — onSave sets optimistic cache first,
-      // then these trigger deck re-fetch with the new local params.
-      // userPreferences is NOT invalidated — onSave's setQueryData is authoritative.
-      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+      // Invalidate curated experiences and location — these have separate query keys
+      // not driven by batchSeed, so they need explicit invalidation.
+      // deck-cards is NOT invalidated — the refreshKey→batchSeed→query key change
+      // already triggers the refetch (see RecommendationsContext refreshKey effect).
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
-      // Offline cache update
-      if (user?.id) {
-        PreferencesService.getUserPreferences(user.id)
-          .then(prefs => {
-            if (prefs) offlineService.cacheUserPreferences(prefs);
-          })
-          .catch(() => {});
-      }
     })();
 
     isSavingRef.current = false;
@@ -1043,11 +1077,11 @@ export default function PreferencesSheet({
               onPress={handleApplyPreferences}
               style={[
                 styles.applyButton,
-                (isSaving || !isFormComplete) && styles.applyButtonDisabled,
+                (isSaving || !isFormComplete || !hasChanges) && styles.applyButtonDisabled,
               ]}
-              disabled={isSaving || !isFormComplete}
-              accessibilityLabel={ctaHintText ?? 'Lock It In'}
-              accessibilityState={{ disabled: isSaving || !isFormComplete }}
+              disabled={isSaving || !isFormComplete || !hasChanges}
+              accessibilityLabel={ctaHintText ?? (hasChanges ? `Lock It In, ${countChanges()} changes` : 'Lock It In')}
+              accessibilityState={{ disabled: isSaving || !isFormComplete || !hasChanges }}
             >
               {isSaving ? (
                 <View style={styles.buttonLoadingContainer}>
@@ -1056,7 +1090,7 @@ export default function PreferencesSheet({
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  {ctaHintText ?? `Lock It In ${countChanges() > 0 ? `(${countChanges()})` : ""}`}
+                  {ctaHintText ?? (hasChanges ? `Lock It In (${countChanges()})` : 'Lock It In')}
                 </Text>
               )}
             </TouchableOpacity>
