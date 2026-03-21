@@ -283,9 +283,9 @@ Mingla uses **13 categories** — 12 visible to users + 1 hidden:
 **Exclusion contract (hardened 2026-03-21):**
 - **Three enforcement layers** — (1) Google API excludedPrimaryTypes at query time, (2) post-fetch filter checks ALL types against category + global exclusions before inserting into place_pool, (3) SQL NOT EXISTS in query_pool_cards checks place types against category_type_exclusions table at serve time.
 - **Schema-enforced** — `category_type_exclusions` table is the runtime source of truth. No code path can bypass it. Auditable via direct SQL query.
-- **User-centric filtering** — exclusions are checked against the user's selected categories (v_slug_categories), not the card's own category tags. A card tagged for multiple categories is only filtered by the category the user is browsing.
+- **Card-centric filtering (corrected 2026-03-21)** — exclusions are checked against the card's OWN categories (cp.categories), not the user's selected categories. Each card is only filtered by exclusions for the categories it belongs to. This prevents cross-category contamination: selecting Nature + Watch must not let Nature's ban on `movie_theater` kill Watch cards. A Watch card at a cinema is fine; a Nature card at a cinema is killed.
 - **Global exclusions are independent** — gym, fitness_center, dog_park are always excluded regardless of category, via separate v_excluded_types check.
-- **Must never happen** — serving a card whose place has types excluded for the queried category, checking exclusions against cp.categories instead of v_slug_categories, or removing the category_type_exclusions table without replacing its enforcement.
+- **Must never happen** — serving a card whose place has types excluded for the card's own categories, checking exclusions against v_slug_categories instead of cp.categories (causes cross-contamination), or removing the category_type_exclusions table without replacing its enforcement.
 
 ---
 
