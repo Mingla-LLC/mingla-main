@@ -567,6 +567,19 @@ function resolveOpeningHours(openingHours: any): { hours: Record<string, string>
   return { hours: null, isOpenNow: null };
 }
 
+// CURATED CARD LABEL RESTORATION
+// card_pool stores experience_type but poolCardToApiCard must reconstruct categoryLabel
+// from it so mobile can display "Romantic", "Group Fun", etc. on curated cards.
+// This mapping MUST match CURATED_TYPE_LABELS in generate-curated-experiences/index.ts.
+const EXPERIENCE_TYPE_LABELS: Record<string, string> = {
+  'adventurous': 'Adventurous',
+  'first-date': 'First Date',
+  'romantic': 'Romantic',
+  'group-fun': 'Group Fun',
+  'picnic-dates': 'Picnic Dates',
+  'take-a-stroll': 'Take a Stroll',
+};
+
 // ── Step 7: Convert a card_pool row to the API response format ──────────────
 
 function poolCardToApiCard(
@@ -599,6 +612,9 @@ function poolCardToApiCard(
       stops: card.stops || [],
       shoppingList: card.shopping_list || null,
       experienceType: card.experience_type || '',
+      categoryLabel: card.experience_type
+        ? EXPERIENCE_TYPE_LABELS[card.experience_type] || 'Explore'
+        : null,
       openingHours: resolveOpeningHours(card.opening_hours).hours,
       website: card.website || null,
       priceTier: card.price_tier ?? 'chill',
