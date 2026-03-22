@@ -1,23 +1,40 @@
+/**
+ * CARD POOL MANAGEMENT PAGE (Block 5 — hardened 2026-03-21)
+ *
+ * Full rewrite: UUID-based → TEXT-based. Zero seeding_cities dependencies.
+ * Uses V2 RPCs: admin_card_pool_intelligence, admin_pool_category_health,
+ * admin_country_overview, admin_country_city_overview.
+ *
+ * Navigation: Breadcrumb (All Countries → Country → City) matching PoolIntelligencePage.
+ * Tabs: Overview, Browse, Generate, Card Health.
+ *
+ * Must never happen: referencing seeding_cities, seeding_tiles, or UUID-param RPCs.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Rocket, Play, Layers, CheckCircle, XCircle, AlertTriangle, ChevronRight,
+  CreditCard, Camera, AlertTriangle, Eye, EyeOff, Clock, Play, Layers,
+  CheckCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { Tabs } from "../components/ui/Tabs";
 import { Button } from "../components/ui/Button";
-import { SectionCard, StatCard } from "../components/ui/Card";
+import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
 import { Input } from "../components/ui/Input";
+import { Breadcrumbs } from "../components/ui/Breadcrumbs";
+import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { Spinner } from "../components/ui/Spinner";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SUB_TABS = [
-  { id: "readiness", label: "Launch Readiness" },
-  { id: "generate", label: "Generate Cards" },
+const TABS = [
+  { id: "overview", label: "Overview" },
   { id: "browse", label: "Browse Cards" },
-  { id: "gaps", label: "Gap Analysis" },
+  { id: "generate", label: "Generate Cards" },
+  { id: "health", label: "Card Health" },
 ];
 
 const CATEGORY_LABELS = {
@@ -27,255 +44,445 @@ const CATEGORY_LABELS = {
   play: "Play", wellness: "Wellness", flowers: "Flowers", groceries: "Groceries",
 };
 
+const CATEGORY_COLORS = {
+  nature_views: "#22c55e", first_meet: "#f97316", picnic_park: "#84cc16",
+  drink: "#a855f7", casual_eats: "#ef4444", fine_dining: "#dc2626",
+  watch: "#3b82f6", live_performance: "#8b5cf6", creative_arts: "#ec4899",
+  play: "#f59e0b", wellness: "#14b8a6", flowers: "#f472b6", groceries: "#6b7280",
+};
+
+const EXPERIENCE_TYPES = [
+  { id: "adventurous", label: "Adventurous" },
+  { id: "first-date", label: "First Date" },
+  { id: "romantic", label: "Romantic" },
+  { id: "group-fun", label: "Group Fun" },
+  { id: "picnic-dates", label: "Picnic Dates" },
+  { id: "take-a-stroll", label: "Take a Stroll" },
+];
+
 const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
+const PAGE_SIZE = 20;
 
-const HARD_CAP_USD = 70;
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatCost(n) { return `$${(n || 0).toFixed(2)}`; }
+function healthBadge(health) {
+  const map = { green: "success", yellow: "warning", red: "error" };
+  const label = { green: "Healthy", yellow: "Needs Work", red: "Critical" };
+  return <Badge variant={map[health] || "default"}>{label[health] || health}</Badge>;
+}
 
-// ── City Selector (shared with PlacePool) ────────────────────────────────────
+function pctBadge(pct) {
+  const variant = pct >= 80 ? "success" : pct >= 50 ? "warning" : "error";
+  return <Badge variant={variant}>{pct}%</Badge>;
+}
 
-function CitySelector({ cities, selectedCity, onSelect }) {
+function categoryDot(slug) {
   return (
-    <div className="flex items-center gap-3 mb-4">
-      <select
-        className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-        value={selectedCity?.id || ""}
-        onChange={(e) => {
-          const city = cities.find((c) => c.id === e.target.value);
-          onSelect(city || null);
-        }}
-      >
-        <option value="">All Cities</option>
-        {cities.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}, {c.country} — {c.status}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-2">
+      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[slug] || "#6b7280" }} />
+      {CATEGORY_LABELS[slug] || slug}
     </div>
   );
 }
 
-// ── Tab 1: Launch Readiness ──────────────────────────────────────────────────
-
-function ReadinessTab({ city, placeStats, cardStats, spendTotal, tileCount, onLaunch }) {
-  if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to check readiness.</div>;
-
-  const totalPlaces = placeStats?.total_places || 0;
-  const withPhotos = placeStats?.with_photos || 0;
-  const photoPct = totalPlaces > 0 ? Math.round((withPhotos / totalPlaces) * 100) : 0;
-  const singleCards = cardStats?.total_single_cards || 0;
-  const curatedCards = cardStats?.total_curated_cards || 0;
-  const byCat = cardStats?.by_category || {};
-  const catCoverage = Object.keys(byCat).filter((k) => (byCat[k] || 0) > 0).length;
-
-  const checks = [
-    { label: "City defined + tiles generated", pass: tileCount > 0, value: `${tileCount} tiles` },
-    { label: "Places seeded (≥50 active)", pass: totalPlaces >= 50, warn: totalPlaces >= 20 && totalPlaces < 50, value: `${totalPlaces} places` },
-    { label: "Photos downloaded (≥80% coverage)", pass: photoPct >= 80, warn: photoPct >= 50 && photoPct < 80, value: `${photoPct}%` },
-    { label: "Single cards generated", pass: singleCards > 0, value: `${singleCards} cards` },
-    { label: "Curated cards (≥10)", pass: curatedCards >= 10, warn: curatedCards >= 5 && curatedCards < 10, value: `${curatedCards} cards` },
-    { label: "Category coverage (≥8/13)", pass: catCoverage >= 8, warn: catCoverage >= 5 && catCoverage < 8, value: `${catCoverage}/13` },
-    { label: `Spend ≤ $${HARD_CAP_USD}`, pass: spendTotal <= HARD_CAP_USD, value: formatCost(spendTotal) },
-  ];
-
-  const greenCount = checks.filter((c) => c.pass).length;
-  const readinessPct = Math.round((greenCount / checks.length) * 100);
-  const allGreen = greenCount === checks.length;
-
+function ErrorBanner({ error, onRetry }) {
+  if (!error) return null;
   return (
-    <div className="space-y-6">
-      {/* Overall Readiness */}
-      <div className="flex items-center gap-8">
-        <div className="relative w-28 h-28">
-          <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--gray-200)" strokeWidth="8" />
-            <circle cx="50" cy="50" r="42" fill="none"
-              stroke={allGreen ? "var(--color-success-500)" : readinessPct >= 60 ? "var(--color-warning-500)" : "var(--color-error-500)"}
-              strokeWidth="8" strokeDasharray={`${readinessPct * 2.64} ${264 - readinessPct * 2.64}`}
-              strokeLinecap="round" />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-xl font-bold">{readinessPct}%</div>
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold">{city.name}, {city.country}</h3>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            {allGreen ? "Ready to launch!" : `${greenCount}/${checks.length} checks passing`}
-          </p>
-          <Button variant="primary" icon={Rocket} className="mt-3" disabled={!allGreen}
-            onClick={() => onLaunch(city.id)}>
-            Launch {city.name}
-          </Button>
-        </div>
-      </div>
-
-      {/* Checklist */}
-      <SectionCard title="Launch Checklist">
-        <div className="space-y-2">
-          {checks.map((check, i) => (
-            <div key={i} className="flex items-center gap-3 py-2 border-b border-[var(--gray-100)] last:border-0">
-              {check.pass ? (
-                <CheckCircle className="w-5 h-5 text-[var(--color-success-500)] flex-shrink-0" />
-              ) : check.warn ? (
-                <AlertTriangle className="w-5 h-5 text-[var(--color-warning-500)] flex-shrink-0" />
-              ) : (
-                <XCircle className="w-5 h-5 text-[var(--color-error-500)] flex-shrink-0" />
-              )}
-              <span className="flex-1 text-sm">{check.label}</span>
-              <span className="text-sm font-medium">{check.value}</span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      {/* Per-Category Traffic Lights */}
-      <SectionCard title="Category Coverage">
-        <div className="grid grid-cols-2 gap-2">
-          {ALL_CATEGORIES.map((catId) => {
-            const catData = placeStats?.by_seeding_category?.[catId] || { count: 0, with_photos: 0 };
-            const cardCount = byCat[CATEGORY_LABELS[catId]] || byCat[catId] || 0;
-            const light = cardCount >= 5 ? "success" : cardCount >= 1 ? "warning" : "error";
-            const isHidden = catId === "groceries";
-            return (
-              <div key={catId} className="flex items-center gap-3 py-1.5 px-2 rounded text-sm">
-                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${light === "success" ? "bg-[var(--color-success-500)]" : light === "warning" ? "bg-[var(--color-warning-500)]" : "bg-[var(--color-error-500)]"}`} />
-                <span className="flex-1 truncate">
-                  {CATEGORY_LABELS[catId]}
-                  {isHidden && <span className="text-[var(--color-text-tertiary)] ml-1">(hidden)</span>}
-                </span>
-                <span className="text-[var(--color-text-secondary)] text-xs">{catData.count}p · {cardCount}c</span>
-              </div>
-            );
-          })}
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-// ── Tab 2: Generate Cards ────────────────────────────────────────────────────
-
-function GenerateTab({ city, onRefresh }) {
-  const { addToast } = useToast();
-  const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState(null);
-  const [selectedCat, setSelectedCat] = useState("");
-
-  const generate = async (type) => {
-    if (!city) return;
-    setGenerating(true);
-    setResult(null);
-    try {
-      const fnName = type === "curated" ? "generate-curated-experiences" : "generate-single-cards";
-      const body = {
-        lat: city.center_lat,
-        lng: city.center_lng,
-        radiusMeters: city.coverage_radius_km * 1000,
-        ...(type === "single" && selectedCat ? { categories: [selectedCat] } : {}),
-      };
-      const { data, error } = await supabase.functions.invoke(fnName, { body });
-      if (error) throw new Error(error.message);
-      setResult(data);
-      addToast({ variant: "success", title: `${type === "curated" ? "Curated" : "Single"} card generation complete` });
-      onRefresh();
-    } catch (err) {
-      addToast({ variant: "error", title: "Generation failed", description: err.message });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
-
-  return (
-    <div className="space-y-6">
-      <SectionCard title="Single Card Generation" subtitle={`Generate cards for ${city.name}`}>
-        <div className="flex items-end gap-3">
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Category (optional)</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={selectedCat} onChange={(e) => setSelectedCat(e.target.value)}>
-              <option value="">All Categories</option>
-              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
-          </div>
-          <Button icon={Play} loading={generating} onClick={() => generate("single")}>
-            Generate Single Cards
-          </Button>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Curated Experience Generation" subtitle="Multi-stop itinerary cards">
-        <Button icon={Play} loading={generating} onClick={() => generate("curated")}>
-          Generate Curated Experiences
-        </Button>
-      </SectionCard>
-
-      {result && (
-        <SectionCard title="Generation Results">
-          <pre className="text-xs whitespace-pre-wrap max-h-48 overflow-y-auto bg-[var(--gray-50)] p-3 rounded">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </SectionCard>
+    <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg flex items-center justify-between">
+      <span>Failed to load data: {error}</span>
+      {onRetry && (
+        <button onClick={onRetry} className="text-xs font-medium underline cursor-pointer ml-3">
+          Retry
+        </button>
       )}
     </div>
   );
 }
 
-// ── Tab 3: Browse Cards ──────────────────────────────────────────────────────
+// ── CountryFilterBar (breadcrumb nav, matching PoolIntelligencePage) ─────────
 
-function BrowseCardsTab({ city }) {
+function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
+  const items = [
+    { label: "All Countries", onClick: () => { onClearCountry(); } },
+    ...(selectedCountry ? [
+      selectedCity
+        ? { label: selectedCountry, onClick: () => { onClearCity(); } }
+        : { label: selectedCountry },
+    ] : []),
+    ...(selectedCity ? [{ label: selectedCity }] : []),
+  ];
+
+  return (
+    <div className="flex items-center gap-3 mb-2">
+      <Breadcrumbs items={items} />
+      {!selectedCountry && countries.length > 0 && (
+        <select
+          className="ml-auto rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) onSelectCountry(e.target.value);
+          }}
+        >
+          <option value="">Jump to country...</option>
+          {countries.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ── Tab 1: Overview ─────────────────────────────────────────────────────────
+
+function OverviewTab({ selectedCountry, selectedCity }) {
+  const [data, setData] = useState(null);
+  const [catHealth, setCatHealth] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+
+  const fetchData = useCallback(() => {
+    mountedRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    const params = {};
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
+
+    Promise.all([
+      supabase.rpc("admin_card_pool_intelligence", params),
+      supabase.rpc("admin_pool_category_health", params),
+    ]).then(([intRes, catRes]) => {
+      if (!mountedRef.current) return;
+      if (intRes.error) { setError(intRes.error.message); setLoading(false); return; }
+      if (catRes.error) { setError(catRes.error.message); setLoading(false); return; }
+      setData(Array.isArray(intRes.data) ? intRes.data[0] : intRes.data);
+      setCatHealth(catRes.data || []);
+      setLoading(false);
+    });
+  }, [selectedCountry, selectedCity]);
+
+  useEffect(() => {
+    fetchData();
+    return () => { mountedRef.current = false; };
+  }, [fetchData]);
+
+  if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading card pool data...</div>;
+  if (error) return <ErrorBanner error={error} onRetry={fetchData} />;
+  if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No card pool data available.</div>;
+
+  const scope = selectedCity
+    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
+    : selectedCountry
+    ? <strong>{selectedCountry}</strong>
+    : "global card pool metrics";
+
+  // Health alerts
+  const alerts = [];
+  if (data.orphaned_cards > 0) {
+    alerts.push({ variant: "error", msg: `${data.orphaned_cards} orphaned cards — their parent places are inactive or deleted` });
+  }
+  if (data.stale_cards > 0) {
+    alerts.push({ variant: "warning", msg: `${data.stale_cards} stale cards — parent places not refreshed in 30+ days` });
+  }
+  if (data.image_pct < 80) {
+    alerts.push({ variant: "warning", msg: `Only ${data.image_pct}% of cards have images` });
+  }
+  if (data.never_served > data.active_cards * 0.5) {
+    alerts.push({ variant: "info", msg: `${data.never_served} cards have never been shown to any user` });
+  }
+
+  const servedPct = data.active_cards > 0 ? Math.round((data.total_served / data.active_cards) * 100) : 0;
+
+  // Category health table
+  const catColumns = [
+    { key: "category", label: "Category", sortable: true, render: (_, r) => categoryDot(r.category) },
+    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
+    { key: "total_cards", label: "Total Cards", sortable: true },
+    { key: "places_needing_cards", label: "Places Needing Cards", sortable: true },
+    { key: "health", label: "Health", render: (_, r) => healthBadge(r.health) },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-[var(--color-text-secondary)]">
+        Showing card pool for {scope}
+      </p>
+
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={CreditCard} label="Active Cards" value={data.active_cards}
+          trend={`${data.single_cards} single + ${data.curated_cards} curated`} trendUp />
+        <StatCard icon={Camera} label="Image Coverage" value={`${data.image_pct}%`}
+          trend={data.image_pct >= 80 ? "Good" : data.image_pct >= 50 ? "Low" : "Critical"}
+          trendUp={data.image_pct >= 80} />
+        <StatCard icon={AlertTriangle} label="Orphaned Cards" value={data.orphaned_cards}
+          trend={data.orphaned_cards === 0 ? "Clean" : "Needs Fix"} trendUp={data.orphaned_cards === 0} />
+        <StatCard icon={Eye} label="Never Served" value={data.never_served}
+          trend={data.active_cards > 0 ? `${Math.round((data.never_served / data.active_cards) * 100)}% of active` : "—"}
+          trendUp={data.never_served < data.active_cards * 0.2} />
+      </div>
+
+      {alerts.length > 0 && (
+        <SectionCard title="Health Alerts">
+          <div className="space-y-3">
+            {alerts.map((a, i) => (
+              <AlertCard key={i} variant={a.variant}>{a.msg}</AlertCard>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Category Health" subtitle={`${catHealth.length} categories`}>
+        <DataTable columns={catColumns} rows={catHealth} loading={false}
+          emptyMessage="No category data" emptyIcon={Layers} />
+      </SectionCard>
+
+      <SectionCard title="Serving Stats">
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="p-4 rounded-lg bg-[var(--gray-50)]">
+            <div className="text-[var(--color-text-secondary)]">Total Impressions</div>
+            <div className="text-xl font-semibold mt-1">{(data.total_impressions || 0).toLocaleString()}</div>
+          </div>
+          <div className="p-4 rounded-lg bg-[var(--gray-50)]">
+            <div className="text-[var(--color-text-secondary)]">Cards Served ≥1 Time</div>
+            <div className="text-xl font-semibold mt-1">{data.total_served} <span className="text-sm font-normal text-[var(--color-text-tertiary)]">({servedPct}%)</span></div>
+          </div>
+          <div className="p-4 rounded-lg bg-[var(--gray-50)]">
+            <div className="text-[var(--color-text-secondary)]">Avg Serves per Card</div>
+            <div className="text-xl font-semibold mt-1">{data.avg_served_count || "0"}</div>
+          </div>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+// ── Card Detail Modal ───────────────────────────────────────────────────────
+
+function CardDetailModal({ card, open, onClose, onToggleActive }) {
+  const [stops, setStops] = useState([]);
+  const [stopsLoading, setStopsLoading] = useState(false);
+  const [stopsError, setStopsError] = useState(null);
+
+  useEffect(() => {
+    if (!open || !card || card.card_type !== "curated") return;
+    setStopsLoading(true);
+    setStopsError(null);
+    supabase.from("card_pool_stops")
+      .select("*, place_pool(name, address)")
+      .eq("card_pool_id", card.id)
+      .order("stop_order")
+      .then(({ data, error }) => {
+        if (error) setStopsError("Could not load stops for this experience.");
+        else setStops(data || []);
+        setStopsLoading(false);
+      });
+  }, [open, card]);
+
+  if (!card) return null;
+
+  const images = card.images || (card.image_url ? [card.image_url] : []);
+
+  return (
+    <Modal open={open} onClose={onClose} title={card.title || "Card Detail"} size="lg">
+      <ModalBody>
+        <div className="space-y-6">
+          {/* Photo gallery */}
+          {images.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {images.map((url, i) => (
+                <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0" />
+              ))}
+            </div>
+          )}
+          {images.length === 0 && (
+            <div className="text-sm text-[var(--color-text-tertiary)]">No images</div>
+          )}
+
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div><span className="text-[var(--color-text-secondary)]">Title:</span> <span className="font-medium">{card.title}</span></div>
+            <div><span className="text-[var(--color-text-secondary)]">Type:</span> <Badge variant={card.card_type === "curated" ? "brand" : "default"}>{card.card_type}</Badge></div>
+            <div><span className="text-[var(--color-text-secondary)]">Category:</span> {CATEGORY_LABELS[card.category] || card.category || (card.categories?.[0] ? CATEGORY_LABELS[card.categories[0]] || card.categories[0] : "—")}</div>
+            <div><span className="text-[var(--color-text-secondary)]">Status:</span> <Badge variant={card.is_active ? "success" : "error"}>{card.is_active ? "Active" : "Inactive"}</Badge></div>
+            <div><span className="text-[var(--color-text-secondary)]">City:</span> {card.city || "—"}</div>
+            <div><span className="text-[var(--color-text-secondary)]">Country:</span> {card.country || "—"}</div>
+            <div><span className="text-[var(--color-text-secondary)]">Lat/Lng:</span> {card.lat && card.lng ? `${card.lat}, ${card.lng}` : "—"}</div>
+            <div><span className="text-[var(--color-text-secondary)]">Created:</span> {card.created_at ? new Date(card.created_at).toLocaleDateString() : "—"}</div>
+            <div><span className="text-[var(--color-text-secondary)]">Served:</span> {card.served_count || 0} times</div>
+            <div><span className="text-[var(--color-text-secondary)]">Place Pool ID:</span> {card.place_pool_id || "—"}</div>
+          </div>
+
+          {/* Curated stops */}
+          {card.card_type === "curated" && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Stops</h4>
+              {stopsLoading && <Spinner size="sm" />}
+              {stopsError && <div className="text-sm text-[var(--color-error-600)]">{stopsError}</div>}
+              {!stopsLoading && !stopsError && stops.length === 0 && (
+                <div className="text-sm text-[var(--color-text-tertiary)]">No stops found.</div>
+              )}
+              {stops.length > 0 && (
+                <div className="space-y-2">
+                  {stops.map((s, i) => (
+                    <div key={s.id || i} className="flex items-center gap-3 text-sm py-1.5 border-b border-[var(--gray-100)] last:border-0">
+                      <span className="w-6 h-6 rounded-full bg-[var(--color-brand-50)] text-[var(--color-brand-500)] flex items-center justify-center text-xs font-semibold shrink-0">
+                        {s.stop_order}
+                      </span>
+                      <div>
+                        <div className="font-medium">{s.place_pool?.name || `Stop ${s.stop_order}`}</div>
+                        {s.place_pool?.address && <div className="text-[var(--color-text-tertiary)] text-xs">{s.place_pool.address}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant={card.is_active ? "danger" : "primary"} onClick={() => onToggleActive(card)}>
+          {card.is_active ? "Deactivate" : "Activate"}
+        </Button>
+        <Button variant="ghost" onClick={onClose}>Close</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ── Tab 2: Browse Cards ─────────────────────────────────────────────────────
+
+function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
+  const { addToast } = useToast();
   const [cards, setCards] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ cardType: "", category: "", status: "active", nameSearch: "" });
-  const PAGE_SIZE = 20;
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [detailCard, setDetailCard] = useState(null);
+  const mountedRef = useRef(true);
 
   const fetchCards = useCallback(async () => {
+    mountedRef.current = true;
     setLoading(true);
-    let q = supabase.from("card_pool").select("*, place_pool!inner(city_id, name)", { count: "exact" });
-    if (city) q = q.eq("place_pool.city_id", city.id);
+
+    let q = supabase.from("card_pool")
+      .select("id, title, card_type, category, categories, image_url, images, is_active, served_count, created_at, city, country, place_pool_id, lat, lng", { count: "exact" });
+
+    if (selectedCity) q = q.eq("city", selectedCity);
+    else if (selectedCountry) q = q.eq("country", selectedCountry);
+
     if (filters.cardType) q = q.eq("card_type", filters.cardType);
     if (filters.category) q = q.contains("categories", [filters.category]);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.nameSearch) q = q.ilike("title", `%${filters.nameSearch}%`);
+
     q = q.order("created_at", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-    const { data, count, error } = await q;
-    if (!error) { setCards(data || []); setTotal(count || 0); }
-    setLoading(false);
-  }, [city, filters, page]);
 
-  useEffect(() => { fetchCards(); }, [fetchCards]);
+    const { data, count, error } = await q;
+    if (!mountedRef.current) return;
+    if (error) {
+      addToast({ variant: "error", title: "Failed to load cards", description: error.message });
+      setLoading(false);
+      return;
+    }
+    setCards(data || []);
+    setTotal(count || 0);
+    setLoading(false);
+  }, [selectedCountry, selectedCity, filters, page, addToast]);
+
+  useEffect(() => {
+    fetchCards();
+    return () => { mountedRef.current = false; };
+  }, [fetchCards]);
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [selectedCountry, selectedCity]);
 
   const toggleActive = async (card) => {
-    await supabase.from("card_pool").update({ is_active: !card.is_active }).eq("id", card.id);
-    fetchCards();
+    const { error } = await supabase.from("card_pool")
+      .update({ is_active: !card.is_active, updated_at: new Date().toISOString() })
+      .eq("id", card.id);
+    if (error) {
+      addToast({ variant: "error", title: "Update failed", description: error.message });
+    } else {
+      addToast({ variant: "success", title: `Card ${card.is_active ? "deactivated" : "activated"}` });
+      fetchCards();
+      if (onRefresh) onRefresh();
+    }
+    // Close modal if open
+    if (detailCard?.id === card.id) setDetailCard(null);
   };
 
+  const bulkUpdateActive = async (isActive) => {
+    const ids = [...selectedIds];
+    const { error } = await supabase.from("card_pool")
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .in("id", ids);
+    if (error) {
+      addToast({ variant: "error", title: "Bulk update failed", description: error.message });
+    } else {
+      addToast({ variant: "success", title: `${ids.length} cards ${isActive ? "activated" : "deactivated"}` });
+      setSelectedIds(new Set());
+      fetchCards();
+      if (onRefresh) onRefresh();
+    }
+  };
+
+  const handleSelect = useCallback((id, checked) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((selectAll) => {
+    if (selectAll) setSelectedIds(new Set(cards.map((c) => c.id)));
+    else setSelectedIds(new Set());
+  }, [cards]);
+
   const columns = [
-    { key: "title", label: "Title", sortable: true },
+    {
+      key: "title", label: "Title", sortable: true,
+      render: (_, r) => (
+        <button onClick={() => setDetailCard(r)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+          {r.title || "Untitled"}
+        </button>
+      ),
+    },
     { key: "card_type", label: "Type", render: (_, r) => <Badge variant={r.card_type === "curated" ? "brand" : "default"}>{r.card_type}</Badge> },
-    { key: "category", label: "Category", render: (_, r) => r.category || (r.categories?.[0]) || "—" },
+    { key: "category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.category] || r.category || (r.categories?.[0] ? CATEGORY_LABELS[r.categories[0]] || r.categories[0] : "—") },
     { key: "image_url", label: "Photo", render: (_, r) => r.image_url ? <img src={r.image_url} className="w-10 h-10 rounded object-cover" alt="" /> : <Badge variant="error">None</Badge> },
+    { key: "images", label: "Images", render: (_, r) => {
+      const count = r.images?.length || 0;
+      return count > 0 ? <Badge variant="default">{count} photos</Badge> : <Badge variant="error">0</Badge>;
+    }},
+    { key: "served_count", label: "Served", render: (_, r) => (r.served_count || 0) > 0 ? r.served_count : <span className="text-[var(--color-warning-600)]">Never</span> },
     { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
     { key: "actions", label: "", render: (_, r) => (
       <Button size="sm" variant={r.is_active ? "danger" : "primary"} onClick={() => toggleActive(r)}>
-        {r.is_active ? "Deactivate" : "Reactivate"}
+        {r.is_active ? "Deactivate" : "Activate"}
       </Button>
     )},
   ];
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
       <div className="flex flex-wrap gap-2 items-end">
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Type</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.cardType} onChange={(e) => { setFilters((f) => ({ ...f, cardType: e.target.value })); setPage(1); }}>
+            value={filters.cardType} onChange={(e) => { setFilters((f) => ({ ...f, cardType: e.target.value })); setPage(1); setSelectedIds(new Set()); }}>
             <option value="">All</option>
             <option value="single">Single</option>
             <option value="curated">Curated</option>
@@ -284,7 +491,7 @@ function BrowseCardsTab({ city }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(1); }}>
+            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(1); setSelectedIds(new Set()); }}>
             <option value="">All</option>
             {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
           </select>
@@ -292,7 +499,7 @@ function BrowseCardsTab({ city }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Status</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1); }}>
+            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1); setSelectedIds(new Set()); }}>
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -300,213 +507,517 @@ function BrowseCardsTab({ city }) {
         </div>
         <div className="flex-1 min-w-[200px]">
           <Input label="Search" value={filters.nameSearch} placeholder="Card title..."
-            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(1); }} />
+            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(1); setSelectedIds(new Set()); }} />
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-0 z-20 bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-xl p-4 shadow-lg flex items-center gap-4">
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">
+            {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <Button size="sm" variant="primary" onClick={() => bulkUpdateActive(true)}>Activate</Button>
+          <Button size="sm" variant="danger" onClick={() => bulkUpdateActive(false)}>Deactivate</Button>
+        </div>
+      )}
+
       <DataTable columns={columns} rows={cards} loading={loading}
+        selectable selectedIds={selectedIds} onSelect={handleSelect} onSelectAll={handleSelectAll} getRowId={(r) => r.id}
         emptyMessage="No cards found" emptyIcon={Layers}
         pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
+
+      <CardDetailModal card={detailCard} open={!!detailCard} onClose={() => setDetailCard(null)} onToggleActive={toggleActive} />
     </div>
   );
 }
 
-// ── Cross-City Comparison (for Gap tab when no city selected) ────────────────
+// ── Tab 3: Generate Cards ───────────────────────────────────────────────────
 
-function CrossCityComparison({ cities }) {
-  const [cityStats, setCityStats] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const stats = {};
-      for (const c of cities) {
-        const [{ data: ps }, { data: cs }, { data: ops }] = await Promise.all([
-          supabase.rpc("admin_city_place_stats", { p_city_id: c.id }),
-          supabase.rpc("admin_city_card_stats", { p_city_id: c.id }),
-          supabase.from("seeding_operations").select("estimated_cost_usd").eq("city_id", c.id),
-        ]);
-        if (cancelled) return;
-        const spend = (ops || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0);
-        stats[c.id] = { places: ps?.total_places || 0, cards: (cs?.total_single_cards || 0) + (cs?.total_curated_cards || 0), photoPct: ps?.total_places ? Math.round(((ps?.with_photos || 0) / ps.total_places) * 100) : 0, spend };
-      }
-      if (!cancelled) { setCityStats(stats); setLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [cities]);
-
-  const columns = [
-    { key: "name", label: "City", render: (_, r) => `${r.name}, ${r.country}` },
-    { key: "status", label: "Status", render: (_, r) => <Badge variant={r.status === "launched" ? "success" : r.status === "seeded" ? "info" : "default"}>{r.status}</Badge> },
-    { key: "places", label: "Places", render: (_, r) => cityStats[r.id]?.places ?? "—" },
-    { key: "cards", label: "Cards", render: (_, r) => cityStats[r.id]?.cards ?? "—" },
-    { key: "photos", label: "Photo %", render: (_, r) => {
-      const pct = cityStats[r.id]?.photoPct;
-      return pct != null ? <Badge variant={pct >= 80 ? "success" : pct >= 50 ? "warning" : "error"}>{pct}%</Badge> : "—";
-    }},
-    { key: "spend", label: "Spend / $70", render: (_, r) => {
-      const spend = cityStats[r.id]?.spend;
-      return spend != null ? <span className={spend > 70 ? "text-[var(--color-error-700)] font-medium" : ""}>${spend.toFixed(2)}</span> : "—";
-    }},
-  ];
-
-  return (
-    <SectionCard title="Cross-City Comparison">
-      <DataTable columns={columns} rows={cities} loading={loading} emptyMessage="No cities" />
-    </SectionCard>
-  );
-}
-
-// ── Tab 4: Gap Analysis ──────────────────────────────────────────────────────
-
-function GapTab({ city, placeStats, cardStats, allCities, onRefresh }) {
+function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   const { addToast } = useToast();
-  const [placesWithoutCards, setPlacesWithoutCards] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [bbox, setBbox] = useState(null);
+  const [bboxLoading, setBboxLoading] = useState(false);
+  const [bboxError, setBboxError] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState(null);
+  const [resultType, setResultType] = useState(null); // "single" | "curated"
+  const [selectedCat, setSelectedCat] = useState("");
+  const [selectedExpType, setSelectedExpType] = useState("adventurous");
+  const [dryRun, setDryRun] = useState(false);
+  const mountedRef = useRef(true);
 
+  // Compute bounding box when city is selected
   useEffect(() => {
-    if (!city) return;
-    setLoading(true);
-    // Find active places with photos but no active card
-    supabase.rpc("admin_city_place_stats", { p_city_id: city.id }).then(() => {
-      // Simpler approach: query places without cards
-      supabase.from("place_pool")
-        .select("id, name, seeding_category, rating")
-        .eq("city_id", city.id).eq("is_active", true)
-        .not("stored_photo_urls", "is", null)
-        .limit(100)
-        .then(async ({ data: allPlaces }) => {
-          if (!allPlaces?.length) { setPlacesWithoutCards([]); setLoading(false); return; }
-          // Get place IDs that have cards
-          const { data: cardsData } = await supabase.from("card_pool")
-            .select("place_pool_id")
-            .eq("is_active", true)
-            .in("place_pool_id", allPlaces.map((p) => p.id));
-          const withCardIds = new Set((cardsData || []).map((c) => c.place_pool_id));
-          setPlacesWithoutCards(allPlaces.filter((p) => !withCardIds.has(p.id)));
-          setLoading(false);
-        });
-    });
-  }, [city]);
+    mountedRef.current = true;
+    if (!selectedCity || !selectedCountry) { setBbox(null); setBboxError(null); return; }
 
-  const byCat = placeStats?.by_seeding_category || {};
-  const cardByCat = cardStats?.by_category || {};
+    setBboxLoading(true);
+    setBboxError(null);
 
-  if (!city) {
-    // Cross-city comparison
-    if (!allCities?.length) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No cities defined.</div>;
-    return <CrossCityComparison cities={allCities} />;
+    supabase.from("place_pool")
+      .select("lat, lng")
+      .eq("country", selectedCountry)
+      .eq("city", selectedCity)
+      .eq("is_active", true)
+      .then(({ data, error }) => {
+        if (!mountedRef.current) return;
+        if (error) { setBboxError(error.message); setBboxLoading(false); return; }
+        if (!data?.length) { setBbox(null); setBboxError("no_places"); setBboxLoading(false); return; }
+
+        const lats = data.map((p) => p.lat).filter(Boolean);
+        const lngs = data.map((p) => p.lng).filter(Boolean);
+        if (lats.length === 0) { setBbox(null); setBboxError("no_places"); setBboxLoading(false); return; }
+
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        const latSpan = (maxLat - minLat) * 111320;
+        const lngSpan = (maxLng - minLng) * 111320 * Math.cos(centerLat * Math.PI / 180);
+        const radiusMeters = Math.max(latSpan, lngSpan) / 2 + 500;
+
+        setBbox({ location: { lat: centerLat, lng: centerLng }, radiusMeters: Math.max(radiusMeters, 1500) });
+        setBboxLoading(false);
+      });
+
+    return () => { mountedRef.current = false; };
+  }, [selectedCountry, selectedCity]);
+
+  const generateSingle = async () => {
+    if (!bbox) return;
+    setGenerating(true);
+    setResult(null);
+    setResultType("single");
+    try {
+      const body = {
+        location: bbox.location,
+        radiusMeters: bbox.radiusMeters,
+        ...(selectedCat ? { categories: [selectedCat] } : {}),
+        dryRun,
+      };
+      const { data, error } = await supabase.functions.invoke("generate-single-cards", { body });
+      if (error) throw new Error(error.message);
+      setResult(data);
+      addToast({ variant: "success", title: dryRun ? "Dry run complete" : "Single card generation complete" });
+      if (!dryRun && onRefresh) onRefresh();
+    } catch (err) {
+      addToast({ variant: "error", title: "Generation failed", description: err.message });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateCurated = async () => {
+    if (!bbox) return;
+    setGenerating(true);
+    setResult(null);
+    setResultType("curated");
+    try {
+      const body = {
+        location: bbox.location,
+        experienceType: selectedExpType || "adventurous",
+        skipDescriptions: false,
+        limit: 20,
+      };
+      const { data, error } = await supabase.functions.invoke("generate-curated-experiences", { body });
+      if (error) throw new Error(error.message);
+      setResult(data);
+      addToast({ variant: "success", title: "Curated experience generation complete" });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      addToast({ variant: "error", title: "Generation failed", description: err.message });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  if (!selectedCity) {
+    return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a country and city to generate cards.</div>;
   }
+  if (bboxLoading) {
+    return <div className="flex items-center justify-center py-12 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Computing city bounds...</span></div>;
+  }
+  if (bboxError === "no_places") {
+    return <div className="text-center py-12 text-[var(--color-text-secondary)]">No active places found in {selectedCity}. Seed places first via the Place Pool page.</div>;
+  }
+  if (bboxError) {
+    return <ErrorBanner error={bboxError} />;
+  }
+
+  // Format single card results as table
+  const renderResults = () => {
+    if (!result) return null;
+
+    if (resultType === "single") {
+      const catBreakdown = result.categories || result.results || [];
+      const resultRows = Array.isArray(catBreakdown)
+        ? catBreakdown.map((r) => ({
+          _key: r.category || r.name,
+          category: CATEGORY_LABELS[r.category] || r.category || r.name || "—",
+          created: r.created || r.count || 0,
+          skipped: r.skipped || 0,
+          reason: r.skippedReasons?.join(", ") || r.reason || "—",
+        }))
+        : Object.entries(catBreakdown).map(([slug, stats]) => ({
+          _key: slug,
+          category: CATEGORY_LABELS[slug] || slug,
+          created: stats.created || stats.count || 0,
+          skipped: stats.skipped || 0,
+          reason: stats.skippedReasons?.join(", ") || "—",
+        }));
+
+      const totalCreated = resultRows.reduce((s, r) => s + r.created, 0);
+      const resultColumns = [
+        { key: "category", label: "Category" },
+        { key: "created", label: "Created" },
+        { key: "skipped", label: "Skipped" },
+        { key: "reason", label: "Reason" },
+      ];
+
+      return (
+        <SectionCard title="Generation Results"
+          subtitle={dryRun ? "Dry Run — No cards were created. Preview:" : `Generated ${totalCreated} single cards`}>
+          <DataTable columns={resultColumns} rows={resultRows} loading={false} emptyMessage="No results" />
+        </SectionCard>
+      );
+    }
+
+    if (resultType === "curated") {
+      const experiences = result.experiences || result.cards || result.results || [];
+      const titles = Array.isArray(experiences) ? experiences.map((e) => e.title || e.name || "Untitled") : [];
+
+      return (
+        <SectionCard title="Generation Results"
+          subtitle={`Generated ${titles.length} curated experiences (type: ${selectedExpType})`}>
+          {titles.length > 0 ? (
+            <ul className="space-y-1 text-sm">
+              {titles.map((t, i) => (
+                <li key={i} className="flex items-center gap-2 py-1">
+                  <CheckCircle className="w-4 h-4 text-[var(--color-success-500)] shrink-0" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-sm text-[var(--color-text-tertiary)]">No experiences returned. Check edge function logs.</div>
+          )}
+        </SectionCard>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="space-y-6">
-      {/* Places Without Cards */}
-      <SectionCard title={`Places Without Cards (${placesWithoutCards.length})`}>
-        {loading ? <p className="text-sm text-[var(--color-text-secondary)]">Loading...</p> : (
-          <div className="max-h-72 overflow-y-auto space-y-1">
-            {placesWithoutCards.slice(0, 50).map((p) => (
-              <div key={p.id} className="flex justify-between items-center px-2 py-1.5 text-sm border-b border-[var(--gray-100)]">
-                <div>
-                  <span className="font-medium">{p.name}</span>
-                  <span className="ml-2 text-[var(--color-text-tertiary)]">
-                    {CATEGORY_LABELS[p.seeding_category] || "—"} · {p.rating ? `★ ${p.rating}` : "No rating"}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {placesWithoutCards.length === 0 && <p className="text-sm text-[var(--color-text-secondary)]">All places have cards!</p>}
+      <SectionCard title="Single Card Generation" subtitle={`Generate cards for ${selectedCity}`}>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Category (optional)</label>
+            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={selectedCat} onChange={(e) => setSelectedCat(e.target.value)}>
+              <option value="">All Categories</option>
+              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+            </select>
           </div>
-        )}
-      </SectionCard>
-
-      {/* Category Gaps */}
-      <SectionCard title="Category Gaps">
-        <div className="space-y-2">
-          {ALL_CATEGORIES.map((catId) => {
-            const pCount = byCat[catId]?.count || 0;
-            const cCount = cardByCat[CATEGORY_LABELS[catId]] || cardByCat[catId] || 0;
-            const gap = pCount - cCount;
-            return (
-              <div key={catId} className="flex items-center gap-3 text-sm py-1">
-                <span className="w-32 truncate">{CATEGORY_LABELS[catId]}</span>
-                <span className="w-16 text-right">{pCount}p</span>
-                <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                <span className="w-16 text-right">{cCount}c</span>
-                {gap > 0 && <Badge variant="warning">{gap} missing</Badge>}
-                {gap <= 0 && pCount > 0 && <Badge variant="success">OK</Badge>}
-                {pCount === 0 && <Badge variant="error">No places</Badge>}
-              </div>
-            );
-          })}
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="dryrun" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} className="rounded" />
+            <label htmlFor="dryrun" className="text-sm text-[var(--color-text-secondary)] cursor-pointer">Dry Run</label>
+          </div>
+          <Button icon={Play} loading={generating} disabled={generating} onClick={generateSingle}>
+            Generate Single Cards
+          </Button>
         </div>
       </SectionCard>
+
+      <SectionCard title="Curated Experience Generation" subtitle="Multi-stop itinerary cards">
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Experience Type</label>
+            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+              value={selectedExpType} onChange={(e) => setSelectedExpType(e.target.value)}>
+              {EXPERIENCE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
+          <Button icon={Play} loading={generating} disabled={generating} onClick={generateCurated}>
+            Generate Curated Experiences
+          </Button>
+        </div>
+      </SectionCard>
+
+      {renderResults()}
+    </div>
+  );
+}
+
+// ── Tab 4: Card Health ──────────────────────────────────────────────────────
+
+function CardHealthTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+  const { addToast } = useToast();
+  const [data, setData] = useState(null);
+  const [catHealth, setCatHealth] = useState([]);
+  const [orphanedCards, setOrphanedCards] = useState([]);
+  const [crossCityRows, setCrossCityRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+
+  const fetchData = useCallback(() => {
+    mountedRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    const params = {};
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
+
+    const promises = [
+      supabase.rpc("admin_card_pool_intelligence", params),
+      supabase.rpc("admin_pool_category_health", params),
+    ];
+
+    // If no city selected, fetch cross-city data
+    if (!selectedCity) {
+      if (selectedCountry) {
+        promises.push(supabase.rpc("admin_country_city_overview", { p_country: selectedCountry }));
+      } else {
+        promises.push(supabase.rpc("admin_country_overview"));
+      }
+    }
+
+    // If city selected, fetch orphaned cards list
+    if (selectedCity) {
+      promises.push(
+        supabase.from("card_pool")
+          .select("id, title, card_type, category, place_pool_id, place_pool!left(is_active)")
+          .eq("is_active", true)
+          .eq("city", selectedCity)
+          .eq("card_type", "single")
+          .or("place_pool_id.is.null,place_pool.is_active.eq.false")
+          .limit(50)
+      );
+    }
+
+    Promise.all(promises).then((results) => {
+      if (!mountedRef.current) return;
+
+      const [intRes, catRes, thirdRes] = results;
+      if (intRes.error) { setError(intRes.error.message); setLoading(false); return; }
+      if (catRes.error) { setError(catRes.error.message); setLoading(false); return; }
+
+      setData(Array.isArray(intRes.data) ? intRes.data[0] : intRes.data);
+      setCatHealth(catRes.data || []);
+
+      if (!selectedCity && thirdRes) {
+        setCrossCityRows(thirdRes.data || []);
+      }
+      if (selectedCity && thirdRes) {
+        setOrphanedCards(thirdRes.data || []);
+      }
+
+      setLoading(false);
+    });
+  }, [selectedCountry, selectedCity]);
+
+  useEffect(() => {
+    fetchData();
+    return () => { mountedRef.current = false; };
+  }, [fetchData]);
+
+  if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading card health data...</div>;
+  if (error) return <ErrorBanner error={error} onRetry={fetchData} />;
+  if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No card health data available.</div>;
+
+  // Cross-city comparison when no city selected
+  if (!selectedCity) {
+    const isCountryLevel = !!selectedCountry;
+    const crossColumns = isCountryLevel
+      ? [
+        {
+          key: "city_name", label: "City", sortable: true,
+          render: (_, r) => (
+            <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+              {r.city_name}
+            </button>
+          ),
+        },
+        { key: "active_places", label: "Active Places", sortable: true },
+        { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
+        { key: "total_cards", label: "Cards", sortable: true },
+        { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
+      ]
+      : [
+        {
+          key: "country", label: "Country", sortable: true,
+          render: (_, r) => (
+            <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+              {r.country}
+            </button>
+          ),
+        },
+        { key: "active_places", label: "Active Places", sortable: true },
+        { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
+        { key: "total_cards", label: "Cards", sortable: true },
+        { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
+      ];
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard icon={AlertTriangle} label="Orphaned Cards" value={data.orphaned_cards}
+            trend={data.orphaned_cards === 0 ? "Clean" : "Needs Fix"} trendUp={data.orphaned_cards === 0} />
+          <StatCard icon={Clock} label="Stale Cards" value={data.stale_cards}
+            trend={data.stale_cards === 0 ? "Fresh" : "Needs Refresh"} trendUp={data.stale_cards === 0} />
+          <StatCard icon={EyeOff} label="Never Served" value={data.never_served}
+            trend={data.active_cards > 0 ? `${Math.round((data.never_served / data.active_cards) * 100)}% of active` : "—"}
+            trendUp={data.never_served < data.active_cards * 0.2} />
+        </div>
+
+        <SectionCard title="Cross-City Comparison" subtitle={`${crossCityRows.length} ${isCountryLevel ? "cities" : "countries"}`}>
+          <DataTable columns={crossColumns} rows={crossCityRows} loading={false}
+            emptyMessage="No data available" emptyIcon={Layers} />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // City-level health view
+  const deactivateOrphaned = async (card) => {
+    const { error: err } = await supabase.from("card_pool")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", card.id);
+    if (err) addToast({ variant: "error", title: "Deactivation failed", description: err.message });
+    else { addToast({ variant: "success", title: `"${card.title}" deactivated` }); fetchData(); }
+  };
+
+  const orphanedColumns = [
+    { key: "title", label: "Title" },
+    { key: "card_type", label: "Type", render: (_, r) => <Badge variant="default">{r.card_type}</Badge> },
+    { key: "category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.category] || r.category || "—" },
+    { key: "actions", label: "", render: (_, r) => (
+      <Button size="sm" variant="danger" onClick={() => deactivateOrphaned(r)}>Deactivate</Button>
+    )},
+  ];
+
+  const gapRows = catHealth.filter((r) => (r.places_needing_cards || 0) > 0);
+  const gapColumns = [
+    { key: "category", label: "Category", render: (_, r) => categoryDot(r.category) },
+    { key: "active_places", label: "Active Places" },
+    { key: "total_cards", label: "Total Cards" },
+    { key: "places_needing_cards", label: "Places Needing Cards" },
+    { key: "health", label: "Health", render: (_, r) => healthBadge(r.health) },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard icon={AlertTriangle} label="Orphaned Cards" value={data.orphaned_cards}
+          trend={data.orphaned_cards === 0 ? "Clean" : "Needs Fix"} trendUp={data.orphaned_cards === 0} />
+        <StatCard icon={Clock} label="Stale Cards" value={data.stale_cards}
+          trend={data.stale_cards === 0 ? "Fresh" : "Needs Refresh"} trendUp={data.stale_cards === 0} />
+        <StatCard icon={EyeOff} label="Never Served" value={data.never_served}
+          trend={data.active_cards > 0 ? `${Math.round((data.never_served / data.active_cards) * 100)}% of active` : "—"}
+          trendUp={data.never_served < data.active_cards * 0.2} />
+      </div>
+
+      {orphanedCards.length > 0 && (
+        <SectionCard title={`Orphaned Cards (${orphanedCards.length})`} subtitle="Active single cards whose parent place is inactive or missing">
+          <DataTable columns={orphanedColumns} rows={orphanedCards} loading={false}
+            emptyMessage="No orphaned cards" emptyIcon={CheckCircle} />
+        </SectionCard>
+      )}
+
+      {gapRows.length > 0 && (
+        <SectionCard title="Category Gaps" subtitle="Categories with places that need cards">
+          <DataTable columns={gapColumns} rows={gapRows} loading={false}
+            emptyMessage="All categories covered" emptyIcon={CheckCircle} />
+        </SectionCard>
+      )}
+
+      {orphanedCards.length === 0 && gapRows.length === 0 && (
+        <div className="text-center py-8 text-[var(--color-text-tertiary)]">
+          No health issues found for {selectedCity}. All cards are healthy.
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
-export function CardPoolManagementPage({ onTabChange }) {
-  const { addToast } = useToast();
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const [activeTab, setActiveTab] = useState("readiness");
-  const [cities, setCities] = useState([]);
+export function CardPoolManagementPage() {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedCity, setSelectedCity] = useState(null);
-  const [placeStats, setPlaceStats] = useState(null);
-  const [cardStats, setCardStats] = useState(null);
-  const [spendTotal, setSpendTotal] = useState(0);
-  const [tileCount, setTileCount] = useState(0);
+  const [countries, setCountries] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const mountedRef = useRef(true);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load cities
+  // Load country list for breadcrumb dropdown
   useEffect(() => {
-    supabase.from("seeding_cities").select("*").order("name")
-      .then(({ data }) => { if (mountedRef.current) setCities(data || []); });
-  }, [refreshKey]);
+    mountedRef.current = true;
+    supabase.rpc("admin_country_overview").then(({ data }) => {
+      if (!mountedRef.current) return;
+      if (data) setCountries(data.map((r) => r.country));
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  // Load stats when city selected
-  useEffect(() => {
-    if (!selectedCity) { setPlaceStats(null); setCardStats(null); setSpendTotal(0); setTileCount(0); return; }
+  const selectCountry = useCallback((country) => {
+    setSelectedCountry(country);
+    setSelectedCity(null);
+  }, []);
 
-    supabase.rpc("admin_city_place_stats", { p_city_id: selectedCity.id })
-      .then(({ data }) => { if (mountedRef.current) setPlaceStats(data); });
+  const selectCity = useCallback((cityName) => {
+    setSelectedCity(cityName);
+  }, []);
 
-    supabase.rpc("admin_city_card_stats", { p_city_id: selectedCity.id })
-      .then(({ data }) => { if (mountedRef.current) setCardStats(data); });
+  const clearCountry = useCallback(() => {
+    setSelectedCountry(null);
+    setSelectedCity(null);
+  }, []);
 
-    supabase.from("seeding_operations").select("estimated_cost_usd").eq("city_id", selectedCity.id)
-      .then(({ data }) => {
-        if (mountedRef.current) setSpendTotal((data || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0));
-      });
-
-    supabase.from("seeding_tiles").select("id", { count: "exact", head: true }).eq("city_id", selectedCity.id)
-      .then(({ count }) => { if (mountedRef.current) setTileCount(count || 0); });
-  }, [selectedCity, refreshKey]);
-
-  const launchCity = async (cityId) => {
-    const { error } = await supabase.from("seeding_cities").update({ status: "launched", updated_at: new Date().toISOString() }).eq("id", cityId);
-    if (error) addToast({ variant: "error", title: "Launch failed", description: error.message });
-    else { addToast({ variant: "success", title: `${selectedCity.name} launched!` }); refresh(); }
-  };
+  const clearCity = useCallback(() => {
+    setSelectedCity(null);
+  }, []);
 
   return (
     <div className="space-y-4 py-6">
-      <CitySelector cities={cities} selectedCity={selectedCity} onSelect={setSelectedCity} />
-      <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Card Pool Management</h2>
+          <p className="text-sm text-[var(--color-text-secondary)]">Manage, generate, and monitor card pool health across all cities.</p>
+        </div>
+      </div>
 
-      <div className="mt-4">
-        {activeTab === "readiness" && <ReadinessTab city={selectedCity} placeStats={placeStats} cardStats={cardStats} spendTotal={spendTotal} tileCount={tileCount} onLaunch={launchCity} />}
-        {activeTab === "generate" && <GenerateTab city={selectedCity} onRefresh={refresh} />}
-        {activeTab === "browse" && <BrowseCardsTab city={selectedCity} />}
-        {activeTab === "gaps" && <GapTab city={selectedCity} placeStats={placeStats} cardStats={cardStats} allCities={cities} onRefresh={refresh} />}
+      <CountryFilterBar
+        selectedCountry={selectedCountry}
+        selectedCity={selectedCity}
+        countries={countries}
+        onSelectCountry={selectCountry}
+        onClearCountry={clearCountry}
+        onClearCity={clearCity}
+      />
+
+      <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+
+      <div className="mt-4" key={refreshKey}>
+        {activeTab === "overview" && (
+          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
+        {activeTab === "browse" && (
+          <BrowseCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
+        )}
+        {activeTab === "generate" && (
+          <GenerateCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
+        )}
+        {activeTab === "health" && (
+          <CardHealthTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            onSelectCountry={selectCountry} onSelectCity={(city) => { setSelectedCity(city); setActiveTab("overview"); }} />
+        )}
       </div>
     </div>
   );
