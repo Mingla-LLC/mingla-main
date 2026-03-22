@@ -332,6 +332,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
   // ─── P ───
   'paper-plane':                Send,
+  'paper-plane-outline':        Send,
   'pencil':                     Pencil,
   'people':                     Users,
   'people-outline':             Users,
