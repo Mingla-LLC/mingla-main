@@ -68,7 +68,7 @@
 | ActionButtons analytics | A | 2026-03-22 | Commit dba7b3f0 | 9 buttons tracked with TrackedTouchableOpacity. |
 | Expanded card travel mode icon | A | 2026-03-22 | Commit dba7b3f0 | Uses card.travelMode with effectiveTravelMode fallback. |
 | Push delivery via OneSignal | F | — | User report 2026-03-22 | Device registered, permission granted, subscription opted in — but no push notifications arrive. In-app notifications work. Needs investigation: notify-dispatch → OneSignal API → device delivery chain. |
-| Missing icon: paper-plane-outline | F | — | Log Bug 2026-03-22 | Appears many times on Discover page. Needs ICON_MAP entry. |
+| Missing icon: paper-plane-outline | A | 2026-03-22 | Commit ba2a37be | Added to ICON_MAP → Send. |
 | Per-category deck balancing | A | 2026-03-22 | Commit 7fef7ed0 | See "Category balancing" above. Resolved. |
 | Curated card exclusion enforcement | A | 2026-03-22 | Commit 7fef7ed0. Test report: TEST_REPORT_SERVE_TIME_PASS2.md | Serve-time NOT EXISTS via card_pool_stops + generation-time DB-driven exclusion. Nature slug regression caught and fixed. 26/26 tests green. |
 | Category balancing | A | 2026-03-22 | Commit 7fef7ed0 | ROW_NUMBER partition with per-category cap. Count CTE unaffected. No balancing when no categories selected. |
