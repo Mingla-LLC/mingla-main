@@ -262,9 +262,12 @@ serve(async (req) => {
       data: pushData,
     };
 
-    if (pushOverrides?.androidChannelId) {
-      pushPayload.androidChannelId = pushOverrides.androidChannelId;
-    }
+    // DISABLED: android_channel_id causes OneSignal 400 error when channels
+    // are not configured in the OneSignal dashboard. Using default channel
+    // until channels are set up. Re-enable after configuring channels.
+    // if (pushOverrides?.androidChannelId) {
+    //   pushPayload.androidChannelId = pushOverrides.androidChannelId;
+    // }
     if (pushOverrides?.buttons && pushOverrides.buttons.length > 0) {
       pushPayload.buttons = pushOverrides.buttons;
     }
