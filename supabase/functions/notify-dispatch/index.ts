@@ -21,9 +21,11 @@ const typeToPreference: Record<string, string> = {
   "friend_request_accepted": "friend_requests",
   "pair_request_received": "friend_requests",
   "pair_request_accepted": "friend_requests",
-  "link_request_received": "link_requests",
-  "link_request_accepted": "link_requests",
-  "friend_joined_mingla": "friend_requests",
+  // PAIR ACTIVITY PREFERENCE FIX (Block 3 — hardened 2026-03-21)
+  // These types were missing from the preference map, causing them to bypass
+  // user preference checks. Now gated under "friend_requests" for consistency.
+  "paired_user_saved_card": "friend_requests",
+  "paired_user_visited": "friend_requests",
   "collaboration_invite_received": "collaboration_invites",
   "collaboration_invite_accepted": "collaboration_invites",
   "collaboration_invite_declined": "collaboration_invites",

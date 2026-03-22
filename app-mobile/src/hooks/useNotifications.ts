@@ -390,8 +390,19 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
       try {
         // Use the same service function as the existing code
         const { acceptPairRequest: acceptPairSvc } = await import('../services/pairingService');
-        await acceptPairSvc(requestId);
+        const result = await acceptPairSvc(requestId);
         queryClient.invalidateQueries({ queryKey: ['pairings'] });
+        // Fire-and-forget notification to the sender
+        try {
+          const senderId = result?.pairedWithUserId
+            || notifications.find(n => n.id === notificationId)?.actor_id;
+          if (senderId && userId) {
+            const { trackedInvoke } = await import('../services/supabase');
+            trackedInvoke('send-pair-accepted-notification', {
+              body: { accepterId: userId, senderId, requestId },
+            }).catch(err => console.warn('[useNotifications] pair accepted notification failed:', err));
+          }
+        } catch {}
         await deleteNotification(notificationId);
       } catch (err) {
         console.error('[useNotifications] acceptPairRequest error:', err);
@@ -400,7 +411,7 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
         removePendingAction(notificationId);
       }
     },
-    [userId, queryClient, deleteNotification, addPendingAction, removePendingAction]
+    [userId, queryClient, deleteNotification, addPendingAction, removePendingAction, notifications]
   );
 
   const declinePairRequestAction = useCallback(

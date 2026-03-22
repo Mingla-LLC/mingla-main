@@ -16,6 +16,8 @@ import type {
 } from "../services/pairingService";
 import { customHolidayKeys } from "./useCustomHolidays";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
+import { useAppStore } from "../store/appStore";
+import { trackedInvoke } from "../services/supabase";
 
 // ── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -98,6 +100,7 @@ export function useUnpair() {
 
 export function useAcceptPairRequest() {
   const queryClient = useQueryClient();
+  const userId = useAppStore((s) => s.user?.id);
   return useMutation<
     { pairingId: string; pairedWithUserId: string },
     Error,
@@ -138,8 +141,22 @@ export function useAcceptPairRequest() {
         }
       }
     },
-    onSuccess: () => {
+    onSuccess: async (data, requestId) => {
       logAppsFlyerEvent('pair_request_accepted', {});
+      // Fire-and-forget notification to the sender
+      if (userId && data?.pairedWithUserId) {
+        try {
+          await trackedInvoke('send-pair-accepted-notification', {
+            body: {
+              accepterId: userId,
+              senderId: data.pairedWithUserId,
+              requestId,
+            },
+          });
+        } catch (err) {
+          console.warn('[usePairings] pair accepted notification failed:', err);
+        }
+      }
     },
     onSettled: () => {
       // Always refetch to ensure server truth, regardless of success/failure

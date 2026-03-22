@@ -46,9 +46,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 function getFilterCategory(type: string): FilterTab {
   if (
     type.startsWith('friend_request_') ||
-    type.startsWith('pair_request_') ||
-    type.startsWith('link_request_') ||
-    type.startsWith('friend_joined_')
+    type.startsWith('pair_request_')
   ) {
     return 'social';
   }
@@ -80,8 +78,6 @@ const NOTIFICATION_ICONS: Record<string, IconConfig> = {
   friend_request_accepted: { name: 'people', color: '#10B981' },
   pair_request_received: { name: 'people-outline', color: '#EF4444' },
   pair_request_accepted: { name: 'heart', color: '#EF4444' },
-  link_request_received: { name: 'link-outline', color: '#8B5CF6' },
-  link_request_accepted: { name: 'link', color: '#10B981' },
   collaboration_invite_received: { name: 'calendar-outline', color: '#eb7825' },
   collaboration_invite_accepted: { name: 'checkmark-circle', color: '#10B981' },
   collaboration_invite_declined: { name: 'close-circle-outline', color: '#9CA3AF' },
@@ -99,13 +95,9 @@ const NOTIFICATION_ICONS: Record<string, IconConfig> = {
   visit_feedback_prompt: { name: 'star-outline', color: '#F59E0B' },
   paired_user_saved_card: { name: 'heart-outline', color: '#EF4444' },
   paired_user_visited: { name: 'location-outline', color: '#10B981' },
-  person_experiences_ready: { name: 'gift-outline', color: '#eb7825' },
-  voice_review_processed: { name: 'mic-outline', color: '#8B5CF6' },
-  welcome: { name: 'sparkles', color: '#eb7825' },
   trial_ending: { name: 'time-outline', color: '#F59E0B' },
   referral_credited: { name: 'gift', color: '#10B981' },
   weekly_digest: { name: 'bar-chart-outline', color: '#eb7825' },
-  friend_joined_mingla: { name: 'sparkles', color: '#F59E0B' },
 };
 
 function getIconConfig(type: string): IconConfig {
@@ -118,8 +110,6 @@ const ACTIONABLE_TYPES: Record<string, { acceptLabel: string; declineLabel?: str
   friend_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
   pair_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
   collaboration_invite_received: { acceptLabel: 'Join', declineLabel: 'Decline' },
-  link_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
-  friend_joined_mingla: { acceptLabel: 'Connect' },
   trial_ending: { acceptLabel: 'Upgrade' },
   visit_feedback_prompt: { acceptLabel: 'Review' },
 };
@@ -317,13 +307,6 @@ export default function NotificationsModal({
               id
             );
             break;
-          case 'link_request_received':
-            await onAcceptLinkRequest?.(
-              (data?.linkId as string) || notification.related_id || '',
-              id
-            );
-            break;
-          case 'friend_joined_mingla':
           case 'trial_ending':
           case 'visit_feedback_prompt':
             // Single-action types: mark as read, close modal, navigate
@@ -375,12 +358,6 @@ export default function NotificationsModal({
           case 'collaboration_invite_received':
             await onDeclineCollaborationInvite?.(
               (data?.inviteId as string) || notification.related_id || '',
-              id
-            );
-            break;
-          case 'link_request_received':
-            await onDeclineLinkRequest?.(
-              (data?.linkId as string) || notification.related_id || '',
               id
             );
             break;

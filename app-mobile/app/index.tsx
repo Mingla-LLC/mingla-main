@@ -415,14 +415,6 @@ function AppContent() {
             });
             break;
           }
-          case 'link_request_received': {
-            const linkId = resolveEntityId(data, 'linkId', 'relatedId');
-            await supabase
-              .from('link_requests')
-              .update({ status: 'accepted' })
-              .eq('id', linkId);
-            break;
-          }
         }
         // Delete the notification after successful action
         if (notificationId) {
@@ -465,14 +457,6 @@ function AppContent() {
             });
             break;
           }
-          case 'link_request_received': {
-            const linkId = resolveEntityId(data, 'linkId', 'relatedId');
-            await supabase
-              .from('link_requests')
-              .update({ status: 'declined' })
-              .eq('id', linkId);
-            break;
-          }
         }
         if (notificationId) {
           await supabase.from('notifications').delete().eq('id', notificationId);
@@ -494,13 +478,10 @@ function AppContent() {
       friend_request_accepted: "connections",
       friend_request: "connections", // legacy
       friend_accepted: "connections", // legacy
-      friend_joined_mingla: "connections",
       pair_request_received: "discover",
       pair_request_accepted: "discover",
       paired_user_saved_card: "discover",
       paired_user_visited: "discover",
-      link_request_received: "connections",
-      link_request_accepted: "connections",
       // Collaboration / Sessions
       collaboration_invite_received: "home",
       collaboration_invite_accepted: "home",
@@ -520,7 +501,6 @@ function AppContent() {
       board_message_mention: "home",
       board_card_message: "home",
       // Lifecycle
-      welcome: "home",
       trial_ending: "home",
       re_engagement: "home",
       re_engagement_3d: "home",
@@ -533,8 +513,6 @@ function AppContent() {
       referral_credited: "home",
       // Feedback
       visit_feedback_prompt: "likes",
-      person_experiences_ready: "home",
-      voice_review_processed: "home",
     };
 
     // Foreground: push arrives while app is open.
@@ -904,7 +882,7 @@ function AppContent() {
       }
     } else if (type.startsWith('calendar_')) {
       setCurrentPage('likes');
-    } else if (type === 'welcome' || type === 'weekly_digest') {
+    } else if (type === 'weekly_digest') {
       setCurrentPage('home');
     } else if (type === 'trial_ending') {
       setShowPaywall(true);
