@@ -229,6 +229,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **No Unsplash anywhere:** When no stored photo exists, cards receive `image: null`. Mobile handles its own placeholder. No silent Unsplash substitution in the pipeline.
 - **No API keys to client:** Google API URLs with embedded keys must never reach mobile. All photos served as Supabase Storage URLs only.
 - **Curated stop photos:** Resolved directly from `place_pool.stored_photo_urls` via `queryPlacePool()`. Places without photos are skipped at query time.
+- **Curated card hero images (hardened 2026-03-22):** Every curated card must have `image_url` (hero) and `images` (gallery up to 5) set from the first stop's place photos. The generator sets these on new cards (lines 1200-1201). Legacy cards backfilled via `card_pool_stops → place_pool` join. Must never happen: curated card with NULL image_url while its stops have photos.
 
 ### Curated Experience Generation
 
