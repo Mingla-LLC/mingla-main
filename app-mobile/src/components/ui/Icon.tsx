@@ -150,6 +150,7 @@ import {
   Wine,
   X,
   Zap,
+  Flower2,
 } from 'lucide-react-native';
 
 // ── Master mapping: every Ionicons / Feather name → Lucide component ─
@@ -175,6 +176,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'bag':                        ShoppingBag,
   'ban':                        Ban,
   'ban-outline':                Ban,
+  'basket':                      ShoppingBasket,
   'basket-outline':             ShoppingBasket,
   'bicycle-outline':            Bike,
   'body-outline':               PersonStanding,
@@ -218,6 +220,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'cloud-offline-outline':      CloudOff,
   'cloud-upload-outline':       CloudUpload,
   'cloudy':                     Cloud,
+  'color-palette':              Palette,
   'color-palette-outline':      Palette,
   'compass':                    Compass,
   'compass-outline':            Compass,
@@ -244,16 +247,21 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'eye':                        Eye,
 
   // ─── F ───
+  'fast-food':                   Hamburger,
   'fast-food-outline':          Hamburger,
   'file-text':                  FileText,
+  'film':                        Clapperboard,
   'film-outline':               Clapperboard,
   'filter':                     Filter,
   'flag':                       Flag,
   'flag-outline':               Flag,
   'flame':                      Flame,
   'flash':                      Zap,
+  'flower':                     Flower2,
+  'flower-outline':             Flower2,
 
   // ─── G ───
+  'game-controller':            Gamepad2,
   'game-controller-outline':    Gamepad2,
   'gift-outline':               Gift,
   'globe':                      Globe,
@@ -282,6 +290,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
   // ─── L ───
   'layers-outline':             Layers,
+  'leaf':                        Leaf,
   'leaf-outline':               Leaf,
   'link':                       Link,
   'link-outline':               Link,
@@ -298,6 +307,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'mail':                       Mail,
   'mail-outline':               Mail,
   'map':                        Map,
+  'map-pin':                    MapPin,
   'map-outline':                Map,
   'menu':                       Menu,
   'message-square':             MessageSquare,
@@ -345,6 +355,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'refresh-outline':            RefreshCw,
   'remove':                     Minus,
   'remove-circle':              CircleMinus,
+  'restaurant':                  UtensilsCrossed,
   'restaurant-outline':         UtensilsCrossed,
 
   // ─── S ───
@@ -398,6 +409,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'walk-outline':               Footprints,
   'warning':                    AlertTriangle,
   'wifi-outline':               Wifi,
+  'wine':                        Wine,
   'wine-outline':               Wine,
 
   // ─── X ───
