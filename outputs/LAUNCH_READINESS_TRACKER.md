@@ -168,7 +168,7 @@
 | 2a | 3 | Currency + pricing + slug display | **DONE** — commit 3d79c0d6, 15/15 green |
 | 2b | 3 | Paired view dedup + error state + birthday | **DONE** — commit a49fc518, 18/18 green |
 | 2c | 5 | Timezone pipeline + parser unification + lat/lng | **DONE** — commit 106d18f7, 21/21 green |
-| 3a | 4 | Error states + truthfulness | PENDING |
+| 3a | 4 | Error states + truthfulness | **DONE** — commit f95a5fad, 19/19 green |
 | 3b | 3 | Browser + links + URLs | PENDING |
 | 3c | 4 | Card quality + rendering | PENDING |
 | 4a | 4 | Scheduling fixes | PENDING |
