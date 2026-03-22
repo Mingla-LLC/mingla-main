@@ -67,7 +67,7 @@
 | 16s batch transition hang | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection added in Pass 1. 16s safety net preserved. |
 | ActionButtons analytics | A | 2026-03-22 | Commit dba7b3f0 | 9 buttons tracked with TrackedTouchableOpacity. |
 | Expanded card travel mode icon | A | 2026-03-22 | Commit dba7b3f0 | Uses card.travelMode with effectiveTravelMode fallback. |
-| Push delivery via OneSignal | F | — | User report 2026-03-22 | Device registered, permission granted, subscription opted in — but no push notifications arrive. In-app notifications work. Needs investigation: notify-dispatch → OneSignal API → device delivery chain. |
+| Push delivery via OneSignal | A | 2026-03-22 | Commit 163ce5f1. Test report: TEST_REPORT_PUSH_DELIVERY_FIX.md | sendPush() now detects empty id (silent failure), parse errors return false, all paths logged. Diagnostic confirmed OneSignal config + device registration are correct. 20/20 tests green. |
 | Missing icon: paper-plane-outline | A | 2026-03-22 | Commit ba2a37be | Added to ICON_MAP → Send. |
 | Per-category deck balancing | A | 2026-03-22 | Commit 7fef7ed0 | See "Category balancing" above. Resolved. |
 | Curated card exclusion enforcement | A | 2026-03-22 | Commit 7fef7ed0. Test report: TEST_REPORT_SERVE_TIME_PASS2.md | Serve-time NOT EXISTS via card_pool_stops + generation-time DB-driven exclusion. Nature slug regression caught and fixed. 26/26 tests green. |
