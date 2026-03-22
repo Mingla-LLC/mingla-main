@@ -138,7 +138,7 @@ function generateTileGrid(
 // ── Google Place → place_pool row (selective fields for upsert) ─────────────
 
 // deno-lint-ignore no-explicit-any
-function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategory: string, country: string) {
+function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategory: string, country: string, city: string) {
   const priceLevel = gPlace.priceLevel as string | undefined;
   const priceInfo = PRICE_LEVEL_MAP[priceLevel ?? ""] ?? {
     tier: null,
@@ -184,6 +184,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     city_id: cityId,
     seeding_category: seedingCategory,
     country: country,
+    city: city,
   };
 }
 
@@ -240,6 +241,24 @@ function parseCountry(address: string | undefined | null, fallback: string): str
   if (!address) return fallback;
   const parts = address.split(",");
   return parts[parts.length - 1]?.trim() || fallback;
+}
+
+// CITY TEXT EXTRACTION (Block 4 — hardened 2026-03-21)
+// Extracts city name from Google addressComponents (locality type).
+// Falls back to seeding_cities.name. Required for Pool Intelligence V2 RPCs.
+
+// deno-lint-ignore no-explicit-any
+function parseCity(gPlace: any, fallback: string): string {
+  const components = gPlace?.addressComponents;
+  if (Array.isArray(components)) {
+    for (const comp of components) {
+      if (Array.isArray(comp.types) && comp.types.includes('locality')) {
+        const city = comp.longText || comp.shortText;
+        if (city) return city;
+      }
+    }
+  }
+  return fallback;
 }
 
 // ── Delay helper ────────────────────────────────────────────────────────────
@@ -375,6 +394,7 @@ async function seedCategory(
   config: SeedingCategoryConfig,
   tiles: Array<{ id: string; tile_index: number; center_lat: number; center_lng: number; radius_m: number }>,
   cityId: string,
+  cityName: string,
   cityCountry: string,
   dryRun: boolean,
   supabase: any,
@@ -507,7 +527,7 @@ async function seedCategory(
   // Upsert to place_pool (unless dry run)
   if (!dryRun && uniquePlaces.size > 0) {
     const rows = Array.from(uniquePlaces.values()).map((p) =>
-      transformGooglePlaceForSeed(p, cityId, config.id, parseCountry(p.formattedAddress, cityCountry))
+      transformGooglePlaceForSeed(p, cityId, config.id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
     );
 
     // Batch upsert — selective: only overwrite Google-sourced fields
@@ -569,7 +589,8 @@ async function seedCategory(
               last_detail_refresh: row.last_detail_refresh,
               refresh_failures: 0,
               // Preserve: price_tier, price_min, price_max, is_active,
-              //           stored_photo_urls, city_id, seeding_category
+              //           stored_photo_urls, city_id, seeding_category,
+              //           city, country
             })
             .eq("google_place_id", row.google_place_id)
         ),
@@ -712,6 +733,7 @@ async function handleSeed(body: any, supabase: any) {
             config,
             tiles,
             cityId,
+            city.name,
             city.country,
             dryRun ?? false,
             supabase,

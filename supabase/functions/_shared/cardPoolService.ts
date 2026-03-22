@@ -195,6 +195,51 @@ async function queryPoolCards(
   return { poolCards, totalUnseenCount };
 }
 
+// ── Extract city (locality) from Google place data ──────────────────────────
+
+function extractLocality(place: any): string | null {
+  // Try addressComponents (Google Places API v2 format)
+  const components = place.addressComponents || place.address_components;
+  if (Array.isArray(components)) {
+    for (const comp of components) {
+      const types = comp.types || [];
+      if (types.includes('locality')) {
+        return comp.longText || comp.long_name || comp.shortText || comp.short_name || null;
+      }
+    }
+  }
+  // Heuristic fallback: parse from address
+  const addr = place.formattedAddress || place.address;
+  if (addr) {
+    const parts = addr.split(',');
+    if (parts.length >= 3) return parts[parts.length - 3]?.trim() || null;
+    if (parts.length === 2) return parts[0]?.trim() || null;
+  }
+  return null;
+}
+
+// ── Extract country from Google place data ──────────────────────────────────
+
+function extractCountry(place: any): string | null {
+  // Try addressComponents
+  const components = place.addressComponents || place.address_components;
+  if (Array.isArray(components)) {
+    for (const comp of components) {
+      const types = comp.types || [];
+      if (types.includes('country')) {
+        return comp.longText || comp.long_name || comp.shortText || comp.short_name || null;
+      }
+    }
+  }
+  // Heuristic fallback: last comma part of address
+  const addr = place.formattedAddress || place.address;
+  if (addr) {
+    const parts = addr.split(',');
+    return parts[parts.length - 1]?.trim() || null;
+  }
+  return null;
+}
+
 // ── Step 3: Upsert a Google Place into place_pool ───────────────────────────
 
 export async function upsertPlaceToPool(
@@ -237,6 +282,8 @@ export async function upsertPlaceToPool(
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
+    city: extractLocality(place) || null,
+    country: extractCountry(place) || null,
   };
 
   const { data, error } = await supabaseAdmin
@@ -304,6 +351,11 @@ export async function insertCardToPool(
     priceTier?: PriceTierSlug;
     priceLevel?: string;
     cityId?: string | null;
+    // CITY/COUNTRY CONTRACT (Block 4 — hardened 2026-03-21)
+    // Every card must have city and country TEXT values for Pool Intelligence.
+    // Callers must pass these from place_pool data.
+    city?: string | null;
+    country?: string | null;
   }
 ): Promise<string | null> {
   // CRIT-001: Curated cards with no stops are invalid — reject before insert
@@ -335,6 +387,8 @@ export async function insertCardToPool(
     opening_hours: cardData.openingHours || null,
     website: cardData.website || null,
     city_id: cardData.cityId || null,
+    city: cardData.city || null,
+    country: cardData.country || null,
     price_tier: cardData.priceTier ?? googleLevelToTierSlug(cardData.priceLevel),
     popularity_score: popularityScore,
     is_active: true,

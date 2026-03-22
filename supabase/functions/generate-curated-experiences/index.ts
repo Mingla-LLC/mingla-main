@@ -346,7 +346,7 @@ async function queryPlacePool(
 
   const { data, error } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id')
+    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country')
     .eq('is_active', true)
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
@@ -433,6 +433,8 @@ function buildPoolStop(
     ...(opts?.optional ? { optional: true } : {}),
     ...(opts?.dismissible ? { dismissible: true } : {}),
     cityId: place.city_id || null,
+    city: place.city || null,
+    country: place.country || null,
   };
 }
 
@@ -1219,6 +1221,8 @@ serve(async (req) => {
                 shopping_list: card.shoppingList || null,
                 teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${mainStops.length} curated stops`,
                 city_id: stopCityId,
+                city: mainStops[0]?.city || null,
+                country: mainStops[0]?.country || null,
               },
               stopPlacePoolIds,
               stopGooglePlaceIds,
