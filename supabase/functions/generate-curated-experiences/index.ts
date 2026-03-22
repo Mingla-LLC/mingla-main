@@ -26,6 +26,25 @@ let supabaseAdmin: ReturnType<typeof createClient>;
 
 const GLOBAL_EXCLUDED = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
 
+// DB-DRIVEN EXCLUSION CHECK (Block 6 — hardened 2026-03-22)
+// Reads category_type_exclusions table instead of hardcoded lists.
+// Prevents stops with excluded types from entering curated cards.
+// Cache is per-invocation only (Deno isolate lifetime). Each edge function call starts fresh.
+const _categoryExclusionCache: Map<string, Set<string>> = new Map();
+
+async function getCategoryExcludedTypes(categorySlug: string): Promise<Set<string>> {
+  if (_categoryExclusionCache.has(categorySlug)) {
+    return _categoryExclusionCache.get(categorySlug)!;
+  }
+  const { data } = await supabaseAdmin
+    .from('category_type_exclusions')
+    .select('excluded_type')
+    .eq('category_slug', categorySlug);
+  const types = new Set((data ?? []).map((r: any) => r.excluded_type));
+  _categoryExclusionCache.set(categorySlug, types);
+  return types;
+}
+
 // Build Google type → slug lookup from seedingCategories
 const GOOGLE_TYPE_TO_SLUG: Record<string, string> = {};
 for (const cat of Object.values(SEEDING_CATEGORY_MAP)) {
@@ -358,10 +377,16 @@ async function queryPlacePool(
 
   if (error || !data) return [];
 
+  // Fetch DB-driven exclusions for this category
+  const dbExcludedTypes = await getCategoryExcludedTypes(categoryId);
+
   return data.filter((p: any) => {
     if (!p.stored_photo_urls?.length) return false;
+    // Hardcoded exclusions (legacy — kept for defense in depth)
     if (p.primary_type && excludedPrimary.includes(p.primary_type)) return false;
     if (p.primary_type && GLOBAL_EXCLUDED.has(p.primary_type)) return false;
+    // DB-driven exclusions: check full types array, not just primary_type
+    if (p.types?.some((t: string) => dbExcludedTypes.has(t))) return false;
     return true;
   });
 }
