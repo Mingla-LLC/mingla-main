@@ -1364,7 +1364,7 @@ const SavedTab = ({
         fullDescription:
           cardToSchedule.fullDescription || cardToSchedule.description,
         image: cardToSchedule.image,
-        images: cardToSchedule.images || [cardToSchedule.image],
+        images: cardToSchedule.images?.length ? cardToSchedule.images : [cardToSchedule.image].filter(Boolean),
         rating: cardToSchedule.rating || 4.5,
         reviewCount: cardToSchedule.reviewCount || 0,
         priceRange: cardToSchedule.priceRange || "Varies",
@@ -1497,7 +1497,7 @@ const SavedTab = ({
       description: card.description,
       fullDescription: card.fullDescription || card.description,
       image: card.image,
-      images: card.images || [card.image],
+      images: card.images?.length ? card.images : [card.image].filter(Boolean),
       rating: card.rating || 4.5,
       reviewCount: card.reviewCount || 0,
       priceRange: card.priceRange || "N/A",

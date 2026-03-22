@@ -1114,7 +1114,7 @@ export default function SwipeableCards({
       description: currentRec.description,
       fullDescription: currentRec.fullDescription || currentRec.description,
       image: currentRec.image,
-      images: currentRec.images || [currentRec.image],
+      images: currentRec.images?.length ? currentRec.images : [currentRec.image].filter(Boolean),
       rating: currentRec.rating ?? 0,
       reviewCount: currentRec.reviewCount ?? 0,
       priceRange: currentRec.priceRange || 'Free',
@@ -1399,7 +1399,7 @@ export default function SwipeableCards({
           description: card.description,
           fullDescription: card.fullDescription || card.description,
           image: card.image,
-          images: card.images || [card.image],
+          images: card.images?.length ? card.images : [card.image].filter(Boolean),
           rating: card.rating ?? 0,
           reviewCount: card.reviewCount ?? 0,
           priceRange: card.priceRange || 'Free',
@@ -1845,7 +1845,7 @@ export default function SwipeableCards({
                         transform: [{ translateY: titleOverlaySlide }],
                       },
                     ]}>
-                      <Text style={styles.cardTitle}>{currentRec.title}</Text>
+                      <Text style={styles.cardTitle}>{currentRec.title || 'Experience'}</Text>
                       {currentRec.oneLiner && (
                         <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
                       )}

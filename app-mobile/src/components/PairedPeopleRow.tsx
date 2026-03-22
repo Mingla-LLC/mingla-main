@@ -85,7 +85,7 @@ export default function PairedPeopleRow({
         contentContainerStyle={styles.scrollContent}
       >
         {people.map((person) => {
-          const name = person.firstName || person.displayName.split(" ")[0];
+          const name = person.firstName || person.displayName?.split(" ")[0] || 'Friend';
           const hasBirthday = !!person.birthday;
           const daysAway = hasBirthday
             ? getDaysUntilBirthday(person.birthday!)

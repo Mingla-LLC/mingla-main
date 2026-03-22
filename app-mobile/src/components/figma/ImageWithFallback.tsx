@@ -29,12 +29,13 @@ export function ImageWithFallback(props: ImageWithFallbackProps) {
     <View
       className={`inline-block bg-gray-100 text-center align-middle ${className ?? ''}`}
       style={[style, { width: ERROR_PLACEHOLDER_SIZE, height: ERROR_PLACEHOLDER_SIZE }]}
+      accessibilityLabel={alt ?? 'Image unavailable'}
     >
       <View className="flex items-center justify-center w-full h-full">
         <Text style={{ fontSize: 24, color: '#666' }}>📷</Text>
       </View>
     </View>
   ) : (
-    <Image source={source} style={style} onError={handleError} {...rest} />
+    <Image source={source} style={style} accessibilityLabel={alt} onError={handleError} {...rest} />
   )
 }
