@@ -56,8 +56,8 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     data: payload.data ?? {},
     // small_icon: status bar icon (monochrome per Android guidelines)
     small_icon: "ic_stat_onesignal_default",
-    // large_icon: big icon on notification — use app's launcher icon
-    large_icon: "ic_launcher",
+    // large_icon: Mingla logo from Supabase Storage (OneSignal auto-resizes)
+    large_icon: "https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/App%20Stuff/Untitled%20design.png",
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
     }),
