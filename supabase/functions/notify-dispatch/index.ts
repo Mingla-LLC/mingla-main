@@ -42,6 +42,13 @@ const typeToPreference: Record<string, string> = {
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",
   "weekly_digest": "marketing",
+  // REMINDERS PREFERENCE (Block 3 Pass 2 — hardened 2026-03-21)
+  // Calendar + holiday reminders gated under "reminders" preference.
+  // Previously calendar reminders had no preference key (always sent push).
+  "holiday_reminder": "reminders",
+  "calendar_reminder_tomorrow": "reminders",
+  "calendar_reminder_today": "reminders",
+  "visit_feedback_prompt": "reminders",
 };
 
 // ── Quiet hours check ───────────────────────────────────────────────────────
@@ -267,6 +274,11 @@ serve(async (req) => {
     if (pushOverrides?.threadId) {
       pushPayload.threadId = pushOverrides.threadId;
     }
+
+    // iOS badge increment — every push adds 1 to the app icon badge (Block 3 Pass 2 — hardened 2026-03-21)
+    // Android ignores these fields. Badge resets to 0 when user opens NotificationsModal.
+    pushPayload.iosBadgeType = "Increase";
+    pushPayload.iosBadgeCount = 1;
 
     let pushSent = false;
     try {

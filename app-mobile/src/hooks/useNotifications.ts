@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import * as Haptics from 'expo-haptics';
+import { OneSignal } from 'react-native-onesignal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -235,6 +236,8 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
       (old = []) =>
         old.map((n) => ({ ...n, is_read: true, read_at: n.read_at ?? new Date().toISOString() }))
     );
+    // Reset iOS badge count (Block 3 Pass 2 — hardened 2026-03-21)
+    OneSignal.Notifications.clearAll();
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })

@@ -513,6 +513,8 @@ function AppContent() {
       referral_credited: "home",
       // Feedback
       visit_feedback_prompt: "likes",
+      // Holiday reminders (Block 3 Pass 2)
+      holiday_reminder: "discover",
     };
 
     // Foreground: push arrives while app is open.

@@ -13,6 +13,7 @@ import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { colors } from "../../constants/colors";
 import { truncateString } from "../../utils/general";
+import { notifyMemberLeft } from "../../services/boardNotificationService";
 
 export interface Participant {
   id?: string;
@@ -224,6 +225,15 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         throw error;
       }
 
+      // NOTIFICATION: member removed by admin (Block 3 — hardened 2026-03-21)
+      // Notify remaining participants that someone was removed.
+      notifyMemberLeft({
+        sessionId,
+        sessionName: sessionName || 'Session',
+        userId: memberToRemove.userId,
+        userName: memberToRemove.displayName,
+      });
+
       // Clear the confirmation state
       setMemberToRemove(null);
 
@@ -434,6 +444,16 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         .eq("user_id", user.id);
 
       if (leaveError) throw leaveError;
+
+      // NOTIFICATION: session member left (Block 3 — hardened 2026-03-21)
+      // Only sent when >2 members remain (session survives). Skip on session deletion.
+      const userName = user.display_name || user.first_name || user.username || 'Someone';
+      notifyMemberLeft({
+        sessionId,
+        sessionName: sessionName || 'Session',
+        userId: user.id,
+        userName,
+      });
 
       Alert.alert("Left Board", "You have successfully left the board.");
 

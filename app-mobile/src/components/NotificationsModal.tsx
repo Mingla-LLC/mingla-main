@@ -93,6 +93,7 @@ const NOTIFICATION_ICONS: Record<string, IconConfig> = {
   calendar_reminder_tomorrow: { name: 'calendar', color: '#0EA5E9' },
   calendar_reminder_today: { name: 'sunny-outline', color: '#F59E0B' },
   visit_feedback_prompt: { name: 'star-outline', color: '#F59E0B' },
+  holiday_reminder: { name: 'gift-outline', color: '#EF4444' },
   paired_user_saved_card: { name: 'heart-outline', color: '#EF4444' },
   paired_user_visited: { name: 'location-outline', color: '#10B981' },
   trial_ending: { name: 'time-outline', color: '#F59E0B' },
