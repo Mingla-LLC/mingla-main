@@ -18,6 +18,7 @@ import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
 import { parseDeepLink, executeDeepLink, NavigationHandlers } from "../services/deepLinkService";
+import { OneSignal } from 'react-native-onesignal';
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -131,6 +132,8 @@ export default function HomePage({
 
   const handleOpenNotifications = useCallback(() => {
     setShowNotificationsModal(true);
+    // Reset iOS badge count when user opens notifications (Block 3 Pass 2 — hardened 2026-03-21)
+    OneSignal.Notifications.clearAll();
   }, []);
 
   const handleCloseNotifications = useCallback(() => {
