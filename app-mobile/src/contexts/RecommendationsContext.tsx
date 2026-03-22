@@ -402,6 +402,7 @@ export const RecommendationsProvider: React.FC<
     isFetching: isSoloDeckFetching,
     isFullBatchLoaded: isSoloDeckBatchLoaded,
     hasMore: soloDeckHasMore,
+    error: soloDeckError,
   } = useDeckCards({
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
@@ -1026,6 +1027,12 @@ export const RecommendationsProvider: React.FC<
       return { type: 'ERROR', message: 'Failed to load location' };
     }
 
+    // DECK FETCH ERROR — only when no cards exist (don't overwrite visible cards
+    // with an error for a background refetch failure)
+    if (soloDeckError && recommendations.length === 0 && hasCompletedFetchForCurrentMode) {
+      return { type: 'ERROR', message: 'Something went wrong loading experiences' };
+    }
+
     // MODE_TRANSITIONING
     if (isModeTransitioning || isWaitingForSessionResolution) {
       return { type: 'MODE_TRANSITIONING' };
@@ -1076,7 +1083,7 @@ export const RecommendationsProvider: React.FC<
     // once the fetch cycle completes, the EMPTY branch above catches it.
     return { type: 'INITIAL_LOADING' };
   }, [
-    locationError, isModeTransitioning, isWaitingForSessionResolution,
+    locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
     hasCompletedFetchForCurrentMode, recommendations, isSlowBatchLoad,
     isExhausted, isBatchTransitioning,
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.

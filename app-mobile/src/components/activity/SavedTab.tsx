@@ -761,6 +761,18 @@ const SavedTab = ({
       color: "#9ca3af",
       lineHeight: 18,
     },
+    clearFiltersButton: {
+      marginTop: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: '#fff7ed',
+    },
+    clearFiltersText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#eb7825',
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: "center",
@@ -2039,6 +2051,35 @@ const SavedTab = ({
       );
     }
 
+    // Filters active but no matches — different from truly empty
+    if (savedCards.length > 0) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyStateIconCircle}>
+            <Icon name="filter-outline" size={22} color="#9ca3af" />
+          </View>
+          <View style={styles.emptyStateTextContainer}>
+            <Text style={styles.emptyStateTitle}>No matches</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              Try changing your filters or search.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.clearFiltersButton}
+            onPress={() => {
+              setSearchQuery("");
+              setSelectedWhen("all");
+              setSelectedCategory("all");
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.clearFiltersText}>Clear filters</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Truly empty — no saved cards at all
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyStateIconCircle}>

@@ -39,6 +39,7 @@ import { getRate } from "../services/currencyService";
 import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
+import { toastManager } from "./ui/Toast";
 
 import {
   ExperienceTypesSection,
@@ -849,6 +850,7 @@ export default function PreferencesSheet({
         });
       } catch (error) {
         console.warn("[PreferencesSheet] Background save failed:", error);
+        toastManager.error("Preferences couldn't save — they'll reset next time.", 4000);
       }
 
       // Invalidate curated experiences and location — these have separate query keys
@@ -926,6 +928,7 @@ export default function PreferencesSheet({
             selectedCategories={selectedCategories}
             onCategoryToggle={handleCategoryToggle}
             capMessage={categoryCapMessage}
+            minMessage={minSelectionMessage}
           />
 
           {/* Price Tier Section */}

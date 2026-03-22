@@ -310,9 +310,9 @@ class DeckService {
             }
             return cards;
           } else {
-            if (__DEV__) console.warn('[DeckService] discover-cards error:', error);
-            hasMoreFromEdge = false;
-            return [];
+            const msg = typeof error === 'string' ? error : (error as any)?.message || 'Unknown error';
+            console.warn('[DeckService] discover-cards error:', msg);
+            throw new Error(`Deck fetch failed: ${msg}`);
           }
         } catch (err) {
           if ((err as any)?.name === 'AbortError') {
@@ -320,15 +320,13 @@ class DeckService {
           } else {
             console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
           }
-          hasMoreFromEdge = false;
-          return [];
+          throw err;
         } finally {
           clearTimeout(fetchTimer);
         }
       } catch (err) {
         console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
-        hasMoreFromEdge = false;
-        return [];
+        throw err;
       }
     })();
 
@@ -391,6 +389,13 @@ class DeckService {
       curatedArrays.push(...curatedResult.value);
     }
     const curatedStream = roundRobinInterleave(curatedArrays);
+
+    // If both fetches failed, throw so React Query sees the error
+    const regularFailed = categoryResult.status === 'rejected';
+    const curatedFailed = curatedResult.status === 'rejected';
+    if (regularFailed && curatedFailed) {
+      throw (categoryResult as PromiseRejectedResult).reason || new Error('All deck fetches failed');
+    }
 
     // 1:1 interleave: alternate regular and curated
     const interleaved: Recommendation[] = [];
