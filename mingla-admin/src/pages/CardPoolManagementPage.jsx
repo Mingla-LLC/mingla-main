@@ -843,7 +843,7 @@ function CardHealthTab({ selectedCountry, selectedCity, onSelectCountry, onSelec
           ),
         },
         { key: "active_places", label: "Active Places", sortable: true },
-        { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
+        { key: "card_image_pct", label: "Card Photo %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
         { key: "total_cards", label: "Cards", sortable: true },
         { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
       ]
@@ -857,7 +857,7 @@ function CardHealthTab({ selectedCountry, selectedCity, onSelectCountry, onSelec
           ),
         },
         { key: "active_places", label: "Active Places", sortable: true },
-        { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
+        { key: "card_image_pct", label: "Card Photo %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
         { key: "total_cards", label: "Cards", sortable: true },
         { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
       ];
