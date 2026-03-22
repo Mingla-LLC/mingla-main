@@ -95,9 +95,9 @@
 | In-app notifications | F | — | Unaudited | — |
 | Deep link from notification | F | — | Unaudited | — |
 | Notification for deleted content | F | — | Unaudited | Cross-cutting concern |
-| iOS app badge | F | — | Planned for Block 3 Pass 2 | Infrastructure exists, not wired |
-| Session member left notification | F | — | Planned for Block 3 Pass 2 | Function exists, zero callers |
-| Holiday reminders | F | — | Planned for Block 3 Pass 2 | New feature, needs edge function + cron |
+| iOS app badge | A | 2026-03-21 | Commit d4c6725e. Test report: TEST_REPORT_NOTIFICATION_PASS2.md | iosBadgeType: Increase on all push payloads. Reset on modal open + markAllAsRead. 27/27 tests green. |
+| Session member left notification | A | 2026-03-21 | Commit d4c6725e | notifyMemberLeft wired in ManageBoardModal (leave + admin-remove). Skip on session deletion. |
+| Holiday reminders | A | 2026-03-21 | Commit d4c6725e | New edge function + cron at 9 AM UTC. Per-user timezone. reminders preference column. Known: custom_holidays.year is NOT NULL, no recurring holidays yet. |
 | Email notifications | F | — | Unaudited | — |
 
 ### 7. Saved Experiences / Boards
