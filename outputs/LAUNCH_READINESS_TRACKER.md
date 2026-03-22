@@ -58,7 +58,12 @@
 | Card photo integrity | A | 2026-03-22 | Commit 7ca26b48. Test report: TEST_REPORT_CARD_PHOTO_INTEGRITY.md | 844 curated hero images backfilled from first stop. 6 singles linked by google_place_id. 29 orphans deleted. card_image_pct added to cross-city RPCs. 14 dirty city values cleaned. 27/27 tests green. |
 | Curated generation proximity logic | F | — | User report | Tiered proximity (3km/5km/fallback) should be simplified to nearest place. Planned for Block 8. |
 | Curated travel time per user mode | F | — | User report | Travel time between stops should use user's chosen mode, not fixed. Planned for Block 8. |
-| "Now" filter uses stale isOpenNow | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #2 | discover-cards "now" path checks stale boolean from seeding instead of computing from stored opening hours. Silently removes valid cards. Planned for Block 6. |
+| Unsplash fallback photos (operational) | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #1 | card_pool image_url still NULL for many cards. Need diagnostic: are place photos downloaded? If not, run backfill-place-photos then regenerate. Planned for Block 7. |
+| Broken icons (10 missing ICON_MAP entries) | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #2 | 10 icon names used in code but missing from Icon.tsx ICON_MAP. Quick standalone fix. |
+| "Now" filter uses stale isOpenNow | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #2 + Log Bug #3 | discover-cards "now" path causes 15s timeout. Stale boolean + pool scarcity. Planned for Block 6. |
+| Triple duplicate API calls | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #4 | Unstable array refs in React Query keys cause 2-3x redundant fetches. Planned for Block 6. |
+| 16s batch transition hang | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #5 | Context doesn't detect 0-card exhaustion, waits 16s timeout. Planned for Block 6. |
+| Unlabeled analytics taps | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #8 | ExpandedCardHeader missing analytics label. Planned for Block 7. |
 | Per-category deck balancing | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #3 | Popular categories dominate deck. SQL returns global top-N, client round-robin starved. Needs SQL window function or split queries. Planned for Block 6. |
 | Curated cards bypass exclusion | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #6 | Two gaps: generation doesn't check category_type_exclusions, serve-time NOT EXISTS passes NULL place_pool_id curated cards. Planned for Block 6. |
 | Children's play spaces pass filters | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #7 | Google types kids' venues as amusement_center (same as adult). Name-based heuristic or indoor_playground exclusion needed. Planned for Block 7. |
