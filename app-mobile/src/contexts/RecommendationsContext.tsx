@@ -698,6 +698,7 @@ export const RecommendationsProvider: React.FC<
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
         const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
+        const prefetchExactTime = isSoloMode ? (userPrefs?.exact_time ?? '') : '';
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -721,6 +722,7 @@ export const RecommendationsProvider: React.FC<
             prefetchDatetimePref,
             prefetchDateOption,
             prefetchTimeSlot ?? '',
+            prefetchExactTime,
             nextSeed,
           ],
           queryFn: () => deckService.fetchDeck({
@@ -736,6 +738,7 @@ export const RecommendationsProvider: React.FC<
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
             timeSlot: prefetchTimeSlot,
+            exactTime: isSoloMode ? (userPrefs?.exact_time ?? null) : null,
             batchSeed: nextSeed,
             limit: 20,
           }),
@@ -773,6 +776,20 @@ export const RecommendationsProvider: React.FC<
         if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
           setIsExhausted(false);
         }
+      // IMMEDIATE EXHAUSTION DETECTION (Block 6 — hardened 2026-03-22)
+      // When server returns 0 cards during batch transition, clear immediately
+      // instead of waiting for 16s timeout. Timer kept as safety net.
+      } else if (
+        deckCards.length === 0 &&
+        isDeckBatchLoaded &&
+        !isDeckFetching &&
+        (isBatchTransitioning || isSlowBatchLoad)
+      ) {
+        setIsBatchTransitioning(false);
+        setIsSlowBatchLoad(false);
+        // Note: setIsExhausted is NOT called here. The exhaustion effect
+        // will fire on the next render cycle now that isBatchTransitioning
+        // is false, and it checks deckHasMore too.
       } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad && !isModeTransitioning) {
         // Genuinely empty — no cards available. All guards must be false
         // to avoid clearing recommendations while a slow batch is still loading

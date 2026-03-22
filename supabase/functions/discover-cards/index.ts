@@ -90,8 +90,43 @@ function filterByDateTime(
   timeSlot: string | null,
   exactTime?: string | null
 ): any[] {
+  // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22)
+  // Replaced stale isOpenNow boolean (set once at seeding time) with real-time
+  // computation using parseHoursText() + current day/time.
+  // Cards with no opening hours data pass through (included by default).
   if (dateOption === 'now' || (!datetimePref && !timeSlot && !exactTime)) {
-    return places.filter(p => p.isOpenNow !== false);
+    const now = new Date();
+    const targetDay = now.getDay();
+    const targetHourFrac = now.getHours() + now.getMinutes() / 60;
+
+    return places.filter(place => {
+      // Path A: Google API format — regularOpeningHours.periods
+      const periods = place.regularOpeningHours?.periods;
+      if (periods && periods.length > 0) {
+        return periods.some((period: any) => {
+          if (period.open?.day !== targetDay) return false;
+          const openHour = period.open?.hour ?? 0;
+          let closeHour = period.close?.hour ?? 24;
+          if (closeHour === 0) closeHour = 24;
+          if (closeHour <= openHour) closeHour += 24;
+          return targetHourFrac >= openHour && targetHourFrac < closeHour;
+        });
+      }
+
+      // Path B: Pool format — openingHours as Record<string, string>
+      const oh = place.openingHours;
+      if (oh && typeof oh === 'object') {
+        const dayName = DAY_NAMES[targetDay];
+        const dayText = oh[dayName];
+        if (!dayText) return true; // No data for this day — include
+        const parsed = parseHoursText(dayText);
+        if (!parsed) return false; // "Closed" or unparseable
+        return targetHourFrac >= parsed.open && targetHourFrac < parsed.close;
+      }
+
+      // No opening hours data at all — include (don't penalize missing data)
+      return true;
+    });
   }
 
   // Determine target day and hour
