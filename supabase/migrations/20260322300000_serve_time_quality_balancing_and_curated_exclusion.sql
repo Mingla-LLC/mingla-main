@@ -253,6 +253,8 @@ BEGIN
     enriched AS (
       SELECT
         r.*,
+        pp.stored_photo_urls,
+        pp.photos,
         COALESCE(
           NULLIF(r.website, ''),
           NULLIF(pp.website, '')
@@ -355,6 +357,8 @@ BEGIN
     enriched AS (
       SELECT
         r.*,
+        pp.stored_photo_urls,
+        pp.photos,
         COALESCE(
           NULLIF(r.website, ''),
           NULLIF(pp.website, '')
