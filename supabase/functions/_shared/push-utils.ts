@@ -54,9 +54,10 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     headings: { en: payload.title },
     contents: { en: payload.body },
     data: payload.data ?? {},
-    // Android notification icons removed — using system defaults.
-    // To customize: add drawable resources to the Android project and reference by name.
-    // small_icon must be monochrome white+transparent per Android guidelines.
+    // small_icon: status bar icon (monochrome per Android guidelines)
+    small_icon: "ic_stat_onesignal_default",
+    // large_icon: big icon on notification — use app's launcher icon
+    large_icon: "ic_launcher",
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
     }),
