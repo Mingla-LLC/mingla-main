@@ -58,7 +58,7 @@
 | Card photo integrity | A | 2026-03-22 | Commit 7ca26b48. Test report: TEST_REPORT_CARD_PHOTO_INTEGRITY.md | 844 curated hero images backfilled from first stop. 6 singles linked by google_place_id. 29 orphans deleted. card_image_pct added to cross-city RPCs. 14 dirty city values cleaned. 27/27 tests green. |
 | Curated generation proximity logic | F | — | User report | Tiered proximity (3km/5km/fallback) should be simplified to nearest place. Planned for Block 8. |
 | Curated travel time per user mode | F | — | User report | Travel time between stops should use user's chosen mode, not fixed. Planned for Block 8. |
-| Card photo coverage | A | 2026-03-22 | Diagnostic SQL: 948/948 places have photos, 1655/1655 active cards have images. | Block 5b backfill resolved all gaps. Zero Unsplash fallback. Resolved. |
+| Card photo coverage | A | 2026-03-22 | Commits 7ca26b48, 267b29b0. Diagnostic: 948/948 places, 1655/1655 cards have images. | Block 5b backfill + Block 6 photo regression fix. stored_photo_urls and photos restored to query_pool_cards enriched CTEs. |
 | Broken icons (ICON_MAP) | A | 2026-03-22 | Commit 88f2d43f | 11 missing entries added to Icon.tsx ICON_MAP. Blank icons on pills + preferences fixed. |
 | "Now" filter live opening hours | A | 2026-03-22 | Commit 28be9a63. Test report: TEST_REPORT_SERVE_TIME_PASS1.md | Stale isOpenNow replaced with live parseHoursText() + new Date(). NULL hours pass through. 21/21 tests green. |
 | Batch transition hang (16s) | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection when 0 cards returned. 16s safety net preserved. |
