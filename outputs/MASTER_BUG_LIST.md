@@ -59,94 +59,154 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 
 ---
 
-## PASS 1 — Critical: Crashes + Data Loss + Silent Failures
-
-These cause crashes, lose user data, or silently fail. Must fix first.
+## PASS 1a — Null Safety + Crash Prevention (4 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
-| P1-01 | PreferencesService returns true on save failure | Forensic F1 | preferencesService.ts:86-96 | LOW |
-| P1-02 | Null crash: displayName.split() in PairedPeopleRow | Forensic G1 | PairedPeopleRow.tsx:88 | LOW |
-| P1-03 | images array contains [undefined] | Forensic A3 | SwipeableCards.tsx:1117 | LOW |
-| P1-04 | Title/category no fallback (blank/crash) | Forensic A4 | SwipeableCards.tsx:1848, 1885 | LOW |
-| P1-05 | ImageWithFallback discards alt prop (accessibility) | Forensic H1 | ImageWithFallback.tsx:38 | LOW |
-| P1-06 | Custom location lost on GPS toggle | Forensic F2 | PreferencesSheet.tsx:615, 789-793 | LOW |
-| P1-07 | Coordinates replacing display text | Deck #10 | PreferencesSheet.tsx | LOW |
-| P1-08 | Dismissed curated stops reappear in expanded | Forensic C1 | CuratedExperienceSwipeCard.tsx | MED |
+| P1-01 | Null crash: displayName.split() in PairedPeopleRow | Forensic G1 | PairedPeopleRow.tsx:88 | LOW |
+| P1-02 | images array contains [undefined] | Forensic A3 | SwipeableCards.tsx:1117 | LOW |
+| P1-03 | Title/category no fallback (blank/crash) | Forensic A4 | SwipeableCards.tsx:1848, 1885 | LOW |
+| P1-04 | ImageWithFallback discards alt prop (accessibility) | Forensic H1 | ImageWithFallback.tsx:38 | LOW |
 
 ---
 
-## PASS 2 — Critical: Data Integrity + Contract Violations
+## PASS 1b — Silent Failures + Preferences (4 fixes)
 
-These show wrong data or violate architectural contracts.
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P1-05 | PreferencesService returns true on save failure | Forensic F1 | preferencesService.ts:86-96 | LOW |
+| P1-06 | Custom location lost on GPS toggle | Forensic F2 | PreferencesSheet.tsx:615, 789-793 | LOW |
+| P1-07 | Coordinates replacing display text | Deck #10 | PreferencesSheet.tsx | LOW |
+| P1-08 | Null geocoding coords silently accepted | Forensic F3 | PreferencesSheet.tsx:572 | LOW |
+
+---
+
+## PASS 1c — Curated Card State (3 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P1-09 | Dismissed curated stops reappear in expanded | Forensic C1 | CuratedExperienceSwipeCard.tsx | MED |
+| P1-10 | Curated cards missing Schedule button | Deck #8 | ExpandedCardModal.tsx | LOW |
+| P1-11 | Shopping list hidden inside Stop 1 | Forensic C2 | ExpandedCardModal.tsx:656-658 | LOW |
+
+---
+
+## PASS 2a — Currency + Pricing (3 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
 | P2-01 | Currency changes with GPS location | Deck #3/#4 | locale detection code | MED |
 | P2-02 | priceRange = priceLevel (Google enum on cards) | Deck (new) | PersonHolidayView.tsx:383 | LOW |
-| P2-03 | Curated cards missing Schedule button | Deck #8 | ExpandedCardModal.tsx | LOW |
-| P2-04 | Repeated experiences in paired view (no dedup) | Deck #5 | CardRow sections | MED |
-| P2-05 | Opening hours no timezone handling | Forensic B1 | openingHoursUtils.ts:40-101 | MED |
+| P2-03 | Slug on saved page (fine_dining not Fine Dining) | Deck #11 | SavedTab.tsx | LOW |
 
 ---
 
-## PASS 3 — High: UX Breaks + Misleading States
+## PASS 2b — Paired View + Dedup (3 fixes)
 
-Things that technically work but mislead or frustrate users.
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P2-04 | Repeated experiences in paired view (no dedup) | Deck #5 | CardRow sections | MED |
+| P2-05 | No error state in paired view (shows empty) | Forensic G2 | PairedProfileSection.tsx:127-141 | LOW |
+| P2-06 | Birthday validation missing (NaN) | Forensic G3 | PairedPeopleRow.tsx:31-54 | LOW |
+
+---
+
+## PASS 2c — Opening Hours + Timezone (3 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P2-07 | Opening hours no timezone handling | Forensic B1 | openingHoursUtils.ts:40-101 | MED |
+| P2-08 | Opening hours dual-path divergence | Forensic B3 | ActionButtons.tsx:102-139 | MED |
+| P2-09 | Lat/Lng 0 treated as falsy | Forensic B4 | Timeline section:137-161 | LOW |
+
+---
+
+## PASS 3a — Error States + Truthfulness (4 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
 | P3-01 | API failure shows "That's a Wrap" not error | Forensic A1 | deckService.ts:294-332 | MED |
-| P3-02 | Card transition flicker/blank frame | Forensic A2 | SwipeableCards.tsx:1036-1055 | MED |
-| P3-03 | Address not sanitized for Maps URL | Forensic B2 | PracticalDetailsSection.tsx:36-43 | LOW |
-| P3-04 | Opening hours dual-path divergence | Forensic B3 | ActionButtons.tsx:102-139 | MED |
-| P3-05 | Lat/Lng 0 treated as falsy | Forensic B4 | Timeline section:137-161 | LOW |
-| P3-06 | Shopping list hidden inside Stop 1 | Forensic C2 | ExpandedCardModal.tsx:656-658 | LOW |
-| P3-07 | Null geocoding coords silently accepted | Forensic F3 | PreferencesSheet.tsx:572 | LOW |
-| P3-08 | Optimistic close with no rollback on save fail | Forensic F4 | PreferencesSheet.tsx:833-887 | MED |
-| P3-09 | No error state in paired view (shows empty) | Forensic G2 | PairedProfileSection.tsx:127-141 | LOW |
-| P3-10 | Policies/reservation open phone browser | Deck #7 | Link handling code | MED |
-| P3-11 | Slug on saved page (fine_dining not Fine Dining) | Deck #11 | SavedTab.tsx | LOW |
-| P3-12 | Curated/category round-robin broken | Deck #12 | Round-robin interleaver | MED |
+| P3-02 | Optimistic close with no rollback on save fail | Forensic F4 | PreferencesSheet.tsx:833-887 | MED |
+| P3-03 | Wrong empty state (filters vs truly empty) | Forensic D2 | SavedTab.tsx:2031-2059 | LOW |
+| P3-04 | Failed category deselect no feedback | Forensic F5 | PreferencesSheet.tsx:416 | LOW |
 
 ---
 
-## PASS 4 — High: Scheduling + Browser + Data Quality
+## PASS 3b — Browser + Links + URLs (3 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P3-05 | Policies/reservation open phone browser | Deck #7 | Link handling code | MED |
+| P3-06 | Address not sanitized for Maps URL | Forensic B2 | PracticalDetailsSection.tsx:36-43 | LOW |
+| P3-07 | Avatar load failure no handler | Forensic G4 | PairedPeopleRow.tsx:104-111 | LOW |
+
+---
+
+## PASS 3c — Card Quality + Rendering (4 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P3-08 | Card transition flicker/blank frame | Forensic A2 | SwipeableCards.tsx:1036-1055 | MED |
+| P3-09 | Curated/category round-robin broken | Deck #12 | Round-robin interleaver | MED |
+| P3-10 | Skeleton card never rendered | Forensic A7 | SkeletonCard.tsx unused | LOW |
+| P3-11 | Rating 0 treated as falsy | Forensic B5 | Companion stops:115-127 | LOW |
+
+---
+
+## PASS 4a — Scheduling Fixes (4 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
 | P4-01 | Schedule picker opens behind modal | Deck #8 | SavedTab scheduling | MED |
 | P4-02 | No schedule confirmation (abrupt) | Deck #9 | ActionButtons scheduling | LOW |
 | P4-03 | Can't use current date to schedule | Deck #10 | DateTimePicker onChange | MED |
-| P4-04 | Schools in cards (type + keyword exclusion) | User report | Migration + code | MED |
-| P4-05 | Flowers category too broad | User report | seedingCategories.ts | LOW |
-| P4-06 | Curated AI stop descriptions missing | User report | generate-curated-experiences | MED |
-| P4-07 | Picnic dates returns zero cards | User report | Pool / generation gap | MED |
+| P4-04 | Schedule handler race condition | Forensic E1 | ActionButtons.tsx:401-413 | LOW |
 
 ---
 
-## PASS 5 — Medium: Consistency + Edge Cases
+## PASS 4b — Data Quality: Exclusions + Categories (3 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
-| P5-01 | Swipe limit bypass via rapid swiping | Forensic A5 | SwipeableCards.tsx:1009-1016 | LOW |
-| P5-02 | Skeleton card never rendered | Forensic A7 | SkeletonCard.tsx unused | LOW |
-| P5-03 | Rating 0 treated as falsy | Forensic B5 | Companion stops:115-127 | LOW |
-| P5-04 | Description no length truncation | Forensic B6 | DescriptionSection.tsx | LOW |
-| P5-05 | Weather only for first stop | Forensic B7 | ExpandedCardModal.tsx:783-820 | MED |
-| P5-06 | Total time missing null guards | Forensic C3 | ExpandedCardModal.tsx:421-431 | LOW |
-| P5-07 | Deactivated cards still interactive on saved | Forensic D1 | SavedTab.tsx:1864-1999 | MED |
-| P5-08 | Wrong empty state (filters vs truly empty) | Forensic D2 | SavedTab.tsx:2031-2059 | LOW |
-| P5-09 | Calendar permission failure silent | Forensic D3 | SavedTab.tsx:1428-1447 | LOW |
-| P5-10 | Failed category deselect no feedback | Forensic F5 | PreferencesSheet.tsx:416 | LOW |
-| P5-11 | Birthday validation missing (NaN) | Forensic G3 | PairedPeopleRow.tsx:31-54 | LOW |
-| P5-12 | Avatar load failure no handler | Forensic G4 | PairedPeopleRow.tsx:104-111 | LOW |
-| P5-13 | currentCardIndex race during batch | Forensic A6 | SwipeableCards.tsx:936-955 | MED |
-| P5-14 | Schedule handler race condition | Forensic E1 | ActionButtons.tsx:401-413 | LOW |
+| P4-05 | Schools in cards (type + keyword exclusion) | User report | Migration + code | MED |
+| P4-06 | Flowers category too broad | User report | seedingCategories.ts | LOW |
+| P4-07 | Missing icons: play, alert-triangle | Log bugs | Icon.tsx | LOW |
 
 ---
 
-## PASS 6 — Low: Polish + Optimization
+## PASS 4c — Curated Content Quality (3 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P4-08 | Curated AI stop descriptions missing | User report | generate-curated-experiences | MED |
+| P4-09 | Picnic dates returns zero cards | User report | Pool / generation gap | MED |
+| P4-10 | Description no length truncation | Forensic B6 | DescriptionSection.tsx | LOW |
+
+---
+
+## PASS 5a — Saved Page + Calendar (4 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P5-01 | Deactivated cards still interactive on saved | Forensic D1 | SavedTab.tsx:1864-1999 | MED |
+| P5-02 | Calendar permission failure silent | Forensic D3 | SavedTab.tsx:1428-1447 | LOW |
+| P5-03 | Silent failure on saved card removal | Forensic D5 | SavedTab.tsx:1346 | LOW |
+| P5-04 | No server-side duplicate schedule guard | Forensic D4 | calendarService.ts:86-89 | LOW |
+
+---
+
+## PASS 5b — Swipe + Animation Edge Cases (4 fixes)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P5-05 | Swipe limit bypass via rapid swiping | Forensic A5 | SwipeableCards.tsx:1009-1016 | LOW |
+| P5-06 | currentCardIndex race during batch | Forensic A6 | SwipeableCards.tsx:936-955 | MED |
+| P5-07 | Total time missing null guards | Forensic C3 | ExpandedCardModal.tsx:421-431 | LOW |
+| P5-08 | Weather only for first stop | Forensic B7 | ExpandedCardModal.tsx:783-820 | MED |
+
+---
+
+## PASS 6 — Polish + Optimization (13 fixes)
 
 | ID | Bug | Source | File | Effort |
 |----|-----|--------|------|--------|
@@ -156,13 +216,13 @@ Things that technically work but mislead or frustrate users.
 | P6-04 | SeatMap URL no error handler | Forensic B8 | ExpandedCardModal.tsx:1208-1218 | LOW |
 | P6-05 | Photo counter desync on fast scroll | Forensic B9 | StopImageGallery.tsx:129-132 | LOW |
 | P6-06 | Single image missing resizeMode | Forensic C4 | StopImageGallery.tsx:74 | LOW |
-| P6-07 | No server-side duplicate schedule guard | Forensic D4 | calendarService.ts:86-89 | LOW |
-| P6-08 | Silent failure on saved card removal | Forensic D5 | SavedTab.tsx:1346 | LOW |
-| P6-09 | No past date validation | Forensic E2 | ProposeDateTimeModal.tsx | LOW |
-| P6-10 | No coordinate bounds validation | Forensic F6 | PreferencesSheet.tsx:371-375 | LOW |
-| P6-11 | No past date in preferences picker | Forensic F7 | PreferencesSheet.tsx:685-719 | LOW |
-| P6-12 | No "Pair Now" CTA in empty state | Forensic G5 | PairedProfileSection.tsx:137-138 | LOW |
-| P6-13 | Missing icons: play, alert-triangle | Log bugs | Icon.tsx | LOW |
+| P6-07 | No past date validation | Forensic E2 | ProposeDateTimeModal.tsx | LOW |
+| P6-08 | No coordinate bounds validation | Forensic F6 | PreferencesSheet.tsx:371-375 | LOW |
+| P6-09 | No past date in preferences picker | Forensic F7 | PreferencesSheet.tsx:685-719 | LOW |
+| P6-10 | No "Pair Now" CTA in empty state | Forensic G5 | PairedProfileSection.tsx:137-138 | LOW |
+| P6-11 | Missing icons: play, alert-triangle (if not in 4b) | Log bugs | Icon.tsx | LOW |
+| P6-12 | Single image missing resizeMode | Forensic C4 | StopImageGallery.tsx:74 | LOW |
+| P6-13 | No past date in preferences picker | Forensic F7 | PreferencesSheet.tsx:685-719 | LOW |
 
 ---
 

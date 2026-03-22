@@ -162,12 +162,21 @@
 
 | Pass | Bugs | Focus | Status |
 |------|------|-------|--------|
-| Pass 1 | 8 | Crashes + data loss (null crash, silent save, images undefined, alt prop, GPS toggle, coords text, dismissed stops) | PENDING |
-| Pass 2 | 5 | Data integrity (currency from GPS, priceLevel enum, curated schedule, dedup, timezone) | PENDING |
-| Pass 3 | 12 | UX breaks (error as exhaustion, flicker, browser opening, dual-path hours, slugs, round-robin, null coords) | PENDING |
-| Pass 4 | 7 | Scheduling + data quality (picker behind modal, no confirmation, current date, schools, flowers, AI descriptions, picnic empty) | PENDING |
-| Pass 5 | 14 | Consistency (swipe limit, skeleton, rating falsy, description truncation, weather per stop, deactivated cards, calendar permission) | PENDING |
-| Pass 6 | 13 | Polish (logging, pan threshold, abort signals, seat map, photo counter, resize, date validation, CTA) | PENDING |
+| 1a | 4 | Null safety + crash prevention | PENDING |
+| 1b | 4 | Silent failures + preferences | PENDING |
+| 1c | 3 | Curated card state (dismiss, schedule, shopping list) | PENDING |
+| 2a | 3 | Currency + pricing + slug display | PENDING |
+| 2b | 3 | Paired view dedup + error state + birthday | PENDING |
+| 2c | 3 | Opening hours + timezone + lat/lng falsy | PENDING |
+| 3a | 4 | Error states + truthfulness | PENDING |
+| 3b | 3 | Browser + links + URLs | PENDING |
+| 3c | 4 | Card quality + rendering | PENDING |
+| 4a | 4 | Scheduling fixes | PENDING |
+| 4b | 3 | Data quality: exclusions + categories | PENDING |
+| 4c | 3 | Curated content quality | PENDING |
+| 5a | 4 | Saved page + calendar | PENDING |
+| 5b | 4 | Swipe + animation edge cases | PENDING |
+| 6 | 13 | Polish + optimization | PENDING |
 
 ---
 
