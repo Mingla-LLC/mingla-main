@@ -132,6 +132,7 @@ serve(async (req) => {
         idempotencyKey: `dm:${senderId}:${conversationId}:${messageTimestamp}`,
         pushOverrides: {
           androidChannelId: "messages",
+          threadId: `dm:${conversationId}`,
         },
       });
 
