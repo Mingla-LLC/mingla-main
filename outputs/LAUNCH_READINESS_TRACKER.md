@@ -55,6 +55,8 @@
 | Per-category exclusion enforcement | A | 2026-03-21 | Commits 984f8be7, a408e1b1. Test reports: TEST_REPORT_EXCLUSION_ENFORCEMENT.md, TEST_REPORT_EXCLUSION_REGRESSION_FIX.md | category_type_exclusions table (~697 rows). **Regression fixed:** NOT EXISTS uses cp.categories (card's own), not v_slug_categories (user's query) — prevents cross-category contamination. Missing place_pool_id index added. 22/22 + 16/16 tests green. README locked in. |
 | "Now" filter uses stale isOpenNow | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #2 | discover-cards "now" path checks stale boolean from seeding instead of computing from stored opening hours. Silently removes valid cards. Planned for Block 6. |
 | Per-category deck balancing | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #3 | Popular categories dominate deck. SQL returns global top-N, client round-robin starved. Needs SQL window function or split queries. Planned for Block 6. |
+| Curated cards bypass exclusion | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #6 | Two gaps: generation doesn't check category_type_exclusions, serve-time NOT EXISTS passes NULL place_pool_id curated cards. Planned for Block 6. |
+| Children's play spaces pass filters | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #7 | Google types kids' venues as amusement_center (same as adult). Name-based heuristic or indoor_playground exclusion needed. Planned for Block 7. |
 | Empty category pools (operational) | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #5 | Flowers, First Meet etc. have zero cards in Raleigh. Needs seeding + coverage monitoring. Planned for Block 7. |
 | Card rendering (all types) | F | — | Unaudited | — |
 | Swipe mechanics | F | — | Unaudited | Swipe limit exists |
