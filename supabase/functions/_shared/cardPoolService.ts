@@ -561,19 +561,22 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Travel time estimate (minutes) ──────────────────────────────────────────
+// UNIFIED estimateTravelMin (Block 8 — hardened 2026-03-22)
+// Per-mode detour factors matching generation. Single implementation for
+// both single-card and curated-card travel computation.
 
-const SPEED_KMH: Record<string, number> = {
-  walking: 4.5,
-  driving: 35,
-  transit: 20,
-  bicycling: 14,
-  biking: 14,
+const TRAVEL_CONFIG: Record<string, { speed: number; factor: number }> = {
+  walking:        { speed: 4.5, factor: 1.3 },
+  driving:        { speed: 35,  factor: 1.4 },
+  transit:        { speed: 20,  factor: 1.3 },
+  public_transit: { speed: 20,  factor: 1.3 },
+  biking:         { speed: 14,  factor: 1.3 },
+  bicycling:      { speed: 14,  factor: 1.3 },
 };
 
 function estimateTravelMin(distKm: number, mode: string = 'walking'): number {
-  const speed = SPEED_KMH[mode] || 4.5;
-  return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
+  const { speed, factor } = TRAVEL_CONFIG[mode] ?? TRAVEL_CONFIG.walking;
+  return Math.max(1, Math.round((distKm * factor / speed) * 60));
 }
 
 // ── Parse raw Google regularOpeningHours into Record<string, string> ────────
@@ -643,6 +646,48 @@ function poolCardToApiCard(
   travelMode?: string,
 ): any {
   if (card.card_type === 'curated') {
+    // SERVE-TIME TRAVEL RECOMPUTATION (Block 8 — hardened 2026-03-22)
+    // Recomputes inter-stop travel times using user's travelMode and location.
+    // Overrides generation-time baked values. Zero mobile changes — same field names.
+
+    // Deep-clone stops to avoid mutating cached pool data
+    const stops: any[] = (card.stops || []).map((s: any) => ({ ...s }));
+
+    // Recompute travel times using the requesting user's location and travel mode
+    const mode = travelMode || 'walking';
+    for (let i = 0; i < stops.length; i++) {
+      const stop = stops[i];
+
+      // First stop: recompute distance/travel from user's current location
+      if (i === 0 && userLat != null && userLng != null && stop.lat != null && stop.lng != null) {
+        const dist = haversine(userLat, userLng, stop.lat, stop.lng);
+        stop.distanceFromUserKm = Math.round(dist * 100) / 100;
+        stop.travelTimeFromUserMin = estimateTravelMin(dist, mode);
+      }
+
+      // All stops after first: recompute inter-stop travel
+      if (i > 0) {
+        const prev = stops[i - 1];
+        if (prev.lat != null && prev.lng != null && stop.lat != null && stop.lng != null) {
+          const dist = haversine(prev.lat, prev.lng, stop.lat, stop.lng);
+          stop.travelTimeFromPreviousStopMin = estimateTravelMin(dist, mode);
+          stop.travelModeFromPreviousStop = mode;
+        }
+        // Also recompute this stop's distance from user
+        if (userLat != null && userLng != null && stop.lat != null && stop.lng != null) {
+          const distUser = haversine(userLat, userLng, stop.lat, stop.lng);
+          stop.distanceFromUserKm = Math.round(distUser * 100) / 100;
+          stop.travelTimeFromUserMin = estimateTravelMin(distUser, mode);
+        }
+      }
+    }
+
+    // Recompute total duration with user-specific travel times
+    const mainStops = stops.filter((s: any) => !s.optional);
+    const totalStopMin = mainStops.reduce((sum: number, s: any) => sum + (s.estimatedDurationMinutes || 45), 0);
+    const totalTravelMin = mainStops.slice(1).reduce((sum: number, s: any) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
+    const estimatedDurationMinutes = totalStopMin + totalTravelMin;
+
     return {
       id: card.id,
       cardType: 'curated',
@@ -657,13 +702,13 @@ function poolCardToApiCard(
       priceRange: formatPriceRange(card.price_min, card.price_max),
       totalPriceMin: card.total_price_min || 0,
       totalPriceMax: card.total_price_max || 0,
-      estimatedDurationMinutes: card.estimated_duration_minutes || 0,
+      estimatedDurationMinutes,
       description: card.description || '',
       highlights: card.highlights || [],
       address: card.address || '',
       lat: card.lat,
       lng: card.lng,
-      stops: card.stops || [],
+      stops,
       shoppingList: card.shopping_list || null,
       experienceType: card.experience_type || '',
       categoryLabel: card.experience_type

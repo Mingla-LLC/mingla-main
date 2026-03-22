@@ -776,11 +776,13 @@ function estimateTravelMinutes(distKm: number, travelMode: string): number {
   return Math.max(3, Math.round((distKm * factor / speed) * 60));
 }
 
+// NEAREST-PLACE SELECTION (Block 8 — hardened 2026-03-22)
+// Picks the closest candidate by haversine distance. Pre-sorted array
+// means equidistant ties break to highest-rated. Replaces tiered 3km/5km logic.
 /**
- * Tiered proximity selection: find the highest-rated place near a reference point.
- * Tier 1: within 3km — pick highest-rated
- * Tier 2: within 5km — pick highest-rated
- * Tier 3: closest place regardless of distance
+ * Select the nearest place to a reference point by haversine distance.
+ * Pure proximity — no tier thresholds. Quality is handled upstream:
+ * first stop picks highest-rated; subsequent stops pick nearest.
  */
 function selectClosestHighestRated(
   available: any[],
@@ -788,20 +790,15 @@ function selectClosestHighestRated(
   refLng: number,
 ): any | null {
   if (available.length === 0) return null;
-
-  const within3km = available.filter(p => haversineKm(refLat, refLng, p.lat ?? 0, p.lng ?? 0) <= 3);
-  if (within3km.length > 0) return within3km[0];
-
-  const within5km = available.filter(p => haversineKm(refLat, refLng, p.lat ?? 0, p.lng ?? 0) <= 5);
-  if (within5km.length > 0) return within5km[0];
+  if (available.length === 1) return available[0];
 
   let closest = available[0];
-  let closestDist = Infinity;
-  for (const p of available) {
-    const dist = haversineKm(refLat, refLng, p.lat ?? 0, p.lng ?? 0);
+  let closestDist = haversineKm(refLat, refLng, available[0].lat ?? 0, available[0].lng ?? 0);
+  for (let i = 1; i < available.length; i++) {
+    const dist = haversineKm(refLat, refLng, available[i].lat ?? 0, available[i].lng ?? 0);
     if (dist < closestDist) {
       closestDist = dist;
-      closest = p;
+      closest = available[i];
     }
   }
   return closest;
