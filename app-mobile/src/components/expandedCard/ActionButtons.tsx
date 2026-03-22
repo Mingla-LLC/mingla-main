@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Icon } from "../ui/Icon";
+import { TrackedTouchableOpacity } from "../TrackedTouchableOpacity";
 import { useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
@@ -684,7 +685,9 @@ export default function ActionButtons({
               onRequestClose={() => setShowDateTimePicker(false)}
             >
               <View style={styles.modalOverlay}>
-                <TouchableOpacity
+                <TrackedTouchableOpacity
+                  logComponent="ActionButtons"
+                  logId="picker_dismiss"
                   style={styles.backdropTouch}
                   activeOpacity={1}
                   onPress={() => setShowDateTimePicker(false)}
@@ -695,19 +698,23 @@ export default function ActionButtons({
                       {pickerMode === "date" ? "Select Date" : "Select Time"}
                     </Text>
                     <View style={styles.modalHeaderButtons}>
-                      <TouchableOpacity
+                      <TrackedTouchableOpacity
+                        logComponent="ActionButtons"
+                        logId="picker_cancel"
                         style={styles.modalCancelButton}
                         onPress={() => setShowDateTimePicker(false)}
                       >
                         <Text style={styles.modalCancelText}>Cancel</Text>
-                      </TouchableOpacity>
+                      </TrackedTouchableOpacity>
                       {pickerMode === "time" && (
-                        <TouchableOpacity
+                        <TrackedTouchableOpacity
+                          logComponent="ActionButtons"
+                          logId="picker_done"
                           style={styles.modalConfirmButton}
                           onPress={handleTimePickerConfirm}
                         >
                           <Text style={styles.modalConfirmText}>Done</Text>
-                        </TouchableOpacity>
+                        </TrackedTouchableOpacity>
                       )}
                     </View>
                   </View>
@@ -780,12 +787,12 @@ export default function ActionButtons({
             );
           })}
           {parsedOpeningHours.lines.length > 1 && (
-            <TouchableOpacity onPress={() => setShowAllHours(!showAllHours)} style={styles.showAllHoursButton}>
+            <TrackedTouchableOpacity logComponent="ActionButtons" logId="toggle_hours" onPress={() => setShowAllHours(!showAllHours)} style={styles.showAllHoursButton}>
               <Text style={styles.showAllHoursText}>
                 {showAllHours ? "Show less" : "Show all hours"}
               </Text>
               <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
-            </TouchableOpacity>
+            </TrackedTouchableOpacity>
           )}
         </View>
       )}
@@ -793,7 +800,9 @@ export default function ActionButtons({
       {/* Action Buttons Row: Save + Schedule + Share */}
       <View style={styles.topRow}>
         {/* Save Button */}
-        <TouchableOpacity
+        <TrackedTouchableOpacity
+          logComponent="ActionButtons"
+          logId="save"
           style={[
             styles.saveButton,
             (isSaving || isSaved) && styles.actionButtonDisabled,
@@ -816,10 +825,12 @@ export default function ActionButtons({
               </Text>
             </>
           )}
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
 
         {/* Schedule Button */}
-        <TouchableOpacity
+        <TrackedTouchableOpacity
+          logComponent="ActionButtons"
+          logId="schedule"
           style={[
             styles.scheduleButton,
             (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
@@ -842,21 +853,25 @@ export default function ActionButtons({
               </Text>
             </>
           )}
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
 
         {/* Share Button */}
-        <TouchableOpacity
+        <TrackedTouchableOpacity
+          logComponent="ActionButtons"
+          logId="share"
           style={styles.shareIconButton}
           onPress={handleShare}
           activeOpacity={0.7}
         >
           <Icon name="share-outline" size={20} color="#6b7280" />
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       </View>
 
       {/* Policies & Reservations — all categories with website or placeId */}
       {showPoliciesButton && (
-        <TouchableOpacity
+        <TrackedTouchableOpacity
+          logComponent="ActionButtons"
+          logId="policies"
           style={styles.policiesButton}
           onPress={handlePoliciesAndReservations}
           activeOpacity={0.8}
@@ -865,13 +880,15 @@ export default function ActionButtons({
           <Text style={styles.policiesButtonText}>
             Policies & Reservations
           </Text>
-        </TouchableOpacity>
+        </TrackedTouchableOpacity>
       )}
 
       {/* Visit Button */}
       {showVisitButton && (
         <Animated.View style={{ transform: [{ scale: visitScaleAnim }] }}>
-          <TouchableOpacity
+          <TrackedTouchableOpacity
+            logComponent="ActionButtons"
+            logId="visit"
             style={[
               styles.visitButton,
               isVisited && styles.visitButtonVisited,
@@ -917,7 +934,7 @@ export default function ActionButtons({
                 <Text style={styles.visitButtonTextDefault}>I went here</Text>
               </>
             )}
-          </TouchableOpacity>
+          </TrackedTouchableOpacity>
         </Animated.View>
       )}
 

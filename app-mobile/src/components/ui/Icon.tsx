@@ -179,6 +179,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'basket':                      ShoppingBasket,
   'basket-outline':             ShoppingBasket,
   'bicycle-outline':            Bike,
+  'body':                       PersonStanding,
   'body-outline':               PersonStanding,
   'bookmark':                   Bookmark,
   'bookmark-outline':           Bookmark,

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serveCuratedCardsFromPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { GLOBAL_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
+import { GLOBAL_EXCLUDED_PLACE_TYPES, isChildVenueName } from '../_shared/categoryPlaceTypes.ts';
 import { getIncludedTypes, getExcludedPrimaryTypes, SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, tierMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
@@ -387,6 +387,7 @@ async function queryPlacePool(
     if (p.primary_type && GLOBAL_EXCLUDED.has(p.primary_type)) return false;
     // DB-driven exclusions: check full types array, not just primary_type
     if (p.types?.some((t: string) => dbExcludedTypes.has(t))) return false;
+    if (isChildVenueName(p.name || '')) return false;
     return true;
   });
 }

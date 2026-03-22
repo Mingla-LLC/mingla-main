@@ -1232,7 +1232,7 @@ export default function ExpandedCardModal({
                   rating={card.rating}
                   distance={card.distance}
                   travelTime={hideTravelTime ? undefined : card.travelTime}
-                  travelMode={effectiveTravelMode}
+                  travelMode={card.travelMode || effectiveTravelMode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={(card as any).priceTier}

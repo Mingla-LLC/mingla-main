@@ -543,3 +543,34 @@ export function getCategoryTypeMap(categories: string[]): Record<string, string[
   }
   return result;
 }
+
+// ── Children's venue name-based heuristic ──────────────────────────────────
+// These keywords in a place name indicate a children-only venue.
+// Applied as a post-fetch filter in card generators to reject kids' venues
+// that share Google types (e.g., amusement_center) with adult venues.
+export const CHILD_VENUE_NAME_KEYWORDS: string[] = [
+  'kids', 'kidz', 'kiddo', 'kiddos',
+  'children', 'child',
+  'toddler', 'toddlers',
+  'baby', 'babies',
+  'bounce', 'bouncy',
+  'trampoline',
+  'play space', 'playspace',
+  'little ones',
+  'mommy', 'mommy and me',
+  'tot ', ' tots',      // space-delimited to avoid "total", "tottori"
+  'preschool', 'pre-school',
+  'daycare', 'day care',
+  'jungle gym',
+  'fun zone', 'funzone',
+  'kidzone', 'kid zone',
+];
+
+/**
+ * Returns true if the place name contains child-related keywords.
+ * Case-insensitive. Used to reject children's venues from adult categories.
+ */
+export function isChildVenueName(placeName: string): boolean {
+  const lower = ` ${placeName.toLowerCase()} `; // pad with spaces for word-boundary keywords
+  return CHILD_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
+}

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { insertCardToPool } from '../_shared/cardPoolService.ts';
-import { resolveCategories, ALL_CATEGORY_NAMES, getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, ALL_CATEGORY_NAMES, getPlaceTypesForCategory, isChildVenueName } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 import { SEEDING_CATEGORIES } from '../_shared/seedingCategories.ts';
 
@@ -133,6 +133,7 @@ serve(async (req: Request) => {
     let totalGenerated = 0;
     let totalSkippedDuplicate = 0;
     let totalSkippedNoPhotos = 0;
+    let totalSkippedChildVenue = 0;
     const categoryResults: Record<string, CategoryResult> = {};
 
     await Promise.all(categories.map(async (category) => {
@@ -191,6 +192,13 @@ serve(async (req: Request) => {
           if (!place.stored_photo_urls || place.stored_photo_urls.length === 0) {
             catSkipped++;
             totalSkippedNoPhotos++;
+            continue;
+          }
+
+          // Skip children's venues (name-based heuristic)
+          if (isChildVenueName(place.name || '')) {
+            catSkipped++;
+            totalSkippedChildVenue++;
             continue;
           }
 
@@ -261,13 +269,14 @@ serve(async (req: Request) => {
     }));
 
     const elapsed = Date.now() - t0;
-    console.log(`[generate-single-cards] Done in ${elapsed}ms: generated=${totalGenerated}, skippedDuplicate=${totalSkippedDuplicate}, skippedNoPhotos=${totalSkippedNoPhotos}`);
+    console.log(`[generate-single-cards] Done in ${elapsed}ms: generated=${totalGenerated}, skippedDuplicate=${totalSkippedDuplicate}, skippedNoPhotos=${totalSkippedNoPhotos}, skippedChildVenue=${totalSkippedChildVenue}`);
 
     return new Response(JSON.stringify({
       success: true,
       generated: totalGenerated,
       skippedDuplicate: totalSkippedDuplicate,
       skippedNoPhotos: totalSkippedNoPhotos,
+      skippedChildVenue: totalSkippedChildVenue,
       categories: categoryResults,
       dryRun,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
