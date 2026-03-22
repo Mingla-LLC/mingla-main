@@ -116,7 +116,9 @@ serve(async (req) => {
         return jsonResponse({ error: "conversationId and recipientId required for direct_message" }, 400);
       }
 
-      const twoBucket = Math.floor(Date.now() / (2 * 60 * 1000));
+      // Each DM gets its own push notification — no collapsing, no dedup bucket.
+      // Users should see and hear every message when not on the chat screen.
+      const messageTimestamp = Date.now();
 
       await callNotifyDispatch(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
         userId: recipientId,
@@ -127,10 +129,9 @@ serve(async (req) => {
         actorId: senderId,
         relatedId: conversationId,
         relatedType: "conversation",
-        idempotencyKey: `dm:${senderId}:${conversationId}:${twoBucket}`,
+        idempotencyKey: `dm:${senderId}:${conversationId}:${messageTimestamp}`,
         pushOverrides: {
           androidChannelId: "messages",
-          collapseId: `msg:${conversationId}`,
         },
       });
 
