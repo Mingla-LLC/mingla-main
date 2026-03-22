@@ -25,7 +25,7 @@ import { useHolidayCategories } from "../hooks/useHolidayCategories";
 import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
-import { PriceTierSlug } from "../constants/priceTiers";
+import { PriceTierSlug, tierLabel } from "../constants/priceTiers";
 import { ordinal } from "../utils/ordinalSuffix";
 import { s, vs, ms, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
@@ -380,7 +380,7 @@ function CardRow({
               category={c.category}
               imageUrl={c.imageUrl}
               rating={c.rating}
-              priceRange={c.priceLevel}
+              priceRange={c.priceTier ? tierLabel(c.priceTier as PriceTierSlug) : null}
               isCurated={c.cardType === "curated"}
               experienceType={c.experienceType}
               stops={c.stops}
@@ -392,7 +392,7 @@ function CardRow({
                   imageUrl: c.imageUrl,
                   rating: c.rating,
                   address: c.address,
-                  priceRange: c.priceLevel,
+                  priceRange: c.priceTier ? tierLabel(c.priceTier as PriceTierSlug) : null,
                   cardType: c.cardType,
                   experienceType: c.experienceType,
                   website: c.website,

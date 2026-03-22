@@ -35,6 +35,7 @@ import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/pr
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
@@ -1897,7 +1898,7 @@ const SavedTab = ({
                   <View style={styles.cardSubtitleRow}>
                     <Icon name="heart" size={16} color="orange" />
                     <Text style={styles.cardSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                      {(card as any).subtitle || card.category || "Experience"}
+                      {(card as any).subtitle || getReadableCategoryName(card.category) || "Experience"}
                     </Text>
                   </View>
                 </View>

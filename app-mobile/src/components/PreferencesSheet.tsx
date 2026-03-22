@@ -37,7 +37,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
 import { mixpanelService } from "../services/mixpanelService";
-import { detectLocaleFromCoordinates } from "../utils/localeDetection";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 
@@ -586,28 +585,6 @@ export default function PreferencesSheet({
     }
     setSelectedCoords(coords);
 
-    // Auto-detect locale from resolved coordinates (fire-and-forget)
-    if (coords) {
-      detectLocaleFromCoordinates(coords.lat, coords.lng).then((detected) => {
-        if (user?.id) {
-          PreferencesService.updateUserProfile(user.id, {
-            currency: detected.currency,
-            measurement_system: detected.measurementSystemDb,
-          }).catch((err) => {
-            console.warn('Locale DB write failed in handleSuggestionSelect:', err?.message);
-          });
-        }
-        const currentProfile = useAppStore.getState().profile;
-        if (currentProfile) {
-          setProfile({
-            ...currentProfile,
-            currency: detected.currency,
-            measurement_system: detected.measurementSystemDb,
-          });
-        }
-      }).catch(() => {});
-    }
-
     setTimeout(() => {
       isSelectingSuggestion.current = false;
     }, 300);
@@ -632,29 +609,6 @@ export default function PreferencesSheet({
       };
       setSearchLocation('');
       setSelectedCoords(null);
-
-      // Auto-detect locale from GPS coordinates (fire-and-forget)
-      locationService.getCurrentLocation().then((loc) => {
-        if (!loc) return;
-        detectLocaleFromCoordinates(loc.latitude, loc.longitude).then((detected) => {
-          if (user?.id) {
-            PreferencesService.updateUserProfile(user.id, {
-              currency: detected.currency,
-              measurement_system: detected.measurementSystemDb,
-            }).catch((err) => {
-              console.warn('Locale DB write failed in handleGpsToggle:', err?.message);
-            });
-          }
-          const currentProfile = useAppStore.getState().profile;
-          if (currentProfile) {
-            setProfile({
-              ...currentProfile,
-              currency: detected.currency,
-              measurement_system: detected.measurementSystemDb,
-            });
-          }
-        }).catch(() => {});
-      }).catch(() => {});
     } else {
       // Restore previously saved custom location
       setSearchLocation(savedCustomLocation.current.text);
