@@ -199,6 +199,15 @@ export default function PreferencesSheet({
   const [searchLocation, setSearchLocation] = useState<string>("");
   const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const searchLocationRef = useRef(searchLocation);
+  searchLocationRef.current = searchLocation;
+  const selectedCoordsRef = useRef(selectedCoords);
+  selectedCoordsRef.current = selectedCoords;
+  // Backup for custom location before GPS toggle clears it (P1-06)
+  const savedCustomLocation = useRef<{
+    text: string;
+    coords: { lat: number; lng: number } | null;
+  }>({ text: '', coords: null });
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
   // Auto-reset to GPS if user no longer has custom starting point access (downgrade)
@@ -368,10 +377,8 @@ export default function PreferencesSheet({
       setUseGpsLocation(gpsFlag);
 
       if (!gpsFlag && (loadedPreferences).custom_location) {
-        const savedLocation = (loadedPreferences).custom_location;
-        setSearchLocation(savedLocation);
-        const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
-        setUseLocation(isCoordinates ? "gps" : "search");
+        setSearchLocation((loadedPreferences).custom_location);
+        setUseLocation("search");
       }
 
       setInitialPreferences({
@@ -566,16 +573,22 @@ export default function PreferencesSheet({
     }
   }, []);
 
-  const handleSuggestionSelect = useCallback((suggestion: AutocompleteSuggestion) => {
+  const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
     isSelectingSuggestion.current = true;
     setSearchLocation(suggestion.displayName);
-    setSelectedCoords(suggestion.location ?? null);
     setShowSuggestions(false);
     setIsInputFocused(false);
 
-    // Auto-detect locale from custom location coordinates (fire-and-forget)
-    if (suggestion.location) {
-      detectLocaleFromCoordinates(suggestion.location.lat, suggestion.location.lng).then((detected) => {
+    // Resolve coordinates: use suggestion.location if present, otherwise fetch via placeId
+    let coords = suggestion.location ?? null;
+    if (!coords && suggestion.placeId) {
+      coords = await geocodingService.getPlaceCoordinates(suggestion.placeId);
+    }
+    setSelectedCoords(coords);
+
+    // Auto-detect locale from resolved coordinates (fire-and-forget)
+    if (coords) {
+      detectLocaleFromCoordinates(coords.lat, coords.lng).then((detected) => {
         if (user?.id) {
           PreferencesService.updateUserProfile(user.id, {
             currency: detected.currency,
@@ -612,6 +625,11 @@ export default function PreferencesSheet({
   const handleGpsToggle = useCallback((value: boolean) => {
     setUseGpsLocation(value);
     if (value) {
+      // Save custom location before clearing so toggle-off can restore it
+      savedCustomLocation.current = {
+        text: searchLocationRef.current,
+        coords: selectedCoordsRef.current,
+      };
       setSearchLocation('');
       setSelectedCoords(null);
 
@@ -637,6 +655,10 @@ export default function PreferencesSheet({
           }
         }).catch(() => {});
       }).catch(() => {});
+    } else {
+      // Restore previously saved custom location
+      setSearchLocation(savedCustomLocation.current.text);
+      setSelectedCoords(savedCustomLocation.current.coords);
     }
   }, [user?.id, setProfile]);
 
@@ -788,9 +810,7 @@ export default function PreferencesSheet({
 
     const customLocationValue = useGpsLocation
       ? null
-      : selectedCoords
-        ? `${selectedCoords.lat},${selectedCoords.lng}`
-        : searchLocation || null;
+      : searchLocation || null;
 
     // Compute backward-compat budget from selected tiers
     const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));

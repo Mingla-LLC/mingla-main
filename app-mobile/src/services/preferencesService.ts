@@ -93,7 +93,7 @@ export class PreferencesService {
           else console.log("[PreferencesService] Background retry succeeded");
         } catch { /* silent */ }
       }, 3000);
-      return true; // Return true — local state is already correct
+      return false;
     }
   }
 
