@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
@@ -34,9 +34,9 @@ interface Props {
 }
 
 export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem }: Props) {
-  // Track dismissed optional stops (e.g., Flowers)
-  const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
-  const visibleStops = card.stops.filter((_, idx) => !dismissedStops.has(idx));
+  // Compact card shows only main (non-optional) stops
+  const mainStops = card.stops.filter(s => !s.optional);
+  const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
 
   const avgRating = (visibleStops.reduce((s, st) => s + st.rating, 0) / visibleStops.length).toFixed(1);
   const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
@@ -69,44 +69,24 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
     <View style={styles.card}>
       {/* Image strip — adapts to any number of stops */}
       <View style={styles.imageStrip}>
-        {visibleStops.map((stop, idx) => {
-          const isOptional = stop.optional && stop.dismissible;
-          const originalIdx = card.stops.indexOf(stop);
-          return (
-            <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
-              {stop.imageUrl ? (
-                <Image
-                  source={{ uri: stop.imageUrl }}
-                  style={styles.stopImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.stopImage, styles.imagePlaceholder]} />
-              )}
-              {!isSingleStop && (
-                <View style={styles.stopBadge}>
-                  {isOptional ? (
-                    <Icon name="flower-outline" size={12} color="#fff" />
-                  ) : (
-                    <Text style={styles.stopBadgeText}>{idx + 1}</Text>
-                  )}
-                </View>
-              )}
-              {isOptional && (
-                <TrackedTouchableOpacity
-                  logComponent="CuratedExperienceSwipeCard"
-                  style={styles.dismissButton}
-                  onPress={() => setDismissedStops(prev => new Set([...prev, originalIdx]))}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Dismiss optional stop"
-                  accessibilityRole="button"
-                >
-                  <Icon name="close" size={12} color="#fff" />
-                </TrackedTouchableOpacity>
-              )}
-            </View>
-          );
-        })}
+        {visibleStops.map((stop, idx) => (
+          <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
+            {stop.imageUrl ? (
+              <Image
+                source={{ uri: stop.imageUrl }}
+                style={styles.stopImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.stopImage, styles.imagePlaceholder]} />
+            )}
+            {!isSingleStop && (
+              <View style={styles.stopBadge}>
+                <Text style={styles.stopBadgeText}>{idx + 1}</Text>
+              </View>
+            )}
+          </View>
+        ))}
       </View>
 
       {/* Card info */}
@@ -176,17 +156,6 @@ const styles = StyleSheet.create({
   },
   imagePlaceholder: {
     backgroundColor: '#2C2C2E',
-  },
-  dismissButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   stopBadge: {
     position: 'absolute',

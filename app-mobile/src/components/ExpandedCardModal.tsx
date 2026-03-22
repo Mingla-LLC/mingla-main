@@ -216,32 +216,6 @@ const curatedStyles = StyleSheet.create({
     color: '#eb7825',
     fontWeight: '600',
   },
-  actionRow: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  saveButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  saveButtonSaved: {
-    backgroundColor: '#fff7ed',
-    borderWidth: 1.5,
-    borderColor: '#eb7825',
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  saveButtonTextSaved: {
-    color: '#eb7825',
-  },
   stopHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -369,6 +343,18 @@ const curatedStyles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 2,
   },
+  optionalStopCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    backgroundColor: '#fafafa',
+  },
+  optionalBadge: {
+    backgroundColor: '#9ca3af',
+  },
+  optionalLabel: {
+    color: '#9ca3af',
+  },
 });
 
 /** Private component — renders the multi-stop plan for a curated experience */
@@ -376,19 +362,31 @@ function CuratedPlanView({
   card,
   isSaved,
   onSave,
+  onShare,
   onClose,
+  userPreferences,
+  currentMode,
+  onCardRemoved,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
+  onShare?: (card: ExpandedCardData) => void;
   onClose: () => void;
+  userPreferences?: any;
+  currentMode?: string;
+  onCardRemoved?: (cardId: string) => void;
 }) {
   return (
     <MultiStopPlanView
       card={card}
       isSaved={isSaved}
       onSave={onSave}
+      onShare={onShare}
       onClose={onClose}
+      userPreferences={userPreferences}
+      currentMode={currentMode}
+      onCardRemoved={onCardRemoved}
     />
   );
 }
@@ -398,12 +396,20 @@ function MultiStopPlanView({
   card,
   isSaved,
   onSave,
+  onShare,
   onClose,
+  userPreferences,
+  currentMode,
+  onCardRemoved,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
+  onShare?: (card: ExpandedCardData) => void;
   onClose: () => void;
+  userPreferences?: any;
+  currentMode?: string;
+  onCardRemoved?: (cardId: string) => void;
 }) {
   // Defensive: stops may be undefined if card data is stale or cast from ExpandedCardData
   const stops = Array.isArray(card.stops) ? card.stops : [];
@@ -432,6 +438,8 @@ function MultiStopPlanView({
 
   // Accordion state
   const [expandedStops, setExpandedStops] = useState<Set<number>>(new Set());
+  // Dismissed optional stops (resets when modal reopens — acceptable)
+  const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
 
@@ -497,11 +505,20 @@ function MultiStopPlanView({
         </View>
       </View>
 
+      {/* Shopping List — prep before journey (picnic-dates type) */}
+      {card.shoppingList && card.shoppingList.length > 0 && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <PicnicShoppingList items={card.shoppingList} />
+        </View>
+      )}
+
       {/* Stops */}
       <View style={curatedStyles.stopsContainer}>
-        {stops.map((stop, idx) => {
+        {stops.filter((_, idx) => !dismissedStops.has(idx)).map((stop, idx) => {
           const isExpanded = expandedStops.has(stop.stopNumber);
-          const anim = stopAnims[idx];
+          const isOptional = !!stop.optional;
+          const originalIdx = stops.indexOf(stop);
+          const anim = stopAnims[originalIdx] ?? stopAnims[0];
           return (
             <Animated.View
               key={`${stop.placeId}_${idx}`}
@@ -531,7 +548,7 @@ function MultiStopPlanView({
               )}
 
               {/* Stop card */}
-              <View style={curatedStyles.stopCard}>
+              <View style={[curatedStyles.stopCard, isOptional && curatedStyles.optionalStopCard]}>
                 {/* Tappable header row */}
                 <TouchableOpacity
                   style={curatedStyles.stopHeaderRow}
@@ -539,11 +556,32 @@ function MultiStopPlanView({
                   activeOpacity={0.7}
                 >
                   <View style={curatedStyles.stopLabelRow}>
-                    <View style={curatedStyles.stopNumberBadge}>
-                      <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
+                    <View style={[curatedStyles.stopNumberBadge, isOptional && curatedStyles.optionalBadge]}>
+                      {isOptional ? (
+                        <Icon name="sparkles-outline" size={12} color="#ffffff" />
+                      ) : (
+                        <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
+                      )}
                     </View>
                     <View style={curatedStyles.stopLabelTextWrap}>
-                      <Text style={curatedStyles.stopLabel}>{stop.stopLabel}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[curatedStyles.stopLabel, isOptional && curatedStyles.optionalLabel]}>
+                          {isOptional ? 'Suggested' : stop.stopLabel}
+                        </Text>
+                        {isOptional && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                              setDismissedStops(prev => new Set([...prev, originalIdx]));
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel="Dismiss optional stop"
+                            accessibilityRole="button"
+                          >
+                            <Icon name="close-circle-outline" size={16} color="#9ca3af" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                       <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
                     </View>
                   </View>
@@ -652,10 +690,6 @@ function MultiStopPlanView({
                   </View>
                 )}
 
-                {/* Shopping List — only under stop 1 (grocery) for picnic cards */}
-                {stop.stopNumber === 1 && card.shoppingList && card.shoppingList.length > 0 && (
-                  <PicnicShoppingList items={card.shoppingList} />
-                )}
               </View>
             </Animated.View>
           );
@@ -674,23 +708,23 @@ function MultiStopPlanView({
         </View>
       </View>
 
-      {/* Save */}
-      <View style={curatedStyles.actionRow}>
-        <TouchableOpacity
-          style={[curatedStyles.saveButton, isSaved && curatedStyles.saveButtonSaved]}
-          onPress={() => onSave(card as unknown as ExpandedCardData)}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name={isSaved ? 'bookmark' : 'bookmark-outline'}
-            size={18}
-            color={isSaved ? '#eb7825' : '#ffffff'}
-          />
-          <Text style={[curatedStyles.saveButtonText, isSaved && curatedStyles.saveButtonTextSaved]}>
-            {isSaved ? 'Saved' : 'Save Plan'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Action Buttons (Save, Schedule, Share) */}
+      <ActionButtons
+        card={card as unknown as ExpandedCardData}
+        bookingOptions={[]}
+        onSave={onSave}
+        onShare={onShare}
+        onClose={onClose}
+        isSaved={isSaved}
+        userPreferences={userPreferences}
+        currentMode={currentMode}
+        onCardRemoved={onCardRemoved}
+        onScheduleSuccess={() => onClose()}
+        onOpenBrowser={(url, title) => {
+          setBrowserUrl(url);
+          setBrowserTitle(title);
+        }}
+      />
 
       {/* In-app browser for reservations */}
       <InAppBrowserModal
@@ -1048,7 +1082,11 @@ export default function ExpandedCardModal({
                   card={curatedCard}
                   isSaved={isSaved}
                   onSave={onSave}
+                  onShare={onShare}
                   onClose={onClose}
+                  userPreferences={userPreferences}
+                  currentMode={currentMode}
+                  onCardRemoved={onCardRemoved}
                 />
 
                 {/* Weather for first stop */}
