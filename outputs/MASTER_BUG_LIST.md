@@ -226,6 +226,17 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 
 ---
 
+## PASS 7 — Realtime + Freshness (Cross-Cutting)
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P7-01 | App goes stale after idle — no foreground refresh | User report | React Query config, useForegroundRefresh | MED |
+| P7-02 | Pair request sender not updated when accepted | User report | usePairings, Realtime subscriptions | MED |
+| P7-03 | No realtime subscriptions on key data (pairings, notifications, saved cards) | User report | hooks, Supabase Realtime | HIGH |
+| P7-04 | Must shake/reload to see changes | User report | Cache invalidation, staleTime config | MED |
+
+---
+
 ## DEFERRED (Not planned for current hardening)
 
 | ID | Bug | Source | Reason |
@@ -251,4 +262,5 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | Pass 5 | 14 | Consistency + edge cases | PENDING |
 | Pass 6 | 13 | Polish + optimization | PENDING |
 | Deferred | 6 | Architectural / not planned | DEFERRED |
-| **Total** | **109** | | |
+| Pass 7 | 4 | Realtime + freshness | PENDING |
+| **Total** | **113** | | |

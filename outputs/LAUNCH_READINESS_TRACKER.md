@@ -177,6 +177,7 @@
 | 5a | 4 | Saved page + calendar | PENDING |
 | 5b | 4 | Swipe + animation edge cases | PENDING |
 | 6 | 13 | Polish + optimization | PENDING |
+| 7 | 4 | Realtime + freshness (foreground refresh, realtime subscriptions, cache) | PENDING |
 
 ---
 
