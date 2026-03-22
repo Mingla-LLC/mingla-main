@@ -1,11 +1,13 @@
 # Launch Readiness Tracker
 
-> **Last updated:** 2026-03-20
-> **Status:** Active — photo pipeline + card generator + discover-cards cleanup all landed
+> **Last updated:** 2026-03-22
+> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening in progress (Passes 1-6).
 >
 > This is the single source of truth for Mingla's launch readiness.
 > Every entry requires evidence. No grade promotions without proof.
 > See `.claude/skills/Launch Hardener/references/pipeline-gates.md` for grade definitions.
+>
+> **Full bug inventory:** `outputs/MASTER_BUG_LIST.md` — 109 bugs total (44 completed, 59 pending across 6 passes, 6 deferred). Every user-reported bug and forensic finding tracked with ID, source, file reference, and pass assignment.
 
 ---
 
@@ -150,6 +152,22 @@
 | Preference updates | F | — | Unaudited | Ties to masked error in PreferencesService |
 | Account deletion | F | — | Unaudited | — |
 | Subscription management | F | — | Unaudited | RevenueCat integration |
+
+---
+
+## Deck Hardening (Passes 1-6)
+
+> **Full details:** `outputs/MASTER_BUG_LIST.md`
+> **Source investigations:** `INVESTIGATION_DECK_AND_DISCOVER.md` + `INVESTIGATION_UX_FORENSIC.md`
+
+| Pass | Bugs | Focus | Status |
+|------|------|-------|--------|
+| Pass 1 | 8 | Crashes + data loss (null crash, silent save, images undefined, alt prop, GPS toggle, coords text, dismissed stops) | PENDING |
+| Pass 2 | 5 | Data integrity (currency from GPS, priceLevel enum, curated schedule, dedup, timezone) | PENDING |
+| Pass 3 | 12 | UX breaks (error as exhaustion, flicker, browser opening, dual-path hours, slugs, round-robin, null coords) | PENDING |
+| Pass 4 | 7 | Scheduling + data quality (picker behind modal, no confirmation, current date, schools, flowers, AI descriptions, picnic empty) | PENDING |
+| Pass 5 | 14 | Consistency (swipe limit, skeleton, rating falsy, description truncation, weather per stop, deactivated cards, calendar permission) | PENDING |
+| Pass 6 | 13 | Polish (logging, pan threshold, abort signals, seat map, photo counter, resize, date validation, CTA) | PENDING |
 
 ---
 
