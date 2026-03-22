@@ -63,11 +63,12 @@
 | "Now" filter live opening hours | A | 2026-03-22 | Commit 28be9a63. Test report: TEST_REPORT_SERVE_TIME_PASS1.md | Stale isOpenNow replaced with live parseHoursText() + new Date(). NULL hours pass through. 21/21 tests green. |
 | Batch transition hang (16s) | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection when 0 cards returned. 16s safety net preserved. |
 | Prefetch key alignment | A | 2026-03-22 | Commit 28be9a63 | exactTime added to prefetch key at position 14, matching useDeckCards. |
-| Triple duplicate API calls | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #4 | Unstable array refs in React Query keys cause 2-3x redundant fetches. Planned for Block 6. |
-| 16s batch transition hang | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #5 | Context doesn't detect 0-card exhaustion, waits 16s timeout. Planned for Block 6. |
+| Triple duplicate API calls | B | 2026-03-22 | INVESTIGATION_SERVE_TIME_QUALITY.md | Already fixed in current code (arrays serialized, GPS rounded). Prefetch key alignment fixed in Pass 1. One hidden flaw remains (not blocking). |
+| 16s batch transition hang | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection added in Pass 1. 16s safety net preserved. |
 | Unlabeled analytics taps | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #8 | ExpandedCardHeader missing analytics label. Planned for Block 7. |
-| Per-category deck balancing | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #3 | Popular categories dominate deck. SQL returns global top-N, client round-robin starved. Needs SQL window function or split queries. Planned for Block 6. |
-| Curated cards bypass exclusion | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #6 | Two gaps: generation doesn't check category_type_exclusions, serve-time NOT EXISTS passes NULL place_pool_id curated cards. Planned for Block 6. |
+| Per-category deck balancing | A | 2026-03-22 | Commit 7fef7ed0 | See "Category balancing" above. Resolved. |
+| Curated card exclusion enforcement | A | 2026-03-22 | Commit 7fef7ed0. Test report: TEST_REPORT_SERVE_TIME_PASS2.md | Serve-time NOT EXISTS via card_pool_stops + generation-time DB-driven exclusion. Nature slug regression caught and fixed. 26/26 tests green. |
+| Category balancing | A | 2026-03-22 | Commit 7fef7ed0 | ROW_NUMBER partition with per-category cap. Count CTE unaffected. No balancing when no categories selected. |
 | Children's play spaces pass filters | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #7 | Google types kids' venues as amusement_center (same as adult). Name-based heuristic or indoor_playground exclusion needed. Planned for Block 7. |
 | Empty category pools (operational) | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #5 | Flowers, First Meet etc. have zero cards in Raleigh. Needs seeding + coverage monitoring. Planned for Block 7. |
 | Card rendering (all types) | F | — | Unaudited | — |
