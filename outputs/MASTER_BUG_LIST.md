@@ -224,6 +224,7 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P6-12 | Single image missing resizeMode | Forensic C4 | StopImageGallery.tsx:74 | LOW |
 | P6-13 | No past date in preferences picker | Forensic F7 | PreferencesSheet.tsx:685-719 | LOW |
 | P6-14 | Unsafe images pattern in 4 remaining files | Test finding | CalendarTab, BoardSessionCard, BoardViewScreen, SessionViewModal | LOW |
+| P6-15 | Async suggestion select race (rapid double-select) | Test finding | PreferencesSheet.tsx handleSuggestionSelect | LOW |
 
 ---
 

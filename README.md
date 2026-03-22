@@ -221,6 +221,8 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **CTA gating** — "Lock It In" is disabled when required fields are incomplete. "Today" / "This Weekend" require a time slot. "Pick a Date" requires date AND time. "Now" has no time requirement.
 - **Travel mode from card** — travel time and mode icon come from the card response (server-calculated), not from the user's current preference setting. Fallback to current pref for older cached cards.
 - **Solo / collab parity** — both modes send the same time parameters to discover-cards.
+- **Preference save truthfulness (hardened 2026-03-22):** `updateUserPreferences()` returns `false` on failure — never returns `true` when save didn't persist. Background retry still attempts recovery. Must never happen: returning `true` from a failed save.
+- **Custom location persistence (hardened 2026-03-22):** GPS toggle preserves custom location in refs — toggling GPS on/off restores the previous custom location. `custom_location` stores the display name ("London, UK"), never raw coordinates. Google Places suggestions resolve placeId → coordinates via `getPlaceCoordinates()` before accepting. Must never happen: storing coordinate strings as location display name, or accepting a suggestion with null coordinates.
 
 ### Card Photo Resolution
 
