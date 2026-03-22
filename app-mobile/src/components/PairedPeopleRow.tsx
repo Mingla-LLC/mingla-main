@@ -87,9 +87,10 @@ export default function PairedPeopleRow({
         {people.map((person) => {
           const name = person.firstName || person.displayName?.split(" ")[0] || 'Friend';
           const hasBirthday = !!person.birthday;
-          const daysAway = hasBirthday
+          const rawDaysAway = hasBirthday
             ? getDaysUntilBirthday(person.birthday!)
             : null;
+          const daysAway = rawDaysAway != null && !isNaN(rawDaysAway) ? rawDaysAway : null;
 
           return (
             <TouchableOpacity

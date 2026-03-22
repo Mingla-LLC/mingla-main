@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -327,6 +327,7 @@ function CardRow({
   fallbackCards,
   onCardPress,
   onShuffleCategories,
+  seenCardIds,
 }: {
   pairedUserId: string;
   holidayKey: string;
@@ -335,10 +336,11 @@ function CardRow({
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
+  seenCardIds?: React.MutableRefObject<Set<string>>;
 }) {
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
 
-  const { data, isLoading, isFetching } = usePairedCards(
+  const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
     hasLoc ? { pairedUserId, holidayKey, location, sections } : null
   );
 
@@ -348,7 +350,14 @@ function CardRow({
     if (onShuffleCategories) onShuffleCategories();
   }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, onShuffleCategories]);
 
-  const pairedCards = data?.cards ?? [];
+  const allCards = data?.cards ?? [];
+  const pairedCards = useMemo(() => {
+    if (!seenCardIds?.current) return allCards;
+    const filtered = allCards.filter(c => !seenCardIds.current.has(c.id));
+    // Register this section's cards so later sections skip them
+    for (const c of filtered) seenCardIds.current.add(c.id);
+    return filtered;
+  }, [allCards, seenCardIds]);
 
   const sectionFallback = useMemo(() => {
     if (!fallbackCards || fallbackCards.length === 0) return [];
@@ -362,6 +371,19 @@ function CardRow({
         <Text style={styles.loadingText}>
           {hasLoc ? "Loading recommendations..." : "Getting your location..."}
         </Text>
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={styles.errorRow}>
+        <Icon name="cloud-offline-outline" size={s(20)} color="#9ca3af" />
+        <Text style={styles.errorText}>Couldn't load recommendations</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()} activeOpacity={0.7}>
+          <Icon name="refresh-outline" size={s(14)} color="#eb7825" />
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -463,6 +485,7 @@ function HolidaySectionView({
   pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
+  seenCardIds,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -476,6 +499,7 @@ function HolidaySectionView({
   isExpanded: boolean;
   onToggle: () => void;
   onArchive: () => void;
+  seenCardIds?: React.MutableRefObject<Set<string>>;
 }) {
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
   const cd = countdownText(daysAway);
@@ -516,6 +540,7 @@ function HolidaySectionView({
             sections={aiSections} location={location}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
+            seenCardIds={seenCardIds}
           />
         </>
       )}
@@ -528,6 +553,7 @@ function HolidaySectionView({
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
+  seenCardIds,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -536,6 +562,7 @@ function CustomHolidaySectionView({
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   isExpanded: boolean; onToggle: () => void;
   onDelete?: () => void;
+  seenCardIds?: React.MutableRefObject<Set<string>>;
 }) {
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
@@ -585,6 +612,7 @@ function CustomHolidaySectionView({
             sections={ai} location={location}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
+            seenCardIds={seenCardIds}
           />
         </>
       )}
@@ -610,6 +638,14 @@ export default function PersonHolidayView({
   const [bilateralMode, setBilateralMode] = useState<"individual" | "bilateral">("individual");
   const [showSavesList, setShowSavesList] = useState(false);
   const [showVisitsList, setShowVisitsList] = useState(false);
+
+  // Dedup: track card IDs already shown in earlier sections
+  const seenCardIds = useRef<Set<string>>(new Set());
+
+  // Reset dedup set when viewing a different person
+  useEffect(() => {
+    seenCardIds.current = new Set();
+  }, [pairedUserId]);
 
   // Load bilateral mode from AsyncStorage per paired person
   useEffect(() => {
@@ -731,6 +767,8 @@ export default function PersonHolidayView({
       {birthday && (() => {
         const fn = getFirstName(displayName);
         const { month: bm, day: bd } = parseDateOnly(birthday);
+        // Guard: if birthday string is malformed, skip the entire hero section
+        if (isNaN(bm) || isNaN(bd)) return null;
         const da = getDaysUntil(bm, bd);
         const ta = turningAge(birthday);
         const cd = countdownText(da);
@@ -761,6 +799,7 @@ export default function PersonHolidayView({
               pairedUserId={pairedUserId} holidayKey="birthday"
               sections={DEFAULT_PERSON_SECTIONS} location={location}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
+              seenCardIds={seenCardIds}
             />
           </View>
         );
@@ -786,6 +825,7 @@ export default function PersonHolidayView({
               isExpanded={expandedIds.has(`custom_${ch.id}`)}
               onToggle={() => toggle(`custom_${ch.id}`)}
               onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
+              seenCardIds={seenCardIds}
             />
           ))
         ) : (
@@ -818,6 +858,7 @@ export default function PersonHolidayView({
               isExpanded={expandedIds.has(holiday.id)}
               onToggle={() => toggle(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}
+              seenCardIds={seenCardIds}
             />
           ))}
 
@@ -927,6 +968,10 @@ const styles = StyleSheet.create({
   // ── Loading ──────────────────────────────────────────
   loadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: s(24), gap: s(12) },
   loadingText: { fontSize: s(14), color: "#6b7280" },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: vs(16), paddingHorizontal: s(16), gap: s(8) },
+  errorText: { fontSize: s(13), color: "#9ca3af" },
+  retryButton: { flexDirection: "row", alignItems: "center", gap: s(4), paddingHorizontal: s(12), paddingVertical: vs(6), borderRadius: s(8), backgroundColor: "#fff7ed" },
+  retryText: { fontSize: s(13), fontWeight: "600", color: "#eb7825" },
 
   // ── Cards scroll ─────────────────────────────────────
   cardsScroll: { paddingHorizontal: s(12), paddingVertical: s(8), paddingBottom: s(16), gap: s(10) },
