@@ -85,10 +85,16 @@
 
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
-| Push delivery (OneSignal) | F | — | Unaudited | external_id model |
+| Push delivery (OneSignal) | B | 2026-03-21 | Investigation: INVESTIGATION_FULL_NOTIFICATION_SYSTEM.md | OneSignal integration verified: registration, external_id, permission flow all correct. Sound uses OS defaults (acceptable for launch). |
+| Pair accepted notification | A | 2026-03-21 | Commit 376cd237. Test report: TEST_REPORT_NOTIFICATION_PASS1.md | New edge function, both accept paths wired, fire-and-forget. 23/23 tests green. |
+| Pair activity preference enforcement | A | 2026-03-21 | Commit 376cd237 | paired_user_saved_card/visited now respect friend_requests toggle. |
+| Dead type cleanup | A | 2026-03-21 | Commit 376cd237 | 6 dead types removed from dispatch, icons, actions, routing, case handlers. |
 | In-app notifications | F | — | Unaudited | — |
 | Deep link from notification | F | — | Unaudited | — |
 | Notification for deleted content | F | — | Unaudited | Cross-cutting concern |
+| iOS app badge | F | — | Planned for Block 3 Pass 2 | Infrastructure exists, not wired |
+| Session member left notification | F | — | Planned for Block 3 Pass 2 | Function exists, zero callers |
+| Holiday reminders | F | — | Planned for Block 3 Pass 2 | New feature, needs edge function + cron |
 | Email notifications | F | — | Unaudited | — |
 
 ### 7. Saved Experiences / Boards

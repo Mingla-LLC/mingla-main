@@ -195,7 +195,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Card-Based Swipe Interface** — swipe right to save, left to skip, up to expand. Curated multi-stop itinerary experiences interleaved with single-place cards. Pool-first serving from card_pool table.
 - **Collaboration Sessions** — tier-gated real-time collaboration with synchronized deck generation, voting, RSVP, lock-in, calendar sync, and chat.
 - **Real-Time Messaging** — dual-channel delivery, deduplication, optimistic messages, push notifications.
-- **Notifications System V2** — 30+ notification types, unified dispatch, preference enforcement, quiet hours, deep linking.
+- **Notifications System V2 (hardened 2026-03-21)** — unified dispatch via `notify-dispatch` (preferences, quiet hours, idempotency, push via OneSignal, in-app via Realtime). Pair request accepted notification now dispatched (was silently missing). Pair activity types (`paired_user_saved_card`, `paired_user_visited`) now respect `friend_requests` preference toggle. 6 dead notification types removed (`welcome`, `person_experiences_ready`, `voice_review_processed`, `friend_joined_mingla`, `link_request_received`, `link_request_accepted`). All new notifications MUST go through `notify-dispatch` — no direct OneSignal calls.
 - **Subscription Tiers** — Free/Pro/Elite with server-side enforcement. 7-day trial, referral bonuses.
 - **Pairing System** — Elite-only 3-tier pairing with multi-dimensional preference learning.
 - **AI Recommendations** — pool-first card serving, per-category queries, impression rotation, haversine travel estimation.
