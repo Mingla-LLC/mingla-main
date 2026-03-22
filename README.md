@@ -205,7 +205,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 
 **Design principle:** Card serving is read-only. Card generation is a separate admin-triggered process. Scoring is a serving concern.
 
-- **discover-cards** — Pool-only card serving. Zero external API calls. Reads `card_pool`, applies 5-factor scoring personalized per user, filters by datetime/budget/price tier, returns cards. If pool is empty, returns `{ cards: [], hasMore: false }` HTTP 200 — not an error.
+- **discover-cards (hardened 2026-03-22)** — Pool-only card serving. Zero external API calls. Reads `card_pool`, applies 5-factor scoring personalized per user, filters by datetime/budget/price tier, returns cards. If pool is empty, returns `{ cards: [], hasMore: false }` HTTP 200 — not an error. **"Now" mode uses live opening hours** — computes open/closed from stored `openingHours` via `parseHoursText()` + `new Date()`. Cards without opening hours data pass through (included by default). Must never happen: filtering by stale `isOpenNow` boolean.
 - **generate-single-cards** — Admin-triggered batch generator. Reads `place_pool`, writes single cards to `card_pool` with photos from `stored_photo_urls`. Skips places without downloaded photos. Dedup by `google_place_id`. Supports `dryRun` for safe testing.
 - **generate-curated-experiences** — Admin-triggered. One generic `generateCardsForType()` reads `place_pool` exclusively (zero Google calls) and builds multi-stop itinerary cards with OpenAI enrichment. All stop categories come from `_shared/seedingCategories.ts`.
 - **Scoring stays at serve time.** Generators write raw card data (no `matchScore`, no `scoringFactors`). `discover-cards` applies scoring per request based on user preferences.

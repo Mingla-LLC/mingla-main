@@ -60,7 +60,9 @@
 | Curated travel time per user mode | F | — | User report | Travel time between stops should use user's chosen mode, not fixed. Planned for Block 8. |
 | Unsplash fallback photos (operational) | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #1 | card_pool image_url still NULL for many cards. Need diagnostic: are place photos downloaded? If not, run backfill-place-photos then regenerate. Planned for Block 7. |
 | Broken icons (ICON_MAP) | A | 2026-03-22 | Commit 88f2d43f | 11 missing entries added to Icon.tsx ICON_MAP. Blank icons on pills + preferences fixed. |
-| "Now" filter uses stale isOpenNow | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #2 + Log Bug #3 | discover-cards "now" path causes 15s timeout. Stale boolean + pool scarcity. Planned for Block 6. |
+| "Now" filter live opening hours | A | 2026-03-22 | Commit 28be9a63. Test report: TEST_REPORT_SERVE_TIME_PASS1.md | Stale isOpenNow replaced with live parseHoursText() + new Date(). NULL hours pass through. 21/21 tests green. |
+| Batch transition hang (16s) | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection when 0 cards returned. 16s safety net preserved. |
+| Prefetch key alignment | A | 2026-03-22 | Commit 28be9a63 | exactTime added to prefetch key at position 14, matching useDeckCards. |
 | Triple duplicate API calls | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #4 | Unstable array refs in React Query keys cause 2-3x redundant fetches. Planned for Block 6. |
 | 16s batch transition hang | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #5 | Context doesn't detect 0-card exhaustion, waits 16s timeout. Planned for Block 6. |
 | Unlabeled analytics taps | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #8 | ExpandedCardHeader missing analytics label. Planned for Block 7. |
