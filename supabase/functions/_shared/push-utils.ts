@@ -54,10 +54,9 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     headings: { en: payload.title },
     contents: { en: payload.body },
     data: payload.data ?? {},
-    // Android notification icons — using OneSignal defaults.
-    // small_icon appears in status bar (must be monochrome per Android guidelines).
-    // large_icon removed — Android uses app icon by default, which is visible.
-    small_icon: "ic_stat_onesignal_default",
+    // Android notification icons removed — using system defaults.
+    // To customize: add drawable resources to the Android project and reference by name.
+    // small_icon must be monochrome white+transparent per Android guidelines.
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
     }),
