@@ -67,6 +67,20 @@
 | 16s batch transition hang | A | 2026-03-22 | Commit 28be9a63 | Immediate exhaustion detection added in Pass 1. 16s safety net preserved. |
 | ActionButtons analytics | A | 2026-03-22 | Commit dba7b3f0 | 9 buttons tracked with TrackedTouchableOpacity. |
 | Expanded card travel mode icon | A | 2026-03-22 | Commit dba7b3f0 | Uses card.travelMode with effectiveTravelMode fallback. |
+| Deck hardening: coordinates replacing text | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #10 | PreferencesSheet loads custom_location (coords) instead of location (display name). |
+| Deck hardening: currency changes with GPS | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #3/#4 | Locale re-derived from GPS instead of locked from onboarding. |
+| Deck hardening: priceLevel enum on paired cards | F | — | INVESTIGATION_DECK_AND_DISCOVER.md (new) | PersonHolidayView maps priceRange={c.priceLevel} — shows Google enum string. |
+| Deck hardening: curated no Schedule button | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #8 | ActionButtons inside {!isCuratedCard} block. |
+| Deck hardening: paired view repeated experiences | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #5 | No cross-section dedup in CardRow sections. |
+| Deck hardening: policies open phone browser | F | — | User report | Should always use in-app browser with back button. |
+| Deck hardening: schedule picker behind modal | F | — | User report | DateTimePicker renders behind schedule modal on saved page. |
+| Deck hardening: no schedule confirmation | F | — | User report | Schedules abruptly from expanded card, no confirmation. |
+| Deck hardening: can't use current date to schedule | F | — | User report | Shows Cancel not Done for already-selected date. |
+| Deck hardening: slug on saved page | F | — | User report | Shows fine_dining instead of Fine Dining. |
+| Deck hardening: curated/category round-robin broken | F | — | User report | Curated overwhelms or category cards don't appear. |
+| Schools in cards | F | — | User report | Sport school in Creative & Arts. Need global type + keyword exclusion. |
+| Flowers category too broad | F | — | User report | Surfaces department stores, not just florists. |
+| Curated AI stop descriptions missing | F | — | User report | Stops should explain rationale. Picnic dates returns zero cards. |
 | Push delivery via OneSignal | A | 2026-03-22 | Commits 163ce5f1, 469b0f11. Test report: TEST_REPORT_PUSH_DELIVERY_FIX.md | sendPush() detects empty id + parse errors. Root cause: android_channel_id not configured in OneSignal → 400 error killing ALL platforms. Disabled channel IDs. Legacy API key updated to Rich API Key. Push confirmed working on both iOS and Android. |
 | Missing icon: paper-plane-outline | A | 2026-03-22 | Commit ba2a37be | Added to ICON_MAP → Send. |
 | Per-category deck balancing | A | 2026-03-22 | Commit 7fef7ed0 | See "Category balancing" above. Resolved. |
