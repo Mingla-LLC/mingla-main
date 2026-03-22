@@ -59,7 +59,7 @@
 | Curated generation proximity logic | F | — | User report | Tiered proximity (3km/5km/fallback) should be simplified to nearest place. Planned for Block 8. |
 | Curated travel time per user mode | F | — | User report | Travel time between stops should use user's chosen mode, not fixed. Planned for Block 8. |
 | Unsplash fallback photos (operational) | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #1 | card_pool image_url still NULL for many cards. Need diagnostic: are place photos downloaded? If not, run backfill-place-photos then regenerate. Planned for Block 7. |
-| Broken icons (10 missing ICON_MAP entries) | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #2 | 10 icon names used in code but missing from Icon.tsx ICON_MAP. Quick standalone fix. |
+| Broken icons (ICON_MAP) | A | 2026-03-22 | Commit 88f2d43f | 11 missing entries added to Icon.tsx ICON_MAP. Blank icons on pills + preferences fixed. |
 | "Now" filter uses stale isOpenNow | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #2 + Log Bug #3 | discover-cards "now" path causes 15s timeout. Stale boolean + pool scarcity. Planned for Block 6. |
 | Triple duplicate API calls | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #4 | Unstable array refs in React Query keys cause 2-3x redundant fetches. Planned for Block 6. |
 | 16s batch transition hang | F | — | INVESTIGATION_LOG_BUGS_MARCH_22.md Bug #5 | Context doesn't detect 0-card exhaustion, waits 16s timeout. Planned for Block 6. |
