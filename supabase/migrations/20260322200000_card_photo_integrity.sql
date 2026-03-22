@@ -81,6 +81,10 @@ WHERE card_type = 'single'
   ));
 
 -- ── Op 4a: Update admin_country_overview to include card_image_pct ───────────
+-- Must DROP first because we're adding a new OUT parameter (card_image_pct),
+-- which changes the return type. PostgreSQL forbids that with CREATE OR REPLACE.
+
+DROP FUNCTION IF EXISTS public.admin_country_overview();
 
 CREATE OR REPLACE FUNCTION public.admin_country_overview()
 RETURNS TABLE (
@@ -147,6 +151,9 @@ END;
 $$;
 
 -- ── Op 4b: Update admin_country_city_overview to include card_image_pct ──────
+-- Must DROP first — same reason as Op 4a.
+
+DROP FUNCTION IF EXISTS public.admin_country_city_overview(TEXT);
 
 CREATE OR REPLACE FUNCTION public.admin_country_city_overview(p_country TEXT)
 RETURNS TABLE (
