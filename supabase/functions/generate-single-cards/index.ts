@@ -150,7 +150,7 @@ serve(async (req: Request) => {
         // ── Query place_pool for this category ───────────────────────
         const { data: places, error: queryError } = await supabaseAdmin
           .from('place_pool')
-          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country')
+          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes')
           .eq('is_active', true)
           .gte('lat', location.lat - latDelta)
           .lte('lat', location.lat + latDelta)
@@ -241,6 +241,7 @@ serve(async (req: Request) => {
               cityId: place.city_id,
               city: place.city,
               country: place.country,
+              utcOffsetMinutes: place.utc_offset_minutes,
             });
 
             if (cardId) {

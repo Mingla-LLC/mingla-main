@@ -365,7 +365,7 @@ async function queryPlacePool(
 
   const { data, error } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country')
+    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes')
     .eq('is_active', true)
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
@@ -1246,6 +1246,7 @@ serve(async (req) => {
                 city_id: stopCityId,
                 city: mainStops[0]?.city || null,
                 country: mainStops[0]?.country || null,
+                utc_offset_minutes: mainStops[0]?.utc_offset_minutes ?? null,
               },
               stopPlacePoolIds,
               stopGooglePlaceIds,

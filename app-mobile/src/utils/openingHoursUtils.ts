@@ -2,7 +2,12 @@
  * openingHoursUtils.ts
  *
  * Parses weekday_text strings from Google Places API and computes
- * whether a place is currently open based on the user's local time.
+ * whether a place is currently open.
+ *
+ * When `utcOffsetMinutes` is provided (from Google Places API), the
+ * check uses the venue's actual local time. When absent (legacy cards),
+ * falls back to device local time — correct when user and venue share
+ * a timezone (the common case for Mingla's location-based experience).
  *
  * The stale `open_now` / `isOpenNow` field from Google is completely
  * ignored — this utility is the single source of truth for open/closed.
@@ -37,11 +42,27 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  *
  * @returns true (open), false (closed), or null (cannot determine)
  */
-export function isPlaceOpenNow(weekdayText: string[] | undefined | null): boolean | null {
+export function isPlaceOpenNow(
+  weekdayText: string[] | undefined | null,
+  utcOffsetMinutes?: number | null,
+): boolean | null {
   if (!weekdayText || weekdayText.length === 0) return null;
 
-  const now = new Date();
-  const todayName = DAY_NAMES[now.getDay()];
+  // When venue timezone offset is known, compute the venue's current local
+  // time from UTC. Otherwise fall back to device local time.
+  let now: Date;
+  if (utcOffsetMinutes != null) {
+    const utcMs = Date.now();
+    const venueMs = utcMs + utcOffsetMinutes * 60_000;
+    now = new Date(venueMs);
+    // Use UTC methods since we manually shifted to venue time
+  } else {
+    now = new Date();
+  }
+
+  const todayName = utcOffsetMinutes != null
+    ? DAY_NAMES[now.getUTCDay()]
+    : DAY_NAMES[now.getDay()];
 
   // Find today's line (case-insensitive match on the day prefix before the colon)
   const todayLine = weekdayText.find((line) => {
@@ -64,7 +85,9 @@ export function isPlaceOpenNow(weekdayText: string[] | undefined | null): boolea
 
   // Split by ", " for multiple ranges (e.g. "11:00 AM – 2:00 PM, 5:00 PM – 10:00 PM")
   const ranges = hoursPortion.split(/,\s*/);
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = utcOffsetMinutes != null
+    ? now.getUTCHours() * 60 + now.getUTCMinutes()
+    : now.getHours() * 60 + now.getMinutes();
 
   let allRangesFailedToParse = true;
 

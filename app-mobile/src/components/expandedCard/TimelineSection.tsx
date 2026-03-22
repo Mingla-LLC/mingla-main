@@ -144,7 +144,7 @@ export default function TimelineSection({
     const lat = location.lat;
     const lng = location.lng;
 
-    if (lat && lng) {
+    if (lat != null && lng != null) {
       // Open in maps with coordinates
       const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
       Linking.openURL(url).catch((err) =>

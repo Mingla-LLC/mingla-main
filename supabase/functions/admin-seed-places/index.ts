@@ -34,6 +34,7 @@ const FIELD_MASK = [
   "places.userRatingCount",
   "places.priceLevel",
   "places.regularOpeningHours",
+  "places.utcOffsetMinutes",
   "places.photos",
   "places.websiteUri",
   "places.businessStatus",
@@ -186,6 +187,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     seeding_category: seedingCategory,
     country: country,
     city: city,
+    utc_offset_minutes: (gPlace.utcOffsetMinutes as number) ?? null,
   };
 }
 

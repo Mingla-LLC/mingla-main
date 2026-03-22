@@ -25,6 +25,7 @@ import { toastManager } from "../ui/Toast";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
+import { extractWeekdayText } from "../../utils/openingHoursUtils";
 
 
 interface ActionButtonsProps {
@@ -98,41 +99,11 @@ export default function ActionButtons({
     );
   }, [calendarEntries, card.id]);
 
-  // Normalize and parse opening hours for display
+  // Normalize opening hours for display — uses the same canonical parser
+  // as useIsPlaceOpen so both hours list and Open/Closed badge always agree.
   const parsedOpeningHours = useMemo(() => {
-    let raw: any = card.openingHours;
-    if (!raw) return null;
-
-    // Unwrap strings (may be double-JSON-stringified)
-    if (typeof raw === "string") {
-      const trimmed = raw.trim();
-      if (trimmed === "" || trimmed === '""') return null;
-      let attempts = 0;
-      while (typeof raw === "string" && attempts < 3) {
-        try { raw = JSON.parse(raw); attempts++; } catch { break; }
-      }
-    }
-
-    // Object with weekday_text
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      if (raw.weekday_text && Array.isArray(raw.weekday_text) && raw.weekday_text.length > 0) {
-        return { lines: raw.weekday_text as string[], openNow: raw.open_now as boolean | undefined };
-      }
-      return null;
-    }
-
-    // Array of strings
-    if (Array.isArray(raw) && raw.length > 0) {
-      return { lines: raw as string[], openNow: undefined };
-    }
-
-    // Plain string
-    if (typeof raw === "string" && raw.trim().length > 0) {
-      const lines = raw.split(/\n|;/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-      return lines.length > 0 ? { lines, openNow: undefined } : null;
-    }
-
-    return null;
+    const lines = extractWeekdayText(card.openingHours);
+    return lines ? { lines } : null;
   }, [card.openingHours]);
 
   // Live open/closed status computed from weekday_text against local clock

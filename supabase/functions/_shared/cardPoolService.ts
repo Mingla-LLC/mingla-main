@@ -356,6 +356,7 @@ export async function insertCardToPool(
     // Callers must pass these from place_pool data.
     city?: string | null;
     country?: string | null;
+    utcOffsetMinutes?: number | null;
   }
 ): Promise<string | null> {
   // CRIT-001: Curated cards with no stops are invalid — reject before insert
@@ -389,6 +390,7 @@ export async function insertCardToPool(
     city_id: cardData.cityId || null,
     city: cardData.city || null,
     country: cardData.country || null,
+    utc_offset_minutes: cardData.utcOffsetMinutes ?? null,
     price_tier: cardData.priceTier ?? googleLevelToTierSlug(cardData.priceLevel),
     popularity_score: popularityScore,
     is_active: true,
