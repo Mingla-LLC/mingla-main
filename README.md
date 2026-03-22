@@ -223,6 +223,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Solo / collab parity** — both modes send the same time parameters to discover-cards.
 - **Preference save truthfulness (hardened 2026-03-22):** `updateUserPreferences()` returns `false` on failure — never returns `true` when save didn't persist. Background retry still attempts recovery. Must never happen: returning `true` from a failed save.
 - **Custom location persistence (hardened 2026-03-22):** GPS toggle preserves custom location in refs — toggling GPS on/off restores the previous custom location. `custom_location` stores the display name ("London, UK"), never raw coordinates. Google Places suggestions resolve placeId → coordinates via `getPlaceCoordinates()` before accepting. Must never happen: storing coordinate strings as location display name, or accepting a suggestion with null coordinates.
+- **Currency + measurement locked from onboarding (hardened 2026-03-22):** Currency and measurement system are set during onboarding and never re-derived from GPS, device locale, or location changes. PreferencesSheet must never call `detectLocaleFromCoordinates`. Must never happen: currency changing when user browses a different city.
 
 ### Card Photo Resolution
 
