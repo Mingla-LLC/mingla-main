@@ -226,14 +226,36 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 
 ---
 
-## PASS 7 — Realtime + Freshness (Cross-Cutting)
+## PASS 7 — Realtime + Freshness (Full App Audit)
 
-| ID | Bug | Source | File | Effort |
-|----|-----|--------|------|--------|
-| P7-01 | App goes stale after idle — no foreground refresh | User report | React Query config, useForegroundRefresh | MED |
-| P7-02 | Pair request sender not updated when accepted | User report | usePairings, Realtime subscriptions | MED |
-| P7-03 | No realtime subscriptions on key data (pairings, notifications, saved cards) | User report | hooks, Supabase Realtime | HIGH |
-| P7-04 | Must shake/reload to see changes | User report | Cache invalidation, staleTime config | MED |
+> This pass requires a deep investigation before bugs can be itemized.
+> Every data flow in the app must be audited for staleness, missing realtime,
+> and missing foreground refresh. The bugs below are known — the investigation
+> will find more.
+
+| ID | Bug | Source | Scope | Effort |
+|----|-----|--------|-------|--------|
+| P7-01 | App goes stale after idle — no foreground refresh | User report | App-wide | TBD |
+| P7-02 | Pair request sender not updated when accepted | User report | Pairings | TBD |
+| P7-03 | No realtime subscriptions on key data changes | User report | App-wide | TBD |
+| P7-04 | Must shake/reload to see changes | User report | App-wide | TBD |
+
+**Scope of investigation (every data flow):**
+- Notifications (new notification arrives — does badge/list update?)
+- Friend requests (sent, accepted, declined — does other user see immediately?)
+- Pair requests (sent, accepted, declined — does other user see immediately?)
+- Collaboration sessions (invite, join, leave, vote — realtime for all members?)
+- Chat/DMs (new message — already has realtime? verify)
+- Saved cards (save/unsave from another device — syncs?)
+- Calendar entries (schedule/remove — syncs?)
+- Profile changes (name, avatar — reflected in friend lists, paired view?)
+- Card pool changes (admin generates new cards — do users get them on next fetch?)
+- Preference changes (change preferences — deck refreshes immediately?)
+- Subscription tier changes (upgrade/downgrade — features gate immediately?)
+- Foreground resume (app backgrounded 30s, 5min, 1hr — what refreshes?)
+- React Query staleTime audit (which queries have staleTime too long?)
+- Supabase Realtime subscription audit (which tables have listeners, which don't?)
+- Cache invalidation audit (after every mutation, are the right queries invalidated?)
 
 ---
 
