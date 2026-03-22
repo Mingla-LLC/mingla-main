@@ -23,6 +23,7 @@ interface PushPayload {
 interface OneSignalResponse {
   id?: string;
   errors?: string[] | Record<string, string[]>;
+  external_id?: string;
 }
 
 /**
@@ -32,7 +33,11 @@ interface OneSignalResponse {
  * on the mobile client. OneSignal resolves the external_id to the correct
  * device(s) and delivers via FCM (Android) or APNs (iOS) automatically.
  *
- * Returns true if the push was accepted by OneSignal, false otherwise.
+ * Returns true ONLY if OneSignal returned a valid notification ID with no errors.
+ * Returns false for: missing credentials, network errors, HTTP errors,
+ * unsubscribed targets, empty notification ID, or unparseable responses.
+ *
+ * Every call produces exactly one log line with the outcome.
  */
 export async function sendPush(payload: PushPayload): Promise<boolean> {
   if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
@@ -89,30 +94,59 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
       clearTimeout(timeoutId);
     }
   } catch (networkErr) {
-    console.warn("[push-utils] Network error sending push:", networkErr);
+    const errMsg = networkErr instanceof Error ? networkErr.message : String(networkErr);
+    console.error(
+      "[push-utils] ✗ Push network error:",
+      { user: payload.targetUserId, error: errMsg }
+    );
     return false;
   }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "unknown");
-    console.warn("[push-utils] OneSignal returned HTTP", response.status, errorText);
+    console.error(
+      "[push-utils] ✗ Push HTTP error:",
+      { status: response.status, user: payload.targetUserId, body: errorText.slice(0, 500) }
+    );
     return false;
   }
 
+  // Parse OneSignal response — must succeed for us to trust the result
   let body: OneSignalResponse;
   try {
     body = await response.json();
   } catch {
-    return true;
-  }
-
-  if (body.errors) {
-    console.warn("[push-utils] OneSignal errors:", JSON.stringify(body.errors));
-    // "All included players are not subscribed" means the user hasn't registered
-    // a device yet. This is not a bug — they just haven't opened the app.
+    // Body already consumed by .json() — cannot call .text() here
+    console.error(
+      "[push-utils] ✗ Push response not JSON:",
+      { user: payload.targetUserId, note: "200 OK but body was not valid JSON" }
+    );
     return false;
   }
 
+  // Check for errors first — OneSignal returns 200 even when all targets are unsubscribed
+  if (body.errors) {
+    console.warn(
+      "[push-utils] ✗ Push rejected:",
+      { user: payload.targetUserId, errors: JSON.stringify(body.errors) }
+    );
+    return false;
+  }
+
+  // Empty id means notification was not created (per OneSignal docs)
+  if (!body.id) {
+    console.warn(
+      "[push-utils] ✗ Push failed: empty notification ID",
+      { user: payload.targetUserId, response: JSON.stringify(body) }
+    );
+    return false;
+  }
+
+  // Success — OneSignal accepted the notification with a valid ID
+  console.log(
+    "[push-utils] ✓ Push sent:",
+    { id: body.id, user: payload.targetUserId }
+  );
   return true;
 }
 
