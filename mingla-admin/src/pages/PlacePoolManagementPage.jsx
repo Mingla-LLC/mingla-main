@@ -92,25 +92,44 @@ function pctColor(pct) {
 
 // ── City Selector ────────────────────────────────────────────────────────────
 
-function CitySelector({ cities, selectedCity, onSelect, onAddCity }) {
+function CitySelector({ cities, selectedCity, onSelect, onAddCity, disabled }) {
+  // cities may include both registered (have id from seeding_cities) and unregistered (synthetic id)
+  const registered = cities.filter((c) => !c._unregistered);
+  const unregistered = cities.filter((c) => c._unregistered);
+
   return (
     <div className="flex items-center gap-3 mb-4">
       <select
         className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-        value={selectedCity?.id || ""}
+        value={selectedCity?.id || selectedCity?._key || ""}
+        disabled={disabled}
         onChange={(e) => {
-          const city = cities.find((c) => c.id === e.target.value);
+          if (!onSelect) return;
+          const city = cities.find((c) => (c.id || c._key) === e.target.value);
           onSelect(city || null);
         }}
       >
         <option value="">All Cities</option>
-        {cities.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}, {c.country} — {c.status}
-          </option>
-        ))}
+        {registered.length > 0 && (
+          <optgroup label="Registered Cities">
+            {registered.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}, {c.country} — {c.status}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {unregistered.length > 0 && (
+          <optgroup label="Unregistered (in pool, needs setup)">
+            {unregistered.map((c) => (
+              <option key={c._key} value={c._key}>
+                {c.name}, {c.country} — {c.placeCount} places, no tiles
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
-      <Button icon={Plus} size="sm" onClick={onAddCity}>Add City</Button>
+      <Button icon={Plus} size="sm" onClick={onAddCity} disabled={disabled}>Add City</Button>
     </div>
   );
 }
@@ -269,8 +288,10 @@ function AddCityModal({ open, onClose, onSave }) {
 
 // ── Tab 1: Seed & Import ─────────────────────────────────────────────────────
 
-function SeedTab({ city, tiles, onRefresh }) {
+function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES));
   const [preview, setPreview] = useState(null);
   const [seeding, setSeeding] = useState(false);
@@ -279,6 +300,20 @@ function SeedTab({ city, tiles, onRefresh }) {
   const [adHocQuery, setAdHocQuery] = useState("");
   const [adHocResults, setAdHocResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [coverage, setCoverage] = useState(null);
+  const [seedingStatus, setSeedingStatus] = useState(null);
+  const [liveProgress, setLiveProgress] = useState({});
+
+  // Fetch coverage when city changes
+  useEffect(() => {
+    if (!city) { setCoverage(null); return; }
+    if (seeding) return;
+    let cancelled = false;
+    supabase.functions.invoke("admin-seed-places", {
+      body: { action: "coverage_check", cityId: city.id },
+    }).then(({ data }) => { if (!cancelled && data) setCoverage(data); });
+    return () => { cancelled = true; };
+  }, [city]);
 
   const toggleCat = (id) => {
     setSelectedCats((prev) => {
@@ -288,9 +323,15 @@ function SeedTab({ city, tiles, onRefresh }) {
     });
   };
 
+  const selectOnlyGaps = () => {
+    if (!coverage?.coverage) return;
+    const gaps = new Set(coverage.coverage.filter((c) => c.hasGap).map((c) => c.categoryId));
+    setSelectedCats(gaps.size > 0 ? gaps : new Set(ALL_CATEGORIES));
+  };
+
   // Preview cost
   useEffect(() => {
-    if (!city) return;
+    if (!city || seeding) return;
     const cats = Array.from(selectedCats);
     if (cats.length === 0) { setPreview(null); return; }
     let cancelled = false;
@@ -304,27 +345,86 @@ function SeedTab({ city, tiles, onRefresh }) {
   }, [city, selectedCats]);
 
   const startSeeding = async () => {
-    if (!city) return;
+    if (!city || seeding) return;
+    const cats = Array.from(selectedCats);
+    if (cats.length === 0) return;
+
     setSeeding(true);
+    onSeedingChange?.(true);
     setProgress(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
-        body: {
-          action: "seed",
-          cityId: city.id,
-          categories: Array.from(selectedCats),
-          acknowledgeHardCap: preview?.exceedsHardCap || false,
-        },
-      });
-      if (error) throw new Error(error.message || "Seeding failed");
-      setProgress(data);
-      addToast({ variant: "success", title: "Seeding complete", description: `${data?.summary?.totalNewInserted || 0} new places inserted` });
-      onRefresh();
-    } catch (err) {
-      addToast({ variant: "error", title: "Seeding failed", description: err.message });
-    } finally {
-      setSeeding(false);
+    setLiveProgress({});
+    setSeedingStatus("Starting...");
+
+    const results = {};
+    const totals = {
+      totalApiCalls: 0,
+      totalPlacesReturned: 0,
+      totalNewInserted: 0,
+      totalDuplicateSkipped: 0,
+      totalRejected: { noPhotos: 0, closed: 0, excludedType: 0 },
+      estimatedCostUsd: 0,
+    };
+
+    for (let i = 0; i < cats.length; i++) {
+      const catId = cats[i];
+      setSeedingStatus(`Seeding ${CATEGORY_LABELS[catId]} (${i + 1}/${cats.length})...`);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+          body: {
+            action: "seed",
+            cityId: city.id,
+            categories: [catId],
+            acknowledgeHardCap: true,
+          },
+        });
+
+        if (error) {
+          results[catId] = { error: error.message || "Edge function error" };
+        } else if (data?.perCategory?.[catId]) {
+          const catResult = data.perCategory[catId];
+          results[catId] = catResult;
+          totals.totalApiCalls += catResult.apiCalls || 0;
+          totals.totalPlacesReturned += catResult.placesReturned || 0;
+          totals.totalNewInserted += catResult.newInserted || 0;
+          totals.totalDuplicateSkipped += catResult.duplicateSkipped || 0;
+          totals.totalRejected.noPhotos += catResult.rejected?.noPhotos || 0;
+          totals.totalRejected.closed += catResult.rejected?.closed || 0;
+          totals.totalRejected.excludedType += catResult.rejected?.excludedType || 0;
+          totals.estimatedCostUsd += data.summary?.estimatedCostUsd || 0;
+        } else {
+          results[catId] = { error: "Unexpected response format" };
+        }
+      } catch (err) {
+        results[catId] = { error: err.message || "Network error" };
+      }
+
+      setLiveProgress((prev) => ({ ...prev, [catId]: results[catId] }));
     }
+
+    setProgress({ summary: totals, perCategory: results });
+    setSeedingStatus(null);
+
+    const failedCount = Object.values(results).filter((r) => r.error).length;
+    const variant = failedCount === cats.length ? "error" : failedCount > 0 ? "warning" : "success";
+    const title = failedCount === 0
+      ? "Seeding complete"
+      : failedCount === cats.length
+        ? "Seeding failed"
+        : `Seeding done (${failedCount} failed)`;
+
+    addToast({
+      variant,
+      title,
+      description: `${totals.totalNewInserted} new places across ${cats.length - failedCount} categories`,
+    });
+
+    supabase.functions.invoke("admin-seed-places", {
+      body: { action: "coverage_check", cityId: city.id },
+    }).then(({ data: cov }) => { if (mountedRef.current && cov) setCoverage(cov); });
+    onRefresh();
+    setSeeding(false);
+    onSeedingChange?.(false);
   };
 
   const [adHocCategories, setAdHocCategories] = useState({});
@@ -364,29 +464,63 @@ function SeedTab({ city, tiles, onRefresh }) {
     <div className="space-y-6">
       {/* Tile Summary */}
       <SectionCard title="Tile Grid" subtitle={`${tiles.length} tiles · ${city.tile_radius_m}m radius`}
-        action={<Button size="sm" icon={RefreshCw} variant="secondary" onClick={async () => {
-          await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
-          onRefresh();
-        }}>Regenerate</Button>}>
+        action={<div className="flex gap-2">
+          <Button size="sm" icon={RefreshCw} variant="secondary" onClick={async () => {
+            await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
+            onRefresh();
+          }}>Regenerate</Button>
+          {city.status === "draft" && onDeleteCity && (
+            <Button size="sm" variant="secondary" className="text-[var(--color-error-700)]"
+              onClick={() => { if (confirm(`Delete draft city "${city.name}"? This removes the city and its tiles. Places in the pool are not affected.`)) onDeleteCity(city); }}>
+              Delete Draft
+            </Button>
+          )}
+        </div>}>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Coverage: {city.coverage_radius_km}km radius · Spacing: {Math.round(city.tile_radius_m * 1.4)}m
         </p>
       </SectionCard>
 
-      {/* Category Pills */}
-      <SectionCard title="Categories">
+      {/* Category Pills with Coverage */}
+      <SectionCard title="Categories"
+        subtitle={coverage ? `${coverage.categoriesWithGaps} of 13 categories have gaps (<10 places)` : null}
+        action={coverage?.categoriesWithGaps > 0 && (
+          <Button size="sm" variant="secondary" icon={AlertTriangle} onClick={selectOnlyGaps}>
+            Select Only Gaps
+          </Button>
+        )}>
         <div className="flex flex-wrap gap-2">
-          {ALL_CATEGORIES.map((id) => (
-            <button key={id} onClick={() => toggleCat(id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-                selectedCats.has(id)
-                  ? "text-white border-transparent"
-                  : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
-              }`}
-              style={selectedCats.has(id) ? { backgroundColor: CATEGORY_COLORS[id] } : {}}>
-              {CATEGORY_LABELS[id]}
-            </button>
-          ))}
+          {ALL_CATEGORIES.map((id) => {
+            const catCoverage = coverage?.coverage?.find((c) => c.categoryId === id);
+            const count = catCoverage?.placeCount ?? null;
+            const hasGap = catCoverage?.hasGap;
+            return (
+              <button key={id} onClick={() => !seeding && toggleCat(id)}
+                disabled={seeding}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                  selectedCats.has(id)
+                    ? "text-white border-transparent"
+                    : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
+                }`}
+                style={{
+                  ...(selectedCats.has(id) ? { backgroundColor: CATEGORY_COLORS[id] } : {}),
+                  ...(hasGap && !selectedCats.has(id) ? { borderColor: "#ef4444", borderWidth: 2 } : {}),
+                }}>
+                {CATEGORY_LABELS[id]}
+                {count !== null && (
+                  <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] px-1 py-0 rounded-full text-[10px] font-bold ${
+                    selectedCats.has(id)
+                      ? "bg-white/25 text-white"
+                      : hasGap
+                        ? "bg-[#fef2f2] text-[#ef4444]"
+                        : "bg-[#f0fdf4] text-[#22c55e]"
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </SectionCard>
 
@@ -409,9 +543,44 @@ function SeedTab({ city, tiles, onRefresh }) {
           </div>
           <div className="mt-4">
             <Button variant="primary" icon={Play} loading={seeding} onClick={startSeeding}
-              disabled={selectedCats.size === 0}>
+              disabled={selectedCats.size === 0 || seeding}>
               {preview.exceedsHardCap ? "Acknowledge & Start Seeding" : "Start Seeding"}
             </Button>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Live Seeding Progress */}
+      {seeding && (
+        <SectionCard title="Seeding in Progress">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin h-5 w-5 border-2 border-[var(--color-brand-500)] border-t-transparent rounded-full" />
+              <span className="text-sm font-medium">{seedingStatus || "Preparing..."}</span>
+            </div>
+            {Object.keys(liveProgress).length > 0 && (
+              <div className="space-y-1 mt-2">
+                {Object.entries(liveProgress).map(([catId, result]) => (
+                  <div key={catId} className="flex items-center gap-2 text-sm">
+                    {result.error ? (
+                      <AlertTriangle className="w-4 h-4 text-[#ef4444] shrink-0" />
+                    ) : (
+                      <CheckCircle className="w-4 h-4 text-[#22c55e] shrink-0" />
+                    )}
+                    <span style={{ color: CATEGORY_COLORS[catId] }} className="font-medium w-32 truncate">
+                      {CATEGORY_LABELS[catId]}
+                    </span>
+                    {result.error ? (
+                      <span className="text-[var(--color-error-700)] text-xs">{result.error}</span>
+                    ) : (
+                      <span className="text-xs text-[var(--color-text-secondary)]">
+                        {result.newInserted || 0} new · {result.duplicateSkipped || 0} dupes
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </SectionCard>
       )}
@@ -432,10 +601,16 @@ function SeedTab({ city, tiles, onRefresh }) {
           {Object.entries(progress.perCategory || {}).map(([catId, cat]) => (
             <details key={catId} className="mt-2 text-sm">
               <summary className="cursor-pointer font-medium" style={{ color: CATEGORY_COLORS[catId] }}>
-                {CATEGORY_LABELS[catId] || catId}: {cat.newInserted} new, {cat.duplicateSkipped} dupes
-                {cat.errors?.length > 0 && <Badge variant="error" className="ml-2">{cat.errors.length} errors</Badge>}
+                {CATEGORY_LABELS[catId] || catId}:
+                {cat.error
+                  ? <span className="text-[var(--color-error-700)] ml-1">Failed</span>
+                  : <span className="ml-1">{cat.newInserted} new, {cat.duplicateSkipped} dupes</span>
+                }
+                {!cat.error && cat.errors?.length > 0 && <Badge variant="error" className="ml-2">{cat.errors.length} tile errors</Badge>}
               </summary>
-              {cat.errors?.length > 0 && (
+              {cat.error ? (
+                <div className="ml-4 mt-1 text-xs text-[var(--color-error-700)]">{cat.error}</div>
+              ) : cat.errors?.length > 0 ? (
                 <div className="ml-4 mt-1 space-y-1">
                   {cat.errors.map((e, i) => (
                     <div key={i} className="text-xs text-[var(--color-error-700)]">
@@ -443,7 +618,7 @@ function SeedTab({ city, tiles, onRefresh }) {
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </details>
           ))}
         </SectionCard>
@@ -1028,12 +1203,14 @@ function StatsTab({ city, stats }) {
 
 export function PlacePoolManagementPage({ onTabChange }) {
   const mountedRef = useRef(true);
+  const { addToast } = useToast();
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
   const [activeTab, setActiveTab] = useState("seed");
+  const [seedingActive, setSeedingActive] = useState(false);
   const [cities, setCities] = useState([]);
   const [selectedCity, setSelectedCity] = useState(null);
   const [tiles, setTiles] = useState([]);
@@ -1043,35 +1220,123 @@ export function PlacePoolManagementPage({ onTabChange }) {
   const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [registering, setRegistering] = useState(false);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load cities
+  // Load ALL cities — registered (seeding_cities) + unregistered (place_pool orphans)
   useEffect(() => {
-    supabase.from("seeding_cities").select("*").order("name")
-      .then(({ data }) => { if (mountedRef.current) setCities(data || []); });
+    (async () => {
+      // 1. Registered cities
+      const { data: registered } = await supabase
+        .from("seeding_cities").select("*").order("name");
+
+      // 2. Unregistered: distinct city+country from place_pool where city_id IS NULL
+      const { data: orphanRows } = await supabase
+        .from("place_pool")
+        .select("city, country, lat, lng")
+        .is("city_id", null)
+        .not("city", "is", null)
+        .limit(2000);
+
+      // Deduplicate orphans by city+country, compute avg coordinates
+      const registeredNames = new Set(
+        (registered || []).map((c) => `${c.name}|${c.country}`)
+      );
+      const groups = {};
+      for (const o of (orphanRows || [])) {
+        if (!o.city) continue;
+        const key = `${o.city}|${o.country || ""}`;
+        // Skip if already registered under this name+country
+        if (registeredNames.has(key)) continue;
+        if (!groups[key]) groups[key] = { city: o.city, country: o.country || "Unknown", lats: [], lngs: [], count: 0 };
+        groups[key].lats.push(o.lat);
+        groups[key].lngs.push(o.lng);
+        groups[key].count++;
+      }
+
+      const unregistered = Object.values(groups).map((g) => ({
+        _unregistered: true,
+        _key: `orphan_${g.city}_${g.country}`,
+        name: g.city,
+        country: g.country,
+        center_lat: g.lats.reduce((s, v) => s + v, 0) / g.lats.length,
+        center_lng: g.lngs.reduce((s, v) => s + v, 0) / g.lngs.length,
+        placeCount: g.count,
+      }));
+
+      if (mountedRef.current) {
+        setCities([...(registered || []), ...unregistered]);
+      }
+    })();
   }, [refreshKey]);
 
-  // Load tiles when city selected
+  // Register an unregistered city — insert into seeding_cities, generate tiles, link places
+  const registerCity = async (orphan) => {
+    setRegistering(true);
+    try {
+      const { data: newCity, error: insertErr } = await supabase.from("seeding_cities").insert({
+        google_place_id: `pool_${orphan.name}_${Date.now()}`,
+        name: orphan.name,
+        country: orphan.country || "Unknown",
+        center_lat: orphan.center_lat,
+        center_lng: orphan.center_lng,
+        coverage_radius_km: 10,
+        tile_radius_m: 1500,
+        status: "seeded", // already has places
+      }).select().single();
+      if (insertErr) throw insertErr;
+
+      // Generate tiles
+      await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "generate_tiles", cityId: newCity.id },
+      });
+
+      // Link orphaned places — NULL country needs .is() not .eq() (SQL NULL = NULL is false)
+      let linkQuery = supabase.from("place_pool")
+        .update({ city_id: newCity.id })
+        .is("city_id", null)
+        .eq("city", orphan.name);
+      if (orphan.country && orphan.country !== "Unknown") {
+        linkQuery = linkQuery.eq("country", orphan.country);
+      } else {
+        linkQuery = linkQuery.or("country.is.null,country.eq.Unknown");
+      }
+      const { error: linkErr } = await linkQuery;
+      if (linkErr) throw new Error(`Tiles created but place linking failed: ${linkErr.message}`);
+
+      addToast({ variant: "success", title: `Registered ${orphan.name}`, description: `${orphan.placeCount} places linked, tiles generated` });
+      setSelectedCity(newCity);
+      refresh();
+    } catch (err) {
+      addToast({ variant: "error", title: "Registration failed", description: err.message });
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const isRegistered = selectedCity && !selectedCity._unregistered;
+
+  // Load tiles when registered city selected
   useEffect(() => {
-    if (!selectedCity) { setTiles([]); return; }
+    if (!isRegistered) { setTiles([]); return; }
     supabase.from("seeding_tiles").select("*").eq("city_id", selectedCity.id).order("tile_index")
       .then(({ data }) => { if (mountedRef.current) setTiles(data || []); });
-  }, [selectedCity, refreshKey]);
+  }, [selectedCity, refreshKey, isRegistered]);
 
   // Load places for map
   useEffect(() => {
-    if (!selectedCity) { setPlaces([]); return; }
+    if (!isRegistered) { setPlaces([]); return; }
     supabase.from("place_pool")
       .select("id, name, lat, lng, rating, seeding_category, is_active, stored_photo_urls")
       .eq("city_id", selectedCity.id)
       .limit(2000)
       .then(({ data }) => { if (mountedRef.current) setPlaces(data || []); });
-  }, [selectedCity, refreshKey]);
+  }, [selectedCity, refreshKey, isRegistered]);
 
   // Load stats + seeding ops
   useEffect(() => {
-    if (!selectedCity) { setStats(null); setSpendTotal(0); setSeedingOps([]); return; }
+    if (!isRegistered) { setStats(null); setSpendTotal(0); setSeedingOps([]); return; }
     supabase.rpc("admin_city_place_stats", { p_city_id: selectedCity.id })
       .then(({ data }) => { if (mountedRef.current) setStats(data); });
     supabase.from("seeding_operations").select("*").eq("city_id", selectedCity.id)
@@ -1080,7 +1345,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
         setSeedingOps(data || []);
         setSpendTotal((data || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0));
       });
-  }, [selectedCity, refreshKey]);
+  }, [selectedCity, refreshKey, isRegistered]);
 
   const handleAddCity = (city) => {
     setCities((prev) => [...prev, city]);
@@ -1088,20 +1353,62 @@ export function PlacePoolManagementPage({ onTabChange }) {
     refresh();
   };
 
+  const handleDeleteCity = async (city) => {
+    try {
+      // Cascade: seeding_tiles and seeding_operations have ON DELETE CASCADE
+      const { error } = await supabase.from("seeding_cities").delete().eq("id", city.id);
+      if (error) throw error;
+      // Unlink any places that referenced this city (FK is ON DELETE SET NULL)
+      addToast({ variant: "success", title: `Deleted draft "${city.name}"` });
+      setSelectedCity(null);
+      refresh();
+    } catch (err) {
+      addToast({ variant: "error", title: "Delete failed", description: err.message });
+    }
+  };
+
   return (
     <div className="space-y-4 py-6">
-      <CitySelector cities={cities} selectedCity={selectedCity} onSelect={setSelectedCity} onAddCity={() => setAddCityOpen(true)} />
-      {selectedCity && <CitySummaryBar stats={stats} spendTotal={spendTotal} />}
-      <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <CitySelector cities={cities} selectedCity={selectedCity}
+        onSelect={seedingActive ? undefined : setSelectedCity}
+        onAddCity={seedingActive ? undefined : () => setAddCityOpen(true)}
+        disabled={seedingActive} />
 
-      <div className="mt-4">
-        {activeTab === "seed" && <SeedTab city={selectedCity} tiles={tiles} onRefresh={refresh} />}
-        {activeTab === "map" && <MapTab city={selectedCity} tiles={tiles} places={places} seedingOps={seedingOps} />}
-        {activeTab === "browse" && <BrowseTab city={selectedCity} onRefresh={refresh} />}
-        {activeTab === "photos" && <PhotoTab city={selectedCity} stats={stats} tiles={tiles} />}
-        {activeTab === "stale" && <StaleTab city={selectedCity} />}
-        {activeTab === "stats" && <StatsTab city={selectedCity} stats={stats} />}
-      </div>
+      {/* Unregistered city — show registration panel instead of normal tabs */}
+      {selectedCity?._unregistered && (
+        <SectionCard title={`${selectedCity.name}, ${selectedCity.country}`}
+          subtitle={`${selectedCity.placeCount} places in pool — not yet registered for seeding`}>
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              This city has places in the pool but no tile grid or seeding configuration.
+              Register it to enable augmentation, coverage tracking, and photo management.
+            </p>
+            <div className="text-sm text-[var(--color-text-secondary)]">
+              Center: {selectedCity.center_lat.toFixed(4)}, {selectedCity.center_lng.toFixed(4)} (computed from place average)
+            </div>
+            <Button variant="primary" icon={Plus} loading={registering}
+              onClick={() => registerCity(selectedCity)}>
+              Register &amp; Generate Tiles
+            </Button>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Registered city — normal flow */}
+      {isRegistered && <CitySummaryBar stats={stats} spendTotal={spendTotal} />}
+      {(isRegistered || !selectedCity) && (
+        <>
+          <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={seedingActive ? () => {} : setActiveTab} />
+          <div className="mt-4">
+            {activeTab === "seed" && <SeedTab city={isRegistered ? selectedCity : null} tiles={tiles} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive} />}
+            {activeTab === "map" && <MapTab city={isRegistered ? selectedCity : null} tiles={tiles} places={places} seedingOps={seedingOps} />}
+            {activeTab === "browse" && <BrowseTab city={isRegistered ? selectedCity : null} onRefresh={refresh} />}
+            {activeTab === "photos" && <PhotoTab city={isRegistered ? selectedCity : null} stats={stats} tiles={tiles} />}
+            {activeTab === "stale" && <StaleTab city={isRegistered ? selectedCity : null} />}
+            {activeTab === "stats" && <StatsTab city={isRegistered ? selectedCity : null} stats={stats} />}
+          </div>
+        </>
+      )}
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />
     </div>

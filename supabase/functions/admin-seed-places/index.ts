@@ -10,10 +10,11 @@ import {
 import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
-// Three actions:
-//   1. generate_tiles — compute tile grid from city center + radius
-//   2. preview_cost   — calculate cost estimate, enforce $70 hard cap
-//   3. seed           — execute seeding per tile × category via Nearby Search
+// Four actions:
+//   1. generate_tiles  — compute tile grid from city center + radius
+//   2. preview_cost    — calculate cost estimate, enforce $70 hard cap
+//   3. seed            — execute seeding per tile × category via Nearby Search
+//   4. coverage_check  — per-category place counts for augmentation intelligence
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -325,14 +326,29 @@ async function handleGenerateTiles(body: any, supabase: any) {
 
 // deno-lint-ignore no-explicit-any
 async function handlePreviewCost(body: any, supabase: any) {
-  const { cityId, categories, tileIds } = body;
+  const { cityId, categories, tileIds, skipSeededCategories } = body;
   if (!cityId) throw new Error("cityId is required");
 
   // Resolve categories
-  const categoryIds: string[] =
+  let categoryIds: string[] =
     !categories || categories[0] === "all"
       ? ALL_SEEDING_CATEGORY_IDS
       : categories;
+
+  // If skipSeededCategories, exclude categories that already have completed ops with places
+  if (skipSeededCategories) {
+    const { data: completedOps } = await supabase
+      .from("seeding_operations")
+      .select("seeding_category")
+      .eq("city_id", cityId)
+      .eq("status", "completed")
+      .gt("places_new_inserted", 0);
+
+    const seededCategorySet = new Set(
+      (completedOps || []).map((o: { seeding_category: string }) => o.seeding_category)
+    );
+    categoryIds = categoryIds.filter((id) => !seededCategorySet.has(id));
+  }
 
   // Load tiles
   let tileQuery = supabase
@@ -825,8 +841,16 @@ async function handleSeed(body: any, supabase: any) {
     }
   }
 
-  // Update city status — only "seeded" if at least one place was inserted
-  const newStatus = summaryTotals.totalNewInserted > 0 ? "seeded" : "draft";
+  // Update city status — never downgrade a city that's already seeded or launched
+  const currentStatus = city.status;
+  let newStatus: string;
+  if (currentStatus === "launched") {
+    newStatus = "launched";
+  } else if (currentStatus === "seeded") {
+    newStatus = "seeded";
+  } else {
+    newStatus = summaryTotals.totalNewInserted > 0 ? "seeded" : "draft";
+  }
   await supabase
     .from("seeding_cities")
     .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -841,6 +865,50 @@ async function handleSeed(body: any, supabase: any) {
     },
     perCategory,
   };
+}
+
+// ── Action: coverage_check ──────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleCoverageCheck(body: any, supabase: any) {
+  const { cityId } = body;
+  if (!cityId) throw new Error("cityId is required");
+
+  // Count places per seeding_category for this city
+  // Must override Supabase default 1000-row limit to get accurate counts
+  const { data: rows, error } = await supabase
+    .from("place_pool")
+    .select("seeding_category")
+    .eq("city_id", cityId)
+    .eq("is_active", true)
+    .limit(10000);
+
+  if (error) throw new Error(`Coverage check failed: ${error.message}`);
+
+  // Tally per category
+  const counts: Record<string, number> = {};
+  for (const r of (rows || [])) {
+    const cat = r.seeding_category || "unknown";
+    counts[cat] = (counts[cat] || 0) + 1;
+  }
+
+  // Build coverage report with all 13 categories
+  const coverage = ALL_SEEDING_CATEGORY_IDS.map((catId) => {
+    const config = SEEDING_CATEGORY_MAP[catId];
+    const count = counts[catId] || 0;
+    return {
+      categoryId: catId,
+      label: config?.label ?? catId,
+      appCategory: config?.appCategory ?? "",
+      placeCount: count,
+      hasGap: count < 10,
+    };
+  });
+
+  const totalPlaces = Object.values(counts).reduce((s: number, n: number) => s + n, 0);
+  const categoriesWithGaps = coverage.filter((c) => c.hasGap).length;
+
+  return { cityId, totalPlaces, categoriesWithGaps, coverage };
 }
 
 // ── Main Handler ────────────────────────────────────────────────────────────
@@ -889,6 +957,8 @@ serve(async (req) => {
         return json(await handlePreviewCost(body, supabase));
       case "seed":
         return json(await handleSeed(body, supabase));
+      case "coverage_check":
+        return json(await handleCoverageCheck(body, supabase));
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
     }
