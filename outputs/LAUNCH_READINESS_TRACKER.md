@@ -162,7 +162,7 @@
 
 | Pass | Bugs | Focus | Status |
 |------|------|-------|--------|
-| 1a | 4 | Null safety + crash prevention | PENDING |
+| 1a | 4 | Null safety + crash prevention | **DONE** — commit 184c8873, 14/14 green |
 | 1b | 4 | Silent failures + preferences | PENDING |
 | 1c | 3 | Curated card state (dismiss, schedule, shopping list) | PENDING |
 | 2a | 3 | Currency + pricing + slug display | PENDING |
