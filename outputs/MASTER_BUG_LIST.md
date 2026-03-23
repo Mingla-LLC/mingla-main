@@ -161,6 +161,7 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P4-02 | No schedule confirmation (abrupt) | Deck #9 | ActionButtons scheduling | LOW |
 | P4-03 | Can't use current date to schedule | Deck #10 | DateTimePicker onChange | MED |
 | P4-04 | Schedule handler race condition | Forensic E1 | ActionButtons.tsx:401-413 | LOW |
+| P4-05 | Time picker uses 24hr instead of AM/PM | User report | DateTimePicker instances | LOW |
 
 ---
 
