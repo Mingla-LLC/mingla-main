@@ -3566,11 +3566,11 @@ export default function DiscoverScreen({
                   <TouchableOpacity
                     style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: "#eb7825", borderRadius: 8 }}
                     onPress={async () => {
+                      setNightOutLoading(true);
+                      setNightOutError(null);
+                      setNightOutCards([]);
                       await clearNightOutCache();
                       deviceGpsFetchedRef.current = false;
-                      setNightOutError(null);
-                      setNightOutLoading(true);
-                      setNightOutCards([]);
                       // Re-fetch GPS location
                       try {
                         const loc = await enhancedLocationService.getCurrentLocation();

@@ -148,7 +148,7 @@ const SavedTab = ({
     setIsRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
     setIsRefreshing(false);
-  }, [queryClient]);
+  }, [queryClient, user?.id]);
 
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;

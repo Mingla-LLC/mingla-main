@@ -124,7 +124,7 @@ const CalendarTab = ({
     setIsRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: ["calendarEntries", user?.id] });
     setIsRefreshing(false);
-  }, [queryClient]);
+  }, [queryClient, user?.id]);
 
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;

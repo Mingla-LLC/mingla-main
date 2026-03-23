@@ -2,7 +2,7 @@ import { QueryClient, QueryCache, MutationCache, focusManager, onlineManager } f
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
@@ -39,6 +39,8 @@ onlineManager.setEventListener(setOnline => {
 // authenticated but rejected by every server call.
 let auth401Count = 0;
 let auth401ResetTimer: ReturnType<typeof setTimeout> | null = null;
+let auth401GracePeriod = false;
+let auth401GraceTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Reset the 401 counter. Called by useForegroundRefresh at the start of
@@ -51,6 +53,22 @@ export function resetAuth401Counter(): void {
   if (auth401ResetTimer) { clearTimeout(auth401ResetTimer); auth401ResetTimer = null; }
 }
 
+/**
+ * Enter a grace period during which 401 errors are not counted toward
+ * the forced sign-out threshold. Called BEFORE the debounce in
+ * useForegroundRefresh so that burst 401s from focusManager-triggered
+ * refetches (which fire immediately on resume with an expired JWT)
+ * don't trigger a false sign-out.
+ */
+export function enterAuth401GracePeriod(durationMs: number): void {
+  auth401GracePeriod = true;
+  if (auth401GraceTimer) clearTimeout(auth401GraceTimer);
+  auth401GraceTimer = setTimeout(() => {
+    auth401GracePeriod = false;
+    auth401GraceTimer = null;
+  }, durationMs);
+}
+
 function handlePotentialAuthError(error: Error): void {
   const msg = error.message ?? '';
   const is401 =
@@ -60,6 +78,9 @@ function handlePotentialAuthError(error: Error): void {
     msg.includes('invalid claim: missing sub claim');
 
   if (is401) {
+    // During grace period (resume burst), skip counting — auth refresh is in progress
+    if (auth401GracePeriod) return;
+
     auth401Count++;
     // Reset counter after 30s of no 401s — prevents false positives from
     // a single transient 401 during normal token refresh.
@@ -70,9 +91,14 @@ function handlePotentialAuthError(error: Error): void {
       auth401Count = 0;
       if (auth401ResetTimer) { clearTimeout(auth401ResetTimer); auth401ResetTimer = null; }
       console.warn('[AUTH] 3 consecutive 401s — forcing sign-out');
+
+      // Show message BEFORE sign-out so user knows what happened
+      Alert.alert("Session Expired", "Your session has expired. Please sign in again.");
+
       // Lazy require to avoid circular dependency (queryClient ↔ supabase)
       const { supabase } = require('../services/supabase');
-      supabase.auth.signOut();
+      // Small delay so alert is visible before navigation
+      setTimeout(() => supabase.auth.signOut(), 1000);
     }
   } else {
     // Any non-auth error breaks the consecutive chain

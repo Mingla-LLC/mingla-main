@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
-import { resetAuth401Counter } from '../config/queryClient';
+import { resetAuth401Counter, enterAuth401GracePeriod } from '../config/queryClient';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
 import { saveKeys } from './useSaveQueries';
@@ -98,6 +98,13 @@ export function useForegroundRefresh(
       appStateRef.current = nextState;
 
       if (!wasBackground || !isNowActive) return;
+
+      // Enter grace period BEFORE debounce — focusManager fires refetches
+      // immediately on resume (before the 500ms debounce). With an expired JWT,
+      // those refetches return 401. The grace period prevents these burst 401s
+      // from triggering a false forced sign-out.
+      enterAuth401GracePeriod(3000);
+
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
