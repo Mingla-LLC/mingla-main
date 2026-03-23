@@ -225,6 +225,7 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P6-13 | No past date in preferences picker | Forensic F7 | PreferencesSheet.tsx:685-719 | LOW |
 | P6-14 | Unsafe images pattern in 4 remaining files | Test finding | CalendarTab, BoardSessionCard, BoardViewScreen, SessionViewModal | LOW |
 | P6-15 | Async suggestion select race (rapid double-select) | Test finding | PreferencesSheet.tsx handleSuggestionSelect | LOW |
+| P6-18 | 27 avatar render sites with no onError handler | Investigation finding | Systemic — needs reusable AvatarImage component | MED |
 | P6-16 | SavedTab category filter broken (slugs vs display names) | Spec finding | SavedTab.tsx filter logic | LOW |
 | P6-17 | Account settings: country/currency/measurement manual change | User request | New feature — settings UI | MED |
 
