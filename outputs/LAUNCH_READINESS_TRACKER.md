@@ -174,7 +174,7 @@
 | 4a | 4 | Scheduling — iOS picker, date confirm, 12hr, haptic | **DONE** — commit ae2d17f2, 13/13 green |
 | 4b | 3 | Schools exclusion + flowers florist-only + 5 icons | **DONE** — commit 073da431, 15/15 green |
 | 4c | 3 | AI optional marker + picnic flowers optional + description truncation | **DONE** — commit 08396f14, 15/15 green |
-| 5a | 4 | Saved page + calendar | PENDING |
+| 5a | 2 | Removal toast + calendar dedup (2 deferred: deactivated cards, calendar perm already handled) | **DONE** — commit 322fbdb2, 12/12 green |
 | 5b | 4 | Swipe + animation edge cases | PENDING |
 | 6 | 13 | Polish + optimization | PENDING |
 | 7 | 4+ | Realtime + freshness — FULL APP AUDIT | PENDING — needs deep investigation |
