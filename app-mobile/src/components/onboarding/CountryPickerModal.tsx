@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { COUNTRIES } from '../../constants/countries';
@@ -218,11 +218,13 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
       presentationStyle="fullScreen"
       statusBarTranslucent
     >
-      <CountryPickerContent
-        selectedCode={selectedCode}
-        onSelect={onSelect}
-        onClose={onClose}
-      />
+      <SafeAreaProvider>
+        <CountryPickerContent
+          selectedCode={selectedCode}
+          onSelect={onSelect}
+          onClose={onClose}
+        />
+      </SafeAreaProvider>
     </Modal>
   );
 };
@@ -242,11 +244,13 @@ export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = ({
 }) => {
   return (
     <View style={styles.overlayContainer}>
-      <CountryPickerContent
-        selectedCode={selectedCode}
-        onSelect={onSelect}
-        onClose={onClose}
-      />
+      <SafeAreaProvider>
+        <CountryPickerContent
+          selectedCode={selectedCode}
+          onSelect={onSelect}
+          onClose={onClose}
+        />
+      </SafeAreaProvider>
     </View>
   );
 };
