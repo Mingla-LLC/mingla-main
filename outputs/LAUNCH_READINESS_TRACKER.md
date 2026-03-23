@@ -178,7 +178,7 @@
 | 5b | 1 | Duration NaN guard (3 deferred: swipe limit, batch race, weather) | **DONE** — commit e8c81dc4 |
 | 6 | 7 | Polish — seat map, coord bounds, suggestion race, category filter, safe images (9 deferred/skipped) | **DONE** — commit c7b8c691 |
 | 7 | 2 | Realtime + freshness — mount useSocialRealtime + useForegroundRefresh (were dead code) | **DONE** — commit f3312371 |
-| 8 | 7 | Scheduling + calendar + review flow (slugs, reschedule, hours error, review blank, weekend picker) | PENDING |
+| 8 | 3 | Calendar slugs + reschedule cache + review reset (4 deferred/resolved: data gap, collab ID, review screen, weekend fixed by 4a) | **DONE** — commit 88f94d26 |
 | 9 | 2 | Pairing integrity — unpair RLS failure + silent mutation success + other user not updated | PENDING |
 
 ---
