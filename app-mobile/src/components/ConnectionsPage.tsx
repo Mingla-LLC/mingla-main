@@ -410,40 +410,30 @@ export default function ConnectionsPageRefactored({
   };
 
   // ── Friend request actions ───────────────────────────────
-  const handleAcceptRequest = async (requestId: string) => {
+  const handleAcceptRequest = (requestId: string) => {
     HapticFeedback.medium();
-    try {
-      await acceptFriendRequest(requestId);
-      await loadFriendRequests();
-      await fetchFriends();
-      // Catch up on collaboration invites revealed by the friend acceptance trigger
-      onFriendAccepted?.();
-    } catch (e) {
-      console.error("Error accepting request:", e);
-      Alert.alert("Error", "Failed to accept friend request.");
-    }
+    // Catch up on collaboration invites revealed by the friend acceptance trigger
+    onFriendAccepted?.();
+    // acceptFriendRequest invalidates friendsKeys.all — no explicit refetch needed
+    acceptFriendRequest(requestId).catch((e) => {
+      showMutationError(e, 'accepting friend request', showToast);
+    });
   };
 
-  const handleDeclineRequest = async (requestId: string) => {
+  const handleDeclineRequest = (requestId: string) => {
     HapticFeedback.warning();
-    try {
-      await declineFriendRequest(requestId);
-      await loadFriendRequests();
-    } catch (e) {
-      console.error("Error declining request:", e);
-      Alert.alert("Error", "Failed to decline friend request.");
-    }
+    // declineFriendRequest invalidates friendsKeys.requests — no explicit refetch needed
+    declineFriendRequest(requestId).catch((e) => {
+      showMutationError(e, 'declining friend request', showToast);
+    });
   };
 
   // ── Unblock handler ──────────────────────────────────────
-  const handleUnblock = async (blockedUserId: string) => {
-    try {
-      await unblockFriend(blockedUserId);
-      await fetchBlockedUsers();
-    } catch (e) {
-      console.error("Error unblocking user:", e);
-      Alert.alert("Error", "Failed to unblock user.");
-    }
+  const handleUnblock = (blockedUserId: string) => {
+    // unblockFriend invalidates friendsKeys.blocked — no explicit refetch needed
+    unblockFriend(blockedUserId).catch((e) => {
+      showMutationError(e, 'unblocking user', showToast);
+    });
   };
 
   // ── Friends modal handlers ──────────────────────────────
@@ -490,14 +480,12 @@ export default function ConnectionsPageRefactored({
         {
           text: "Remove",
           style: "destructive",
-          onPress: async () => {
-            try {
-              await removeFriend(friendUserId);
-              HapticFeedback.warning();
-            } catch (e) {
-              console.error("Error removing friend:", e);
-              Alert.alert("Error", "Failed to remove friend.");
-            }
+          onPress: () => {
+            HapticFeedback.warning();
+            // removeFriend invalidates friendsKeys.all — no explicit refetch needed
+            removeFriend(friendUserId).catch((e) => {
+              showMutationError(e, 'removing friend', showToast);
+            });
           },
         },
       ]
@@ -1368,20 +1356,18 @@ export default function ConnectionsPageRefactored({
         {
           text: "Remove",
           style: "destructive",
-          onPress: async () => {
-            try {
-              await cleanupSharedSessions(friend.id);
-              await removeFriend(friend.id);
-              await fetchFriends();
-              onRemoveFriend?.(friend);
-              mixpanelService.trackFriendRemoved({
-                friendName: friend.name,
-                friendUsername: friend.username,
+          onPress: () => {
+            onRemoveFriend?.(friend);
+            mixpanelService.trackFriendRemoved({
+              friendName: friend.name,
+              friendUsername: friend.username,
+            });
+            // Sequential: cleanup before remove. removeFriend invalidates friendsKeys.all.
+            cleanupSharedSessions(friend.id)
+              .then(() => removeFriend(friend.id))
+              .catch((e) => {
+                showMutationError(e, 'removing friend', showToast);
               });
-            } catch (e) {
-              console.error("Error removing friend:", e);
-              Alert.alert("Error", "Failed to remove friend. Please try again.");
-            }
           },
         },
       ]
@@ -1422,26 +1408,24 @@ export default function ConnectionsPageRefactored({
 
   const handleBlockConfirm = async (reason?: BlockReason) => {
     if (!selectedUserToBlock) return;
-    setBlockLoading(true);
-    try {
-      await cleanupSharedSessions(selectedUserToBlock.id);
-      await blockFriend(selectedUserToBlock.id, reason);
-      onBlockUser?.(selectedUserToBlock);
-      await fetchFriends();
-      await fetchBlockedUsers();
-      mixpanelService.trackFriendBlocked({
-        blockedUserName: selectedUserToBlock.name,
-        blockedUserUsername: selectedUserToBlock.username,
-        reason,
+    const userToBlock = selectedUserToBlock;
+
+    // Close modal immediately — user sees instant feedback
+    setShowBlockModal(false);
+    setSelectedUserToBlock(null);
+    onBlockUser?.(userToBlock);
+    mixpanelService.trackFriendBlocked({
+      blockedUserName: userToBlock.name,
+      blockedUserUsername: userToBlock.username,
+      reason,
+    });
+
+    // Sequential: cleanup before block. blockFriend invalidates friendsKeys.all.
+    cleanupSharedSessions(userToBlock.id)
+      .then(() => blockFriend(userToBlock.id, reason))
+      .catch((e) => {
+        showMutationError(e, 'blocking user', showToast);
       });
-      setShowBlockModal(false);
-      setSelectedUserToBlock(null);
-    } catch (e) {
-      console.error("Error blocking user:", e);
-      Alert.alert("Error", "Failed to block user. Please try again.");
-    } finally {
-      setBlockLoading(false);
-    }
   };
 
   const handleReportUser = (friend: Friend) => {

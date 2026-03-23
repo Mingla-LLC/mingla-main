@@ -27,6 +27,9 @@ import { useNetworkMonitor } from "../services/networkMonitor";
 import { BoardCache } from "../services/boardCache";
 import { BoardMessageService } from "../services/boardMessageService";
 import { BoardErrorHandler } from "../services/boardErrorHandler";
+import { withTimeout } from "../utils/withTimeout";
+import { showMutationError } from "../utils/showMutationError";
+import { useToast } from "./ToastManager";
 import { Participant } from "./board/ParticipantAvatars";
 import { BoardTabs, BoardTab } from "./board/BoardTabs";
 import { SwipeableSessionCards } from "./board/SwipeableSessionCards";
@@ -127,6 +130,7 @@ export default function SessionViewModal({
     loadSession,
   } = useBoardSession(sessionId);
   const { user, profile } = useAppStore();
+  const { showToast } = useToast();
   const networkState = useNetworkMonitor();
 
   // Account preferences state (for currency display)
@@ -301,7 +305,7 @@ export default function SessionViewModal({
   }, [sessionId, user?.id, savedCards]);
 
   // Handle exit board
-  const handleExitBoard = useCallback(async () => {
+  const handleExitBoard = useCallback(() => {
     if (!user?.id || !sessionId) return;
 
     Alert.alert(
@@ -312,64 +316,85 @@ export default function SessionViewModal({
         {
           text: "Exit",
           style: "destructive",
-          onPress: async () => {
-            try {
-              const { error: participantDeleteError } = await supabase
+          onPress: () => {
+            // Close modal immediately — user sees instant feedback
+            onClose();
+
+            const currentUserId = user.id;
+            const currentSessionId = sessionId;
+
+            // Op 1 (critical): delete participant
+            withTimeout(
+              supabase
                 .from("session_participants")
                 .delete()
-                .eq("session_id", sessionId)
-                .eq("user_id", user.id);
+                .eq("session_id", currentSessionId)
+                .eq("user_id", currentUserId)
+                .then(({ error }) => {
+                  if (error) throw error;
+                }),
+              5000,
+              'exitBoard:deleteParticipant'
+            )
+              .then(() => {
+                onSessionExited?.();
 
-              if (participantDeleteError) {
-                throw participantDeleteError;
-              }
+                // Ops 2+3 (cleanup, sequential) and Op 4 (cleanup, parallel)
+                const cleanupBoardCollaborator = withTimeout(
+                  supabase
+                    .from("collaboration_sessions")
+                    .select("board_id")
+                    .eq("id", currentSessionId)
+                    .single()
+                    .then(({ data: sessionRow, error: lookupError }) => {
+                      if (lookupError) {
+                        console.warn("Error looking up session board on exit:", lookupError);
+                        return;
+                      }
+                      const boardIds = sessionRow?.board_id ? [sessionRow.board_id] : [];
+                      if (boardIds.length > 0) {
+                        return supabase
+                          .from("board_collaborators")
+                          .delete()
+                          .eq("user_id", currentUserId)
+                          .in("board_id", boardIds)
+                          .then(({ error: delError }) => {
+                            if (delError) console.warn("Error removing board collaborator on exit:", delError);
+                          });
+                      }
+                    }),
+                  5000,
+                  'exitBoard:cleanupCollaborator'
+                );
 
-              // Look up board_id from the session (the actual relationship)
-              // collaboration_sessions.board_id points to boards.id
-              const { data: sessionRow, error: sessionLookupError } = await supabase
-                .from("collaboration_sessions")
-                .select("board_id")
-                .eq("id", sessionId)
-                .single();
+                const declineInvites = withTimeout(
+                  supabase
+                    .from("collaboration_invites")
+                    .update({ status: "declined", updated_at: new Date().toISOString() })
+                    .eq("session_id", currentSessionId)
+                    .eq("invited_user_id", currentUserId)
+                    .eq("status", "pending")
+                    .then(() => {}),
+                  5000,
+                  'exitBoard:declineInvites'
+                );
 
-              if (sessionLookupError) {
-                console.warn("Error looking up session board on exit:", sessionLookupError);
-              }
-
-              const boardIds = sessionRow?.board_id ? [sessionRow.board_id] : [];
-              if (boardIds.length > 0) {
-                const { error: collaboratorDeleteError } = await supabase
-                  .from("board_collaborators")
-                  .delete()
-                  .eq("user_id", user.id)
-                  .in("board_id", boardIds);
-
-                if (collaboratorDeleteError) {
-                  console.warn("Error removing board collaborator on exit:", collaboratorDeleteError);
-                }
-              }
-
-              await supabase
-                .from("collaboration_invites")
-                .update({ status: "declined", updated_at: new Date().toISOString() })
-                .eq("session_id", sessionId)
-                .eq("invited_user_id", user.id)
-                .eq("status", "pending");
-
-              if (onSessionExited) onSessionExited();
-              onClose();
-            } catch (error: unknown) {
-              console.error("Error exiting board:", error);
-              Alert.alert(
-                "Unable to Exit Board",
-                error instanceof Error ? error.message : "Please try again."
-              );
-            }
+                Promise.allSettled([cleanupBoardCollaborator, declineInvites]).then((results) => {
+                  results.forEach((r, i) => {
+                    if (r.status === 'rejected') {
+                      console.warn(`[exitBoard] Cleanup op ${i + 2} failed:`, r.reason);
+                    }
+                  });
+                });
+              })
+              .catch((error) => {
+                showMutationError(error, 'exiting board', showToast);
+              });
           },
         },
       ]
     );
-  }, [user?.id, sessionId, onClose, onSessionExited]);
+  }, [user?.id, sessionId, onClose, onSessionExited, showToast]);
 
   // Validate session and permissions on mount
   useEffect(() => {

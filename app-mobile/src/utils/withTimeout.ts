@@ -5,7 +5,7 @@
  * Cleans up the timer on resolve/reject to prevent leaks.
  */
 export function withTimeout<T>(
-  promise: Promise<T>,
+  promise: PromiseLike<T>,
   ms: number,
   label: string
 ): Promise<T> {
@@ -17,7 +17,7 @@ export function withTimeout<T>(
     }, ms);
   });
 
-  return Promise.race([promise, timeout]).finally(() => {
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
     clearTimeout(timeoutId);
   });
 }

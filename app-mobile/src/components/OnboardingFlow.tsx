@@ -37,6 +37,7 @@ import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../uti
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
+import { withTimeout } from '../utils/withTimeout'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
@@ -458,22 +459,30 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
             </Pressable>
             <Pressable
               style={getExpStyles.skipErrorButton}
-              onPress={async () => {
+              onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                // Best-effort: try to mark onboarding complete before exiting.
-                // If this also fails, user will see onboarding again on next
-                // launch — correct behavior since we can't confirm completion.
-                try {
-                  const { error: skipError } = await supabase.from('profiles').update({
+                // Proceed immediately — user exits onboarding instantly
+                onComplete()
+
+                // Best-effort: mark onboarding complete in background
+                withTimeout(
+                  supabase.from('profiles').update({
                     has_completed_onboarding: true,
                     onboarding_step: 0,
                     gender: data.userGender,
                     birthday: data.userBirthday?.toISOString().split('T')[0] || null,
                     country: data.userCountry,
                     preferred_language: data.userPreferredLanguage,
-                  }).eq('id', userId)
-                  if (!skipError) {
-                    await clearOnboardingData()
+                  }).eq('id', userId),
+                  5000,
+                  'skipOnboarding'
+                )
+                  .then(({ error: skipError }) => {
+                    if (skipError) {
+                      console.warn('[OnboardingFlow] Skip profile update failed:', skipError)
+                      return
+                    }
+                    clearOnboardingData()
                     const currentProfile = useAppStore.getState().profile
                     if (currentProfile) {
                       useAppStore.getState().setProfile({
@@ -482,11 +491,10 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
                         onboarding_step: 0,
                       })
                     }
-                  }
-                } catch {
-                  // Non-blocking — proceed to app regardless
-                }
-                onComplete()
+                  })
+                  .catch((e) => {
+                    console.warn('[OnboardingFlow] Skip onboarding background update failed:', e)
+                  })
               }}
             >
               <Text style={getExpStyles.skipErrorText}>Skip for now</Text>
