@@ -228,6 +228,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Currency + measurement locked from onboarding (hardened 2026-03-22):** Currency and measurement system are set during onboarding and never re-derived from GPS, device locale, or location changes. PreferencesSheet must never call `detectLocaleFromCoordinates`. Must never happen: currency changing when user browses a different city.
 - **Truthful error states (hardened 2026-03-22):** API failures show ERROR with retry (not "That's a Wrap"). Empty pool (200 OK, 0 cards) shows EMPTY. Preference save failure shows toast. Saved page distinguishes filtered-empty from truly-empty. Category deselect shows feedback near pills. Must never happen: disguising an API error as deck exhaustion.
 - **In-app browser for external URLs (hardened 2026-03-22):** Web content (booking, terms, privacy, Twitter) opens via `WebBrowser.openBrowserAsync` (Safari VC / Chrome Custom Tabs). `Linking.openURL` reserved for tel:, sms:, maps:, and deep links only. Must never happen: opening an http/https URL via Linking.openURL.
+- **Scheduling (hardened 2026-03-22):** iOS pickers render as absolute overlays inside the main Modal (not sibling Modals — those don't stack on iOS). Date mode has explicit "Next" button so pre-selected date can be confirmed without spinner scroll. All time pickers use `is24Hour={false}` (12-hour AM/PM). Haptic feedback on schedule success. Must never happen: rendering a picker in a sibling Modal on iOS.
 
 ### Card Photo Resolution
 
