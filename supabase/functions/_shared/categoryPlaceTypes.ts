@@ -101,6 +101,12 @@ export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
   'gym',
   'fitness_center',
   'dog_park',
+  // Schools/educational — never appropriate for dating/experiences
+  'school',
+  'primary_school',
+  'secondary_school',
+  'university',
+  'preschool',
 ];
 
 // Per-intent exclusion lists REMOVED — all exclusions are now global-only.
@@ -544,11 +550,12 @@ export function getCategoryTypeMap(categories: string[]): Record<string, string[
   return result;
 }
 
-// ── Children's venue name-based heuristic ──────────────────────────────────
-// These keywords in a place name indicate a children-only venue.
-// Applied as a post-fetch filter in card generators to reject kids' venues
-// that share Google types (e.g., amusement_center) with adult venues.
-export const CHILD_VENUE_NAME_KEYWORDS: string[] = [
+// ── Excluded venue name-based heuristic ────────────────────────────────────
+// These keywords in a place name indicate a venue inappropriate for Mingla.
+// Two groups: children's venues + educational institutions.
+// Applied as a post-fetch filter in card generators.
+export const EXCLUDED_VENUE_NAME_KEYWORDS: string[] = [
+  // Children's venues
   'kids', 'kidz', 'kiddo', 'kiddos',
   'children', 'child',
   'toddler', 'toddlers',
@@ -564,13 +571,24 @@ export const CHILD_VENUE_NAME_KEYWORDS: string[] = [
   'jungle gym',
   'fun zone', 'funzone',
   'kidzone', 'kid zone',
+  // Educational institutions
+  'school', 'academy', 'institute',
+  'training center', 'learning center',
+  'university', 'college', 'seminary',
 ];
 
+// Backward-compatible alias
+export const CHILD_VENUE_NAME_KEYWORDS = EXCLUDED_VENUE_NAME_KEYWORDS;
+
 /**
- * Returns true if the place name contains child-related keywords.
- * Case-insensitive. Used to reject children's venues from adult categories.
+ * Returns true if the place name contains excluded keywords
+ * (children's venues, schools, educational institutions).
+ * Case-insensitive.
  */
-export function isChildVenueName(placeName: string): boolean {
+export function isExcludedVenueName(placeName: string): boolean {
   const lower = ` ${placeName.toLowerCase()} `; // pad with spaces for word-boundary keywords
-  return CHILD_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
+  return EXCLUDED_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
 }
+
+// Backward-compatible alias
+export const isChildVenueName = isExcludedVenueName;

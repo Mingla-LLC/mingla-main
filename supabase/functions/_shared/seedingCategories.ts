@@ -208,8 +208,10 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
     label: 'Flowers',
     appCategory: 'Flowers',
     appCategorySlug: 'flowers',
-    includedTypes: ['florist', 'grocery_store', 'supermarket'],
+    includedTypes: ['florist'],
     excludedPrimaryTypes: [
+      'grocery_store', 'supermarket', 'department_store', 'garden_center',
+      'home_improvement_store', 'convenience_store',
       'market', 'shopping_mall', 'store', 'restaurant', 'fine_dining_restaurant',
       'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'night_club',
       'movie_theater', 'museum', 'art_gallery', 'gym', 'fitness_center',
