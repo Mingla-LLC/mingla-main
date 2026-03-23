@@ -241,6 +241,15 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P8-06 | Review modal "I went" shows blank screen | User report | Review flow / VisitReviewModal | HIGH |
 | P8-07 | "This weekend" doesn't let user pick day, only time | User report | ProposeDateTimeModal / PreferencesSheet | MED |
 
+## PASS 10 — Deeper Investigation Needed
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P10-01 | Collab card stays in saved after scheduling — ID mismatch in DELETE | User report + investigation | SavedTab / calendarService JSONB path | MED |
+| P10-02 | Review "I went" blank screen — rendering/data issue | User report + investigation | Review flow components | MED |
+
+---
+
 ## PASS 9 — Pairing + Social Integrity
 
 | ID | Bug | Source | File | Effort |
