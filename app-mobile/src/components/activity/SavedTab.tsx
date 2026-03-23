@@ -24,6 +24,7 @@ import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { savedCardKeys } from "../../hooks/queryKeys";
 import { useAppState } from "../AppStateManager";
 import { CalendarService } from "../../services/calendarService";
 import { savedCardsService } from "../../services/savedCardsService";
@@ -146,7 +147,7 @@ const SavedTab = ({
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
+    await queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user?.id ?? '') });
     setIsRefreshing(false);
   }, [queryClient, user?.id]);
 
@@ -1355,7 +1356,7 @@ const SavedTab = ({
           source,
           cardToSchedule.sessionId || undefined
         );
-        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+        queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
       } catch (error) {
         console.error(
           "Error removing card from saved_cards when scheduling:",
@@ -1598,7 +1599,7 @@ const SavedTab = ({
 
       // Invalidate queries to refresh the saved cards list
       queryClient.invalidateQueries({
-        queryKey: ["savedCards", user.id],
+        queryKey: savedCardKeys.list(user.id),
       });
       if (originalSavedCard.sessionId) {
         queryClient.invalidateQueries({
@@ -1630,7 +1631,7 @@ const SavedTab = ({
 
       // Invalidate queries to refresh the saved cards list
       queryClient.invalidateQueries({
-        queryKey: ["savedCards", user.id],
+        queryKey: savedCardKeys.list(user.id),
       });
       if (originalSavedCard.sessionId) {
         queryClient.invalidateQueries({
@@ -1677,7 +1678,7 @@ const SavedTab = ({
       );
 
       // Invalidate savedCards query to trigger a refetch (for solo mode)
-      queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
 
       // If this is a board card, invalidate the board saved cards query
       if (boardSavedCards !== undefined && activeBoardSessionId) {

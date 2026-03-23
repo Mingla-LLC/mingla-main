@@ -1,6 +1,7 @@
 import { Alert, Platform, ToastAndroid } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
+import { savedCardKeys } from "../hooks/queryKeys";
 import { useRef } from "react";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
@@ -963,7 +964,7 @@ export function useAppHandlers(state: any) {
         }
 
         // Invalidate savedCards query to trigger a refetch
-        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+        queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
 
         // Show toast notification matching UI: "Added to Board! [Card Name] has been added to [Session Name]"
         toastManager.show(
@@ -1007,7 +1008,7 @@ export function useAppHandlers(state: any) {
           });
 
         // Invalidate savedCards query to trigger a refetch
-        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+        queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
 
         // Show toast notification
         toastManager.show(
@@ -1206,7 +1207,7 @@ export function useAppHandlers(state: any) {
 
     // --- Snapshot cache for rollback ---
     const calendarCacheKey = ["calendarEntries", user.id];
-    const savedCacheKey = ["savedCards", user.id];
+    const savedCacheKey = savedCardKeys.list(user.id);
     const prevCalendar = queryClient.getQueryData(calendarCacheKey);
     const prevSaved = queryClient.getQueryData(savedCacheKey);
 

@@ -3,6 +3,7 @@ import {
   savedCardsService,
   SavedCardModel,
 } from "../services/savedCardsService";
+import { savedCardKeys } from "./queryKeys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Safe AsyncStorage operations
@@ -51,7 +52,7 @@ const fetchSavedCards = async (
 
 export const useSavedCards = (userId: string | undefined) => {
   return useQuery({
-    queryKey: ["savedCards", userId],
+    queryKey: savedCardKeys.list(userId ?? ''),
     queryFn: async () => await fetchSavedCards(userId),
     enabled: !!userId,
     staleTime: 5 * 60 * 1000,

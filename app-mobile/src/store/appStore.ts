@@ -138,7 +138,6 @@ export const useAppStore = create<AppState>()(
       deckPrefsHash: '',
       deckSchemaVersion: DECK_SCHEMA_VERSION,
       showAccountSettings: false,
-      blockedUsers: [],
 
       // Auth actions
       setAuth: (user) => {

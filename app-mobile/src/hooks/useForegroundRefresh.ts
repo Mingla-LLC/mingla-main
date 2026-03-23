@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase';
 import { resetAuth401Counter, enterAuth401GracePeriod } from '../config/queryClient';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
-import { saveKeys } from './useSaveQueries';
+import { savedCardKeys } from './queryKeys';
 import { pairingKeys } from './usePairings';
 import { phoneInviteKeys } from './usePhoneInvite';
 import { subscriptionKeys } from './useSubscription';
@@ -14,14 +14,14 @@ import { logger } from '../utils/logger';
 // Query key prefixes for lightweight/critical queries that should refresh on resume.
 // Expensive queries (deck-cards, curated-experiences, discover-experiences) are
 // intentionally EXCLUDED — they involve paid API calls and use their own staleTime.
+// personCardKeys intentionally excluded — uses staleTime: Infinity (no auto-refresh).
 const CRITICAL_QUERY_KEYS = [
   friendsKeys.all,                // friends list, requests, blocked, muted
   boardKeys.all,                  // collaboration boards
-  saveKeys.all,                   // saved experiences
+  savedCardKeys.all,              // saved cards + saves + paired saves
   pairingKeys.prefix,              // pairings and pair requests
   phoneInviteKeys.all,            // pending phone invites
   subscriptionKeys.all,           // subscription status
-  ['savedCards'],                  // saved cards
   ['calendarEntries'],            // calendar entries
   ['userPreferences'],            // user preferences
 ] as const;

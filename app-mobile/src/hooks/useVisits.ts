@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recordVisit, fetchMyVisits, fetchPairedUserVisits, hasVisited, removeVisit, RecordVisitParams } from '../services/visitService';
+import { savedCardKeys } from './queryKeys';
 
 export const visitKeys = {
   all: (userId: string) => ['visits', userId] as const,
@@ -44,7 +45,7 @@ export function useRecordVisit() {
     mutationFn: (params: RecordVisitParams) => recordVisit(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
-      queryClient.invalidateQueries({ queryKey: ['savedCards'] });
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
     },
   });
 }
@@ -56,7 +57,7 @@ export function useRemoveVisit() {
     mutationFn: (experienceId: string) => removeVisit(experienceId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
-      queryClient.invalidateQueries({ queryKey: ['savedCards'] });
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
     },
   });
 }

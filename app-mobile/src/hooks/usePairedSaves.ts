@@ -1,18 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchPairedSaves } from '../services/pairedSavesService';
-
-export const pairedSavesKeys = {
-  all: (pairedUserId: string) => ['pairedSaves', pairedUserId] as const,
-  filtered: (pairedUserId: string, category?: string) =>
-    ['pairedSaves', pairedUserId, category || 'all'] as const,
-};
+import { savedCardKeys } from './queryKeys';
 
 export function usePairedSaves(
   pairedUserId: string | undefined,
   category?: string
 ) {
   return useQuery({
-    queryKey: pairedSavesKeys.filtered(pairedUserId || '', category),
+    queryKey: savedCardKeys.paired(pairedUserId || '', category),
     queryFn: () => fetchPairedSaves({
       pairedUserId: pairedUserId!,
       category,

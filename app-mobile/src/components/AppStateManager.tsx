@@ -18,6 +18,7 @@ import { SessionService } from "../services/sessionService";
 import { preloadRates } from "../services/currencyService";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
+import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
 import { useBoardRealtimeSync } from "../hooks/useBoardQueries";
@@ -242,19 +243,19 @@ export function useAppState() {
     if (typeof cardsOrUpdater === "function") {
       // If it's a function, we need to get current data, apply the function, then invalidate
       const currentData =
-        queryClient.getQueryData<any[]>(["savedCards", user?.id]) || [];
+        queryClient.getQueryData<any[]>(savedCardKeys.list(user?.id ?? '')) || [];
       const updated = cardsOrUpdater(currentData);
-      queryClient.setQueryData(["savedCards", user?.id], updated);
+      queryClient.setQueryData(savedCardKeys.list(user?.id ?? ''), updated);
     } else if (Array.isArray(cardsOrUpdater)) {
       // If it's an array, set it directly
-      queryClient.setQueryData(["savedCards", user?.id], cardsOrUpdater);
+      queryClient.setQueryData(savedCardKeys.list(user?.id ?? ''), cardsOrUpdater);
     } else {
       // If it's something else (like empty object), just invalidate to refetch
-      queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user?.id ?? '') });
       return;
     }
     // Invalidate to ensure fresh data on next fetch
-    queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
+    queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user?.id ?? '') });
   };
   const [boardsSessions, setBoardsSessions] = useState(DEFAULT_BOARDS_SESSIONS);
   const [isLoadingBoards, setIsLoadingBoards] = useState(false);

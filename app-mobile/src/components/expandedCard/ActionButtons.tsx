@@ -15,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import { Icon } from "../ui/Icon";
 import { TrackedTouchableOpacity } from "../TrackedTouchableOpacity";
 import { useQueryClient } from "@tanstack/react-query";
+import { savedCardKeys } from "../../hooks/queryKeys";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
 import { savedCardsService } from "../../services/savedCardsService";
@@ -525,7 +526,7 @@ export default function ActionButtons({
 
           await savedCardsService.removeCard(user.id, card.id, source);
           // Invalidate savedCards query to refresh the list
-          queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+          queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
         } catch (error) {
           // Log error but don't block scheduling
           console.error(

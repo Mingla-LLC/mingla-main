@@ -1,16 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchPersonHeroCards } from "../services/personHeroCardsService";
-import type { HolidayCardsResponse } from "../services/personHeroCardsService";
-
-const CACHE_VERSION = "v1";
-
-// ── Query Keys ──────────────────────────────────────────────────────────────
-
-export const personHeroCardKeys = {
-  all: ["person-hero-cards", CACHE_VERSION] as const,
-  forPairedUserHoliday: (pairedUserId: string, holidayKey: string) =>
-    [...personHeroCardKeys.all, pairedUserId, holidayKey] as const,
-};
+import type { HolidayCardsResponse } from "../services/holidayCardsService";
+import { personCardKeys } from "./queryKeys";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +27,7 @@ export function usePersonHeroCards(params: UsePersonHeroCardsParams) {
   } = params;
 
   return useQuery<HolidayCardsResponse>({
-    queryKey: personHeroCardKeys.forPairedUserHoliday(pairedUserId, holidayKey),
+    queryKey: personCardKeys.hero(pairedUserId, holidayKey),
     queryFn: () =>
       fetchPersonHeroCards({
         pairedUserId,

@@ -3,16 +3,7 @@ import { useCallback } from "react";
 import { fetchPersonHeroCards } from "../services/personHeroCardsService";
 import type { HolidayCardsResponse } from "../services/holidayCardsService";
 import type { HolidayCardSection } from "../types/holidayTypes";
-
-// ── Query Keys ──────────────────────────────────────────────────────────────
-
-export const pairedCardKeys = {
-  all: ["paired-cards"] as const,
-  forOccasion: (pairedUserId: string, holidayKey: string) =>
-    ["paired-cards", pairedUserId, holidayKey] as const,
-  forOccasionAt: (pairedUserId: string, holidayKey: string, locationKey: string) =>
-    ["paired-cards", pairedUserId, holidayKey, locationKey] as const,
-};
+import { personCardKeys } from "./queryKeys";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,8 +62,8 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
 
   return useQuery<HolidayCardsResponse>({
     queryKey: params
-      ? pairedCardKeys.forOccasionAt(params.pairedUserId, params.holidayKey, locKey)
-      : pairedCardKeys.all,
+      ? personCardKeys.paired(params.pairedUserId, params.holidayKey, locKey)
+      : personCardKeys.all,
     queryFn: () =>
       fetchPersonHeroCards({
         pairedUserId: params!.pairedUserId,
@@ -124,7 +115,7 @@ export function useShufflePairedCards() {
 
       // Replace the cached data so the UI updates immediately
       queryClient.setQueryData(
-        pairedCardKeys.forOccasionAt(pairedUserId, holidayKey, locK),
+        personCardKeys.paired(pairedUserId, holidayKey, locK),
         result
       );
     },
