@@ -1662,9 +1662,10 @@ export default function DiscoverScreen({
         );
 
         if (!generatedCards || generatedCards.length === 0) {
-          console.warn("Discover API returned no cards. Preserving existing discover cards.");
+          console.warn("[Discover] API returned no cards after retry. Preserving stale cache.");
           if (cachedData && cachedData.recommendations.length > 0) {
-            lastDiscoverFetchDateRef.current = today;
+            // Do NOT set lastDiscoverFetchDateRef — allow retry on next foreground
+            hasFetchedRef.current = false;
             return;
           }
 
@@ -1867,10 +1868,25 @@ export default function DiscoverScreen({
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching Discover recommendations:", error);
-        setDiscoverError("Failed to load recommendations");
-        hasFetchedRef.current = false; // Allow retry on error
+        const isAuthError = error?.message?.includes('Session expired');
+
+        if (isAuthError) {
+          // Auth failure: don't set date guard, allow retry on next foreground
+          console.log('[Discover] Auth error — will retry on next foreground');
+          hasFetchedRef.current = false;
+          if (cachedData && cachedData.recommendations.length > 0) {
+            // Silently keep stale cache, no error banner
+            return;
+          }
+          setDiscoverError("Session expired. Pull down to retry.");
+        } else {
+          // Server/network error: set date guard to avoid hammering
+          // Leave hasFetchedRef as true so the AND guard (hasFetchedRef && dateRef === today) blocks re-fetching
+          lastDiscoverFetchDateRef.current = today;
+          setDiscoverError("Failed to load recommendations");
+        }
       } finally {
         if (!waitingForLocation) {
           setDiscoverLoading(false);

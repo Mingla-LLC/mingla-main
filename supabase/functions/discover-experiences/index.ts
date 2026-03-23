@@ -270,6 +270,25 @@ serve(async (req) => {
       console.warn("Discover auth/cache bootstrap warning:", authCacheError);
     }
 
+    // ── Auth guard: reject if auth failed ──
+    if (!adminClient || !userId) {
+      console.warn('[discover] Auth failed — returning 401. adminClient:', !!adminClient, 'userId:', !!userId);
+      return new Response(
+        JSON.stringify({
+          error: 'auth_required',
+          cards: [],
+          heroCards: [],
+          featuredCard: null,
+          expiresAt: null,
+          meta: { authFailed: true },
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     if (!location || !location.lat || !location.lng) {
       return new Response(
         JSON.stringify({

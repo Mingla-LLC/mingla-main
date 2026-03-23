@@ -183,11 +183,76 @@ export class ExperienceGenerationService {
         body.travelMode = travelMode;
       }
 
-      const { data, error } = await supabase.functions.invoke(
+      // --- First attempt ---
+      let data: any = null;
+      let error: any = null;
+      ({ data, error } = await supabase.functions.invoke(
         "discover-experiences",
         { body }
-      );
+      ));
 
+      // --- Detect auth failure and retry with refreshed token ---
+      const isAuthError = error && this.isAuthFailure(error);
+      const isEmptyFirstAttempt = !error && (!data || !data.cards || data.cards.length === 0);
+
+      if (isAuthError || isEmptyFirstAttempt) {
+        console.log(`[Discover] ${isAuthError ? 'Auth error (401)' : 'Empty response'} on first attempt. Refreshing token and retrying...`);
+
+        try {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.warn('[Discover] Token refresh failed:', refreshError.message);
+            // If refresh fails AND we have no data, throw so caller can show error
+            if (isAuthError) {
+              throw new Error('Session expired — please sign in again');
+            }
+            // If empty response (not auth error), fall through with the empty data
+          } else {
+            // Retry with refreshed token
+            console.log('[Discover] Token refreshed. Retrying discover fetch...');
+            const retry = await supabase.functions.invoke(
+              "discover-experiences",
+              { body }
+            );
+
+            if (retry.error) {
+              console.warn('[Discover] Retry failed:', retry.error.message);
+              // If retry also fails with auth, throw — don't return empty
+              if (this.isAuthFailure(retry.error)) {
+                throw new Error('Session expired — please sign in again');
+              }
+              // Non-auth retry failure: throw to let caller handle
+              throw new Error(`Failed to fetch discover experiences: ${retry.error.message}`);
+            }
+
+            if (retry.data?.error) {
+              console.warn('[Discover] Retry returned error:', retry.data.error);
+              throw new Error(retry.data.error);
+            }
+
+            // Retry succeeded — use retry data
+            data = retry.data;
+            error = null;
+            console.log('[Discover] Retry succeeded.');
+          }
+        } catch (retryError) {
+          // Re-throw if it's our own thrown error
+          if (retryError instanceof Error && (
+            retryError.message.includes('Session expired') ||
+            retryError.message.includes('Failed to fetch')
+          )) {
+            throw retryError;
+          }
+          console.warn('[Discover] Retry logic error:', retryError);
+          // If we had an auth error originally, throw
+          if (isAuthError) {
+            throw new Error('Session expired — please sign in again');
+          }
+          // Otherwise fall through with original empty data
+        }
+      }
+
+      // --- Original error handling (for non-auth errors on first attempt) ---
       if (error) {
         console.error("Error fetching discover experiences:", error);
         throw new Error(`Failed to fetch discover experiences: ${error.message}`);
@@ -199,7 +264,7 @@ export class ExperienceGenerationService {
       }
 
       if (!data || !data.cards || data.cards.length === 0) {
-        console.log("No discover experiences found");
+        console.log("No discover experiences found (after retry)");
         return { cards: [], heroCards: [], featuredCard: null, expiresAt: null };
       }
 
@@ -228,6 +293,26 @@ export class ExperienceGenerationService {
       console.error("Failed to fetch discover experiences:", error);
       throw error;
     }
+  }
+
+  /**
+   * Check if a supabase.functions.invoke error is an auth failure (401).
+   * Uses duck-typing per edgeFunctionError.ts pattern.
+   */
+  private static isAuthFailure(error: any): boolean {
+    try {
+      const ctx = error?.context;
+      if (ctx && typeof ctx.status === 'number') {
+        return ctx.status === 401;
+      }
+      // Fallback: check error message
+      if (typeof error?.message === 'string') {
+        return error.message.includes('401') || error.message.toLowerCase().includes('unauthorized');
+      }
+    } catch {
+      // Defensive
+    }
+    return false;
   }
 
   /**
