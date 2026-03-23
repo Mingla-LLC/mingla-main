@@ -425,7 +425,7 @@ function MultiStopPlanView({
       : `$${card.totalPriceMin}–$${card.totalPriceMax}`;
 
   // Total time calculation
-  const totalStopMinutes = stops.reduce((s, st) => s + (st.estimatedDurationMinutes ?? 45), 0);
+  const totalStopMinutes = stops.reduce((s, st) => s + (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0 ? st.estimatedDurationMinutes : 45), 0);
   const totalTravelMinutes = stops
     .slice(1)
     .reduce((s, st) => s + (st.travelTimeFromPreviousStopMin ?? 0), 0);
