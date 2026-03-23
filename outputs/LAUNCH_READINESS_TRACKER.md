@@ -179,7 +179,7 @@
 | 6 | 7 | Polish — seat map, coord bounds, suggestion race, category filter, safe images (9 deferred/skipped) | **DONE** — commit c7b8c691 |
 | 7 | 2 | Realtime + freshness — mount useSocialRealtime + useForegroundRefresh (were dead code) | **DONE** — commit f3312371 |
 | 8 | 3 | Calendar slugs + reschedule cache + review reset (4 deferred/resolved: data gap, collab ID, review screen, weekend fixed by 4a) | **DONE** — commit 88f94d26 |
-| 9 | 2 | Pairing integrity — unpair RLS failure + silent mutation success + other user not updated | PENDING |
+| 9 | 2 | Atomic unpair RPC — replaces error-swallowing 3-step code | **DONE** — commit 23f3a0dd |
 
 ---
 

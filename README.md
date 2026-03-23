@@ -199,6 +199,7 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Subscription Tiers** — Free/Pro/Elite with server-side enforcement. 7-day trial, referral bonuses.
 - **Pairing System** — Elite-only 3-tier pairing with multi-dimensional preference learning.
 - **Paired view dedup (hardened 2026-03-22):** `seenCardIds` ref deduplicates cards across holiday sections — birthday section renders first (highest priority). Each CardRow handles fetch errors independently with retry button. Birthday NaN guards prevent broken text from malformed dates. Must never happen: same card appearing in multiple paired view sections.
+- **Atomic unpair (hardened 2026-03-23):** `unpair_atomic` SECURITY DEFINER RPC handles unpair in one transaction — verifies auth, updates pair_request to 'unpaired', deletes pairing with CASCADE. Replaces 3-step client code that swallowed RLS errors. Must never happen: catching and swallowing RLS violations as success.
 - **AI Recommendations** — pool-first card serving, per-category queries, impression rotation, haversine travel estimation.
 - **7-Step Onboarding** — state machine with phone verification, preference selection, friend/pairing setup, collaboration creation.
 
