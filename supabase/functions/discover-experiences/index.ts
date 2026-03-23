@@ -5,6 +5,8 @@ import {
   ALL_CATEGORY_NAMES,
   CATEGORY_MIN_PRICE_TIER,
   HIDDEN_CATEGORIES,
+  toSlug,
+  toDisplay,
 } from '../_shared/categoryPlaceTypes.ts';
 import { priceTierFromAmount, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 
@@ -201,7 +203,7 @@ serve(async (req) => {
                 for (const heroCat of HERO_CATEGORIES_RESOLVED) {
                   if (cachedHeroCards.length >= 2) break;
                   if (heroUsedCats.has(heroCat)) continue;
-                  const candidate = cachedGridCards.find((c: any) => c.category === heroCat && !heroUsedIds.has(c.id));
+                  const candidate = cachedGridCards.find((c: any) => (c.category === heroCat || c.category === toSlug(heroCat)) && !heroUsedIds.has(c.id));
                   if (candidate) {
                     cachedHeroCards.push(candidate);
                     heroUsedIds.add(candidate.id);
@@ -327,7 +329,7 @@ serve(async (req) => {
               .select('id, google_place_id, title, category, image_url, images, rating, review_count, price_min, price_max, price_tier, lat, lng, opening_hours, address, website, description, highlights, base_match_score, popularity_score')
               .eq('is_active', true)
               .eq('card_type', 'single')
-              .eq('category', cat)
+              .eq('category', toSlug(cat))
               .gte('lat', location.lat - latDelta)
               .lte('lat', location.lat + latDelta)
               .gte('lng', location.lng - lngDelta)
@@ -379,14 +381,15 @@ serve(async (req) => {
             const minTier = CATEGORY_MIN_PRICE_TIER[category];
             const priceFilter = (c: any) => !minTier || slugMeetsMinimum(c.price_tier, minTier);
 
+            const categorySlug = toSlug(category);
             // Prefer cards NOT in previous batch (24h rotation)
             let candidates = availableCards.filter(
-              (c: any) => c.category === category && !usedIds.has(c.id) && !prevExclude.has(c.google_place_id || c.id) && priceFilter(c)
+              (c: any) => c.category === categorySlug && !usedIds.has(c.id) && !prevExclude.has(c.google_place_id || c.id) && priceFilter(c)
             );
             if (candidates.length === 0) {
               // Category exhaustion fallback: allow previous batch cards
               candidates = availableCards.filter(
-                (c: any) => c.category === category && !usedIds.has(c.id) && priceFilter(c)
+                (c: any) => c.category === categorySlug && !usedIds.has(c.id) && priceFilter(c)
               );
               if (candidates.length > 0) {
                 console.log(`⚠ [pool-first] "${category}" exhausted fresh places — reusing from previous batch`);
@@ -414,7 +417,7 @@ serve(async (req) => {
               id: card.google_place_id || card.id,
               placeId: card.google_place_id || null,
               title: card.title,
-              category: card.category,
+              category: toDisplay(card.category),
               matchScore: card.base_match_score || 85,
               image: card.image_url || null,
               images: card.images || [],
@@ -509,8 +512,9 @@ serve(async (req) => {
             // Re-pick hero + grid from rotated cards
             const rotationUsedIds = new Set<string>();
             const rotationFindBest = (category: string): any | null => {
+              const rotSlug = toSlug(category);
               const candidates = rotationCards.filter(
-                (c: any) => c.category === category && !rotationUsedIds.has(c.id)
+                (c: any) => c.category === rotSlug && !rotationUsedIds.has(c.id)
               );
               return candidates.length > 0 ? candidates[0] : null;
             };

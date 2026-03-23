@@ -193,20 +193,15 @@ export class ExperienceGenerationService {
 
       // --- Detect auth failure and retry with refreshed token ---
       const isAuthError = error && this.isAuthFailure(error);
-      const isEmptyFirstAttempt = !error && (!data || !data.cards || data.cards.length === 0);
 
-      if (isAuthError || isEmptyFirstAttempt) {
-        console.log(`[Discover] ${isAuthError ? 'Auth error (401)' : 'Empty response'} on first attempt. Refreshing token and retrying...`);
+      if (isAuthError) {
+        console.log('[Discover] Auth error (401) on first attempt. Refreshing token and retrying...');
 
         try {
           const { error: refreshError } = await supabase.auth.refreshSession();
           if (refreshError) {
             console.warn('[Discover] Token refresh failed:', refreshError.message);
-            // If refresh fails AND we have no data, throw so caller can show error
-            if (isAuthError) {
-              throw new Error('Session expired — please sign in again');
-            }
-            // If empty response (not auth error), fall through with the empty data
+            throw new Error('Session expired — please sign in again');
           } else {
             // Retry with refreshed token
             console.log('[Discover] Token refreshed. Retrying discover fetch...');
@@ -244,11 +239,7 @@ export class ExperienceGenerationService {
             throw retryError;
           }
           console.warn('[Discover] Retry logic error:', retryError);
-          // If we had an auth error originally, throw
-          if (isAuthError) {
-            throw new Error('Session expired — please sign in again');
-          }
-          // Otherwise fall through with original empty data
+          throw new Error('Session expired — please sign in again');
         }
       }
 

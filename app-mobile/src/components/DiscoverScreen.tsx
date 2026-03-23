@@ -1259,6 +1259,7 @@ export default function DiscoverScreen({
   const [hasCompletedDiscoverFetch, setHasCompletedDiscoverFetch] = useState(false);
   const [isDiscoverCacheMigrationReady, setIsDiscoverCacheMigrationReady] = useState(false);
   const hasFetchedRef = useRef(false);
+  const fetchingRef = useRef(false);
   const lastDiscoverFetchDateRef = useRef<string | null>(null);
   const loadedFromCacheRef = useRef(false); // Flag to skip card re-randomization when loaded from cache
 
@@ -1575,11 +1576,16 @@ export default function DiscoverScreen({
   // Cached for 24 hours - uses persisted data until expiry
   useEffect(() => {
     const fetchDiscoverRecommendations = async () => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
+
       if (!user?.id) {
+        fetchingRef.current = false;
         return;
       }
 
       if (!isDiscoverCacheMigrationReady) {
+        fetchingRef.current = false;
         return;
       }
 
@@ -1593,6 +1599,7 @@ export default function DiscoverScreen({
 
       // Only fetch once per session
       if (hasFetchedRef.current && lastDiscoverFetchDateRef.current === today) {
+        fetchingRef.current = false;
         return;
       }
 
@@ -1888,6 +1895,7 @@ export default function DiscoverScreen({
           setDiscoverError("Failed to load recommendations");
         }
       } finally {
+        fetchingRef.current = false;
         if (!waitingForLocation) {
           setDiscoverLoading(false);
         }

@@ -291,6 +291,39 @@ export function filterOutIntents(categories: string[]): string[] {
 // ── All canonical category display names ──────────────────────────────────────
 export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
 
+// ── Display name ↔ DB slug mapping ────────────────────────────────────────
+// card_pool.category stores slugs; edge functions use display names from
+// MINGLA_CATEGORY_PLACE_TYPES keys. These maps bridge the gap.
+export const DISPLAY_TO_SLUG: Record<string, string> = {
+  'Nature & Views': 'nature_views',
+  'First Meet': 'first_meet',
+  'Picnic Park': 'picnic_park',
+  'Drink': 'drink',
+  'Casual Eats': 'casual_eats',
+  'Fine Dining': 'fine_dining',
+  'Watch': 'watch',
+  'Live Performance': 'live_performance',
+  'Creative & Arts': 'creative_arts',
+  'Play': 'play',
+  'Wellness': 'wellness',
+  'Flowers': 'flowers',
+  'Groceries': 'groceries',
+};
+
+export const SLUG_TO_DISPLAY: Record<string, string> = Object.fromEntries(
+  Object.entries(DISPLAY_TO_SLUG).map(([display, slug]) => [slug, display])
+);
+
+/** Convert a display name to its DB slug. Falls back to input if unknown. */
+export function toSlug(displayName: string): string {
+  return DISPLAY_TO_SLUG[displayName] || displayName;
+}
+
+/** Convert a DB slug to its display name. Falls back to input if unknown. */
+export function toDisplay(slug: string): string {
+  return SLUG_TO_DISPLAY[slug] || slug;
+}
+
 /** Categories that exist in the system but are never shown to users */
 export const HIDDEN_CATEGORIES: Set<string> = new Set(['Groceries']);
 
