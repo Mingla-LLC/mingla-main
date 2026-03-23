@@ -22,6 +22,7 @@ import {
 } from "../services/voiceReviewService";
 import { CalendarService } from "../services/calendarService";
 import { useAppStore } from "../store/appStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "./ui/Toast";
 import { colors } from "../constants/colors";
 import { PendingExperienceReview } from "../hooks/usePostExperienceCheck";
@@ -56,6 +57,7 @@ export default function PostExperienceModal({
   calendarEntryId,
 }: PostExperienceModalProps) {
   const { user } = useAppStore();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
 
   // Step state machine
@@ -371,6 +373,7 @@ export default function PostExperienceModal({
 
       await voiceReviewService.markRescheduled(user.id, review.calendarEntryId);
 
+      queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
       toastManager.success("Experience rescheduled!");
       onComplete();
     } catch (error) {

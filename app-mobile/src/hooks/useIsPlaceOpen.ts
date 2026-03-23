@@ -16,7 +16,8 @@ export function useIsPlaceOpen(
     | Record<string, string>
     | string[]
     | null
-    | undefined
+    | undefined,
+  utcOffsetMinutes?: number | null,
 ): boolean | null {
   // Extract weekday_text and stabilise identity so the interval doesn't
   // reset on every render (extractWeekdayText returns a new array each call).
@@ -25,8 +26,8 @@ export function useIsPlaceOpen(
   const weekdayText = useMemo(() => weekdayTextRaw, [weekdayTextKey]);
 
   const compute = useCallback(() => {
-    return isPlaceOpenNow(weekdayText);
-  }, [weekdayText]);
+    return isPlaceOpenNow(weekdayText, utcOffsetMinutes);
+  }, [weekdayText, utcOffsetMinutes]);
 
   const [isOpen, setIsOpen] = useState<boolean | null>(compute);
 

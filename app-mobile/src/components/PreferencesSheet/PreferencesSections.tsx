@@ -152,11 +152,13 @@ export const CategoriesSection = memo(
     selectedCategories,
     onCategoryToggle,
     capMessage,
+    minMessage,
   }: {
     filteredCategories: any[];
     selectedCategories: string[];
     onCategoryToggle: (id: string) => void;
     capMessage?: boolean;
+    minMessage?: boolean;
   }) => {
     const [lastTappedCategory, setLastTappedCategory] = useState<string | null>(null);
 
@@ -217,6 +219,9 @@ export const CategoriesSection = memo(
         {capMessage && (
           <Text style={styles.capMessage}>3 max — drop one to add another.</Text>
         )}
+        {minMessage && (
+          <Text style={styles.capMessage}>Pick at least one mood or category.</Text>
+        )}
       </View>
     );
   },
@@ -224,6 +229,7 @@ export const CategoriesSection = memo(
     prev.filteredCategories.length === next.filteredCategories.length &&
     prev.selectedCategories.length === next.selectedCategories.length &&
     prev.capMessage === next.capMessage &&
+    prev.minMessage === next.minMessage &&
     prev.selectedCategories.every((id: string) =>
       next.selectedCategories.includes(id)
     )
