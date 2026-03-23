@@ -34,6 +34,9 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNetworkMonitor } from "../services/networkMonitor";
+import { withTimeout } from "../utils/withTimeout";
+import { useToast } from "./ToastManager";
+import { showMutationError } from "../utils/showMutationError";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -129,6 +132,7 @@ export default function ConnectionsPageRefactored({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [friendsModalTab, setFriendsModalTab] = useState<"friends" | "requests">("friends");
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   // ── Friends data via useFriends hook ─────────────────────
   const {
@@ -667,32 +671,34 @@ export default function ConnectionsPageRefactored({
         }
       })();
     } else {
-      // No cache at all — must fetch from network (8s timeout to prevent dead loading state)
-      try {
-        const fetchPromise = messagingService.getMessages(conversation.id, user.id);
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Message fetch timeout (8s)")), 8000)
-        );
-        const { messages: freshMsgs, error: msgError } = await Promise.race([
-          fetchPromise,
-          timeoutPromise,
-        ]);
-        if (msgError) {
-          console.error("Error loading messages:", msgError);
-          setMessages([]);
-        } else {
+      // No cache — open chat immediately with empty state, fetch in background
+      setMessages([]);
+      setShowMessageInterface(true);
+
+      const capturedConvId = conversation.id;
+      const capturedFriendId = friend.id;
+      withTimeout(
+        messagingService.getMessages(conversation.id, user.id),
+        8000,
+        'getMessages'
+      )
+        .then(({ messages: freshMsgs, error: msgError }) => {
+          // Guard against stale result if user switched chats
+          if (latestSelectedChatRef.current !== capturedFriendId) return;
+          if (msgError) {
+            console.error("Error loading messages:", msgError);
+            return;
+          }
           const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
           setMessages(transformed);
-          setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
-          persistMessages(conversation.id, transformed);
-          markConversationAsRead(conversation.id, user.id, transformed);
-        }
-      } catch (e) {
-        console.error("Error loading messages:", e);
-        // Timeout or network failure — open with empty messages so user can retry
-        setMessages([]);
-      }
-      setShowMessageInterface(true);
+          setMessagesCache((prev) => ({ ...prev, [capturedConvId]: transformed }));
+          persistMessages(capturedConvId, transformed);
+          markConversationAsRead(capturedConvId, user.id, transformed);
+        })
+        .catch((e) => {
+          // Timeout or network failure — chat is already open with empty state
+          console.warn("[ConnectionsPage] No-cache message fetch failed:", e);
+        });
     }
 
     // Real-time subscription (gracefully degrades if offline)
@@ -739,123 +745,115 @@ export default function ConnectionsPageRefactored({
       })
       .catch(() => {});
 
-    try {
-      const { conversation, error: convError } =
-        await messagingService.getOrCreateDirectConversation(user.id, friendUserId);
+    // Open chat UI immediately — conversation creation happens in background
+    setMessages([]);
+    setShowMessageInterface(true);
 
-      if (convError || !conversation) {
-        // Network call failed — try to find an existing cached conversation
-        // for this friend so we can still open the chat offline
-        const cachedConv = conversations.find((c) =>
-          c.participants.some((p) => p.id === friendUserId)
-        );
+    const capturedFriendId = friendUserId;
+    const currentUserId = user.id;
 
-        if (cachedConv) {
-          // Found a cached conversation — open it with cached messages
-          setCurrentConversationId(cachedConv.id);
-          const storageCached = await hydrateMessages(cachedConv.id);
-          const inMemoryCached = messagesCache[cachedConv.id];
-          const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
-          setMessages(msgs);
-          if (msgs.length > 0) {
-            setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
-          }
-          setShowMessageInterface(true);
-          // Skip realtime when offline — reconnection useEffect will re-subscribe
-          if (!isOffline) {
-            setupRealtimeSubscription(cachedConv.id, user.id);
-          }
-          return;
-        }
-
-        console.error("Error getting conversation:", convError);
-        setActiveChat(null);
-        return;
-      }
-
-      setCurrentConversationId(conversation.id);
-
-      // Load messages — offline-resilient: try cache first, then network
-      const inMemoryCached = messagesCache[conversation.id];
-      const storageCached = (inMemoryCached && inMemoryCached.length > 0)
-        ? [] : await hydrateMessages(conversation.id);
-      const cachedMsgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
-
-      if (cachedMsgs.length > 0) {
-        setMessages(cachedMsgs);
-        setMessagesCache((prev) => ({ ...prev, [conversation.id]: cachedMsgs }));
-        setShowMessageInterface(true);
-        markConversationAsRead(conversation.id, user.id, cachedMsgs);
-
-        // Refresh in background
-        (async () => {
-          try {
-            const { messages: freshMsgs, error: msgError } =
-              await messagingService.getMessages(conversation.id, user.id);
-            if (!msgError && freshMsgs) {
-              const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-              setMessages(transformed);
-              setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
-              persistMessages(conversation.id, transformed);
-              markConversationAsRead(conversation.id, user.id, transformed);
-            }
-          } catch (err) {
-            console.warn("[ConnectionsPage] Background refresh failed:", err);
-          }
-        })();
-      } else {
-        // No cache — fetch from network (8s timeout to prevent dead loading state)
-        try {
-          const fetchPromise = messagingService.getMessages(conversation.id, user.id);
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Message fetch timeout (8s)")), 8000)
-          );
-          const { messages: freshMsgs, error: msgError } = await Promise.race([
-            fetchPromise,
-            timeoutPromise,
-          ]);
-          if (msgError) {
-            setMessages([]);
-          } else {
-            const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
-            setMessages(transformed);
-            setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
-            persistMessages(conversation.id, transformed);
-            markConversationAsRead(conversation.id, user.id, transformed);
-          }
-        } catch (err) {
-          // Timeout or network failure — open with empty messages so user can retry
-          setMessages([]);
-        }
-        setShowMessageInterface(true);
-      }
-
-      setupRealtimeSubscription(conversation.id, user.id);
-    } catch (e) {
-      // Total failure — still try to open from cached conversations list
+    // Helper: try to open from cached conversation list (offline fallback)
+    const tryOpenFromCache = async (): Promise<boolean> => {
       const cachedConv = conversations.find((c) =>
         c.participants.some((p) => p.id === friendUserId)
       );
+      if (!cachedConv) return false;
 
-      if (cachedConv) {
-        setCurrentConversationId(cachedConv.id);
-        const storageCached = await hydrateMessages(cachedConv.id);
-        const inMemoryCached = messagesCache[cachedConv.id];
-        const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
-        setMessages(msgs);
-        if (msgs.length > 0) {
-          setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
-        }
-        setShowMessageInterface(true);
-        // Skip realtime when offline — reconnection useEffect will re-subscribe
-        if (!isOffline) {
-          setupRealtimeSubscription(cachedConv.id, user.id);
-        }
-      } else {
-        console.error("Error creating conversation and no cache available:", e);
-        setActiveChat(null);
+      if (latestSelectedChatRef.current !== capturedFriendId) return true; // stale — don't update
+      setCurrentConversationId(cachedConv.id);
+      const storageCached = await hydrateMessages(cachedConv.id);
+      const inMemoryCached = messagesCache[cachedConv.id];
+      const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
+      setMessages(msgs);
+      if (msgs.length > 0) {
+        setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
       }
-    }
+      if (!isOffline) {
+        setupRealtimeSubscription(cachedConv.id, currentUserId);
+      }
+      return true;
+    };
+
+    // Helper: load messages for a conversation in the background
+    const loadMessagesInBackground = (conversationId: string) => {
+      // Try in-memory cache first
+      const inMemoryCached = messagesCache[conversationId];
+      if (inMemoryCached && inMemoryCached.length > 0) {
+        if (latestSelectedChatRef.current !== capturedFriendId) return;
+        setMessages(inMemoryCached);
+        markConversationAsRead(conversationId, currentUserId, inMemoryCached);
+      }
+
+      // Try AsyncStorage cache
+      hydrateMessages(conversationId).then((storageCached) => {
+        if (latestSelectedChatRef.current !== capturedFriendId) return;
+        if (!inMemoryCached?.length && storageCached.length > 0) {
+          setMessages(storageCached);
+          setMessagesCache((prev) => ({ ...prev, [conversationId]: storageCached }));
+          markConversationAsRead(conversationId, currentUserId, storageCached);
+        }
+      });
+
+      // Fetch fresh from network in background
+      withTimeout(
+        messagingService.getMessages(conversationId, currentUserId),
+        8000,
+        'getMessages'
+      )
+        .then(({ messages: freshMsgs, error: msgError }) => {
+          if (latestSelectedChatRef.current !== capturedFriendId) return;
+          if (msgError || !freshMsgs) return;
+          const transformed = freshMsgs.map((m) => transformMessage(m, currentUserId));
+          setMessages(transformed);
+          setMessagesCache((prev) => ({ ...prev, [conversationId]: transformed }));
+          persistMessages(conversationId, transformed);
+          markConversationAsRead(conversationId, currentUserId, transformed);
+        })
+        .catch((e) => {
+          console.warn("[ConnectionsPage] Background message fetch failed:", e);
+        });
+    };
+
+    withTimeout(
+      messagingService.getOrCreateDirectConversation(currentUserId, friendUserId),
+      8000,
+      'getOrCreateConversation'
+    )
+      .then(({ conversation, error: convError }) => {
+        if (latestSelectedChatRef.current !== capturedFriendId) return;
+
+        if (convError || !conversation) {
+          // Network call failed — try cached conversation fallback
+          tryOpenFromCache().then((found) => {
+            if (!found && latestSelectedChatRef.current === capturedFriendId) {
+              showMutationError(
+                convError || new Error('Failed to create conversation'),
+                'starting conversation',
+                showToast
+              );
+              setShowMessageInterface(false);
+              setActiveChat(null);
+            }
+          });
+          return;
+        }
+
+        setCurrentConversationId(conversation.id);
+        loadMessagesInBackground(conversation.id);
+        setupRealtimeSubscription(conversation.id, currentUserId);
+      })
+      .catch((e) => {
+        if (latestSelectedChatRef.current !== capturedFriendId) return;
+
+        // Total failure — try cached conversation fallback
+        tryOpenFromCache().then((found) => {
+          if (!found && latestSelectedChatRef.current === capturedFriendId) {
+            showMutationError(e, 'starting conversation', showToast);
+            setShowMessageInterface(false);
+            setActiveChat(null);
+          }
+        });
+      });
   };
 
   // ── Mark conversation as read (messages + local state) ──

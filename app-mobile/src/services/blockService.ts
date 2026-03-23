@@ -6,6 +6,7 @@
  */
 
 import { supabase } from "./supabase";
+import { withTimeout } from "../utils/withTimeout";
 
 export interface BlockedUser {
   id: string;
@@ -205,27 +206,33 @@ export async function isUserBlocked(userId: string): Promise<boolean> {
  */
 export async function isBlockedByUser(userId: string): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return false;
-    }
+    return await withTimeout(
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
 
-    // Use RPC call since we can't directly query if we're blocked
-    const { data, error } = await supabase.rpc("is_blocked_by", {
-      blocker: userId,
-      target: user.id,
-    });
+        if (!user) {
+          return false;
+        }
 
-    if (error) {
-      // Ignore errors if function doesn't exist yet (migration not run)
-      if (!error.message?.includes("does not exist")) {
-        console.error("Error checking if blocked by user:", error);
-      }
-      return false;
-    }
+        // Use RPC call since we can't directly query if we're blocked
+        const { data, error } = await supabase.rpc("is_blocked_by", {
+          blocker: userId,
+          target: user.id,
+        });
 
-    return !!data;
+        if (error) {
+          // Ignore errors if function doesn't exist yet (migration not run)
+          if (!error.message?.includes("does not exist")) {
+            console.error("Error checking if blocked by user:", error);
+          }
+          return false;
+        }
+
+        return !!data;
+      })(),
+      5000,
+      'isBlockedByUser'
+    );
   } catch (err) {
     console.error("Error in isBlockedByUser:", err);
     return false;
@@ -238,26 +245,32 @@ export async function isBlockedByUser(userId: string): Promise<boolean> {
  */
 export async function hasBlockBetween(userId: string): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return false;
-    }
+    return await withTimeout(
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase.rpc("has_block_between", {
-      user1: user.id,
-      user2: userId,
-    });
+        if (!user) {
+          return false;
+        }
 
-    if (error) {
-      // Ignore errors if function doesn't exist yet (migration not run)
-      if (!error.message?.includes("does not exist")) {
-        console.error("Error checking block between users:", error);
-      }
-      return false;
-    }
+        const { data, error } = await supabase.rpc("has_block_between", {
+          user1: user.id,
+          user2: userId,
+        });
 
-    return !!data;
+        if (error) {
+          // Ignore errors if function doesn't exist yet (migration not run)
+          if (!error.message?.includes("does not exist")) {
+            console.error("Error checking block between users:", error);
+          }
+          return false;
+        }
+
+        return !!data;
+      })(),
+      5000,
+      'hasBlockBetween'
+    );
   } catch (err) {
     console.error("Error in hasBlockBetween:", err);
     return false;
