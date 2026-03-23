@@ -21,6 +21,7 @@ interface UsePairedCardsParams {
   holidayKey: string; // "birthday" | holiday.id | customHoliday.id
   location: { latitude: number; longitude: number };
   sections: HolidayCardSection[];
+  excludeCardIds?: string[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,9 +81,10 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
         curatedExperienceType: derived!.curatedExperienceType,
         location: params!.location,
         mode: "default",
+        excludeCardIds: params!.excludeCardIds,
       }),
     enabled: hasValidLocation,
-    staleTime: 30 * 60 * 1000, // 30 min — retry if empty, but don't spam
+    staleTime: Infinity, // Cards persist until shuffle — no auto-refresh
     gcTime: 24 * 60 * 60 * 1000, // 24h garbage collection
     retry: 2,
   });

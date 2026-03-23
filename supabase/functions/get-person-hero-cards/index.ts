@@ -23,6 +23,7 @@ interface RequestBody {
   location: { latitude: number; longitude: number };
   mode?: "default" | "shuffle" | "bilateral"; // default = use provided categories; shuffle = personalize if ≥10 swipes; bilateral = blend both users' prefs
   isCustomHoliday?: boolean;
+  excludeCardIds?: string[];
 }
 
 interface Card {
@@ -180,7 +181,7 @@ serve(async (req: Request) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // --- Parse & validate body ---
-    const { personId, pairedUserId, viewerUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode, isCustomHoliday } = rawBody as RequestBody;
+    const { personId, pairedUserId, viewerUserId, holidayKey, categorySlugs, curatedExperienceType, location, mode, isCustomHoliday, excludeCardIds } = rawBody as RequestBody;
 
     // Accept either personId (deprecated) or pairedUserId (new pairing flow)
     const effectivePersonId = pairedUserId ?? personId;
@@ -566,6 +567,7 @@ serve(async (req: Request) => {
         p_curated_experience_type: effectiveCuratedType,
         p_initial_radius_meters: initialRadius,
         p_max_radius_meters: maxRadius,
+        p_exclude_card_ids: excludeCardIds || [],
       },
     );
 

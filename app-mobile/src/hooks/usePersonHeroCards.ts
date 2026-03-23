@@ -46,6 +46,6 @@ export function usePersonHeroCards(params: UsePersonHeroCardsParams) {
         location,
       }),
     enabled: enabled && !!pairedUserId && !!holidayKey,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: Infinity, // Cards persist until shuffle — no auto-refresh
   });
 }

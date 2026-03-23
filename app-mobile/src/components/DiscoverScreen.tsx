@@ -2787,6 +2787,9 @@ export default function DiscoverScreen({
       totalPriceMax: number | null;
       estimatedDurationMinutes: number | null;
       shoppingList: unknown[] | null;
+      travelTime?: string;
+      distance?: string;
+      travelMode?: string;
     }) => {
       const expanded: ExpandedCardData = {
         id: card.id,
@@ -2801,8 +2804,8 @@ export default function DiscoverScreen({
         rating: card.rating ?? 0,
         reviewCount: 0,
         priceRange: card.priceRange || "",
-        distance: "",
-        travelTime: "",
+        distance: card.distance || "",
+        travelTime: card.travelTime || "",
         address: card.address || "",
         website: card.website || undefined,
         location: card.lat && card.lng ? { lat: card.lat, lng: card.lng } : undefined,
@@ -3364,6 +3367,7 @@ export default function DiscoverScreen({
                   onUnarchiveHoliday={handlePersonUnarchiveHoliday}
                   onCardPress={handlePersonCardPress}
                   onDeleteCustomDay={handleConfirmDeleteCustomHoliday}
+                  travelMode={userTravelMode}
                 />
               ) : (
                 <>

@@ -25,6 +25,7 @@ import { useHolidayCategories } from "../hooks/useHolidayCategories";
 import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
+import { computeTravelInfo } from "../utils/travelTime";
 import { PriceTierSlug, tierLabel } from "../constants/priceTiers";
 import { ordinal } from "../utils/ordinalSuffix";
 import { s, vs, ms, SCREEN_WIDTH } from "../utils/responsive";
@@ -105,9 +106,14 @@ interface PersonHolidayViewProps {
     totalPriceMax: number | null;
     estimatedDurationMinutes: number | null;
     shoppingList: unknown[] | null;
+    travelTime?: string;
+    distance?: string;
+    travelMode?: string;
   }) => void;
   /** Called when user deletes a custom holiday */
   onDeleteCustomDay?: (holidayId: string, holidayName: string) => void;
+  /** User's preferred travel mode — used for travel time computation on card press */
+  travelMode?: string;
 }
 
 // ── Category icon mapping (matches DiscoverScreen) ──────────────────────────
@@ -328,6 +334,7 @@ function CardRow({
   onCardPress,
   onShuffleCategories,
   seenCardIds,
+  travelMode,
 }: {
   pairedUserId: string;
   holidayKey: string;
@@ -337,11 +344,13 @@ function CardRow({
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
   seenCardIds?: React.MutableRefObject<Set<string>>;
+  travelMode?: string;
 }) {
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
+  const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
 
   const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
-    hasLoc ? { pairedUserId, holidayKey, location, sections } : null
+    hasLoc ? { pairedUserId, holidayKey, location, sections, excludeCardIds: excludeIds } : null
   );
 
   const shufflePairedCards = useShufflePairedCards();
@@ -406,7 +415,10 @@ function CardRow({
               isCurated={c.cardType === "curated"}
               experienceType={c.experienceType}
               stops={c.stops}
-              onPress={() =>
+              onPress={() => {
+                const travel = c.lat != null && c.lng != null && location.latitude !== 0
+                  ? computeTravelInfo(location.latitude, location.longitude, c.lat, c.lng, travelMode || 'walking')
+                  : undefined;
                 onCardPress?.({
                   id: c.id,
                   title: c.title,
@@ -430,8 +442,11 @@ function CardRow({
                   totalPriceMax: c.totalPriceMax,
                   estimatedDurationMinutes: c.estimatedDurationMinutes,
                   shoppingList: c.shoppingList,
-                })
-              }
+                  travelTime: travel?.travelTime,
+                  distance: travel?.distance,
+                  travelMode,
+                });
+              }}
             />
           ))
         : sectionFallback.map((c) => (
@@ -485,7 +500,7 @@ function HolidaySectionView({
   pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
-  seenCardIds,
+  seenCardIds, travelMode,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -500,6 +515,7 @@ function HolidaySectionView({
   onToggle: () => void;
   onArchive: () => void;
   seenCardIds?: React.MutableRefObject<Set<string>>;
+  travelMode?: string;
 }) {
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
   const cd = countdownText(daysAway);
@@ -541,6 +557,7 @@ function HolidaySectionView({
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
             seenCardIds={seenCardIds}
+            travelMode={travelMode}
           />
         </>
       )}
@@ -553,7 +570,7 @@ function HolidaySectionView({
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
-  seenCardIds,
+  seenCardIds, travelMode,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -563,6 +580,7 @@ function CustomHolidaySectionView({
   isExpanded: boolean; onToggle: () => void;
   onDelete?: () => void;
   seenCardIds?: React.MutableRefObject<Set<string>>;
+  travelMode?: string;
 }) {
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
@@ -613,6 +631,7 @@ function CustomHolidaySectionView({
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
             seenCardIds={seenCardIds}
+            travelMode={travelMode}
           />
         </>
       )}
@@ -626,7 +645,7 @@ export default function PersonHolidayView({
   pairedUserId, pairingId, displayName, birthday, gender,
   location, userId, customHolidays, onAddCustomDay,
   fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
-  onCardPress, onDeleteCustomDay,
+  onCardPress, onDeleteCustomDay, travelMode,
 }: PersonHolidayViewProps) {
   const firstName = getFirstName(displayName);
 
@@ -800,6 +819,7 @@ export default function PersonHolidayView({
               sections={DEFAULT_PERSON_SECTIONS} location={location}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               seenCardIds={seenCardIds}
+              travelMode={travelMode}
             />
           </View>
         );
@@ -826,6 +846,7 @@ export default function PersonHolidayView({
               onToggle={() => toggle(`custom_${ch.id}`)}
               onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
               seenCardIds={seenCardIds}
+              travelMode={travelMode}
             />
           ))
         ) : (
@@ -859,6 +880,7 @@ export default function PersonHolidayView({
               onToggle={() => toggle(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}
               seenCardIds={seenCardIds}
+              travelMode={travelMode}
             />
           ))}
 
