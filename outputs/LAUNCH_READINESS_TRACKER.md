@@ -177,7 +177,8 @@
 | 5a | 4 | Saved page + calendar | PENDING |
 | 5b | 4 | Swipe + animation edge cases | PENDING |
 | 6 | 13 | Polish + optimization | PENDING |
-| 7 | 4+ | Realtime + freshness — FULL APP AUDIT: every data flow (notifications, friends, pairings, sessions, chat, saved cards, calendar, profile, preferences, subscriptions, foreground resume, staleTime, Realtime subscriptions, cache invalidation) | PENDING — needs deep investigation |
+| 7 | 4+ | Realtime + freshness — FULL APP AUDIT | PENDING — needs deep investigation |
+| 8 | 7 | Scheduling + calendar + review flow (slugs, reschedule, hours error, review blank, weekend picker) | PENDING |
 
 ---
 

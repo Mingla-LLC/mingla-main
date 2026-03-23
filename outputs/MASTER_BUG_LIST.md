@@ -227,6 +227,19 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P6-14 | Unsafe images pattern in 4 remaining files | Test finding | CalendarTab, BoardSessionCard, BoardViewScreen, SessionViewModal | LOW |
 | P6-15 | Async suggestion select race (rapid double-select) | Test finding | PreferencesSheet.tsx handleSuggestionSelect | LOW |
 | P6-18 | 27 avatar render sites with no onError handler | Investigation finding | Systemic — needs reusable AvatarImage component | MED |
+| P6-19 | Missing icons: star-outline, today-outline, cloudy-night | Log bugs | Icon.tsx ICON_MAP | LOW |
+
+## PASS 8 — Scheduling + Calendar + Review Flow
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P8-01 | Scheduled tab shows slugs (fine_dining not Fine Dining) | User report | CalendarTab.tsx | LOW |
+| P8-02 | Reschedule from review modal doesn't actually reschedule | User report | CalendarTab / review flow | MED |
+| P8-03 | Opening hours error shown for places that are open | User report | Opening hours parsing / card data | MED |
+| P8-04 | No review modal on reschedule | User report | CalendarTab review trigger logic | MED |
+| P8-05 | Collab session saved card doesn't leave saved tab on schedule | User report | SavedTab removal for collab source | MED |
+| P8-06 | Review modal "I went" shows blank screen | User report | Review flow / VisitReviewModal | HIGH |
+| P8-07 | "This weekend" doesn't let user pick day, only time | User report | ProposeDateTimeModal / PreferencesSheet | MED |
 | P6-16 | SavedTab category filter broken (slugs vs display names) | Spec finding | SavedTab.tsx filter logic | LOW |
 | P6-17 | Account settings: country/currency/measurement manual change | User request | New feature — settings UI | MED |
 
