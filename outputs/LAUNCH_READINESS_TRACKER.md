@@ -1,7 +1,7 @@
 # Launch Readiness Tracker
 
-> **Last updated:** 2026-03-22
-> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening in progress (Passes 1-6).
+> **Last updated:** 2026-03-23
+> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Launch hardening in progress (Pass 0 done).
 >
 > This is the single source of truth for Mingla's launch readiness.
 > Every entry requires evidence. No grade promotions without proof.
@@ -101,6 +101,7 @@
 
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
+| UI consolidation (single entry point) | A | 2026-03-23 | Commit 15fe8742. Test: TEST_COLLABORATION_UI_CONSOLIDATION_REPORT.md (47/47 green) | Pill bar → SessionViewModal is the only path. CollaborationModule + BoardViewScreen deleted. Notifications + deep links rerouted. 8 files deleted, 11 modified. |
 | Session creation | F | — | Unaudited | — |
 | Invite send/receive | F | — | Unaudited | — |
 | Real-time sync | F | — | Unaudited | Supabase Realtime |
@@ -126,8 +127,8 @@
 | Pair accepted notification | A | 2026-03-21 | Commit 376cd237. Test report: TEST_REPORT_NOTIFICATION_PASS1.md | New edge function, both accept paths wired, fire-and-forget. 23/23 tests green. |
 | Pair activity preference enforcement | A | 2026-03-21 | Commit 376cd237 | paired_user_saved_card/visited now respect friend_requests toggle. |
 | Dead type cleanup | A | 2026-03-21 | Commit 376cd237 | 6 dead types removed from dispatch, icons, actions, routing, case handlers. |
-| In-app notifications | F | — | Unaudited | — |
-| Deep link from notification | F | — | Unaudited | — |
+| In-app notifications | F | — | Unaudited | board-view targets updated to home (2026-03-23) |
+| Deep link from notification | B | 2026-03-23 | Commit 15fe8742 | `mingla://session/{id}` routes to home + auto-open modal. board-view deep links eliminated. Known: invalid sessionId lingers (medium finding). |
 | Notification for deleted content | F | — | Unaudited | Cross-cutting concern |
 | iOS app badge | A | 2026-03-21 | Commit d4c6725e. Test report: TEST_REPORT_NOTIFICATION_PASS2.md | iosBadgeType: Increase on all push payloads. Reset on modal open + markAllAsRead. 27/27 tests green. |
 | Session member left notification | A | 2026-03-21 | Commit d4c6725e | notifyMemberLeft wired in ManageBoardModal (leave + admin-remove). Skip on session deletion. |
@@ -203,6 +204,14 @@
 | Zustand persistence schema versioning | F | — | Unaudited | DECK_SCHEMA_VERSION exists |
 | App background → foreground state survival | F | — | Unaudited | useForegroundRefresh.ts |
 | Memory pressure on large lists | F | — | Unaudited | — |
+
+### Hardening Infrastructure (Pass 0)
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| withTimeout utility | A | 2026-03-23 | Commit 06614e98. Test: TEST_PASS_0_REPORT.md (38/38 green) | Generic Promise.race wrapper, leak-free cleanup |
+| Mutation error toast utility | A | 2026-03-23 | Commit 06614e98. Test: TEST_PASS_0_REPORT.md (38/38 green) | Defense-in-depth: Supabase codes, SQL/stack rejection, network/timeout detection |
+| Centralized query key factory | A | 2026-03-23 | Commit 06614e98. Test: TEST_PASS_0_REPORT.md (38/38 green) | savedCardKeys factory. Pass 6 consolidates remaining 8 factories. |
 
 ### Error Handling
 
