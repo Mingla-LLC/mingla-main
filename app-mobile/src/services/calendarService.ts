@@ -90,6 +90,27 @@ export class CalendarService {
       .single();
 
     if (error) {
+      // 23505 = unique_violation — the entry already exists (race condition or double-tap).
+      // Treat as success: fetch and return the existing entry.
+      if (error.code === '23505') {
+        console.warn("[CalendarService] Duplicate entry detected — returning existing:", {
+          user_id: payload.user_id,
+          card_id: payload.card_id,
+        });
+        const { data: existing } = await supabase
+          .from("calendar_entries")
+          .select("*")
+          .eq("user_id", payload.user_id)
+          .eq("card_id", payload.card_id)
+          .eq("status", "pending")
+          .is("archived_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        if (existing) return existing as CalendarEntryRecord;
+        // If we can't find the existing entry (shouldn't happen), fall through to throw
+      }
+
       console.error("[CalendarService] INSERT failed:", {
         code: error.code,
         message: error.message,

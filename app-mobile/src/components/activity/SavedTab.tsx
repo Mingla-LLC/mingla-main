@@ -1687,6 +1687,7 @@ const SavedTab = ({
       }
     } catch (error) {
       console.error("Error removing saved card:", error);
+      toastManager.error("Couldn't remove — try again", 3000);
     } finally {
       setRemovingCardIds((prev) => {
         const next = new Set(prev);
