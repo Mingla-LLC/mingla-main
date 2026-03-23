@@ -302,7 +302,7 @@ async function submitVoiceReview(
 async function markRescheduled(userId: string, calendarEntryId: string): Promise<void> {
   const { error } = await supabase
     .from('calendar_entries')
-    .update({ feedback_status: 'rescheduled' })
+    .update({ feedback_status: null })
     .eq('id', calendarEntryId)
     .eq('user_id', userId);
 

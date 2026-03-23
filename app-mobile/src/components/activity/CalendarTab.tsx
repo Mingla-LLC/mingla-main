@@ -14,6 +14,7 @@ import {
   RefreshControl,
 } from "react-native";
 import * as WebBrowser from 'expo-web-browser';
+import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 const ANIMATION_DURATION = 250;
 import { Icon } from "../ui/Icon";
@@ -1293,8 +1294,7 @@ const CalendarTab = ({
     const subtitle =
       (entry as any).organizer ||
       (entry.experience as any)?.organizer ||
-      entry.experience?.category ||
-      entry.category ||
+      getReadableCategoryName(entry.experience?.category || entry.category || "") ||
       "Experience";
 
     // Detect curated + locked
