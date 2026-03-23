@@ -240,6 +240,13 @@ All graded A. See LAUNCH_READINESS_TRACKER.md for evidence.
 | P8-05 | Collab session saved card doesn't leave saved tab on schedule | User report | SavedTab removal for collab source | MED |
 | P8-06 | Review modal "I went" shows blank screen | User report | Review flow / VisitReviewModal | HIGH |
 | P8-07 | "This weekend" doesn't let user pick day, only time | User report | ProposeDateTimeModal / PreferencesSheet | MED |
+
+## PASS 9 — Pairing + Social Integrity
+
+| ID | Bug | Source | File | Effort |
+|----|-----|--------|------|--------|
+| P9-01 | Unpair fails silently — RLS blocks pair_requests UPDATE, mutation reports success | User report + logs | pairingService.ts, pair_requests RLS policy | HIGH |
+| P9-02 | Other user still shows paired after unpair attempt | User report | No realtime update / failed mutation | HIGH |
 | P6-16 | SavedTab category filter broken (slugs vs display names) | Spec finding | SavedTab.tsx filter logic | LOW |
 | P6-17 | Account settings: country/currency/measurement manual change | User request | New feature — settings UI | MED |
 
