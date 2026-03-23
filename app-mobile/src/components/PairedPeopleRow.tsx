@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -74,6 +74,8 @@ export default function PairedPeopleRow({
   people,
   onSelectPerson,
 }: PairedPeopleRowProps) {
+  const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
+
   if (people.length === 0) return null;
 
   return (
@@ -102,10 +104,11 @@ export default function PairedPeopleRow({
               {/* Avatar with ring */}
               <View style={styles.avatarRing}>
                 <View style={styles.avatarContainer}>
-                  {person.avatarUrl ? (
+                  {person.avatarUrl && !failedAvatars.has(person.pairedUserId) ? (
                     <Image
                       source={{ uri: person.avatarUrl }}
                       style={styles.avatarImage}
+                      onError={() => setFailedAvatars(prev => new Set([...prev, person.pairedUserId]))}
                     />
                   ) : (
                     <Text style={styles.avatarInitials}>{person.initials}</Text>

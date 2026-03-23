@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Linking,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Icon } from './ui/Icon';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PurchasesPackage } from 'react-native-purchases';
@@ -313,11 +313,11 @@ export function CustomPaywallScreen({
 
           {/* Terms & Privacy */}
           <View style={styles.legalRow}>
-            <TouchableOpacity onPress={() => Linking.openURL('https://mingla.app/terms')}>
+            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://mingla.app/terms').catch(() => {})}>
               <Text style={styles.legalLink}>Terms of Service</Text>
             </TouchableOpacity>
             <Text style={styles.legalDot}> | </Text>
-            <TouchableOpacity onPress={() => Linking.openURL('https://mingla.app/privacy')}>
+            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://mingla.app/privacy').catch(() => {})}>
               <Text style={styles.legalLink}>Privacy Policy</Text>
             </TouchableOpacity>
           </View>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { WhatsAppLogo, InstagramLogo, TwitterLogo } from './ui/BrandIcons';
@@ -171,7 +172,9 @@ export default function ShareModal({
           } else {
             // Fallback to web
             const twitterWebUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}`;
-            await Linking.openURL(twitterWebUrl);
+            await WebBrowser.openBrowserAsync(twitterWebUrl).catch(() => {
+              Linking.openURL(twitterWebUrl);
+            });
           }
           break;
           

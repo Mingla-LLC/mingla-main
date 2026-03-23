@@ -13,6 +13,7 @@ import {
   Animated,
   RefreshControl,
 } from "react-native";
+import * as WebBrowser from 'expo-web-browser';
 
 const ANIMATION_DURATION = 250;
 import { Icon } from "../ui/Icon";
@@ -1255,7 +1256,9 @@ const CalendarTab = ({
     // Handle purchase if needed
     // Could open external link or show purchase flow
     if (bookingOption.url) {
-      Linking.openURL(bookingOption.url);
+      WebBrowser.openBrowserAsync(bookingOption.url).catch(() => {
+        Linking.openURL(bookingOption.url);
+      });
     }
   };
 
