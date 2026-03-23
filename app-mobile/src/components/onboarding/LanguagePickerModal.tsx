@@ -8,7 +8,7 @@ import {
   Modal,
   StyleSheet,
 } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Icon } from '../ui/Icon'
 import * as Haptics from 'expo-haptics'
 import { useKeyboard } from '../../hooks/useKeyboard'
@@ -115,6 +115,7 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+      <SafeAreaProvider>
       <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <Text style={styles.title}>Select Language</Text>
@@ -161,6 +162,7 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
         {/* Bottom spacer: keyboard height when open, safe area when closed */}
         <View style={{ height: bottomSpacer }} />
       </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   )
 }
