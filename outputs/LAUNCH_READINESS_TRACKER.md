@@ -176,7 +176,7 @@
 | 4c | 3 | AI optional marker + picnic flowers optional + description truncation | **DONE** — commit 08396f14, 15/15 green |
 | 5a | 2 | Removal toast + calendar dedup (2 deferred: deactivated cards, calendar perm already handled) | **DONE** — commit 322fbdb2, 12/12 green |
 | 5b | 1 | Duration NaN guard (3 deferred: swipe limit, batch race, weather) | **DONE** — commit e8c81dc4 |
-| 6 | 13 | Polish + optimization | PENDING |
+| 6 | 7 | Polish — seat map, coord bounds, suggestion race, category filter, safe images (9 deferred/skipped) | **DONE** — commit c7b8c691 |
 | 7 | 4+ | Realtime + freshness — FULL APP AUDIT | PENDING — needs deep investigation |
 | 8 | 7 | Scheduling + calendar + review flow (slugs, reschedule, hours error, review blank, weekend picker) | PENDING |
 | 9 | 2 | Pairing integrity — unpair RLS failure + silent mutation success + other user not updated | PENDING |
