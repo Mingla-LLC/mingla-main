@@ -177,7 +177,7 @@
 | 5a | 2 | Removal toast + calendar dedup (2 deferred: deactivated cards, calendar perm already handled) | **DONE** — commit 322fbdb2, 12/12 green |
 | 5b | 1 | Duration NaN guard (3 deferred: swipe limit, batch race, weather) | **DONE** — commit e8c81dc4 |
 | 6 | 7 | Polish — seat map, coord bounds, suggestion race, category filter, safe images (9 deferred/skipped) | **DONE** — commit c7b8c691 |
-| 7 | 4+ | Realtime + freshness — FULL APP AUDIT | PENDING — needs deep investigation |
+| 7 | 2 | Realtime + freshness — mount useSocialRealtime + useForegroundRefresh (were dead code) | **DONE** — commit f3312371 |
 | 8 | 7 | Scheduling + calendar + review flow (slugs, reschedule, hours error, review blank, weekend picker) | PENDING |
 | 9 | 2 | Pairing integrity — unpair RLS failure + silent mutation success + other user not updated | PENDING |
 
