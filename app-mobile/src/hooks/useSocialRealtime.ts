@@ -183,6 +183,19 @@ export function useSocialRealtime(
           });
         }
       )
+      // message_reads: DM unread count updates when a message is marked as read
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "message_reads",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        }
+      )
       .subscribe();
 
     return () => {

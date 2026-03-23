@@ -216,6 +216,16 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
               : n
           )
       );
+
+      // Update iOS badge count to match new unread count
+      const cached = queryClient.getQueryData<ServerNotification[]>(notificationKeys.all(userId));
+      const unreadCount = cached?.filter(n => !n.is_read).length ?? 0;
+      if (unreadCount === 0) {
+        OneSignal.Notifications.clearAll();
+      }
+      // Note: OneSignal RN SDK v5 doesn't expose setBadgeCount for non-zero values.
+      // Badge increments via push payload; clearAll resets to 0 when all are read.
+
       const { error } = await supabase
         .from('notifications')
         .update({ is_read: true, read_at: new Date().toISOString() })
@@ -405,7 +415,9 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
               body: { accepterId: userId, senderId, requestId },
             }).catch(err => console.warn('[useNotifications] pair accepted notification failed:', err));
           }
-        } catch {}
+        } catch (notifyErr) {
+          console.warn('[useNotifications] pair accepted notification setup failed:', notifyErr);
+        }
         await deleteNotification(notificationId);
       } catch (err) {
         console.error('[useNotifications] acceptPairRequest error:', err);

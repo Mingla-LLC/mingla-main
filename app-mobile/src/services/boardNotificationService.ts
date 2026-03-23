@@ -10,6 +10,7 @@
  * rate limiting, idempotency, and OneSignal push delivery.
  */
 import { supabase } from './supabase';
+import { withTimeout } from '../utils/withTimeout';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -57,8 +58,8 @@ function notifyUsers(
   const fiveBucket = Math.floor(Date.now() / (5 * 60 * 1000));
 
   for (const recipientId of recipientIds) {
-    supabase.functions
-      .invoke('notify-dispatch', {
+    withTimeout(
+      supabase.functions.invoke('notify-dispatch', {
         body: {
           userId: recipientId,
           type: payload.type,
@@ -74,10 +75,12 @@ function notifyUsers(
             collapseId: `board:${payload.sessionId}`,
           },
         },
-      })
-      .catch((err) =>
-        console.log(`[boardNotificationService] ${payload.type} notification error:`, err)
-      );
+      }),
+      5000,
+      'boardNotification'
+    ).catch((err) =>
+      console.warn(`[boardNotificationService] ${payload.type} notification error:`, err)
+    );
   }
 }
 
