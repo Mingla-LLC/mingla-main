@@ -574,6 +574,7 @@ export default function PreferencesSheet({
   }, []);
 
   const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
+    if (isSelectingSuggestion.current) return;
     isSelectingSuggestion.current = true;
     setSearchLocation(suggestion.displayName);
     setShowSuggestions(false);
@@ -584,7 +585,12 @@ export default function PreferencesSheet({
     if (!coords && suggestion.placeId) {
       coords = await geocodingService.getPlaceCoordinates(suggestion.placeId);
     }
-    setSelectedCoords(coords);
+    // Validate coordinate bounds before accepting
+    if (coords && Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180) {
+      setSelectedCoords(coords);
+    } else {
+      setSelectedCoords(null);
+    }
 
     setTimeout(() => {
       isSelectingSuggestion.current = false;

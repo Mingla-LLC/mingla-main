@@ -262,8 +262,8 @@ const SavedTab = ({
 
     const matchesCategory = (card: SavedCard) => {
       if (selectedCategory === "all") return true;
-      const category = card.category || "";
-      return category === selectedCategory;
+      const readableName = getReadableCategoryName(card.category || "");
+      return readableName === selectedCategory;
     };
 
     const applyAllFilters = (card: SavedCard) =>

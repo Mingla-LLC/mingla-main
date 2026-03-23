@@ -44,7 +44,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
 }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const cardData = card.card_data || card.experience_data || {};
-  const images = cardData.images || [cardData.image] || [];
+  const images = cardData.images?.length ? cardData.images : (cardData.image ? [cardData.image] : []);
   const matchScore = Math.round(cardData.matchScore || 0);
 
   const handleImageSwipe = (direction: "left" | "right") => {

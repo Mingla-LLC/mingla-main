@@ -790,6 +790,7 @@ export default function ExpandedCardModal({
   const [picnicData, setPicnicData] = useState(card?.picnicData);
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
   const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
+  const [seatMapFailed, setSeatMapFailed] = useState(false);
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
@@ -808,6 +809,7 @@ export default function ExpandedCardModal({
       setBookingOptions([]);
       setStrollData(undefined);
       setPicnicData(undefined);
+      setSeatMapFailed(false);
     }
   }, [visible, card]);
 
@@ -1244,13 +1246,14 @@ export default function ExpandedCardModal({
                 </View>
 
                 {/* Seat Map (if available) */}
-                {nightOut.seatMapUrl && (
+                {nightOut.seatMapUrl && !seatMapFailed && (
                   <View style={{ marginTop: 16 }}>
                     <Text style={nightOutStyles.sectionTitle}>Seat Map</Text>
                     <Image
                       source={{ uri: nightOut.seatMapUrl }}
                       style={{ width: '100%', height: 200, borderRadius: 12 }}
                       resizeMode="contain"
+                      onError={() => setSeatMapFailed(true)}
                     />
                   </View>
                 )}

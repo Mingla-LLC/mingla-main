@@ -1172,8 +1172,9 @@ const CalendarTab = ({
         entry.description ||
         "",
       image: experience.image || entry.image || "",
-      images: experience.images ||
-        entry.images || [experience.image || entry.image || ""],
+      images: experience.images?.length ? experience.images
+        : entry.images?.length ? entry.images
+        : [experience.image || entry.image].filter(Boolean),
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
       priceRange: experience.priceRange || entry.priceRange || "N/A",
