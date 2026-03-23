@@ -173,7 +173,7 @@
 | 3c | 1 | Rating falsy fix (3 deferred: flicker, round-robin OK, skeleton intentional) | **DONE** — commit c10d8971 |
 | 4a | 4 | Scheduling — iOS picker, date confirm, 12hr, haptic | **DONE** — commit ae2d17f2, 13/13 green |
 | 4b | 3 | Schools exclusion + flowers florist-only + 5 icons | **DONE** — commit 073da431, 15/15 green |
-| 4c | 3 | Curated content quality | PENDING |
+| 4c | 3 | AI optional marker + picnic flowers optional + description truncation | **DONE** — commit 08396f14, 15/15 green |
 | 5a | 4 | Saved page + calendar | PENDING |
 | 5b | 4 | Swipe + animation edge cases | PENDING |
 | 6 | 13 | Polish + optimization | PENDING |
