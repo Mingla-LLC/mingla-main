@@ -170,7 +170,7 @@
 | 2c | 5 | Timezone pipeline + parser unification + lat/lng | **DONE** — commit 106d18f7, 21/21 green |
 | 3a | 4 | Error states + truthfulness | **DONE** — commit f95a5fad, 19/19 green |
 | 3b | 2 | In-app browser + avatar fallback | **DONE** — commit 0254bc4f, 14/14 green |
-| 3c | 4 | Card quality + rendering | PENDING |
+| 3c | 1 | Rating falsy fix (3 deferred: flicker, round-robin OK, skeleton intentional) | **DONE** — commit c10d8971 |
 | 4a | 4 | Scheduling fixes | PENDING |
 | 4b | 3 | Data quality: exclusions + categories | PENDING |
 | 4c | 3 | Curated content quality | PENDING |
