@@ -20,6 +20,7 @@ import { subscriptionKeys } from '../hooks/useSubscription';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
+import { useToast } from './ToastManager';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -104,6 +105,7 @@ export function CustomPaywallScreen({
   initialTier = 'pro',
 }: CustomPaywallScreenProps) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { data: offering } = useOfferings();
   const { mutateAsync: purchase, isPending: isPurchasing } = usePurchasePackage();
   const { mutateAsync: restore, isPending: isRestoring } = useRestorePurchases();
@@ -155,8 +157,20 @@ export function CustomPaywallScreen({
 
     try {
       const result = await purchase(pkg);
-      // Sync to Supabase (best-effort)
-      await syncSubscriptionFromRC(userId, result.customerInfo).catch(() => {});
+      // Sync to Supabase — retry once on failure
+      try {
+        await syncSubscriptionFromRC(userId, result.customerInfo);
+      } catch (syncErr) {
+        console.warn('[CustomPaywallScreen] Sync failed, retrying...', syncErr);
+        setTimeout(async () => {
+          try {
+            await syncSubscriptionFromRC(userId, result.customerInfo);
+          } catch (retryErr) {
+            console.error('[CustomPaywallScreen] Sync retry failed:', retryErr);
+            showToast({ message: 'Purchase successful. Features may take a moment to activate.', type: 'info' });
+          }
+        }, 2000);
+      }
       // Invalidate caches so the rest of the app reflects the new tier
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all });
       queryClient.invalidateQueries({ queryKey: revenueCatKeys.all });
@@ -173,7 +187,20 @@ export function CustomPaywallScreen({
   const handleRestore = async () => {
     try {
       const customerInfo = await restore();
-      await syncSubscriptionFromRC(userId, customerInfo).catch(() => {});
+      // Sync to Supabase — retry once on failure
+      try {
+        await syncSubscriptionFromRC(userId, customerInfo);
+      } catch (syncErr) {
+        console.warn('[CustomPaywallScreen] Restore sync failed, retrying...', syncErr);
+        setTimeout(async () => {
+          try {
+            await syncSubscriptionFromRC(userId, customerInfo);
+          } catch (retryErr) {
+            console.error('[CustomPaywallScreen] Restore sync retry failed:', retryErr);
+            showToast({ message: 'Purchases restored. Features may take a moment to activate.', type: 'info' });
+          }
+        }, 2000);
+      }
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all });
       queryClient.invalidateQueries({ queryKey: revenueCatKeys.all });
       Alert.alert('Restored', 'Your purchases have been restored.');

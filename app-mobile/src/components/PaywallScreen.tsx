@@ -17,6 +17,7 @@ import { subscriptionKeys } from '../hooks/useSubscription'
 import { presentCustomerCenter } from '../services/revenueCatService'
 import { syncSubscriptionFromRC } from '../services/subscriptionService'
 import { colors } from '../constants/colors'
+import { useToast } from './ToastManager'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -44,6 +45,7 @@ interface PaywallScreenProps {
  */
 export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
 
   // Called by RC Paywall UI after a successful purchase
   const handlePurchaseCompleted = useCallback(
@@ -53,8 +55,20 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
       customerInfo: CustomerInfo
       storeTransaction: PurchasesStoreTransaction
     }) => {
-      // Sync RC state to Supabase (best-effort, non-blocking)
-      await syncSubscriptionFromRC(userId, customerInfo)
+      // Sync RC state to Supabase — retry once on failure
+      try {
+        await syncSubscriptionFromRC(userId, customerInfo)
+      } catch (syncErr) {
+        console.warn('[PaywallScreen] Sync failed, retrying...', syncErr)
+        setTimeout(async () => {
+          try {
+            await syncSubscriptionFromRC(userId, customerInfo)
+          } catch (retryErr) {
+            console.error('[PaywallScreen] Sync retry failed:', retryErr)
+            showToast({ message: 'Purchase successful. Features may take a moment to activate.', type: 'info' })
+          }
+        }, 2000)
+      }
 
       // Push fresh CustomerInfo into React Query cache immediately
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
@@ -66,13 +80,26 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
 
       onClose()
     },
-    [userId, queryClient, onClose],
+    [userId, queryClient, onClose, showToast],
   )
 
   // Called by RC Paywall UI after a successful restore
   const handleRestoreCompleted = useCallback(
     async ({ customerInfo }: { customerInfo: CustomerInfo }) => {
-      await syncSubscriptionFromRC(userId, customerInfo)
+      // Sync to Supabase — retry once on failure
+      try {
+        await syncSubscriptionFromRC(userId, customerInfo)
+      } catch (syncErr) {
+        console.warn('[PaywallScreen] Restore sync failed, retrying...', syncErr)
+        setTimeout(async () => {
+          try {
+            await syncSubscriptionFromRC(userId, customerInfo)
+          } catch (retryErr) {
+            console.error('[PaywallScreen] Restore sync retry failed:', retryErr)
+            showToast({ message: 'Purchases restored. Features may take a moment to activate.', type: 'info' })
+          }
+        }, 2000)
+      }
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
       queryClient.invalidateQueries({
         queryKey: subscriptionKeys.detail(userId),
@@ -84,7 +111,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
         [{ text: 'Done', onPress: onClose }],
       )
     },
-    [userId, queryClient, onClose],
+    [userId, queryClient, onClose, showToast],
   )
 
   // Called when the user cancels or dismisses the paywall

@@ -35,7 +35,7 @@ export function useSubscription(userId: string | undefined) {
     queryKey: subscriptionKeys.detail(userId ?? ''),
     queryFn: () => getSubscription(userId!),
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
   })
 }
 
@@ -64,14 +64,14 @@ export function useReferralStats(userId: string | undefined) {
 /**
  * Fetches the authoritative tier from the server-side get_effective_tier() RPC.
  * This includes admin subscription overrides which the client-side logic cannot see.
- * staleTime matches useSubscription (5 min) — admin overrides are not time-critical.
+ * staleTime matches useSubscription (60s) — keeps tier window tight.
  */
 export function useServerTier(userId: string | undefined) {
   return useQuery({
     queryKey: subscriptionKeys.serverTier(userId ?? ''),
     queryFn: () => getEffectiveTierFromServer(userId!),
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
   })
 }
 

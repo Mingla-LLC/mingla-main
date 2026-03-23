@@ -43,14 +43,14 @@ export const revenueCatKeys = {
  * Fetches and caches the RevenueCat CustomerInfo object.
  * Re-fetches whenever the query is invalidated (e.g. after a purchase or restore).
  *
- * staleTime: 5 minutes — CustomerInfo is kept current via the real-time listener
- * below, so aggressive re-fetching is unnecessary.
+ * staleTime: 60s — keeps tier window tight. CustomerInfo is also kept current
+ * via the real-time listener below.
  */
 export function useCustomerInfo(): UseQueryResult<CustomerInfo, Error> {
   return useQuery({
     queryKey: revenueCatKeys.customerInfo(),
     queryFn: getCustomerInfo,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
     retry: 2,
   })
 }
@@ -143,6 +143,13 @@ export function usePurchasePackage(): UseMutationResult<
         af_quantity: 1,
       })
     },
+    onError: (error) => {
+      // User cancellation is handled by consuming components — only log here
+      const isCancelled = error != null && typeof error === 'object' && 'userCancelled' in error && (error as any).userCancelled;
+      if (!isCancelled) {
+        console.error('[RevenueCat] Purchase failed:', error);
+      }
+    },
   })
 }
 
@@ -165,6 +172,9 @@ export function useRestorePurchases(): UseMutationResult<CustomerInfo, Error, vo
     mutationFn: () => restorePurchases(),
     onSuccess: (customerInfo) => {
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
+    },
+    onError: (error) => {
+      console.error('[RevenueCat] Restore failed:', error);
     },
   })
 }
@@ -189,6 +199,9 @@ export function useRevenueCatLogin(): UseMutationResult<CustomerInfo, Error, str
     onSuccess: (customerInfo) => {
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
     },
+    onError: (error) => {
+      console.error('[RevenueCat] Login failed:', error);
+    },
   })
 }
 
@@ -207,6 +220,9 @@ export function useRevenueCatLogout(): UseMutationResult<CustomerInfo, Error, vo
     mutationFn: () => logoutRevenueCat(),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: revenueCatKeys.customerInfo() })
+    },
+    onError: (error) => {
+      console.error('[RevenueCat] Logout failed:', error);
     },
   })
 }
