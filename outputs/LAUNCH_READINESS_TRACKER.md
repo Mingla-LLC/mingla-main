@@ -44,6 +44,7 @@
 | Preference save reliability | F | — | Unaudited | **Known issue:** PreferencesService silently catches errors |
 | Resume after interruption | F | — | Unaudited | — |
 | Audio recording (voice review) | F | — | Unaudited | E.164 sanitization was applied |
+| Skip button responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | onComplete() fires first, profile update in background with withTimeout(5000) |
 
 ### 3. Discovery / Explore (Card Deck)
 
@@ -102,6 +103,7 @@
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
 | UI consolidation (single entry point) | A | 2026-03-23 | Commit 15fe8742. Test: TEST_COLLABORATION_UI_CONSOLIDATION_REPORT.md (47/47 green) | Pill bar → SessionViewModal is the only path. CollaborationModule + BoardViewScreen deleted. Notifications + deep links rerouted. 8 files deleted, 11 modified. |
+| Board exit responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | Modal closes instantly, 4 DB ops in background. Critical failure toasts, cleanup warns only. |
 | Session creation | F | — | Unaudited | — |
 | Invite send/receive | F | — | Unaudited | — |
 | Real-time sync | F | — | Unaudited | Supabase Realtime |
@@ -113,9 +115,9 @@
 
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
-| Friend request send/accept/decline | F | — | Unaudited | — |
+| Friend request send/accept/decline | B | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | Accept/decline non-blocking. Redundant refetches removed. Error toasts on failure. Send flow unaudited. |
 | Link intent flow | F | — | Unaudited | — |
-| Block/mute | F | — | Unaudited | — |
+| Block/unblock/remove responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | All 4 handlers (block, unblock, remove×2) non-blocking. Modals/alerts close instantly. Background work with error toasts. |
 | Friend-based content visibility | F | — | Unaudited | RLS policies |
 | Pairing / paired saves | F | — | Unaudited | — |
 
@@ -204,6 +206,15 @@
 | Zustand persistence schema versioning | F | — | Unaudited | DECK_SCHEMA_VERSION exists |
 | App background → foreground state survival | F | — | Unaudited | useForegroundRefresh.ts |
 | Memory pressure on large lists | F | — | Unaudited | — |
+
+### Chat & Conversation Responsiveness (Pass 1)
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Existing chat tap (cached messages) | A | 2026-03-23 | Commit bef4ca3b (prior) + 2549dbe6. Test: TEST_PASS_1_REPORT.md (28/28 green) | Synchronous block check from cache, UI opens instantly |
+| First-time chat open (no cache) | A | 2026-03-23 | Commit 2549dbe6. Test: TEST_PASS_1_REPORT.md (28/28 green) | UI opens immediately with empty state, messages fetch in background (8s timeout) |
+| New conversation from friend picker | A | 2026-03-23 | Commit 2549dbe6. Test: TEST_PASS_1_REPORT.md (28/28 green) | Chat opens before getOrCreate. Offline fallback + error toast on total failure. |
+| Block service timeout | A | 2026-03-23 | Commit 2549dbe6. Test: TEST_PASS_1_REPORT.md (28/28 green) | hasBlockBetween + isBlockedByUser wrapped in withTimeout(5000) |
 
 ### Hardening Infrastructure (Pass 0)
 
