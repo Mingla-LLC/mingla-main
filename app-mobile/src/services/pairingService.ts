@@ -451,38 +451,16 @@ export async function cancelPairInvite(inviteId: string): Promise<void> {
 }
 
 /**
- * Unpair — delete the pairing and mark the associated pair_request as 'unpaired'.
+ * Unpair — atomic RPC that deletes the pairing, marks pair_request as 'unpaired',
+ * and cascades to custom_holidays. SECURITY DEFINER bypasses RLS.
  */
 export async function unpair(pairingId: string): Promise<void> {
-  // 1. Fetch the pairing to get pair_request_id
-  const { data: pairing, error: fetchError } = await supabase
-    .from("pairings")
-    .select("id, pair_request_id")
-    .eq("id", pairingId)
-    .single();
+  const { error } = await supabase.rpc('unpair_atomic', {
+    p_pairing_id: pairingId,
+  });
 
-  if (fetchError) throw new Error(fetchError.message);
-
-  // 2. Delete from pairings (CASCADE handles custom_holidays, etc.)
-  const { error: deleteError } = await supabase
-    .from("pairings")
-    .delete()
-    .eq("id", pairingId);
-
-  if (deleteError) throw new Error(deleteError.message);
-
-  // 3. Update the associated pair_request to 'unpaired'
-  if (pairing.pair_request_id) {
-    const { error: updateError } = await supabase
-      .from("pair_requests")
-      .update({ status: "unpaired" })
-      .eq("id", pairing.pair_request_id);
-
-    if (updateError) {
-      console.warn(
-        "[pairingService] Failed to update pair_request status to unpaired:",
-        updateError.message
-      );
-    }
+  if (error) {
+    console.error("[pairingService] unpair_atomic failed:", error.message);
+    throw new Error(error.message);
   }
 }
