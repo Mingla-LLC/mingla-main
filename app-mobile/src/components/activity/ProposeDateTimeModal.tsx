@@ -841,109 +841,97 @@ export default function ProposeDateTimeModal({
               dark
             />
           </Animated.View>
+
+        {/* Date Picker — INSIDE main Modal as overlay (iOS) */}
+        {showDatePicker && Platform.OS === "ios" && (
+          <View style={pickerModalStyles.overlay}>
+            <TouchableOpacity
+              style={pickerModalStyles.backdrop}
+              activeOpacity={1}
+              onPress={() => setShowDatePicker(false)}
+            />
+            <SafeAreaView
+              style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
+              edges={["bottom", "left", "right"]}
+            >
+              <View style={pickerModalStyles.header}>
+                <Text style={pickerModalStyles.title}>Select Date</Text>
+                <View style={pickerModalStyles.headerButtons}>
+                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <Text style={pickerModalStyles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleDatePickerDone}>
+                    <Text style={pickerModalStyles.doneText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <DateTimePicker
+                value={customDate}
+                mode="date"
+                display="spinner"
+                onChange={handleDatePickerChange}
+                minimumDate={new Date()}
+                style={pickerModalStyles.picker}
+              />
+            </SafeAreaView>
+          </View>
+        )}
+
+        {/* Time Picker — INSIDE main Modal as overlay (iOS) */}
+        {showTimePicker && Platform.OS === "ios" && (
+          <View style={pickerModalStyles.overlay}>
+            <TouchableOpacity
+              style={pickerModalStyles.backdrop}
+              activeOpacity={1}
+              onPress={() => setShowTimePicker(false)}
+            />
+            <SafeAreaView
+              style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
+              edges={["bottom", "left", "right"]}
+            >
+              <View style={pickerModalStyles.header}>
+                <Text style={pickerModalStyles.title}>Select Time</Text>
+                <View style={pickerModalStyles.headerButtons}>
+                  <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                    <Text style={pickerModalStyles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleTimePickerDone}>
+                    <Text style={pickerModalStyles.doneText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <DateTimePicker
+                value={customTime || new Date()}
+                mode="time"
+                display="spinner"
+                is24Hour={false}
+                onChange={handleTimePickerChange}
+                style={pickerModalStyles.picker}
+              />
+            </SafeAreaView>
+          </View>
+        )}
         </KeyboardAwareView>
       </Modal>
 
-      {/* Date Picker — iOS: wrapped in Modal so it renders above everything */}
-      {showDatePicker && (
-        Platform.OS === "ios" ? (
-          <Modal
-            visible={showDatePicker}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowDatePicker(false)}
-          >
-            <View style={pickerModalStyles.overlay}>
-              <TouchableOpacity
-                style={pickerModalStyles.backdrop}
-                activeOpacity={1}
-                onPress={() => setShowDatePicker(false)}
-              />
-              <SafeAreaView
-                style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
-                edges={["bottom", "left", "right"]}
-              >
-                <View style={pickerModalStyles.header}>
-                  <Text style={pickerModalStyles.title}>Select Date</Text>
-                  <View style={pickerModalStyles.headerButtons}>
-                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                      <Text style={pickerModalStyles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDatePickerDone}>
-                      <Text style={pickerModalStyles.doneText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <DateTimePicker
-                  value={customDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={handleDatePickerChange}
-                  minimumDate={new Date()}
-                  style={pickerModalStyles.picker}
-                />
-              </SafeAreaView>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={customDate}
-            mode="date"
-            display="default"
-            onChange={handleDatePickerChange}
-            minimumDate={new Date()}
-          />
-        )
+      {/* Android native pickers — render OUTSIDE Modal (native dialogs always on top) */}
+      {showDatePicker && Platform.OS === "android" && (
+        <DateTimePicker
+          value={customDate}
+          mode="date"
+          display="default"
+          onChange={handleDatePickerChange}
+          minimumDate={new Date()}
+        />
       )}
-
-      {/* Time Picker — iOS: wrapped in Modal so it renders above everything */}
-      {showTimePicker && (
-        Platform.OS === "ios" ? (
-          <Modal
-            visible={showTimePicker}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowTimePicker(false)}
-          >
-            <View style={pickerModalStyles.overlay}>
-              <TouchableOpacity
-                style={pickerModalStyles.backdrop}
-                activeOpacity={1}
-                onPress={() => setShowTimePicker(false)}
-              />
-              <SafeAreaView
-                style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
-                edges={["bottom", "left", "right"]}
-              >
-                <View style={pickerModalStyles.header}>
-                  <Text style={pickerModalStyles.title}>Select Time</Text>
-                  <View style={pickerModalStyles.headerButtons}>
-                    <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                      <Text style={pickerModalStyles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleTimePickerDone}>
-                      <Text style={pickerModalStyles.doneText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <DateTimePicker
-                  value={customTime || new Date()}
-                  mode="time"
-                  display="spinner"
-                  onChange={handleTimePickerChange}
-                  style={pickerModalStyles.picker}
-                />
-              </SafeAreaView>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={customTime || new Date()}
-            mode="time"
-            display="default"
-            onChange={handleTimePickerChange}
-          />
-        )
+      {showTimePicker && Platform.OS === "android" && (
+        <DateTimePicker
+          value={customTime || new Date()}
+          mode="time"
+          display="default"
+          is24Hour={false}
+          onChange={handleTimePickerChange}
+        />
       )}
     </>
   );
@@ -1236,8 +1224,9 @@ const styles = StyleSheet.create({
 
 const pickerModalStyles = StyleSheet.create({
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
+    zIndex: 100,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,

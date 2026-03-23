@@ -493,6 +493,11 @@ export default function ActionButtons({
     }
   };
 
+  const handleDatePickerConfirm = () => {
+    // Accept the currently displayed date and advance to time picker
+    setPickerMode("time");
+  };
+
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
     if (!user?.id) {
       Alert.alert("Error", "You must be logged in to schedule cards.");
@@ -587,7 +592,8 @@ export default function ActionButtons({
         console.warn("Failed to add to device calendar:", deviceCalendarError);
       }
 
-      // Show success toast
+      // Show success toast + haptic
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toastManager.success(
         `Scheduled! ${card.title} has been moved to your calendar`,
         3000,
@@ -677,16 +683,16 @@ export default function ActionButtons({
                       >
                         <Text style={styles.modalCancelText}>Cancel</Text>
                       </TrackedTouchableOpacity>
-                      {pickerMode === "time" && (
-                        <TrackedTouchableOpacity
-                          logComponent="ActionButtons"
-                          logId="picker_done"
-                          style={styles.modalConfirmButton}
-                          onPress={handleTimePickerConfirm}
-                        >
-                          <Text style={styles.modalConfirmText}>Done</Text>
-                        </TrackedTouchableOpacity>
-                      )}
+                      <TrackedTouchableOpacity
+                        logComponent="ActionButtons"
+                        logId="picker_done"
+                        style={styles.modalConfirmButton}
+                        onPress={pickerMode === "date" ? handleDatePickerConfirm : handleTimePickerConfirm}
+                      >
+                        <Text style={styles.modalConfirmText}>
+                          {pickerMode === "date" ? "Next" : "Done"}
+                        </Text>
+                      </TrackedTouchableOpacity>
                     </View>
                   </View>
                   <DateTimePicker
