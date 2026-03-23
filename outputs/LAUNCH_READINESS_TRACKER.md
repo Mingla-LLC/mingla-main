@@ -175,7 +175,7 @@
 | 4b | 3 | Schools exclusion + flowers florist-only + 5 icons | **DONE** — commit 073da431, 15/15 green |
 | 4c | 3 | AI optional marker + picnic flowers optional + description truncation | **DONE** — commit 08396f14, 15/15 green |
 | 5a | 2 | Removal toast + calendar dedup (2 deferred: deactivated cards, calendar perm already handled) | **DONE** — commit 322fbdb2, 12/12 green |
-| 5b | 4 | Swipe + animation edge cases | PENDING |
+| 5b | 1 | Duration NaN guard (3 deferred: swipe limit, batch race, weather) | **DONE** — commit e8c81dc4 |
 | 6 | 13 | Polish + optimization | PENDING |
 | 7 | 4+ | Realtime + freshness — FULL APP AUDIT | PENDING — needs deep investigation |
 | 8 | 7 | Scheduling + calendar + review flow (slugs, reschedule, hours error, review blank, weekend picker) | PENDING |
