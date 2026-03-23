@@ -186,6 +186,8 @@ export default function ConnectionsPageRefactored({
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const conversationChannelRef = useRef<any>(null);
   const broadcastSeenIds = useRef(new Set<string>());
+  // Tracks the most-recently selected chat — used to discard stale background block-check results
+  const latestSelectedChatRef = useRef<string | null>(null);
 
   // ── Network state ──────────────────────────────────────
   const { isConnected, isInternetReachable } = useNetworkMonitor();
@@ -605,17 +607,24 @@ export default function ConnectionsPageRefactored({
       isOnline: otherParticipant?.is_online || false,
     };
 
-    // Check block status — non-blocking: if network fails, default to false
-    // (user already sees the conversation in the list, safe to open it)
-    let hasBlock = false;
-    try {
-      hasBlock = await blockService.hasBlockBetween(friend.id);
-    } catch (e) {
-      console.warn("[ConnectionsPage] Block check failed (offline?), defaulting to unblocked:", e);
-    }
-    setActiveChatIsBlocked(hasBlock);
+    // Synchronous block check from cached blocked-users list (React Query).
+    // No network call — tap opens immediately. Server RLS enforces at send time.
+    const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
+    setActiveChatIsBlocked(isBlockedByMe);
+    latestSelectedChatRef.current = friend.id;
 
     setActiveChat(friend);
+
+    // Background bidirectional check — fire-and-forget, guarded against stale results.
+    // If the user switches chats before this resolves, the result is discarded.
+    const capturedFriendId = friend.id;
+    blockService.hasBlockBetween(friend.id)
+      .then((hasBlock) => {
+        if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
+          setActiveChatIsBlocked(hasBlock);
+        }
+      })
+      .catch(() => {}); // Server enforces at send time via RLS
     setCurrentConversationId(conversation.id);
 
     // ── Offline-resilient message loading ──────────────────
@@ -660,10 +669,16 @@ export default function ConnectionsPageRefactored({
         }
       })();
     } else {
-      // No cache at all — must fetch from network
+      // No cache at all — must fetch from network (8s timeout to prevent dead loading state)
       try {
-        const { messages: freshMsgs, error: msgError } =
-          await messagingService.getMessages(conversation.id, user.id);
+        const fetchPromise = messagingService.getMessages(conversation.id, user.id);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Message fetch timeout (8s)")), 8000)
+        );
+        const { messages: freshMsgs, error: msgError } = await Promise.race([
+          fetchPromise,
+          timeoutPromise,
+        ]);
         if (msgError) {
           console.error("Error loading messages:", msgError);
           setMessages([]);
@@ -676,8 +691,7 @@ export default function ConnectionsPageRefactored({
         }
       } catch (e) {
         console.error("Error loading messages:", e);
-        // Even on total failure, open the chat with empty messages
-        // so the user sees the interface and can retry when back online
+        // Timeout or network failure — open with empty messages so user can retry
         setMessages([]);
       }
       setShowMessageInterface(true);
@@ -712,14 +726,20 @@ export default function ConnectionsPageRefactored({
     setActiveChat(chatFriend);
     setFriendPickerVisible(false);
 
-    // Check block status — non-blocking
-    let hasBlock = false;
-    try {
-      hasBlock = await blockService.hasBlockBetween(friendUserId);
-    } catch (e) {
-      console.warn("[ConnectionsPage] Block check failed (offline?):", e);
-    }
-    setActiveChatIsBlocked(hasBlock);
+    // Synchronous block check from cached blocked-users list
+    const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
+    setActiveChatIsBlocked(isBlockedByMe);
+    latestSelectedChatRef.current = friendUserId;
+
+    // Background bidirectional check — fire-and-forget
+    const capturedId = friendUserId;
+    blockService.hasBlockBetween(friendUserId)
+      .then((hasBlock) => {
+        if (latestSelectedChatRef.current === capturedId && hasBlock !== isBlockedByMe) {
+          setActiveChatIsBlocked(hasBlock);
+        }
+      })
+      .catch(() => {});
 
     try {
       const { conversation, error: convError } =
@@ -786,9 +806,16 @@ export default function ConnectionsPageRefactored({
           }
         })();
       } else {
+        // No cache — fetch from network (8s timeout to prevent dead loading state)
         try {
-          const { messages: freshMsgs, error: msgError } =
-            await messagingService.getMessages(conversation.id, user.id);
+          const fetchPromise = messagingService.getMessages(conversation.id, user.id);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Message fetch timeout (8s)")), 8000)
+          );
+          const { messages: freshMsgs, error: msgError } = await Promise.race([
+            fetchPromise,
+            timeoutPromise,
+          ]);
           if (msgError) {
             setMessages([]);
           } else {
@@ -799,6 +826,7 @@ export default function ConnectionsPageRefactored({
             markConversationAsRead(conversation.id, user.id, transformed);
           }
         } catch (err) {
+          // Timeout or network failure — open with empty messages so user can retry
           setMessages([]);
         }
         setShowMessageInterface(true);
@@ -1042,6 +1070,7 @@ export default function ConnectionsPageRefactored({
     setCurrentConversationId(null);
     setMessages([]);
     setActiveChatIsBlocked(false);
+    latestSelectedChatRef.current = null;
     broadcastSeenIds.current.clear();
 
     // Refresh conversations to get updated unread counts
@@ -1058,16 +1087,9 @@ export default function ConnectionsPageRefactored({
   ) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
 
-    // Check block before sending — non-blocking: if offline, allow the
-    // optimistic message through. RLS still enforces blocks server-side;
-    // the send will fail at the network layer and be marked as failed.
-    let hasBlock = false;
-    try {
-      hasBlock = await blockService.hasBlockBetween(activeChat.id);
-    } catch (e) {
-      console.warn("[ConnectionsPage] Block check failed (offline?), allowing send:", e);
-    }
-    if (hasBlock) {
+    // Synchronous block check — uses cached list + background reconciliation state.
+    // No network call on the send path. RLS enforces server-side as the real authority.
+    if (activeChatIsBlocked || blockedUsers.some((b) => b.id === activeChat.id)) {
       Alert.alert(
         "Message Not Sent",
         "Messaging is not available with this user. One of you may have blocked the other."
