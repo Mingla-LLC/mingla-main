@@ -1,5 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, NativeSyntheticEvent, TextLayoutEventData } from 'react-native';
+
+const COLLAPSED_LINES = 4;
 
 interface DescriptionSectionProps {
   title: string;
@@ -12,13 +14,42 @@ export default function DescriptionSection({
   description,
   fullDescription,
 }: DescriptionSectionProps) {
-  // Use full description if available, otherwise use regular description
   const displayDescription = fullDescription || description;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  const handleTextLayout = useCallback(
+    (e: NativeSyntheticEvent<TextLayoutEventData>) => {
+      // onTextLayout fires with the FULL text layout (before numberOfLines clips).
+      // If more lines exist than COLLAPSED_LINES, the text will be truncated.
+      if (!isExpanded && e.nativeEvent.lines.length > COLLAPSED_LINES) {
+        setIsTruncated(true);
+      }
+    },
+    [isExpanded],
+  );
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{displayDescription}</Text>
+      <Text
+        style={styles.description}
+        numberOfLines={isExpanded ? undefined : COLLAPSED_LINES}
+        onTextLayout={handleTextLayout}
+      >
+        {displayDescription}
+      </Text>
+      {isTruncated && (
+        <TouchableOpacity
+          onPress={() => setIsExpanded(prev => !prev)}
+          activeOpacity={0.7}
+          style={styles.toggleButton}
+        >
+          <Text style={styles.toggleText}>
+            {isExpanded ? 'Show less' : 'Read more'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -40,5 +71,12 @@ const styles = StyleSheet.create({
     color: '#374151',
     lineHeight: 24,
   },
+  toggleButton: {
+    marginTop: 8,
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
 });
-

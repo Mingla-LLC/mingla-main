@@ -298,7 +298,7 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     label: 'Picnic Dates',
     stops: [
       { role: 'Groceries' },
-      { role: 'Flowers' },
+      { role: 'Flowers', optional: true, dismissible: true },
       { role: 'Picnic Spot', reverseAnchor: true },
     ],
     combos: [
@@ -889,7 +889,7 @@ async function generateStopDescriptions(stops: any[]): Promise<string[]> {
   }
   try {
     const stopList = stops
-      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5`)
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5${s.optional ? ' — OPTIONAL side-stop, can be skipped' : ''}`)
       .join('\n');
     const prompt = `You are a travel writer creating short descriptions for a curated day out.
 Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each), telling the visitor what to do and the vibe.
@@ -923,7 +923,7 @@ async function generateRomanticStopDescriptions(stops: any[]): Promise<string[]>
   }
   try {
     const stopList = stops
-      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5`)
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5${s.optional ? ' — OPTIONAL side-stop, can be skipped' : ''}`)
       .join('\n');
     const prompt = `You are a travel writer creating short descriptions for a romantic date.
 Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each), telling the couple what to experience.
@@ -957,7 +957,7 @@ async function generateStrollStopDescriptions(stops: any[]): Promise<string[]> {
   }
   try {
     const stopList = stops
-      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5`)
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${(s.placeType || '').replace(/_/g, ' ')}), rated ${(s.rating || 0).toFixed(1)}/5${s.optional ? ' — OPTIONAL side-stop, can be skipped' : ''}`)
       .join('\n');
     const prompt = `You are a travel writer creating short descriptions for a leisurely day out — a walk in nature and a nice meal.
 Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each).
