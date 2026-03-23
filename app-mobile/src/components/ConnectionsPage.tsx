@@ -67,7 +67,6 @@ interface ConnectionsPageProps {
   onModeChange?: (mode: "solo" | string) => void;
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
-  onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   onUnreadCountChange?: (count: number) => void;
   onNavigateToFriendProfile?: (userId: string) => void;
   onFriendAccepted?: () => void;
@@ -94,7 +93,6 @@ export default function ConnectionsPageRefactored({
   onModeChange,
   onUpdateBoardSession,
   onCreateSession,
-  onNavigateToBoard,
   onUnreadCountChange,
   onNavigateToFriendProfile,
   onFriendAccepted,
@@ -1681,7 +1679,6 @@ export default function ConnectionsPageRefactored({
             onModeChange={onModeChange}
             onUpdateBoardSession={onUpdateBoardSession}
             onCreateSession={onCreateSession}
-            onNavigateToBoard={onNavigateToBoard}
             availableFriends={[]}
             isBlocked={activeChatIsBlocked}
             conversationId={currentConversationId}

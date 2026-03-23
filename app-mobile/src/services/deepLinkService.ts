@@ -14,7 +14,7 @@ export interface NavigationAction {
 
 export interface NavigationHandlers {
   setCurrentPage: (page: string) => void;
-  setBoardViewSessionId?: (id: string) => void;
+  setPendingSessionOpen?: (sessionId: string) => void;
   setShowPreferences?: (show: boolean) => void;
   setShowPaywall?: (show: boolean) => void;
   setViewingFriendProfileId?: (id: string) => void;
@@ -52,8 +52,8 @@ export function parseDeepLink(url: string): NavigationAction | null {
         return { page: 'connections', params };
       case 'session':
         return {
-          page: 'board-view',
-          params: { sessionId: pathSegments[1], ...params },
+          page: 'home',
+          params: { openSessionId: pathSegments[1], ...params },
         };
       case 'messages':
         return {
@@ -112,19 +112,18 @@ export function executeDeepLink(
 
   switch (page) {
     case 'home':
+      if (params?.openSessionId && handlers.setPendingSessionOpen) {
+        handlers.setPendingSessionOpen(params.openSessionId);
+      }
+      handlers.setCurrentPage('home');
+      break;
+
     case 'discover':
     case 'connections':
     case 'likes':
     case 'saved':
     case 'profile':
       handlers.setCurrentPage(page);
-      break;
-
-    case 'board-view':
-      if (params?.sessionId && handlers.setBoardViewSessionId) {
-        handlers.setBoardViewSessionId(params.sessionId);
-      }
-      handlers.setCurrentPage('board-view');
       break;
 
     case 'subscription':

@@ -36,7 +36,7 @@ export type NavigationTarget =
   | { page: "likes" }
   | { page: "profile" }
   | { page: "activity"; tab?: "saved" | "boards" | "calendar" }
-  | { page: "board-view"; sessionId: string }
+  | { page: "home"; sessionId: string }
   | { page: "discover" }
   | { page: "preferences" }
   | { page: "none" }; // No navigation, just informational
@@ -286,7 +286,7 @@ class InAppNotificationServiceClass {
       "board_invite",
       "Board Invitation",
       `${fromUserName} invited you to "${sessionName}"`,
-      sessionId ? { page: "board-view", sessionId } : { page: "connections" },
+      sessionId ? { page: "home", sessionId } : { page: "home" },
       { sessionId, sessionName, fromUserName }
     );
   }
@@ -296,7 +296,7 @@ class InAppNotificationServiceClass {
       "board_joined",
       "Board Joined",
       `You joined "${sessionName}" — start collaborating!`,
-      sessionId ? { page: "board-view", sessionId } : { page: "connections" },
+      sessionId ? { page: "home", sessionId } : { page: "home" },
       { sessionId, sessionName }
     );
   }
@@ -306,7 +306,7 @@ class InAppNotificationServiceClass {
       "board_message",
       "New Board Message",
       `${fromUserName} sent a message in "${sessionName}"`,
-      sessionId ? { page: "board-view", sessionId } : { page: "connections" },
+      sessionId ? { page: "home", sessionId } : { page: "home" },
       { sessionId, sessionName, fromUserName }
     );
   }

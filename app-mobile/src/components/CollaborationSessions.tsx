@@ -75,6 +75,8 @@ interface CollaborationSessionsProps {
     sessionId: string;
     nonce: number;
   } | null;
+  openSessionId?: string | null;
+  onOpenSessionHandled?: () => void;
 }
 
 // Helper function to generate initials from a name
@@ -100,6 +102,8 @@ export default function CollaborationSessions({
   availableFriends = [],
   isCreatingSession = false,
   inviteModalTrigger = null,
+  openSessionId = null,
+  onOpenSessionHandled,
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -193,6 +197,28 @@ export default function CollaborationSessions({
     setShowInviteModal(true);
     lastHandledInviteTriggerNonce.current = inviteModalTrigger.nonce;
   }, [inviteModalTrigger, sessions]);
+
+  // Auto-open a session modal when triggered by notifications or deep links
+  useEffect(() => {
+    if (!openSessionId || !onOpenSessionHandled) return;
+
+    const session = sessions.find(s => s.id === openSessionId);
+    if (!session) {
+      // Session not found yet — may still be loading. Don't clear trigger.
+      return;
+    }
+
+    if (session.type === 'received-invite' || session.type === 'sent-invite') {
+      setInviteModalSession(session);
+      setShowInviteModal(true);
+    } else {
+      setSessionToView(session);
+      setShowSessionViewModal(true);
+      onSessionSelect(session.id);
+    }
+
+    onOpenSessionHandled();
+  }, [openSessionId, sessions, onOpenSessionHandled, onSessionSelect]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;

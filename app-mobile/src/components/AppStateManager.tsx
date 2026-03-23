@@ -114,7 +114,7 @@ export function useAppState() {
     | "account-settings"
     | "privacy-policy"
     | "terms-of-service"
-    | "board-view";
+;
 
   // Pages safe to restore after process death. Board-view and modal-like pages
   // (settings, legal) are excluded — they depend on complex state that won't
@@ -122,14 +122,11 @@ export function useAppState() {
   const PERSISTED_PAGES: readonly PageName[] = ['connections', 'discover', 'saved', 'profile'] as const;
 
   const [currentPage, setCurrentPage] = useState<PageName>("home");
-  const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(
-    null
-  );
   const [viewingFriendProfileId, setViewingFriendProfileId] = useState<string | null>(null);
 
   // Persist currentPage to AsyncStorage so the user returns to their last page
   // after process death. Only safe top-level pages are persisted (no modals,
-  // no board-view). Home is the default — removing the key restores it.
+  // no modals). Home is the default — removing the key restores it.
   useEffect(() => {
     if ((PERSISTED_PAGES as readonly string[]).includes(currentPage)) {
       AsyncStorage.setItem('mingla_last_page', currentPage);
@@ -138,7 +135,6 @@ export function useAppState() {
     }
   }, [currentPage]);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -370,7 +366,6 @@ export function useAppState() {
 
       setShowAccountSettings(false);
       setShowPreferences(false);
-      setShowCollaboration(false);
       setShowCollabPreferences(false);
       setShowTermsOfService(false);
       setShowPrivacyPolicy(false);
@@ -745,7 +740,6 @@ export function useAppState() {
 
       setShowAccountSettings(false);
       setShowPreferences(false);
-      setShowCollaboration(false);
       setShowCollabPreferences(false);
       setShowTermsOfService(false);
       setShowPrivacyPolicy(false);
@@ -840,8 +834,6 @@ export function useAppState() {
     setCurrentPage,
     showPreferences,
     setShowPreferences,
-    showCollaboration,
-    setShowCollaboration,
     showCollabPreferences,
     setShowCollabPreferences,
     showTermsOfService,
@@ -890,8 +882,6 @@ export function useAppState() {
     setIsLoadingBoards,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
-    boardViewSessionId,
-    setBoardViewSessionId,
     viewingFriendProfileId,
     setViewingFriendProfileId,
 

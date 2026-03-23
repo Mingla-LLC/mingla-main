@@ -22,7 +22,6 @@ import * as WebBrowser from "expo-web-browser";
 // TODO: Uncomment after rebuilding app with expo-av native module
 // import { Video, ResizeMode } from "expo-av";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import CollaborationModule from "./CollaborationModule";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useChatPresence } from "../hooks/useChatPresence";
@@ -87,7 +86,6 @@ interface MessageInterfaceProps {
   onModeChange?: (mode: "solo" | string) => void;
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
-  onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends?: Friend[];
   isBlocked?: boolean;
   conversationId?: string | null;
@@ -113,7 +111,6 @@ export default function MessageInterface({
   onModeChange,
   onUpdateBoardSession,
   onCreateSession,
-  onNavigateToBoard,
   availableFriends = [],
   isBlocked = false,
   conversationId = null,
@@ -143,7 +140,6 @@ export default function MessageInterface({
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showBoardSelection, setShowBoardSelection] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [showCollaboration, setShowCollaboration] = useState(false);
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -458,10 +454,6 @@ export default function MessageInterface({
   };
 
   // More options handlers
-  const handleSendCollabInvite = () => {
-    setShowCollaboration(true);
-    setShowMoreOptionsMenu(false);
-  };
 
   const handleAddToBoard = () => {
     if (boardsSessions.length === 0) {
@@ -581,15 +573,6 @@ export default function MessageInterface({
 
             {showMoreOptionsMenu && (
               <View style={styles.moreOptionsMenu}>
-                <TouchableOpacity
-                  onPress={handleSendCollabInvite}
-                  style={styles.menuItem}
-                >
-                  <Icon name="add" size={16} color="#6b7280" />
-                  <Text style={styles.menuItemText}>
-                    Send Collaboration Invite
-                  </Text>
-                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleAddToBoard}
                   style={styles.menuItem}
@@ -1014,22 +997,6 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* Collaboration Module */}
-      <CollaborationModule
-        isOpen={showCollaboration}
-        onClose={() => setShowCollaboration(false)}
-        currentMode={currentMode}
-        onModeChange={onModeChange || (() => {})}
-        preSelectedFriend={{ ...friend, status: "online" }}
-        boardsSessions={boardsSessions}
-        onUpdateBoardSession={onUpdateBoardSession || (() => {})}
-        onCreateSession={onCreateSession || (() => {})}
-        onNavigateToBoard={onNavigateToBoard || (() => {})}
-        availableFriends={availableFriends.map((f) => ({
-          ...f,
-          status: "online",
-        }))}
-      />
     </View>
   );
 }

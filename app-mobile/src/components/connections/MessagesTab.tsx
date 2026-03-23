@@ -38,7 +38,6 @@ interface MessagesTabProps {
   onModeChange?: (mode: "solo" | string) => void;
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
-  onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends: Friend[];
   currentUserId?: string;
   isBlocked?: boolean;
@@ -62,7 +61,6 @@ export default function MessagesTab({
   onModeChange,
   onUpdateBoardSession,
   onCreateSession,
-  onNavigateToBoard,
   availableFriends,
   currentUserId,
   isBlocked = false,
@@ -157,7 +155,6 @@ export default function MessagesTab({
         onModeChange={onModeChange}
         onUpdateBoardSession={onUpdateBoardSession}
         onCreateSession={onCreateSession}
-        onNavigateToBoard={onNavigateToBoard}
         isBlocked={isBlocked}
       />
     );

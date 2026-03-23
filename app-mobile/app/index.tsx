@@ -15,7 +15,6 @@ import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
 import { useFriends } from "../src/hooks/useFriends";
-import CollaborationModule from "../src/components/CollaborationModule";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
 import DiscoverScreen from "../src/components/DiscoverScreen";
@@ -36,7 +35,6 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
-import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { useBoardSession } from "../src/hooks/useBoardSession";
@@ -109,8 +107,6 @@ function AppContent() {
     setCurrentPage,
     showPreferences,
     setShowPreferences,
-    showCollaboration,
-    setShowCollaboration,
     showCollabPreferences,
     setShowCollabPreferences,
     showTermsOfService,
@@ -158,8 +154,6 @@ function AppContent() {
     setIsLoadingBoards,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
-    boardViewSessionId,
-    setBoardViewSessionId,
     viewingFriendProfileId,
     setViewingFriendProfileId,
     updateBoardsSessions,
@@ -191,6 +185,7 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -360,7 +355,7 @@ function AppContent() {
         const action = parseDeepLink(deepLink);
         executeDeepLink(action, {
           setCurrentPage: setCurrentPage as (page: string) => void,
-          setBoardViewSessionId,
+          setPendingSessionOpen,
           setShowPaywall: (show: boolean) => setShowPaywall(show),
           setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
         });
@@ -665,7 +660,7 @@ function AppContent() {
       const action = parseDeepLink(pendingDeepLinkRef.current);
       executeDeepLink(action, {
         setCurrentPage: setCurrentPage as (page: string) => void,
-        setBoardViewSessionId,
+        setPendingSessionOpen,
         setShowPaywall: (show: boolean) => setShowPaywall(show),
         setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
       });
@@ -859,7 +854,7 @@ function AppContent() {
       const action = parseDeepLink(deepLink);
       executeDeepLink(action, {
         setCurrentPage: setCurrentPage as (page: string) => void,
-        setBoardViewSessionId,
+        setPendingSessionOpen,
         setShowPaywall: (show: boolean) => setShowPaywall(show),
         setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
       });
@@ -871,16 +866,20 @@ function AppContent() {
     if (type.startsWith('friend_') || type.startsWith('pair_') || type.startsWith('link_')) {
       setCurrentPage('connections');
     } else if (type.startsWith('collaboration_') || type.startsWith('session_')) {
+      const sessionId = notification.data?.sessionId as string;
+      if (sessionId) {
+        setPendingSessionOpen(sessionId);
+      }
       setCurrentPage('home');
     } else if (type.startsWith('direct_message_')) {
       setCurrentPage('connections');
     } else if (type.startsWith('board_message_') || type.startsWith('board_card_')) {
       const sessionId = notification.data?.sessionId as string;
       if (sessionId) {
-        setBoardViewSessionId(sessionId);
-        setCurrentPage('board-view');
+        setPendingSessionOpen(sessionId);
+        setCurrentPage('home');
       } else {
-        setCurrentPage('likes');
+        setCurrentPage('home');
       }
     } else if (type.startsWith('calendar_')) {
       setCurrentPage('likes');
@@ -1645,7 +1644,7 @@ function AppContent() {
               logger.action('Open preferences pressed');
               setShowPreferences(true);
             }}
-            onOpenCollaboration={handlers.handleCollaborationOpen}
+
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
 
@@ -1683,6 +1682,8 @@ function AppContent() {
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
+            openSessionId={pendingSessionOpen}
+            onOpenSessionHandled={() => setPendingSessionOpen(null)}
           />
         );
       case "discover":
@@ -1739,10 +1740,6 @@ function AppContent() {
             onCreateSession={async () => {
               await refreshAllSessions({ showLoading: true });
             }}
-            onNavigateToBoard={(board: any, discussionTab?: string) => {
-              setBoardViewSessionId(board.id || board);
-              setCurrentPage("board-view");
-            }}
             onUnreadCountChange={setTotalUnreadMessages}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
             onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
@@ -1776,91 +1773,6 @@ function AppContent() {
         // Legacy — redirect to likes page
         setCurrentPage("likes");
         return null;
-      case "board-view":
-        return boardViewSessionId ? (
-          <BoardViewScreen
-            sessionId={boardViewSessionId}
-            onBack={() => {
-              setCurrentPage("likes");
-              // Keep boardViewSessionId set so Saved tab can show board-specific cards
-              // It will be cleared when user navigates away from likes page or selects a different board
-            }}
-            onNavigateToSession={(sessionId: string) => {
-              setBoardViewSessionId(sessionId);
-            }}
-            onExitBoard={async (
-              exitedSessionId?: string,
-              exitedSessionName?: string
-            ) => {
-              if (!user?.id) return;
-
-              // OPTIMISTIC UPDATE: Remove board from list immediately
-              if (exitedSessionId && boardsSessions) {
-                const updatedBoards = boardsSessions.filter(
-                  (board: any) =>
-                    board.id !== exitedSessionId &&
-                    (board as any).session_id !== exitedSessionId
-                );
-                updateBoardsSessions(updatedBoards);
-              }
-
-              // OPTIMISTIC UPDATE: If exited session was the active session, switch to solo immediately
-              if (exitedSessionName && currentMode === exitedSessionName) {
-                state.setCurrentMode("solo");
-              }
-
-              // Now do database operations and refresh in background
-              try {
-                // Remove user from session participants
-                if (exitedSessionId) {
-                  await supabase
-                    .from("session_participants")
-                    .delete()
-                    .eq("session_id", exitedSessionId)
-                    .eq("user_id", user.id);
-
-                  // Update invites to declined
-                  await supabase
-                    .from("collaboration_invites")
-                    .update({ status: "declined" })
-                    .eq("session_id", exitedSessionId)
-                    .eq("invited_user_id", user.id);
-                }
-
-                // Refresh boards list (active + pending) to ensure consistency
-                await refreshAllSessions({ showLoading: true });
-
-                // Refresh active session from database
-                const activeSession = await SessionService.getActiveSession(
-                  user.id
-                );
-
-                // Update current mode based on active session
-                if (activeSession) {
-                  // Pass sessionId to setCurrentMode for proper tracking
-                  state.setCurrentMode(
-                    activeSession.sessionName,
-                    activeSession.sessionId
-                  );
-                } else {
-                  state.setCurrentMode("solo");
-                }
-              } catch (error) {
-                console.error("Error refreshing boards after exit:", error);
-                // Don't show error to user - optimistic update already happened
-              }
-            }}
-          />
-        ) : (
-          <View
-            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-          >
-            <Text>No session selected</Text>
-            <TouchableOpacity onPress={() => setCurrentPage("likes")}>
-              <Text style={{ color: "#007AFF", marginTop: 16 }}>Go Back</Text>
-            </TouchableOpacity>
-          </View>
-        );
       case "profile":
         return (
           <ProfilePage
@@ -1891,7 +1803,7 @@ function AppContent() {
               logger.action('Open preferences pressed');
               setShowPreferences(true);
             }}
-            onOpenCollaboration={handlers.handleCollaborationOpen}
+
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
 
@@ -1928,6 +1840,8 @@ function AppContent() {
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
+            openSessionId={pendingSessionOpen}
+            onOpenSessionHandled={() => setPendingSessionOpen(null)}
           />
         );
     }
@@ -1987,39 +1901,6 @@ function AppContent() {
                         )}
                       </View>
 
-                      {/* Collaboration Module */}
-                      <CollaborationModule
-                        isOpen={showCollaboration}
-                        onClose={() => {
-                          setShowCollaboration(false);
-                          setPreSelectedFriend(null);
-                        }}
-                        currentMode={currentMode ?? "solo"}
-                        onModeChange={handlers.handleModeChange}
-                        preSelectedFriend={preSelectedFriend}
-                        boardsSessions={boardsSessions}
-                        onUpdateBoardSession={(updatedBoard: any) =>
-                          console.log("Update board session:", updatedBoard)
-                        }
-                        onCreateSession={async () => {
-                          await refreshAllSessions({ showLoading: true });
-                        }}
-                        onNavigateToBoard={(
-                          board: any,
-                          discussionTab?: string
-                        ) =>
-                          console.log(
-                            "Navigate to board:",
-                            board,
-                            discussionTab
-                          )
-                        }
-                        availableFriends={[]}
-                        onRefreshBoards={async () => {
-                          // Refresh boards list (active + pending) after accepting invite
-                          await refreshAllSessions({ showLoading: true });
-                        }}
-                      />
 
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
                       <View

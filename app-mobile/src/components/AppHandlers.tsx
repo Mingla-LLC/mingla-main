@@ -28,7 +28,6 @@ export function useAppHandlers(state: any) {
     setActiveSessionData,
     setShowCollabPreferences,
     setPreSelectedFriend,
-    setShowCollaboration,
     setNotifications,
     boardsSessions,
     updateBoardsSessions,
@@ -55,11 +54,6 @@ export function useAppHandlers(state: any) {
     setPreferencesRefreshKey,
     unblockFriend,
   } = state;
-
-  const handleCollaborationOpen = (friend?: any) => {
-    setPreSelectedFriend(friend || null);
-    setShowCollaboration(true);
-  };
 
   const handleModeChange = async (mode: "solo" | string) => {
     if (mode === "solo") {
@@ -712,7 +706,6 @@ export function useAppHandlers(state: any) {
       activeTab: "boards",
       discussionTab: discussionTab,
     });
-    setShowCollaboration(false);
   };
 
   const handleNavigateToConnections = () => {
@@ -1289,7 +1282,6 @@ export function useAppHandlers(state: any) {
   };
 
   return {
-    handleCollaborationOpen,
     handleModeChange,
     handleCollabPreferencesOpen,
     handleCollabPreferencesSave,

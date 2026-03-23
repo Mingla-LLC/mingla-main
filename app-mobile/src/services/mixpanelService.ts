@@ -260,7 +260,6 @@ class MixpanelService {
     saved: "Saved",
     profile: "Profile",
     activity: "Activity",
-    "board-view": "Board View",
   };
 
   /**

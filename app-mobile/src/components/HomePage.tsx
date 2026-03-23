@@ -26,7 +26,6 @@ const ANIMATION_DURATION = 400;
 
 interface HomePageProps {
   onOpenPreferences: () => void;
-  onOpenCollaboration?: (friend?: any) => void;
   onOpenCollabPreferences?: () => void;
   currentMode: "solo" | string;
   userPreferences?: any;
@@ -61,6 +60,8 @@ interface HomePageProps {
   // New V2 props
   userId?: string;
   onFriendAccepted?: () => void;
+  openSessionId?: string | null;
+  onOpenSessionHandled?: () => void;
 }
 
 export default function HomePage({
@@ -95,6 +96,8 @@ export default function HomePage({
   onNotificationNavigate,
   userId,
   onFriendAccepted,
+  openSessionId = null,
+  onOpenSessionHandled,
 }: HomePageProps) {
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -276,6 +279,8 @@ export default function HomePage({
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}
                 inviteModalTrigger={inviteModalTrigger}
+                openSessionId={openSessionId}
+                onOpenSessionHandled={onOpenSessionHandled}
               />
             </Animated.View>
           )}
