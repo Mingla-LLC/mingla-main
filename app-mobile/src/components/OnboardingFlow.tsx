@@ -737,6 +737,7 @@ const OnboardingFlow = ({
   const [locationHasSearched, setLocationHasSearched] = useState(false)
   const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
+  const [prefsSaveError, setPrefsSaveError] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   // saving state removed — save handlers (Path A/B) deleted
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
@@ -1246,12 +1247,6 @@ const OnboardingFlow = ({
 
       // Persist location choice immediately so it survives app restart
       persistStep(4).catch(() => {})
-      if (user?.id) {
-        PreferencesService.updateUserPreferences(user.id, {
-          use_gps_location: true,
-          custom_location: null,
-        } as any).catch(() => {})
-      }
       autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
 
       // Locale detection — use country from the geocode result we already have
@@ -1404,13 +1399,6 @@ const OnboardingFlow = ({
           coordinates: { lat: lat!, lng: lng! },
         }))
 
-        if (user?.id) {
-          PreferencesService.updateUserPreferences(user.id, {
-            use_gps_location: false,
-            custom_location: selectedLocation.displayName,
-          } as any).catch(() => {})
-        }
-
         goNext()
 
         detectLocaleFromCoordinates(lat, lng).then((detected) => {
@@ -1484,21 +1472,26 @@ const OnboardingFlow = ({
 
     logger.action('Save preferences pressed', { categories: data.selectedCategories.length, priceTiers: data.selectedPriceTiers, transport: data.travelMode })
     setSavingPrefs(true)
+    setPrefsSaveError(false)
     try {
-      await PreferencesService.updateUserPreferences(user.id, {
-        intents: data.selectedIntents,
-        categories: data.selectedCategories,
-        price_tiers: data.selectedPriceTiers,
-        budget_min: 0,
-        budget_max: backCompatBudgetMax,
-        travel_mode: data.travelMode,
-        travel_constraint_type: 'time',
-        travel_constraint_value: data.travelTimeMinutes,
-        datetime_pref: new Date().toISOString(),
-        date_option: 'now',
-        use_gps_location: data.useGpsLocation,
-        custom_location: data.manualLocation,
-      } as any)
+      await withTimeout(
+        PreferencesService.updateUserPreferences(user.id, {
+          intents: data.selectedIntents,
+          categories: data.selectedCategories,
+          price_tiers: data.selectedPriceTiers,
+          budget_min: 0,
+          budget_max: backCompatBudgetMax,
+          travel_mode: data.travelMode,
+          travel_constraint_type: 'time',
+          travel_constraint_value: data.travelTimeMinutes,
+          datetime_pref: new Date().toISOString(),
+          date_option: 'now',
+          use_gps_location: data.useGpsLocation,
+          custom_location: data.manualLocation,
+        } as any),
+        8000,
+        'saveOnboardingPreferences'
+      )
 
       // Backfill any collaboration preferences rows that were created with empty defaults
       // (from invites accepted before onboarding completed)
@@ -1564,6 +1557,7 @@ const OnboardingFlow = ({
       goNext()
     } catch (e) {
       console.error('Preferences save error:', e)
+      setPrefsSaveError(true)
     }
     setSavingPrefs(false)
   }, [user?.id, data, goNext, persistStep, queryClient])
@@ -1725,10 +1719,6 @@ const OnboardingFlow = ({
       case 'intents':
         return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => {
           persistStep(3).catch(() => {})
-          // Persist intents immediately so they survive app restart during Step 3/4
-          if (user?.id) {
-            PreferencesService.updateUserPreferences(user.id, { intents: data.selectedIntents } as any).catch(() => {})
-          }
           handleGoNext()
         }, hide: false }
       case 'location':
@@ -1739,35 +1729,18 @@ const OnboardingFlow = ({
         return { label: 'Next', disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
       case 'categories':
         return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
-          // Persist categories progressively so they survive app restart
-          if (user?.id) {
-            PreferencesService.updateUserPreferences(user.id, { categories: data.selectedCategories } as any).catch(() => {})
-          }
           handleGoNext()
         }, hide: false }
       case 'budget':
         return { label: 'Next', disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
-          // Persist price tiers progressively
-          if (user?.id) {
-            const highestTier = PRICE_TIERS.slice().reverse().find(t => data.selectedPriceTiers.includes(t.slug))
-            PreferencesService.updateUserPreferences(user.id, {
-              price_tiers: data.selectedPriceTiers,
-              budget_min: 0,
-              budget_max: highestTier?.max ?? 1000,
-            } as any).catch(() => {})
-          }
           handleGoNext()
         }, hide: false }
       case 'transport':
         return { label: 'Next', disabled: false, loading: false, onPress: () => {
-          // Persist transport mode progressively
-          if (user?.id) {
-            PreferencesService.updateUserPreferences(user.id, { travel_mode: data.travelMode } as any).catch(() => {})
-          }
           handleGoNext()
         }, hide: false }
       case 'travel_time':
-        return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
+        return { label: prefsSaveError ? 'Retry' : 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends_and_pairing':
         // OnboardingFriendsAndPairingStep has its own Continue/Skip buttons
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
@@ -1782,7 +1755,7 @@ const OnboardingFlow = ({
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -2646,6 +2619,12 @@ const OnboardingFlow = ({
           <Text style={styles.captionCentered}>
             Up to {data.travelTimeMinutes} min by {data.travelMode}
           </Text>
+
+          {prefsSaveError && (
+            <Text style={[styles.captionCentered, { color: '#ef4444', marginTop: spacing.sm }]}>
+              Couldn't save your preferences. Tap Retry to try again.
+            </Text>
+          )}
         </View>
       )
     }

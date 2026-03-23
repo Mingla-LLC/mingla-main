@@ -79,22 +79,12 @@ export class PreferencesService {
       updated_at: new Date().toISOString(),
     };
 
-    try {
-      const { error } = await supabase.from("preferences").upsert(payload);
-      if (error) throw error;
-      return true;
-    } catch (error) {
-      console.warn("[PreferencesService] Preferences write failed, will retry in background:", error);
-      // Background retry — non-blocking
-      setTimeout(async () => {
-        try {
-          const { error: retryErr } = await supabase.from("preferences").upsert(payload);
-          if (retryErr) console.warn("[PreferencesService] Background retry failed:", retryErr.message);
-          else console.log("[PreferencesService] Background retry succeeded");
-        } catch { /* silent */ }
-      }, 3000);
-      return false;
+    const { error } = await supabase.from("preferences").upsert(payload);
+    if (error) {
+      console.warn("[PreferencesService] Preferences write failed:", error);
+      throw error;
     }
+    return true;
   }
 
   /**
