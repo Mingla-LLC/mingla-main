@@ -22,6 +22,8 @@ import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
 import { useBoardRealtimeSync } from "../hooks/useBoardQueries";
 import { useSavesRealtimeSync } from "../hooks/useSaveQueries";
+import { useSocialRealtime } from "../hooks/useSocialRealtime";
+import { useForegroundRefresh } from "../hooks/useForegroundRefresh";
 import { BoardSessionData } from "../services/boardSessionService";
 
 // Shape of pending sessions (created or invited) returned by refreshAllSessions().
@@ -229,6 +231,8 @@ export function useAppState() {
   // at the app level — no component-level subscriptions that race.
   useBoardRealtimeSync();
   useSavesRealtimeSync();
+  useSocialRealtime(user?.id);
+  useForegroundRefresh(user?.id);
 
   // Use stable empty array constants to prevent infinite loops
   const savedCards = savedCardsData ?? EMPTY_SAVED_CARDS;
