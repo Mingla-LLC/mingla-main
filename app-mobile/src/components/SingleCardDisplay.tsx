@@ -385,7 +385,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
           </View>
 
           {/* Rating */}
-          {card.rating && (
+          {card.rating > 0 && (
             <View style={styles.ratingContainer}>
               <Icon name="star" size={12} color="#FCD34D" />
               <Text style={styles.ratingText}>{formatToOneDecimal(card.rating)}</Text>

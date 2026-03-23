@@ -1429,7 +1429,7 @@ export default function ExpandedCardModal({
                             </Text>
                           </View>
                         </View>
-                        {picnicData.groceryStore.rating && (
+                        {picnicData.groceryStore.rating > 0 && (
                           <View style={styles.groceryStoreRating}>
                             <Icon name="star" size={14} color="#fbbf24" />
                             <Text style={styles.ratingText}>
