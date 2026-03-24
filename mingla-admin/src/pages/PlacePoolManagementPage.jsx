@@ -1330,29 +1330,58 @@ function PhotoTab({ city, stats, tiles }) {
 
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [missingCount, setMissingCount] = useState(null);
-  const [initialMissing, setInitialMissing] = useState(null); // snapshot at start of download
-  const [lastBatchResult, setLastBatchResult] = useState(null);
+  const [totalPlaces, setTotalPlaces] = useState(null);   // total active places
+  const [withPhotos, setWithPhotos] = useState(null);      // places that have stored photos
+  const [missingCount, setMissingCount] = useState(null);  // places needing backfill
+  const [initialMissing, setInitialMissing] = useState(null);
   const [totalSucceeded, setTotalSucceeded] = useState(0);
   const [totalFailed, setTotalFailed] = useState(0);
   const stopRef = useRef(false);
+  const pollRef = useRef(null);
 
-  // Check how many places need photos — reads actual DB state
-  const checkMissing = async () => {
+  // Query actual DB counts — single source of truth
+  const fetchCounts = async () => {
     if (!city) return;
-    setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
+      // Count places with photos (array_length > 0, not the __backfill_failed__ marker)
+      const { count: totalCount } = await supabase
+        .from("place_pool").select("id", { count: "exact", head: true })
+        .eq("city_id", city.id).eq("is_active", true);
+
+      const { count: photoCount } = await supabase
+        .from("place_pool").select("id", { count: "exact", head: true })
+        .eq("city_id", city.id).eq("is_active", true)
+        .not("stored_photo_urls", "cd", "{}");
+
+      // Dry run for actual backfill candidates (global, not city-scoped)
+      const { data: dryData } = await supabase.functions.invoke("backfill-place-photos", {
         body: { dryRun: true, batchSize: 1 },
       });
-      if (!error && data && mountedRef.current) {
-        setMissingCount(data.totalRemaining || 0);
+
+      if (mountedRef.current) {
+        setTotalPlaces(totalCount ?? 0);
+        setWithPhotos(photoCount ?? 0);
+        setMissingCount(dryData?.totalRemaining ?? 0);
       }
     } catch { /* ignore */ }
-    if (mountedRef.current) setLoading(false);
   };
 
-  useEffect(() => { checkMissing(); }, [city]);
+  // Initial load
+  useEffect(() => {
+    if (!city) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
+    setLoading(true);
+    fetchCounts().then(() => { if (mountedRef.current) setLoading(false); });
+  }, [city]);
+
+  // Poll DB every 5s while downloading — gives real-time progress within a batch
+  useEffect(() => {
+    if (downloading) {
+      pollRef.current = setInterval(() => { fetchCounts(); }, 5000);
+    } else {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [downloading]);
 
   const startDownload = async () => {
     if (downloading) return;
@@ -1360,8 +1389,7 @@ function PhotoTab({ city, stats, tiles }) {
     setDownloading(true);
     setTotalSucceeded(0);
     setTotalFailed(0);
-    setLastBatchResult(null);
-    setInitialMissing(missingCount);
+    if (initialMissing == null) setInitialMissing(missingCount);
 
     // Log attempt (non-blocking)
     try {
@@ -1379,19 +1407,12 @@ function PhotoTab({ city, stats, tiles }) {
 
     while (!stopRef.current && mountedRef.current) {
       try {
-        // Small batches — 5 places per call so the function returns fast (~10-30s)
         const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
           body: { batchSize: 50 },
         });
 
-        if (error) {
-          if (mountedRef.current) setLastBatchResult({ error: error.message });
-          break;
-        }
-        if (data?.error) {
-          if (mountedRef.current) setLastBatchResult({ error: data.error });
-          break;
-        }
+        if (error) break;
+        if (data?.error) break;
 
         runSucceeded += data.succeeded || 0;
         runFailed += data.failed || 0;
@@ -1399,24 +1420,19 @@ function PhotoTab({ city, stats, tiles }) {
         if (mountedRef.current) {
           setTotalSucceeded(runSucceeded);
           setTotalFailed(runFailed);
-          setMissingCount(data.remaining ?? 0);
-          setLastBatchResult(data);
         }
 
-        // Stop if nothing left
         if ((data.processed || 0) === 0 || (data.remaining || 0) === 0) break;
-      } catch (err) {
-        if (mountedRef.current) setLastBatchResult({ error: err.message });
-        break;
-      }
+      } catch { break; }
     }
 
     if (mountedRef.current) {
       setDownloading(false);
-      const msg = stopRef.current ? "Photo download paused" : "Photo download complete";
+      setInitialMissing(null);
+      await fetchCounts();
       addToast({
         variant: runFailed > 0 && runSucceeded === 0 ? "error" : runFailed > 0 ? "warning" : "success",
-        title: msg,
+        title: stopRef.current ? "Photo download paused" : "Photo download complete",
         description: `${runSucceeded} succeeded, ${runFailed} failed`,
       });
     }
@@ -1424,23 +1440,20 @@ function PhotoTab({ city, stats, tiles }) {
 
   const stopDownload = () => { stopRef.current = true; };
 
-  const total = stats?.total_places || 0;
-  const withPhotos = stats?.with_photos || 0;
-  const withoutPhotos = total - withPhotos;
-  const photoPct = total > 0 ? Math.round((withPhotos / total) * 100) : 0;
+  const photoPct = totalPlaces > 0 ? Math.round(((withPhotos ?? 0) / totalPlaces) * 100) : 0;
   const estimatedCost = (missingCount || 0) * 5 * 0.007;
-  const downloaded = initialMissing != null && missingCount != null ? initialMissing - missingCount : totalSucceeded;
-  const progressPct = initialMissing > 0 ? Math.round((downloaded / initialMissing) * 100) : 0;
+  const downloaded = initialMissing != null && missingCount != null ? Math.max(0, initialMissing - missingCount) : totalSucceeded;
+  const progressPct = initialMissing > 0 ? Math.min(100, Math.round((downloaded / initialMissing) * 100)) : 0;
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
+      {/* Stats — live-updating from DB */}
       <div className="grid grid-cols-3 gap-4">
-        <StatCard icon={Camera} label="With Photos" value={withPhotos} />
-        <StatCard icon={ImageOff} label="Without Photos" value={missingCount ?? withoutPhotos} />
-        <StatCard icon={Eye} label="Coverage" value={`${photoPct}%`} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
+        <StatCard icon={Camera} label="With Photos" value={withPhotos ?? "—"} />
+        <StatCard icon={ImageOff} label="Without Photos" value={missingCount ?? "—"} />
+        <StatCard icon={Eye} label="Coverage" value={totalPlaces ? `${photoPct}%` : "—"} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
       </div>
 
       {/* Download Section */}
@@ -1473,7 +1486,7 @@ function PhotoTab({ city, stats, tiles }) {
                 <div><strong>{missingCount}</strong> places still need photos.</div>
                 <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost(estimatedCost)}</strong></div>
                 <div className="text-xs text-[var(--color-text-secondary)]">
-                  Downloads 5 places at a time. Each batch takes ~10-30 seconds. Photos save to storage immediately — progress survives page refresh.
+                  Downloads 50 places per batch. Stats update every 5 seconds from the database — you can leave and come back anytime.
                 </div>
               </div>
             </div>
