@@ -1368,23 +1368,77 @@ function PhotoTab({ city, stats, tiles }) {
   const batchPlaces = batchLimit ? filtered.slice(0, parseInt(batchLimit) || filtered.length) : filtered;
   const batchCost = batchPlaces.length * 5 * 0.007;
 
+  const [downloadProgress, setDownloadProgress] = useState(null);
+
   const triggerDownload = async (placeIds) => {
     setDownloading(true);
+    setDownloadProgress({ done: 0, total: placeIds.length, succeeded: 0, failed: 0 });
+
     try {
-      const { error } = await supabase.from("admin_backfill_log").insert({
+      // Log the operation
+      await supabase.from("admin_backfill_log").insert({
         operation_type: "photo_backfill",
-        triggered_by: (await supabase.auth.getUser()).data.user.id,
+        triggered_by: (await supabase.auth.getUser()).data.user?.id,
         place_ids: placeIds,
         total_places: placeIds.length,
         estimated_cost_usd: placeIds.length * 5 * 0.007,
       });
-      if (error) throw error;
-      await supabase.functions.invoke("admin-refresh-places", { body: { action: "process" } });
-      addToast({ variant: "success", title: `Triggered download for ${placeIds.length} place(s)` });
+
+      // Process in batches of 50 via backfill-place-photos edge function
+      const BATCH_SIZE = 50;
+      let totalSucceeded = 0;
+      let totalFailed = 0;
+      let totalProcessed = 0;
+
+      // The edge function finds places with missing photos automatically,
+      // so we call it repeatedly until all are processed or we've covered our placeIds count
+      while (totalProcessed < placeIds.length) {
+        const remaining = placeIds.length - totalProcessed;
+        const batchSize = Math.min(BATCH_SIZE, remaining);
+
+        const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
+          body: { batchSize },
+        });
+
+        if (error) throw new Error(error.message || "Edge function error");
+        if (data?.error) throw new Error(data.error);
+
+        const processed = data.processed || 0;
+        totalSucceeded += data.succeeded || 0;
+        totalFailed += data.failed || 0;
+        totalProcessed += processed;
+
+        setDownloadProgress({
+          done: totalProcessed,
+          total: placeIds.length,
+          succeeded: totalSucceeded,
+          failed: totalFailed,
+        });
+
+        // Stop if no more candidates found
+        if (processed === 0 || (data.remaining || 0) === 0) break;
+      }
+
+      addToast({
+        variant: totalFailed > 0 ? "warning" : "success",
+        title: `Photo download complete`,
+        description: `${totalSucceeded} succeeded, ${totalFailed} failed`,
+      });
+
+      // Refresh the missing photos list
+      const { data: refreshed } = await supabase.from("place_pool")
+        .select("id, name, rating, seeding_category, photos, lat, lng, impression_count")
+        .eq("city_id", city.id).eq("is_active", true)
+        .or("stored_photo_urls.is.null,stored_photo_urls.eq.{}")
+        .not("photos", "is", null)
+        .order("rating", { ascending: false, nullsFirst: false })
+        .limit(500);
+      setAllMissing(refreshed || []);
     } catch (err) {
       addToast({ variant: "error", title: "Download failed", description: err.message });
     }
     setDownloading(false);
+    setDownloadProgress(null);
   };
 
   const total = stats?.total_places || 0;
@@ -1449,10 +1503,29 @@ function PhotoTab({ city, stats, tiles }) {
           </div>
           <Button size="sm" icon={Download} loading={downloading}
             onClick={() => triggerDownload(batchPlaces.map((p) => p.id))}
-            disabled={batchPlaces.length === 0}>
-            Batch Download ({batchPlaces.length})
+            disabled={batchPlaces.length === 0 || downloading}>
+            {downloading ? "Downloading..." : `Batch Download (${batchPlaces.length})`}
           </Button>
         </div>
+
+        {/* Download Progress */}
+        {downloadProgress && (
+          <div className="mb-4 p-3 bg-[var(--color-brand-50)] rounded-lg space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-[var(--gray-100)] rounded-full h-2.5 overflow-hidden">
+                <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-300"
+                  style={{ width: `${downloadProgress.total > 0 ? Math.round((downloadProgress.done / downloadProgress.total) * 100) : 0}%` }} />
+              </div>
+              <span className="text-xs font-medium w-24 text-right">
+                {downloadProgress.done} / {downloadProgress.total}
+              </span>
+            </div>
+            <div className="flex gap-4 text-xs">
+              <span className="text-[var(--color-success-700)]">{downloadProgress.succeeded} succeeded</span>
+              {downloadProgress.failed > 0 && <span className="text-[var(--color-error-700)]">{downloadProgress.failed} failed</span>}
+            </div>
+          </div>
+        )}
 
         {/* List */}
         {loading ? <div className="text-sm text-[var(--color-text-secondary)]">Loading...</div> : (
