@@ -699,19 +699,18 @@ serve(async (req: Request) => {
         holiday_key: holidayKey,
       }));
 
-      const { error: impressionError } = await adminClient
+      // Fire-and-forget: don't block the response for impression recording
+      adminClient
         .from("person_card_impressions")
         .upsert(impressionRows, {
           onConflict: usingPairedUser
             ? "user_id,paired_user_id,card_pool_id"
             : "user_id,person_id,card_pool_id",
           ignoreDuplicates: true,
+        })
+        .then(({ error }) => {
+          if (error) console.warn("[get-person-hero-cards] Impression insert error:", error);
         });
-
-      if (impressionError) {
-        // Non-fatal: log but don't fail the request
-        console.warn("[get-person-hero-cards] Impression insert error:", impressionError);
-      }
     }
 
     // --- Return response ---

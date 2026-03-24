@@ -384,7 +384,9 @@ async function queryPlacePool(
     if (!p.stored_photo_urls?.length) return false;
     // Hardcoded exclusions (legacy — kept for defense in depth)
     if (p.primary_type && excludedPrimary.includes(p.primary_type)) return false;
+    if (p.types?.some((t: string) => excludedPrimary.includes(t))) return false;
     if (p.primary_type && GLOBAL_EXCLUDED.has(p.primary_type)) return false;
+    if (p.types?.some((t: string) => GLOBAL_EXCLUDED.has(t))) return false;
     // DB-driven exclusions: check full types array, not just primary_type
     if (p.types?.some((t: string) => dbExcludedTypes.has(t))) return false;
     if (isChildVenueName(p.name || '')) return false;

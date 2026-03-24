@@ -358,13 +358,23 @@ function CardRow({
     hasLoc ? { pairedUserId, holidayKey, location, sections, excludeCardIds: excludeIds } : null
   );
 
+  const allCards = data?.cards ?? [];
+
   const shufflePairedCards = useShufflePairedCards();
   const handleShuffle = useCallback(async () => {
-    await shufflePairedCards(pairedUserId, holidayKey, sections, location);
-    if (onShuffleCategories) onShuffleCategories();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, onShuffleCategories]);
+    // Remove THIS section's current cards from seenCardIds before shuffling
+    // so they can potentially appear in other sections' future shuffles
+    const currentCards = allCards;
+    if (seenCardIds?.current) {
+      for (const c of currentCards) seenCardIds.current.delete(c.id);
+    }
 
-  const allCards = data?.cards ?? [];
+    // Pass all OTHER sections' card IDs as exclusions
+    const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
+    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeIds);
+
+    if (onShuffleCategories) onShuffleCategories();
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, onShuffleCategories, allCards, seenCardIds]);
   const pairedCards = useMemo(() => {
     if (!seenCardIds?.current) return allCards;
     const filtered = allCards.filter(c => !seenCardIds.current.has(c.id));

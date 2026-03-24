@@ -12,6 +12,7 @@ import {
   getPlaceTypesForCategory,
   resolveCategories,
   GLOBAL_EXCLUDED_PLACE_TYPES,
+  isChildVenueName,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 import { downloadAndStorePhotos, resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
@@ -855,7 +856,16 @@ export async function serveCardsFromPipeline(
     // Check primary_type against global exclusions (works on pool cards)
     if (card.primary_type && globalSet.has(card.primary_type)) return false;
 
+    // Check venue name against child/excluded keywords
+    const venueName = card.name || card.title || '';
+    if (venueName && isChildVenueName(venueName)) return false;
+
     if (card.card_type === 'curated' && card.stops) {
+      // Check curated stop names too
+      if (card.stops.some((stop: any) => {
+        const stopName = stop.placeName || stop.name || '';
+        return stopName && isChildVenueName(stopName);
+      })) return false;
       return !card.stops.some((stop: any) => {
         const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
         return stopTypes.some((t: string) => globalSet.has(t));

@@ -97,7 +97,8 @@ export function useShufflePairedCards() {
       pairedUserId: string,
       holidayKey: string,
       sections: HolidayCardSection[],
-      location: { latitude: number; longitude: number }
+      location: { latitude: number; longitude: number },
+      excludeCardIds?: string[]
     ): Promise<void> => {
       const { categorySlugs, curatedExperienceType } =
         sectionsToSlugsAndType(sections);
@@ -109,6 +110,7 @@ export function useShufflePairedCards() {
         curatedExperienceType,
         location,
         mode: "shuffle",
+        excludeCardIds,
       });
 
       const locK = locationKey(location);
