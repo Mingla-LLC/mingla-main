@@ -133,7 +133,7 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **Subscriptions** — server-side stats via RPC, expiring override alerts, column sorting, CSV export
 - **Analytics** — 5 server-side RPCs (growth, engagement, retention, funnel, geo), custom date range, Leaflet map on geography tab
 - **Content** — image thumbnails, bulk actions, review moderation (approve/reject/flag)
-- **Place Pool** — 6-tab management: tile-based seeding with cost preview, Leaflet map view with status-colored tiles (gray/blue/green/red) and coverage gap detection (orange dashed), browse/filter/edit pool with rating filter, photo management with tile/category/rating filters and partial batch controls with cost estimates, stale review, stats with seeding history
+- **Place Pool** — 6-tab management: tile-based seeding with sequential batch approval (prepare → approve one batch at a time → retry failed → auto-complete), Leaflet map view with status-colored tiles (gray/blue/green/red) and coverage gap detection (orange dashed), browse/filter/edit pool with rating filter, photo management with tile/category/rating filters and partial batch controls with cost estimates, stale review, stats with seeding run history (expandable batch details, status/category/tile filters)
 - **Card Pool (hardened 2026-03-21)** — 4-tab management fully rewritten to TEXT-based V2 RPCs, zero seeding_cities dependency. Overview (card intelligence stat cards + category health), Browse (direct card_pool TEXT query, card detail modal, bulk activate/deactivate — curated cards no longer excluded), Generate (fixed request body format, bounding box from place_pool data, dry-run toggle, category + experience type filters, formatted results), Card Health (orphaned/stale/never-served cards, category gaps, cross-city comparison via single admin_country_overview RPC). Breadcrumb navigation matching PoolIntelligencePage. Must never happen: referencing seeding_cities, seeding_tiles, or UUID-param RPCs from this page.
 - **Feedback** — audio auto-retry on 403, bulk status update
 - **Email** — database-backed templates, city/tier/activity segments, rate limiting (100/day), send history export
@@ -157,6 +157,8 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 | `email_templates` | Database-backed email templates |
 | `feature_flags` | Remote feature flag management |
 | `integrations` | Third-party integration configuration |
+| `seeding_runs` | Batch seeding sessions (status lifecycle, progress counters, cost aggregates) |
+| `seeding_batches` | One row per tile × category execution (results, errors, retry_count) |
 
 ### Server-Side RPCs (Admin)
 
@@ -189,13 +191,16 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 
 **Design principle:** Cities are broken into a hex-grid of tiles. Each tile × category = one Google Nearby Search call with explicit type filtering. No Text Search for structured seeding.
 
-1. **Tile-based seeding** — `admin-seed-places` edge function. Cities defined with center + radius. Grid generated with spacing = tile_radius × 1.4. Default tile radius: 1500m. Each tile gets 13 category searches.
-2. **$70 hard cap** — `preview_cost` action calculates search + estimated photo cost. Returns `exceedsHardCap: true` if over $70. `seed` action requires `acknowledgeHardCap: true` to proceed over cap.
+1. **Tile-based seeding** — `admin-seed-places` edge function (10 actions). Cities defined with center + radius. Grid generated with spacing = tile_radius × 1.4. Default tile radius: 1500m. Each tile gets 13 category searches.
+2. **$70 hard cap** — `preview_cost` action calculates search + estimated photo cost. Returns `exceedsHardCap: true` if over $70. `create_run` enforces cap at run creation.
 3. **Post-fetch filters** — reject permanently closed, reject no photos, reject global excluded types (gym, fitness_center, dog_park). No-rating places are allowed.
-4. **Selective upsert** — re-seeding preserves admin-edited fields (`price_tier`, `is_active`, `stored_photo_urls`). Only Google-sourced fields are refreshed. Two-step: insert-new then batch-update-existing.
-5. **Structured error logging** — every tile failure logged in `seeding_operations.error_details` JSONB with tile_id, category, HTTP status, response body (truncated to 500 chars), error type, timestamp.
+4. **Selective upsert** — re-seeding preserves admin-edited fields (`price_tier`, `is_active`, `stored_photo_urls`). Only Google-sourced fields are refreshed. Two-step: insert-new then batch-update-existing (groups of 10).
+5. **Structured error logging** — every batch failure logged in `seeding_batches` with error_message, error_details JSONB, retry_count. Legacy per-category logs in `seeding_operations`.
 6. **City status flow** — `draft` → `seeding` → `seeded` → `launched`. Only transitions to "seeded" when places are actually inserted. Falls back to "draft" on total failure.
-7. **Seeding tables** — `seeding_cities` (city definitions with google_place_id), `seeding_tiles` (tile grid, CASCADE on city delete), `seeding_operations` (per-category operation logs).
+7. **Seeding tables** — `seeding_cities` (city definitions with google_place_id), `seeding_tiles` (tile grid, CASCADE on city delete), `seeding_operations` (legacy per-category logs), `seeding_runs` (batch seeding sessions), `seeding_batches` (one row per tile × category execution).
+8. **Sequential batch seeding (2026-03-24)** — two-phase prepare-then-approve workflow. `create_run` builds full batch queue (preparing → verify count → ready or failed_preparing). Admin manually approves each batch one at a time (`run_next_batch`). Each batch = exactly 1 Google API call for 1 tile × 1 category. Run pauses after each batch. Failed batches can be retried (`retry_batch`) or skipped. Run only auto-completes when all batches are completed or skipped — never while failed batches remain. Full state persisted in DB; resume from any session on page reload.
+9. **Run lifecycle** — `preparing → ready → running ⇄ paused → completed`. Also: `preparing → failed_preparing` (terminal), `ready/running/paused → cancelled`. `run_next_batch` only accepts `ready/running/paused`. Retry only targets `failed` batches in approvable runs.
+10. **Retry model** — `retry_batch` re-executes exactly one failed batch. One-at-a-time invariant enforced (server checks no batch is running). On success: `failed_batches--`, `completed_batches++`, place aggregates corrected. Cost/API calls accumulate (billing truth); place counts reflect latest attempt (operational truth). `retry_count` tracked per batch. Must never happen: retrying a batch while another is running, or auto-completing a run while failed batches exist.
 
 ### Admin Dashboard — Pool Management
 
@@ -383,6 +388,7 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **Sequential Batch Seeding with Retry (2026-03-24)** — Complete rewrite of the admin seeding flow. Old "fire and forget" replaced with a two-phase prepare-then-approve model. `create_run` builds the full batch queue (preparing → verify count → ready). Admin manually approves each tile × category batch one at a time. Every batch is logged to `seeding_batches` with full results. Failed batches can be retried or skipped. Run stays paused while failed batches exist — only auto-completes when all are resolved. Full DB-backed state: close the browser mid-run, come back next week, resume exactly where you left off. New tables: `seeding_runs`, `seeding_batches`. 10 edge function actions. StatsTab enhanced with expandable seeding runs + batch filters (status, category, tile index).
 - **Collaboration UI Consolidation** — Deleted CollaborationModule (hidden chat-menu modal) and BoardViewScreen (full-page board view) — both redundant with the existing SessionViewModal. All notification and deep link handlers rerouted from `board-view` page to HomePage + auto-open SessionViewModal via `pendingSessionOpen` state. Cleaned up `onNavigateToBoard` prop chain (ConnectionsPage → MessagesTab → MessageInterface), removed `boardViewSessionId` state, removed "Send Collaboration Invite" chat menu item. 8 files deleted (~5,000 lines net reduction), 11 files modified.
 - **Card Image Pipeline Fix** — All 10 category discover functions gutted to pool-only (~70 lines each, down from ~500). Removed all legacy Google API fallback code (`getPhotoUrl`, `batchSearchPlaces`, `getAllPhotoUrls`). Added error logging to 3 silent `.catch(() => {})` sites. New `backfill-place-photos` edge function re-downloads photos for places with empty `stored_photo_urls`. SQL migration backfills `card_pool.image_url` from `place_pool.stored_photo_urls` for cards with Unsplash/NULL images.
 - **Pool Intelligence V2** — Complete rewrite: country-first navigation (All Countries → Country → City), zero seeding dependencies, virtual ~500m neighborhood grid computed from place bounding boxes, 6 new RPCs using TEXT country/city filters instead of UUID city_id, `place_pool.city` column with 3-pass backfill, `card_pool.city`/`country` columns, plain-English metric labels on every stat.

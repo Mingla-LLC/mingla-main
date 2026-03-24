@@ -10,11 +10,19 @@ import {
 import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
-// Four actions:
-//   1. generate_tiles  — compute tile grid from city center + radius
-//   2. preview_cost    — calculate cost estimate, enforce $70 hard cap
-//   3. seed            — execute seeding per tile × category via Nearby Search
-//   4. coverage_check  — per-category place counts for augmentation intelligence
+// Ten actions:
+//   Legacy:
+//     1. generate_tiles  — compute tile grid from city center + radius
+//     2. preview_cost    — calculate cost estimate, enforce $70 hard cap
+//     3. seed            — execute seeding per tile × category via Nearby Search (legacy)
+//     4. coverage_check  — per-category place counts for augmentation intelligence
+//   Sequential batch seeding:
+//     5. create_run      — prepare run: create all batch records, verify count, mark ready
+//     6. run_next_batch  — execute exactly ONE batch, then pause for manual approval
+//     7. retry_batch     — re-execute a specific failed batch, correct run counters
+//     8. skip_batch      — skip one pending batch without running it
+//     9. cancel_run      — stop a run, mark remaining pending batches as skipped
+//    10. run_status      — load full run state for UI hydration on page load
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -913,6 +921,1088 @@ async function handleCoverageCheck(body: any, supabase: any) {
   return { cityId, totalPlaces, categoriesWithGaps, coverage };
 }
 
+// ── Action: create_run ───────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleCreateRun(body: any, supabase: any) {
+  const { cityId, categories } = body;
+  if (!cityId) throw new Error("cityId is required");
+
+  // Load city
+  const { data: city, error: cityErr } = await supabase
+    .from("seeding_cities")
+    .select("*")
+    .eq("id", cityId)
+    .single();
+  if (cityErr || !city) throw new Error(`City not found: ${cityId}`);
+
+  // Resolve categories
+  const categoryIds: string[] =
+    !categories || categories[0] === "all"
+      ? ALL_SEEDING_CATEGORY_IDS
+      : categories;
+
+  const validConfigs = categoryIds
+    .map((id: string) => SEEDING_CATEGORY_MAP[id])
+    .filter(Boolean) as SeedingCategoryConfig[];
+
+  if (validConfigs.length === 0) {
+    throw new Error("No valid seeding categories provided");
+  }
+
+  // Load tiles ordered by tile_index
+  const { data: tiles, error: tileErr } = await supabase
+    .from("seeding_tiles")
+    .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx")
+    .eq("city_id", cityId)
+    .order("tile_index");
+  if (tileErr) throw new Error(`Failed to load tiles: ${tileErr.message}`);
+  if (!tiles || tiles.length === 0) {
+    throw new Error("No tiles found. Generate tiles first.");
+  }
+
+  const totalBatches = tiles.length * validConfigs.length;
+
+  // Check $70 cap
+  const estimatedSearchCost = totalBatches * COST_PER_NEARBY_SEARCH;
+  const estimatedPhotoCost = tiles.length * EXPECTED_UNIQUE_PLACES_PER_TILE * PHOTOS_PER_PLACE * COST_PER_PHOTO;
+  const estimatedTotalCost = estimatedSearchCost + estimatedPhotoCost;
+  if (estimatedTotalCost > HARD_CAP_USD) {
+    throw new Error(
+      `Estimated cost $${estimatedTotalCost.toFixed(2)} exceeds $${HARD_CAP_USD} cap. Reduce tiles, radius, or categories.`
+    );
+  }
+
+  // Check for existing active run (includes preparing and ready states)
+  const { data: existingRuns } = await supabase
+    .from("seeding_runs")
+    .select("id, status")
+    .eq("city_id", cityId)
+    .in("status", ["preparing", "ready", "running", "paused"])
+    .limit(1);
+
+  if (existingRuns && existingRuns.length > 0) {
+    throw new Error(
+      `City already has an active run (${existingRuns[0].id}, status: ${existingRuns[0].status}). Cancel it first.`
+    );
+  }
+
+  // Phase 1: Create run in 'preparing' status
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .insert({
+      city_id: cityId,
+      selected_categories: categoryIds,
+      total_tiles: tiles.length,
+      total_batches: totalBatches,
+      status: "preparing",
+    })
+    .select("*")
+    .single();
+
+  if (runErr) throw new Error(`Failed to create run: ${runErr.message}`);
+
+  // Phase 2: Build and insert all batch records
+  const batchRows = [];
+  let batchIndex = 0;
+  for (const tile of tiles) {
+    for (const config of validConfigs) {
+      batchRows.push({
+        run_id: run.id,
+        city_id: cityId,
+        tile_id: tile.id,
+        tile_index: tile.tile_index,
+        seeding_category: config.id,
+        app_category: config.appCategory,
+        batch_index: batchIndex++,
+        status: "pending",
+      });
+    }
+  }
+
+  // Insert in chunks of 500 (Supabase limit)
+  const CHUNK_SIZE = 500;
+  let insertedTotal = 0;
+
+  try {
+    for (let i = 0; i < batchRows.length; i += CHUNK_SIZE) {
+      const chunk = batchRows.slice(i, i + CHUNK_SIZE);
+      const { error: batchErr } = await supabase
+        .from("seeding_batches")
+        .insert(chunk);
+      if (batchErr) throw new Error(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${batchErr.message}`);
+      insertedTotal += chunk.length;
+    }
+  } catch (insertError) {
+    // Batch insertion failed partway — mark run as failed_preparing
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "failed_preparing",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", run.id);
+
+    throw new Error(
+      `Batch preparation failed after ${insertedTotal}/${totalBatches} batches. ` +
+      `Run ${run.id} marked as failed_preparing. ` +
+      (insertError instanceof Error ? insertError.message : String(insertError))
+    );
+  }
+
+  // Phase 3: Verify actual batch count matches expected
+  const { count: actualCount, error: countErr } = await supabase
+    .from("seeding_batches")
+    .select("id", { count: "exact", head: true })
+    .eq("run_id", run.id);
+
+  if (countErr || actualCount !== totalBatches) {
+    // Count mismatch — mark as failed_preparing
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "failed_preparing",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", run.id);
+
+    throw new Error(
+      `Batch count verification failed: expected ${totalBatches}, got ${actualCount ?? "unknown"}. ` +
+      `Run ${run.id} marked as failed_preparing.`
+    );
+  }
+
+  // Phase 4: All batches created and verified — transition to 'ready'
+  await supabase
+    .from("seeding_runs")
+    .update({ status: "ready" })
+    .eq("id", run.id);
+
+  // Return queue preview (first 5 batches)
+  const preview = batchRows.slice(0, 5).map((b) => ({
+    batchIndex: b.batch_index,
+    tileIndex: b.tile_index,
+    category: b.seeding_category,
+    categoryLabel: SEEDING_CATEGORY_MAP[b.seeding_category]?.label ?? b.seeding_category,
+  }));
+
+  return {
+    runId: run.id,
+    status: "ready",
+    totalBatches,
+    totalTiles: tiles.length,
+    totalCategories: validConfigs.length,
+    estimatedCostUsd: Math.round(estimatedTotalCost * 100) / 100,
+    preview,
+  };
+}
+
+// ── Action: run_next_batch ───────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleRunNextBatch(body: any, supabase: any) {
+  const { runId } = body;
+  if (!runId) throw new Error("runId is required");
+
+  // Load run
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+  if (runErr || !run) throw new Error(`Run not found: ${runId}`);
+
+  if (!["ready", "running", "paused"].includes(run.status)) {
+    throw new Error(`Run status is '${run.status}' — cannot execute batches. Run must be in 'ready', 'running', or 'paused' state.`);
+  }
+
+  // Find next pending batch
+  const { data: nextBatches, error: nextErr } = await supabase
+    .from("seeding_batches")
+    .select("*")
+    .eq("run_id", runId)
+    .eq("status", "pending")
+    .order("batch_index")
+    .limit(1);
+
+  if (nextErr) throw new Error(`Failed to find next batch: ${nextErr.message}`);
+
+  if (!nextBatches || nextBatches.length === 0) {
+    // All done — mark run completed
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "completed",
+        current_batch_index: null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+
+    return { done: true, runId, message: "All batches completed" };
+  }
+
+  const batch = nextBatches[0];
+
+  // Mark batch as running, mark run as running
+  const now = new Date().toISOString();
+  await supabase
+    .from("seeding_batches")
+    .update({ status: "running", started_at: now })
+    .eq("id", batch.id);
+
+  await supabase
+    .from("seeding_runs")
+    .update({
+      status: "running",
+      current_batch_index: batch.batch_index,
+      ...(run.status === "ready" ? { started_at: now } : {}),
+    })
+    .eq("id", runId);
+
+  // Load city for name/country
+  const { data: city } = await supabase
+    .from("seeding_cities")
+    .select("name, country")
+    .eq("id", batch.city_id)
+    .single();
+  const cityName = city?.name ?? "Unknown";
+  const cityCountry = city?.country ?? "Unknown";
+
+  // Load tile
+  const { data: tile } = await supabase
+    .from("seeding_tiles")
+    .select("id, tile_index, center_lat, center_lng, radius_m")
+    .eq("id", batch.tile_id)
+    .single();
+
+  if (!tile) {
+    // Tile missing — mark batch failed
+    await supabase
+      .from("seeding_batches")
+      .update({
+        status: "failed",
+        error_message: "Tile not found",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", batch.id);
+
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "paused",
+        failed_batches: run.failed_batches + 1,
+      })
+      .eq("id", runId);
+
+    return {
+      done: false,
+      batchId: batch.id,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error: "Tile not found",
+    };
+  }
+
+  // Get category config
+  const config = SEEDING_CATEGORY_MAP[batch.seeding_category];
+  if (!config) {
+    await supabase
+      .from("seeding_batches")
+      .update({
+        status: "failed",
+        error_message: `Unknown category: ${batch.seeding_category}`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", batch.id);
+
+    await supabase
+      .from("seeding_runs")
+      .update({
+        status: "paused",
+        failed_batches: run.failed_batches + 1,
+      })
+      .eq("id", runId);
+
+    return {
+      done: false,
+      batchId: batch.id,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error: `Unknown category: ${batch.seeding_category}`,
+    };
+  }
+
+  // Execute ONE Google Nearby Search
+  let batchStatus = "completed";
+  let errorMessage: string | null = null;
+  let errorDetails: unknown = null;
+  let placesReturned = 0;
+  let rejectedNoPhotos = 0;
+  let rejectedClosed = 0;
+  let rejectedExcludedType = 0;
+  let newInserted = 0;
+  let duplicateSkipped = 0;
+
+  try {
+    const requestBody = {
+      includedTypes: config.includedTypes,
+      excludedPrimaryTypes: config.excludedPrimaryTypes,
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: tile.center_lat,
+            longitude: tile.center_lng,
+          },
+          radius: tile.radius_m,
+        },
+      },
+      rankPreference: "POPULARITY",
+    };
+
+    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify(requestBody),
+      timeoutMs: API_TIMEOUT_MS,
+    });
+
+    if (!response.ok) {
+      const respBody = await response.text();
+      batchStatus = "failed";
+      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
+      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
+    } else {
+      const data = await response.json();
+      const places = data.places || [];
+      placesReturned = places.length;
+
+      // Apply post-fetch filters
+      const filterResult = applyPostFetchFilters(places, config.id);
+      rejectedNoPhotos = filterResult.rejectedNoPhotos;
+      rejectedClosed = filterResult.rejectedClosed;
+      rejectedExcludedType = filterResult.rejectedExcludedType;
+
+      // Deduplicate by google_place_id
+      // deno-lint-ignore no-explicit-any
+      const uniquePlaces = new Map<string, any>();
+      for (const p of filterResult.passed) {
+        if (p.id && !uniquePlaces.has(p.id)) {
+          uniquePlaces.set(p.id, p);
+        }
+      }
+
+      // Upsert to place_pool
+      if (uniquePlaces.size > 0) {
+        const rows = Array.from(uniquePlaces.values()).map((p) =>
+          transformGooglePlaceForSeed(p, batch.city_id, config.id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+        );
+
+        // Step 1: Insert new places only
+        const { data: insertedData, error: insertErr } = await supabase
+          .from("place_pool")
+          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
+          .select("google_place_id");
+
+        if (insertErr) {
+          errorMessage = `Upsert error: ${insertErr.message}`;
+          errorDetails = { upsert_error: insertErr.message };
+          // Don't mark as failed — partial success is still useful
+        }
+
+        const insertedIds = new Set(
+          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
+        );
+        newInserted = insertedIds.size;
+
+        // Step 2: Update existing places selectively (batched in groups of 10)
+        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
+        duplicateSkipped = existingRows.length;
+        const UPDATE_BATCH_SIZE = 10;
+
+        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
+          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          await Promise.all(
+            updateBatch.map((row) =>
+              supabase
+                .from("place_pool")
+                .update({
+                  name: row.name,
+                  address: row.address,
+                  lat: row.lat,
+                  lng: row.lng,
+                  types: row.types,
+                  primary_type: row.primary_type,
+                  rating: row.rating,
+                  review_count: row.review_count,
+                  price_level: row.price_level,
+                  opening_hours: row.opening_hours,
+                  photos: row.photos,
+                  website: row.website,
+                  raw_google_data: row.raw_google_data,
+                  last_detail_refresh: row.last_detail_refresh,
+                  refresh_failures: 0,
+                })
+                .eq("google_place_id", row.google_place_id)
+            )
+          );
+        }
+      }
+    }
+  } catch (err) {
+    batchStatus = "failed";
+    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
+    errorDetails = { error_type: isTimeout ? "timeout" : "unknown" };
+  }
+
+  const completedAt = new Date().toISOString();
+  const costUsd = COST_PER_NEARBY_SEARCH; // Always 1 API call per batch
+
+  // Update batch record
+  await supabase
+    .from("seeding_batches")
+    .update({
+      status: batchStatus,
+      google_api_calls: 1,
+      places_returned: placesReturned,
+      places_rejected_no_photos: rejectedNoPhotos,
+      places_rejected_closed: rejectedClosed,
+      places_rejected_excluded_type: rejectedExcludedType,
+      places_new_inserted: newInserted,
+      places_duplicate_skipped: duplicateSkipped,
+      estimated_cost_usd: costUsd,
+      error_message: errorMessage,
+      error_details: errorDetails,
+      completed_at: completedAt,
+    })
+    .eq("id", batch.id);
+
+  // Update run aggregates
+  const updateData: Record<string, unknown> = {
+    status: "paused",
+    total_api_calls: run.total_api_calls + 1,
+    total_places_new: run.total_places_new + newInserted,
+    total_places_duped: run.total_places_duped + duplicateSkipped,
+    total_cost_usd: run.total_cost_usd + costUsd,
+  };
+
+  if (batchStatus === "completed") {
+    updateData.completed_batches = run.completed_batches + 1;
+  } else {
+    updateData.failed_batches = run.failed_batches + 1;
+  }
+
+  // Check if there are remaining pending batches
+  const { data: remainingBatches } = await supabase
+    .from("seeding_batches")
+    .select("id")
+    .eq("run_id", runId)
+    .eq("status", "pending")
+    .limit(1);
+
+  const noPending = !remainingBatches || remainingBatches.length === 0;
+
+  if (noPending) {
+    // Also check for failed batches — don't auto-complete if retryable batches remain
+    const { data: failedBatches } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "failed")
+      .limit(1);
+
+    const noFailed = !failedBatches || failedBatches.length === 0;
+
+    if (noFailed) {
+      // All batches are completed/skipped — run is done
+      updateData.status = "completed";
+      updateData.current_batch_index = null;
+      updateData.completed_at = completedAt;
+    }
+    // else: no pending but failed batches exist — stay paused for retry
+  }
+
+  await supabase
+    .from("seeding_runs")
+    .update(updateData)
+    .eq("id", runId);
+
+  // Get next batch preview
+  let nextPreview = null;
+  if (!noPending) {
+    const { data: nextBatch } = await supabase
+      .from("seeding_batches")
+      .select("batch_index, tile_index, seeding_category")
+      .eq("run_id", runId)
+      .eq("status", "pending")
+      .order("batch_index")
+      .limit(1)
+      .single();
+
+    if (nextBatch) {
+      nextPreview = {
+        batchIndex: nextBatch.batch_index,
+        tileIndex: nextBatch.tile_index,
+        category: nextBatch.seeding_category,
+        categoryLabel: SEEDING_CATEGORY_MAP[nextBatch.seeding_category]?.label ?? nextBatch.seeding_category,
+      };
+    }
+  }
+
+  return {
+    done: updateData.status === "completed",
+    batchId: batch.id,
+    batchIndex: batch.batch_index,
+    tileIndex: batch.tile_index,
+    category: batch.seeding_category,
+    categoryLabel: config.label,
+    status: batchStatus,
+    result: {
+      placesReturned,
+      rejectedNoPhotos,
+      rejectedClosed,
+      rejectedExcludedType,
+      newInserted,
+      duplicateSkipped,
+      costUsd,
+      error: errorMessage,
+    },
+    nextBatch: nextPreview,
+    runProgress: {
+      completedBatches: (updateData.completed_batches as number) ?? run.completed_batches,
+      failedBatches: (updateData.failed_batches as number) ?? run.failed_batches,
+      totalBatches: run.total_batches,
+      totalPlacesNew: run.total_places_new + newInserted,
+      totalPlacesDuped: run.total_places_duped + duplicateSkipped,
+      totalCostUsd: Math.round((run.total_cost_usd + costUsd) * 1000) / 1000,
+    },
+  };
+}
+
+// ── Action: retry_batch ──────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleRetryBatch(body: any, supabase: any) {
+  const { runId, batchId } = body;
+  if (!runId || !batchId) throw new Error("runId and batchId are required");
+
+  // Load run
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+  if (runErr || !run) throw new Error("Run not found");
+
+  if (!["ready", "running", "paused"].includes(run.status)) {
+    throw new Error(`Run status is '${run.status}' — retry only allowed when run is ready, running, or paused`);
+  }
+
+  // Load batch — must be failed AND belong to this run
+  const { data: batch, error: batchErr } = await supabase
+    .from("seeding_batches")
+    .select("*")
+    .eq("id", batchId)
+    .eq("run_id", runId)
+    .single();
+
+  if (batchErr || !batch) throw new Error("Batch not found");
+  if (batch.status !== "failed") {
+    throw new Error(`Batch status is '${batch.status}' — can only retry failed batches`);
+  }
+
+  // One-at-a-time guard: no other batch should be running
+  const { data: runningBatches } = await supabase
+    .from("seeding_batches")
+    .select("id")
+    .eq("run_id", runId)
+    .eq("status", "running")
+    .limit(1);
+
+  if (runningBatches && runningBatches.length > 0) {
+    throw new Error("Another batch is already running. Wait for it to complete.");
+  }
+
+  // Save old batch contribution to run aggregates (for correction)
+  const oldNewInserted = batch.places_new_inserted || 0;
+  const oldDuped = batch.places_duplicate_skipped || 0;
+
+  // Mark batch as running, increment retry_count
+  const now = new Date().toISOString();
+  await supabase
+    .from("seeding_batches")
+    .update({
+      status: "running",
+      started_at: now,
+      completed_at: null,
+      retry_count: (batch.retry_count || 0) + 1,
+      // Clear old results — will be overwritten
+      error_message: null,
+      error_details: null,
+    })
+    .eq("id", batchId);
+
+  // Mark run as running
+  await supabase
+    .from("seeding_runs")
+    .update({
+      status: "running",
+      current_batch_index: batch.batch_index,
+    })
+    .eq("id", runId);
+
+  // Load city for name/country
+  const { data: city } = await supabase
+    .from("seeding_cities")
+    .select("name, country")
+    .eq("id", batch.city_id)
+    .single();
+  const cityName = city?.name ?? "Unknown";
+  const cityCountry = city?.country ?? "Unknown";
+
+  // Load tile
+  const { data: tile } = await supabase
+    .from("seeding_tiles")
+    .select("id, tile_index, center_lat, center_lng, radius_m")
+    .eq("id", batch.tile_id)
+    .single();
+
+  if (!tile) {
+    await supabase
+      .from("seeding_batches")
+      .update({
+        status: "failed",
+        error_message: "Tile not found",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", batchId);
+
+    await supabase
+      .from("seeding_runs")
+      .update({ status: "paused" })
+      .eq("id", runId);
+
+    return {
+      retried: true,
+      batchId,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error: "Tile not found",
+    };
+  }
+
+  const config = SEEDING_CATEGORY_MAP[batch.seeding_category];
+  if (!config) {
+    await supabase
+      .from("seeding_batches")
+      .update({
+        status: "failed",
+        error_message: `Unknown category: ${batch.seeding_category}`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", batchId);
+
+    await supabase
+      .from("seeding_runs")
+      .update({ status: "paused" })
+      .eq("id", runId);
+
+    return {
+      retried: true,
+      batchId,
+      batchIndex: batch.batch_index,
+      status: "failed",
+      error: `Unknown category: ${batch.seeding_category}`,
+    };
+  }
+
+  // Execute ONE Google Nearby Search (identical logic to run_next_batch)
+  let batchStatus = "completed";
+  let errorMessage: string | null = null;
+  let errorDetails: unknown = null;
+  let placesReturned = 0;
+  let rejectedNoPhotos = 0;
+  let rejectedClosed = 0;
+  let rejectedExcludedType = 0;
+  let newInserted = 0;
+  let duplicateSkipped = 0;
+
+  try {
+    const requestBody = {
+      includedTypes: config.includedTypes,
+      excludedPrimaryTypes: config.excludedPrimaryTypes,
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: tile.center_lat,
+            longitude: tile.center_lng,
+          },
+          radius: tile.radius_m,
+        },
+      },
+      rankPreference: "POPULARITY",
+    };
+
+    const response = await timeoutFetch(NEARBY_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify(requestBody),
+      timeoutMs: API_TIMEOUT_MS,
+    });
+
+    if (!response.ok) {
+      const respBody = await response.text();
+      batchStatus = "failed";
+      errorMessage = `Google API ${response.status}: ${respBody.substring(0, 200)}`;
+      errorDetails = { http_status: response.status, response_body: respBody.substring(0, 500) };
+    } else {
+      const data = await response.json();
+      const places = data.places || [];
+      placesReturned = places.length;
+
+      const filterResult = applyPostFetchFilters(places, config.id);
+      rejectedNoPhotos = filterResult.rejectedNoPhotos;
+      rejectedClosed = filterResult.rejectedClosed;
+      rejectedExcludedType = filterResult.rejectedExcludedType;
+
+      // deno-lint-ignore no-explicit-any
+      const uniquePlaces = new Map<string, any>();
+      for (const p of filterResult.passed) {
+        if (p.id && !uniquePlaces.has(p.id)) {
+          uniquePlaces.set(p.id, p);
+        }
+      }
+
+      if (uniquePlaces.size > 0) {
+        const rows = Array.from(uniquePlaces.values()).map((p) =>
+          transformGooglePlaceForSeed(p, batch.city_id, config.id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+        );
+
+        // Step 1: Insert new places only
+        const { data: insertedData, error: insertErr } = await supabase
+          .from("place_pool")
+          .upsert(rows, { onConflict: "google_place_id", ignoreDuplicates: true })
+          .select("google_place_id");
+
+        if (insertErr) {
+          errorMessage = `Upsert error: ${insertErr.message}`;
+          errorDetails = { upsert_error: insertErr.message };
+        }
+
+        const insertedIds = new Set(
+          (insertedData ?? []).map((r: { google_place_id: string }) => r.google_place_id)
+        );
+        newInserted = insertedIds.size;
+
+        // Step 2: Update existing places (batched in groups of 10)
+        const existingRows = rows.filter((r) => !insertedIds.has(r.google_place_id));
+        duplicateSkipped = existingRows.length;
+        const UPDATE_BATCH_SIZE = 10;
+
+        for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
+          const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
+          await Promise.all(
+            updateBatch.map((row) =>
+              supabase
+                .from("place_pool")
+                .update({
+                  name: row.name,
+                  address: row.address,
+                  lat: row.lat,
+                  lng: row.lng,
+                  types: row.types,
+                  primary_type: row.primary_type,
+                  rating: row.rating,
+                  review_count: row.review_count,
+                  price_level: row.price_level,
+                  opening_hours: row.opening_hours,
+                  photos: row.photos,
+                  website: row.website,
+                  raw_google_data: row.raw_google_data,
+                  last_detail_refresh: row.last_detail_refresh,
+                  refresh_failures: 0,
+                })
+                .eq("google_place_id", row.google_place_id)
+            )
+          );
+        }
+      }
+    }
+  } catch (err) {
+    batchStatus = "failed";
+    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
+    errorDetails = { error_type: isTimeout ? "timeout" : "unknown" };
+  }
+
+  const completedAt = new Date().toISOString();
+  const costUsd = COST_PER_NEARBY_SEARCH;
+
+  // Update batch record with new results
+  await supabase
+    .from("seeding_batches")
+    .update({
+      status: batchStatus,
+      google_api_calls: (batch.google_api_calls || 0) + 1,
+      places_returned: placesReturned,
+      places_rejected_no_photos: rejectedNoPhotos,
+      places_rejected_closed: rejectedClosed,
+      places_rejected_excluded_type: rejectedExcludedType,
+      places_new_inserted: newInserted,
+      places_duplicate_skipped: duplicateSkipped,
+      estimated_cost_usd: (batch.estimated_cost_usd || 0) + costUsd,
+      error_message: errorMessage,
+      error_details: errorDetails,
+      completed_at: completedAt,
+    })
+    .eq("id", batchId);
+
+  // Correct run aggregates:
+  // - Always add the new API call and cost
+  // - Adjust place counts: subtract old batch contribution, add new
+  // - Adjust status counters: if retry succeeded, move from failed to completed
+  const runUpdate: Record<string, unknown> = {
+    status: "paused",
+    total_api_calls: run.total_api_calls + 1,
+    total_cost_usd: run.total_cost_usd + costUsd,
+    total_places_new: run.total_places_new - oldNewInserted + newInserted,
+    total_places_duped: run.total_places_duped - oldDuped + duplicateSkipped,
+  };
+
+  if (batchStatus === "completed") {
+    // Batch moved from failed → completed
+    runUpdate.failed_batches = run.failed_batches - 1;
+    runUpdate.completed_batches = run.completed_batches + 1;
+
+    // Check if run should now auto-complete (no pending, no failed remaining)
+    const { data: pendingLeft } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "pending")
+      .limit(1);
+
+    const { data: failedLeft } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "failed")
+      .limit(1);
+
+    if ((!pendingLeft || pendingLeft.length === 0) && (!failedLeft || failedLeft.length === 0)) {
+      runUpdate.status = "completed";
+      runUpdate.current_batch_index = null;
+      runUpdate.completed_at = completedAt;
+    }
+  }
+  // If retry failed again, counters stay the same (batch was already counted as failed)
+
+  await supabase
+    .from("seeding_runs")
+    .update(runUpdate)
+    .eq("id", runId);
+
+  return {
+    retried: true,
+    batchId,
+    batchIndex: batch.batch_index,
+    tileIndex: batch.tile_index,
+    category: batch.seeding_category,
+    categoryLabel: config.label,
+    status: batchStatus,
+    retryCount: (batch.retry_count || 0) + 1,
+    result: {
+      placesReturned,
+      rejectedNoPhotos,
+      rejectedClosed,
+      rejectedExcludedType,
+      newInserted,
+      duplicateSkipped,
+      costUsd,
+      error: errorMessage,
+    },
+  };
+}
+
+// ── Action: skip_batch ───────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleSkipBatch(body: any, supabase: any) {
+  const { runId, batchId } = body;
+  if (!runId || !batchId) throw new Error("runId and batchId are required");
+
+  // Load batch and verify it's pending
+  const { data: batch, error: batchErr } = await supabase
+    .from("seeding_batches")
+    .select("*")
+    .eq("id", batchId)
+    .eq("run_id", runId)
+    .single();
+
+  if (batchErr || !batch) throw new Error("Batch not found");
+  if (!["pending", "failed"].includes(batch.status)) {
+    throw new Error(`Batch status is '${batch.status}' — can only skip pending or failed batches`);
+  }
+
+  const wasFailed = batch.status === "failed";
+
+  // Mark as skipped
+  await supabase
+    .from("seeding_batches")
+    .update({ status: "skipped", completed_at: new Date().toISOString() })
+    .eq("id", batchId);
+
+  // Update run
+  const { data: run } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+
+  if (run) {
+    // Check for remaining actionable batches (pending or failed)
+    const { data: pendingLeft } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "pending")
+      .limit(1);
+
+    const { data: failedLeft } = await supabase
+      .from("seeding_batches")
+      .select("id")
+      .eq("run_id", runId)
+      .eq("status", "failed")
+      .limit(1);
+
+    const noPending = !pendingLeft || pendingLeft.length === 0;
+    const noFailed = !failedLeft || failedLeft.length === 0;
+    const isDone = noPending && noFailed;
+
+    const runUpdateData: Record<string, unknown> = {
+      skipped_batches: (run.skipped_batches || 0) + 1,
+    };
+
+    // If skipping a failed batch, correct the failed counter
+    if (wasFailed) {
+      runUpdateData.failed_batches = run.failed_batches - 1;
+    }
+
+    if (isDone) {
+      runUpdateData.status = "completed";
+      runUpdateData.current_batch_index = null;
+      runUpdateData.completed_at = new Date().toISOString();
+    }
+
+    await supabase
+      .from("seeding_runs")
+      .update(runUpdateData)
+      .eq("id", runId);
+  }
+
+  return { skipped: true, batchId, batchIndex: batch.batch_index, wasFailed };
+}
+
+// ── Action: cancel_run ───────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleCancelRun(body: any, supabase: any) {
+  const { runId } = body;
+  if (!runId) throw new Error("runId is required");
+
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+
+  if (runErr || !run) throw new Error("Run not found");
+  if (["completed", "cancelled", "failed_preparing"].includes(run.status)) {
+    throw new Error(`Run is already '${run.status}'`);
+  }
+
+  // Count pending batches BEFORE marking them skipped (for accurate skipped_batches)
+  const { count: pendingCount } = await supabase
+    .from("seeding_batches")
+    .select("id", { count: "exact", head: true })
+    .eq("run_id", runId)
+    .eq("status", "pending");
+
+  const skippedNow = pendingCount ?? 0;
+
+  // Mark all pending batches as skipped
+  await supabase
+    .from("seeding_batches")
+    .update({ status: "skipped", completed_at: new Date().toISOString() })
+    .eq("run_id", runId)
+    .eq("status", "pending");
+
+  // Mark run as cancelled WITH correct skipped_batches count
+  await supabase
+    .from("seeding_runs")
+    .update({
+      status: "cancelled",
+      current_batch_index: null,
+      skipped_batches: (run.skipped_batches || 0) + skippedNow,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", runId);
+
+  return {
+    cancelled: true,
+    runId,
+    completedBatches: run.completed_batches,
+    failedBatches: run.failed_batches,
+    skippedBatches: (run.skipped_batches || 0) + skippedNow,
+  };
+}
+
+// ── Action: run_status ───────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleRunStatus(body: any, supabase: any) {
+  const { runId } = body;
+  if (!runId) throw new Error("runId is required");
+
+  const { data: run, error: runErr } = await supabase
+    .from("seeding_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+
+  if (runErr || !run) throw new Error("Run not found");
+
+  // Load all batches
+  const { data: batches } = await supabase
+    .from("seeding_batches")
+    .select("*")
+    .eq("run_id", runId)
+    .order("batch_index");
+
+  // Load city + tiles for context
+  const { data: city } = await supabase
+    .from("seeding_cities")
+    .select("name, country, center_lat, center_lng")
+    .eq("id", run.city_id)
+    .single();
+
+  return {
+    run,
+    batches: batches || [],
+    city,
+  };
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -961,6 +2051,18 @@ serve(async (req) => {
         return json(await handleSeed(body, supabase));
       case "coverage_check":
         return json(await handleCoverageCheck(body, supabase));
+      case "create_run":
+        return json(await handleCreateRun(body, supabase));
+      case "run_next_batch":
+        return json(await handleRunNextBatch(body, supabase));
+      case "retry_batch":
+        return json(await handleRetryBatch(body, supabase));
+      case "skip_batch":
+        return json(await handleSkipBatch(body, supabase));
+      case "cancel_run":
+        return json(await handleCancelRun(body, supabase));
+      case "run_status":
+        return json(await handleRunStatus(body, supabase));
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
     }

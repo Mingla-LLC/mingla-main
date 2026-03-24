@@ -5,6 +5,7 @@ import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign,
+  Square, SkipForward, XCircle, Loader, RotateCcw,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -292,26 +293,69 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // Setup state (before run starts)
   const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES));
   const [preview, setPreview] = useState(null);
-  const [seeding, setSeeding] = useState(false);
-  const [progress, setProgress] = useState(null);
+  const [coverage, setCoverage] = useState(null);
+
+  // Run state (batch-by-batch execution)
+  const [activeRun, setActiveRun] = useState(null);       // seeding_runs row
+  const [batches, setBatches] = useState([]);              // all seeding_batches for run
+  const [runningBatch, setRunningBatch] = useState(false); // currently executing a batch
+  const [creating, setCreating] = useState(false);         // creating run
+  const [retryingBatchId, setRetryingBatchId] = useState(null); // batch being retried
+
+  // Ad-hoc search
   const [adHocOpen, setAdHocOpen] = useState(false);
   const [adHocQuery, setAdHocQuery] = useState("");
   const [adHocResults, setAdHocResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [coverage, setCoverage] = useState(null);
-  const [seedingStatus, setSeedingStatus] = useState(null);
-  const [liveProgress, setLiveProgress] = useState({});
+  const [adHocCategories, setAdHocCategories] = useState({});
 
-  // Fetch coverage when city changes
+  // Hydrate: check for active run on city change
   useEffect(() => {
-    if (!city) { setCoverage(null); return; }
-    if (seeding) return;
+    if (!city) { setActiveRun(null); setBatches([]); setCoverage(null); return; }
     let cancelled = false;
-    supabase.functions.invoke("admin-seed-places", {
-      body: { action: "coverage_check", cityId: city.id },
-    }).then(({ data }) => { if (!cancelled && data) setCoverage(data); });
+
+    (async () => {
+      // Check for active run (includes preparing and ready states)
+      const { data: runs } = await supabase
+        .from("seeding_runs")
+        .select("*")
+        .eq("city_id", city.id)
+        .in("status", ["preparing", "ready", "running", "paused"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (cancelled) return;
+
+      if (runs && runs.length > 0) {
+        const run = runs[0];
+        setActiveRun(run);
+        onSeedingChange?.(true);
+        // Load batches (skip if still preparing — no batches yet)
+        if (run.status !== "preparing") {
+          const { data: batchData } = await supabase
+            .from("seeding_batches")
+            .select("*")
+            .eq("run_id", run.id)
+            .order("batch_index");
+          if (!cancelled) setBatches(batchData || []);
+        }
+      } else {
+        setActiveRun(null);
+        setBatches([]);
+        onSeedingChange?.(false);
+      }
+
+      // Fetch coverage
+      const { data: cov } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "coverage_check", cityId: city.id },
+      });
+      if (!cancelled && cov) setCoverage(cov);
+    })();
+
     return () => { cancelled = true; };
   }, [city]);
 
@@ -329,9 +373,9 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
     setSelectedCats(gaps.size > 0 ? gaps : new Set(ALL_CATEGORIES));
   };
 
-  // Preview cost
+  // Preview cost (only when no active run)
   useEffect(() => {
-    if (!city || seeding) return;
+    if (!city || activeRun) return;
     const cats = Array.from(selectedCats);
     if (cats.length === 0) { setPreview(null); return; }
     let cancelled = false;
@@ -342,92 +386,169 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
       if (!cancelled && data) setPreview(data);
     })();
     return () => { cancelled = true; };
-  }, [city, selectedCats]);
+  }, [city, selectedCats, activeRun]);
 
-  const startSeeding = async () => {
-    if (!city || seeding) return;
+  // ── Run Actions ──
+
+  const createRun = async () => {
+    if (!city || creating) return;
     const cats = Array.from(selectedCats);
     if (cats.length === 0) return;
 
-    setSeeding(true);
-    onSeedingChange?.(true);
-    setProgress(null);
-    setLiveProgress({});
-    setSeedingStatus("Starting...");
+    setCreating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "create_run", cityId: city.id, categories: cats },
+      });
+      if (error) throw new Error(error.message || "Failed to prepare run");
+      if (data?.error) throw new Error(data.error);
 
-    const results = {};
-    const totals = {
-      totalApiCalls: 0,
-      totalPlacesReturned: 0,
-      totalNewInserted: 0,
-      totalDuplicateSkipped: 0,
-      totalRejected: { noPhotos: 0, closed: 0, excludedType: 0 },
-      estimatedCostUsd: 0,
-    };
+      addToast({ variant: "success", title: "Batches prepared", description: `${data.totalBatches} batches ready for approval` });
 
-    for (let i = 0; i < cats.length; i++) {
-      const catId = cats[i];
-      setSeedingStatus(`Seeding ${CATEGORY_LABELS[catId]} (${i + 1}/${cats.length})...`);
+      // Hydrate the new run (now in 'ready' status)
+      const { data: run } = await supabase
+        .from("seeding_runs").select("*").eq("id", data.runId).single();
+      const { data: batchData } = await supabase
+        .from("seeding_batches").select("*").eq("run_id", data.runId).order("batch_index");
 
-      try {
-        const { data, error } = await supabase.functions.invoke("admin-seed-places", {
-          body: {
-            action: "seed",
-            cityId: city.id,
-            categories: [catId],
-            acknowledgeHardCap: true,
-          },
-        });
-
-        if (error) {
-          results[catId] = { error: error.message || "Edge function error" };
-        } else if (data?.perCategory?.[catId]) {
-          const catResult = data.perCategory[catId];
-          results[catId] = catResult;
-          totals.totalApiCalls += catResult.apiCalls || 0;
-          totals.totalPlacesReturned += catResult.placesReturned || 0;
-          totals.totalNewInserted += catResult.newInserted || 0;
-          totals.totalDuplicateSkipped += catResult.duplicateSkipped || 0;
-          totals.totalRejected.noPhotos += catResult.rejected?.noPhotos || 0;
-          totals.totalRejected.closed += catResult.rejected?.closed || 0;
-          totals.totalRejected.excludedType += catResult.rejected?.excludedType || 0;
-          totals.estimatedCostUsd += data.summary?.estimatedCostUsd || 0;
-        } else {
-          results[catId] = { error: "Unexpected response format" };
-        }
-      } catch (err) {
-        results[catId] = { error: err.message || "Network error" };
+      if (mountedRef.current) {
+        setActiveRun(run);
+        setBatches(batchData || []);
+        onSeedingChange?.(true);
       }
-
-      setLiveProgress((prev) => ({ ...prev, [catId]: results[catId] }));
+    } catch (err) {
+      addToast({ variant: "error", title: "Preparation failed", description: err.message });
+    } finally {
+      setCreating(false);
     }
-
-    setProgress({ summary: totals, perCategory: results });
-    setSeedingStatus(null);
-
-    const failedCount = Object.values(results).filter((r) => r.error).length;
-    const variant = failedCount === cats.length ? "error" : failedCount > 0 ? "warning" : "success";
-    const title = failedCount === 0
-      ? "Seeding complete"
-      : failedCount === cats.length
-        ? "Seeding failed"
-        : `Seeding done (${failedCount} failed)`;
-
-    addToast({
-      variant,
-      title,
-      description: `${totals.totalNewInserted} new places across ${cats.length - failedCount} categories`,
-    });
-
-    supabase.functions.invoke("admin-seed-places", {
-      body: { action: "coverage_check", cityId: city.id },
-    }).then(({ data: cov }) => { if (mountedRef.current && cov) setCoverage(cov); });
-    onRefresh();
-    setSeeding(false);
-    onSeedingChange?.(false);
   };
 
-  const [adHocCategories, setAdHocCategories] = useState({});
+  const runNextBatch = async () => {
+    if (!activeRun || runningBatch) return;
+    setRunningBatch(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "run_next_batch", runId: activeRun.id },
+      });
+      if (error) throw new Error(error.message || "Batch execution failed");
+      if (data?.error) throw new Error(data.error);
+
+      // Update local state
+      if (mountedRef.current) {
+        // Refresh batches from DB for accuracy
+        const { data: batchData } = await supabase
+          .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+        setBatches(batchData || []);
+
+        // Refresh run
+        const { data: runData } = await supabase
+          .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+        setActiveRun(runData);
+
+        if (data.done) {
+          addToast({ variant: "success", title: "Seeding complete", description: "All batches finished" });
+          onSeedingChange?.(false);
+          onRefresh();
+        }
+      }
+    } catch (err) {
+      addToast({ variant: "error", title: "Batch failed", description: err.message });
+      // Refresh state anyway to show the failure
+      const { data: batchData } = await supabase
+        .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+      if (mountedRef.current) setBatches(batchData || []);
+      const { data: runData } = await supabase
+        .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+      if (mountedRef.current) setActiveRun(runData);
+    } finally {
+      if (mountedRef.current) setRunningBatch(false);
+    }
+  };
+
+  const skipBatch = async (batchId) => {
+    if (!activeRun) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "skip_batch", runId: activeRun.id, batchId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      // Refresh
+      const { data: batchData } = await supabase
+        .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+      if (mountedRef.current) setBatches(batchData || []);
+      const { data: runData } = await supabase
+        .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+      if (mountedRef.current) setActiveRun(runData);
+    } catch (err) {
+      addToast({ variant: "error", title: "Skip failed", description: err.message });
+    }
+  };
+
+  const cancelRun = async () => {
+    if (!activeRun) return;
+    if (!confirm("Cancel this run? All remaining batches will be skipped.")) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "cancel_run", runId: activeRun.id },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      addToast({ variant: "warning", title: "Run cancelled" });
+      setActiveRun(null);
+      setBatches([]);
+      onSeedingChange?.(false);
+      onRefresh();
+    } catch (err) {
+      addToast({ variant: "error", title: "Cancel failed", description: err.message });
+    }
+  };
+
+  const retryBatch = async (batchId) => {
+    if (!activeRun || retryingBatchId || runningBatch) return;
+    setRetryingBatchId(batchId);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "retry_batch", runId: activeRun.id, batchId },
+      });
+      if (error) throw new Error(error.message || "Retry failed");
+      if (data?.error) throw new Error(data.error);
+
+      const verb = data.status === "completed" ? "succeeded" : "failed again";
+      addToast({
+        variant: data.status === "completed" ? "success" : "warning",
+        title: `Retry ${verb}`,
+        description: data.status === "completed"
+          ? `${data.result?.newInserted || 0} new places from retried batch`
+          : data.result?.error || "Check batch log for details",
+      });
+
+      // Refresh from DB
+      if (mountedRef.current) {
+        const { data: batchData } = await supabase
+          .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+        setBatches(batchData || []);
+        const { data: runData } = await supabase
+          .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+        setActiveRun(runData);
+      }
+    } catch (err) {
+      addToast({ variant: "error", title: "Retry failed", description: err.message });
+      // Refresh state anyway
+      const { data: batchData } = await supabase
+        .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+      if (mountedRef.current) setBatches(batchData || []);
+      const { data: runData } = await supabase
+        .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+      if (mountedRef.current) setActiveRun(runData);
+    } finally {
+      if (mountedRef.current) setRetryingBatchId(null);
+    }
+  };
+
+  // ── Ad-Hoc Search ──
 
   const handleAdHocSearch = async () => {
     if (!adHocQuery.trim()) return;
@@ -442,7 +563,6 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
       });
       const places = data?.places || [];
       setAdHocResults(places);
-      // Auto-map categories for each result
       const cats = {};
       places.forEach((p, i) => { cats[i] = guessCategory(p); });
       setAdHocCategories(cats);
@@ -460,6 +580,18 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to begin seeding.</div>;
 
+  // ── Derived state for batch-by-batch view ──
+  const nextPendingBatch = activeRun ? batches.find((b) => b.status === "pending") : null;
+  const completedBatches = batches.filter((b) => ["completed", "failed", "skipped"].includes(b.status));
+  const progressPct = activeRun ? Math.round(((activeRun.completed_batches + activeRun.failed_batches + (activeRun.skipped_batches || 0)) / activeRun.total_batches) * 100) : 0;
+  const isRunDone = activeRun && ["completed", "cancelled"].includes(activeRun.status);
+  const isPreparing = activeRun && activeRun.status === "preparing";
+  const isReady = activeRun && activeRun.status === "ready";
+  const isFailedPreparing = activeRun && activeRun.status === "failed_preparing";
+  const isApprovable = activeRun && ["ready", "running", "paused"].includes(activeRun.status);
+  const failedRetryable = batches.filter((b) => b.status === "failed");
+  const queueDrainedWithFailures = isApprovable && !nextPendingBatch && failedRetryable.length > 0 && !isRunDone;
+
   return (
     <div className="space-y-6">
       {/* Tile Summary */}
@@ -468,8 +600,8 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
           <Button size="sm" icon={RefreshCw} variant="secondary" onClick={async () => {
             await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
             onRefresh();
-          }}>Regenerate</Button>
-          {city.status === "draft" && onDeleteCity && (
+          }} disabled={!!activeRun}>Regenerate</Button>
+          {city.status === "draft" && onDeleteCity && !activeRun && (
             <Button size="sm" variant="secondary" className="text-[var(--color-error-700)]"
               onClick={() => { if (confirm(`Delete draft city "${city.name}"? This removes the city and its tiles. Places in the pool are not affected.`)) onDeleteCity(city); }}>
               Delete Draft
@@ -481,150 +613,321 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
         </p>
       </SectionCard>
 
-      {/* Category Pills with Coverage */}
-      <SectionCard title="Categories"
-        subtitle={coverage ? `${coverage.categoriesWithGaps} of 13 categories have gaps (<10 places)` : null}
-        action={coverage?.categoriesWithGaps > 0 && (
-          <Button size="sm" variant="secondary" icon={AlertTriangle} onClick={selectOnlyGaps}>
-            Select Only Gaps
-          </Button>
-        )}>
-        <div className="flex flex-wrap gap-2">
-          {ALL_CATEGORIES.map((id) => {
-            const catCoverage = coverage?.coverage?.find((c) => c.categoryId === id);
-            const count = catCoverage?.placeCount ?? null;
-            const hasGap = catCoverage?.hasGap;
-            return (
-              <button key={id} onClick={() => !seeding && toggleCat(id)}
-                disabled={seeding}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-                  selectedCats.has(id)
-                    ? "text-white border-transparent"
-                    : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
-                }`}
-                style={{
-                  ...(selectedCats.has(id) ? { backgroundColor: CATEGORY_COLORS[id] } : {}),
-                  ...(hasGap && !selectedCats.has(id) ? { borderColor: "#ef4444", borderWidth: 2 } : {}),
-                }}>
-                {CATEGORY_LABELS[id]}
-                {count !== null && (
-                  <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] px-1 py-0 rounded-full text-[10px] font-bold ${
-                    selectedCats.has(id)
-                      ? "bg-white/25 text-white"
-                      : hasGap
-                        ? "bg-[#fef2f2] text-[#ef4444]"
-                        : "bg-[#f0fdf4] text-[#22c55e]"
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </SectionCard>
-
-      {/* Cost Preview */}
-      {preview && (
-        <SectionCard title="Cost Preview">
-          <div className={`rounded-lg p-4 ${preview.exceedsHardCap ? "bg-[var(--color-error-50)] border border-[#ef4444]" : "bg-[var(--color-success-50)]"}`}>
-            <div className="grid grid-cols-4 gap-4 text-sm">
-              <div><span className="text-[var(--color-text-secondary)]">Tiles:</span> {preview.tileCount}</div>
-              <div><span className="text-[var(--color-text-secondary)]">Categories:</span> {preview.categoryCount}</div>
-              <div><span className="text-[var(--color-text-secondary)]">API Calls:</span> {preview.totalApiCalls}</div>
-              <div className="font-semibold">Total: {formatCost(preview.estimatedTotalCost)}</div>
+      {/* ── Phase 1: Setup (no active run) ── */}
+      {!activeRun && (
+        <>
+          {/* Category Pills with Coverage */}
+          <SectionCard title="Categories"
+            subtitle={coverage ? `${coverage.categoriesWithGaps} of 13 categories have gaps (<10 places)` : null}
+            action={coverage?.categoriesWithGaps > 0 && (
+              <Button size="sm" variant="secondary" icon={AlertTriangle} onClick={selectOnlyGaps}>
+                Select Only Gaps
+              </Button>
+            )}>
+            <div className="flex flex-wrap gap-2">
+              {ALL_CATEGORIES.map((id) => {
+                const catCoverage = coverage?.coverage?.find((c) => c.categoryId === id);
+                const count = catCoverage?.placeCount ?? null;
+                const hasGap = catCoverage?.hasGap;
+                return (
+                  <button key={id} onClick={() => toggleCat(id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                      selectedCats.has(id)
+                        ? "text-white border-transparent"
+                        : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
+                    }`}
+                    style={{
+                      ...(selectedCats.has(id) ? { backgroundColor: CATEGORY_COLORS[id] } : {}),
+                      ...(hasGap && !selectedCats.has(id) ? { borderColor: "#ef4444", borderWidth: 2 } : {}),
+                    }}>
+                    {CATEGORY_LABELS[id]}
+                    {count !== null && (
+                      <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] px-1 py-0 rounded-full text-[10px] font-bold ${
+                        selectedCats.has(id)
+                          ? "bg-white/25 text-white"
+                          : hasGap
+                            ? "bg-[#fef2f2] text-[#ef4444]"
+                            : "bg-[#f0fdf4] text-[#22c55e]"
+                      }`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            {preview.exceedsHardCap && (
-              <p className="mt-2 text-sm font-medium text-[#ef4444]">
-                <AlertTriangle className="inline w-4 h-4 mr-1" />
-                Exceeds ${HARD_CAP_USD} per-city cap. Reduce tiles, radius, or categories.
-              </p>
-            )}
-          </div>
-          <div className="mt-4">
-            <Button variant="primary" icon={Play} loading={seeding} onClick={startSeeding}
-              disabled={selectedCats.size === 0 || seeding}>
-              {preview.exceedsHardCap ? "Acknowledge & Start Seeding" : "Start Seeding"}
-            </Button>
-          </div>
-        </SectionCard>
+          </SectionCard>
+
+          {/* Cost Preview + Start */}
+          {preview && (
+            <SectionCard title="Cost Preview">
+              <div className={`rounded-lg p-4 ${preview.exceedsHardCap ? "bg-[var(--color-error-50)] border border-[#ef4444]" : "bg-[var(--color-success-50)]"}`}>
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div><span className="text-[var(--color-text-secondary)]">Tiles:</span> {preview.tileCount}</div>
+                  <div><span className="text-[var(--color-text-secondary)]">Categories:</span> {preview.categoryCount}</div>
+                  <div><span className="text-[var(--color-text-secondary)]">API Calls:</span> {preview.totalApiCalls}</div>
+                  <div className="font-semibold">Total: {formatCost(preview.estimatedTotalCost)}</div>
+                </div>
+                {preview.exceedsHardCap && (
+                  <p className="mt-2 text-sm font-medium text-[#ef4444]">
+                    <AlertTriangle className="inline w-4 h-4 mr-1" />
+                    Exceeds ${HARD_CAP_USD} per-city cap. Reduce tiles, radius, or categories.
+                  </p>
+                )}
+              </div>
+              <div className="mt-4">
+                <Button variant="primary" icon={Play} loading={creating} onClick={createRun}
+                  disabled={selectedCats.size === 0 || creating || preview.exceedsHardCap}>
+                  {creating ? "Preparing batches..." : `Prepare ${preview.totalApiCalls} Batches`}
+                </Button>
+                <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+                  All batches are created first. You then approve and run each one individually.
+                </p>
+              </div>
+            </SectionCard>
+          )}
+        </>
       )}
 
-      {/* Live Seeding Progress */}
-      {seeding && (
-        <SectionCard title="Seeding in Progress">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin h-5 w-5 border-2 border-[var(--color-brand-500)] border-t-transparent rounded-full" />
-              <span className="text-sm font-medium">{seedingStatus || "Preparing..."}</span>
-            </div>
-            {Object.keys(liveProgress).length > 0 && (
-              <div className="space-y-1 mt-2">
-                {Object.entries(liveProgress).map(([catId, result]) => (
-                  <div key={catId} className="flex items-center gap-2 text-sm">
-                    {result.error ? (
-                      <AlertTriangle className="w-4 h-4 text-[#ef4444] shrink-0" />
-                    ) : (
-                      <CheckCircle className="w-4 h-4 text-[#22c55e] shrink-0" />
-                    )}
-                    <span style={{ color: CATEGORY_COLORS[catId] }} className="font-medium w-32 truncate">
-                      {CATEGORY_LABELS[catId]}
+      {/* ── Phase 2: Active Run (preparing / ready / running / paused / done) ── */}
+      {activeRun && (
+        <>
+          {/* Preparing State */}
+          {isPreparing && (
+            <SectionCard title="Preparing Batches">
+              <div className="flex items-center gap-3 py-4">
+                <Loader className="w-5 h-5 animate-spin text-[var(--color-brand-500)]" />
+                <div>
+                  <div className="text-sm font-medium">Creating {activeRun.total_batches} batch records...</div>
+                  <div className="text-xs text-[var(--color-text-secondary)] mt-1">
+                    {activeRun.total_tiles} tiles × {activeRun.selected_categories?.length || 0} categories. Batches must all be created before approval begins.
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Failed Preparing State */}
+          {isFailedPreparing && (
+            <SectionCard title="Preparation Failed">
+              <div className="rounded-lg p-4 bg-[var(--color-error-50)] border border-[var(--color-error-200)]">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-[#ef4444] shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-medium text-[var(--color-error-700)]">Batch creation failed</div>
+                    <div className="text-xs text-[var(--color-text-secondary)] mt-1">
+                      Not all batches could be created. This run cannot be used for approval. Dismiss it and try again.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4">
+                <Button variant="primary" onClick={() => {
+                  setActiveRun(null);
+                  setBatches([]);
+                  onSeedingChange?.(false);
+                  onRefresh();
+                }}>Dismiss and Start Over</Button>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Ready State — show clear "ready for approval" banner */}
+          {isReady && (
+            <SectionCard title="Run Ready"
+              subtitle={`${activeRun.total_batches} batches prepared · ${activeRun.selected_categories?.length || 0} categories · ${activeRun.total_tiles} tiles`}
+              action={
+                <div className="flex items-center gap-2">
+                  <Badge variant="success">ready</Badge>
+                  <Button size="sm" variant="secondary" icon={XCircle} onClick={cancelRun}>Cancel Run</Button>
+                </div>
+              }>
+              <div className="rounded-lg p-4 bg-[var(--color-success-50)] border border-[var(--color-success-200)]">
+                <div className="text-sm font-medium text-[var(--color-success-700)]">
+                  All {activeRun.total_batches} batches are prepared and ready for approval.
+                </div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">
+                  Click "Run This Batch" below to execute the first batch. Each batch runs one Google API call for one tile × category combination.
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Progress Bar (only once execution has started or run is done) */}
+          {!isPreparing && !isFailedPreparing && !isReady && (
+            <SectionCard title="Seeding Run"
+              subtitle={`${activeRun.selected_categories?.length || 0} categories · ${activeRun.total_tiles} tiles`}
+              action={
+                <div className="flex items-center gap-2">
+                  <Badge variant={activeRun.status === "paused" ? "warning" : activeRun.status === "running" ? "info" : "success"}>
+                    {activeRun.status}
+                  </Badge>
+                  {!isRunDone && (
+                    <Button size="sm" variant="secondary" icon={XCircle} onClick={cancelRun}>
+                      Cancel Run
+                    </Button>
+                  )}
+                </div>
+              }>
+              {/* Progress bar */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
+                    <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-300"
+                      style={{ width: `${progressPct}%` }} />
+                  </div>
+                  <span className="text-sm font-medium w-28 text-right">
+                    {activeRun.completed_batches + activeRun.failed_batches + (activeRun.skipped_batches || 0)} / {activeRun.total_batches} ({progressPct}%)
+                  </span>
+                </div>
+
+                {/* Running totals */}
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div><span className="text-[var(--color-text-secondary)]">New places:</span> <strong className="text-[var(--color-success-700)]">{activeRun.total_places_new}</strong></div>
+                  <div><span className="text-[var(--color-text-secondary)]">Duplicates:</span> <strong>{activeRun.total_places_duped}</strong></div>
+                  <div><span className="text-[var(--color-text-secondary)]">Failed:</span> <strong className="text-[var(--color-error-700)]">{activeRun.failed_batches}</strong></div>
+                  <div><span className="text-[var(--color-text-secondary)]">Cost:</span> <strong>{formatCost(activeRun.total_cost_usd)}</strong></div>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Current / Next Batch (only when approvable) */}
+          {nextPendingBatch && isApprovable && !isRunDone && (
+            <SectionCard title="Next Batch">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="text-sm">
+                    <span className="text-[var(--color-text-secondary)]">Batch {nextPendingBatch.batch_index + 1}:</span>{" "}
+                    <strong>Tile #{nextPendingBatch.tile_index}</strong> × <span className="font-medium" style={{ color: CATEGORY_COLORS[nextPendingBatch.seeding_category] }}>
+                      {CATEGORY_LABELS[nextPendingBatch.seeding_category] || nextPendingBatch.seeding_category}
                     </span>
-                    {result.error ? (
-                      <span className="text-[var(--color-error-700)] text-xs">{result.error}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" icon={SkipForward}
+                    onClick={() => skipBatch(nextPendingBatch.id)}
+                    disabled={runningBatch || !!retryingBatchId}>
+                    Skip
+                  </Button>
+                  <Button variant="primary" icon={Play} loading={runningBatch} onClick={runNextBatch}
+                    disabled={runningBatch || !!retryingBatchId}>
+                    {runningBatch ? "Running..." : "Run This Batch"}
+                  </Button>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Queue drained but failed batches remain — prompt retry */}
+          {queueDrainedWithFailures && (
+            <SectionCard title="Queue Complete — Failed Batches Remain">
+              <div className="rounded-lg p-4 bg-[var(--color-warning-50)] border border-[var(--color-warning-200)]">
+                <div className="text-sm font-medium text-[var(--color-warning-700)]">
+                  All {activeRun.total_batches} batches have been processed, but {failedRetryable.length} failed.
+                </div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">
+                  Retry failed batches from the log below, or cancel to finish. The run will auto-complete once all failed batches are retried or skipped.
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Completion Card */}
+          {isRunDone && (
+            <SectionCard title={activeRun.status === "cancelled" ? "Run Cancelled" : "Run Complete"}>
+              <div className="grid grid-cols-4 gap-4 text-sm mb-4">
+                <div>Completed: <strong className="text-[var(--color-success-700)]">{activeRun.completed_batches}</strong></div>
+                <div>Failed: <strong className="text-[var(--color-error-700)]">{activeRun.failed_batches}</strong></div>
+                <div>Skipped: <strong>{activeRun.skipped_batches || 0}</strong></div>
+                <div>Cost: <strong>{formatCost(activeRun.total_cost_usd)}</strong></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>New places: <strong className="text-[var(--color-success-700)]">{activeRun.total_places_new}</strong></div>
+                <div>Duplicates: <strong>{activeRun.total_places_duped}</strong></div>
+              </div>
+              <div className="mt-4">
+                <Button variant="primary" onClick={() => {
+                  setActiveRun(null);
+                  setBatches([]);
+                  onSeedingChange?.(false);
+                  onRefresh();
+                }}>Prepare New Run</Button>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Batch Log (scrollable) */}
+          {completedBatches.length > 0 && (
+            <SectionCard title="Batch Log" subtitle={`${completedBatches.length} processed`}>
+              <div className="max-h-80 overflow-y-auto space-y-1">
+                {completedBatches.slice().reverse().map((b) => (
+                  <div key={b.id} className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${
+                    b.status === "failed" ? "bg-[var(--color-error-50)]" : b.status === "skipped" ? "bg-[var(--gray-50)]" : ""
+                  }`}>
+                    {b.status === "completed" ? (
+                      <CheckCircle className="w-3.5 h-3.5 text-[#22c55e] shrink-0" />
+                    ) : b.status === "failed" ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-[#ef4444] shrink-0" />
                     ) : (
-                      <span className="text-xs text-[var(--color-text-secondary)]">
-                        {result.newInserted || 0} new · {result.duplicateSkipped || 0} dupes
+                      <SkipForward className="w-3.5 h-3.5 text-[var(--color-text-secondary)] shrink-0" />
+                    )}
+                    <span className="text-[var(--color-text-secondary)] w-12">#{b.batch_index + 1}</span>
+                    <span className="w-12">Tile {b.tile_index}</span>
+                    <span className="w-28 truncate font-medium" style={{ color: CATEGORY_COLORS[b.seeding_category] }}>
+                      {CATEGORY_LABELS[b.seeding_category] || b.seeding_category}
+                    </span>
+                    {b.retry_count > 0 && (
+                      <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-bold bg-[var(--gray-100)] text-[var(--color-text-secondary)]" title={`Retried ${b.retry_count} time(s)`}>
+                        <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b.retry_count}
                       </span>
+                    )}
+                    {b.status === "completed" ? (
+                      <span className="text-[var(--color-text-secondary)]">
+                        {b.places_new_inserted} new · {b.places_duplicate_skipped} dupes · {b.places_returned} found · {formatCost(b.estimated_cost_usd)}
+                      </span>
+                    ) : b.status === "failed" ? (
+                      <>
+                        <span className="text-[var(--color-error-700)] truncate flex-1">{b.error_message || "Unknown error"}</span>
+                        {isApprovable && !isRunDone && (
+                          <span className="inline-flex gap-1 shrink-0">
+                            <button
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--color-error-100)] text-[var(--color-error-700)] hover:bg-[var(--color-error-200)] transition-colors cursor-pointer disabled:opacity-50"
+                              onClick={() => retryBatch(b.id)}
+                              disabled={!!retryingBatchId || runningBatch}
+                              title="Re-run this failed batch only"
+                            >
+                              {retryingBatchId === b.id ? (
+                                <Loader className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <RotateCcw className="w-3 h-3" />
+                              )}
+                              {retryingBatchId === b.id ? "Retrying..." : "Retry"}
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--gray-100)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-200)] transition-colors cursor-pointer disabled:opacity-50"
+                              onClick={() => skipBatch(b.id)}
+                              disabled={!!retryingBatchId || runningBatch}
+                              title="Skip this failed batch — give up on retry"
+                            >
+                              <SkipForward className="w-3 h-3" />
+                              Skip
+                            </button>
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[var(--color-text-secondary)]">Skipped</span>
                     )}
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </SectionCard>
+            </SectionCard>
+          )}
+        </>
       )}
 
-      {/* Progress */}
-      {progress && (
-        <SectionCard title="Seeding Results">
-          <div className="grid grid-cols-3 gap-4 text-sm mb-4">
-            <div>API Calls: <strong>{progress.summary.totalApiCalls}</strong></div>
-            <div>New Inserted: <strong className="text-[var(--color-success-700)]">{progress.summary.totalNewInserted}</strong></div>
-            <div>Duplicates Skipped: <strong>{progress.summary.totalDuplicateSkipped}</strong></div>
-            <div>Rejected (no photos): <strong className="text-[var(--color-warning-500)]">{progress.summary.totalRejected?.noPhotos || 0}</strong></div>
-            <div>Rejected (closed): <strong>{progress.summary.totalRejected?.closed || 0}</strong></div>
-            <div>Rejected (excluded type): <strong>{progress.summary.totalRejected?.excludedType || 0}</strong></div>
-          </div>
-          <div className="text-sm font-medium">Cost: {formatCost(progress.summary.estimatedCostUsd)}</div>
-          {/* Per-category details */}
-          {Object.entries(progress.perCategory || {}).map(([catId, cat]) => (
-            <details key={catId} className="mt-2 text-sm">
-              <summary className="cursor-pointer font-medium" style={{ color: CATEGORY_COLORS[catId] }}>
-                {CATEGORY_LABELS[catId] || catId}:
-                {cat.error
-                  ? <span className="text-[var(--color-error-700)] ml-1">Failed</span>
-                  : <span className="ml-1">{cat.newInserted} new, {cat.duplicateSkipped} dupes</span>
-                }
-                {!cat.error && cat.errors?.length > 0 && <Badge variant="error" className="ml-2">{cat.errors.length} tile errors</Badge>}
-              </summary>
-              {cat.error ? (
-                <div className="ml-4 mt-1 text-xs text-[var(--color-error-700)]">{cat.error}</div>
-              ) : cat.errors?.length > 0 ? (
-                <div className="ml-4 mt-1 space-y-1">
-                  {cat.errors.map((e, i) => (
-                    <div key={i} className="text-xs text-[var(--color-error-700)]">
-                      Tile #{e.tileIndex} — {e.errorType}: {e.message}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </details>
-          ))}
-        </SectionCard>
-      )}
-
-      {/* Ad-Hoc Search */}
+      {/* Ad-Hoc Search (always visible) */}
       <SectionCard title="Ad-Hoc Search" subtitle="Free-text search for individual places"
         action={<Button size="sm" variant="ghost" onClick={() => setAdHocOpen(!adHocOpen)} icon={adHocOpen ? ChevronDown : ChevronRight}>
           {adHocOpen ? "Collapse" : "Expand"}
@@ -1130,24 +1433,82 @@ function StaleTab({ city }) {
 function StatsTab({ city, stats }) {
   const [ops, setOps] = useState([]);
   const [loadingOps, setLoadingOps] = useState(false);
+  const [runs, setRuns] = useState([]);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const [expandedRun, setExpandedRun] = useState(null);
+  const [runBatches, setRunBatches] = useState([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+
+  // Batch filters
+  const [batchFilterStatus, setBatchFilterStatus] = useState("all");
+  const [batchFilterCategory, setBatchFilterCategory] = useState("all");
+  const [batchFilterTile, setBatchFilterTile] = useState("");
 
   useEffect(() => {
     if (!city) return;
     setLoadingOps(true);
+    setLoadingRuns(true);
+
     supabase.from("seeding_operations")
       .select("*")
       .eq("city_id", city.id)
       .order("created_at", { ascending: false })
       .limit(50)
       .then(({ data }) => { setOps(data || []); setLoadingOps(false); });
+
+    supabase.from("seeding_runs")
+      .select("*")
+      .eq("city_id", city.id)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => { setRuns(data || []); setLoadingRuns(false); });
   }, [city]);
 
+  const toggleRunExpand = async (runId) => {
+    if (expandedRun === runId) { setExpandedRun(null); return; }
+    setExpandedRun(runId);
+    setLoadingBatches(true);
+    // Reset filters when expanding a different run
+    setBatchFilterStatus("all");
+    setBatchFilterCategory("all");
+    setBatchFilterTile("");
+    const { data } = await supabase.from("seeding_batches")
+      .select("*")
+      .eq("run_id", runId)
+      .order("batch_index");
+    setRunBatches(data || []);
+    setLoadingBatches(false);
+  };
+
+  // Apply batch filters
+  const filteredBatches = runBatches.filter((b) => {
+    if (batchFilterStatus !== "all" && b.status !== batchFilterStatus) return false;
+    if (batchFilterCategory !== "all" && b.seeding_category !== batchFilterCategory) return false;
+    if (batchFilterTile && String(b.tile_index) !== batchFilterTile) return false;
+    return true;
+  });
+
   const totalSpend = ops.reduce((s, o) => s + (o.estimated_cost_usd || 0), 0);
+  const runSpend = runs.reduce((s, r) => s + (r.total_cost_usd || 0), 0);
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
   // Category breakdown from stats
   const byCat = stats?.by_seeding_category || {};
+
+  // Run status → badge variant mapping (handles new statuses)
+  const runBadgeVariant = (status) => {
+    if (status === "completed") return "success";
+    if (status === "cancelled" || status === "failed_preparing") return "error";
+    if (status === "ready") return "success";
+    return "warning"; // preparing, running, paused
+  };
+
+  // Run status → display label
+  const runStatusLabel = (status) => {
+    if (status === "failed_preparing") return "prep failed";
+    return status;
+  };
 
   const opColumns = [
     { key: "created_at", label: "Date", sortable: true, render: (_, r) => new Date(r.created_at).toLocaleDateString() },
@@ -1168,6 +1529,9 @@ function StatsTab({ city, stats }) {
       ) : "—";
     }},
   ];
+
+  // Unique tile indices in current batch set (for tile filter dropdown)
+  const uniqueTileIndices = [...new Set(runBatches.map((b) => b.tile_index))].sort((a, b) => a - b);
 
   return (
     <div className="space-y-6">
@@ -1190,8 +1554,139 @@ function StatsTab({ city, stats }) {
         </div>
       </SectionCard>
 
-      {/* Seeding History */}
-      <SectionCard title="Seeding History" subtitle={`Total spend: ${formatCost(totalSpend)} / ${formatCost(HARD_CAP_USD)}`}>
+      {/* Seeding Runs (batch-based history) */}
+      <SectionCard title="Seeding Runs" subtitle={runs.length > 0 ? `${runs.length} runs · ${formatCost(runSpend)} total` : null}>
+        {loadingRuns ? (
+          <div className="flex items-center gap-2 py-4 justify-center text-sm text-[var(--color-text-secondary)]">
+            <Loader className="w-4 h-4 animate-spin" /> Loading runs...
+          </div>
+        ) : runs.length === 0 ? (
+          <div className="text-center py-6 text-sm text-[var(--color-text-secondary)]">No seeding runs yet</div>
+        ) : (
+          <div className="space-y-2">
+            {runs.map((run) => (
+              <div key={run.id} className="border rounded-lg overflow-hidden">
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-[var(--gray-50)] transition-colors cursor-pointer text-left"
+                  onClick={() => toggleRunExpand(run.id)}
+                >
+                  {expandedRun === run.id ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+                  <span className="text-[var(--color-text-secondary)] w-24">{new Date(run.created_at).toLocaleDateString()}</span>
+                  <span className="font-medium">{run.total_batches} batches</span>
+                  <span className="text-[var(--color-text-secondary)]">·</span>
+                  <span className="text-[var(--color-success-700)]">{run.completed_batches} done</span>
+                  {run.failed_batches > 0 && <span className="text-[var(--color-error-700)]">{run.failed_batches} failed</span>}
+                  {(run.skipped_batches || 0) > 0 && <span className="text-[var(--color-text-secondary)]">{run.skipped_batches} skipped</span>}
+                  <span className="text-[var(--color-text-secondary)]">{formatCost(run.total_cost_usd)}</span>
+                  <span className="ml-auto">
+                    <Badge variant={runBadgeVariant(run.status)}>
+                      {runStatusLabel(run.status)}
+                    </Badge>
+                  </span>
+                </button>
+
+                {expandedRun === run.id && (
+                  <div className="border-t px-4 py-3">
+                    <div className="grid grid-cols-4 gap-3 text-xs mb-3">
+                      <div>Categories: <strong>{run.selected_categories?.length || 0}</strong></div>
+                      <div>New places: <strong className="text-[var(--color-success-700)]">{run.total_places_new}</strong></div>
+                      <div>Duplicates: <strong>{run.total_places_duped}</strong></div>
+                      <div>API calls: <strong>{run.total_api_calls}</strong></div>
+                    </div>
+
+                    {/* Batch Filters */}
+                    {!loadingBatches && runBatches.length > 0 && (
+                      <div className="flex gap-2 mb-2 items-center">
+                        <select
+                          className="rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1 text-xs"
+                          value={batchFilterStatus}
+                          onChange={(e) => setBatchFilterStatus(e.target.value)}
+                        >
+                          <option value="all">All statuses</option>
+                          <option value="completed">Completed</option>
+                          <option value="failed">Failed</option>
+                          <option value="skipped">Skipped</option>
+                          <option value="pending">Pending</option>
+                        </select>
+                        <select
+                          className="rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1 text-xs"
+                          value={batchFilterCategory}
+                          onChange={(e) => setBatchFilterCategory(e.target.value)}
+                        >
+                          <option value="all">All categories</option>
+                          {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                        </select>
+                        <select
+                          className="rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1 text-xs"
+                          value={batchFilterTile}
+                          onChange={(e) => setBatchFilterTile(e.target.value)}
+                        >
+                          <option value="">All tiles</option>
+                          {uniqueTileIndices.map((t) => <option key={t} value={String(t)}>Tile {t}</option>)}
+                        </select>
+                        {(batchFilterStatus !== "all" || batchFilterCategory !== "all" || batchFilterTile) && (
+                          <span className="text-xs text-[var(--color-text-secondary)]">
+                            {filteredBatches.length} of {runBatches.length}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {loadingBatches ? (
+                      <div className="text-xs text-[var(--color-text-secondary)] py-2">Loading batches...</div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto space-y-0.5">
+                        {filteredBatches.map((b) => (
+                          <div key={b.id} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
+                            b.status === "failed" ? "bg-[var(--color-error-50)]" : ""
+                          }`}>
+                            {b.status === "completed" ? (
+                              <CheckCircle className="w-3 h-3 text-[#22c55e] shrink-0" />
+                            ) : b.status === "failed" ? (
+                              <AlertTriangle className="w-3 h-3 text-[#ef4444] shrink-0" />
+                            ) : b.status === "skipped" ? (
+                              <SkipForward className="w-3 h-3 text-[var(--color-text-secondary)] shrink-0" />
+                            ) : (
+                              <Clock className="w-3 h-3 text-[var(--color-text-secondary)] shrink-0" />
+                            )}
+                            <span className="w-8 text-[var(--color-text-secondary)]">#{b.batch_index + 1}</span>
+                            <span className="w-12">T{b.tile_index}</span>
+                            <span className="w-24 truncate" style={{ color: CATEGORY_COLORS[b.seeding_category] }}>
+                              {CATEGORY_LABELS[b.seeding_category] || b.seeding_category}
+                            </span>
+                            {(b.retry_count || 0) > 0 && (
+                              <span className="inline-flex items-center px-1 py-0 rounded-full text-[9px] font-bold bg-[var(--gray-100)] text-[var(--color-text-secondary)]" title={`Retried ${b.retry_count}×`}>
+                                <RotateCcw className="w-2 h-2 mr-0.5" />{b.retry_count}
+                              </span>
+                            )}
+                            {b.status === "completed" ? (
+                              <span className="text-[var(--color-text-secondary)]">
+                                {b.places_new_inserted} new · {b.places_duplicate_skipped} dupes
+                              </span>
+                            ) : b.status === "failed" ? (
+                              <span className="text-[var(--color-error-700)] truncate">{b.error_message}</span>
+                            ) : b.status === "skipped" ? (
+                              <span className="text-[var(--color-text-secondary)]">Skipped</span>
+                            ) : (
+                              <span className="text-[var(--color-text-secondary)]">Pending</span>
+                            )}
+                          </div>
+                        ))}
+                        {filteredBatches.length === 0 && runBatches.length > 0 && (
+                          <div className="text-xs text-[var(--color-text-secondary)] py-2 text-center">No batches match filters</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Legacy Seeding History */}
+      <SectionCard title="Legacy Seeding History" subtitle={`Total spend: ${formatCost(totalSpend)} / ${formatCost(HARD_CAP_USD)}`}>
         <DataTable columns={opColumns} rows={ops} loading={loadingOps}
           emptyMessage="No seeding operations yet" />
       </SectionCard>
