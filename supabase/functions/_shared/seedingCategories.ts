@@ -195,7 +195,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
     label: 'Wellness',
     appCategory: 'Wellness',
     appCategorySlug: 'wellness',
-    includedTypes: ['spa', 'massage_spa', 'sauna', 'wellness_center', 'yoga_studio'],
+    includedTypes: ['spa', 'massage_spa', 'sauna', 'wellness_center', 'yoga_studio', 'resort_hotel'],
     excludedPrimaryTypes: [
       'gym', 'fitness_center', 'sports_club', 'swimming_pool', 'restaurant',
       'fine_dining_restaurant', 'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar',

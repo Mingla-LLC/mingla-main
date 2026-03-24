@@ -5,7 +5,7 @@ import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign,
-  Square, SkipForward, XCircle, Loader, RotateCcw,
+  Square, SkipForward, XCircle, Loader, RotateCcw, Zap,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -305,6 +305,8 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
   const [runningBatch, setRunningBatch] = useState(false); // currently executing a batch
   const [creating, setCreating] = useState(false);         // creating run
   const [retryingBatchId, setRetryingBatchId] = useState(null); // batch being retried
+  const [autoRunning, setAutoRunning] = useState(false);   // "Run All" mode
+  const stopAutoRef = useRef(false);                        // signal to stop auto-run
 
   // Ad-hoc search
   const [adHocOpen, setAdHocOpen] = useState(false);
@@ -445,10 +447,12 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
           .from("seeding_runs").select("*").eq("id", activeRun.id).single();
         setActiveRun(runData);
 
+        // Refresh parent data (stats, places, etc.) after every batch
+        onRefresh();
+
         if (data.done) {
           addToast({ variant: "success", title: "Seeding complete", description: "All batches finished" });
           onSeedingChange?.(false);
-          onRefresh();
         }
       }
     } catch (err) {
@@ -463,6 +467,67 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
     } finally {
       if (mountedRef.current) setRunningBatch(false);
     }
+  };
+
+  const runAll = async () => {
+    if (!activeRun || autoRunning || runningBatch) return;
+    setAutoRunning(true);
+    stopAutoRef.current = false;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (stopAutoRef.current || !mountedRef.current) break;
+
+      try {
+        setRunningBatch(true);
+        const { data, error } = await supabase.functions.invoke("admin-seed-places", {
+          body: { action: "run_next_batch", runId: activeRun.id },
+        });
+        if (error) throw new Error(error.message || "Batch execution failed");
+        if (data?.error) throw new Error(data.error);
+
+        if (mountedRef.current) {
+          const { data: batchData } = await supabase
+            .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+          setBatches(batchData || []);
+          const { data: runData } = await supabase
+            .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+          setActiveRun(runData);
+          onRefresh();
+        }
+
+        if (mountedRef.current) setRunningBatch(false);
+
+        if (data.done) {
+          addToast({ variant: "success", title: "Seeding complete", description: "All batches finished" });
+          onSeedingChange?.(false);
+          break;
+        }
+      } catch (err) {
+        // On error, stop auto-run and let user decide (retry/skip/continue)
+        addToast({ variant: "error", title: "Batch failed — auto-run paused", description: err.message });
+        if (mountedRef.current) {
+          const { data: batchData } = await supabase
+            .from("seeding_batches").select("*").eq("run_id", activeRun.id).order("batch_index");
+          setBatches(batchData || []);
+          const { data: runData } = await supabase
+            .from("seeding_runs").select("*").eq("id", activeRun.id).single();
+          setActiveRun(runData);
+          onRefresh();
+          setRunningBatch(false);
+        }
+        break;
+      }
+    }
+
+    if (mountedRef.current) {
+      setAutoRunning(false);
+      setRunningBatch(false);
+    }
+  };
+
+  const stopAutoRun = () => {
+    stopAutoRef.current = true;
   };
 
   const skipBatch = async (batchId) => {
@@ -481,6 +546,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
       const { data: runData } = await supabase
         .from("seeding_runs").select("*").eq("id", activeRun.id).single();
       if (mountedRef.current) setActiveRun(runData);
+      onRefresh();
     } catch (err) {
       addToast({ variant: "error", title: "Skip failed", description: err.message });
     }
@@ -533,6 +599,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
         const { data: runData } = await supabase
           .from("seeding_runs").select("*").eq("id", activeRun.id).single();
         setActiveRun(runData);
+        onRefresh();
       }
     } catch (err) {
       addToast({ variant: "error", title: "Retry failed", description: err.message });
@@ -543,6 +610,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
       const { data: runData } = await supabase
         .from("seeding_runs").select("*").eq("id", activeRun.id).single();
       if (mountedRef.current) setActiveRun(runData);
+      onRefresh();
     } finally {
       if (mountedRef.current) setRetryingBatchId(null);
     }
@@ -781,6 +849,14 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
                   </span>
                 </div>
 
+                {/* Auto-run indicator */}
+                {autoRunning && (
+                  <div className="flex items-center gap-2 text-sm text-[var(--color-brand-600)]">
+                    <Zap className="w-4 h-4" />
+                    <span className="font-medium">Auto-running — batches execute sequentially. Stops on error.</span>
+                  </div>
+                )}
+
                 {/* Running totals */}
                 <div className="grid grid-cols-4 gap-4 text-sm">
                   <div><span className="text-[var(--color-text-secondary)]">New places:</span> <strong className="text-[var(--color-success-700)]">{activeRun.total_places_new}</strong></div>
@@ -805,15 +881,28 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" icon={SkipForward}
-                    onClick={() => skipBatch(nextPendingBatch.id)}
-                    disabled={runningBatch || !!retryingBatchId}>
-                    Skip
-                  </Button>
-                  <Button variant="primary" icon={Play} loading={runningBatch} onClick={runNextBatch}
-                    disabled={runningBatch || !!retryingBatchId}>
-                    {runningBatch ? "Running..." : "Run This Batch"}
-                  </Button>
+                  {!autoRunning && (
+                    <>
+                      <Button variant="secondary" size="sm" icon={SkipForward}
+                        onClick={() => skipBatch(nextPendingBatch.id)}
+                        disabled={runningBatch || !!retryingBatchId}>
+                        Skip
+                      </Button>
+                      <Button variant="primary" icon={Play} loading={runningBatch && !autoRunning} onClick={runNextBatch}
+                        disabled={runningBatch || !!retryingBatchId}>
+                        {runningBatch ? "Running..." : "Run This Batch"}
+                      </Button>
+                      <Button variant="primary" icon={Zap} onClick={runAll}
+                        disabled={runningBatch || !!retryingBatchId}>
+                        Run All
+                      </Button>
+                    </>
+                  )}
+                  {autoRunning && (
+                    <Button variant="secondary" icon={XCircle} onClick={stopAutoRun}>
+                      {runningBatch ? "Stopping after current batch..." : "Stop Auto-Run"}
+                    </Button>
+                  )}
                 </div>
               </div>
             </SectionCard>
@@ -1430,7 +1519,7 @@ function StaleTab({ city }) {
 
 // ── Tab 6: Stats & Analytics ─────────────────────────────────────────────────
 
-function StatsTab({ city, stats }) {
+function StatsTab({ city, stats, refreshKey }) {
   const [ops, setOps] = useState([]);
   const [loadingOps, setLoadingOps] = useState(false);
   const [runs, setRuns] = useState([]);
@@ -1462,7 +1551,7 @@ function StatsTab({ city, stats }) {
       .order("created_at", { ascending: false })
       .limit(20)
       .then(({ data }) => { setRuns(data || []); setLoadingRuns(false); });
-  }, [city]);
+  }, [city, refreshKey]);
 
   const toggleRunExpand = async (runId) => {
     if (expandedRun === runId) { setExpandedRun(null); return; }
@@ -1479,6 +1568,16 @@ function StatsTab({ city, stats }) {
     setRunBatches(data || []);
     setLoadingBatches(false);
   };
+
+  // Auto-refresh expanded run's batches when refreshKey changes
+  useEffect(() => {
+    if (!expandedRun) return;
+    supabase.from("seeding_batches")
+      .select("*")
+      .eq("run_id", expandedRun)
+      .order("batch_index")
+      .then(({ data }) => { setRunBatches(data || []); });
+  }, [refreshKey, expandedRun]);
 
   // Apply batch filters
   const filteredBatches = runBatches.filter((b) => {
@@ -1865,8 +1964,8 @@ export function PlacePoolManagementPage({ onTabChange }) {
   return (
     <div className="space-y-4 py-6">
       <CitySelector cities={cities} selectedCity={selectedCity}
-        onSelect={seedingActive ? undefined : setSelectedCity}
-        onAddCity={seedingActive ? undefined : () => setAddCityOpen(true)}
+        onSelect={setSelectedCity}
+        onAddCity={() => setAddCityOpen(true)}
         disabled={seedingActive} />
 
       {/* Unregistered city — show registration panel instead of normal tabs */}
@@ -1893,14 +1992,14 @@ export function PlacePoolManagementPage({ onTabChange }) {
       {isRegistered && <CitySummaryBar stats={stats} spendTotal={spendTotal} />}
       {(isRegistered || !selectedCity) && (
         <>
-          <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={seedingActive ? () => {} : setActiveTab} />
+          <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />
           <div className="mt-4">
             {activeTab === "seed" && <SeedTab city={isRegistered ? selectedCity : null} tiles={tiles} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive} />}
             {activeTab === "map" && <MapTab city={isRegistered ? selectedCity : null} tiles={tiles} places={places} seedingOps={seedingOps} />}
             {activeTab === "browse" && <BrowseTab city={isRegistered ? selectedCity : null} onRefresh={refresh} />}
             {activeTab === "photos" && <PhotoTab city={isRegistered ? selectedCity : null} stats={stats} tiles={tiles} />}
             {activeTab === "stale" && <StaleTab city={isRegistered ? selectedCity : null} />}
-            {activeTab === "stats" && <StatsTab city={isRegistered ? selectedCity : null} stats={stats} />}
+            {activeTab === "stats" && <StatsTab city={isRegistered ? selectedCity : null} stats={stats} refreshKey={refreshKey} />}
           </div>
         </>
       )}
