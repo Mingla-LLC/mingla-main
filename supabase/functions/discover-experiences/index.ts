@@ -4,7 +4,9 @@ import { recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   ALL_CATEGORY_NAMES,
   CATEGORY_MIN_PRICE_TIER,
+  GLOBAL_EXCLUDED_PLACE_TYPES,
   HIDDEN_CATEGORIES,
+  isChildVenueName,
   toSlug,
   toDisplay,
 } from '../_shared/categoryPlaceTypes.ts';
@@ -342,6 +344,41 @@ serve(async (req) => {
             }
           })
         );
+
+        // ── Exclusion filter: remove cards with excluded types or child venue names ──
+        if (allPoolCards.length > 0) {
+          const { data: exclusionRows } = await adminClient!
+            .from('category_type_exclusions')
+            .select('category_slug, excluded_type')
+            .in('category_slug', categoriesToFetch.map(c => toSlug(c)));
+
+          const exclusionMap = new Map<string, Set<string>>();
+          for (const row of (exclusionRows ?? [])) {
+            if (!exclusionMap.has(row.category_slug)) {
+              exclusionMap.set(row.category_slug, new Set());
+            }
+            exclusionMap.get(row.category_slug)!.add(row.excluded_type);
+          }
+
+          const globalExcluded = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
+          const beforeCount = allPoolCards.length;
+
+          allPoolCards = allPoolCards.filter((card: any) => {
+            if (isChildVenueName(card.title || '')) return false;
+
+            const cardTypes: string[] = card.types || [];
+            if (cardTypes.some((t: string) => globalExcluded.has(t))) return false;
+
+            const catExclusions = exclusionMap.get(card.category);
+            if (catExclusions && cardTypes.some((t: string) => catExclusions.has(t))) return false;
+
+            return true;
+          });
+
+          if (beforeCount !== allPoolCards.length) {
+            console.log(`[discover-experiences] Exclusion filter: ${beforeCount} → ${allPoolCards.length} cards (removed ${beforeCount - allPoolCards.length})`);
+          }
+        }
 
         if (allPoolCards && allPoolCards.length > 0) {
           // Fetch preference timestamp for session-scoped filtering

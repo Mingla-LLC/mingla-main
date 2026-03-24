@@ -362,45 +362,115 @@ serve(async (req: Request) => {
       }
     } else if (isShuffleMode && usingPairedUser) {
       try {
-        // Count total swipes for the paired person (D5 fix: use user_interactions, not user_card_impressions)
-        const { count: totalSwipes } = await adminClient
-          .from("user_interactions")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", pairedUserId)
-          .in("interaction_type", ["swipe_left", "swipe_right"]);
-
-        const swipeCount = totalSwipes ?? 0;
-        console.log(
-          `[get-person-hero-cards] Shuffle mode: paired user ${pairedUserId} has ${swipeCount} swipes`,
-        );
-
-        if (swipeCount >= 10) {
-          // Personalized: use top-6 weighted categories (D3: confidence threshold)
-          const { data: learnedPrefs } = await adminClient
-            .from("user_preference_learning")
+        // Parallelize ALL preference queries for shuffle mode (RC-003 perf fix)
+        const [swipeResult, categoryPrefs, pricePrefs1, pricePrefs2, timePrefs1, timePrefs2, distPrefs] = await Promise.all([
+          // Swipe count
+          adminClient.from("user_interactions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", pairedUserId)
+            .in("interaction_type", ["swipe_left", "swipe_right"]),
+          // Category preferences (always fetch, only use if swipes >= 10)
+          adminClient.from("user_preference_learning")
             .select("preference_key, preference_value")
             .eq("user_id", pairedUserId)
             .eq("preference_type", "category")
             .gte("confidence", 0.15)
             .gt("preference_value", 0)
             .order("preference_value", { ascending: false })
-            .limit(6);
+            .limit(6),
+          // Price tier preferences (paired user)
+          adminClient.from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "price_tier")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          // Price tier preferences (viewer/creator)
+          adminClient.from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", userId)
+            .eq("preference_type", "price_tier")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          // Time-of-day preferences (paired)
+          adminClient.from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "time_of_day")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          // Time-of-day preferences (viewer)
+          adminClient.from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", userId)
+            .eq("preference_type", "time_of_day")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(2),
+          // Distance preferences
+          adminClient.from("user_preference_learning")
+            .select("preference_key")
+            .eq("user_id", pairedUserId)
+            .eq("preference_type", "distance")
+            .gte("confidence", 0.15)
+            .gt("preference_value", 0.5)
+            .order("preference_value", { ascending: false })
+            .limit(1),
+        ]);
 
-          if (learnedPrefs && learnedPrefs.length > 0) {
-            blendedCategories = learnedPrefs.map(
-              (p: { preference_key: string }) => p.preference_key
-            );
-            console.log(
-              `[get-person-hero-cards] Personalized shuffle: using top ${blendedCategories.length} categories`,
-            );
-          }
+        const swipeCount = swipeResult.count ?? 0;
+        console.log(
+          `[get-person-hero-cards] Shuffle mode: paired user ${pairedUserId} has ${swipeCount} swipes`,
+        );
+
+        if (swipeCount >= 10 && categoryPrefs.data?.length) {
+          blendedCategories = categoryPrefs.data.map((p: any) => p.preference_key);
+          console.log(
+            `[get-person-hero-cards] Personalized shuffle: using top ${blendedCategories.length} categories`,
+          );
         } else {
-          // Not personalized: randomize within same category structure
           blendedCategories = [...categorySlugs].sort(() => Math.random() - 0.5);
           console.log("[get-person-hero-cards] Random shuffle: <10 swipes, randomizing categories");
         }
+
+        // Build price tier filter from both users
+        const priceSet = new Set<string>();
+        for (const p of (pricePrefs1.data ?? [])) priceSet.add(p.preference_key);
+        for (const p of (pricePrefs2.data ?? [])) priceSet.add(p.preference_key);
+        if (priceSet.size > 0) {
+          priceTierFilter = [...priceSet];
+          console.log(`[get-person-hero-cards] Shuffle price tiers: [${priceTierFilter}]`);
+        }
+
+        // Log time prefs (used for future ranking, not filtering)
+        const allTimePrefs = [...(timePrefs1.data ?? []), ...(timePrefs2.data ?? [])];
+        if (allTimePrefs.length > 0) {
+          console.log(
+            `[get-person-hero-cards] Shuffle time preferences: [${allTimePrefs.map((p: any) => p.preference_key)}]`,
+          );
+        }
+
+        // Apply distance preference to radius
+        if (distPrefs.data && distPrefs.data.length > 0) {
+          const distBucket = distPrefs.data[0].preference_key;
+          const radiusConfig = DISTANCE_RADIUS_MAP[distBucket];
+          if (radiusConfig) {
+            initialRadius = radiusConfig.initial;
+            maxRadius = radiusConfig.max;
+            console.log(
+              `[get-person-hero-cards] Shuffle distance pref '${distBucket}': initial=${initialRadius}m, max=${maxRadius}m`,
+            );
+          }
+        }
       } catch (shuffleError) {
-        console.warn("[get-person-hero-cards] Shuffle check failed, using defaults:", shuffleError);
+        console.warn("[get-person-hero-cards] Shuffle pref fetch failed:", shuffleError);
       }
     } else if (usingPairedUser) {
       // Default mode: blend learned preferences (D3: confidence threshold)
@@ -436,7 +506,8 @@ serve(async (req: Request) => {
     }
 
     // ── Fetch multi-dimension preferences (price, time, distance) for paired user ──
-    if (usingPairedUser && !isCustomHoliday) {
+    // Skip if shuffle mode — already fetched in parallel above
+    if (usingPairedUser && !isCustomHoliday && !isShuffleMode) {
       try {
         const [{ data: pricePrefs }, { data: timePrefs }, { data: distancePrefs }] = await Promise.all([
           adminClient
