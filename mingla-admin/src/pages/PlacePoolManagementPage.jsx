@@ -1325,79 +1325,51 @@ function BrowseTab({ city, onRefresh }) {
 
 function PhotoTab({ city, stats, tiles }) {
   const { addToast } = useToast();
-  const [allMissing, setAllMissing] = useState([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [filterCat, setFilterCat] = useState("");
-  const [filterTile, setFilterTile] = useState("");
-  const [filterMinRating, setFilterMinRating] = useState("");
-  const [sortBy, setSortBy] = useState("rating"); // "rating" or "impressions"
-  const [batchLimit, setBatchLimit] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(null);
+  const [dryRunResult, setDryRunResult] = useState(null);
+  const [missingCount, setMissingCount] = useState(null);
 
-  useEffect(() => {
+  // Check how many places need photos (dry run on mount)
+  const checkMissing = async () => {
     if (!city) return;
     setLoading(true);
-    supabase.from("place_pool")
-      .select("id, name, rating, seeding_category, photos, lat, lng, impression_count")
-      .eq("city_id", city.id).eq("is_active", true)
-      .or("stored_photo_urls.is.null,stored_photo_urls.eq.{}")
-      .not("photos", "is", null)
-      .order("rating", { ascending: false, nullsFirst: false })
-      .limit(500)
-      .then(({ data }) => { setAllMissing(data || []); setLoading(false); });
-  }, [city]);
-
-  // Apply client-side filters
-  const filtered = allMissing.filter((p) => {
-    if (filterCat && p.seeding_category !== filterCat) return false;
-    if (filterMinRating && (p.rating || 0) < parseFloat(filterMinRating)) return false;
-    if (filterTile && tiles.length > 0) {
-      const tile = tiles.find((t) => t.id === filterTile);
-      if (tile) {
-        const dLat = (p.lat - tile.center_lat) * 111320;
-        const dLng = (p.lng - tile.center_lng) * 111320 * Math.cos((tile.center_lat * Math.PI) / 180);
-        if (Math.sqrt(dLat * dLat + dLng * dLng) > tile.radius_m) return false;
+    try {
+      const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
+        body: { dryRun: true, batchSize: 200 },
+      });
+      if (!error && data) {
+        setDryRunResult(data);
+        setMissingCount(data.totalRemaining || 0);
       }
-    }
-    return true;
-  }).sort((a, b) => {
-    if (sortBy === "impressions") return (b.impression_count || 0) - (a.impression_count || 0);
-    return (b.rating || 0) - (a.rating || 0);
-  });
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
 
-  const batchPlaces = batchLimit ? filtered.slice(0, parseInt(batchLimit) || filtered.length) : filtered;
-  const batchCost = batchPlaces.length * 5 * 0.007;
+  useEffect(() => { checkMissing(); }, [city]);
 
-  const [downloadProgress, setDownloadProgress] = useState(null);
-
-  const triggerDownload = async (placeIds) => {
+  const startDownload = async () => {
+    if (!missingCount || downloading) return;
     setDownloading(true);
-    setDownloadProgress({ done: 0, total: placeIds.length, succeeded: 0, failed: 0 });
+    setDownloadProgress({ done: 0, total: missingCount, succeeded: 0, failed: 0 });
 
     try {
       // Log the operation
       await supabase.from("admin_backfill_log").insert({
         operation_type: "photo_backfill",
         triggered_by: (await supabase.auth.getUser()).data.user?.id,
-        place_ids: placeIds,
-        total_places: placeIds.length,
-        estimated_cost_usd: placeIds.length * 5 * 0.007,
-      });
+        total_places: missingCount,
+        estimated_cost_usd: missingCount * 5 * 0.007,
+      }).catch(() => {}); // non-blocking
 
-      // Process in batches of 50 via backfill-place-photos edge function
-      const BATCH_SIZE = 50;
       let totalSucceeded = 0;
       let totalFailed = 0;
       let totalProcessed = 0;
 
-      // The edge function finds places with missing photos automatically,
-      // so we call it repeatedly until all are processed or we've covered our placeIds count
-      while (totalProcessed < placeIds.length) {
-        const remaining = placeIds.length - totalProcessed;
-        const batchSize = Math.min(BATCH_SIZE, remaining);
-
+      while (true) {
         const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
-          body: { batchSize },
+          body: { batchSize: 50 },
         });
 
         if (error) throw new Error(error.message || "Edge function error");
@@ -1410,138 +1382,101 @@ function PhotoTab({ city, stats, tiles }) {
 
         setDownloadProgress({
           done: totalProcessed,
-          total: placeIds.length,
+          total: missingCount,
           succeeded: totalSucceeded,
           failed: totalFailed,
         });
 
-        // Stop if no more candidates found
+        // Stop if no more to process
         if (processed === 0 || (data.remaining || 0) === 0) break;
       }
 
       addToast({
-        variant: totalFailed > 0 ? "warning" : "success",
-        title: `Photo download complete`,
-        description: `${totalSucceeded} succeeded, ${totalFailed} failed`,
+        variant: totalFailed > 0 && totalSucceeded === 0 ? "error" : totalFailed > 0 ? "warning" : "success",
+        title: "Photo download complete",
+        description: `${totalSucceeded} places got photos, ${totalFailed} failed`,
       });
-
-      // Refresh the missing photos list
-      const { data: refreshed } = await supabase.from("place_pool")
-        .select("id, name, rating, seeding_category, photos, lat, lng, impression_count")
-        .eq("city_id", city.id).eq("is_active", true)
-        .or("stored_photo_urls.is.null,stored_photo_urls.eq.{}")
-        .not("photos", "is", null)
-        .order("rating", { ascending: false, nullsFirst: false })
-        .limit(500);
-      setAllMissing(refreshed || []);
     } catch (err) {
       addToast({ variant: "error", title: "Download failed", description: err.message });
     }
+
     setDownloading(false);
     setDownloadProgress(null);
+    checkMissing(); // Refresh count
   };
 
   const total = stats?.total_places || 0;
   const withPhotos = stats?.with_photos || 0;
+  const withoutPhotos = total - withPhotos;
   const photoPct = total > 0 ? Math.round((withPhotos / total) * 100) : 0;
+  const estimatedCost = (missingCount || 0) * 5 * 0.007;
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
   return (
     <div className="space-y-6">
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <StatCard icon={Camera} label="With Photos" value={withPhotos} />
-        <StatCard icon={ImageOff} label="Without Photos" value={total - withPhotos} />
-        <StatCard icon={Eye} label="Coverage" value={`${photoPct}%`} trend={pctColor(photoPct) === "success" ? "Good" : "Low"} trendUp={photoPct >= 80} />
+        <StatCard icon={ImageOff} label="Without Photos" value={withoutPhotos} />
+        <StatCard icon={Eye} label="Coverage" value={`${photoPct}%`} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
       </div>
 
-      <SectionCard title={`Missing Photos (${filtered.length} of ${allMissing.length})`}>
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2 items-end mb-4">
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Tile</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={filterTile} onChange={(e) => setFilterTile(e.target.value)}>
-              <option value="">All Tiles</option>
-              {tiles.map((t) => <option key={t.id} value={t.id}>Tile #{t.tile_index}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
-              <option value="">All</option>
-              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
-            <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
-              className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={filterMinRating} onChange={(e) => setFilterMinRating(e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Sort By</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="rating">Rating (highest first)</option>
-              <option value="impressions">Impressions (most seen first)</option>
-            </select>
-          </div>
-        </div>
+      {/* Download Section */}
+      <SectionCard title="Download Photos"
+        subtitle="Fetches photos from Google for places that have references but no stored images">
 
-        {/* Batch controls */}
-        <div className="flex items-end gap-3 mb-4 p-3 bg-[var(--gray-50)] rounded-lg">
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Batch Limit (top N)</label>
-            <input type="number" min="1" placeholder="All"
-              className="block mt-1 w-24 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={batchLimit} onChange={(e) => setBatchLimit(e.target.value)} />
+        {loading ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-secondary)]">
+            <Loader className="w-4 h-4 animate-spin" /> Checking for places without photos...
           </div>
-          <div className="text-sm text-[var(--color-text-secondary)]">
-            {batchPlaces.length} places × 5 photos × $0.007 = <strong>{formatCost(batchCost)}</strong>
-          </div>
-          <Button size="sm" icon={Download} loading={downloading}
-            onClick={() => triggerDownload(batchPlaces.map((p) => p.id))}
-            disabled={batchPlaces.length === 0 || downloading}>
-            {downloading ? "Downloading..." : `Batch Download (${batchPlaces.length})`}
-          </Button>
-        </div>
-
-        {/* Download Progress */}
-        {downloadProgress && (
-          <div className="mb-4 p-3 bg-[var(--color-brand-50)] rounded-lg space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 bg-[var(--gray-100)] rounded-full h-2.5 overflow-hidden">
-                <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-300"
-                  style={{ width: `${downloadProgress.total > 0 ? Math.round((downloadProgress.done / downloadProgress.total) * 100) : 0}%` }} />
-              </div>
-              <span className="text-xs font-medium w-24 text-right">
-                {downloadProgress.done} / {downloadProgress.total}
-              </span>
+        ) : missingCount === 0 ? (
+          <div className="py-4">
+            <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
+              <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
             </div>
-            <div className="flex gap-4 text-xs">
-              <span className="text-[var(--color-success-700)]">{downloadProgress.succeeded} succeeded</span>
-              {downloadProgress.failed > 0 && <span className="text-[var(--color-error-700)]">{downloadProgress.failed} failed</span>}
-            </div>
+            <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={checkMissing}>
+              Re-check
+            </Button>
           </div>
-        )}
-
-        {/* List */}
-        {loading ? <div className="text-sm text-[var(--color-text-secondary)]">Loading...</div> : (
-          <div className="max-h-96 overflow-y-auto space-y-1">
-            {filtered.map((p) => (
-              <div key={p.id} className="flex justify-between items-center px-2 py-1.5 text-sm border-b border-[var(--gray-100)]">
-                <div>
-                  <span className="font-medium">{p.name}</span>
-                  <span className="ml-2 text-[var(--color-text-tertiary)]">{p.rating ? `★ ${p.rating}` : "No rating"}</span>
-                  {p.seeding_category && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[p.seeding_category], fontSize: 10 }}>{CATEGORY_LABELS[p.seeding_category]}</span>}
+        ) : (
+          <div className="space-y-4">
+            {/* What will happen */}
+            <div className="rounded-lg p-4 bg-[var(--gray-50)]">
+              <div className="text-sm space-y-2">
+                <div><strong>{missingCount}</strong> places need photos downloaded from Google.</div>
+                <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost(estimatedCost)}</strong></div>
+                <div className="text-xs text-[var(--color-text-secondary)]">
+                  Photos are downloaded in batches of 50. You can close this page — already downloaded photos are saved immediately.
                 </div>
-                <Button size="sm" variant="ghost" icon={Download} loading={downloading}
-                  onClick={() => triggerDownload([p.id])}>Download</Button>
               </div>
-            ))}
-            {filtered.length === 0 && <p className="text-sm text-[var(--color-text-secondary)]">All places have photos (or no matches)!</p>}
+            </div>
+
+            {/* Action */}
+            {!downloading && (
+              <Button variant="primary" icon={Download} onClick={startDownload}>
+                Download All Photos ({missingCount} places)
+              </Button>
+            )}
+
+            {/* Progress */}
+            {downloadProgress && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
+                    <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-300"
+                      style={{ width: `${downloadProgress.total > 0 ? Math.round((downloadProgress.done / downloadProgress.total) * 100) : 0}%` }} />
+                  </div>
+                  <span className="text-sm font-medium w-28 text-right">
+                    {downloadProgress.done} / {downloadProgress.total}
+                  </span>
+                </div>
+                <div className="flex gap-4 text-sm">
+                  <span className="text-[var(--color-success-700)]">{downloadProgress.succeeded} succeeded</span>
+                  {downloadProgress.failed > 0 && <span className="text-[var(--color-error-700)]">{downloadProgress.failed} failed</span>}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </SectionCard>
