@@ -97,11 +97,25 @@ serve(async (req: Request) => {
 
           succeeded++;
         } else {
+          // All photos failed for this place — mark it so we skip it next round
+          // instead of blocking the queue forever
+          await supabaseAdmin
+            .from('place_pool')
+            .update({ stored_photo_urls: ['__backfill_failed__'] })
+            .eq('google_place_id', place.google_place_id);
+
           failed++;
         }
       } catch (err) {
         console.error(`[backfill-place-photos] Error processing ${place.google_place_id}:`,
           err instanceof Error ? err.message : String(err));
+
+        // Mark as failed so it doesn't block the queue
+        await supabaseAdmin
+          .from('place_pool')
+          .update({ stored_photo_urls: ['__backfill_failed__'] })
+          .eq('google_place_id', place.google_place_id);
+
         failed++;
       }
 
