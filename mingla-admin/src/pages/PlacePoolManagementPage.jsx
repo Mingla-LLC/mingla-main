@@ -1474,7 +1474,7 @@ function PhotoTab({ city, stats, tiles }) {
                 Last run: {totalSucceeded} succeeded, {totalFailed} failed
               </div>
             )}
-            <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={checkMissing}>
+            <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={fetchCounts}>
               Re-check
             </Button>
           </div>
@@ -1503,7 +1503,7 @@ function PhotoTab({ city, stats, tiles }) {
                 </Button>
               )}
               {!downloading && (
-                <Button variant="secondary" icon={RefreshCw} onClick={checkMissing} size="sm">
+                <Button variant="secondary" icon={RefreshCw} onClick={fetchCounts} size="sm">
                   Re-check
                 </Button>
               )}
