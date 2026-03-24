@@ -105,8 +105,8 @@ serve(async (req: Request) => {
         failed++;
       }
 
-      // Rate limit: 100ms between places
-      await new Promise(r => setTimeout(r, 100));
+      // Rate limit: 500ms between places to avoid Google throttling
+      await new Promise(r => setTimeout(r, 500));
     }
 
     return new Response(JSON.stringify({

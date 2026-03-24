@@ -34,7 +34,8 @@ export function getPlaceholderForCategory(category?: string | null): string {
   return DEFAULT_PLACEHOLDER;
 }
 const MAX_PHOTOS = 5;
-const DOWNLOAD_TIMEOUT_MS = 8000;
+const DOWNLOAD_TIMEOUT_MS = 12000;
+const DELAY_BETWEEN_PHOTOS_MS = 200;
 
 /**
  * Download photos from Google Places API and store them in Supabase Storage.
@@ -75,7 +76,12 @@ export async function downloadAndStorePhotos(
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn(`[photo-storage] Download failed for ${safePlaceId}/${i}: HTTP ${response.status}`);
+        const errBody = await response.text().catch(() => '');
+        console.warn(`[photo-storage] Download failed for ${safePlaceId}/${i}: HTTP ${response.status} — ${errBody.substring(0, 200)}`);
+        // On 429 (rate limit), wait longer before next attempt
+        if (response.status === 429) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
         continue;
       }
 
@@ -109,6 +115,11 @@ export async function downloadAndStorePhotos(
 
       if (urlData?.publicUrl) {
         storedUrls.push(urlData.publicUrl);
+      }
+
+      // Delay between photos to avoid rate limiting
+      if (i < photosToProcess.length - 1) {
+        await new Promise(r => setTimeout(r, DELAY_BETWEEN_PHOTOS_MS));
       }
     } catch (err) {
       // Individual photo failure is non-fatal — skip and continue
