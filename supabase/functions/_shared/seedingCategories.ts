@@ -208,11 +208,21 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
     label: 'Flowers',
     appCategory: 'Flowers',
     appCategorySlug: 'flowers',
-    includedTypes: ['florist'],
+    includedTypes: ['florist', 'grocery_store', 'supermarket'],
     excludedPrimaryTypes: [
-      'grocery_store', 'supermarket', 'department_store', 'garden_center',
-      'home_improvement_store', 'convenience_store',
-      'market', 'shopping_mall', 'store', 'restaurant', 'fine_dining_restaurant',
+      // Niche/specialty groceries (no floral section)
+      'asian_grocery_store', 'health_food_store', 'food_store',
+      'farmers_market', 'market', 'convenience_store',
+      'discount_store', 'discount_supermarket', 'general_store',
+      // Wholesale/warehouse (bulk clubs, not retail floral)
+      'wholesaler', 'warehouse_store', 'hypermarket',
+      // Specialty food retail
+      'butcher_shop', 'liquor_store',
+      // General retail
+      'department_store', 'garden_center', 'home_improvement_store',
+      'shopping_mall', 'store',
+      // Non-grocery
+      'restaurant', 'fine_dining_restaurant',
       'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'night_club',
       'movie_theater', 'museum', 'art_gallery', 'gym', 'fitness_center',
       'corporate_office', 'coworking_space',
