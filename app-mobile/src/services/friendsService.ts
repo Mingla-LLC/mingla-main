@@ -1,3 +1,11 @@
+/**
+ * SERVICE ERROR CONTRACT (transitional):
+ * fetchFriends() throws on primary query failure but swallows secondary
+ * profile fetch errors (returns partial data).
+ * [TRANSITIONAL] tagged logs mark masked error paths.
+ * Full fix: migrate to ServiceResult<T> return type.
+ * See: HARDENING_EXECUTION_PLAN_V3.md, Deferred items.
+ */
 import { supabase } from "./supabase";
 import { blockService } from "./blockService";
 
@@ -81,7 +89,7 @@ export async function fetchFriends(userId: string): Promise<Friend[]> {
     .in("id", friendUserIds);
 
   if (profilesError) {
-    console.error("Error fetching profiles:", profilesError);
+    console.error("[TRANSITIONAL] friendsService.fetchFriends — profile fetch failed, returning partial data:", profilesError);
   }
 
   const profilesMap = new Map((allProfiles || []).map((p: any) => [p.id, p]));

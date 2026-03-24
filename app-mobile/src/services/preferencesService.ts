@@ -1,3 +1,12 @@
+/**
+ * SERVICE ERROR CONTRACT (transitional):
+ * getUserPreferences() returns null on error instead of throwing.
+ * This is a known architectural weakness — consumers cannot distinguish
+ * "no preferences" from "fetch failed."
+ * Every catch block logs with [TRANSITIONAL] tag for observability.
+ * Full fix: migrate to ServiceResult<T> return type.
+ * See: HARDENING_EXECUTION_PLAN_V3.md, Deferred items.
+ */
 import { supabase } from "./supabase";
 
 export interface UserPreferences {
@@ -55,13 +64,13 @@ export class PreferencesService {
         .maybeSingle();
 
       if (error) {
-        console.error("Error fetching user preferences:", error);
+        console.error("[TRANSITIONAL] PreferencesService.getUserPreferences failed — returning null:", error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error("Failed to fetch user preferences:", error);
+      console.error("[TRANSITIONAL] PreferencesService.getUserPreferences failed — returning null:", error);
       return null;
     }
   }

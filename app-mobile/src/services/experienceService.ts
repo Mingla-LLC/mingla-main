@@ -22,6 +22,17 @@ class ExperienceService {
     return ExperienceService.instance;
   }
 
+  /**
+   * SERVICE ERROR CONTRACT — CRITICAL:
+   * This function returns MOCK DATA on database failure.
+   * Users see fake experiences that don't exist in the database.
+   * THIS IS THE SINGLE WORST MASKED ERROR IN THE CODEBASE.
+   *
+   * Status: Appears unused in current code (legacy). If any consumer
+   * is found, this mock fallback must be removed immediately.
+   * Full fix: delete mock data, throw on error, let caller handle.
+   * See: HARDENING_EXECUTION_PLAN_V3.md, Deferred items.
+   */
   async fetchAllExperiences(filters?: ExperienceFilters): Promise<Experience[]> {
     try {
       let query = supabase

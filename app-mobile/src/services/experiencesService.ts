@@ -1,3 +1,11 @@
+/**
+ * SERVICE ERROR CONTRACT (transitional):
+ * getExperiences() returns [] on error. getRecommendations() falls back
+ * to basic query on error. Both mask failures as empty/degraded data.
+ * [TRANSITIONAL] tagged logs mark masked error paths.
+ * Full fix: migrate to ServiceResult<T> return type.
+ * See: HARDENING_EXECUTION_PLAN_V3.md, Deferred items.
+ */
 import { supabase, trackedInvoke } from './supabase';
 import { priceTierFromAmount } from '../constants/priceTiers';
 
@@ -135,13 +143,13 @@ export class ExperiencesService {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching experiences:', error);
+        console.error('[TRANSITIONAL] experiencesService.getExperiences failed — returning []:', error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch experiences:', error);
+      console.error('[TRANSITIONAL] experiencesService.getExperiences failed — returning []:', error);
       return [];
     }
   }
@@ -426,14 +434,14 @@ export class ExperiencesService {
       });
 
       if (error) {
-        console.error('Error getting recommendations:', error);
+        console.error('[TRANSITIONAL] experiencesService.getRecommendations failed — falling back to basic query:', error);
         // Fallback to basic query
         return this.getExperiences();
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to get recommendations:', error);
+      console.error('[TRANSITIONAL] experiencesService.getRecommendations failed — falling back to basic query:', error);
       // Fallback to basic query
       return this.getExperiences();
     }
