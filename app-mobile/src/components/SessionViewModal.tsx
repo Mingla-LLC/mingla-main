@@ -397,8 +397,8 @@ export default function SessionViewModal({
   const refreshParticipants = useCallback(() => {
     if (sessionId) loadSession(sessionId);
   }, [sessionId, loadSession]);
-  const loadParticipantsRef = useRef(refreshParticipants);
-  loadParticipantsRef.current = refreshParticipants;
+  const refreshParticipantsRef = useRef(refreshParticipants);
+  refreshParticipantsRef.current = refreshParticipants;
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -417,8 +417,8 @@ export default function SessionViewModal({
         loadCardMessageCountsRef.current();
       },
       onCardMessage: () => loadCardMessageCountsRef.current(),
-      onParticipantJoined: () => loadParticipantsRef.current(),
-      onParticipantLeft: () => loadParticipantsRef.current(),
+      onParticipantJoined: () => refreshParticipantsRef.current(),
+      onParticipantLeft: () => refreshParticipantsRef.current(),
     });
 
     return () => {
@@ -770,7 +770,7 @@ export default function SessionViewModal({
           participants={participants}
           onClose={() => setShowManageMembersModal(false)}
           onExitBoard={handleExitBoard}
-          onParticipantsChange={loadParticipants}
+          onParticipantsChange={refreshParticipants}
         />
 
         {/* Invite Participants Modal */}
@@ -780,7 +780,7 @@ export default function SessionViewModal({
           sessionName={sessionName || session?.name || "Board"}
           existingParticipantIds={participants.map((p) => p.user_id)}
           onClose={() => setShowInviteParticipantsModal(false)}
-          onInvitesSent={loadParticipants}
+          onInvitesSent={refreshParticipants}
         />
 
         {/* Card Discussion Modal */}
