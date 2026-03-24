@@ -116,6 +116,11 @@ export function aggregateAllPrefs(
     location = { lat: avgLat, lng: avgLng };
   }
 
+  // Note: dateOption, timeSlot, and exactTime are NOT aggregated.
+  // These are solo-mode UI concepts (date picker selections). In collab mode,
+  // the edge function falls back to datetimePref-based filtering, which IS aggregated
+  // above as the earliest participant's datetime preference.
+
   return {
     categories,
     intents,

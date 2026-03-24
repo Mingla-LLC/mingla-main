@@ -67,6 +67,7 @@ export interface DeckBatch {
   batchSeed: number;
   cards: Recommendation[];
   activePills: string[];
+  prefsHash: string;
   timestamp: number;
 }
 

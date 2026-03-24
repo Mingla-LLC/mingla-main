@@ -24,7 +24,7 @@ interface UseDeckCardsParams {
   categories: string[];
   intents?: string[];
   priceTiers: PriceTierSlug[];
-  budgetMin: number;
+  budgetMin: number; // Always 0 — not used for card filtering. Cards filtered by priceTiers instead.
   budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
@@ -64,10 +64,12 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   // → permanent "Pulling up more for you" loader with no auto-recovery.
   const isEnabled = enabled && location !== null;
   const currentPillsKey = [...params.categories].sort().join(',');
+  const currentPrefsHash = useAppStore.getState().deckPrefsHash;
   const latestBatch = isEnabled
     ? useAppStore.getState().deckBatches.find(
         b => b.batchSeed === params.batchSeed &&
-             [...b.activePills].sort().join(',') === currentPillsKey
+             [...b.activePills].sort().join(',') === currentPillsKey &&
+             b.prefsHash === currentPrefsHash
       )
     : undefined;
 

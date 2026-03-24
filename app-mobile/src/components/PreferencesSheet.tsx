@@ -859,11 +859,13 @@ export default function PreferencesSheet({
         toastManager.error("Preferences couldn't save — they'll reset next time.", 4000);
       }
 
-      // Invalidate all preference-dependent queries so the UI reflects saved changes.
-      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+      // DO NOT invalidateQueries here. AppHandlers.handleSavePreferences already:
+      // 1. Sets optimistic cache for ["userPreferences", userId] (authoritative local data)
+      // 2. Bumps preferencesRefreshKey (triggers deck reset + refetch with new query keys)
+      // 3. Resets deck history when prefs hash changes
+      // Invalidating ["userPreferences"] here causes a race: the server refetch returns
+      // OLD prefs (DB write is fire-and-forget and hasn't completed) and overwrites the
+      // optimistic cache. This was the root cause of the preferences race condition.
 
     })();
 

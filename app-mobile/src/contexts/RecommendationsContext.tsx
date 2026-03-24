@@ -394,6 +394,43 @@ export const RecommendationsProvider: React.FC<
     activeDeckParams !== null && !isModeTransitioning
   );
 
+  // ── Mode-aware preference resolution ────────────────────────────────
+  // In solo mode: read from userPrefs (current user's DB preferences).
+  // In collab mode: read from collabDeckParams (aggregated group consensus).
+  // Categories and intents already come from activeDeckParams — this extends
+  // the same pattern to budget, travel, and datetime fields.
+
+  const effectivePriceTiers = isCollaborationMode && collabDeckParams?.priceTiers
+    ? collabDeckParams.priceTiers
+    : userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
+
+  const effectiveBudgetMin = isCollaborationMode && collabDeckParams
+    ? collabDeckParams.budgetMin
+    : userPrefs?.budget_min ?? 0;
+
+  const effectiveBudgetMax = isCollaborationMode && collabDeckParams
+    ? collabDeckParams.budgetMax
+    : userPrefs?.budget_max ?? 1000;
+
+  const effectiveTravelMode = isCollaborationMode && collabDeckParams
+    ? collabDeckParams.travelMode
+    : userPrefs?.travel_mode ?? 'walking';
+
+  const effectiveTravelConstraintValue = isCollaborationMode && collabDeckParams
+    ? collabDeckParams.travelConstraintValue
+    : userPrefs?.travel_constraint_value ?? 30;
+
+  const effectiveDatetimePref = isCollaborationMode && collabDeckParams
+    ? collabDeckParams.datetimePref
+    : userPrefs?.datetime_pref ?? undefined;
+
+  // dateOption, timeSlot, exactTime: collab aggregation doesn't compute these
+  // (they're solo-only UI concepts). For collab, pass defaults so the edge
+  // function falls back to datetimePref-based filtering.
+  const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
+  const effectiveTimeSlot = isCollaborationMode ? null : (userPrefs?.time_slot ?? null);
+  const effectiveExactTime = isCollaborationMode ? null : (userPrefs?.exact_time ?? null);
+
   const {
     cards: soloDeckCards,
     deckMode: soloDeckMode,
@@ -407,16 +444,16 @@ export const RecommendationsProvider: React.FC<
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
     intents: activeDeckParams?.intents ?? [],
-    priceTiers: userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
-    budgetMin: userPrefs?.budget_min ?? 0,
-    budgetMax: userPrefs?.budget_max ?? 1000,
-    travelMode: userPrefs?.travel_mode ?? 'walking',
+    priceTiers: effectivePriceTiers,
+    budgetMin: effectiveBudgetMin, // Always 0 — kept for interface compat
+    budgetMax: effectiveBudgetMax,
+    travelMode: effectiveTravelMode,
     travelConstraintType: 'time' as const,
-    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
-    datetimePref: userPrefs?.datetime_pref ?? undefined,
-    dateOption: userPrefs?.date_option ?? 'now',
-    timeSlot: userPrefs?.time_slot ?? null,
-    exactTime: userPrefs?.exact_time ?? null,
+    travelConstraintValue: effectiveTravelConstraintValue,
+    datetimePref: effectiveDatetimePref,
+    dateOption: effectiveDateOption,
+    timeSlot: effectiveTimeSlot,
+    exactTime: effectiveExactTime,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&
@@ -634,6 +671,7 @@ export const RecommendationsProvider: React.FC<
         batchSeed,
         cards: deckCards,
         activePills,
+        prefsHash: useAppStore.getState().deckPrefsHash,
         timestamp: Date.now(),
       });
     }
