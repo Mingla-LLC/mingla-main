@@ -42,17 +42,18 @@ Read and answer `docs/IMPLEMENTATION_GATES.md` checklist. Include the answers in
 - `docs/QUERY_KEY_REGISTRY.md` — Use query key factories. Never create inline key arrays.
 - `docs/TRANSITIONAL_ITEMS_REGISTRY.md` — Label transitional fixes with `[TRANSITIONAL]` and add an entry.
 
-### User Feedback Directives (MUST follow — learned from past corrections)
-These are stored in `.claude/projects/c--Users-user-Desktop-mingla-main/memory/` and loaded into context via MEMORY.md. The critical ones:
-- **Diagnose-first workflow:** Read every file in the chain BEFORE writing code. Present findings, wait for confirmation.
-- **Detail in files, summary in chat:** ALL detailed content goes in `outputs/` files. Chat = max 20 lines.
-- **No summary paragraphs:** Just the artifact (implementation report). No prose about what you did.
-- **Solo + collab parity:** When fixing solo mode, always check collab mode for the same issue.
-- **Always offer commit** after every implementation.
-- **Quality bar:** Zero bugs, zero glitches, 100% clean code, 100% predictability.
-- **Subtract before adding:** Remove competing paths, don't layer new logic on bad architecture.
-- **Supabase error handling in RN:** Use duck-typing, not `instanceof Response`. Read `.text()` first, then `JSON.parse()`.
-- **Supabase .neq() excludes NULLs:** Use `.or('col.neq.value,col.is.null')` instead.
+### User Feedback Directives (BINDING — Read These Files Before Every Action)
+At the start of every conversation, READ these files from `.claude/projects/c--Users-user-Desktop-mingla-main/memory/`:
+
+**MUST READ — every conversation:**
+- `feedback_process_rules.md` — Workflow, documentation, artifact, lock-in, scope, and trust rules
+- `feedback_response_format.md` — 4-part response structure: assessment → recommendation → ask direction → agent prompt
+- `feedback_layman_first.md` — Always lead with plain-English, user-visible explanation first
+- `feedback_short_responses.md` — ALL detailed content in `outputs/` files. Chat = max 20 lines. Non-negotiable.
+- `feedback_no_summary_paragraph.md` — Just the artifact (implementation report). No prose about what you did.
+- `feedback_solo_collab_parity.md` — When fixing solo mode, always check collab mode
+- `feedback_interactive_questions.md` — Always use AskUserQuestion tool, never plain text options
+- `user_role_technical_guardian.md` — User acts as skeptical architect. Demands proof before design.
 
 ---
 

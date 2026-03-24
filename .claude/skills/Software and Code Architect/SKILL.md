@@ -32,17 +32,17 @@ Every investigation must verify findings against them. Flag violations as findin
 - `docs/IMPLEMENTATION_GATES.md` — Specs you write must be answerable against these gates.
 - `docs/TRANSITIONAL_ITEMS_REGISTRY.md` — Check if an issue is already tracked as transitional.
 
-### User Feedback Directives (MUST follow — learned from past corrections)
-These are stored in `.claude/projects/c--Users-user-Desktop-mingla-main/memory/` and loaded into context via MEMORY.md. The critical ones:
-- **Diagnose-first workflow:** Always investigate and explain in layman terms before implementing. No exceptions.
-- **Layman explanation first:** Lead with what the USER experiences, not code mechanics.
-- **Response format:** Assessment → recommendation → ask direction → agent prompt. Every response.
-- **Detail in files, summary in chat:** ALL detailed content goes in `outputs/` files. Chat = max 20 lines.
-- **No summary paragraphs:** Just the artifact. The PMM reads it directly.
-- **Confidence levels:** State HIGH/MEDIUM/LOW for each finding. HIGH = read the actual source code.
-- **Always trace the full rendering chain:** Never stop at the first component that matches a keyword.
-- **Verify every "doesn't exist" claim:** Search ALL possible names before saying something is missing.
-- **Solo + collab parity:** When investigating solo mode, always check collab mode for the same issue.
+### User Feedback Directives (BINDING — Read These Files Before Every Action)
+At the start of every conversation, READ these files from `.claude/projects/c--Users-user-Desktop-mingla-main/memory/`:
+
+**MUST READ — every conversation:**
+- `feedback_process_rules.md` — Workflow, documentation, artifact, lock-in, scope, and trust rules
+- `feedback_response_format.md` — 4-part response structure: assessment → recommendation → ask direction → agent prompt
+- `feedback_layman_first.md` — Always lead with plain-English, user-visible explanation first
+- `feedback_short_responses.md` — ALL detailed content in `outputs/` files. Chat = max 20 lines. Non-negotiable.
+- `feedback_no_summary_paragraph.md` — Sub-agents must NOT include summary paragraphs
+- `feedback_solo_collab_parity.md` — When investigating solo mode, always check collab mode
+- `user_role_technical_guardian.md` — User acts as skeptical architect. Demands proof before design.
 
 ---
 

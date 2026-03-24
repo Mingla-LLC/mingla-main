@@ -31,17 +31,20 @@ Every review, every delegation prompt, every gate decision must enforce them.
 - `docs/QUERY_KEY_REGISTRY.md` — Verify query keys use factories.
 - `docs/TRANSITIONAL_ITEMS_REGISTRY.md` — Update when transitional fixes are added or graduated.
 
-### User Feedback Directives (MUST follow — learned from past corrections)
-These are stored in `.claude/projects/c--Users-user-Desktop-mingla-main/memory/` and loaded into context via MEMORY.md. The critical ones:
-- **Diagnose-first workflow:** Always investigate and explain in layman terms before implementing. No exceptions.
-- **Layman explanation first:** Lead with what the USER experiences, not code mechanics.
-- **Response format:** Assessment → recommendation → ask direction → agent prompt. Every response.
-- **Detail in files, summary in chat:** ALL detailed content goes in `outputs/` files. Chat = max 20 lines.
-- **Interactive questions:** Always use AskUserQuestion tool, never plain text options.
-- **No summary paragraphs:** Sub-agents must NOT include summaries — just the artifact.
-- **Post-tester flow:** When tester results arrive, immediately write Implementor fix prompt.
-- **Solo + collab parity:** When fixing solo mode, always check collab mode for the same issue.
-- **Always offer commit** after every implementation.
+### User Feedback Directives (BINDING — Read These Files Before Every Action)
+At the start of every conversation, READ these files from `.claude/projects/c--Users-user-Desktop-mingla-main/memory/`:
+
+**MUST READ — every conversation:**
+- `feedback_process_rules.md` — Workflow, documentation, artifact, lock-in, scope, and trust rules
+- `feedback_response_format.md` — 4-part response structure: assessment → recommendation → ask direction → agent prompt
+- `feedback_layman_first.md` — Always lead with plain-English, user-visible explanation first
+- `feedback_short_responses.md` — ALL detailed content in `outputs/` files. Chat = max 20 lines. Non-negotiable.
+- `feedback_no_summary_paragraph.md` — Sub-agents must NOT include summary paragraphs
+- `feedback_interactive_questions.md` — Always use AskUserQuestion tool, never plain text options
+- `feedback_post_tester_flow.md` — When tester results arrive, immediately write Implementor fix prompt
+- `feedback_solo_collab_parity.md` — When fixing solo mode, always check collab mode
+- `feedback_admin_ui_trust.md` — User does not trust admin UI. Demands intelligence, not data.
+- `user_role_technical_guardian.md` — User acts as skeptical architect. Demands proof before design.
 
 ---
 

@@ -38,12 +38,15 @@ Every test pass MUST include a **Constitutional Compliance** test group that che
 - `docs/IMPLEMENTATION_GATES.md` — Verify the Implementor answered the gates (check their report).
 - `docs/TRANSITIONAL_ITEMS_REGISTRY.md` — Verify any new transitional items are registered.
 
-### User Feedback Directives (MUST follow — learned from past corrections)
-These are stored in `.claude/projects/c--Users-user-Desktop-mingla-main/memory/` and loaded into context via MEMORY.md. The critical ones:
-- **Detail in files, summary in chat:** ALL detailed content goes in `outputs/` files. Chat = max 20 lines.
-- **No summary paragraphs:** Just the test report artifact. No prose about what you did.
-- **Solo + collab parity:** When testing solo mode fixes, always test collab mode for the same issue.
-- **Quality bar:** Zero bugs, zero glitches, 100% clean code, 100% predictability.
+### User Feedback Directives (BINDING — Read These Files Before Every Action)
+At the start of every conversation, READ these files from `.claude/projects/c--Users-user-Desktop-mingla-main/memory/`:
+
+**MUST READ — every conversation:**
+- `feedback_process_rules.md` — Workflow, documentation, artifact, lock-in, scope, and trust rules
+- `feedback_short_responses.md` — ALL detailed content in `outputs/` files. Chat = max 20 lines. Non-negotiable.
+- `feedback_no_summary_paragraph.md` — Just the test report artifact. No prose about what you did.
+- `feedback_solo_collab_parity.md` — When testing solo mode fixes, always test collab mode
+- `user_role_technical_guardian.md` — User acts as skeptical architect. Demands proof before design.
 
 ---
 
