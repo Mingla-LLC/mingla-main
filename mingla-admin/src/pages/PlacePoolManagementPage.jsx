@@ -1325,94 +1325,112 @@ function BrowseTab({ city, onRefresh }) {
 
 function PhotoTab({ city, stats, tiles }) {
   const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(null);
-  const [dryRunResult, setDryRunResult] = useState(null);
   const [missingCount, setMissingCount] = useState(null);
+  const [initialMissing, setInitialMissing] = useState(null); // snapshot at start of download
+  const [lastBatchResult, setLastBatchResult] = useState(null);
+  const [totalSucceeded, setTotalSucceeded] = useState(0);
+  const [totalFailed, setTotalFailed] = useState(0);
+  const stopRef = useRef(false);
 
-  // Check how many places need photos (dry run on mount)
+  // Check how many places need photos — reads actual DB state
   const checkMissing = async () => {
     if (!city) return;
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
-        body: { dryRun: true, batchSize: 200 },
+        body: { dryRun: true, batchSize: 1 },
       });
-      if (!error && data) {
-        setDryRunResult(data);
+      if (!error && data && mountedRef.current) {
         setMissingCount(data.totalRemaining || 0);
       }
     } catch { /* ignore */ }
-    setLoading(false);
+    if (mountedRef.current) setLoading(false);
   };
 
   useEffect(() => { checkMissing(); }, [city]);
 
   const startDownload = async () => {
-    if (!missingCount || downloading) return;
+    if (downloading) return;
+    stopRef.current = false;
     setDownloading(true);
-    setDownloadProgress({ done: 0, total: missingCount, succeeded: 0, failed: 0 });
+    setTotalSucceeded(0);
+    setTotalFailed(0);
+    setLastBatchResult(null);
+    setInitialMissing(missingCount);
 
+    // Log attempt (non-blocking)
     try {
-      // Log the operation (non-blocking — don't fail if log table has issues)
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from("admin_backfill_log").insert({
-          operation_type: "photo_backfill",
-          triggered_by: user?.id,
-          total_places: missingCount,
-          estimated_cost_usd: missingCount * 5 * 0.007,
-        });
-      } catch { /* ignore log failures */ }
-
-      let totalSucceeded = 0;
-      let totalFailed = 0;
-      let totalProcessed = 0;
-
-      while (true) {
-        const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
-          body: { batchSize: 50 },
-        });
-
-        if (error) throw new Error(error.message || "Edge function error");
-        if (data?.error) throw new Error(data.error);
-
-        const processed = data.processed || 0;
-        totalSucceeded += data.succeeded || 0;
-        totalFailed += data.failed || 0;
-        totalProcessed += processed;
-
-        setDownloadProgress({
-          done: totalProcessed,
-          total: missingCount,
-          succeeded: totalSucceeded,
-          failed: totalFailed,
-        });
-
-        // Stop if no more to process
-        if (processed === 0 || (data.remaining || 0) === 0) break;
-      }
-
-      addToast({
-        variant: totalFailed > 0 && totalSucceeded === 0 ? "error" : totalFailed > 0 ? "warning" : "success",
-        title: "Photo download complete",
-        description: `${totalSucceeded} places got photos, ${totalFailed} failed`,
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from("admin_backfill_log").insert({
+        operation_type: "photo_backfill",
+        triggered_by: user?.id,
+        total_places: missingCount,
+        estimated_cost_usd: missingCount * 5 * 0.007,
       });
-    } catch (err) {
-      addToast({ variant: "error", title: "Download failed", description: err.message });
+    } catch { /* ignore */ }
+
+    let runSucceeded = 0;
+    let runFailed = 0;
+
+    while (!stopRef.current && mountedRef.current) {
+      try {
+        // Small batches — 5 places per call so the function returns fast (~10-30s)
+        const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
+          body: { batchSize: 5 },
+        });
+
+        if (error) {
+          if (mountedRef.current) setLastBatchResult({ error: error.message });
+          break;
+        }
+        if (data?.error) {
+          if (mountedRef.current) setLastBatchResult({ error: data.error });
+          break;
+        }
+
+        runSucceeded += data.succeeded || 0;
+        runFailed += data.failed || 0;
+
+        if (mountedRef.current) {
+          setTotalSucceeded(runSucceeded);
+          setTotalFailed(runFailed);
+          setMissingCount(data.remaining ?? 0);
+          setLastBatchResult(data);
+        }
+
+        // Stop if nothing left
+        if ((data.processed || 0) === 0 || (data.remaining || 0) === 0) break;
+      } catch (err) {
+        if (mountedRef.current) setLastBatchResult({ error: err.message });
+        break;
+      }
     }
 
-    setDownloading(false);
-    setDownloadProgress(null);
-    checkMissing(); // Refresh count
+    if (mountedRef.current) {
+      setDownloading(false);
+      const msg = stopRef.current ? "Photo download paused" : "Photo download complete";
+      addToast({
+        variant: runFailed > 0 && runSucceeded === 0 ? "error" : runFailed > 0 ? "warning" : "success",
+        title: msg,
+        description: `${runSucceeded} succeeded, ${runFailed} failed`,
+      });
+    }
   };
+
+  const stopDownload = () => { stopRef.current = true; };
 
   const total = stats?.total_places || 0;
   const withPhotos = stats?.with_photos || 0;
   const withoutPhotos = total - withPhotos;
   const photoPct = total > 0 ? Math.round((withPhotos / total) * 100) : 0;
   const estimatedCost = (missingCount || 0) * 5 * 0.007;
+  const downloaded = initialMissing != null && missingCount != null ? initialMissing - missingCount : totalSucceeded;
+  const progressPct = initialMissing > 0 ? Math.round((downloaded / initialMissing) * 100) : 0;
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
@@ -1421,7 +1439,7 @@ function PhotoTab({ city, stats, tiles }) {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <StatCard icon={Camera} label="With Photos" value={withPhotos} />
-        <StatCard icon={ImageOff} label="Without Photos" value={withoutPhotos} />
+        <StatCard icon={ImageOff} label="Without Photos" value={missingCount ?? withoutPhotos} />
         <StatCard icon={Eye} label="Coverage" value={`${photoPct}%`} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
       </div>
 
@@ -1433,50 +1451,71 @@ function PhotoTab({ city, stats, tiles }) {
           <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-secondary)]">
             <Loader className="w-4 h-4 animate-spin" /> Checking for places without photos...
           </div>
-        ) : missingCount === 0 ? (
+        ) : missingCount === 0 && !downloading ? (
           <div className="py-4">
             <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
               <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
             </div>
+            {totalSucceeded > 0 && (
+              <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
+                Last run: {totalSucceeded} succeeded, {totalFailed} failed
+              </div>
+            )}
             <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={checkMissing}>
               Re-check
             </Button>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* What will happen */}
+            {/* Status / info */}
             <div className="rounded-lg p-4 bg-[var(--gray-50)]">
               <div className="text-sm space-y-2">
-                <div><strong>{missingCount}</strong> places need photos downloaded from Google.</div>
+                <div><strong>{missingCount}</strong> places still need photos.</div>
                 <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost(estimatedCost)}</strong></div>
                 <div className="text-xs text-[var(--color-text-secondary)]">
-                  Photos are downloaded in batches of 50. You can close this page — already downloaded photos are saved immediately.
+                  Downloads 5 places at a time. Each batch takes ~10-30 seconds. Photos save to storage immediately — progress survives page refresh.
                 </div>
               </div>
             </div>
 
-            {/* Action */}
-            {!downloading && (
-              <Button variant="primary" icon={Download} onClick={startDownload}>
-                Download All Photos ({missingCount} places)
-              </Button>
-            )}
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              {!downloading ? (
+                <Button variant="primary" icon={Download} onClick={startDownload}>
+                  Download All Photos ({missingCount} places)
+                </Button>
+              ) : (
+                <Button variant="secondary" icon={XCircle} onClick={stopDownload}>
+                  Stop Download
+                </Button>
+              )}
+              {!downloading && (
+                <Button variant="secondary" icon={RefreshCw} onClick={checkMissing} size="sm">
+                  Re-check
+                </Button>
+              )}
+            </div>
 
-            {/* Progress */}
-            {downloadProgress && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
-                    <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-300"
-                      style={{ width: `${downloadProgress.total > 0 ? Math.round((downloadProgress.done / downloadProgress.total) * 100) : 0}%` }} />
+            {/* Progress — shows during and after download */}
+            {(downloading || totalSucceeded > 0 || totalFailed > 0) && (
+              <div className="space-y-3">
+                {/* Progress bar */}
+                {initialMissing > 0 && (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
+                      <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-500"
+                        style={{ width: `${progressPct}%` }} />
+                    </div>
+                    <span className="text-sm font-medium w-20 text-right">{progressPct}%</span>
                   </div>
-                  <span className="text-sm font-medium w-28 text-right">
-                    {downloadProgress.done} / {downloadProgress.total}
-                  </span>
-                </div>
+                )}
+
+                {/* Counters */}
                 <div className="flex gap-4 text-sm">
-                  <span className="text-[var(--color-success-700)]">{downloadProgress.succeeded} succeeded</span>
-                  {downloadProgress.failed > 0 && <span className="text-[var(--color-error-700)]">{downloadProgress.failed} failed</span>}
+                  {downloading && <span className="flex items-center gap-1 text-[var(--color-brand-600)]"><Loader className="w-3.5 h-3.5 animate-spin" /> Running...</span>}
+                  <span className="text-[var(--color-success-700)]">{totalSucceeded} downloaded</span>
+                  {totalFailed > 0 && <span className="text-[var(--color-error-700)]">{totalFailed} failed</span>}
+                  <span className="text-[var(--color-text-secondary)]">{missingCount} remaining</span>
                 </div>
               </div>
             )}
