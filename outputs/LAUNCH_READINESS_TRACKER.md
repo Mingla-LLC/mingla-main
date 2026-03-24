@@ -93,7 +93,7 @@
 | Empty category pools (operational) | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #5 | Flowers, First Meet etc. have zero cards in Raleigh. Needs seeding + coverage monitoring. Planned for Block 7. |
 | Discover retry responsiveness | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | Loading state set before async work. Spinner appears instantly on retry. |
 | Pull-to-refresh (Calendar/Saved) | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | user?.id added to useCallback deps. Fixes stale closure silent no-op. |
-| Card rendering (all types) | F | — | Unaudited | — |
+| Card rendering (all types) | C | 2026-03-24 | Commit 5702067b. Test: TEST_PASS1_KILL_THE_LIES.md (27/27 green + 3 mediums fixed) | Pass 1: Fabricated data removed (fake ratings, travel times, prices). Currency wired to all 10 price surfaces. Curated title fixed. Opening hours rendered. Travel icons corrected. Remaining: icon system consolidation (5 systems), star color unification, image fallback consistency. |
 | Swipe mechanics | F | — | Unaudited | Swipe limit exists |
 | Empty pool state | B | 2026-03-20 | Commits f1880d93, 7dbeb362 | All 5 serving functions return HTTP 200 with empty array when pool empty. Tested on device for discover-cards. |
 | Preferences → deck pipeline | B | 2026-03-20 | Commit cf194099. Test report: TEST_REPORT_PREFERENCES_PIPELINE.md | exactTime/timeSlot wired through solo+collab. CTA gating added. Travel mode from card. Dead weekendDay removed. Known: AM/PM noon boundary in collab time aggregation (MVP accepted). |
