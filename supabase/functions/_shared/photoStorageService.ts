@@ -123,14 +123,19 @@ export async function downloadAndStorePhotos(
 
   // Update place_pool with stored URLs
   if (storedUrls.length > 0) {
-    await supabaseAdmin
-      .from('place_pool')
-      .update({ stored_photo_urls: storedUrls })
-      .eq('google_place_id', googlePlaceId)
-      .catch((err) => {
-        console.error(`[photo-storage] DB update failed for ${googlePlaceId}:`,
-          err instanceof Error ? err.message : String(err));
-      });
+    try {
+      const { error: updateErr } = await supabaseAdmin
+        .from('place_pool')
+        .update({ stored_photo_urls: storedUrls })
+        .eq('google_place_id', googlePlaceId);
+
+      if (updateErr) {
+        console.error(`[photo-storage] DB update failed for ${googlePlaceId}:`, updateErr.message);
+      }
+    } catch (err) {
+      console.error(`[photo-storage] DB update error for ${googlePlaceId}:`,
+        err instanceof Error ? err.message : String(err));
+    }
   }
 
   return storedUrls;

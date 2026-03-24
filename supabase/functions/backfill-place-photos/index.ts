@@ -78,18 +78,22 @@ serve(async (req: Request) => {
 
         if (storedUrls && storedUrls.length > 0) {
           // Also update card_pool rows that reference this place
-          await supabaseAdmin
-            .from('card_pool')
-            .update({
-              image_url: storedUrls[0],
-              images: storedUrls.slice(0, 5),
-            })
-            .eq('place_pool_id', place.id)
-            .then(() => {})
-            .catch((err) => console.error(
-              `[backfill-place-photos] card_pool update failed for ${place.google_place_id}:`,
-              err instanceof Error ? err.message : String(err)
-            ));
+          try {
+            const { error: cardErr } = await supabaseAdmin
+              .from('card_pool')
+              .update({
+                image_url: storedUrls[0],
+                images: storedUrls.slice(0, 5),
+              })
+              .eq('place_pool_id', place.id);
+
+            if (cardErr) {
+              console.error(`[backfill-place-photos] card_pool update failed for ${place.google_place_id}:`, cardErr.message);
+            }
+          } catch (cardUpdateErr) {
+            console.error(`[backfill-place-photos] card_pool update error for ${place.google_place_id}:`,
+              cardUpdateErr instanceof Error ? cardUpdateErr.message : String(cardUpdateErr));
+          }
 
           succeeded++;
         } else {
