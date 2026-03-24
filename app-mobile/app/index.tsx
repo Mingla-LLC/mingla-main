@@ -37,6 +37,7 @@ import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
+import { ToastProvider } from "../src/components/ToastManager";
 import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
@@ -1862,7 +1863,7 @@ function AppContent() {
     profile.has_completed_onboarding === true
   ) {
     return (
-      <>
+      <ToastProvider>
         <CardsCacheProvider>
           <RecommendationsProvider
             currentMode={currentMode ?? "solo"}
@@ -2176,7 +2177,7 @@ function AppContent() {
           </ErrorBoundary>
         ) : null}
         <ToastContainer />
-      </>
+      </ToastProvider>
     );
   }
 }
