@@ -1355,13 +1355,16 @@ function PhotoTab({ city, stats, tiles }) {
     setDownloadProgress({ done: 0, total: missingCount, succeeded: 0, failed: 0 });
 
     try {
-      // Log the operation
-      await supabase.from("admin_backfill_log").insert({
-        operation_type: "photo_backfill",
-        triggered_by: (await supabase.auth.getUser()).data.user?.id,
-        total_places: missingCount,
-        estimated_cost_usd: missingCount * 5 * 0.007,
-      }).catch(() => {}); // non-blocking
+      // Log the operation (non-blocking — don't fail if log table has issues)
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from("admin_backfill_log").insert({
+          operation_type: "photo_backfill",
+          triggered_by: user?.id,
+          total_places: missingCount,
+          estimated_cost_usd: missingCount * 5 * 0.007,
+        });
+      } catch { /* ignore log failures */ }
 
       let totalSucceeded = 0;
       let totalFailed = 0;
