@@ -18,6 +18,7 @@ import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardT
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
+import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
@@ -273,27 +274,29 @@ const curatedStyles = StyleSheet.create({
   },
   hoursRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
   },
-  hoursDay: {
-    fontSize: 12,
-    color: '#9ca3af',
-    width: 40,
+  hoursRowToday: {
+    backgroundColor: '#fff7ed',
   },
-  hoursDayToday: {
-    color: '#eb7825',
+  todayIndicator: {
+    width: 3,
+    height: 16,
+    borderRadius: 1.5,
+    backgroundColor: '#ea580c',
+    marginRight: 8,
+  },
+  hoursLineText: {
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  hoursLineTextToday: {
     fontWeight: '700',
-  },
-  hoursTime: {
-    fontSize: 12,
-    color: '#6b7280',
-    flex: 1,
-    textAlign: 'right',
-  },
-  hoursTimeToday: {
-    color: '#111827',
-    fontWeight: '600',
+    color: '#9a3412',
   },
   policiesButton: {
     flexDirection: 'row',
@@ -639,30 +642,32 @@ function MultiStopPlanView({
                 ) : null}
 
                 {/* Opening Hours — visible when expanded */}
-                {isExpanded && Object.keys(stop.openingHours).length > 0 && (
-                  <View style={curatedStyles.hoursSection}>
-                    <Text style={curatedStyles.hoursSectionLabel}>Weekly Hours</Text>
-                    {Object.entries(stop.openingHours).map(([day, hours]) => {
-                      const isToday = day.toLowerCase() === todayName.toLowerCase();
-                      return (
-                        <View key={day} style={curatedStyles.hoursRow}>
-                          <Text style={[
-                            curatedStyles.hoursDay,
-                            isToday && curatedStyles.hoursDayToday,
+                {isExpanded && (() => {
+                  const weekdayLines = extractWeekdayText(stop.openingHours);
+                  if (!weekdayLines || weekdayLines.length === 0) return null;
+                  return (
+                    <View style={curatedStyles.hoursSection}>
+                      <Text style={curatedStyles.hoursSectionLabel}>Weekly Hours</Text>
+                      {weekdayLines.map((line, index) => {
+                        const isToday = line.startsWith(todayName);
+                        return (
+                          <View key={index} style={[
+                            curatedStyles.hoursRow,
+                            isToday && curatedStyles.hoursRowToday,
                           ]}>
-                            {day.slice(0, 3)}
-                          </Text>
-                          <Text style={[
-                            curatedStyles.hoursTime,
-                            isToday && curatedStyles.hoursTimeToday,
-                          ]} numberOfLines={1}>
-                            {hours}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+                            {isToday && <View style={curatedStyles.todayIndicator} />}
+                            <Text style={[
+                              curatedStyles.hoursLineText,
+                              isToday && curatedStyles.hoursLineTextToday,
+                            ]} numberOfLines={1}>
+                              {line}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
 
                 {/* Expanded detail section */}
                 {isExpanded && (
