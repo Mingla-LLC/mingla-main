@@ -1381,7 +1381,7 @@ function PhotoTab({ city, stats, tiles }) {
       try {
         // Small batches — 5 places per call so the function returns fast (~10-30s)
         const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
-          body: { batchSize: 5 },
+          body: { batchSize: 50 },
         });
 
         if (error) {
