@@ -31,9 +31,9 @@
 |------|-------|--------------|----------|-------|
 | Phone OTP sign-in | F | — | Unaudited | — |
 | Session persistence (background/foreground) | F | — | Unaudited | — |
-| Token refresh / expiry handling | F | — | Unaudited | 401 detector exists but coverage unverified |
+| Token refresh / expiry handling | B | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | Grace period prevents burst 401s on resume from triggering false sign-out. Alert shown before sign-out. Transitional: 401 counter heuristic remains. |
 | Sign-out cleanup | F | — | Unaudited | — |
-| Zombie auth prevention | F | — | Unaudited | Detector in queryClient.ts — needs full path audit |
+| Zombie auth prevention | B | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | 401 detector hardened with grace period + user-facing alert. Still heuristic-based (transitional). |
 
 ### 2. Onboarding
 
@@ -41,7 +41,7 @@
 |------|-------|--------------|----------|-------|
 | State machine progression | F | — | Unaudited | indexOf bug was fixed previously |
 | GPS requirement enforcement | F | — | Unaudited | No skip path — intentional |
-| Preference save reliability | F | — | Unaudited | **Known issue:** PreferencesService silently catches errors |
+| Preference save reliability | A | 2026-03-23 | Commit 302b74d5. Test: TEST_PASS_4_REPORT.md (27/27 green) | 6 redundant writes removed. Atomic save with withTimeout(8000) + retry UI on failure. PreferencesService throws on error. |
 | Resume after interruption | F | — | Unaudited | — |
 | Audio recording (voice review) | F | — | Unaudited | E.164 sanitization was applied |
 | Skip button responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | onComplete() fires first, profile update in background with withTimeout(5000) |
@@ -91,6 +91,8 @@
 | Category balancing | A | 2026-03-22 | Commit 7fef7ed0 | ROW_NUMBER partition with per-category cap. Count CTE unaffected. No balancing when no categories selected. |
 | Children's venue filter | A | 2026-03-22 | Commit dba7b3f0 | isChildVenueName() with 20+ keywords. Applied in both generators. Space-padded to avoid false positives. |
 | Empty category pools (operational) | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #5 | Flowers, First Meet etc. have zero cards in Raleigh. Needs seeding + coverage monitoring. Planned for Block 7. |
+| Discover retry responsiveness | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | Loading state set before async work. Spinner appears instantly on retry. |
+| Pull-to-refresh (Calendar/Saved) | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | user?.id added to useCallback deps. Fixes stale closure silent no-op. |
 | Card rendering (all types) | F | — | Unaudited | — |
 | Swipe mechanics | F | — | Unaudited | Swipe limit exists |
 | Empty pool state | B | 2026-03-20 | Commits f1880d93, 7dbeb362 | All 5 serving functions return HTTP 200 with empty array when pool empty. Tested on device for discover-cards. |
@@ -132,7 +134,10 @@
 | In-app notifications | F | — | Unaudited | board-view targets updated to home (2026-03-23) |
 | Deep link from notification | B | 2026-03-23 | Commit 15fe8742 | `mingla://session/{id}` routes to home + auto-open modal. board-view deep links eliminated. Known: invalid sessionId lingers (medium finding). |
 | Notification for deleted content | F | — | Unaudited | Cross-cutting concern |
-| iOS app badge | A | 2026-03-21 | Commit d4c6725e. Test report: TEST_REPORT_NOTIFICATION_PASS2.md | iosBadgeType: Increase on all push payloads. Reset on modal open + markAllAsRead. 27/27 tests green. |
+| iOS app badge | A | 2026-03-23 | Commits d4c6725e, ea655d36. Tests: TEST_REPORT_NOTIFICATION_PASS2.md + TEST_PASS_7_REPORT.md (22/22 green) | Badge resets on markAllAsRead + modal open + last-read. SDK v5 setBadgeCount limitation documented. |
+| DM unread realtime | A | 2026-03-23 | Commit ea655d36. Test: TEST_PASS_7_REPORT.md (22/22 green) | message_reads INSERT listener on social-realtime channel. Conversation list invalidated on read. |
+| Notification send observability | B | 2026-03-23 | Commit ea655d36. Test: TEST_PASS_7_REPORT.md (22/22 green) | withTimeout(5000) on all board notifications. Empty catches eliminated. Transitional: no retry queue. |
+| Realtime subscription lifecycle | A | 2026-03-23 | Commit ea655d36. Audit: AUDIT_REALTIME_SUBSCRIPTIONS.md | 6 channels audited. Sign-out, resume, user-switch all correct via useEffect cleanup. |
 | Session member left notification | A | 2026-03-21 | Commit d4c6725e | notifyMemberLeft wired in ManageBoardModal (leave + admin-remove). Skip on session deletion. |
 | Holiday reminders | A | 2026-03-21 | Commit d4c6725e | New edge function + cron at 9 AM UTC. Per-user timezone. reminders preference column. Known: custom_holidays.year is NOT NULL, no recurring holidays yet. |
 | Email notifications | F | — | Unaudited | — |
@@ -151,9 +156,12 @@
 
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
-| Profile view/edit | F | — | Unaudited | — |
-| Preference updates | F | — | Unaudited | Ties to masked error in PreferencesService |
+| Profile cold-start freshness | A | 2026-03-23 | Commit a268b19f. Test: TEST_PASS_8_REPORT.md (25/25 green) | Always fetches fresh on mount. Persisted profile provides instant UI. Dead Zustand preferences removed. |
+| Preference updates + authority | A | 2026-03-23 | Commits 302b74d5, a268b19f. Tests: TEST_PASS_4_REPORT.md + TEST_PASS_8_REPORT.md | Atomic onboarding save (Pass 4). StaleTime 60s. Dead Zustand field removed. Authority map: AUTHORITY_MAP_PREFERENCES_PROFILE.md |
+| Category filter → deck sync | A | 2026-03-23 | Commit a268b19f. Test: TEST_PASS_8_REPORT.md (25/25 green) | PreferencesSheet invalidates deck-cards + userPreferences after save. No more stale cards after filter change. |
 | Account deletion | F | — | Unaudited | — |
+| Subscription tier freshness | B | 2026-03-23 | Commit cdd3cac0. Test: TEST_PASS_5_REPORT.md (27/27 green) | StaleTime 5min→60s. Transitional: "take highest of 3" model remains. Exception list: TIER_AUTHORITY_EXCEPTION_LIST.md |
+| Purchase error handling | A | 2026-03-23 | Commit cdd3cac0. Test: TEST_PASS_5_REPORT.md (27/27 green) | onError on all 4 RC mutations. Sync retry + info toast in both paywall screens. |
 | Subscription management | F | — | Unaudited | RevenueCat integration |
 
 ---
@@ -197,11 +205,14 @@
 | Network failure at every layer | F | — | Unaudited | — |
 | Slow network degradation | F | — | Unaudited | — |
 | Reconnection recovery | F | — | Unaudited | refetchOnReconnect: 'always' |
+| Offline queue observability | B | 2026-03-23 | Commit 8839c00b. Test: TEST_PASS_9B_REPORT.md (16/16 green) | Discards logged (console.error). Queue cleared on logout. Transitional: no user notification on discard, no retry UI for board actions. |
 
 ### State & Cache
 
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
+| Query key consolidation | A | 2026-03-23 | Commit 846e7cce. Test: TEST_PASS_6_REPORT.md (30/30 green) | One factory per entity. Saved cards (3→1), person cards (2→1), blocked users (2→1). 18 hardcoded keys replaced. Old useBlockedUsers deleted. Dead Zustand field removed. Grep proof: zero orphaned literals. |
+| Mutation error handling | A | 2026-03-23 | Commit 27e475ac. Test: TEST_PASS_9A_REPORT.md (24/24 green) | 16 mutations got onError. 7 silent catches logged. ~50 remaining are non-state-changing (documented). |
 | React Query cache invalidation | F | — | Unaudited | After every mutation |
 | Zustand persistence schema versioning | F | — | Unaudited | DECK_SCHEMA_VERSION exists |
 | App background → foreground state survival | F | — | Unaudited | useForegroundRefresh.ts |
@@ -232,6 +243,7 @@
 | Edge function error extraction | F | — | Unaudited | Duck-typing utility exists |
 | User-facing error messages | F | — | Unaudited | Are they actionable? |
 | Silent failure paths | F | — | Unaudited | FP-01 catalog |
+| Service error contract | F | 2026-03-23 | Transitional containment in Pass 10. | DEFERRED: 4 service functions return null/[]/fallback on error. [TRANSITIONAL] logging added. Full fix: ServiceResult<T> return type migration (~60+ call sites). Owner: next hardening cycle. |
 
 ### Security & Auth
 
