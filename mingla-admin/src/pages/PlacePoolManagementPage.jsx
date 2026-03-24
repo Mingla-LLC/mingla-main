@@ -1339,29 +1339,19 @@ function PhotoTab({ city, stats, tiles }) {
   const stopRef = useRef(false);
   const pollRef = useRef(null);
 
-  // Query actual DB counts — single source of truth
+  // Query actual DB counts via SQL RPC — single source of truth, city-scoped
   const fetchCounts = async () => {
     if (!city) return;
     try {
-      // Count places with photos (array_length > 0, not the __backfill_failed__ marker)
-      const { count: totalCount } = await supabase
-        .from("place_pool").select("id", { count: "exact", head: true })
-        .eq("city_id", city.id).eq("is_active", true);
+      const { data } = await supabase.rpc("admin_city_place_stats", { p_city_id: city.id });
 
-      const { count: photoCount } = await supabase
-        .from("place_pool").select("id", { count: "exact", head: true })
-        .eq("city_id", city.id).eq("is_active", true)
-        .not("stored_photo_urls", "cd", "{}");
-
-      // Dry run for actual backfill candidates (global, not city-scoped)
-      const { data: dryData } = await supabase.functions.invoke("backfill-place-photos", {
-        body: { dryRun: true, batchSize: 1 },
-      });
-
-      if (mountedRef.current) {
-        setTotalPlaces(totalCount ?? 0);
-        setWithPhotos(photoCount ?? 0);
-        setMissingCount(dryData?.totalRemaining ?? 0);
+      if (mountedRef.current && data) {
+        const total = (data.total_places || 0) + (data.inactive_places || 0);
+        const withP = data.with_photos || 0;
+        const withoutP = data.without_photos || 0;
+        setTotalPlaces(data.total_places || 0);
+        setWithPhotos(withP);
+        setMissingCount(withoutP);
       }
     } catch { /* ignore */ }
   };

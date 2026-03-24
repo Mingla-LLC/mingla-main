@@ -26,16 +26,9 @@ serve(async (req: Request) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    // Find places with photo metadata but no stored photos
+    // Find places with photo metadata but no stored photos (via RPC — PostgREST .cd.{} unreliable for empty arrays)
     const { data: places, error: queryError } = await supabaseAdmin
-      .from('place_pool')
-      .select('id, google_place_id, photos')
-      .or('stored_photo_urls.is.null,stored_photo_urls.cd.{}')
-      .not('photos', 'is', null)
-      .neq('photos', '[]')
-      .eq('is_active', true)
-      .order('created_at', { ascending: true })
-      .limit(batchSize);
+      .rpc('get_places_needing_photos', { p_batch_size: batchSize });
 
     if (queryError) {
       console.error('[backfill-place-photos] Query error:', queryError);
@@ -43,14 +36,9 @@ serve(async (req: Request) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Count total remaining
-    const { count: totalRemaining } = await supabaseAdmin
-      .from('place_pool')
-      .select('id', { count: 'exact', head: true })
-      .or('stored_photo_urls.is.null,stored_photo_urls.cd.{}')
-      .not('photos', 'is', null)
-      .neq('photos', '[]')
-      .eq('is_active', true);
+    // Count total remaining (via RPC)
+    const { data: countResult } = await supabaseAdmin.rpc('count_places_needing_photos');
+    const totalRemaining = countResult ?? 0;
 
     if (dryRun) {
       return new Response(JSON.stringify({
