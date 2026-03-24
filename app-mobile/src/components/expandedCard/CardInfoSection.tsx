@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { Icon } from "../ui/Icon";
 import { parseAndFormatDistance } from "../utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
+import { getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 
 interface CardInfoSectionProps {
   title: string;
@@ -53,7 +54,9 @@ export default function CardInfoSection({
 }: CardInfoSectionProps) {
   const resolvedTier = priceTier ?? googleLevelToTierSlug(priceLevel);
   const tierData = TIER_BY_SLUG[resolvedTier];
-  const tierDisplayText = `${tierLabel(resolvedTier)} · ${tierRangeLabel(resolvedTier)}`;
+  const currencySymbol = getCurrencySymbol(currency || 'USD');
+  const currencyRate = getCurrencyRate(currency || 'USD');
+  const tierDisplayText = `${tierLabel(resolvedTier)} · ${tierRangeLabel(resolvedTier, currencySymbol, currencyRate)}`;
   const tierColor = tierData?.color ?? '#d97706';
   // Get category icon component
   const getCategoryIcon = () => {

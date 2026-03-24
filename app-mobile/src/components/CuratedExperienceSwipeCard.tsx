@@ -3,8 +3,8 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
-import { googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
-import { parseAndFormatDistance } from './utils/formatters';
+import { googleLevelToTierSlug, tierLabel, formatTierLabel } from '../constants/priceTiers';
+import { parseAndFormatDistance, formatCurrency, getCurrencySymbol, getCurrencyRate } from './utils/formatters';
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -31,9 +31,10 @@ interface Props {
   onSeePlan: () => void;
   travelMode?: string;
   measurementSystem?: 'Metric' | 'Imperial';
+  currencyCode?: string;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode }: Props) {
   // Compact card shows only main (non-optional) stops
   const mainStops = card.stops.filter(s => !s.optional);
   const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
@@ -43,11 +44,14 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   // Show tier label from the first non-optional stop's priceTier, or fallback to price range
   const firstMainStop = visibleStops.find(s => !s.optional);
   const firstStopTier = firstMainStop?.priceTier || visibleStops[0]?.priceTier;
+  const effectiveCurrency = currencyCode || 'USD';
+  const symbol = getCurrencySymbol(effectiveCurrency);
+  const rate = getCurrencyRate(effectiveCurrency);
   const priceText = firstStopTier
-    ? tierLabel(firstStopTier)
+    ? formatTierLabel(firstStopTier, symbol, rate)
     : card.totalPriceMin === 0 && card.totalPriceMax === 0
       ? 'Free'
-      : `$${card.totalPriceMin}–${card.totalPriceMax}`;
+      : `${formatCurrency(card.totalPriceMin, effectiveCurrency)}–${formatCurrency(card.totalPriceMax, effectiveCurrency)}`;
 
   const isSingleStop = visibleStops.length === 1;
   const categoryLabel = card.categoryLabel || 'Adventurous';

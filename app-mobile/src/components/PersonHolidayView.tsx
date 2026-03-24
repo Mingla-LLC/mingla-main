@@ -26,7 +26,9 @@ import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
 import { computeTravelInfo } from "../utils/travelTime";
-import { PriceTierSlug, tierLabel } from "../constants/priceTiers";
+import { PriceTierSlug, formatTierLabel } from "../constants/priceTiers";
+import { useLocalePreferences } from "../hooks/useLocalePreferences";
+import { getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 import { ordinal } from "../utils/ordinalSuffix";
 import { s, vs, ms, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
@@ -346,6 +348,9 @@ function CardRow({
   seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
 }) {
+  const { currency } = useLocalePreferences();
+  const currencySymbol = getCurrencySymbol(currency);
+  const currencyRate = getCurrencyRate(currency);
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
   const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
 
@@ -411,7 +416,7 @@ function CardRow({
               category={c.category}
               imageUrl={c.imageUrl}
               rating={c.rating}
-              priceRange={c.priceTier ? tierLabel(c.priceTier as PriceTierSlug) : null}
+              priceRange={c.priceTier ? formatTierLabel(c.priceTier as PriceTierSlug, currencySymbol, currencyRate) : null}
               isCurated={c.cardType === "curated"}
               experienceType={c.experienceType}
               stops={c.stops}
@@ -426,7 +431,7 @@ function CardRow({
                   imageUrl: c.imageUrl,
                   rating: c.rating,
                   address: c.address,
-                  priceRange: c.priceTier ? tierLabel(c.priceTier as PriceTierSlug) : null,
+                  priceRange: c.priceTier ? formatTierLabel(c.priceTier as PriceTierSlug, currencySymbol, currencyRate) : null,
                   cardType: c.cardType,
                   experienceType: c.experienceType,
                   website: c.website,

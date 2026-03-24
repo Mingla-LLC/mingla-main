@@ -11,6 +11,8 @@ import {
   googleLevelToTierSlug,
   PriceTierSlug,
 } from "../constants/priceTiers";
+import { useLocalePreferences } from "../hooks/useLocalePreferences";
+import { getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 
 export const PERSON_GRID_CARD_WIDTH = s(180);
 
@@ -32,9 +34,10 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
   priceLevel,
   onPress,
 }) => {
+  const { currency } = useLocalePreferences();
   const resolvedTier: PriceTierSlug =
     priceTier ?? googleLevelToTierSlug(priceLevel);
-  const formattedPrice = formatTierLabel(resolvedTier);
+  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
   const categoryIconName = getCategoryIcon(category);
 
   return (

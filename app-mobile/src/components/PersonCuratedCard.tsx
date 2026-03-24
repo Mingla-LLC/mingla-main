@@ -3,6 +3,8 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 import { Icon } from "./ui/Icon";
 import { s, vs } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
+import { useLocalePreferences } from "../hooks/useLocalePreferences";
+import { formatCurrency } from "./utils/formatters";
 
 export interface PersonCuratedCardProps {
   id: string;
@@ -22,19 +24,6 @@ const CARD_HEIGHT = s(240);
 const IMAGE_HEIGHT_RATIO = 0.55;
 const AMBER = "#F59E0B";
 
-function formatPriceRange(
-  min: number | null,
-  max: number | null
-): string | null {
-  if (min != null && max != null) {
-    return `$${min} \u2013 $${max}`;
-  }
-  if (min != null) {
-    return `$${min}+`;
-  }
-  return null;
-}
-
 const PersonCuratedCard: React.FC<PersonCuratedCardProps> = ({
   title,
   tagline,
@@ -46,7 +35,12 @@ const PersonCuratedCard: React.FC<PersonCuratedCardProps> = ({
   rating,
   onPress,
 }) => {
-  const priceRange = formatPriceRange(totalPriceMin, totalPriceMax);
+  const { currency } = useLocalePreferences();
+  const priceRange = totalPriceMin != null && totalPriceMax != null
+    ? `${formatCurrency(totalPriceMin, currency)}–${formatCurrency(totalPriceMax, currency)}`
+    : totalPriceMin != null
+      ? `${formatCurrency(totalPriceMin, currency)}+`
+      : null;
   const hasRating = rating != null;
   const hasMeta = hasRating || priceRange != null;
 

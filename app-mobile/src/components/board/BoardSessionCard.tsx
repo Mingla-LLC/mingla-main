@@ -9,6 +9,19 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { useLocalePreferences } from "../../hooks/useLocalePreferences";
+import { formatPriceRange } from "../utils/formatters";
+
+function getTravelModeIcon(mode?: string): string {
+  switch (mode) {
+    case 'driving': return 'car';
+    case 'transit': return 'bus-outline';
+    case 'bicycling':
+    case 'biking': return 'bicycle-outline';
+    case 'walking':
+    default: return 'walk-outline';
+  }
+}
 
 interface BoardSessionCardProps {
   card: any;
@@ -43,6 +56,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
   totalCards = 1,
 }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const { currency } = useLocalePreferences();
   const cardData = card.card_data || card.experience_data || {};
   const images = cardData.images?.length ? cardData.images : (cardData.image ? [cardData.image] : []);
   const matchScore = Math.round(cardData.matchScore || 0);
@@ -112,21 +126,25 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
         <View style={styles.detailsSection}>
           {/* Stats Row */}
           <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Icon name="star" size={14} color="#eb7825" />
-              <Text style={styles.statText}>
-                {cardData.rating?.toFixed(1) || "4.5"} (
-                {cardData.reviewCount || 0})
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Icon name="paper-plane" size={14} color="#eb7825" />
-              <Text style={styles.statText}>
-                {cardData.travelTime || "12 min drive"}
-              </Text>
-            </View>
+            {cardData.rating != null && cardData.rating > 0 && (
+              <View style={styles.statItem}>
+                <Icon name="star" size={14} color="#eb7825" />
+                <Text style={styles.statText}>
+                  {Number(cardData.rating).toFixed(1)} (
+                  {cardData.reviewCount || 0})
+                </Text>
+              </View>
+            )}
+            {cardData.travelTime && cardData.travelTime !== '0 min' && (
+              <View style={styles.statItem}>
+                <Icon name={getTravelModeIcon(cardData.travelMode)} size={14} color="#eb7825" />
+                <Text style={styles.statText}>
+                  {cardData.travelTime}
+                </Text>
+              </View>
+            )}
             <Text style={styles.priceText}>
-              {cardData.priceRange || "$12-28"}
+              {cardData.priceRange ? formatPriceRange(cardData.priceRange, currency) : '—'}
             </Text>
           </View>
 

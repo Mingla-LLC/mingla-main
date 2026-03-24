@@ -42,6 +42,17 @@ import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
 import { useKeyboard } from "../../hooks/useKeyboard";
 
+function getTravelModeIcon(mode?: string): string {
+  switch (mode) {
+    case 'driving': return 'car';
+    case 'transit': return 'bus-outline';
+    case 'bicycling':
+    case 'biking': return 'bicycle-outline';
+    case 'walking':
+    default: return 'walk-outline';
+  }
+}
+
 interface SavedCard {
   id: string;
   title: string;
@@ -1798,9 +1809,9 @@ const SavedTab = ({
             </View>
           </View>
 
-          {/* Title: stop names joined with arrows */}
+          {/* Title: experience title, fallback to stop names */}
           <Text style={curatedSavedStyles.title} numberOfLines={2}>
-            {stops.map(s => s.placeName).join(' → ')}
+            {card.title?.trim() || stops.map(s => s.placeName).join(' → ')}
           </Text>
 
           {/* Tagline */}
@@ -1924,16 +1935,20 @@ const SavedTab = ({
               {/* Stats row: Rating, Duration, Price, Chevron */}
               <View style={styles.cardMeta}>
                 <View style={styles.cardStats}>
-                  <View style={styles.statItem}>
-                    <Icon name="star" size={14} color="#fbbf24" />
-                    <Text style={styles.statText}>{card.rating || "4.5"}</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Icon name="paper-plane" size={14} color="#6b7280" />
-                    <Text style={styles.statText}>
-                      {card.travelTime || "15m"}
-                    </Text>
-                  </View>
+                  {card.rating != null && Number(card.rating) > 0 && (
+                    <View style={styles.statItem}>
+                      <Icon name="star" size={14} color="#fbbf24" />
+                      <Text style={styles.statText}>{Number(card.rating).toFixed(1)}</Text>
+                    </View>
+                  )}
+                  {card.travelTime && card.travelTime !== '0 min' && (
+                    <View style={styles.statItem}>
+                      <Icon name={getTravelModeIcon((card as any).travelMode)} size={14} color="#6b7280" />
+                      <Text style={styles.statText}>
+                        {card.travelTime}
+                      </Text>
+                    </View>
+                  )}
                   <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
                     {card.priceTier && TIER_BY_SLUG[card.priceTier as PriceTierSlug]
                       ? formatTierLabel(card.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency || "USD"), getCurrencyRate(accountPreferences?.currency || "USD"))

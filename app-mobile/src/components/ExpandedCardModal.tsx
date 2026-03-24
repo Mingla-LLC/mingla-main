@@ -16,7 +16,7 @@ import {
 import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
-import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
+import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { weatherService, WeatherData } from "../services/weatherService";
@@ -370,6 +370,7 @@ function CuratedPlanView({
   userPreferences,
   currentMode,
   onCardRemoved,
+  currencyCode,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
@@ -379,6 +380,7 @@ function CuratedPlanView({
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
+  currencyCode?: string;
 }) {
   return (
     <MultiStopPlanView
@@ -390,6 +392,7 @@ function CuratedPlanView({
       userPreferences={userPreferences}
       currentMode={currentMode}
       onCardRemoved={onCardRemoved}
+      currencyCode={currencyCode}
     />
   );
 }
@@ -404,6 +407,7 @@ function MultiStopPlanView({
   userPreferences,
   currentMode,
   onCardRemoved,
+  currencyCode,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
@@ -413,6 +417,7 @@ function MultiStopPlanView({
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
+  currencyCode?: string;
 }) {
   // Defensive: stops may be undefined if card data is stale or cast from ExpandedCardData
   const stops = Array.isArray(card.stops) ? card.stops : [];
@@ -422,10 +427,11 @@ function MultiStopPlanView({
       ? (stops.reduce((s, st) => s + st.rating, 0) / stops.length).toFixed(1)
       : '–';
 
+  const effectiveCurrency = currencyCode || 'USD';
   const priceText =
     card.totalPriceMin === 0 && card.totalPriceMax === 0
       ? 'Free'
-      : `$${card.totalPriceMin}–$${card.totalPriceMax}`;
+      : `${formatCurrency(card.totalPriceMin, effectiveCurrency)}–${formatCurrency(card.totalPriceMax, effectiveCurrency)}`;
 
   // Total time calculation
   const totalStopMinutes = stops.reduce((s, st) => s + (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0 ? st.estimatedDurationMinutes : 45), 0);
@@ -1094,6 +1100,7 @@ export default function ExpandedCardModal({
                   userPreferences={userPreferences}
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
+                  currencyCode={accountPreferences?.currency || 'USD'}
                 />
 
                 {/* Weather for first stop */}
@@ -1118,7 +1125,7 @@ export default function ExpandedCardModal({
                     category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
                     title={curatedCard.title}
                     address={curatedCard.stops[0]?.address}
-                    priceRange={`$${curatedCard.totalPriceMin}–$${curatedCard.totalPriceMax}`}
+                    priceRange={curatedCard.totalPriceMin === 0 && curatedCard.totalPriceMax === 0 ? 'Free' : `${formatCurrency(curatedCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(curatedCard.totalPriceMax, accountPreferences?.currency || 'USD')}`}
                     travelTime={curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined}
                     strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
                     routeDuration={curatedCard.estimatedDurationMinutes}

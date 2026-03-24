@@ -1811,6 +1811,7 @@ export default function SwipeableCards({
                     onSeePlan={handleCardExpand}
                     travelMode={effectiveTravelMode}
                     measurementSystem={accountPreferences?.measurementSystem}
+                    currencyCode={accountPreferences?.currency || 'USD'}
                   />
                 ) : (
                   <LockedCuratedCard
@@ -1866,12 +1867,14 @@ export default function SwipeableCards({
                             </Text>
                           </View>
                         ) : null}
-                        <View style={styles.detailBadge}>
-                          <Icon name="star" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {(currentRec.rating ?? 0).toFixed(1)}
-                          </Text>
-                        </View>
+                        {currentRec.rating != null && currentRec.rating > 0 && (
+                          <View style={styles.detailBadge}>
+                            <Icon name="star" size={12} color="white" />
+                            <Text style={styles.detailBadgeText}>
+                              {currentRec.rating.toFixed(1)}
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.detailBadge}>
                           <Icon name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>

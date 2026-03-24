@@ -436,12 +436,14 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                           {parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "Nearby"}
                         </Text>
                       </View>
-                      <View style={styles.detailBadge}>
-                        <Icon name="star" size={11} color="white" />
-                        <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
-                          {cardData.rating?.toFixed(1) || "4.5"}
-                        </Text>
-                      </View>
+                      {cardData.rating != null && cardData.rating > 0 && (
+                        <View style={styles.detailBadge}>
+                          <Icon name="star" size={11} color="white" />
+                          <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                            {Number(cardData.rating).toFixed(1)}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.detailBadge}>
                         <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
                           {(cardData as any).priceTier && TIER_BY_SLUG[(cardData as any).priceTier as PriceTierSlug]
