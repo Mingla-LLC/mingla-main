@@ -30,7 +30,7 @@ serve(async (req: Request) => {
     const { data: places, error: queryError } = await supabaseAdmin
       .from('place_pool')
       .select('id, google_place_id, photos')
-      .or('stored_photo_urls.is.null,stored_photo_urls.eq.{}')
+      .or('stored_photo_urls.is.null,stored_photo_urls.cd.{}')
       .not('photos', 'is', null)
       .neq('photos', '[]')
       .eq('is_active', true)
@@ -47,7 +47,7 @@ serve(async (req: Request) => {
     const { count: totalRemaining } = await supabaseAdmin
       .from('place_pool')
       .select('id', { count: 'exact', head: true })
-      .or('stored_photo_urls.is.null,stored_photo_urls.eq.{}')
+      .or('stored_photo_urls.is.null,stored_photo_urls.cd.{}')
       .not('photos', 'is', null)
       .neq('photos', '[]')
       .eq('is_active', true);
