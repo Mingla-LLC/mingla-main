@@ -97,7 +97,7 @@ export default function BetaFeedbackModal({
     }
 
     if (playbackSound) {
-      try { await playbackSound.unloadAsync(); } catch {}
+      try { await playbackSound.unloadAsync(); } catch (e) { console.warn('[BetaFeedbackModal] Sound unload failed:', e); }
       setPlaybackSound(null);
     }
 
@@ -223,7 +223,7 @@ export default function BetaFeedbackModal({
 
   const reRecord = async () => {
     if (playbackSound) {
-      try { await playbackSound.unloadAsync(); } catch {}
+      try { await playbackSound.unloadAsync(); } catch (e) { console.warn('[BetaFeedbackModal] Sound unload failed:', e); }
       setPlaybackSound(null);
     }
     setIsPlaying(false);

@@ -47,6 +47,9 @@ export function useRecordVisit() {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
       queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
     },
+    onError: (error) => {
+      console.error('[useVisits] Record visit failed:', error);
+    },
   });
 }
 
@@ -58,6 +61,9 @@ export function useRemoveVisit() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
       queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
+    },
+    onError: (error) => {
+      console.error('[useVisits] Remove visit failed:', error);
     },
   });
 }

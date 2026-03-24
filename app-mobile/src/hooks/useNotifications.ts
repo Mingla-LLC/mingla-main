@@ -155,7 +155,7 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
             }
           );
           // Haptic feedback for new notification
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch((e) => console.warn('[useNotifications] Haptic feedback failed:', e));
         }
       )
       .on(

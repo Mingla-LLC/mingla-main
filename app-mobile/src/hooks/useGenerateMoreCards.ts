@@ -24,5 +24,8 @@ export function useGenerateMoreCards() {
         mode: "generate_more",
         excludeCardIds: params.excludeCardIds,
       }),
+    onError: (error) => {
+      console.error('[useGenerateMoreCards] Generation failed:', error);
+    },
   });
 }

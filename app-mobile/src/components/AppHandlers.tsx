@@ -674,7 +674,7 @@ export function useAppHandlers(state: any) {
       offlineService.cacheUserPreferences({
         profile_id: user.id,
         ...dbPreferences,
-      } as any).catch(() => {});
+      } as any).catch((e: any) => console.warn('[AppHandlers] Offline preference cache failed:', e));
 
       return true;
     } catch (error) {
@@ -960,7 +960,7 @@ export function useAppHandlers(state: any) {
               savedCardId: savedCardData.id,
               cardName: card.title,
             });
-          }).catch(() => {});
+          }).catch((e: any) => console.warn('[AppHandlers] Board notification failed:', e));
         }
 
         // Invalidate savedCards query to trigger a refetch
@@ -1003,7 +1003,7 @@ export function useAppHandlers(state: any) {
                   cardId: card.id,
                   cardName: card.title,
                 },
-              }).catch(() => {});
+              }).catch((e: any) => console.warn('[AppHandlers] Pair activity notification failed:', e));
             }
           });
 

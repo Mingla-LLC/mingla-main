@@ -1151,7 +1151,7 @@ export default function DiscoverScreen({
 
       // Fetch holidays for each active pairing in parallel
       const results = await Promise.all(
-        pills.map((pill) => getSharedCustomHolidaysByPairing(pill.pairingId!).catch(() => []))
+        pills.map((pill) => getSharedCustomHolidaysByPairing(pill.pairingId!).catch((e) => { console.warn('[DiscoverScreen] Shared custom holidays fetch failed:', e); return []; }))
       );
 
       for (let i = 0; i < pills.length; i++) {

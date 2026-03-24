@@ -153,6 +153,9 @@ export function useSessionDiscussion(sessionId: string | null, currentUserId: st
       stopTyping();
       queryClient.invalidateQueries({ queryKey: discussionKeys.messages(sessionId!) });
     },
+    onError: (error) => {
+      console.error('[useSessionDiscussion] Send message failed:', error);
+    },
   });
 
   // 6. Toggle reaction mutation
@@ -161,6 +164,9 @@ export function useSessionDiscussion(sessionId: string | null, currentUserId: st
       toggleReaction(messageId, currentUserId!, emoji),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: discussionKeys.messages(sessionId!) });
+    },
+    onError: (error) => {
+      console.error('[useSessionDiscussion] Toggle reaction failed:', error);
     },
   });
 

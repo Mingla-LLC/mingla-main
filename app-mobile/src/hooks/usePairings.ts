@@ -64,6 +64,9 @@ export function useSendPairRequest() {
       // Invalidate pills — the new request will appear there
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
+    onError: (error) => {
+      console.error('[usePairings] Send request failed:', error);
+    },
   });
 }
 
@@ -73,6 +76,9 @@ export function useCancelPairRequest() {
     mutationFn: cancelPairRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
+    },
+    onError: (error) => {
+      console.error('[usePairings] Cancel request failed:', error);
     },
   });
 }
@@ -84,6 +90,9 @@ export function useCancelPairInvite() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
+    onError: (error) => {
+      console.error('[usePairings] Cancel invite failed:', error);
+    },
   });
 }
 
@@ -94,6 +103,9 @@ export function useUnpair() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
       queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
+    },
+    onError: (error) => {
+      console.error('[usePairings] Unpair failed:', error);
     },
   });
 }

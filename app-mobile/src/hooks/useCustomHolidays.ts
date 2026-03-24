@@ -63,6 +63,9 @@ export function useCreateCustomHoliday() {
         queryKey: customHolidayKeys.list(variables.user_id, variables.person_id),
       });
     },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Create failed:', error);
+    },
   });
 }
 
@@ -72,6 +75,9 @@ export function useDeleteCustomHoliday() {
     mutationFn: deleteCustomHoliday,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
+    },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Delete failed:', error);
     },
   });
 }
@@ -85,6 +91,9 @@ export function useArchiveHoliday(userId: string, personId: string) {
         queryKey: customHolidayKeys.archived(userId, personId),
       });
     },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Archive failed:', error);
+    },
   });
 }
 
@@ -96,6 +105,9 @@ export function useUnarchiveHoliday(userId: string, personId: string) {
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.archived(userId, personId),
       });
+    },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Unarchive failed:', error);
     },
   });
 }
@@ -138,6 +150,9 @@ export function useCreateCustomHolidayForPairing() {
         ),
       });
     },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Create pairing holiday failed:', error);
+    },
   });
 }
 
@@ -151,6 +166,9 @@ export function useArchiveHolidayForPairing(userId: string, pairingId: string) {
         queryKey: customHolidayKeys.archivedByPairing(userId, pairingId),
       });
     },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Archive pairing holiday failed:', error);
+    },
   });
 }
 
@@ -163,6 +181,9 @@ export function useUnarchiveHolidayForPairing(userId: string, pairingId: string)
       queryClient.invalidateQueries({
         queryKey: customHolidayKeys.archivedByPairing(userId, pairingId),
       });
+    },
+    onError: (error) => {
+      console.error('[useCustomHolidays] Unarchive pairing holiday failed:', error);
     },
   });
 }
