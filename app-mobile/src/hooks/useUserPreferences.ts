@@ -48,7 +48,7 @@ export const useUserPreferences = (userId: string | undefined) => {
     queryKey: ['userPreferences', userId],
     queryFn: ({ signal }) => fetchUserPreferences(userId, signal),
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - preferences don't change often
+    staleTime: 60_000, // 60s — matches subscription tier window from Pass 5
     gcTime: 24 * 60 * 60 * 1000, // 24 hours
     // Retry once after a short delay. The most common failure cause is network
     // socket recovery after background resume. Single retry handles it cleanly.

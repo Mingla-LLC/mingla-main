@@ -75,12 +75,13 @@ export const useUserProfile = () => {
     }
   }, [user?.id, loadProfile]);
 
-  // Load profile when user changes
+  // Load profile when user changes — always fetch fresh.
+  // Persisted profile shows instantly (no loading flash); fresh fetch replaces it.
   useEffect(() => {
-    if (user?.id && !profile) {
+    if (user?.id) {
       loadProfile(user.id);
     }
-  }, [user?.id, profile, loadProfile]);
+  }, [user?.id, loadProfile]);
 
   // Listen for profile changes in real-time
   useEffect(() => {

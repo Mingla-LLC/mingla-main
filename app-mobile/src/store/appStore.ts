@@ -77,7 +77,6 @@ interface AppState {
 
   // User data
   profile: User | null;
-  preferences: Preferences | null;
 
   // Session state
   currentSession: CollaborationSession | null;
@@ -100,7 +99,6 @@ interface AppState {
   // Actions
   setAuth: (user: User | null) => void;
   setProfile: (profile: User | null) => void;
-  setPreferences: (preferences: Preferences | null) => void;
   // Session actions
   setCurrentSession: (session: CollaborationSession | null) => void;
   setAvailableSessions: (sessions: CollaborationSession[]) => void;
@@ -127,7 +125,6 @@ export const useAppStore = create<AppState>()(
       user: null,
       isAuthenticated: false,
       profile: null,
-      preferences: null,
       currentSession: null,
       availableSessions: [],
       pendingInvites: [],
@@ -153,7 +150,6 @@ export const useAppStore = create<AppState>()(
 
       // User data actions
       setProfile: (profile) => set({ profile }),
-      setPreferences: (preferences) => set({ preferences }),
 
       // Session actions
       setCurrentSession: (currentSession) => set({ currentSession }),
@@ -192,7 +188,6 @@ export const useAppStore = create<AppState>()(
           user: null,
           isAuthenticated: false,
           profile: null,
-          preferences: null,
           currentSession: null,
           availableSessions: [],
           pendingInvites: [],
@@ -211,7 +206,6 @@ export const useAppStore = create<AppState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         profile: state.profile,
-        preferences: state.preferences,
         // Don't persist currentSession and isInSolo - always fetch from database
         currentCardIndex: state.currentCardIndex,
         // Deck card history — persisted across sessions

@@ -859,12 +859,11 @@ export default function PreferencesSheet({
         toastManager.error("Preferences couldn't save — they'll reset next time.", 4000);
       }
 
-      // Invalidate curated experiences and location — these have separate query keys
-      // not driven by batchSeed, so they need explicit invalidation.
-      // deck-cards is NOT invalidated — the refreshKey→batchSeed→query key change
-      // already triggers the refetch (see RecommendationsContext refreshKey effect).
+      // Invalidate all preference-dependent queries so the UI reflects saved changes.
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
 
     })();
 
