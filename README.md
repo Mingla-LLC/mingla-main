@@ -4,6 +4,38 @@ A mobile app for planning social outings — combining pool-first card serving, 
 
 ---
 
+## Architecture Constitution
+
+**These are non-negotiable. Every change to this codebase must satisfy them. Violations require explicit justification in the PR/commit or they are rejected.**
+
+1. **No dead taps.** No primary interaction may wait on non-critical network work before visible UI response. Show UI first, fetch after.
+
+2. **One owner per truth.** Every important domain fact has one authoritative owner. If you need a second cache, document why and how it syncs.
+
+3. **No silent failures.** No state-changing action may fail silently. Every mutation has an `onError` handler. Every service catch block logs.
+
+4. **One key per entity.** One entity family uses one query-key factory. All mutations invalidate via the factory's `all` prefix.
+
+5. **Server state stays server-side.** Server-authoritative state is not persisted locally unless there is a documented offline contract.
+
+6. **Logout clears everything.** Logout must clear all private local data — React Query, Zustand, AsyncStorage, in-memory queues, realtime channels.
+
+7. **Label what's temporary.** Transitional fixes must be labeled `[TRANSITIONAL]` and tracked in `docs/TRANSITIONAL_ITEMS_REGISTRY.md` with an owner and exit condition.
+
+8. **Subtract before adding.** When fixing an ownership or consistency issue, remove the competing path — don't add a sync layer on top.
+
+### Supporting Documents
+
+| Document | Purpose |
+|----------|---------|
+| [`docs/DOMAIN_ADRS.md`](docs/DOMAIN_ADRS.md) | Source of truth per domain (block state, subscriptions, saved cards, notifications, preferences, service errors) |
+| [`docs/IMPLEMENTATION_GATES.md`](docs/IMPLEMENTATION_GATES.md) | Pre-code checklist every implementor must complete |
+| [`docs/MUTATION_CONTRACT.md`](docs/MUTATION_CONTRACT.md) | Standard for all state-changing operations |
+| [`docs/QUERY_KEY_REGISTRY.md`](docs/QUERY_KEY_REGISTRY.md) | Canonical query key shapes and invalidation rules |
+| [`docs/TRANSITIONAL_ITEMS_REGISTRY.md`](docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary solutions tracker with owners and exit conditions |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
