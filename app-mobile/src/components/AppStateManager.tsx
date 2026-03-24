@@ -751,6 +751,10 @@ export function useAppState() {
       const { logoutOneSignal } = await import("../services/oneSignalService");
       logoutOneSignal();
 
+      // Clear in-memory offline queue (AsyncStorage key cleared by prefix sweep below)
+      const { realtimeService } = await import('../services/realtimeService');
+      realtimeService.clearQueue();
+
       // Clear all user data from the store immediately
       const store = useAppStore.getState();
       store.clearUserData();

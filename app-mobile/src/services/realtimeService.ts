@@ -4,6 +4,18 @@ import { CollaborationSession, Board, Save } from "../types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { logger } from "../utils/logger";
 
+/**
+ * Offline action queue for board collaboration.
+ *
+ * LIMITATION (documented in HARDENING_EXECUTION_PLAN_V3.md):
+ * After 5 failed retries, actions are discarded with a console.error log.
+ * The user is NOT notified of dropped collaboration actions.
+ * A proper solution would surface failed actions in the board UI with retry.
+ * This is acceptable for board actions (swipes, presence) but NOT for
+ * user-authored messages — DM failures are handled separately in
+ * ConnectionsPage via the failed: true message state.
+ */
+
 // Offline action queue item
 interface QueuedAction {
   id: string;
@@ -944,8 +956,12 @@ export class RealtimeService {
           // Channel not available, keep in queue
           action.retries++;
           if (action.retries > 5) {
-            // Remove after too many retries
+            console.error(
+              '[realtimeService] Offline action discarded after 5 retries:',
+              { type: action.type, sessionId: action.sessionId, id: action.id }
+            );
             this.offlineQueue.shift();
+            this.saveQueueToStorage();
           }
           break;
         }
@@ -953,7 +969,12 @@ export class RealtimeService {
         console.error("Error processing queued action:", error);
         action.retries++;
         if (action.retries > 5) {
+          console.error(
+            '[realtimeService] Offline action discarded after 5 retries:',
+            { type: action.type, sessionId: action.sessionId, id: action.id }
+          );
           this.offlineQueue.shift();
+          this.saveQueueToStorage();
         }
         break;
       }
@@ -1016,6 +1037,15 @@ export class RealtimeService {
    */
   getQueuedActionsCount(): number {
     return this.offlineQueue.length;
+  }
+
+  /**
+   * Clear the in-memory offline queue.
+   * Called on sign-out to prevent stale actions from leaking across user sessions.
+   */
+  clearQueue(): void {
+    this.offlineQueue = [];
+    this.saveQueueToStorage();
   }
 }
 

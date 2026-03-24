@@ -206,7 +206,9 @@ export const useAppStore = create<AppState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         profile: state.profile,
-        // Don't persist currentSession and isInSolo - always fetch from database
+        // currentSession, isInSolo, availableSessions, pendingInvites are intentionally
+        // NOT persisted. They are refreshed from the database on every app open via
+        // loadActiveSession(). Persisting them would risk showing stale session state.
         currentCardIndex: state.currentCardIndex,
         // Deck card history — persisted across sessions
         deckBatches: state.deckBatches,
