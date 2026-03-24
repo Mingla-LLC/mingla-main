@@ -15,6 +15,8 @@ export interface BoardSession {
   invite_link?: string;
   max_participants?: number;
   is_active: boolean;
+  archived_at?: string | null;
+  status?: string;
   created_by: string;
   created_at: string;
   last_activity_at?: string;
@@ -54,6 +56,9 @@ export const useBoardSession = (sessionId?: string) => {
   const [allParticipantPreferences, setAllParticipantPreferences] = useState<BoardSessionPreferences[] | null>(null);
   const [loading, setLoading] = useState(!!sessionId);
   const [error, setError] = useState<string | null>(null);
+  const [sessionValid, setSessionValid] = useState<boolean | null>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const loadSessionIdRef = useRef<string | null>(null);
@@ -78,6 +83,8 @@ export const useBoardSession = (sessionId?: string) => {
         if (loadSessionIdRef.current === loadId) {
           console.warn('[useBoardSession] 10s timeout — showing available data');
           setError('Session data is taking too long to load');
+          setSessionValid(false);
+          setHasPermission(false);
           setLoading(false);
         }
       }, 10000);
@@ -142,6 +149,29 @@ export const useBoardSession = (sessionId?: string) => {
 
         if (prefsResult.data) {
           setPreferences(prefsResult.data as BoardSessionPreferences);
+        }
+
+        // --- Derive session validity and user permission from fetched data ---
+        // Eliminates 3 sequential BoardErrorHandler queries that re-fetched
+        // the same data from collaboration_sessions and session_participants.
+        const fetchedSession = sessionResult.data;
+        const fetchedParticipants = participantsResult.data || [];
+
+        const isValid = !!fetchedSession && fetchedSession.is_active && !fetchedSession.archived_at;
+        const userParticipant = fetchedParticipants.find(
+          (p: any) => p.user_id === user?.id
+        );
+        const isMember = !!userParticipant && userParticipant.has_accepted !== false;
+        const isCreator = fetchedSession?.created_by === user?.id;
+
+        setSessionValid(isValid);
+        setHasPermission(isMember || isCreator);
+        setIsAdmin(isCreator);
+
+        if (!isValid) {
+          setError(fetchedSession?.archived_at ? 'This session has been archived.' : 'This session is no longer active.');
+        } else if (!isMember && !isCreator) {
+          setError('You do not have access to this session.');
         }
       } catch (err: any) {
         if (loadSessionIdRef.current !== loadId) return;
@@ -367,6 +397,9 @@ export const useBoardSession = (sessionId?: string) => {
     allParticipantPreferences,
     loading,
     error,
+    sessionValid,
+    hasPermission,
+    isAdmin,
     loadSession,
     updatePreferences,
     getInviteLink,

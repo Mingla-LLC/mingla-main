@@ -18,7 +18,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from './ui/Icon';
 import { useBoardSession } from "../hooks/useBoardSession";
 import { useSessionVoting } from "../hooks/useSessionVoting";
-import { useSessionStatus } from "../hooks/useSessionStatus";
 import { useCollaborationCalendar } from "../hooks/useCollaborationCalendar";
 import { supabase } from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
@@ -127,6 +126,9 @@ export default function SessionViewModal({
     session,
     loading: sessionLoading,
     error: sessionError,
+    sessionValid,
+    hasPermission,
+    isAdmin,
     loadSession,
   } = useBoardSession(sessionId);
   const { user, profile } = useAppStore();
@@ -145,13 +147,10 @@ export default function SessionViewModal({
   // Data states
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
-  const [participants, setParticipants] = useState<Participant[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
 
-  // Permission states
-  const [sessionValid, setSessionValid] = useState<boolean | null>(null);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Participants derived from useBoardSession data — no separate query needed.
+  const participants = (session?.participants || []) as Participant[];
 
   // Settings dropdown state
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
@@ -227,33 +226,6 @@ export default function SessionViewModal({
     },
     [sessionId]
   );
-
-  // Load participants
-  const loadParticipants = useCallback(async () => {
-    if (!sessionId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("session_participants")
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
-        .eq("session_id", sessionId);
-
-      if (error) throw error;
-      setParticipants((data || []) as Participant[]);
-    } catch (err: unknown) {
-      console.error("Error loading participants:", err);
-    }
-  }, [sessionId]);
 
   // Load unread message count
   const loadUnreadCount = useCallback(async () => {
@@ -396,41 +368,18 @@ export default function SessionViewModal({
     );
   }, [user?.id, sessionId, onClose, onSessionExited, showToast]);
 
-  // Validate session and permissions on mount
+  // Session validity and permissions are now derived inside useBoardSession
+  // from the same data fetch — no separate validation queries needed.
+
+  // Start loading saved cards and unread count immediately on mount.
+  // These queries only need sessionId and don't depend on validation.
+  // Data will be ready by the time the loading gate opens.
   useEffect(() => {
-    if (!visible) return;
-
-    const validateSession = async () => {
-      if (!sessionId || !user?.id) return;
-
-      const validityCheck = await BoardErrorHandler.checkSessionValidity(sessionId);
-      setSessionValid(validityCheck.valid);
-
-      if (!validityCheck.valid && validityCheck.error) {
-        BoardErrorHandler.showError(validityCheck.error);
-        return;
-      }
-
-      const permissionCheck = await BoardErrorHandler.checkSessionPermission(sessionId, user.id);
-      setHasPermission(permissionCheck.hasPermission);
-      setIsAdmin(permissionCheck.isAdmin || false);
-
-      if (!permissionCheck.hasPermission && permissionCheck.error) {
-        BoardErrorHandler.showError(permissionCheck.error);
-      }
-    };
-
-    validateSession();
-  }, [visible, sessionId, user?.id]);
-
-  // Load data when modal opens
-  useEffect(() => {
-    if (visible && sessionValid && hasPermission) {
+    if (visible && sessionId) {
       loadSavedCards(0, false);
-      loadParticipants();
       loadUnreadCount();
     }
-  }, [visible, sessionValid, hasPermission, loadSavedCards, loadParticipants, loadUnreadCount]);
+  }, [visible, sessionId, loadSavedCards, loadUnreadCount]);
 
   // Load card message counts when saved cards change
   useEffect(() => {
@@ -444,8 +393,12 @@ export default function SessionViewModal({
   loadCardMessageCountsRef.current = loadCardMessageCounts;
   const loadUnreadCountRef = useRef(loadUnreadCount);
   loadUnreadCountRef.current = loadUnreadCount;
-  const loadParticipantsRef = useRef(loadParticipants);
-  loadParticipantsRef.current = loadParticipants;
+  // Participant refreshes now go through useBoardSession's loadSession
+  const refreshParticipants = useCallback(() => {
+    if (sessionId) loadSession(sessionId);
+  }, [sessionId, loadSession]);
+  const loadParticipantsRef = useRef(refreshParticipants);
+  loadParticipantsRef.current = refreshParticipants;
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -529,16 +482,32 @@ export default function SessionViewModal({
     loadCounts: loadVoteAndRSVPCounts,
   } = useSessionVoting(sessionId, user?.id, activeParticipantsCount);
 
-  const {
-    status: sessionStatus,
-    isStatusLoaded,
-    canVote,
-    canRSVP,
-    isLocked: isSessionLocked,
-    advanceToVoting,
-    markCompleted,
-    isCreator,
-  } = useSessionStatus(sessionId, session?.created_by, user?.id);
+  // Session status derived from useBoardSession data — no separate query needed.
+  // Realtime updates to session.status come via useBoardSession's realtime subscription.
+  const sessionStatus = session?.status ?? null;
+  const isStatusLoaded = !sessionLoading && !!session;
+  const canVote = isStatusLoaded && (sessionStatus === 'active' || sessionStatus === 'voting');
+  const canRSVP = isStatusLoaded && (sessionStatus === 'active' || sessionStatus === 'voting');
+  const isSessionLocked = isStatusLoaded && sessionStatus === 'locked';
+
+  const advanceToVoting = useCallback(async () => {
+    if (!sessionId || !isAdmin) return;
+    const { error } = await supabase
+      .from('collaboration_sessions')
+      .update({ status: 'voting' })
+      .eq('id', sessionId);
+    // Realtime will update session.status via useBoardSession subscription
+    if (error) console.error('Failed to advance to voting:', error);
+  }, [sessionId, isAdmin]);
+
+  const markCompleted = useCallback(async () => {
+    if (!sessionId || !isAdmin) return;
+    const { error } = await supabase
+      .from('collaboration_sessions')
+      .update({ status: 'completed' })
+      .eq('id', sessionId);
+    if (error) console.error('Failed to mark completed:', error);
+  }, [sessionId, isAdmin]);
 
   const {
     lockedCalendarEntry,
