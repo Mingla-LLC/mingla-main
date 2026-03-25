@@ -1753,7 +1753,6 @@ function AppContent() {
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
-            onScheduleFromSaved={handlers.handleScheduleFromSaved}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -1820,7 +1819,7 @@ function AppContent() {
               console.log("Add to calendar:", experienceData)
             }
             savedCards={savedCards}
-            onSaveCard={(card: any) => console.log("Save card:", card)}
+            onSaveCard={handlers.handleSaveCard}
             onShareCard={handlers.handleShareCard}
             onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
               console.log("Purchase complete:", experienceData, purchaseOption)

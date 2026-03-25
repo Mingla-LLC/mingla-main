@@ -162,7 +162,7 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface SwipeableCardsProps {
   userPreferences?: any;
   currentMode?: string;
-  onCardLike: (card: any) => void;
+  onCardLike: (card: any) => Promise<boolean>;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -1044,7 +1044,9 @@ export default function SwipeableCards({
             setCurrentCardIndex(0);
 
             // Handle swipe logic (tracking, saving, etc.) in background
-            handleSwipeRef.current?.(direction, cardToRemove);
+            handleSwipeRef.current?.(direction, cardToRemove)?.catch((err) => {
+              console.error('[SwipeableCards] Swipe handler error:', err);
+            });
 
             // Wait for React to render the next card before resetting position
             // This prevents the flash/flicker
@@ -1205,7 +1207,16 @@ export default function SwipeableCards({
           } catch {}
 
           if (direction === 'right') {
-            onCardLike(card);
+            const saveResult = await onCardLike(card);
+            if (saveResult === false) {
+              // Rollback: re-add card to deck by removing from removedCards
+              setRemovedCards((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(card.id);
+                return newSet;
+              });
+              return;
+            }
           }
           // Left-swipe dismissal tracking handled in the shared block below
         } else {
@@ -1264,7 +1275,16 @@ export default function SwipeableCards({
           }
 
           // Call onCardLike which handles saving to board or solo saved_cards
-          onCardLike(card);
+          const saveResult = await onCardLike(card);
+          if (saveResult === false) {
+            // Rollback: re-add card to deck by removing from removedCards
+            setRemovedCards((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(card.id);
+              return newSet;
+            });
+            return;
+          }
         } else {
           // Track dislike
           try {

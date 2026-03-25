@@ -42,40 +42,45 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  *
  * @returns true (open), false (closed), or null (cannot determine)
  */
-export function isPlaceOpenNow(
+/**
+ * Checks if a place is open at a specific date/time.
+ * Returns true (open), false (closed), or null (cannot determine — no hours data).
+ */
+export function isPlaceOpenAt(
   weekdayText: string[] | undefined | null,
+  targetDate: Date,
   utcOffsetMinutes?: number | null,
 ): boolean | null {
   if (!weekdayText || weekdayText.length === 0) return null;
 
-  // When venue timezone offset is known, compute the venue's current local
-  // time from UTC. Otherwise fall back to device local time.
-  let now: Date;
+  // When venue timezone offset is known, shift targetDate to venue local time.
+  // Otherwise use targetDate as-is (device local time).
+  let checkDate: Date;
   if (utcOffsetMinutes != null) {
-    const utcMs = Date.now();
+    const utcMs = targetDate.getTime();
     const venueMs = utcMs + utcOffsetMinutes * 60_000;
-    now = new Date(venueMs);
+    checkDate = new Date(venueMs);
     // Use UTC methods since we manually shifted to venue time
   } else {
-    now = new Date();
+    checkDate = targetDate;
   }
 
-  const todayName = utcOffsetMinutes != null
-    ? DAY_NAMES[now.getUTCDay()]
-    : DAY_NAMES[now.getDay()];
+  const dayName = utcOffsetMinutes != null
+    ? DAY_NAMES[checkDate.getUTCDay()]
+    : DAY_NAMES[checkDate.getDay()];
 
-  // Find today's line (case-insensitive match on the day prefix before the colon)
-  const todayLine = weekdayText.find((line) => {
+  // Find the matching day's line (case-insensitive match on the day prefix before the colon)
+  const dayLine = weekdayText.find((line) => {
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) return false;
-    return line.substring(0, colonIdx).trim().toLowerCase() === todayName.toLowerCase();
+    return line.substring(0, colonIdx).trim().toLowerCase() === dayName.toLowerCase();
   });
 
-  if (!todayLine) return null;
+  if (!dayLine) return null;
 
   // Extract hours portion (everything after the first ": ")
-  const colonIdx = todayLine.indexOf(':');
-  const hoursPortion = todayLine.substring(colonIdx + 1).trim();
+  const colonIdx = dayLine.indexOf(':');
+  const hoursPortion = dayLine.substring(colonIdx + 1).trim();
 
   if (!hoursPortion) return null;
 
@@ -85,9 +90,9 @@ export function isPlaceOpenNow(
 
   // Split by ", " for multiple ranges (e.g. "11:00 AM – 2:00 PM, 5:00 PM – 10:00 PM")
   const ranges = hoursPortion.split(/,\s*/);
-  const currentMinutes = utcOffsetMinutes != null
-    ? now.getUTCHours() * 60 + now.getUTCMinutes()
-    : now.getHours() * 60 + now.getMinutes();
+  const checkMinutes = utcOffsetMinutes != null
+    ? checkDate.getUTCHours() * 60 + checkDate.getUTCMinutes()
+    : checkDate.getHours() * 60 + checkDate.getMinutes();
 
   let allRangesFailedToParse = true;
 
@@ -105,12 +110,12 @@ export function isPlaceOpenNow(
 
     if (closeMinutes <= openMinutes) {
       // Crosses midnight: e.g. 8:00 PM – 2:00 AM
-      if (currentMinutes >= openMinutes || currentMinutes < closeMinutes) {
+      if (checkMinutes >= openMinutes || checkMinutes < closeMinutes) {
         return true;
       }
     } else {
       // Normal range: e.g. 9:00 AM – 10:00 PM
-      if (currentMinutes >= openMinutes && currentMinutes < closeMinutes) {
+      if (checkMinutes >= openMinutes && checkMinutes < closeMinutes) {
         return true;
       }
     }
@@ -121,6 +126,16 @@ export function isPlaceOpenNow(
 
   // Parsed at least one range but none matched → closed
   return false;
+}
+
+/**
+ * Backward-compatible wrapper — checks if a place is open right now.
+ */
+export function isPlaceOpenNow(
+  weekdayText: string[] | undefined | null,
+  utcOffsetMinutes?: number | null,
+): boolean | null {
+  return isPlaceOpenAt(weekdayText, new Date(), utcOffsetMinutes);
 }
 
 /**

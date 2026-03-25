@@ -773,13 +773,13 @@ export function useAppHandlers(state: any) {
     return suggestions;
   };
 
-  const handleSaveCard = async (card: any) => {
+  const handleSaveCard = async (card: any): Promise<boolean> => {
     if (!user?.id) {
       Alert.alert(
         "Sign in to save",
         "Create an account or sign in to save experiences."
       );
-      return;
+      return false;
     }
 
     // CRITICAL FIX: Read currentMode and boardsSessions from stateRef.current to get the absolute latest values
@@ -828,7 +828,7 @@ export function useAppHandlers(state: any) {
             "info",
             3000
           );
-          return;
+          return true;
         }
       } catch (error) {
         // Card doesn't exist, continue with save
@@ -857,7 +857,7 @@ export function useAppHandlers(state: any) {
               `${card.title} is already in your saved experiences.`
             );
           }
-          return;
+          return true;
         }
       } catch (error) {
         // Error checking (continue with save)
@@ -1020,175 +1020,18 @@ export function useAppHandlers(state: any) {
         // Log in-app notification
         inAppNotificationService.notifyCardSaved(card.title, card.id);
       }
+      return true;
     } catch (error) {
       console.error("Error saving card:", error);
       Alert.alert(
         "Save failed",
         "We couldn't save this experience. Please try again."
       );
+      return false;
     }
   };
 
-  const handleScheduleFromSaved = async (card: any) => {
-    // Generate a suggested date based on user preferences
-    const suggestedDates = generateSuggestedDates(userPreferences || {});
-    const suggestedDate = suggestedDates[0];
-    const date = new Date(suggestedDate);
-
-    // TEMP: Log the exact datetime used for scheduling (for device calendar debugging)
-    console.log(
-      "[ScheduleFromSaved] Using datetime for calendar:",
-      suggestedDate,
-      "->",
-      date.toISOString()
-    );
-
-    // Format date and time for display
-    const dateStr = date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    const timeStr = date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    // Persist calendar entry in Supabase so it is available across devices
-    try {
-      const { CalendarService } = await import("../services/calendarService");
-
-      // Avoid duplicates (check current in-memory entries first)
-      const exists = calendarEntries.some(
-        (entry: any) =>
-          (entry.experience?.id === card.id ||
-            entry.card_data?.id === card.id) &&
-          entry.status === "pending"
-      );
-      if (exists) {
-        return;
-      }
-
-      const record = await CalendarService.addEntryFromSavedCard(
-        user.id,
-        card,
-        suggestedDate
-      );
-
-      // Add to device calendar
-      try {
-        const { DeviceCalendarService } = await import(
-          "../services/deviceCalendarService"
-        );
-        const deviceEvent = DeviceCalendarService.createEventFromCard(
-          card,
-          date,
-          record.duration_minutes || 120 // Use duration from record if available, default 2 hours
-        );
-        const deviceEventId =
-          await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
-
-        // Store device event ID in the calendar entry for future reference
-        // (We could update the Supabase record with this ID if needed)
-        if (deviceEventId) {
-          // Optionally update the record with device_event_id
-          // For now, we'll just log it
-        }
-      } catch (deviceCalendarError) {
-        // Don't fail the whole operation if device calendar fails
-        // The Supabase entry is already saved, which is the source of truth
-        console.warn("Failed to add to device calendar:", deviceCalendarError);
-      }
-
-      // Normalize record into the shape used by CalendarTab
-      const cardData = record.card_data || {};
-      const calendarEntry = {
-        id: record.id,
-        card_id: record.card_id, // Include card_id for matching
-        board_card_id: record.board_card_id,
-        title: cardData.title || card.title || "Saved Experience",
-        category: cardData.category || card.category || "Experience",
-        categoryIcon: cardData.categoryIcon || card.categoryIcon || "star",
-        image:
-          cardData.image ||
-          card.image ||
-          (Array.isArray(cardData.images)
-            ? cardData.images[0]
-            : card.images?.[0] || ""),
-        images:
-          cardData.images || card.images || (card.image ? [card.image] : []),
-        rating: cardData.rating || card.rating || 0,
-        reviewCount: cardData.reviewCount || card.reviewCount || 0,
-        date: dateStr,
-        time: timeStr,
-        source: (record.source as "solo" | "collaboration") || "solo",
-        sourceDetails: card.sessionName
-          ? `From ${card.sessionName}`
-          : "Solo Experience",
-        priceRange: cardData.priceRange || card.priceRange || "TBD",
-        description: cardData.description || card.description || "",
-        fullDescription:
-          cardData.fullDescription ||
-          card.fullDescription ||
-          card.description ||
-          "",
-        address: cardData.address || card.address || "",
-        highlights: cardData.highlights || card.highlights || [],
-        socialStats: cardData.socialStats ||
-          card.socialStats || {
-            views: 0,
-            likes: 0,
-            saves: 0,
-          },
-        status: record.status,
-        experience: {
-          ...cardData,
-          ...card,
-          id: card.id,
-        },
-        suggestedDates: [record.scheduled_at],
-        sessionName: card.sessionName,
-        archived_at: record.archived_at,
-        dateTimePreferences: userPreferences
-          ? {
-              timeOfDay: userPreferences.timeOfDay || "Afternoon",
-              dayOfWeek: userPreferences.dayOfWeek || "Weekend",
-              planningTimeframe:
-                userPreferences.planningTimeframe || "This month",
-            }
-          : undefined,
-      };
-
-      // Add to calendar entries - check for duplicates using card_id
-      setCalendarEntries((prev: any[]) => {
-        // Check if already exists (prevent duplicates)
-        const exists = prev.some(
-          (entry: any) =>
-            (entry.card_id === card.id || entry.experience?.id === card.id) &&
-            entry.status === "pending" &&
-            !entry.archived_at
-        );
-        if (exists) {
-          return prev;
-        }
-        return [calendarEntry, ...prev];
-      });
-
-      // Show confirmation toast matching the design (orange banner at top)
-      toastManager.success(
-        `Scheduled! ${card.title} has been moved to your calendar`,
-        3000
-      );
-    } catch (error) {
-      console.error("Error scheduling from saved:", error);
-      Alert.alert(
-        "Schedule failed",
-        "We couldn't add this to your calendar. Please try again."
-      );
-    }
-  };
+  // handleScheduleFromSaved removed — SavedTab uses its own date picker flow
 
   const handleRemoveFromCalendar = async (entry: any) => {
     if (!user?.id) {
@@ -1305,7 +1148,6 @@ export function useAppHandlers(state: any) {
     handleNavigateToConnections,
     handleShareCard,
     handleSaveCard,
-    handleScheduleFromSaved,
     handleRemoveFromCalendar,
     generateSuggestedDates,
   };

@@ -35,7 +35,7 @@ import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } 
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
-import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { isPlaceOpenNow, isPlaceOpenAt, extractWeekdayText } from "../../utils/openingHoursUtils";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
@@ -1115,15 +1115,7 @@ const SavedTab = ({
       return;
     }
 
-    // Check if place is open using live client-side time computation
-    const liveStatus = isPlaceOpenNow(extractWeekdayText(card.openingHours));
-    if (liveStatus === false) {
-      Alert.alert(
-        "Place Closed",
-        "This place is currently closed. Please schedule for when it's open."
-      );
-      return;
-    }
+    // Hours validation moved to handleProposeDateTime — checks selected time, not current time
 
     // Close expanded card modal if open (prevents Modal stacking conflicts)
     if (isModalVisible) {
@@ -1329,7 +1321,20 @@ const SavedTab = ({
         );
       }
     } else {
-      // Regular card — proceed immediately (existing behavior)
+      // Regular card — check if place is open at selected time
+      const weekdayText = extractWeekdayText(cardToSchedule?.openingHours);
+      const openAtSelectedTime = isPlaceOpenAt(weekdayText, date);
+      if (openAtSelectedTime === false) {
+        Alert.alert(
+          "Place Closed",
+          "This place appears to be closed at the time you selected. Choose a different time or schedule anyway.",
+          [
+            { text: "Change Time", style: "cancel" },
+            { text: "Schedule Anyway", onPress: () => proceedWithScheduling(date) },
+          ]
+        );
+        return;
+      }
       proceedWithScheduling(date);
     }
   };

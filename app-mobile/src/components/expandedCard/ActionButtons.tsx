@@ -26,7 +26,7 @@ import { toastManager } from "../ui/Toast";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
-import { extractWeekdayText } from "../../utils/openingHoursUtils";
+import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
 
 
 interface ActionButtonsProps {
@@ -499,7 +499,7 @@ export default function ActionButtons({
     setPickerMode("time");
   };
 
-  const proceedWithScheduling = async (scheduledDateTime: Date) => {
+  const proceedWithScheduling = async (scheduledDateTime: Date, skipStopCheck = false) => {
     if (!user?.id) {
       Alert.alert("Error", "You must be logged in to schedule cards.");
       setIsScheduling(false);
@@ -513,6 +513,42 @@ export default function ActionButtons({
         setIsScheduling(false);
         return;
       }
+
+      // For curated cards: validate each stop's hours at estimated arrival time
+      if (!skipStopCheck && card.stops && card.stops.length > 0) {
+        const stopIssues: string[] = [];
+        let cumulativeMinutes = 0;
+
+        for (const stop of card.stops) {
+          const estimatedArrival = new Date(scheduledDateTime.getTime() + cumulativeMinutes * 60000);
+          const weekdayText = extractWeekdayText((stop as any).openingHours || (stop as any).opening_hours);
+          const openAtArrival = isPlaceOpenAt(weekdayText, estimatedArrival);
+
+          if (openAtArrival === false) {
+            stopIssues.push(`${(stop as any).placeName || (stop as any).title} may be closed at ${estimatedArrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+          }
+
+          cumulativeMinutes += ((stop as any).durationMinutes || (stop as any).duration || 60);
+          cumulativeMinutes += ((stop as any).travelTimeToNext || 15);
+        }
+
+        if (stopIssues.length > 0) {
+          setIsScheduling(false);
+          Alert.alert(
+            "Some Stops May Be Closed",
+            stopIssues.join('\n'),
+            [
+              { text: "Change Time", style: "cancel" },
+              { text: "Schedule Anyway", onPress: () => {
+                setIsScheduling(true);
+                proceedWithScheduling(scheduledDateTime, true);
+              }},
+            ]
+          );
+          return;
+        }
+      }
+
       const scheduledDateISO = scheduledDateTime.toISOString();
 
       // Determine source based on current mode
