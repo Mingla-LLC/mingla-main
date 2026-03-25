@@ -162,6 +162,9 @@ function AppContent() {
     handleUserIdentityUpdate,
     safeAsyncStorageSet,
     isLoadingSavedCards,
+    isSavedCardsError,
+    refetchSavedCards,
+    isLoadingCalendarEntries,
     showOnboardingFlow,
     setShowOnboardingFlow,
     hasCompletedOnboarding,
@@ -1755,6 +1758,9 @@ function AppContent() {
           <LikesPage
             savedCards={savedCards}
             isLoadingSavedCards={isLoadingSavedCards}
+            isSavedCardsError={isSavedCardsError}
+            onRetrySavedCards={refetchSavedCards}
+            isLoadingCalendarEntries={isLoadingCalendarEntries}
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}

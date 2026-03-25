@@ -69,6 +69,9 @@ interface LikesPageProps {
   };
   calendarEntries?: any[];
   isLoadingSavedCards?: boolean;
+  isSavedCardsError?: boolean;
+  onRetrySavedCards?: () => void;
+  isLoadingCalendarEntries?: boolean;
   onScheduleFromSaved?: (savedCard: any) => void;
   onPurchaseFromSaved?: (card: any, purchaseOption: any) => void;
   onRemoveFromCalendar?: (entry: any) => void;
@@ -87,6 +90,9 @@ export default function LikesPage({
   accountPreferences,
   calendarEntries = [],
   isLoadingSavedCards = false,
+  isSavedCardsError = false,
+  onRetrySavedCards,
+  isLoadingCalendarEntries = false,
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onRemoveFromCalendar,
@@ -133,6 +139,8 @@ export default function LikesPage({
             savedCards={savedCards}
             calendarEntries={calendarEntries}
             isLoading={isLoadingSavedCards}
+            isError={isSavedCardsError}
+            onRetry={onRetrySavedCards}
             onScheduleFromSaved={onScheduleFromSaved || (() => {})}
             onPurchaseFromSaved={onPurchaseFromSaved || (() => {})}
             onShareCard={onShareCard || (() => {})}
@@ -144,6 +152,7 @@ export default function LikesPage({
         {activeTab === "calendar" && (
           <CalendarTab
             calendarEntries={calendarEntries}
+            isLoading={isLoadingCalendarEntries}
             onRemoveFromCalendar={onRemoveFromCalendar || (() => {})}
             onShareCard={onShareCard || (() => {})}
             onAddToCalendar={onAddToCalendar || (() => {})}

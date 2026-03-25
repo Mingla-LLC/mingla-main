@@ -217,7 +217,7 @@ export function useAppState() {
 
   // Use TanStack Query for saved cards and calendar entries
   const queryClient = useQueryClient();
-  const { data: savedCardsData, isLoading: isLoadingSavedCards } =
+  const { data: savedCardsData, isLoading: isLoadingSavedCards, isError: isSavedCardsError, refetch: refetchSavedCards } =
     useSavedCards(user?.id);
   const { data: calendarEntriesRawData, isLoading: isLoadingCalendarEntries } =
     useCalendarEntries(user?.id);
@@ -881,6 +881,9 @@ export function useAppState() {
     savedCards,
     setSavedCards,
     isLoadingSavedCards,
+    isSavedCardsError,
+    refetchSavedCards,
+    isLoadingCalendarEntries,
     removedCardIds,
     setRemovedCardIds,
     boardsSessions,

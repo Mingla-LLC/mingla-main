@@ -71,6 +71,7 @@ interface CalendarEntry {
 
 interface CalendarTabProps {
   calendarEntries: CalendarEntry[];
+  isLoading?: boolean;
   onRemoveFromCalendar: (entry: CalendarEntry) => void;
   onShareCard: (card: any) => void;
   onAddToCalendar: (entry: CalendarEntry) => void;
@@ -84,6 +85,7 @@ interface CalendarTabProps {
 
 const CalendarTab = ({
   calendarEntries,
+  isLoading = false,
   onRemoveFromCalendar,
   onShareCard,
   onAddToCalendar,
@@ -1078,6 +1080,18 @@ const CalendarTab = ({
       fontSize: 16,
       fontWeight: "600",
     },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingVertical: 48,
+      gap: 12,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: "#6b7280",
+      marginTop: 8,
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -1754,6 +1768,15 @@ const CalendarTab = ({
       dateAdded: entry.suggestedDates?.[0] || entry.date,
     };
   };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#eb7825" />
+        <Text style={styles.loadingText}>Loading your calendar...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

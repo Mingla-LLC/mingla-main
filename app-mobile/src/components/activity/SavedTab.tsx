@@ -96,6 +96,8 @@ interface SavedTabProps {
   savedCards?: SavedCard[];
   calendarEntries?: any[];
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onScheduleFromSaved: (card: SavedCard) => void | Promise<void>;
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
   onShareCard: (card: SavedCard) => void;
@@ -113,6 +115,8 @@ const SavedTab = ({
   savedCards: propSavedCards,
   calendarEntries = [],
   isLoading = false,
+  isError = false,
+  onRetry,
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onShareCard,
@@ -858,6 +862,18 @@ const SavedTab = ({
     },
     dateTimePicker: {
       height: 200,
+    },
+    retryPill: {
+      backgroundColor: "#eb7825",
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+      marginLeft: 8,
+    },
+    retryPillText: {
+      color: "#ffffff",
+      fontSize: 13,
+      fontWeight: "600",
     },
   });
 
@@ -2068,6 +2084,27 @@ const SavedTab = ({
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#eb7825" />
           <Text style={styles.loadingText}>Loading saved experiences...</Text>
+        </View>
+      );
+    }
+
+    if (isError && !effectiveIsLoading) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyStateIconCircle, { backgroundColor: '#fef2f2' }]}>
+            <Icon name="alert-circle-outline" size={22} color="#ef4444" />
+          </View>
+          <View style={styles.emptyStateTextContainer}>
+            <Text style={styles.emptyStateTitle}>Couldn't load saved cards</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              Something went wrong. Tap to try again.
+            </Text>
+          </View>
+          {onRetry && (
+            <TouchableOpacity onPress={onRetry} style={styles.retryPill} activeOpacity={0.7}>
+              <Text style={styles.retryPillText}>Retry</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }

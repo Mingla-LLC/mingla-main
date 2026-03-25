@@ -1257,6 +1257,7 @@ export default function DiscoverScreen({
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [hasCompletedDiscoverFetch, setHasCompletedDiscoverFetch] = useState(false);
+  const [discoverRetryKey, setDiscoverRetryKey] = useState(0);
   const [isDiscoverCacheMigrationReady, setIsDiscoverCacheMigrationReady] = useState(false);
   const hasFetchedRef = useRef(false);
   const fetchingRef = useRef(false);
@@ -1578,6 +1579,14 @@ export default function DiscoverScreen({
     const fetchDiscoverRecommendations = async () => {
       if (fetchingRef.current) return;
       fetchingRef.current = true;
+
+      // If retrying after an error, clear the guards that block re-fetching
+      if (discoverError) {
+        hasFetchedRef.current = false;
+        lastDiscoverFetchDateRef.current = null;
+        setDiscoverError(null);
+        setHasCompletedDiscoverFetch(false);
+      }
 
       if (!user?.id) {
         fetchingRef.current = false;
@@ -1903,7 +1912,7 @@ export default function DiscoverScreen({
     };
 
     fetchDiscoverRecommendations();
-  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady, userSelectedCategories, userTravelMode, preferencesRefreshKey]);
+  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady, userSelectedCategories, userTravelMode, preferencesRefreshKey, discoverRetryKey]);
 
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
@@ -3428,6 +3437,13 @@ export default function DiscoverScreen({
                       <Icon name="alert-circle-outline" size={48} color="#ef4444" />
                       <Text style={styles.emptyStateTitle}>Something went wrong</Text>
                       <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
+                      <TouchableOpacity
+                        onPress={() => setDiscoverRetryKey(k => k + 1)}
+                        style={styles.retryButton}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.retryButtonText}>Try Again</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
 
@@ -5541,6 +5557,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#F59E0B',
     fontWeight: '500',
+  },
+  retryButton: {
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 function generateUniqueId(): string {
