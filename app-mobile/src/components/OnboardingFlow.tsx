@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Switch,
   ScrollView,
+  Alert,
 } from 'react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
@@ -71,6 +72,8 @@ import { categories } from '../constants/categories'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
 import { LanguagePickerModal } from './onboarding/LanguagePickerModal'
+import { CountryPickerModal } from './onboarding/CountryPickerModal'
+import { getCurrencyByCountryCode, getMeasurementSystem } from '../services/countryCurrencyService'
 import {
   colors,
   typography,
@@ -741,6 +744,7 @@ const OnboardingFlow = ({
   const [showDatePicker, setShowDatePicker] = useState(false)
   // saving state removed — save handlers (Path A/B) deleted
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
+  const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
@@ -1562,6 +1566,32 @@ const OnboardingFlow = ({
     setSavingPrefs(false)
   }, [user?.id, data, goNext, persistStep, queryClient])
 
+  // ─── Country Change Handler (details substep) ───
+  const handleCountryChange = useCallback((newCountryCode: string) => {
+    const currencyInfo = getCurrencyByCountryCode(newCountryCode)
+    const newCurrency = currencyInfo?.currencyCode ?? 'USD'
+    const newSymbol = currencyInfo?.currencySymbol ?? '$'
+    const newMeasurement = getMeasurementSystem(newCountryCode)
+    const countryName = getCountryByCode(newCountryCode)?.name ?? newCountryCode
+
+    Alert.alert(
+      'Update settings?',
+      `Switching to ${countryName} will set your currency to ${newCurrency} (${newSymbol}) and units to ${newMeasurement}. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () => {
+            setData(p => ({
+              ...p,
+              userCountry: newCountryCode,
+            }))
+          },
+        },
+      ]
+    )
+  }, [])
+
   // ─── Save Identity & Details (Step 1 gender_identity + details → Step 2 transition) ───
   const handleSaveIdentity = useCallback(async () => {
     if (!user?.id) return
@@ -1572,12 +1602,18 @@ const OnboardingFlow = ({
       hasBirthday: !!data.userBirthday,
     })
 
+    // Derive currency and measurement from country selection
+    const derivedCurrency = getCurrencyByCountryCode(data.userCountry)?.currencyCode ?? 'USD'
+    const derivedMeasurement = getMeasurementSystem(data.userCountry)
+
     // Fire-and-forget profile save — do NOT block navigation
     PreferencesService.updateUserProfile(user.id, {
       gender: data.userGender,
       birthday: data.userBirthday?.toISOString().split('T')[0] || null,
       country: data.userCountry,
       preferred_language: data.userPreferredLanguage,
+      currency: derivedCurrency,
+      measurement_system: derivedMeasurement,
     }).then(() => {
       // Update local Zustand store so profile reflects new data immediately
       const currentProfile = useAppStore.getState().profile
@@ -1588,6 +1624,8 @@ const OnboardingFlow = ({
           birthday: data.userBirthday?.toISOString().split('T')[0] || null,
           country: data.userCountry,
           preferred_language: data.userPreferredLanguage,
+          currency: derivedCurrency,
+          measurement_system: derivedMeasurement,
         })
       }
     }).catch((err) => {
@@ -1983,18 +2021,29 @@ const OnboardingFlow = ({
           <Text style={styles.headline}>Almost done.</Text>
           <Text style={styles.body}>Just the basics. We'll handle the rest.</Text>
 
-          {/* Country — auto-detected from phone number, non-editable */}
+          {/* Country — pre-detected from phone number, editable */}
           <Text style={styles.fieldLabel}>Country</Text>
-          <View style={[styles.detailsPickerButton, styles.detailsPickerLocked]}>
-            <Text style={[styles.detailsPickerText, { color: colors.text.secondary }]}>
+          <Pressable
+            style={styles.detailsPickerButton}
+            onPress={() => setShowCountryPicker(true)}
+          >
+            <Text style={styles.detailsPickerText}>
               {getCountryByCode(data.userCountry)?.flag ?? ''}{' '}
               {getCountryByCode(data.userCountry)?.name ?? data.userCountry}
             </Text>
-            <View style={styles.detailsLockedBadge}>
-              <Icon name="lock-closed" size={12} color={colors.text.tertiary} />
-              <Text style={styles.detailsLockedText}>Auto</Text>
-            </View>
-          </View>
+            <Icon name="chevron-forward" size={16} color={colors.text.tertiary} />
+          </Pressable>
+          <Text style={styles.fieldHelperText}>Sets your currency and units of measurement</Text>
+
+          <CountryPickerModal
+            visible={showCountryPicker}
+            selectedCode={data.userCountry}
+            onSelect={(code: string) => {
+              handleCountryChange(code)
+              setShowCountryPicker(false)
+            }}
+            onClose={() => setShowCountryPicker(false)}
+          />
 
           {/* Date of Birth */}
           <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Date of birth</Text>
@@ -3296,6 +3345,12 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.xs,
     marginTop: spacing.md,
+  },
+  fieldHelperText: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
   detailsPickerButton: {
     flexDirection: 'row',

@@ -368,3 +368,13 @@ export function detectCurrencyFromLocation(geocodeResult: {
   }
   return undefined;
 }
+
+// ─── Measurement System ─────────────────────────────────────────────
+// Countries that officially use Imperial for everyday measurements.
+// UK is included because it commonly uses miles, stones, and pints
+// despite officially adopting metric.
+const IMPERIAL_COUNTRIES = new Set(['US', 'GB', 'LR', 'MM']);
+
+export function getMeasurementSystem(countryCode: string): 'metric' | 'imperial' {
+  return IMPERIAL_COUNTRIES.has(countryCode.toUpperCase()) ? 'imperial' : 'metric';
+}

@@ -26,6 +26,9 @@ import { mixpanelService } from "../../services/mixpanelService";
 import Toggle from "./Toggle";
 import * as Haptics from "expo-haptics";
 import type { NotificationPreferences } from "../../services/smartNotificationService";
+import { CountryPickerModal } from "../onboarding/CountryPickerModal";
+import { getCountryByCode } from "../../constants/countries";
+import { getCurrencyByCountryCode, getMeasurementSystem } from "../../services/countryCurrencyService";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -102,6 +105,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   const [showGenderPicker, setShowGenderPicker] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
 
   // Delete account state
   const [isDeleting, setIsDeleting] = useState(false);
@@ -269,6 +273,51 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     setShowBirthdayPicker(false);
     await updateField("birthday", dateStr);
   };
+
+  const updateCountry = useCallback(async (newCountryCode: string) => {
+    if (!user?.id) return;
+
+    const currencyInfo = getCurrencyByCountryCode(newCountryCode);
+    const newCurrency = currencyInfo?.currencyCode ?? "USD";
+    const newSymbol = currencyInfo?.currencySymbol ?? "$";
+    const newMeasurement = getMeasurementSystem(newCountryCode);
+    const countryName = getCountryByCode(newCountryCode)?.name ?? newCountryCode;
+
+    Alert.alert(
+      "Update country?",
+      `Changing to ${countryName} will update your currency to ${newCurrency} (${newSymbol}) and units to ${newMeasurement}. Continue?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          onPress: async () => {
+            setSavingField("country");
+            try {
+              await authService.updateUserProfile(user.id, {
+                country: newCountryCode,
+                currency: newCurrency,
+                measurement_system: newMeasurement,
+              });
+              if (profile) {
+                setProfile({
+                  ...profile,
+                  country: newCountryCode,
+                  currency: newCurrency,
+                  measurement_system: newMeasurement,
+                } as typeof profile);
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              mixpanelService.trackProfileSettingUpdated({ field: "country", value: newCountryCode });
+            } catch {
+              Alert.alert("Error", "Failed to update. Please try again.");
+            } finally {
+              setSavingField(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [user?.id, profile, setProfile]);
 
   // --- Delete account ---
   const handleDeleteAccount = () => {
@@ -453,6 +502,25 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               expanded={expandedSections.has("basics")}
               onToggle={() => toggleSection("basics")}
             >
+              {/* Country */}
+              <TouchableOpacity style={styles.row} onPress={() => setShowCountryPicker(true)} activeOpacity={0.7}>
+                <Text style={styles.rowLabel}>Country</Text>
+                <View style={styles.rowRight}>
+                  {savingField === "country" ? (
+                    <ActivityIndicator size="small" color="#eb7825" />
+                  ) : (
+                    <Text style={[styles.rowValue, !profile?.country && styles.rowPlaceholder]}>
+                      {profile?.country
+                        ? `${getCountryByCode(profile.country)?.flag ?? ""} ${getCountryByCode(profile.country)?.name ?? profile.country}`
+                        : "Not set"}
+                    </Text>
+                  )}
+                  <Icon name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.rowHelper}>Affects currency and units across the app</Text>
+              <View style={styles.rowDivider} />
+
               {/* Birthday */}
               <TouchableOpacity style={styles.row} onPress={() => setShowBirthdayPicker(true)} activeOpacity={0.7}>
                 <Text style={styles.rowLabel}>Birthday</Text>
@@ -785,6 +853,17 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         </Pressable>
       </Modal>
 
+      {/* Country Picker */}
+      <CountryPickerModal
+        visible={showCountryPicker}
+        selectedCode={profile?.country ?? "US"}
+        onSelect={(code: string) => {
+          updateCountry(code);
+          setShowCountryPicker(false);
+        }}
+        onClose={() => setShowCountryPicker(false)}
+      />
+
       {/* Delete Account Confirmation Modal */}
       <Modal visible={showDeleteConfirmModal} transparent animationType="fade" onRequestClose={closeDeleteModal}>
         <View style={styles.deleteOverlay}>
@@ -1103,6 +1182,7 @@ const styles = StyleSheet.create({
   rowValueBold: { fontSize: 14, fontWeight: "700", color: "#eb7825" },
   rowValueMuted: { fontSize: 14, fontWeight: "500", color: "#6b7280" },
   rowPlaceholder: { color: "#9ca3af", fontStyle: "italic" },
+  rowHelper: { fontSize: 12, color: "#9ca3af", marginLeft: 16, marginTop: -4, marginBottom: 8 },
   // Delete button
   deleteButton: {
     flexDirection: "row",
