@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export interface DirectMessage {
   id: string;
@@ -493,9 +494,7 @@ export class MessagingService {
       .eq('id', senderId)
       .single();
 
-    const senderName = profile?.display_name ||
-      (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : profile?.username) ||
-      'Unknown';
+    const senderName = getDisplayName(profile, 'Unknown');
 
     this.senderProfileCache.set(senderId, { name: senderName, cachedAt: Date.now() });
     return senderName;

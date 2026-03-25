@@ -28,6 +28,7 @@ import { realtimeService } from '../services/realtimeService';
 import { BoardPreferencesForm, BoardPreferences } from './board/BoardPreferencesForm';
 import { InviteMethodSelector, InviteMethod } from './board/InviteMethodSelector';
 import { InviteLinkShare } from './board/InviteLinkShare';
+import { getDisplayName } from '../utils/getDisplayName';
 import { QRCodeDisplay } from './board/QRCodeDisplay';
 import { InviteCodeDisplay } from './board/InviteCodeDisplay';
 import FriendSelectionModal from './FriendSelectionModal';
@@ -701,7 +702,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         ...selectedFriends,
         {
           id: friend.id,
-          name: friend.name || friend.display_name || friend.username,
+          name: friend.name || getDisplayName(friend),
           username: friend.username,
           avatar: friend.avatar,
           avatar_url: friend.avatar_url || friend.avatar,
@@ -762,9 +763,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           // Add to selectedFriends for session creation
           const friendData: SelectedFriend = {
             id: phoneLookupResult.user.id,
-            name:
-              phoneLookupResult.user.display_name ||
-              phoneLookupResult.user.username,
+            name: getDisplayName(phoneLookupResult.user),
             username: phoneLookupResult.user.username,
             avatar_url: phoneLookupResult.user.avatar_url || undefined,
           };
@@ -1248,9 +1247,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
                     <View style={styles.phoneLookupFeedbackRow}>
                       <Icon name="checkmark-circle" size={14} color={colors.success[500]} />
                       <Text style={styles.phoneLookupFoundText}>
-                        {phoneLookupResult.user?.display_name ||
-                          phoneLookupResult.user?.username ||
-                          'User'}{' '}
+                        {getDisplayName(phoneLookupResult.user, 'User')}{' '}
                         is on Mingla
                       </Text>
                     </View>
@@ -1642,7 +1639,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
           onSelectFriend={handleSelectFriend}
           friends={friends.map((f) => ({
             id: f.friend_user_id,
-            name: f.display_name || f.username,
+            name: getDisplayName(f),
             username: f.username,
             avatar: f.avatar_url,
             isOnline: false,
@@ -1698,7 +1695,7 @@ export const CreateSessionContent: React.FC<CreateSessionContentProps> = ({
         onSelectFriend={handleSelectFriend}
         friends={friends.map((f) => ({
           id: f.friend_user_id,
-          name: f.display_name || f.username,
+          name: getDisplayName(f),
           username: f.username,
           avatar: f.avatar_url,
           isOnline: false,

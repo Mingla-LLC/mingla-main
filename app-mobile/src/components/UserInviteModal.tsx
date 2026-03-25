@@ -5,6 +5,7 @@ import { Icon } from './ui/Icon';
 import { useFriends } from '../hooks/useFriends';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
+import { getDisplayName } from '../utils/getDisplayName';
 
 interface User {
   id: string;
@@ -44,11 +45,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
     }
     return dbFriends.map((friend) => ({
       id: friend.friend_user_id || friend.id,
-      name:
-        friend.display_name ||
-        `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
-        friend.username ||
-        "Unknown",
+      name: getDisplayName(friend),
       avatar: friend.avatar_url,
       isOnline: false, // Default to offline, can be enhanced with presence later
       lastSeen: undefined,

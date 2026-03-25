@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getDisplayName } from "../utils/getDisplayName";
 
 export interface BoardSessionData {
   id: string;
@@ -148,13 +149,7 @@ class BoardSessionService {
           const participantsData = participantsResult.data || [];
           const participants = participantsData.map((p: any) => {
             const profile = p.profiles;
-            const displayName =
-              profile?.display_name ||
-              `${profile?.first_name || ""} ${
-                profile?.last_name || ""
-              }`.trim() ||
-              profile?.username ||
-              "Unknown";
+            const displayName = getDisplayName(profile, 'Unknown');
 
             return {
               id: p.user_id,

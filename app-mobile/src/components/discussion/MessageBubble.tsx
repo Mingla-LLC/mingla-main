@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { BoardMessage } from "../../services/boardDiscussionService";
+import { getDisplayName } from "../../utils/getDisplayName";
 import { colors, typography, shadows } from "../../constants/designSystem";
 
 interface MessageBubbleProps {
@@ -82,10 +83,7 @@ function MessageBubbleComponent({
 }: MessageBubbleProps) {
   const reactions = message.reactions ?? [];
   const readBy = message.read_by ?? [];
-  const senderName =
-    message.user?.display_name ??
-    participantNames[message.user_id] ??
-    "Unknown";
+  const senderName = getDisplayName(message.user, '') || participantNames[message.user_id] || "Unknown";
 
   // Group reactions by emoji
   const groupedReactions = useMemo(() => {

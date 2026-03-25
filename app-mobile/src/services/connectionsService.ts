@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export interface Friend {
   id: string;
@@ -90,7 +91,7 @@ export const ConnectionsService = {
 
       return profiles?.map((profile: any) => ({
         id: profile.id,
-        name: profile.display_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown',
+        name: getDisplayName(profile, 'Unknown'),
         username: profile.username || 'unknown',
         avatar: undefined, // No profile_image column exists
         status: 'offline' as const, // Default status
@@ -211,7 +212,7 @@ export const ConnectionsService = {
         const profile = profiles?.find(p => p.id === request.user_id);
         return {
           id: request.id,
-          name: profile?.display_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || 'Unknown',
+          name: getDisplayName(profile, 'Unknown'),
           username: profile?.username || 'unknown',
           avatar: undefined, // No profile_image column exists
           mutualFriends: 0, // Default value

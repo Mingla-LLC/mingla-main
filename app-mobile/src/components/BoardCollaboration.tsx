@@ -13,6 +13,7 @@ import { realtimeService } from '../services/realtimeService';
 import { useAppStore } from '../store/appStore';
 import { ExperienceCard } from './ExperienceCard';
 import { supabase } from '../services/supabase';
+import { getDisplayName } from '../utils/getDisplayName';
 
 interface BoardCollaborationProps {
   boardId: string;
@@ -218,7 +219,7 @@ export const BoardCollaboration: React.FC<BoardCollaborationProps> = ({
                 </View>
                 <View style={styles.collaboratorInfo}>
                   <Text style={styles.collaboratorName}>
-                    {collaborator.profiles?.display_name || 'Unknown'}
+                    {getDisplayName(collaborator.profiles, 'Unknown')}
                   </Text>
                   <Text style={styles.collaboratorRole}>
                     {collaborator.role}

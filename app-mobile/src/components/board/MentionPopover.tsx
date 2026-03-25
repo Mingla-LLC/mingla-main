@@ -7,6 +7,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { getDisplayName } from '../../utils/getDisplayName';
 import { Participant } from './ParticipantAvatars';
 
 interface MentionPopoverProps {
@@ -59,7 +60,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
     }
     if (username && !looksLikeEmail(username)) return username;
 
-    return humanize(display_name || username || "Unknown");
+    return humanize(getDisplayName(participant.profiles ?? {}, "Unknown"));
   };
 
   const getParticipantInitial = (participant: Participant): string => {

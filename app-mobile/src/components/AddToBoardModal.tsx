@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
+import { getDisplayName } from '../utils/getDisplayName';
 
 interface Friend {
   id: string;
@@ -129,7 +130,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
     status: board.status || 'active',
     participants: (board.participants || []).map((p: any) => ({
       id: p.id || p.user_id,
-      name: p.name || p.display_name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown',
+      name: p.name || getDisplayName(p, 'Unknown'),
       username: p.username || 'user',
       status: 'offline' as const,
       isOnline: false,

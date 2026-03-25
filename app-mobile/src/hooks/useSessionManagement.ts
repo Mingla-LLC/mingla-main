@@ -5,6 +5,7 @@ import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
 import { PreferencesService } from '../services/preferencesService';
 import { normalizePreferencesForSave } from '../utils/preferencesConverter';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export interface SessionParticipantInput {
   type: 'existing_user' | 'phone_invite'
@@ -732,10 +733,7 @@ export const useSessionManagement = () => {
           sessionName: sessionData?.name || 'Collaboration Session',
           invitedBy: {
             id: dbInvite.inviter_id,
-            name: inviterProfile?.display_name ||
-              (inviterProfile?.first_name && inviterProfile?.last_name
-              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
-              : inviterProfile?.username) || 'Unknown',
+            name: getDisplayName(inviterProfile, 'Unknown'),
             username: inviterProfile?.username || 'unknown',
             avatar: inviterProfile?.avatar_url
           },

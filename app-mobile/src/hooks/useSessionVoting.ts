@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../services/supabase';
 import { realtimeService } from '../services/realtimeService';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export interface VoteCounts {
   [cardId: string]: {
@@ -316,7 +317,7 @@ export function useSessionVoting(
               ]).then(([cardRes, sessionRes, profileRes]) => {
                 const cardData = cardRes.data;
                 if (cardData?.saved_by && cardData.saved_by !== userId) {
-                  const voterName = profileRes.data?.display_name || profileRes.data?.first_name || 'Someone';
+                  const voterName = getDisplayName(profileRes.data);
                   notifyCardVoted({
                     sessionId,
                     sessionName: sessionRes.data?.name || 'Session',
@@ -495,7 +496,7 @@ export function useSessionVoting(
               ]).then(([cardRes, sessionRes, profileRes]) => {
                 const cardData = cardRes.data;
                 if (cardData?.saved_by && cardData.saved_by !== userId) {
-                  const rsvperName = profileRes.data?.display_name || profileRes.data?.first_name || 'Someone';
+                  const rsvperName = getDisplayName(profileRes.data);
                   notifyCardRsvp({
                     sessionId,
                     sessionName: sessionRes.data?.name || 'Session',

@@ -13,6 +13,7 @@
  * types/messaging.ts file. See §S2 in FEATURE_CHAT_SPINNER_AND_POOL_STABILITY_SPEC.md.
  */
 import { useState, useCallback } from 'react';
+import { getDisplayName } from '../utils/getDisplayName';
 import { supabase } from '../services/supabase';
 
 export interface Message {
@@ -117,10 +118,7 @@ export const useMessages = () => {
           participants.push({
             id: p.user_id,
             username: profileData?.username || 'Unknown',
-            display_name: profileData?.display_name ||
-              (profileData?.first_name && profileData?.last_name
-              ? `${profileData.first_name} ${profileData.last_name}`
-              : profileData?.username),
+            display_name: getDisplayName(profileData),
             first_name: profileData?.first_name,
             last_name: profileData?.last_name,
             avatar_url: profileData?.avatar_url,
@@ -155,10 +153,7 @@ export const useMessages = () => {
             file_name: msg.file_name,
             file_size: msg.file_size,
             created_at: msg.created_at,
-            sender_name: senderProfile?.display_name ||
-              (senderProfile?.first_name && senderProfile?.last_name
-              ? `${senderProfile.first_name} ${senderProfile.last_name}`
-              : senderProfile?.username) || 'Unknown',
+            sender_name: getDisplayName(senderProfile, 'Unknown'),
             is_read: !!readStatus,
           });
         }
@@ -226,10 +221,7 @@ export const useMessages = () => {
           file_name: msg.file_name,
           file_size: msg.file_size,
           created_at: msg.created_at,
-          sender_name: senderProfile?.display_name ||
-            (senderProfile?.first_name && senderProfile?.last_name
-            ? `${senderProfile.first_name} ${senderProfile.last_name}`
-            : senderProfile?.username) || 'Unknown',
+          sender_name: getDisplayName(senderProfile, 'Unknown'),
           is_read: !!readStatus,
         });
       }
@@ -304,10 +296,7 @@ export const useMessages = () => {
         file_name: messageData.file_name,
         file_size: messageData.file_size,
         created_at: messageData.created_at,
-        sender_name: senderProfile?.display_name ||
-          (senderProfile?.first_name && senderProfile?.last_name
-          ? `${senderProfile.first_name} ${senderProfile.last_name}`
-          : senderProfile?.username) || 'Unknown',
+        sender_name: getDisplayName(senderProfile, 'Unknown'),
         is_read: true, // Messages sent by the current user are considered read
       };
 

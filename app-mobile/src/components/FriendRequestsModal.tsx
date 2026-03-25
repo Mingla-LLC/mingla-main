@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from './ui/Icon';
+import { getDisplayName } from '../utils/getDisplayName';
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
 import { mixpanelService } from "../services/mixpanelService";
@@ -76,12 +77,7 @@ export default function FriendRequestsModal({
 
       // Track friend request accepted
       if (request) {
-        const senderName =
-          request.sender.display_name ||
-          (request.sender.first_name && request.sender.last_name
-            ? `${request.sender.first_name} ${request.sender.last_name}`
-            : null) ||
-          "Unknown";
+        const senderName = getDisplayName(request.sender, "Unknown");
         mixpanelService.trackFriendRequestAccepted({
           requestId,
           senderName,
@@ -125,12 +121,7 @@ export default function FriendRequestsModal({
 
       // Track friend request declined
       if (request) {
-        const senderName =
-          request.sender.display_name ||
-          (request.sender.first_name && request.sender.last_name
-            ? `${request.sender.first_name} ${request.sender.last_name}`
-            : null) ||
-          "Unknown";
+        const senderName = getDisplayName(request.sender, "Unknown");
         mixpanelService.trackFriendRequestDeclined({
           requestId,
           senderName,
@@ -244,12 +235,7 @@ export default function FriendRequestsModal({
                     <View style={styles.requestsList}>
                       {incomingRequests.map((request) => {
                         const status = processedRequests[request.id];
-                        const senderName =
-                          request.sender.display_name ||
-                          (request.sender.first_name && request.sender.last_name
-                            ? `${request.sender.first_name} ${request.sender.last_name}`
-                            : null) ||
-                          "Unknown";
+                        const senderName = getDisplayName(request.sender, "Unknown");
                         const initials = senderName
                           .split(" ")
                           .map((n) => n[0])

@@ -8,6 +8,7 @@
  */
 import { supabase } from "./supabase";
 import { blockService } from "./blockService";
+import { getDisplayName } from "../utils/getDisplayName";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -101,11 +102,7 @@ export async function fetchFriends(userId: string): Promise<Friend[]> {
       user_id: friend.user_id,
       friend_user_id: friend.friend_user_id,
       username: profile?.username || `user_${friend.friend_user_id.substring(0, 8)}`,
-      display_name:
-        profile?.display_name ||
-        (profile?.first_name && profile?.last_name
-          ? `${profile.first_name} ${profile.last_name}`
-          : undefined),
+      display_name: getDisplayName(profile, '') || undefined,
       first_name: profile?.first_name,
       last_name: profile?.last_name,
       avatar_url: profile?.avatar_url,
@@ -166,11 +163,7 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
       receiver_id: request.receiver_id,
       sender: {
         username: profile?.username || `user_${request.sender_id.substring(0, 8)}`,
-        display_name:
-          profile?.display_name ||
-          (profile?.first_name && profile?.last_name
-            ? `${profile.first_name} ${profile.last_name}`
-            : undefined),
+        display_name: getDisplayName(profile, '') || undefined,
         first_name: profile?.first_name,
         last_name: profile?.last_name,
         avatar_url: profile?.avatar_url,
@@ -190,11 +183,7 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
       receiver_id: request.receiver_id,
       sender: {
         username: profile?.username || `user_${request.receiver_id.substring(0, 8)}`,
-        display_name:
-          profile?.display_name ||
-          (profile?.first_name && profile?.last_name
-            ? `${profile.first_name} ${profile.last_name}`
-            : undefined),
+        display_name: getDisplayName(profile, '') || undefined,
         first_name: profile?.first_name,
         last_name: profile?.last_name,
         avatar_url: profile?.avatar_url,
@@ -220,13 +209,7 @@ export async function fetchBlockedUsers(): Promise<BlockedUser[]> {
   }
   return result.data.map((b: any) => ({
     id: b.blocked_id,
-    name:
-      b.profile
-        ? [b.profile.first_name, b.profile.last_name].filter(Boolean).join(" ") ||
-          b.profile.display_name ||
-          b.profile.username ||
-          "Unknown"
-        : "Unknown",
+    name: getDisplayName(b.profile, 'Unknown'),
     username: b.profile?.username,
     avatar_url: undefined,
     blocked_at: b.created_at,

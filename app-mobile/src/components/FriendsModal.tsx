@@ -37,6 +37,7 @@ import {
   fontWeights,
 } from "../constants/designSystem";
 import { useAppStore } from "../store/appStore";
+import { getDisplayName } from "../utils/getDisplayName";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,13 +87,7 @@ function getInitials(name: string): string {
 }
 
 function getFriendName(friend: Friend): string {
-  return (
-    friend.display_name ||
-    (friend.first_name && friend.last_name
-      ? `${friend.first_name} ${friend.last_name}`
-      : friend.username) ||
-    "Unknown"
-  );
+  return getDisplayName(friend, "Unknown");
 }
 
 // ---------------------------------------------------------------------------
@@ -445,12 +440,7 @@ function RequestItem({
     }
   }, [processedStatus, slideAnim, fadeAnim]);
 
-  const senderName =
-    request.sender.display_name ||
-    (request.sender.first_name && request.sender.last_name
-      ? `${request.sender.first_name} ${request.sender.last_name}`
-      : null) ||
-    "Unknown";
+  const senderName = getDisplayName(request.sender, "Unknown");
   const initials = getInitials(senderName);
   const avatarColor = hashColor(request.sender_id);
 
@@ -840,12 +830,7 @@ export default function FriendsModal({
         await acceptFriendRequest(requestId);
 
         if (request) {
-          const senderName =
-            request.sender.display_name ||
-            (request.sender.first_name && request.sender.last_name
-              ? `${request.sender.first_name} ${request.sender.last_name}`
-              : null) ||
-            "Unknown";
+          const senderName = getDisplayName(request.sender, "Unknown");
           mixpanelService.trackFriendRequestAccepted({
             requestId,
             senderName,
@@ -887,12 +872,7 @@ export default function FriendsModal({
         await declineFriendRequest(requestId);
 
         if (request) {
-          const senderName =
-            request.sender.display_name ||
-            (request.sender.first_name && request.sender.last_name
-              ? `${request.sender.first_name} ${request.sender.last_name}`
-              : null) ||
-            "Unknown";
+          const senderName = getDisplayName(request.sender, "Unknown");
           mixpanelService.trackFriendRequestDeclined({
             requestId,
             senderName,

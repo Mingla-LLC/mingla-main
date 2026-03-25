@@ -12,6 +12,7 @@ import {
   Image,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { mixpanelService } from "../../services/mixpanelService";
@@ -101,14 +102,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
       const transformed: FriendItem[] = (profiles || [])
         .map((p: any) => ({
           id: p.id,
-          name:
-            (p.first_name && p.last_name
-              ? `${p.first_name} ${p.last_name}`
-              : null) ||
-            p.display_name ||
-            p.first_name ||
-            p.username ||
-            "Unknown",
+          name: getDisplayName(p, "Unknown"),
           username: p.username,
           avatar: p.avatar_url,
         }))

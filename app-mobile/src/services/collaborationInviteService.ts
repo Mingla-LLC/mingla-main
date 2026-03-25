@@ -10,6 +10,7 @@
  * never activated the session, and never created a board).
  */
 import { supabase } from './supabase';
+import { getDisplayName } from '../utils/getDisplayName';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ export async function acceptCollaborationInvite(
             sessionId,
             sessionName,
             userId,
-            userName: profile?.display_name || profile?.first_name || 'Someone',
+            userName: getDisplayName(profile),
           });
         });
     })

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase, trackedInvoke } from "../services/supabase";
 import { blockService } from "../services/blockService";
 import { useAppStore } from "../store/appStore";
+import { getDisplayName } from "../utils/getDisplayName";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import {
   useFriendsList,
@@ -72,11 +73,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         if (!senderProfile) throw new Error("Sender profile not found");
 
         const senderUsername = senderProfile.username || "user";
-        const senderDisplayName =
-          senderProfile.display_name ||
-          (senderProfile.first_name && senderProfile.last_name
-            ? `${senderProfile.first_name} ${senderProfile.last_name}`
-            : senderUsername);
+        const senderDisplayName = getDisplayName(senderProfile, senderUsername);
 
         let receiverId: string | null = null;
         let userExists = false;

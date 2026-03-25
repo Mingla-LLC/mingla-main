@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { realtimeService } from '../services/realtimeService';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, CollaborationInvite } from '../types';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export const useRealtimeSession = () => {
   const { user, currentSession, setCurrentSession, setAvailableSessions, setPendingInvites } = useAppStore();
@@ -301,7 +302,7 @@ export const useRealtimeSession = () => {
         type: 'text',
         content: message,
         data: {
-          sender: user?.display_name || user?.email,
+          sender: getDisplayName(user),
           senderId: user?.id,
         }
       });

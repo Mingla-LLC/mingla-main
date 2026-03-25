@@ -9,6 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
 import { colors } from "../../constants/colors";
@@ -447,7 +448,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
 
       // NOTIFICATION: session member left (Block 3 — hardened 2026-03-21)
       // Only sent when >2 members remain (session survives). Skip on session deletion.
-      const userName = user.display_name || user.first_name || user.username || 'Someone';
+      const userName = getDisplayName(user);
       notifyMemberLeft({
         sessionId,
         sessionName: sessionName || 'Session',
@@ -521,7 +522,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
               {participants.map((participant) => {
                 const profile = participant.profiles;
                 const isCurrentUser = participant.user_id === user?.id;
-                const originalDisplayName = profile?.display_name || profile?.first_name || profile?.username || "Unknown";
+                const originalDisplayName = getDisplayName(profile, "Unknown");
                 const displayName = isCurrentUser ? "You" : originalDisplayName;
                 const isOnline = true; // TODO: Implement actual online status check
                 const isCreator = participant.user_id === creatorId;

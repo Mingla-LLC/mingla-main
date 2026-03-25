@@ -14,6 +14,7 @@ import {
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { Icon } from '../ui/Icon'
+import { getDisplayName } from '../../utils/getDisplayName'
 
 import { PhoneInput } from './PhoneInput'
 import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
@@ -198,7 +199,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           userId: lookupUser.id,
           username: lookupUser.username,
           phoneE164: debouncedPhoneE164,
-          displayName: lookupUser.display_name || lookupUser.username || 'User',
+          displayName: getDisplayName(lookupUser, 'User'),
           avatarUrl: lookupUser.avatar_url,
           friendshipStatus: phoneLookupResult.friendship_status === 'friends'
             ? 'friends'
@@ -413,12 +414,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           {incomingRequests.map((request) => {
             const status = processedRequests[request.id]
             const isProcessing = processingRequestId === request.id
-            const senderName =
-              request.sender?.display_name ||
-              (request.sender?.first_name && request.sender?.last_name
-                ? `${request.sender.first_name} ${request.sender.last_name}`
-                : null) ||
-              'Someone'
+            const senderName = getDisplayName(request.sender)
             const initials = getInitials(senderName)
 
             if (status === 'accepted') {
@@ -509,7 +505,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   </View>
                 )}
                 <Text style={styles.lookupName} numberOfLines={1}>
-                  {phoneLookupResult.user.display_name || 'Someone'}
+                  {getDisplayName(phoneLookupResult.user)}
                 </Text>
               </View>
             ) : null}

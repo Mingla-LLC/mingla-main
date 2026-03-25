@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore';
 import { realtimeService } from '../services/realtimeService';
 import { supabase } from '../services/supabase';
 import * as boardService from '../services/boardService';
+import { getDisplayName } from '../utils/getDisplayName';
 import type { Board } from '../types';
 import type { BoardWithDetails, CreateBoardParams } from '../services/boardService';
 
@@ -265,7 +266,7 @@ export function useAddExperienceToBoard() {
       // Notify other collaborators via Realtime broadcast
       realtimeService.sendBoardUpdate(boardId, 'experience_added', {
         experienceId: data.experience_id,
-        addedBy: user?.display_name || user?.email,
+        addedBy: getDisplayName(user),
         experience: data,
       });
 
@@ -290,7 +291,7 @@ export function useRemoveExperienceFromBoard() {
     onSuccess: (_data, { boardId, experienceId }) => {
       realtimeService.sendBoardUpdate(boardId, 'experience_removed', {
         experienceId,
-        removedBy: user?.display_name || user?.email,
+        removedBy: getDisplayName(user),
       });
 
       queryClient.invalidateQueries({ queryKey: boardKeys.experiences(boardId) });

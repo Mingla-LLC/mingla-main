@@ -13,6 +13,7 @@ import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
 import { computePrefsHash } from "../utils/cardConverters";
+import { getDisplayName } from "../utils/getDisplayName";
 import { TIER_BY_SLUG, PRICE_TIERS, PriceTierSlug } from '../constants/priceTiers';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 
@@ -956,7 +957,7 @@ export function useAppHandlers(state: any) {
               sessionId: sessionId!,
               sessionName: currentSession.name || 'Session',
               userId: user.id,
-              userName: profile?.display_name || profile?.first_name || 'Someone',
+              userName: getDisplayName(user),
               savedCardId: savedCardData.id,
               cardName: card.title,
             });

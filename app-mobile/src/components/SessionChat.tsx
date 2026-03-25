@@ -12,6 +12,7 @@ import { Icon } from './ui/Icon';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useAppStore } from '../store/appStore';
 import { KeyboardAwareView } from './ui/KeyboardAwareView';
+import { getDisplayName } from '../utils/getDisplayName';
 
 interface SessionChatProps {
   sessionId: string;
@@ -57,7 +58,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
 
   const getParticipantName = (senderId: string) => {
     const participant = participants.find(p => p.user_id === senderId);
-    return participant?.profiles?.display_name || 'Unknown';
+    return getDisplayName(participant?.profiles, 'Unknown');
   };
 
   return (

@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { getDisplayName } from "../../utils/getDisplayName";
 import {
   BoardMessageService,
   BoardMessage,
@@ -353,7 +354,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     if (username && !looksLikeEmail(username)) return username;
 
     // All fields are email-derived — humanize the best available
-    return humanize(display_name || username || "Unknown");
+    return humanize(getDisplayName(participant.profiles, "Unknown"));
   };
 
   // Handle long-press to open emoji reaction picker
@@ -690,11 +691,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
               if (!showMentionPopover) return false;
               if (!mentionSearchText) return true;
 
-              const name =
-                p.profiles?.display_name ||
-                (p.profiles?.first_name && p.profiles?.last_name
-                  ? `${p.profiles.first_name} ${p.profiles.last_name}`
-                  : p.profiles?.username || "");
+              const name = getDisplayName(p.profiles, "");
               const username = p.profiles?.username || "";
 
               return (

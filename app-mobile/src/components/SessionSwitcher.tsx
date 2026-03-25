@@ -11,6 +11,7 @@ import {
 import { Icon } from './ui/Icon';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
+import { getDisplayName } from '../utils/getDisplayName';
 
 export const SessionSwitcher: React.FC = () => {
   const {
@@ -141,7 +142,7 @@ export const SessionSwitcher: React.FC = () => {
                     <Text style={styles.sessionName}>{invite.collaboration_sessions?.name}</Text>
                   </View>
                   <Text style={styles.sessionDescription}>
-                    Invited by {invite.profiles?.display_name || 'Unknown'}
+                    Invited by {getDisplayName(invite.profiles, 'Unknown')}
                   </Text>
                   <View style={styles.inviteActions}>
                     <TouchableOpacity
