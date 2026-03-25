@@ -24,7 +24,7 @@ import { usePairedCards, useShufflePairedCards } from "../hooks/usePairedCards";
 import { useHolidayCategories } from "../hooks/useHolidayCategories";
 import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
-import { getCategoryIcon, getCategoryColor } from "../utils/categoryUtils";
+import { getCategoryIcon, getCategoryColor, getReadableCategoryName } from "../utils/categoryUtils";
 import { computeTravelInfo } from "../utils/travelTime";
 import { PriceTierSlug, formatTierLabel } from "../constants/priceTiers";
 import { useLocalePreferences } from "../hooks/useLocalePreferences";
@@ -269,7 +269,7 @@ function CompactCard({
     ? experienceType
       ? experienceType.charAt(0).toUpperCase() + experienceType.slice(1)
       : "Curated"
-    : category;
+    : getReadableCategoryName(category);
 
   return (
     <TouchableOpacity
@@ -337,6 +337,8 @@ function CardRow({
   onShuffleCategories,
   seenCardIds,
   travelMode,
+  onLoaded,
+  waitForPrimary,
 }: {
   pairedUserId: string;
   holidayKey: string;
@@ -347,6 +349,8 @@ function CardRow({
   onShuffleCategories?: () => Promise<void>;
   seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
+  onLoaded?: () => void;
+  waitForPrimary?: boolean;
 }) {
   const { currency } = useLocalePreferences();
   const currencySymbol = getCurrencySymbol(currency);
@@ -354,8 +358,9 @@ function CardRow({
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
   const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
 
+  const isEnabled = hasLoc && !waitForPrimary;
   const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
-    hasLoc ? { pairedUserId, holidayKey, location, sections, excludeCardIds: excludeIds } : null
+    isEnabled ? { pairedUserId, holidayKey, location, sections, excludeCardIds: excludeIds } : null
   );
 
   const allCards = data?.cards ?? [];
@@ -382,6 +387,13 @@ function CardRow({
     for (const c of filtered) seenCardIds.current.add(c.id);
     return filtered;
   }, [allCards, seenCardIds]);
+
+  // Signal parent that this section's cards are registered in seenCardIds
+  useEffect(() => {
+    if (!isLoading && !isFetching && onLoaded) {
+      onLoaded();
+    }
+  }, [isLoading, isFetching, onLoaded]);
 
   const sectionFallback = useMemo(() => {
     if (!fallbackCards || fallbackCards.length === 0) return [];
@@ -515,7 +527,7 @@ function HolidaySectionView({
   pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
-  seenCardIds, travelMode,
+  seenCardIds, travelMode, waitForPrimary,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -531,6 +543,7 @@ function HolidaySectionView({
   onArchive: () => void;
   seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
+  waitForPrimary?: boolean;
 }) {
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
   const cd = countdownText(daysAway);
@@ -573,6 +586,7 @@ function HolidaySectionView({
             onShuffleCategories={invalidate}
             seenCardIds={seenCardIds}
             travelMode={travelMode}
+            waitForPrimary={waitForPrimary}
           />
         </>
       )}
@@ -585,7 +599,7 @@ function HolidaySectionView({
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
-  seenCardIds, travelMode,
+  seenCardIds, travelMode, waitForPrimary,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -596,6 +610,7 @@ function CustomHolidaySectionView({
   onDelete?: () => void;
   seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
+  waitForPrimary?: boolean;
 }) {
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
@@ -647,6 +662,7 @@ function CustomHolidaySectionView({
             onShuffleCategories={invalidate}
             seenCardIds={seenCardIds}
             travelMode={travelMode}
+            waitForPrimary={waitForPrimary}
           />
         </>
       )}
@@ -675,10 +691,12 @@ export default function PersonHolidayView({
 
   // Dedup: track card IDs already shown in earlier sections
   const seenCardIds = useRef<Set<string>>(new Set());
+  const [primaryLoaded, setPrimaryLoaded] = useState(false);
 
   // Reset dedup set when viewing a different person
   useEffect(() => {
     seenCardIds.current = new Set();
+    setPrimaryLoaded(false);
   }, [pairedUserId]);
 
   // Load bilateral mode from AsyncStorage per paired person
@@ -835,6 +853,7 @@ export default function PersonHolidayView({
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               seenCardIds={seenCardIds}
               travelMode={travelMode}
+              onLoaded={() => setPrimaryLoaded(true)}
             />
           </View>
         );
@@ -862,6 +881,7 @@ export default function PersonHolidayView({
               onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
               seenCardIds={seenCardIds}
               travelMode={travelMode}
+              waitForPrimary={!primaryLoaded}
             />
           ))
         ) : (
@@ -896,6 +916,7 @@ export default function PersonHolidayView({
               onArchive={() => handleArchive(holiday.id)}
               seenCardIds={seenCardIds}
               travelMode={travelMode}
+              waitForPrimary={!primaryLoaded}
             />
           ))}
 
