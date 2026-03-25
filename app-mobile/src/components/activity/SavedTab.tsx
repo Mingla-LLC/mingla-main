@@ -1486,7 +1486,13 @@ const SavedTab = ({
             record.duration_minutes || 120
           );
         }
-        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+        const deviceEventId = await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+        // Store the device calendar event ID for future reschedule/unschedule
+        if (deviceEventId && record?.id) {
+          CalendarService.updateEntry(record.id, user.id, {
+            device_calendar_event_id: deviceEventId,
+          }).catch((err) => console.warn('Failed to store device calendar event ID:', err));
+        }
       } catch (deviceCalendarError) {
         console.warn("Failed to add to device calendar:", deviceCalendarError);
       }

@@ -1080,11 +1080,24 @@ export function useAppHandlers(state: any) {
       );
       const { savedCardsService } = await import("../services/savedCardsService");
 
-      const scheduledDate = entry.suggestedDates?.[0]
+      const scheduledDate = entry.scheduled_at
+        ? new Date(entry.scheduled_at)
+        : entry.suggestedDates?.[0]
         ? new Date(entry.suggestedDates[0])
-        : entry.date && entry.time
-        ? new Date(`${entry.date}T${entry.time}`)
         : null;
+
+      // Best-effort: remove from device calendar
+      const removeFromDeviceCalendar = async () => {
+        if (entry.device_calendar_event_id) {
+          await DeviceCalendarService.removeEventFromDeviceCalendar(entry.device_calendar_event_id);
+        } else if (scheduledDate && cardData.title) {
+          await DeviceCalendarService.removeEventByTitleAndDate(cardData.title, scheduledDate);
+          if (cardData.stops?.length > 0) {
+            const stopNames = cardData.stops.map((s: any) => s.placeName || s.title).join(' → ');
+            await DeviceCalendarService.removeEventByTitleAndDate(`Mingla Plan: ${stopNames}`, scheduledDate);
+          }
+        }
+      };
 
       const results = await Promise.allSettled([
         // Critical: delete from Supabase calendar
@@ -1094,11 +1107,9 @@ export function useAppHandlers(state: any) {
           if (err?.code !== "23505") console.warn("Failed to re-save card:", err);
         }),
         // Best-effort: remove from device calendar
-        scheduledDate && cardData.title
-          ? DeviceCalendarService.removeEventByTitleAndDate(cardData.title, scheduledDate).catch(
-              (err: any) => console.warn("Failed to remove from device calendar:", err)
-            )
-          : Promise.resolve(),
+        removeFromDeviceCalendar().catch(
+          (err: any) => console.warn("Failed to remove from device calendar:", err)
+        ),
       ]);
 
       // Check critical failure (deleteEntry is index 0)

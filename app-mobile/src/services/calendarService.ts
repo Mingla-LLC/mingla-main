@@ -18,6 +18,7 @@ export interface CalendarEntryRecord {
   created_at: string;
   updated_at: string;
   archived_at?: string | null;
+  device_calendar_event_id?: string | null;
 }
 
 export class CalendarService {
@@ -160,6 +161,7 @@ export class CalendarService {
       status?: "pending" | "confirmed" | "completed" | "cancelled";
       duration_minutes?: number;
       notes?: string;
+      device_calendar_event_id?: string | null;
     }
   ): Promise<CalendarEntryRecord> {
     const { data, error } = await supabase

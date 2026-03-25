@@ -67,6 +67,8 @@ interface CalendarEntry {
   phoneNumber?: string;
   website?: string;
   duration_minutes?: number;
+  scheduled_at?: string;
+  device_calendar_event_id?: string | null;
 }
 
 interface CalendarTabProps {
@@ -168,10 +170,10 @@ const CalendarTab = ({
 
     calendarEntries.forEach((entry) => {
       // Check if entry has a scheduled date
-      const scheduledDate = entry.suggestedDates?.[0]
+      const scheduledDate = entry.scheduled_at
+        ? new Date(entry.scheduled_at)
+        : entry.suggestedDates?.[0]
         ? new Date(entry.suggestedDates[0])
-        : entry.date && entry.time
-        ? new Date(`${entry.date}T${entry.time}`)
         : null;
 
       if (scheduledDate && scheduledDate < now) {
@@ -354,37 +356,49 @@ const CalendarTab = ({
         scheduled_at: scheduledDateISO,
       });
 
-      // 2. Update device calendar (remove old event, add new one)
+      // 2. Update device calendar
       try {
-        // Get the card data for creating the new device event
         const cardData = entryToReschedule.experience || entryToReschedule;
-        
-        // Remove old device calendar event
-        if (cardData.title) {
-          const oldDate = entryToReschedule.suggestedDates?.[0]
+
+        if (entryToReschedule.device_calendar_event_id) {
+          // Direct update by stored event ID — reliable
+          const endDate = new Date(date.getTime() + (entryToReschedule.duration_minutes || 120) * 60_000);
+          await DeviceCalendarService.updateEventOnDeviceCalendar(
+            entryToReschedule.device_calendar_event_id,
+            { startDate: date, endDate }
+          );
+        } else {
+          // Fallback: delete-then-recreate (for entries without stored ID)
+          const oldDate = entryToReschedule.scheduled_at
+            ? new Date(entryToReschedule.scheduled_at)
+            : entryToReschedule.suggestedDates?.[0]
             ? new Date(entryToReschedule.suggestedDates[0])
-            : entryToReschedule.date && entryToReschedule.time
-            ? new Date(`${entryToReschedule.date}T${entryToReschedule.time}`)
             : null;
-          
-          if (oldDate) {
-            await DeviceCalendarService.removeEventByTitleAndDate(
-              cardData.title,
-              oldDate
-            );
+
+          if (oldDate && cardData.title) {
+            await DeviceCalendarService.removeEventByTitleAndDate(cardData.title, oldDate);
+            // Curated cards use "Mingla Plan: StopA → StopB" title format
+            if (cardData.stops?.length > 0) {
+              const stopNames = cardData.stops.map((s: any) => s.placeName || s.title).join(' → ');
+              await DeviceCalendarService.removeEventByTitleAndDate(`Mingla Plan: ${stopNames}`, oldDate);
+            }
+          }
+
+          const deviceEvent = DeviceCalendarService.createEventFromCard(
+            cardData, date, entryToReschedule.duration_minutes || 120
+          );
+          const newEventId = await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+
+          // Store the new event ID for future reschedule
+          if (newEventId && entryToReschedule.id) {
+            CalendarService.updateEntry(entryToReschedule.id, user!.id, {
+              device_calendar_event_id: newEventId,
+            }).catch((err) => console.warn('Failed to store device calendar event ID:', err));
           }
         }
-
-        // Add new device calendar event
-        const deviceEvent = DeviceCalendarService.createEventFromCard(
-          cardData,
-          date,
-          (entryToReschedule as any).duration_minutes || 120
-        );
-        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
       } catch (deviceCalendarError) {
-        // Don't fail the whole operation if device calendar fails
         console.warn("Failed to update device calendar:", deviceCalendarError);
+        Alert.alert("Note", "Rescheduled, but your phone calendar may not be updated.");
       }
 
       // 3. Invalidate calendar entries query to refresh the list

@@ -586,6 +586,8 @@ export function useAppState() {
             id: record.card_id || cardData.id,
           },
           suggestedDates: [record.scheduled_at],
+          scheduled_at: record.scheduled_at,
+          device_calendar_event_id: record.device_calendar_event_id,
           sessionName: cardData.sessionName,
           archived_at: record.archived_at,
         };

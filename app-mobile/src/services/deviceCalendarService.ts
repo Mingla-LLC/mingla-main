@@ -132,6 +132,30 @@ export class DeviceCalendarService {
   }
 
   /**
+   * Update an existing phone calendar event by its ID.
+   * Uses expo-calendar's Calendar.updateEventAsync.
+   */
+  static async updateEventOnDeviceCalendar(
+    eventId: string,
+    updates: {
+      title?: string;
+      startDate?: Date;
+      endDate?: Date;
+      location?: string;
+      notes?: string;
+    }
+  ): Promise<void> {
+    try {
+      const { status } = await Calendar.getCalendarPermissionsAsync();
+      if (status !== 'granted') return;
+      await Calendar.updateEventAsync(eventId, updates);
+    } catch (err) {
+      console.warn('[DeviceCalendar] Failed to update event:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Create a device calendar event from a saved card
    */
   static createEventFromCard(
