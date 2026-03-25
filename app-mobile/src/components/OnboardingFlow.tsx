@@ -1813,12 +1813,10 @@ const OnboardingFlow = ({
         return { label: prefsSaveError ? 'Retry' : 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends_and_pairing':
         return {
-          label: data.addedFriends.length > 0 ? 'Continue' : "I'll do this later",
+          label: 'Continue',
           disabled: false,
           loading: false,
-          onPress: data.addedFriends.length > 0
-            ? () => goNext()
-            : () => { setData(prev => ({ ...prev, skippedFriends: true })); goNext() },
+          onPress: () => goNext(),
           hide: false,
         }
       case 'collaborations': {
@@ -1832,8 +1830,7 @@ const OnboardingFlow = ({
         }
       }
       case 'consent':
-        // OnboardingConsentStep has its own action buttons
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+        return { label: "Sounds good — let's go", disabled: false, loading: false, onPress: () => goNext(), hide: false }
       case 'getting_experiences':
         // Full-screen takeover, no shell CTA
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
@@ -2786,8 +2783,28 @@ const OnboardingFlow = ({
           }}
           incomingRequests={incomingPendingRequests}
           onAcceptRequest={async (requestId: string) => {
+            // Find the request to extract sender info before accepting
+            const request = incomingPendingRequests.find(r => r.id === requestId)
             await acceptFriendRequest(requestId)
             await loadFriendRequests()
+            // Add accepted friend to addedFriends so they appear in Step 6 collaborations
+            if (request) {
+              const friend: import('../types/onboarding').AddedFriend = {
+                userId: request.sender_id,
+                phoneE164: '',
+                displayName: request.sender.display_name || request.sender.first_name || request.sender.username || 'Friend',
+                username: request.sender.username,
+                avatarUrl: request.sender.avatar_url,
+                type: 'existing',
+                friendshipStatus: 'friends',
+              }
+              setData(prev => ({
+                ...prev,
+                addedFriends: prev.addedFriends.some(f => f.userId === friend.userId)
+                  ? prev.addedFriends
+                  : [...prev.addedFriends, friend],
+              }))
+            }
           }}
           onDeclineRequest={async (requestId: string) => {
             await declineFriendRequest(requestId)
@@ -2828,7 +2845,6 @@ const OnboardingFlow = ({
       return (
         <OnboardingConsentStep
           onConsent={() => goNext()}
-          onDecline={() => goNext()}
         />
       )
     }
@@ -2862,7 +2878,7 @@ const OnboardingFlow = ({
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
-      disableKeyboardAvoidance={navState.subStep === 'collaborations'}
+      disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
       scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >

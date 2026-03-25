@@ -353,7 +353,12 @@ export const useBoardSession = (sessionId?: string) => {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;
           }
-          if (sessionId) loadSession(sessionId);
+          if (sessionId) {
+            loadSession(sessionId);
+            // All participants invalidate their deck cache so they refetch merged prefs
+            queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
+          }
+          // Only the user who changed prefs triggers server-side regeneration
           if (sessionId && newPrefs?.user_id === user?.id) {
             supabase.functions.invoke("generate-session-deck", {
               body: { sessionId, batchSeed: 0 },

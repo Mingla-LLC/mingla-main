@@ -290,60 +290,52 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         }
 
         // Notify the original sender that their friend request was accepted.
-        // Best-effort — log but don't fail the accept.
+        // Fire-and-forget — don't block the UI waiting for push delivery.
         if (result.sender_id) {
-          try {
-            await trackedInvoke('send-friend-accepted-notification', {
-              body: {
-                accepterId: userId,
-                senderId: result.sender_id,
-                requestId,
-              },
-            });
-          } catch (notifyErr) {
+          trackedInvoke('send-friend-accepted-notification', {
+            body: {
+              accepterId: userId,
+              senderId: result.sender_id,
+              requestId,
+            },
+          }).catch((notifyErr) => {
             console.warn('[useFriends] Failed to send friend accepted notification:', notifyErr);
-          }
+          });
         }
 
         // Send push notifications for revealed collaboration invites.
         // The RPC returns the exact invite IDs that were just revealed —
         // no timing window, no race condition, no 10-second guesswork.
+        // Fire-and-forget — push notifications for revealed invites/pair requests.
+        // Don't block the UI waiting for push delivery.
         if (result.revealed_invite_ids && result.revealed_invite_ids.length > 0) {
           for (const invite of result.revealed_invite_ids) {
-            try {
-              await trackedInvoke('send-collaboration-invite', {
-                body: {
-                  inviterId: invite.inviter_id,
-                  invitedUserId: invite.invited_user_id,
-                  sessionId: invite.session_id,
-                  sessionName: invite.session_name,
-                  inviteId: invite.id,
-                },
-              });
-            } catch (notifyErr) {
-              // Push is best-effort; log but don't fail the accept
+            trackedInvoke('send-collaboration-invite', {
+              body: {
+                inviterId: invite.inviter_id,
+                invitedUserId: invite.invited_user_id,
+                sessionId: invite.session_id,
+                sessionName: invite.session_name,
+                inviteId: invite.id,
+              },
+            }).catch((notifyErr) => {
               console.warn('[useFriends] Failed to notify for revealed invite:', notifyErr);
-            }
+            });
           }
         }
 
-        // Send push notifications for revealed pair requests.
         // When a friend request is accepted, any hidden pair requests gated by it
         // become visible. Only send push when the receiver is someone OTHER than the
         // current user — if we ARE the receiver, we're already in the app and will see
-        // the pair request via query invalidation / realtime. Sending a push to ourselves
-        // while actively looking at the screen is noisy.
+        // the pair request via query invalidation / realtime.
         if (result.revealed_pair_request_ids && result.revealed_pair_request_ids.length > 0) {
           for (const pr of result.revealed_pair_request_ids) {
             if (pr.receiver_id === userId) continue;
-            try {
-              await trackedInvoke('notify-pair-request-visible', {
-                body: { pairRequestId: pr.id },
-              });
-            } catch (notifyErr) {
-              // Push is best-effort; log but don't fail the accept
+            trackedInvoke('notify-pair-request-visible', {
+              body: { pairRequestId: pr.id },
+            }).catch((notifyErr) => {
               console.warn('[useFriends] Failed to notify for revealed pair request:', notifyErr);
-            }
+            });
           }
         }
 

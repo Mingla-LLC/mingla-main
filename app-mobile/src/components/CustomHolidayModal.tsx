@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
+import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
 import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -168,7 +169,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
             <View style={styles.handle} />
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             bounces={false}
@@ -315,7 +316,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
             <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
               <Text style={styles.saveButtonText}>Save this day</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
     </Modal>

@@ -2,7 +2,6 @@ import React from 'react'
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
 } from 'react-native'
 import { Icon } from '../ui/Icon'
@@ -11,17 +10,14 @@ import {
   typography,
   fontWeights,
   spacing,
-  radius,
 } from '../../constants/designSystem'
 
 interface OnboardingConsentStepProps {
   onConsent: () => void
-  onDecline: () => void
 }
 
 export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
   onConsent,
-  onDecline,
 }) => {
   return (
     <View style={styles.container}>
@@ -34,20 +30,6 @@ export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
       <Text style={styles.body}>
         Mingla uses what you've shared — your tastes, your vibe, your location — to find experiences you'll genuinely love. Your data stays yours. We never sell it, and you can delete it anytime.
       </Text>
-
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.consentButton}
-          onPress={onConsent}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.consentButtonText}>Sounds good — let's go</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={onDecline} activeOpacity={0.7}>
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   )
 }
@@ -76,28 +58,5 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.md,
-  },
-  actions: {
-    width: '100%',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  consentButton: {
-    backgroundColor: colors.primary[500],
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    width: '100%',
-    alignItems: 'center',
-  },
-  consentButtonText: {
-    color: '#fff',
-    fontSize: typography.md.fontSize,
-    fontWeight: fontWeights.semibold as any,
-  },
-  skipText: {
-    fontSize: typography.md.fontSize,
-    color: colors.gray[400],
   },
 })
