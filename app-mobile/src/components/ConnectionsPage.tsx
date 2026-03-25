@@ -37,6 +37,7 @@ import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
 import { useToast } from "./ToastManager";
 import { showMutationError } from "../utils/showMutationError";
+import { getDisplayName } from "../utils/getDisplayName";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -244,11 +245,7 @@ export default function ConnectionsPageRefactored({
     return sortedConversations.filter((conv) => {
       // Filter by participant name
       const nameMatch = conv.participants.some((p) => {
-        const name = (
-          p.display_name ||
-          (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username) ||
-          ""
-        ).toLowerCase();
+        const name = getDisplayName(p, "").toLowerCase();
         return name.includes(q);
       });
       // Filter by last message content
@@ -438,13 +435,7 @@ export default function ConnectionsPageRefactored({
 
   // ── Friends modal handlers ──────────────────────────────
   const getFriendDisplayNameFromUseFriend = (friend: UseFriend): string => {
-    return (
-      friend.display_name ||
-      (friend.first_name && friend.last_name
-        ? `${friend.first_name} ${friend.last_name}`
-        : friend.username) ||
-      "Unknown"
-    );
+    return getDisplayName(friend);
   };
 
   const handleMuteUserFromModal = async (friend: UseFriend) => {
@@ -576,12 +567,7 @@ export default function ConnectionsPageRefactored({
     if (!user?.id) return;
 
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
-    const rawName =
-      otherParticipant?.display_name ||
-      (otherParticipant?.first_name && otherParticipant?.last_name
-        ? `${otherParticipant.first_name} ${otherParticipant.last_name}`
-        : otherParticipant?.username) ||
-      "Unknown";
+    const rawName = getDisplayName(otherParticipant);
 
     // Clean email-like names
     const cleanedName = rawName.includes("@")
@@ -699,12 +685,7 @@ export default function ConnectionsPageRefactored({
 
     const friendUserId = friend.friend_user_id || friend.id;
 
-    const displayName =
-      friend.display_name ||
-      (friend.first_name && friend.last_name
-        ? `${friend.first_name} ${friend.last_name}`
-        : friend.username) ||
-      "Unknown";
+    const displayName = getDisplayName(friend);
 
     const chatFriend: Friend = {
       id: friendUserId,

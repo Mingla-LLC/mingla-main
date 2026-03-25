@@ -28,6 +28,7 @@ import { CountryData } from '../types/onboarding';
 import { CountryPickerOverlay } from './onboarding/CountryPickerModal';
 import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite } from '../services/phoneLookupService';
+import { getDisplayName } from '../utils/getDisplayName';
 import { useAppStore } from '../store/appStore';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
@@ -311,7 +312,7 @@ export default function CollaborationSessions({
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           const friendData: Friend = {
             id: lookupUser.id,
-            name: lookupUser.display_name || lookupUser.username || 'User',
+            name: getDisplayName(lookupUser, 'User'),
             username: lookupUser.username,
             avatar: lookupUser.avatar_url || undefined,
           };
@@ -566,7 +567,7 @@ export default function CollaborationSessions({
                       <View style={styles.csLookupRow}>
                         <Icon name="checkmark-circle" size={14} color="#22c55e" />
                         <Text style={styles.csLookupTextGreen}>
-                          {phoneLookupResult.user?.display_name || 'Someone'} is on Mingla
+                          {getDisplayName(phoneLookupResult.user, 'Someone')} is on Mingla
                         </Text>
                       </View>
                     ) : (

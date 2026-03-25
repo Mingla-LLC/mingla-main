@@ -23,6 +23,7 @@ import { supabase } from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
 import { useAppStore } from "../store/appStore";
 import { useNetworkMonitor } from "../services/networkMonitor";
+import { getDisplayName } from "../utils/getDisplayName";
 import { BoardCache } from "../services/boardCache";
 import { BoardMessageService } from "../services/boardMessageService";
 import { BoardErrorHandler } from "../services/boardErrorHandler";
@@ -621,17 +622,12 @@ export default function SessionViewModal({
                     
                     // Get initials from profile
                     let initials = "?";
-                    if (p.profiles?.display_name) {
-                      const parts = p.profiles.display_name.trim().split(" ");
-                      initials = parts.length >= 2 
+                    const resolvedName = getDisplayName(p.profiles, "");
+                    if (resolvedName) {
+                      const parts = resolvedName.trim().split(" ");
+                      initials = parts.length >= 2
                         ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-                        : p.profiles.display_name.substring(0, 2).toUpperCase();
-                    } else if (p.profiles?.first_name) {
-                      initials = p.profiles.last_name 
-                        ? `${p.profiles.first_name[0]}${p.profiles.last_name[0]}`.toUpperCase()
-                        : p.profiles.first_name.substring(0, 2).toUpperCase();
-                    } else if (p.profiles?.username) {
-                      initials = p.profiles.username.substring(0, 2).toUpperCase();
+                        : resolvedName.substring(0, 2).toUpperCase();
                     }
                     
                     // Check if profile picture exists

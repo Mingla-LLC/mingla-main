@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
+import { getDisplayName } from "../../utils/getDisplayName";
 
 interface ChatListItemProps {
   conversation: Conversation;
@@ -80,12 +81,7 @@ export function ChatListItem({
     (p) => p.id !== currentUserId
   );
 
-  const displayName =
-    otherParticipant?.display_name ||
-    (otherParticipant?.first_name && otherParticipant?.last_name
-      ? `${otherParticipant.first_name} ${otherParticipant.last_name}`
-      : otherParticipant?.username) ||
-    "Unknown";
+  const displayName = getDisplayName(otherParticipant);
 
   // Clean email-like names
   const cleanedName = displayName.includes("@")

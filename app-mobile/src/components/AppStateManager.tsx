@@ -659,10 +659,16 @@ export function useAppState() {
         } else {
           // Also update the in-memory profile in the app store so other screens reflect changes immediately
           if (profile) {
+            const newDisplayName = [updatedIdentity.firstName, updatedIdentity.lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+
             setProfile({
               ...profile,
               first_name: updatedIdentity.firstName,
               last_name: updatedIdentity.lastName,
+              display_name: newDisplayName || profile?.display_name,
               username: updatedIdentity.username,
               avatar_url: updatedIdentity.profileImage,
             });

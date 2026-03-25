@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { FriendRequest } from "../../hooks/useFriends";
+import { getDisplayName as getDisplayNameUtil } from "../../utils/getDisplayName";
 
 interface RequestsViewProps {
   requests: FriendRequest[];
@@ -30,13 +31,7 @@ function getInitials(name: string): string {
 function getDisplayName(request: FriendRequest): string {
   const sender = request.sender;
   if (!sender) return "Unknown";
-  return (
-    sender.display_name ||
-    (sender.first_name && sender.last_name
-      ? `${sender.first_name} ${sender.last_name}`
-      : sender.username) ||
-    "Unknown"
-  );
+  return getDisplayNameUtil(sender);
 }
 
 export function RequestsView({

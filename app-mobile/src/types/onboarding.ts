@@ -69,6 +69,10 @@ export interface OnboardingPairAction {
 
 export interface OnboardingData {
   // Step 1
+  // Step 1 — Name (collected on welcome screen)
+  firstName: string
+  lastName: string
+
   phoneNumber: string       // E.164 format
   phoneCountryCode: string  // ISO 3166-1 alpha-2 (e.g., 'US')
   phoneVerified: boolean

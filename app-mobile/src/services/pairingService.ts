@@ -1,6 +1,7 @@
 import { supabase, trackedInvoke } from "./supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
 import { generateInitials } from "../utils/stringUtils";
+import { getDisplayName } from "../utils/getDisplayName";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -105,10 +106,7 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
       const partnerId =
         pairing.user_a_id === userId ? pairing.user_b_id : pairing.user_a_id;
       const profile = profileMap.get(partnerId);
-      const displayName =
-        [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
-        profile?.display_name ||
-        "Unknown";
+      const displayName = getDisplayName(profile);
 
       pills.push({
         id: `pairing-${pairing.id}`,
@@ -182,10 +180,7 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
 
     for (const request of outgoingRequests) {
       const profile = recProfileMap.get(request.receiver_id);
-      const displayName =
-        [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
-        profile?.display_name ||
-        "Unknown";
+      const displayName = getDisplayName(profile);
 
       let pillState: PairingPill["pillState"];
       if (request.visibility === "visible") {
@@ -307,11 +302,6 @@ export async function fetchIncomingPairRequests(userId: string): Promise<PairReq
   const profileMap = new Map(
     (profiles || []).map((p) => [p.id, p])
   );
-
-  const getDisplayName = (profile: { first_name?: string | null; last_name?: string | null; display_name?: string | null } | undefined): string =>
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
-    profile?.display_name ||
-    "Unknown";
 
   return requests.map((r) => {
     const senderProfile = profileMap.get(r.sender_id);

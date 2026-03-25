@@ -38,6 +38,7 @@ import { createPendingInvite } from "../services/phoneLookupService";
 import { phoneInviteKeys } from "../hooks/usePhoneInvite";
 import { colors, spacing, radius, shadows } from "../constants/designSystem";
 import { s } from "../utils/responsive";
+import { getDisplayName } from "../utils/getDisplayName";
 
 const INITIALS_COLORS = [
   colors.primary[500],
@@ -139,18 +140,13 @@ export default function PairRequestModal({
     if (!searchQuery.trim()) return acceptedFriends;
     const query = searchQuery.toLowerCase();
     return acceptedFriends.filter((f) => {
-      const displayName =
-        f.display_name || `${f.first_name || ""} ${f.last_name || ""}`.trim() || f.username;
+      const displayName = getDisplayName(f);
       return displayName.toLowerCase().includes(query);
     });
   }, [acceptedFriends, searchQuery]);
 
   const getFriendDisplayName = (friend: Friend): string => {
-    return (
-      friend.display_name ||
-      `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
-      "Unknown"
-    );
+    return getDisplayName(friend);
   };
 
   const handlePairFriend = useCallback(
@@ -524,8 +520,7 @@ export default function PairRequestModal({
                         color="#22c55e"
                       />
                       <Text style={styles.lookupTextGreen}>
-                        {phoneLookupResult.user?.display_name ||
-                          "Someone"}{" "}
+                        {getDisplayName(phoneLookupResult.user, "Someone")}{" "}
                         is on Mingla
                       </Text>
                     </View>

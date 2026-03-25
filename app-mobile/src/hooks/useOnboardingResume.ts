@@ -38,6 +38,8 @@ export interface OnboardingResumeData {
 }
 
 const BASE_INITIAL_DATA: OnboardingData = {
+  firstName: '',
+  lastName: '',
   phoneNumber: '',
   phoneCountryCode: 'US',
   phoneVerified: false,
@@ -88,6 +90,12 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
         //    profiles.phone is the ONLY authority.
         const phoneAlreadyVerified = !!profile.phone
         base.phoneVerified = phoneAlreadyVerified
+
+        // Pre-fill name from profile (e.g. Apple Sign-In provides name automatically)
+        if (profile.first_name && !base.firstName) {
+          base.firstName = profile.first_name || ''
+          base.lastName = profile.last_name || ''
+        }
 
         // 3. Compute which step to resume at
         const savedStep = profile.onboarding_step

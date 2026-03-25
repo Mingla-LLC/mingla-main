@@ -13,6 +13,7 @@ import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import { Friend } from "../../hooks/useFriends";
+import { getDisplayName } from "../../utils/getDisplayName";
 
 interface FriendPickerSheetProps {
   visible: boolean;
@@ -33,13 +34,7 @@ function getInitials(name: string): string {
 }
 
 function getFriendDisplayName(friend: Friend): string {
-  return (
-    friend.display_name ||
-    (friend.first_name && friend.last_name
-      ? `${friend.first_name} ${friend.last_name}`
-      : friend.username) ||
-    "Unknown"
-  );
+  return getDisplayName(friend);
 }
 
 export function FriendPickerSheet({

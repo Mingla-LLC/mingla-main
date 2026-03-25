@@ -1668,6 +1668,36 @@ const OnboardingFlow = ({
     goNext()
   }, [goNext])
 
+  const handleSaveName = useCallback(async () => {
+    if (!user?.id) return;
+    const first = data.firstName.trim();
+    const last = data.lastName.trim();
+
+    logger.action('Save name pressed', { firstName: first, lastName: last });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Fire-and-forget profile update — do NOT block navigation
+    PreferencesService.updateUserProfile(user.id, {
+      first_name: first,
+      last_name: last,
+      display_name: `${first} ${last}`.trim(),
+    }).then(() => {
+      const currentProfile = useAppStore.getState().profile;
+      if (currentProfile) {
+        useAppStore.getState().setProfile({
+          ...currentProfile,
+          first_name: first,
+          last_name: last,
+          display_name: `${first} ${last}`.trim(),
+        });
+      }
+    }).catch((err) => {
+      console.warn('[Onboarding] Name save failed:', err?.message);
+    });
+
+    goNext();
+  }, [user?.id, data.firstName, data.lastName, goNext]);
+
   const handleGoBack = useCallback(() => {
     // Clear any pending auto-advance timeout (prevents ghost navigation from location step)
     if (autoAdvanceRef.current) {
@@ -1702,8 +1732,10 @@ const OnboardingFlow = ({
     const { step, subStep } = navState
 
     switch (subStep) {
-      case 'welcome':
-        return { label: "Let's go", disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'welcome': {
+        const nameReady = data.firstName.trim().length > 0 && data.lastName.trim().length > 0;
+        return { label: "Let's go", disabled: !nameReady, loading: false, onPress: handleSaveName, hide: false }
+      }
       case 'phone':
         return data.phoneVerified
           ? { label: 'Continue', disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
@@ -1761,48 +1793,76 @@ const OnboardingFlow = ({
   const renderContent = () => {
     const { step, subStep } = navState
     logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
-    const firstName = profile?.first_name || profile?.display_name || user?.email?.split('@')[0] || 'there'
 
     // ─── STEP 1 ───
     if (subStep === 'welcome') {
+      const hasName = (data.firstName || '').trim().length > 0;
+
+      if (hasName && data.phoneVerified) {
+        // Phase 2: Personalized greeting (returning to this step)
+        return (
+          <View style={styles.centerContent}>
+            <Animated.Text
+              style={[styles.welcomeGreeting, { opacity: heyAnim.opacity, transform: [{ translateY: heyAnim.translateY }] }]}
+            >
+              Hey
+            </Animated.Text>
+            <Animated.Text
+              style={[styles.welcomeName, { opacity: nameAnim.opacity, transform: [{ translateY: nameAnim.translateY }, { scale: nameAnim.scale }] }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {data.firstName.trim()}.
+            </Animated.Text>
+            <Animated.Text
+              style={[styles.welcomeTaglineTop, { opacity: tagTopAnim.opacity, transform: [{ translateY: tagTopAnim.translateY }] }]}
+            >
+              Good taste
+            </Animated.Text>
+            <Animated.Text
+              style={[styles.welcomeTaglineAccent, { opacity: tagAccentAnim.opacity, transform: [{ translateY: tagAccentAnim.translateY }] }]}
+            >
+              just walked in.
+            </Animated.Text>
+          </View>
+        );
+      }
+
+      // Phase 1: Name collection — minimal, centered, modern
       return (
-        <View style={styles.centerContent}>
-          <Animated.Text
-            style={[
-              styles.welcomeGreeting,
-              { opacity: heyAnim.opacity, transform: [{ translateY: heyAnim.translateY }] },
-            ]}
-          >
-            Hey
-          </Animated.Text>
-          <Animated.Text
-            style={[
-              styles.welcomeName,
-              { opacity: nameAnim.opacity, transform: [{ translateY: nameAnim.translateY }, { scale: nameAnim.scale }] },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {firstName}.
-          </Animated.Text>
-          <Animated.Text
-            style={[
-              styles.welcomeTaglineTop,
-              { opacity: tagTopAnim.opacity, transform: [{ translateY: tagTopAnim.translateY }] },
-            ]}
-          >
-            Good taste
-          </Animated.Text>
-          <Animated.Text
-            style={[
-              styles.welcomeTaglineAccent,
-              { opacity: tagAccentAnim.opacity, transform: [{ translateY: tagAccentAnim.translateY }] },
-            ]}
-          >
-            just walked in.
-          </Animated.Text>
+        <View style={styles.nameCollectionContainer}>
+          <Text style={styles.nameGreeting}>We know</Text>
+          <Text style={styles.nameGreetingAccent}>good taste</Text>
+          <Text style={styles.nameGreeting}>just walked in.</Text>
+          <Text style={styles.namePrompt}>But we don't know your name yet.</Text>
+
+          <View style={styles.nameInputRow}>
+            <TextInput
+              style={styles.nameInput}
+              placeholder="First"
+              placeholderTextColor={colors.gray[300]}
+              value={data.firstName}
+              onChangeText={(text) => setData((p) => ({ ...p, firstName: text }))}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="next"
+              textAlign="center"
+            />
+            <TextInput
+              style={styles.nameInput}
+              placeholder="Last"
+              placeholderTextColor={colors.gray[300]}
+              value={data.lastName}
+              onChangeText={(text) => setData((p) => ({ ...p, lastName: text }))}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              textAlign="center"
+            />
+          </View>
         </View>
-      )
+      );
     }
 
     if (subStep === 'phone') {
@@ -2737,7 +2797,7 @@ const OnboardingFlow = ({
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
-      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -2825,6 +2885,50 @@ const styles = StyleSheet.create({
     color: colors.primary[500],
     textAlign: 'center',
     marginTop: 2,
+  },
+  nameCollectionContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  nameGreeting: {
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  nameGreetingAccent: {
+    fontSize: 36,
+    lineHeight: 44,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  namePrompt: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  nameInputRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+  },
+  nameInput: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.gray[200],
   },
   headline: {
     ...typography.xxxl,

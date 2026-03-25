@@ -30,6 +30,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../../store/appStore";
 import { s, vs } from "../../utils/responsive";
+import { getDisplayName as getDisplayNameUtil } from "../../utils/getDisplayName";
 
 type Tab = "add" | "sent";
 
@@ -293,13 +294,7 @@ export function AddFriendView({
 
   const getDisplayName = (request: FriendRequest): string => {
     if (!request.sender) return "Unknown";
-    return (
-      request.sender.display_name ||
-      (request.sender.first_name && request.sender.last_name
-        ? `${request.sender.first_name} ${request.sender.last_name}`
-        : request.sender.username) ||
-      "Unknown"
-    );
+    return getDisplayNameUtil(request.sender);
   };
 
   const getInitials = (name: string): string => {
@@ -478,9 +473,7 @@ export function AddFriendView({
                     color="#22c55e"
                   />
                   <Text style={styles.lookupTextGreen}>
-                    {phoneLookupResult.user?.display_name ||
-                      phoneLookupResult.user?.username ||
-                      "User"}{" "}
+                    {getDisplayNameUtil(phoneLookupResult.user, "User")}{" "}
                     is on Mingla
                   </Text>
                 </View>

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { Friend } from "../../hooks/useFriends";
+import { getDisplayName } from "../../utils/getDisplayName";
 import { colors, spacing, radius, fontWeights } from "../../constants/designSystem";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
@@ -27,13 +28,7 @@ interface FriendsManagementListProps {
 }
 
 function getFriendDisplayName(friend: Friend): string {
-  return (
-    friend.display_name ||
-    (friend.first_name && friend.last_name
-      ? `${friend.first_name} ${friend.last_name}`
-      : friend.username) ||
-    "Unknown"
-  );
+  return getDisplayName(friend);
 }
 
 function getInitials(name: string): string {
