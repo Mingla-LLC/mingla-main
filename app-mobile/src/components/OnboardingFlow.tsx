@@ -2765,6 +2765,7 @@ const OnboardingFlow = ({
             }))
           }}
           onContinue={() => goNext()}
+          onBack={() => goBack()}
           onSkip={() => {
             setData(prev => ({ ...prev, skippedFriends: true }))
             goNext()

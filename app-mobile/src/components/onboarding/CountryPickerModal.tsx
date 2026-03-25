@@ -167,7 +167,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
         />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name, code, or dial code"
+          placeholder="Search countries..."
           placeholderTextColor={colors.gray[400]}
           value={search}
           onChangeText={handleSearch}

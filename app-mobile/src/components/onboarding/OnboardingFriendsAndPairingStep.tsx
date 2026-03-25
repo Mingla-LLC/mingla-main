@@ -40,26 +40,38 @@ const STATIC_SCALE = new Animated.Value(1)
 
 // ─── Pair Pill States ───
 
-type PairPillState = 'unpaired' | 'sending' | 'pending' | 'paired' | 'disabled'
+type PairPillState = 'unpaired' | 'sending' | 'pending' | 'paired' | 'disabled' | 'queued'
 
 function getPairPillState(
   friend: AddedFriend,
   pairActions: OnboardingPairAction[],
   sendingForUserId: string | null,
+  queuedPairPhones: Set<string>,
 ): PairPillState {
-  // Check if we have a pair action for this friend
-  const action = pairActions.find(a => a.targetUserId === friend.userId)
+  // Check pair actions for existing users or invited users by phone
+  const action = pairActions.find(a =>
+    (a.targetUserId != null && a.targetUserId === friend.userId) ||
+    (a.targetPhoneE164 != null && a.targetPhoneE164 === friend.phoneE164)
+  )
 
   if (action) {
     if (action.type === 'accepted' || action.pairingId) return 'paired'
     if (action.type === 'sent') return 'pending'
+    if (action.type === 'queued') return 'queued'
   }
 
-  // Currently sending
+  // Currently sending (for existing users by userId, for invited by phoneE164)
   if (sendingForUserId === friend.userId) return 'sending'
+  if (sendingForUserId === friend.phoneE164) return 'sending'
 
-  // Can't pair invited users or users without userId
-  if (friend.type === 'invited' || !friend.userId) return 'disabled'
+  // Invited users with queued pair intent
+  if (queuedPairPhones.has(friend.phoneE164)) return 'queued'
+
+  // Invited users without userId — tappable for pair queueing
+  if (friend.type === 'invited' && !friend.userId) return 'unpaired'
+
+  // No userId at all (shouldn't happen for existing users)
+  if (!friend.userId && friend.type !== 'invited') return 'disabled'
 
   return 'unpaired'
 }
@@ -79,6 +91,7 @@ interface OnboardingFriendsAndPairingStepProps {
   // Navigation
   onContinue: () => void
   onSkip: () => void
+  onBack: () => void
   // Friend requests
   incomingRequests: FriendRequest[]
   onAcceptRequest: (requestId: string) => Promise<void>
@@ -95,6 +108,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   onPairAction,
   onContinue,
   onSkip,
+  onBack,
   incomingRequests,
   onAcceptRequest,
   onDeclineRequest,
@@ -110,6 +124,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
   // ─── Pair Request State ───
   const [sendingPairForUserId, setSendingPairForUserId] = useState<string | null>(null)
+  const [queuedPairPhones, setQueuedPairPhones] = useState<Set<string>>(new Set())
   const [processingPairRequestId, setProcessingPairRequestId] = useState<string | null>(null)
   const [processedPairRequests, setProcessedPairRequests] = useState<Record<string, 'accepted' | 'declined'>>({})
 
@@ -283,24 +298,46 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
   // ─── Send Pair Request ───
   const handleSendPairRequest = useCallback(async (friend: AddedFriend) => {
-    if (!friend.userId || sendingPairForUserId) return
+    if (sendingPairForUserId) return
 
-    setSendingPairForUserId(friend.userId)
+    // Determine whether to send by userId (existing user) or phoneE164 (invited)
+    const params = friend.userId
+      ? { friendUserId: friend.userId }
+      : { phoneE164: friend.phoneE164 }
+
+    const trackingId = friend.userId || friend.phoneE164
+    setSendingPairForUserId(trackingId)
+
     try {
-      // Edge function determines tier server-side based on friendship status
-      const result = await sendPairMutation.mutateAsync({ friendUserId: friend.userId })
+      const result = await sendPairMutation.mutateAsync(params)
 
-      const action: OnboardingPairAction = {
-        type: 'sent',
-        targetUserId: friend.userId,
-        targetDisplayName: friend.displayName,
-        tier: result.tier,
-        requestId: result.requestId,
+      if (result.tier === 3) {
+        // Tier 3: invited user — mark as queued
+        setQueuedPairPhones(prev => new Set(prev).add(friend.phoneE164))
+        const action: OnboardingPairAction = {
+          type: 'queued',
+          targetUserId: undefined,
+          targetPhoneE164: friend.phoneE164,
+          targetDisplayName: friend.displayName,
+          tier: 3,
+          inviteId: result.inviteId,
+        }
+        onPairAction(action)
+      } else {
+        // Tier 1 or 2: existing user
+        const action: OnboardingPairAction = {
+          type: 'sent',
+          targetUserId: friend.userId!,
+          targetDisplayName: friend.displayName,
+          tier: result.tier,
+          requestId: result.requestId,
+        }
+        onPairAction(action)
       }
-      onPairAction(action)
 
       // Success animation
-      const scale = getPairAnimScale(friend.userId)
+      const animKey = friend.userId || friend.phoneE164
+      const scale = getPairAnimScale(animKey)
       Animated.sequence([
         Animated.spring(scale, { toValue: 1.08, tension: 200, friction: 12, useNativeDriver: true }),
         Animated.spring(scale, { toValue: 1, tension: 200, friction: 12, useNativeDriver: true }),
@@ -396,10 +433,12 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   // ─── Render ───
 
   return (
+    <View style={styles.outerContainer}>
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.scrollContent}
     >
       {/* Header */}
       <Text style={styles.headline}>Your inner circle</Text>
@@ -533,11 +572,13 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         <View style={styles.section}>
           {renderSectionLabel('Your people', addedFriends.length)}
           {addedFriends.map((friend) => {
-            const pillState = getPairPillState(friend, pairActions, sendingPairForUserId)
-            const scale = friend.userId ? getPairAnimScale(friend.userId) : STATIC_SCALE
+            const pillState = getPairPillState(friend, pairActions, sendingPairForUserId, queuedPairPhones)
+            const animKey = friend.userId || friend.phoneE164
+            const scale = animKey ? getPairAnimScale(animKey) : STATIC_SCALE
 
             return (
-              <View key={friend.phoneE164} style={styles.friendRow}>
+              <React.Fragment key={friend.phoneE164}>
+              <View style={styles.friendRow}>
                 {/* Avatar */}
                 {friend.avatarUrl ? (
                   <Image source={{ uri: friend.avatarUrl }} style={styles.avatar36} />
@@ -570,6 +611,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                       pillState === 'pending' && styles.pairPillPending,
                       pillState === 'paired' && styles.pairPillPaired,
                       pillState === 'disabled' && styles.pairPillDisabled,
+                      pillState === 'queued' && styles.pairPillQueued,
                     ]}
                     onPress={() => {
                       if (pillState === 'unpaired') handleSendPairRequest(friend)
@@ -585,12 +627,14 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                           name={
                             pillState === 'paired' ? 'checkmark-circle'
                               : pillState === 'pending' ? 'time-outline'
+                              : pillState === 'queued' ? 'time-outline'
                               : 'people-outline'
                           }
                           size={16}
                           color={
                             pillState === 'paired' ? colors.success[500]
                               : pillState === 'pending' ? colors.primary[400]
+                              : pillState === 'queued' ? colors.gray[400]
                               : pillState === 'disabled' ? colors.gray[300]
                               : colors.gray[400]
                           }
@@ -599,10 +643,12 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                           styles.pairPillText,
                           pillState === 'paired' && styles.pairPillTextPaired,
                           pillState === 'pending' && styles.pairPillTextPending,
+                          pillState === 'queued' && styles.pairPillTextQueued,
                           pillState === 'disabled' && styles.pairPillTextDisabled,
                         ]}>
                           {pillState === 'paired' ? 'Paired'
                             : pillState === 'pending' ? 'Pending'
+                            : pillState === 'queued' ? 'Queued'
                             : 'Pair'}
                         </Text>
                       </>
@@ -619,6 +665,10 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                   <Icon name="close-circle" size={22} color={colors.gray[400]} />
                 </TouchableOpacity>
               </View>
+              {pillState === 'queued' && (
+                <Text style={styles.queuedHint}>Activates when they join</Text>
+              )}
+              </React.Fragment>
             )
           })}
         </View>
@@ -706,8 +756,11 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         </View>
       )}
 
-      {/* Continue / Skip Footer */}
-      <View style={styles.footer}>
+    </ScrollView>
+
+    {/* Fixed footer — always visible at bottom */}
+    <View style={styles.fixedFooter}>
+      {addedFriends.length > 0 && (
         <TouchableOpacity
           style={styles.continueButton}
           onPress={onContinue}
@@ -715,11 +768,15 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         >
           <Text style={styles.continueButtonText}>Continue</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onSkip} activeOpacity={0.7}>
-          <Text style={styles.skipText}>I'll do this later</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      )}
+      <TouchableOpacity onPress={onSkip} activeOpacity={0.7}>
+        <Text style={styles.skipText}>I'll do this later</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onBack} activeOpacity={0.7}>
+        <Text style={styles.backText}>Back</Text>
+      </TouchableOpacity>
+    </View>
+    </View>
   )
 }
 
@@ -941,6 +998,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[50],
     opacity: 0.5,
   },
+  pairPillQueued: {
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
   pairPillText: {
     fontSize: typography.sm.fontSize,
     fontWeight: fontWeights.medium as any,
@@ -954,6 +1016,15 @@ const styles = StyleSheet.create({
   },
   pairPillTextDisabled: {
     color: colors.gray[400],
+  },
+  pairPillTextQueued: {
+    color: colors.gray[500],
+  },
+  queuedHint: {
+    ...typography.xs,
+    color: colors.text?.tertiary ?? colors.gray[400],
+    marginTop: spacing.xxs ?? 2,
+    textAlign: 'right' as const,
   },
 
   // ─── Pair Request Cards (premium warm treatment) ───
@@ -1053,11 +1124,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // ─── Layout ───
+  outerContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: spacing.lg,
+  },
   // ─── Footer ───
-  footer: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.md,
+  fixedFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    backgroundColor: colors.background?.primary ?? '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+    gap: spacing.sm,
+  },
+  backText: {
+    ...typography.sm,
+    color: colors.text?.tertiary ?? colors.gray[400],
+    textAlign: 'center' as const,
+    paddingVertical: spacing.xs,
   },
   continueButton: {
     backgroundColor: colors.primary[500],

@@ -59,12 +59,14 @@ export interface CreatedSession {
 
 // NEW: Pair request data tracked during onboarding
 export interface OnboardingPairAction {
-  type: 'sent' | 'accepted'
-  targetUserId: string
+  type: 'sent' | 'accepted' | 'queued'
+  targetUserId?: string
+  targetPhoneE164?: string
   targetDisplayName: string
   tier: 1 | 2 | 3
   requestId?: string
   pairingId?: string
+  inviteId?: string
 }
 
 export interface OnboardingData {
