@@ -214,7 +214,7 @@ export default function ProfilePage({
         firstName,
         lastName,
       };
-      await onUserIdentityUpdate(updatedIdentity);
+      await onUserIdentityUpdate?.(updatedIdentity);
       if (firstName !== userIdentity?.firstName) mixpanelService.trackProfileSettingUpdated({ field: 'first_name' });
       if (lastName !== userIdentity?.lastName) mixpanelService.trackProfileSettingUpdated({ field: 'last_name' });
       return true;
