@@ -244,8 +244,7 @@ export const useBoardSession = (sessionId?: string) => {
         );
 
         // Optimistically update allParticipantPreferences so that
-        // RecommendationsContext detects the change immediately and
-        // invalidates the session deck without waiting for realtime.
+        // RecommendationsContext can recompute collabDeckParams immediately.
         setAllParticipantPreferences((prev) => {
           const list = prev ?? [];
           const idx = list.findIndex((p) => p.user_id === user.id);
@@ -256,6 +255,12 @@ export const useBoardSession = (sessionId?: string) => {
           }
           return [...list, updatedUserPrefs];
         });
+
+        // Force the session deck to refetch with the new preferences.
+        // The edge function reads prefs from the DB (already written above),
+        // so invalidation is sufficient — no need to pass prefs as params.
+        // Partial key match covers all batchSeed variants for this session.
+        queryClient.invalidateQueries({ queryKey: ['session-deck', sessionId] });
       } catch (err: any) {
         setError(err.message || "Failed to update preferences");
         throw err;
