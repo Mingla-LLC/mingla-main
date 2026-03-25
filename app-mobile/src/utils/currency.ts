@@ -65,21 +65,12 @@ export const formatNumberWithCommas = (num: number): string => {
   return Math.round(num).toLocaleString('en-US');
 };
 
-/**
- * Format currency with proper symbol and thousand separators
- * @param amount - The amount to format
- * @param currency - Currency code (default: 'USD')
- * @returns Formatted currency string (e.g., 136851 -> "$136,851")
- */
-export const formatCurrency = (amount: number, currency: string = 'USD'): string => {
+// RELIABILITY: Do NOT use this for user-facing price display — it does NOT apply
+// exchange rate conversion. Use formatCurrency from 'components/utils/formatters'
+// instead, which applies getRate() for proper currency conversion.
+// This function only formats a number with the currency symbol — no conversion.
+export const formatAmountWithSymbol = (amount: number, currency: string = 'USD'): string => {
   const symbol = getCurrencySymbol(currency);
-  
-  // Format with appropriate decimal places
-  if (currency === 'JPY' || currency === 'KRW' || currency === 'VND') {
-    // No decimal places for these currencies
-    return `${symbol}${formatNumberWithCommas(amount)}`;
-  }
-  
   return `${symbol}${formatNumberWithCommas(amount)}`;
 };
 

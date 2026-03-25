@@ -16,12 +16,16 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const DETAIL_FIELD_MASK =
   "id,displayName,formattedAddress,location,types,primaryType,rating,userRatingCount,priceLevel,regularOpeningHours,photos,websiteUri";
 
+// RELIABILITY: These ranges MUST match app-mobile/src/constants/priceTiers.ts
+// and supabase/functions/_shared/priceTiers.ts. All three are the same source of truth.
+// If you change ranges here, update both other files. If they disagree, the client
+// tier constants win — they're what users see.
 const PRICE_LEVEL_MAP: Record<string, { tier: string; min: number; max: number }> = {
   PRICE_LEVEL_FREE: { tier: "chill", min: 0, max: 0 },
-  PRICE_LEVEL_INEXPENSIVE: { tier: "chill", min: 5, max: 15 },
-  PRICE_LEVEL_MODERATE: { tier: "comfy", min: 15, max: 40 },
-  PRICE_LEVEL_EXPENSIVE: { tier: "bougie", min: 40, max: 100 },
-  PRICE_LEVEL_VERY_EXPENSIVE: { tier: "lavish", min: 100, max: 500 },
+  PRICE_LEVEL_INEXPENSIVE: { tier: "chill", min: 0, max: 50 },
+  PRICE_LEVEL_MODERATE: { tier: "comfy", min: 50, max: 150 },
+  PRICE_LEVEL_EXPENSIVE: { tier: "bougie", min: 150, max: 300 },
+  PRICE_LEVEL_VERY_EXPENSIVE: { tier: "lavish", min: 300, max: 500 },
 };
 
 const corsHeaders = {

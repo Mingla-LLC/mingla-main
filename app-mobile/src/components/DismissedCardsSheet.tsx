@@ -13,6 +13,8 @@ import { Icon } from './ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { Recommendation } from '../contexts/RecommendationsContext';
 import { getReadableCategoryName } from '../utils/categoryUtils';
+import { useLocalePreferences } from '../hooks/useLocalePreferences';
+import { parseAndFormatDistance } from './utils/formatters';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -33,6 +35,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
   onSave,
   onCardPress,
 }) => {
+  const { measurementSystem } = useLocalePreferences();
   const handleReconsider = (card: Recommendation) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onReconsider(card);
@@ -110,7 +113,11 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                         <Icon name="star" size={13} color="#F59E0B" style={styles.starIcon} />
                         <Text style={styles.metaText}>{card.rating?.toFixed(1) ?? '—'}</Text>
                       </View>
-                      <Text style={styles.distanceText}>{card.distance || card.travelTime}</Text>
+                      <Text style={styles.distanceText}>
+                        {card.distance
+                          ? parseAndFormatDistance(card.distance, measurementSystem)
+                          : card.travelTime}
+                      </Text>
                     </View>
                     <View style={styles.actionsColumn}>
                       <TouchableOpacity

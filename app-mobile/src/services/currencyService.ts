@@ -7,7 +7,9 @@
 const EXCHANGE_RATE_API_URL = "https://api.exchangerate-api.com/v4/latest/USD";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Fallback rates (1 USD = X) when API is unavailable
+// RELIABILITY: These fallback rates are used when the live API (exchangerate-api.com)
+// is unreachable. They should be updated periodically. Last updated: 2026-03-25.
+// Live rates are fetched with 24h cache — fallbacks only matter during API outages.
 const FALLBACK_RATES: Record<string, number> = {
   USD: 1.0,
   AUD: 1.35,
@@ -22,7 +24,7 @@ const FALLBACK_RATES: Record<string, number> = {
   DJF: 177.0,
   DKK: 6.34,
   DZD: 134.0,
-  EGP: 31.0,
+  EGP: 50.0,
   ERN: 15.0,
   ETB: 50.8,
   EUR: 0.85,
@@ -35,7 +37,7 @@ const FALLBACK_RATES: Record<string, number> = {
   ILS: 3.25,
   INR: 74.8,
   JPY: 110.0,
-  KES: 108.5,
+  KES: 155.0,
   KMF: 425.0,
   KRW: 1180.0,
   LRD: 151.0,
@@ -47,7 +49,7 @@ const FALLBACK_RATES: Record<string, number> = {
   MUR: 44.2,
   MXN: 17.8,
   NAD: 14.2,
-  NGN: 460.0,
+  NGN: 1600.0,
   NOK: 8.85,
   NZD: 1.42,
   PLN: 3.89,
@@ -62,7 +64,7 @@ const FALLBACK_RATES: Record<string, number> = {
   SSP: 130.2,
   SZL: 14.2,
   TND: 3.1,
-  TRY: 8.45,
+  TRY: 38.0,
   TZS: 2320.0,
   UGX: 3650.0,
   XOF: 565.0,
