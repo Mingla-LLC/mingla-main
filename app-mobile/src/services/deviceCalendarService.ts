@@ -261,20 +261,19 @@ export class DeviceCalendarService {
     eventId: string
   ): Promise<boolean> {
     try {
-      // Check permissions
       const hasPermissions = await this.hasPermissions();
       if (!hasPermissions) {
-        console.warn("Calendar permissions not granted, cannot remove event");
-        return false;
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          throw new Error('Calendar permission denied');
+        }
       }
 
-      // Delete the event
       await Calendar.deleteEventAsync(eventId);
       return true;
     } catch (error: any) {
-      console.error("Error removing event from device calendar:", error);
-      // Don't throw - this is a best-effort operation
-      return false;
+      console.warn('[DeviceCalendar] Failed to remove event:', error);
+      throw error;
     }
   }
 
@@ -287,11 +286,12 @@ export class DeviceCalendarService {
     startDate: Date
   ): Promise<boolean> {
     try {
-      // Check permissions
       const hasPermissions = await this.hasPermissions();
       if (!hasPermissions) {
-        console.warn("Calendar permissions not granted, cannot remove event");
-        return false;
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          throw new Error('Calendar permission denied');
+        }
       }
 
       // Get default calendar ID
