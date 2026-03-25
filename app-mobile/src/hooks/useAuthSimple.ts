@@ -58,6 +58,11 @@ export const useAuthSimple = () => {
     const initializeAuth = async () => {
       try {
         logger.auth('Initializing — fetching session...');
+        // Cold start with expired token: prevent 401 burst from triggering forced sign-out
+        // during the token refresh window. Same pattern as useForegroundRefresh (line 106).
+        const { enterAuth401GracePeriod } = require('../config/queryClient');
+        enterAuth401GracePeriod(5000);
+
         // Get initial session
         const {
           data: { session },
@@ -181,6 +186,16 @@ export const useAuthSimple = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
+
+      // After token refresh, queries that fired with the expired token are stuck
+      // in error state. Invalidate all queries so they refetch with the new valid JWT.
+      // Also reset the 401 counter since those 401s were from the expired token, not zombie auth.
+      if (event === 'TOKEN_REFRESHED') {
+        const { queryClient, resetAuth401Counter } = require('../config/queryClient');
+        resetAuth401Counter();
+        queryClient.invalidateQueries();
+      }
+
       if (session?.user) {
         if (mounted) {
           setAuth(session.user as User);
