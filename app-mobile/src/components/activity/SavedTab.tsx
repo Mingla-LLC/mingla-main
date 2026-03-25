@@ -36,6 +36,7 @@ import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, isPlaceOpenAt, extractWeekdayText } from "../../utils/openingHoursUtils";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
+import { CardFilterBar, WhenFilter } from './CardFilterBar';
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
@@ -149,12 +150,10 @@ const SavedTab = ({
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [cardToSchedule, setCardToSchedule] = useState<SavedCard | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedWhen, setSelectedWhen] = useState<
-    "all" | "today" | "this_week" | "this_month" | "upcoming"
-  >("all");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedWhen, setSelectedWhen] = useState<WhenFilter>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedTier, setSelectedTier] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
@@ -276,15 +275,20 @@ const SavedTab = ({
     };
 
     const matchesCategory = (card: SavedCard) => {
-      if (selectedCategory === "all") return true;
-      const readableName = getReadableCategoryName(card.category || "");
-      return readableName === selectedCategory;
+      if (selectedCategory === 'all') return true;
+      return card.category === selectedCategory;
+    };
+
+    const matchesTier = (card: SavedCard) => {
+      if (selectedTier === 'all') return true;
+      return (card as any).priceTier === selectedTier;
     };
 
     const applyAllFilters = (card: SavedCard) =>
       matchesSearch(card) &&
       matchesWhen(card) &&
-      matchesCategory(card);
+      matchesCategory(card) &&
+      matchesTier(card);
 
     return savedCards.filter(applyAllFilters);
   }, [
@@ -292,6 +296,7 @@ const SavedTab = ({
     searchQuery,
     selectedWhen,
     selectedCategory,
+    selectedTier,
   ]);
 
   // Run card pop animations when filtered cards change
@@ -338,87 +343,6 @@ const SavedTab = ({
     cardWrapper: {
       paddingHorizontal: 16,
       paddingVertical: 8,
-    },
-    filterCard: {
-      marginHorizontal: 16,
-      marginVertical: 5,
-      paddingVertical: 8,
-    },
-    filterHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    searchInputContainer: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: "#FFFFFF",
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-      elevation: 1,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 16,
-    },
-    searchIcon: {
-      marginRight: 8,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 14,
-      color: "#111827",
-      paddingVertical: 16,
-      marginLeft: 3
-    },
-    filterButton: {
-      marginLeft: 12,
-      width: 66,
-      height: 56,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "row",
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-      backgroundColor: "#FFFFFF",
-      elevation: 1,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 16,
-    },
-    filterSection: {
-      marginTop: 12,
-    },
-    filterLabel: {
-      fontSize: 12,
-      color: "#6b7280",
-      marginBottom: 8,
-    },
-    filterPillRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    filterPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 999,
-      backgroundColor: "#f3f4f6",
-    },
-    filterPillSelected: {
-      backgroundColor: "#f97316",
-    },
-    filterPillText: {
-      fontSize: 13,
-      color: "#4b5563",
-    },
-    filterPillTextSelected: {
-      color: "white",
-      fontWeight: "600",
     },
     experienceCard: {
       backgroundColor: "#FFFFFF",
@@ -2188,131 +2112,21 @@ const SavedTab = ({
       >
         {/* Search & Filters */}
         <Animated.View
-          style={[
-            styles.filterCard,
-            {
-              opacity: searchBarOpacity,
-              transform: [{ translateY: searchBarSlide }],
-            },
-          ]}
+          style={{
+            opacity: searchBarOpacity,
+            transform: [{ translateY: searchBarSlide }],
+          }}
         >
-          <View style={styles.filterHeaderRow}>
-            <View style={styles.searchInputContainer}>
-              <Icon
-                name="search-outline"
-                size={18}
-                color="#9ca3af"
-                style={styles.searchIcon}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by name, date, or type..."
-                placeholderTextColor="#9ca3af"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.filterButton, isFiltersExpanded ? { backgroundColor: "#eb7825" } : null]}
-              activeOpacity={0.7}
-              onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
-            >
-              <Icon name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
-              <Icon
-                name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
-                size={18}
-                color={isFiltersExpanded ? "white" : "#9ca3af"}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {isFiltersExpanded && (
-            <>
-              {/* When */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterLabel}>When</Text>
-                <View style={styles.filterPillRow}>
-                  {[
-                    { key: "all", label: "All Dates" },
-                    { key: "today", label: "Today" },
-                    { key: "this_week", label: "This Week" },
-                    { key: "this_month", label: "This Month" },
-                    { key: "upcoming", label: "Upcoming" },
-                  ].map((option) => {
-                    const selected = selectedWhen === option.key;
-                    return (
-                      <TouchableOpacity
-                        key={option.key}
-                        style={[
-                          styles.filterPill,
-                          selected && styles.filterPillSelected,
-                        ]}
-                        onPress={() =>
-                          setSelectedWhen(option.key as typeof selectedWhen)
-                        }
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.filterPillText,
-                            selected && styles.filterPillTextSelected,
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Category */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterLabel}>Category</Text>
-                <View style={styles.filterPillRow}>
-                  {[
-                    "Take a Stroll",
-                    "Sip & Chill",
-                    "Casual Eats",
-                    "Screen & Relax",
-                    "Creative & Hands-On",
-                    "Picnics",
-                    "Play & Move",
-                    "Dining Experiences",
-                    "Wellness Dates",
-                    "Freestyle",
-                  ].map((label) => {
-                    const key = label;
-                    const selected = selectedCategory === key;
-                    return (
-                      <TouchableOpacity
-                        key={key}
-                        style={[
-                          styles.filterPill,
-                          selected && styles.filterPillSelected,
-                        ]}
-                        onPress={() =>
-                          setSelectedCategory(
-                            selected ? "all" : (key as typeof selectedCategory)
-                          )
-                        }
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.filterPillText,
-                            selected && styles.filterPillTextSelected,
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </>
-          )}
+          <CardFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            selectedWhen={selectedWhen}
+            onWhenChange={setSelectedWhen}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            selectedTier={selectedTier}
+            onTierChange={setSelectedTier}
+          />
         </Animated.View>
         {/* Saved Cards List */}
         {filteredCards.length === 0
