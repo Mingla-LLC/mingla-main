@@ -26,7 +26,7 @@ import { useRecommendations, Recommendation } from "../contexts/RecommendationsC
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
@@ -868,7 +868,7 @@ export default function DiscoverScreen({
   };
 
   // Get auth for Discover features
-  const { user } = useAuthSimple();
+  const user = useAppStore((s) => s.user);
   const { canAccess } = useFeatureGate();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');

@@ -26,7 +26,7 @@ import { useFriends } from "../hooks/useFriends";
 import type { Friend } from "../hooks/useFriends";
 import { usePairingPills, useSendPairRequest } from "../hooks/usePairings";
 import type { PairingPill } from "../services/pairingService";
-import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useAppStore } from "../store/appStore";
 import {
   getDefaultCountryCode,
   getCountryByCode,
@@ -88,7 +88,7 @@ export default function PairRequestModal({
   onPairRequestSent,
 }: PairRequestModalProps) {
   const insets = useSafeAreaInsets();
-  const { user } = useAuthSimple();
+  const user = useAppStore((s) => s.user);
   const { friends, loading: friendsLoading } = useFriends({ autoFetchBlockedUsers: false });
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const sendPairRequest = useSendPairRequest();
