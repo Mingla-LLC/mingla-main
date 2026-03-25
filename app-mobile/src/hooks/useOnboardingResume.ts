@@ -61,6 +61,7 @@ const BASE_INITIAL_DATA: OnboardingData = {
   pairActions: [],
   skippedFriends: false,
   createdSessions: [],
+  collabActionTaken: false,
 }
 
 export function useOnboardingResume(userId: string, profile: ResumeProfile): OnboardingResumeData {

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Image,
   StyleSheet,
+  Alert,
 } from 'react-native'
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView'
 import * as Haptics from 'expo-haptics'
@@ -39,6 +40,7 @@ interface OnboardingCollaborationStepProps {
   }
   onContinue: (sessions: CreatedSession[]) => void
   onSkip: () => void
+  onActionTaken: () => void
 }
 
 export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepProps> = ({
@@ -48,6 +50,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   userPreferences,
   onContinue,
   onSkip,
+  onActionTaken,
 }) => {
   // Selected friends for new session (keyed by userId or phoneE164)
   const [selectedFriendKeys, setSelectedFriendKeys] = useState<Set<string>>(new Set())
@@ -65,6 +68,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   // Pending collaboration invites
   const [pendingCollabInvites, setPendingCollabInvites] = useState<SessionInvite[]>([])
   const [loadingInvites, setLoadingInvites] = useState(false)
+  const [processingInviteId, setProcessingInviteId] = useState<string | null>(null)
 
   // Session management
   const {
@@ -78,6 +82,8 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
   // Load pending collaboration invites on mount
   useEffect(() => {
+    let cancelled = false
+
     const loadPendingInvites = async () => {
       setLoadingInvites(true)
       try {
@@ -85,10 +91,18 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       } catch (err) {
         console.error('Error loading collaboration invites:', err)
       } finally {
-        setLoadingInvites(false)
+        if (!cancelled) setLoadingInvites(false)
       }
     }
     loadPendingInvites()
+
+    // Safety timeout — if loadUserSessions hangs, stop the spinner after 10s.
+    // Show whatever data loaded so far rather than infinite spinner.
+    const timeout = setTimeout(() => {
+      if (!cancelled) setLoadingInvites(false)
+    }, 10_000)
+
+    return () => { cancelled = true; clearTimeout(timeout) }
   }, [loadUserSessions])
 
   // Listen for late-arriving collaboration invites in real-time.
@@ -125,9 +139,6 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       setPendingCollabInvites(pendingInvites)
     }
   }, [pendingInvites])
-
-  // Continue is always enabled — all skippable
-  const canContinue = true
 
   // Unique key for a friend — userId for existing, phoneE164 for invited
   const getFriendKey = useCallback((friend: AddedFriend): string => {
@@ -196,6 +207,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         setSessionName('')
         setSelectedFriendKeys(new Set())
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        onActionTaken()
       }
     } catch (err) {
       console.error('Error creating session:', err)
@@ -215,6 +227,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
     createCollaborativeSessionV2,
     userPreferences,
     getFriendKey,
+    onActionTaken,
   ])
 
   // Remove session
@@ -225,29 +238,40 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   // Accept collaboration invite
   const handleAcceptInvite = useCallback(
     async (inviteId: string) => {
+      if (processingInviteId) return
+      setProcessingInviteId(inviteId)
       try {
         await acceptInvite(inviteId)
         setPendingCollabInvites((prev) => prev.filter((i) => i.id !== inviteId))
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        onActionTaken()
       } catch (err) {
         console.error('Error accepting invite:', err)
+        Alert.alert('Error', err instanceof Error ? err.message : 'Could not join session')
+      } finally {
+        setProcessingInviteId(null)
       }
     },
-    [acceptInvite]
+    [acceptInvite, processingInviteId, onActionTaken]
   )
 
   // Decline collaboration invite
   const handleDeclineInvite = useCallback(
     async (inviteId: string) => {
+      if (processingInviteId) return
+      setProcessingInviteId(inviteId)
       try {
         await declineInvite(inviteId)
         setPendingCollabInvites((prev) => prev.filter((i) => i.id !== inviteId))
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
       } catch (err) {
         console.error('Error declining invite:', err)
+        Alert.alert('Error', err instanceof Error ? err.message : 'Could not decline invite')
+      } finally {
+        setProcessingInviteId(null)
       }
     },
-    [declineInvite]
+    [declineInvite, processingInviteId]
   )
 
   // Accept all
@@ -471,16 +495,32 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                 </View>
                 <View style={styles.inviteCardActions}>
                   <Pressable
-                    style={styles.inviteJoinButton}
+                    style={[
+                      styles.inviteJoinButton,
+                      processingInviteId === invite.id && styles.inviteButtonProcessing,
+                    ]}
                     onPress={() => handleAcceptInvite(invite.id)}
+                    disabled={!!processingInviteId}
                   >
-                    <Text style={styles.inviteJoinButtonText}>Join</Text>
+                    {processingInviteId === invite.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.inviteJoinButtonText}>Join</Text>
+                    )}
                   </Pressable>
                   <Pressable
-                    style={styles.inviteDeclineButton}
+                    style={[
+                      styles.inviteDeclineButton,
+                      processingInviteId === invite.id && styles.inviteButtonProcessing,
+                    ]}
                     onPress={() => handleDeclineInvite(invite.id)}
+                    disabled={!!processingInviteId}
                   >
-                    <Text style={styles.inviteDeclineButtonText}>Decline</Text>
+                    {processingInviteId === invite.id ? (
+                      <ActivityIndicator size="small" color={colors.gray[500]} />
+                    ) : (
+                      <Text style={styles.inviteDeclineButtonText}>Decline</Text>
+                    )}
                   </Pressable>
                 </View>
               </View>
@@ -503,20 +543,6 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         </View>
       )}
 
-      {/* Continue button */}
-      {canContinue && (
-        <Pressable
-          style={styles.continueButton}
-          onPress={() => onContinue(createdSessions)}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-        </Pressable>
-      )}
-
-      {/* Skip button */}
-      <Pressable style={styles.skipButton} onPress={onSkip}>
-        <Text style={styles.skipButtonText}>I'll do this later</Text>
-      </Pressable>
     </KeyboardAwareScrollView>
   )
 }
@@ -801,29 +827,7 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     textAlign: 'center',
   },
-  continueButton: {
-    backgroundColor: colors.primary[500],
-    borderRadius: radius.lg,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.lg,
-  },
-  continueButtonText: {
-    ...typography.md,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.inverse,
-  },
-  skipButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xxl,
-  },
-  skipButtonText: {
-    ...typography.md,
-    fontWeight: fontWeights.medium,
-    color: colors.text.tertiary,
+  inviteButtonProcessing: {
+    opacity: 0.6,
   },
 })

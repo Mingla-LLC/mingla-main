@@ -108,6 +108,7 @@ export interface OnboardingData {
 
   // Step 6 — Collaborations
   createdSessions: CreatedSession[]
+  collabActionTaken: boolean  // true after first session create or invite accept in Step 6
 }
 
 // ─── Country Data ───

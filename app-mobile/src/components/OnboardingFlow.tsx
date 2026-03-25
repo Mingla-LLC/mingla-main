@@ -1821,8 +1821,16 @@ const OnboardingFlow = ({
             : () => { setData(prev => ({ ...prev, skippedFriends: true })); goNext() },
           hide: false,
         }
-      case 'collaborations':
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'collaborations': {
+        const hasActed = data.createdSessions.length > 0 || data.collabActionTaken
+        return {
+          label: hasActed ? 'Continue' : "I'll do this later",
+          disabled: false,
+          loading: false,
+          onPress: () => goNext(),
+          hide: false,
+        }
+      }
       case 'consent':
         // OnboardingConsentStep has its own action buttons
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
@@ -2805,10 +2813,10 @@ const OnboardingFlow = ({
           }}
           onContinue={(sessions) => {
             setData(prev => ({ ...prev, createdSessions: sessions }))
-            goNext()
           }}
-          onSkip={() => {
-            goNext()
+          onSkip={() => {}}
+          onActionTaken={() => {
+            setData(prev => ({ ...prev, collabActionTaken: true }))
           }}
         />
       )
