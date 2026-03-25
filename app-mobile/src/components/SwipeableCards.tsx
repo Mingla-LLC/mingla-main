@@ -49,7 +49,8 @@ import {
 import { DeckHistorySheet } from "./DeckHistorySheet";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
-import { SCREEN_WIDTH } from "../utils/responsive";
+import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
+import { SkeletonCard } from './SkeletonCard';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { useSwipeLimit } from '../hooks/useSwipeLimit';
 import { getTierLimits } from '../constants/tierLimits';
@@ -1494,16 +1495,12 @@ export default function SwipeableCards({
       return (
         <View style={styles.loadingContainer}>
           <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
-            <View style={styles.brandMark}>
-              <Icon name="compass-outline" size={28} color="#eb7825" />
-            </View>
-            <PulseDots size={8} speed={600} />
-            <View style={styles.loaderTextGroup}>
-              <Text style={styles.loadingTitle}>Curating your lineup</Text>
-              <Text style={styles.loaderSubtitle}>
-                Finding experiences that match your energy
-              </Text>
-            </View>
+            <SkeletonCard
+              width={SCREEN_WIDTH - 48}
+              height={SCREEN_HEIGHT - 280}
+              borderRadius={20}
+            />
+            <Text style={styles.skeletonLoadingText}>Curating your lineup</Text>
           </Animated.View>
         </View>
       );
@@ -2352,6 +2349,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
     textAlign: "center",
+  },
+  skeletonLoadingText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 12,
   },
   loaderSubtitle: {
     fontSize: 14,

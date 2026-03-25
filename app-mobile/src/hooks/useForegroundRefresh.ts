@@ -189,6 +189,8 @@ export function useForegroundRefresh(
           } catch (e) {
             console.warn('[RESUME] Realtime reconnect failed:', e);
           }
+          // Warm edge functions before query invalidations trigger refetches
+          supabase.functions.invoke('keep-warm').catch(() => {});
         }
 
         // ── 5-30s and ≥30s backgrounds: invalidate critical queries + fire callback ──

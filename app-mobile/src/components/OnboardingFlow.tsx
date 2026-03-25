@@ -243,6 +243,10 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
       }).start()
 
       try {
+        // Warm all edge functions in parallel with the animation.
+        // The 3s animation provides ample time for isolates to spin up.
+        supabase.functions.invoke('keep-warm').catch(() => {});
+
         // Mark onboarding complete — check response for errors
         const { error: updateError } = await supabase.from('profiles').update({
           has_completed_onboarding: true,

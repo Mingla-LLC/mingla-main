@@ -86,6 +86,9 @@ export const useAuthSimple = () => {
             // Profile loads in the background — no need to block navigation.
             setLoading(false);
           }
+          // Warm edge function isolates so first card load is fast.
+          // Fire-and-forget — failure is harmless, success saves 2-5s.
+          supabase.functions.invoke('keep-warm').catch(() => {});
 
           // Load profile (non-blocking — user sees home while this completes)
           try {
@@ -199,6 +202,8 @@ export const useAuthSimple = () => {
         const { queryClient, resetAuth401Counter } = require('../config/queryClient');
         resetAuth401Counter();
         queryClient.invalidateQueries();
+        // Fresh JWT — warm edge functions before invalidated queries refetch
+        supabase.functions.invoke('keep-warm').catch(() => {});
       }
 
       if (session?.user) {

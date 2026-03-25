@@ -43,7 +43,11 @@ import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import PersonHolidayView from "./PersonHolidayView";
 import CustomHolidayModal from "./CustomHolidayModal";
-import { STANDARD_HOLIDAYS } from "../constants/holidays";
+import { STANDARD_HOLIDAYS, DEFAULT_PERSON_SECTIONS } from "../constants/holidays";
+import { useQueryClient } from '@tanstack/react-query';
+import { fetchPersonHeroCards } from '../services/personHeroCardsService';
+import { personCardKeys } from '../hooks/queryKeys';
+import { sectionsToSlugsAndType } from '../hooks/usePairedCards';
 import {
   getSharedCustomHolidaysByPairing,
   createCustomHolidayForPairing,
@@ -874,6 +878,7 @@ export default function DiscoverScreen({
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
+  const prefetchQueryClient = useQueryClient();
 
   // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled,
   // or optimistic update removed it after accept/decline).
@@ -1071,6 +1076,37 @@ export default function DiscoverScreen({
   const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
+
+  // Prefetch hero cards for active paired people so tapping a pill is instant.
+  // Fires once when pills + location are available. Prefetches birthday section only.
+  useEffect(() => {
+    if (!pairingPills.length || !fallbackLat || !fallbackLng) return;
+
+    const activePeople = pairingPills
+      .filter(p => p.pillState === 'active' && p.pairedUserId)
+      .slice(0, 3); // Limit to top 3 to avoid burst
+
+    if (!activePeople.length) return;
+
+    const location = { latitude: fallbackLat, longitude: fallbackLng };
+    const locKey = `${fallbackLat.toFixed(1)},${fallbackLng.toFixed(1)}`;
+    const { categorySlugs, curatedExperienceType } = sectionsToSlugsAndType(DEFAULT_PERSON_SECTIONS);
+
+    for (const person of activePeople) {
+      prefetchQueryClient.prefetchQuery({
+        queryKey: personCardKeys.paired(person.pairedUserId!, 'birthday', locKey),
+        queryFn: () => fetchPersonHeroCards({
+          pairedUserId: person.pairedUserId!,
+          holidayKey: 'birthday',
+          categorySlugs,
+          curatedExperienceType,
+          location,
+          mode: 'default',
+        }),
+        staleTime: Infinity,
+      });
+    }
+  }, [pairingPills, fallbackLat, fallbackLng, prefetchQueryClient]);
 
   // Device GPS location - used by BOTH "For You" and "Night Out" tabs
   const [deviceGpsLat, setDeviceGpsLat] = useState<number | null>(null);
