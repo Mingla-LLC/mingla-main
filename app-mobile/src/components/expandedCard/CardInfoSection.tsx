@@ -26,12 +26,12 @@ interface CardInfoSectionProps {
 /** Map travel mode preference to an icon name */
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
-    case 'driving': return 'car';
+    case 'driving': return 'car-outline';
     case 'transit': return 'bus-outline';
     case 'bicycling':
     case 'biking': return 'bicycle-outline';
-    case 'walking':
-    default: return 'walk-outline';
+    case 'walking': return 'walk-outline';
+    default: return 'navigate-outline';
   }
 }
 
@@ -128,7 +128,7 @@ export default function CardInfoSection({
       <View style={styles.metricsRow}>
         {rating !== undefined && (
           <View style={styles.metricItem}>
-            <Icon name="star" size={14} color="#d97706" />
+            <Icon name="star" size={14} color="#fbbf24" />
             <Text style={styles.metricText}>{rating.toFixed(1)}</Text>
           </View>
         )}

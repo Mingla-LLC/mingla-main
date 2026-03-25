@@ -309,7 +309,7 @@ function CompactCard({
           ) : <View />}
           {rating != null && rating > 0 ? (
             <View style={styles.compactCardRatingRow}>
-              <Icon name="star" size={s(11)} color="#F59E0B" />
+              <Icon name="star" size={s(11)} color="white" />
               <Text style={[styles.compactCardRatingText, isCurated && styles.compactCardRatingCurated]}>
                 {rating.toFixed(1)}
               </Text>

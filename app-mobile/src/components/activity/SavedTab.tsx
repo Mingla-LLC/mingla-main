@@ -1844,7 +1844,7 @@ const SavedTab = ({
           {/* Stats row: avg rating, duration, price */}
           <View style={curatedSavedStyles.statsRow}>
             <View style={curatedSavedStyles.statItem}>
-              <Icon name="star" size={13} color="#F59E0B" />
+              <Icon name="star" size={13} color="white" />
               <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
             </View>
             <Text style={curatedSavedStyles.statDot}>·</Text>

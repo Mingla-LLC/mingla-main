@@ -508,7 +508,7 @@ function MultiStopPlanView({
           </View>
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
-            <Icon name="star" size={14} color="#F59E0B" />
+            <Icon name="star" size={14} color="white" />
             <Text style={curatedStyles.summaryText}>{avgRating} avg</Text>
           </View>
         </View>
@@ -619,7 +619,7 @@ function MultiStopPlanView({
                 <View style={curatedStyles.stopMetaRow}>
                   {stop.rating > 0 && (
                     <View style={curatedStyles.stopMetaItem}>
-                      <Icon name="star" size={12} color="#F59E0B" />
+                      <Icon name="star" size={12} color="#fbbf24" />
                       <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
                     </View>
                   )}

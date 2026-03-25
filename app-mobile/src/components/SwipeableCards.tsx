@@ -13,6 +13,7 @@ import {
   Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
@@ -738,6 +739,9 @@ export default function SwipeableCards({
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
+  const isCurrentCardSaved = currentRec ? savedCards.some(
+    (s: any) => s?.id === currentRec.id || s === currentRec.id
+  ) : false;
 
   // Trigger card content entrance animations when current card changes
   useEffect(() => {
@@ -992,6 +996,7 @@ export default function SwipeableCards({
             (cardToRemove as any)?.cardType === 'curated' &&
             !canAccessRef.current('curated_cards')
           )) {
+            HapticFeedback.medium();
             handleCardExpandRef.current?.();
           }
           Animated.spring(position, {
@@ -1004,6 +1009,13 @@ export default function SwipeableCards({
         // Check for horizontal swipe
         if (Math.abs(gestureState.dx) > 120) {
           const direction = gestureState.dx > 0 ? "right" : "left";
+
+          // Haptic feedback — immediate tactile response before animation
+          if (direction === "right") {
+            HapticFeedback.cardLike();
+          } else {
+            HapticFeedback.cardDislike();
+          }
 
           // Block swiping if at daily swipe limit (sync check from ref)
           const sl = swipeLimitRef.current;
@@ -1730,12 +1742,14 @@ export default function SwipeableCards({
                             </Text>
                           </View>
                         ) : null}
-                        <View style={styles.detailBadge}>
-                          <Icon name="star" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {(nextCard.rating ?? 0).toFixed(1)}
-                          </Text>
-                        </View>
+                        {nextCard.rating != null && nextCard.rating > 0 && (
+                          <View style={styles.detailBadge}>
+                            <Icon name="star" size={12} color="white" />
+                            <Text style={styles.detailBadgeText}>
+                              {nextCard.rating.toFixed(1)}
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.detailBadge}>
                           <Icon name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
@@ -1907,6 +1921,12 @@ export default function SwipeableCards({
                           <Icon name={CategoryIcon} size={12} color="white" />
                           <Text style={styles.detailBadgeText}>{getReadableCategoryName(currentRec.category)}</Text>
                         </View>
+                        {isCurrentCardSaved && (
+                          <View style={styles.savedBadge}>
+                            <Icon name="heart" size={10} color="white" />
+                            <Text style={styles.savedBadgeText}>Saved</Text>
+                          </View>
+                        )}
                       </View>
 
                       {/* View more badge */}
@@ -2649,5 +2669,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  savedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(235, 120, 37, 0.85)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  savedBadgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "600",
   },
 });

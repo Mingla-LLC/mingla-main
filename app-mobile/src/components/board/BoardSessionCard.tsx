@@ -128,7 +128,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
           <View style={styles.statsRow}>
             {cardData.rating != null && cardData.rating > 0 && (
               <View style={styles.statItem}>
-                <Icon name="star" size={14} color="#eb7825" />
+                <Icon name="star" size={14} color="#fbbf24" />
                 <Text style={styles.statText}>
                   {Number(cardData.rating).toFixed(1)} (
                   {cardData.reviewCount || 0})
