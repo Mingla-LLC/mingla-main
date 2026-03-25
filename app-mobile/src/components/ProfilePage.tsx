@@ -16,7 +16,6 @@ import { useFriends } from "../hooks/useFriends";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
-import { useAppState } from "./AppStateManager";
 import { mixpanelService } from "../services/mixpanelService";
 import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProfileInterests";
 import ProfileHeroSection from "./profile/ProfileHeroSection";
@@ -33,6 +32,7 @@ import BetaFeedbackButton from "./BetaFeedbackButton";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
+  onUserIdentityUpdate?: (identity: any) => Promise<void>;
   onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
   onNavigateToConnections?: () => void;
   onNavigateToPrivacyPolicy?: () => void;
@@ -52,6 +52,7 @@ interface ProfilePageProps {
 
 export default function ProfilePage({
   onSignOut,
+  onUserIdentityUpdate,
   onNavigateToActivity,
   onNavigateToConnections,
   onNavigateToPrivacyPolicy,
@@ -75,7 +76,7 @@ export default function ProfilePage({
   const [isUploading, setIsUploading] = useState(false);
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
-  const { handleUserIdentityUpdate } = useAppState();
+  // onUserIdentityUpdate comes via props — no more useAppState() call.
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -147,7 +148,7 @@ export default function ProfilePage({
             setIsUploading(true);
             try {
               await authService.updateUserProfile(user.id, { avatar_url: null });
-              handleUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: null });
+              onUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: null });
               mixpanelService.trackProfilePictureUpdated("removed");
             } catch (error) {
               Alert.alert("Error", "Failed to remove profile photo.");
@@ -192,7 +193,7 @@ export default function ProfilePage({
     try {
       const publicUrl = await authService.uploadProfilePhoto(user.id, imageUri);
       if (publicUrl) {
-        handleUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: publicUrl });
+        onUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: publicUrl });
         mixpanelService.trackProfilePictureUpdated("uploaded");
       } else {
         Alert.alert("Error", "Failed to upload profile photo.");
@@ -213,7 +214,7 @@ export default function ProfilePage({
         firstName,
         lastName,
       };
-      await handleUserIdentityUpdate(updatedIdentity);
+      await onUserIdentityUpdate(updatedIdentity);
       if (firstName !== userIdentity?.firstName) mixpanelService.trackProfileSettingUpdated({ field: 'first_name' });
       if (lastName !== userIdentity?.lastName) mixpanelService.trackProfileSettingUpdated({ field: 'last_name' });
       return true;
@@ -349,6 +350,8 @@ export default function ProfilePage({
         onSave={handleSaveInterests}
       />
       <AccountSettings
+        user={user}
+        onSignOut={onSignOut}
         visible={showAccountSettings}
         onClose={() => setShowAccountSettings(false)}
         notificationsEnabled={notificationsEnabled}

@@ -20,7 +20,6 @@ import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/edgeFunctionError";
-import { useAppState } from "../AppStateManager";
 import { useAppStore } from "../../store/appStore";
 import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
@@ -78,15 +77,16 @@ const ACCORDION_ANIM = {
 };
 
 interface AccountSettingsProps {
+  user?: any;
+  onSignOut?: () => Promise<void> | void;
   visible: boolean;
   onClose: () => void;
   notificationsEnabled?: boolean;
   onNotificationsToggle?: (enabled: boolean) => void;
 }
 
-export default function AccountSettings({ visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
+export default function AccountSettings({ user, onSignOut, visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
   const insets = useSafeAreaInsets();
-  const { user, handleSignOut } = useAppState();
   const profile = useAppStore((s) => s.profile);
 
   // Field states
@@ -323,7 +323,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
       setTimeout(() => {
         setShowDeleteConfirmModal(false);
         onClose();
-        handleSignOut().catch((err) => console.error("Sign-out after account deletion failed:", err));
+        onSignOut?.()?.catch?.((err) => console.error("Sign-out after account deletion failed:", err));
       }, 2000);
     } catch (e: unknown) {
       console.error("Delete account error:", e);
@@ -336,7 +336,7 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
               onClose();
-              handleSignOut().catch(console.error);
+              onSignOut?.()?.catch?.(console.error);
             }, 2000);
             return;
           }
@@ -373,14 +373,14 @@ export default function AccountSettings({ visible, onClose, notificationsEnabled
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
               onClose();
-              handleSignOut().catch(console.error);
+              onSignOut?.()?.catch?.(console.error);
             }, 2000);
           }
         } catch { /* let timeout handle it */ }
       }
     });
     return () => subscription.remove();
-  }, [handleSignOut, onClose]);
+  }, [onSignOut, onClose]);
 
   const closeDeleteModal = () => {
     if (deleteStep === "deleting") {

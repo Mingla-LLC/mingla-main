@@ -25,7 +25,6 @@ import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../../hooks/queryKeys";
-import { useAppState } from "../AppStateManager";
 import { CalendarService } from "../../services/calendarService";
 import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
@@ -94,6 +93,8 @@ interface SavedCard {
 }
 
 interface SavedTabProps {
+  savedCards?: SavedCard[];
+  calendarEntries?: any[];
   isLoading?: boolean;
   onScheduleFromSaved: (card: SavedCard) => void | Promise<void>;
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
@@ -109,6 +110,8 @@ interface SavedTabProps {
 }
 
 const SavedTab = ({
+  savedCards: propSavedCards,
+  calendarEntries = [],
   isLoading = false,
   onScheduleFromSaved,
   onPurchaseFromSaved,
@@ -120,14 +123,10 @@ const SavedTab = ({
   activeBoardSessionId,
 }: SavedTabProps) => {
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const {
-    savedCards: contextSavedCards,
-    isLoadingSavedCards: contextIsLoadingSavedCards,
-    calendarEntries,
-  } = useAppState();
-  const effectiveIsLoading = isLoading || contextIsLoadingSavedCards;
-  // Use boardSavedCards if provided, otherwise use savedCards from context
-  const savedCards = boardSavedCards ?? contextSavedCards;
+  // savedCards and calendarEntries now come via props from the parent chain.
+  // No more useAppState() call — eliminates duplicate auth/realtime/query instances.
+  const effectiveIsLoading = isLoading;
+  const savedCards = boardSavedCards ?? propSavedCards ?? [];
 
   // Feature gating for locked curated cards
   const { canAccess } = useFeatureGate();

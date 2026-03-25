@@ -61,6 +61,7 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
 };
 
 interface LikesPageProps {
+  savedCards?: any[];
   userPreferences?: any;
   accountPreferences?: {
     currency: string;
@@ -81,6 +82,7 @@ interface LikesPageProps {
 }
 
 export default function LikesPage({
+  savedCards,
   userPreferences,
   accountPreferences,
   calendarEntries = [],
@@ -128,6 +130,8 @@ export default function LikesPage({
       <View style={styles.content}>
         {activeTab === "saved" && (
           <SavedTab
+            savedCards={savedCards}
+            calendarEntries={calendarEntries}
             isLoading={isLoadingSavedCards}
             onScheduleFromSaved={onScheduleFromSaved || (() => {})}
             onPurchaseFromSaved={onPurchaseFromSaved || (() => {})}
