@@ -461,7 +461,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     <Text style={styles.categoryText} numberOfLines={1} ellipsizeMode="tail">{categoryLabel}</Text>
                   </View>
 
-                  <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">
+                  <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
                     {cardData.description || ""}
                   </Text>
 
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
     position: "relative",
     overflow: "hidden",
   },
@@ -570,6 +570,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 16,
     gap: CARD_GAP,
+    flexGrow: 1,
   },
   navButton: {
     position: "absolute",
@@ -614,7 +615,7 @@ const styles = StyleSheet.create({
   },
   curatedImageStrip: {
     flexDirection: "row",
-    height: Platform.OS === "ios" ? 250 : 210,
+    flex: 1,
   },
   curatedImageWrapper: {
     flex: 1,
@@ -644,10 +645,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   curatedInfoSection: {
-    flex: 1,
-    padding: 12,
-    gap: 6,
-    justifyContent: "center",
+    padding: 16,
+    paddingTop: 14,
+    gap: 8,
+    justifyContent: "flex-end",
   },
   curatedCategoryBadge: {
     flexDirection: "row",
@@ -691,7 +692,7 @@ const styles = StyleSheet.create({
   },
   // ── Standard card styles ──
   imageContainer: {
-    height: Platform.OS === "ios" ? 443 : 365,
+    flex: 1,
     position: "relative",
   },
   cardImage: {
@@ -753,8 +754,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   cardDetails: {
-    padding: 12,
-    gap: 6,
+    padding: 10,
+    paddingTop: 8,
+    gap: 4,
     overflow: "hidden",
   },
   categoryRow: {
@@ -777,7 +779,7 @@ const styles = StyleSheet.create({
   actionButtonsRow: {
     flexDirection: "row",
     gap: 6,
-    marginTop: 2,
+    marginTop: 0,
   },
   voteButton: {
     flex: 1,
