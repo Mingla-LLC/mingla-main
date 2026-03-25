@@ -382,7 +382,11 @@ async function queryPlacePool(
 
   return data.filter((p: any) => {
     if (!p.stored_photo_urls?.length) return false;
-    // Hardcoded exclusions (legacy — kept for defense in depth)
+    // RELIABILITY: Check the FULL types[] array against exclusion lists, not just
+    // primary_type. A gym with primary_type='community_center' and types=['gym',
+    // 'community_center'] would pass a primary_type-only check. This was the cause
+    // of gyms appearing as curated experience stops.
+    // See Architecture Constitution Principle 13.
     if (p.primary_type && excludedPrimary.includes(p.primary_type)) return false;
     if (p.types?.some((t: string) => excludedPrimary.includes(t))) return false;
     if (p.primary_type && GLOBAL_EXCLUDED.has(p.primary_type)) return false;

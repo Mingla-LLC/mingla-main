@@ -856,7 +856,11 @@ export async function serveCardsFromPipeline(
     // Check primary_type against global exclusions (works on pool cards)
     if (card.primary_type && globalSet.has(card.primary_type)) return false;
 
-    // Check venue name against child/excluded keywords
+    // RELIABILITY: isChildVenueName() checks venue names against keyword patterns
+    // (kids, children, bounce, playground, etc.). This is the ONLY filter that catches
+    // kids venues with adult Google place types (e.g., "Kids Fun Zone Bowling" has
+    // types=['bowling_alley'] which passes all type-based exclusions). All 3 card-serving
+    // functions must apply this filter. See Architecture Constitution Principle 13.
     const venueName = card.name || card.title || '';
     if (venueName && isChildVenueName(venueName)) return false;
 
