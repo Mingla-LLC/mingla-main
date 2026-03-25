@@ -72,6 +72,9 @@ export interface DeckBatch {
 }
 
 interface AppState {
+  // Hydration flag — true after Zustand finishes restoring from AsyncStorage
+  _hasHydrated: boolean;
+
   // Auth state
   user: User | null;
   isAuthenticated: boolean;
@@ -123,6 +126,7 @@ export const useAppStore = create<AppState>()(
   persist(
     devLoggerMiddleware<AppState>((set, get, _api) => ({
       // Initial state
+      _hasHydrated: false,
       user: null,
       isAuthenticated: false,
       profile: null,
@@ -223,6 +227,10 @@ export const useAppStore = create<AppState>()(
           state.deckBatches = [];
           state.deckSchemaVersion = DECK_SCHEMA_VERSION;
         }
+        // Signal that Zustand has finished restoring persisted state.
+        // Components can now trust that `profile`, `user`, `isAuthenticated`
+        // reflect the persisted values (not just the defaults).
+        useAppStore.setState({ _hasHydrated: true });
       },
     }
   )

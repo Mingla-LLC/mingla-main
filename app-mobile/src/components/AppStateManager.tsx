@@ -90,6 +90,7 @@ export function useAppState() {
   signOutRef.current = signOut;
 
   const {
+    _hasHydrated,
     profile,
     showAccountSettings,
     setShowAccountSettings,
@@ -823,6 +824,7 @@ export function useAppState() {
     isAuthenticated,
     userRole,
     isLoadingAuth,
+    _hasHydrated,
     user,
     profile,
 

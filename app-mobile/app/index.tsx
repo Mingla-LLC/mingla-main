@@ -99,6 +99,7 @@ function AppContent() {
   const {
     isAuthenticated,
     isLoadingAuth,
+    _hasHydrated,
     user,
     profile,
     handleSignOut,
@@ -1580,9 +1581,12 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [currentMode, user?.id]);
 
-  // Show loading while checking authentication status
-  if (isLoadingAuth) {
-    logger.nav('Render: AuthLoading screen');
+  // Wait for Zustand to finish rehydrating persisted state.
+  // Without this, the profile gate below sees profile=null (the default)
+  // even when a profile IS persisted — causing a flash of "Getting things ready"
+  // or, on Android with expired JWT, a permanent loading screen.
+  if (!_hasHydrated || isLoadingAuth) {
+    logger.nav('Render: AuthLoading screen', { hydrated: _hasHydrated, authLoading: isLoadingAuth });
     return <AppLoadingScreen message="Welcome back" testID="auth-loading" />;
   }
   // Show onboarding loader if active OR if user needs onboarding.
@@ -1749,6 +1753,7 @@ function AppContent() {
       case "likes":
         return (
           <LikesPage
+            savedCards={savedCards}
             isLoadingSavedCards={isLoadingSavedCards}
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
@@ -1780,6 +1785,7 @@ function AppContent() {
               logger.action('Sign out pressed');
               await handleSignOut();
             }}
+            onUserIdentityUpdate={handleUserIdentityUpdate}
             onNavigateToActivity={handlers.handleNavigateToActivity}
             onNavigateToConnections={() => {
               logger.action('Navigate to connections from profile');
