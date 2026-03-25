@@ -1812,8 +1812,15 @@ const OnboardingFlow = ({
       case 'travel_time':
         return { label: prefsSaveError ? 'Retry' : 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends_and_pairing':
-        // OnboardingFriendsAndPairingStep has its own Continue/Skip buttons
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+        return {
+          label: data.addedFriends.length > 0 ? 'Continue' : "I'll do this later",
+          disabled: false,
+          loading: false,
+          onPress: data.addedFriends.length > 0
+            ? () => goNext()
+            : () => { setData(prev => ({ ...prev, skippedFriends: true })); goNext() },
+          hide: false,
+        }
       case 'collaborations':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'consent':
@@ -2765,7 +2772,6 @@ const OnboardingFlow = ({
             }))
           }}
           onContinue={() => goNext()}
-          onBack={() => goBack()}
           onSkip={() => {
             setData(prev => ({ ...prev, skippedFriends: true }))
             goNext()

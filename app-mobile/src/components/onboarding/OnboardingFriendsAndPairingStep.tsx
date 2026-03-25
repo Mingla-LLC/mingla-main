@@ -91,7 +91,6 @@ interface OnboardingFriendsAndPairingStepProps {
   // Navigation
   onContinue: () => void
   onSkip: () => void
-  onBack: () => void
   // Friend requests
   incomingRequests: FriendRequest[]
   onAcceptRequest: (requestId: string) => Promise<void>
@@ -108,7 +107,6 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   onPairAction,
   onContinue,
   onSkip,
-  onBack,
   incomingRequests,
   onAcceptRequest,
   onDeclineRequest,
@@ -433,12 +431,10 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   // ─── Render ───
 
   return (
-    <View style={styles.outerContainer}>
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.scrollContent}
     >
       {/* Header */}
       <Text style={styles.headline}>Your inner circle</Text>
@@ -757,26 +753,6 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       )}
 
     </ScrollView>
-
-    {/* Fixed footer — always visible at bottom */}
-    <View style={styles.fixedFooter}>
-      {addedFriends.length > 0 && (
-        <TouchableOpacity
-          style={styles.continueButton}
-          onPress={onContinue}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-        </TouchableOpacity>
-      )}
-      <TouchableOpacity onPress={onSkip} activeOpacity={0.7}>
-        <Text style={styles.skipText}>I'll do this later</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onBack} activeOpacity={0.7}>
-        <Text style={styles.backText}>Back</Text>
-      </TouchableOpacity>
-    </View>
-    </View>
   )
 }
 
@@ -1124,44 +1100,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ─── Layout ───
-  outerContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: spacing.lg,
-  },
-  // ─── Footer ───
-  fixedFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    backgroundColor: colors.background?.primary ?? '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[100],
-    gap: spacing.sm,
-  },
-  backText: {
-    ...typography.sm,
-    color: colors.text?.tertiary ?? colors.gray[400],
-    textAlign: 'center' as const,
-    paddingVertical: spacing.xs,
-  },
-  continueButton: {
-    backgroundColor: colors.primary[500],
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    width: '100%',
-    alignItems: 'center',
-  },
-  continueButtonText: {
-    color: '#fff',
-    fontSize: typography.md.fontSize,
-    fontWeight: fontWeights.semibold as any,
-  },
-  skipText: {
-    fontSize: typography.md.fontSize,
-    color: colors.gray[400],
-  },
 })
