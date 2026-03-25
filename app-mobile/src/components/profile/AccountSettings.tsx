@@ -879,11 +879,11 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   Deleting your account removes everything — your profile, boards, links, and activity. This can't be reversed.
                 </Text>
                 <View style={styles.deleteModalButtons}>
+                  <TouchableOpacity style={styles.deleteModalConfirm} onPress={executeDeleteAccount}>
+                    <Text style={styles.deleteModalConfirmText}>Delete my account</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
                     <Text style={styles.deleteModalCancelText}>Never mind</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.deleteModalConfirm} onPress={executeDeleteAccount}>
-                    <Text style={styles.deleteModalConfirmText}>Yes, Delete Everything</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -1283,9 +1283,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 24,
   },
-  deleteModalButtons: { flexDirection: "row", gap: 12, width: "100%" },
+  deleteModalButtons: { flexDirection: "column", gap: 10, width: "100%", marginTop: 8 },
   deleteModalCancel: {
-    flex: 1,
+    width: "100%",
     backgroundColor: "#f3f4f6",
     paddingVertical: 14,
     borderRadius: 12,
@@ -1293,7 +1293,7 @@ const styles = StyleSheet.create({
   },
   deleteModalCancelText: { fontSize: 16, fontWeight: "600", color: "#374151" },
   deleteModalConfirm: {
-    flex: 1,
+    width: "100%",
     backgroundColor: "#ef4444",
     paddingVertical: 14,
     borderRadius: 12,

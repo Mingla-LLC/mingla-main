@@ -856,6 +856,7 @@ export const useSessionManagement = () => {
           // IDEMPOTENT BOARD CREATION: Use session's board_id (the actual relationship)
           // collaboration_sessions.board_id points to boards.id — NOT boards.session_id
           let boardId: string | null = sessionData.board_id || null;
+          let createdBoardId: string | null = null;
 
           // Only create board if session doesn't already have one
           if (!boardId) {
@@ -877,6 +878,7 @@ export const useSessionManagement = () => {
               console.error('❌ Error creating board:', boardError);
             } else {
               boardId = boardData.id;
+              createdBoardId = boardData.id;
               console.log('✅ Board created successfully:', boardId);
             }
           } else {
@@ -889,7 +891,7 @@ export const useSessionManagement = () => {
             if (sessionData.status !== 'active') {
               const { error: sessionUpdateError } = await supabase
                 .from('collaboration_sessions')
-                .update({ 
+                .update({
                   status: 'active',
                   board_id: boardId,
                   updated_at: new Date().toISOString()
@@ -904,23 +906,46 @@ export const useSessionManagement = () => {
               }
             }
 
-            // Add all accepted participants as board collaborators in a single batch upsert.
-            // One round-trip regardless of participant count — avoids the N+1 serial-await pattern.
-            const collaboratorRows = acceptedMembers.map((participant) => ({
-              board_id: boardId,
-              user_id: participant.user_id,
-              role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator',
-            }));
+            // RELIABILITY: Re-read the session to get the ACTUAL board_id.
+            // The optimistic lock (.eq('status', 'pending')) may have matched zero rows
+            // if a concurrent accept already activated the session with a different board.
+            // Supabase .update() returns no error for zero affected rows, so we must
+            // re-read to discover the real board_id linked to this session.
+            const { data: refreshedSession } = await supabase
+              .from('collaboration_sessions')
+              .select('board_id')
+              .eq('id', invite.sessionId)
+              .single();
 
-            const { error: collaboratorError } = await supabase
-              .from('board_collaborators')
-              .upsert(collaboratorRows, {
-                onConflict: 'board_id,user_id',
-                ignoreDuplicates: true,
-              });
+            const actualBoardId = refreshedSession?.board_id;
 
-            if (collaboratorError && collaboratorError.code !== '23505') {
-              console.error('❌ Error adding collaborators:', collaboratorError);
+            if (!actualBoardId) {
+              console.error('❌ Session has no board_id after update — cannot add collaborators');
+            } else {
+              // Clean up orphaned board if a concurrent accept won the race
+              if (createdBoardId && actualBoardId !== createdBoardId) {
+                console.warn('⚠️ Concurrent accept detected — cleaning up orphaned board:', createdBoardId);
+                await supabase.from('boards').delete().eq('id', createdBoardId).eq('created_by', user.id);
+              }
+
+              // Add all accepted participants as board collaborators using the ACTUAL board_id.
+              // One round-trip regardless of participant count — avoids the N+1 serial-await pattern.
+              const collaboratorRows = acceptedMembers.map((participant) => ({
+                board_id: actualBoardId,
+                user_id: participant.user_id,
+                role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator',
+              }));
+
+              const { error: collaboratorError } = await supabase
+                .from('board_collaborators')
+                .upsert(collaboratorRows, {
+                  onConflict: 'board_id,user_id',
+                  ignoreDuplicates: true,
+                });
+
+              if (collaboratorError && collaboratorError.code !== '23505') {
+                console.error('❌ Error adding collaborators:', collaboratorError);
+              }
             }
           }
         }
