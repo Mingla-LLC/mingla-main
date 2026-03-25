@@ -37,6 +37,7 @@ interface OnboardingShellProps {
   onPrimaryCta: () => void;
   hidePrimaryCta?: boolean;
   hideBottomBar?: boolean;
+  disableKeyboardAvoidance?: boolean;
   scrollEnabled?: boolean;
   onBackToWelcome?: () => void;
   children: React.ReactNode;
@@ -53,6 +54,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   onPrimaryCta,
   hidePrimaryCta = false,
   hideBottomBar = false,
+  disableKeyboardAvoidance = false,
   scrollEnabled = true,
   onBackToWelcome,
   children,
@@ -261,6 +263,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
       <KeyboardAwareView
         style={styles.flex}
         dismissOnTap={false}
+        bottomOffset={disableKeyboardAvoidance ? 9999 : 0}
       >
         {/* Progress bar */}
         <View style={styles.progressContainer}>

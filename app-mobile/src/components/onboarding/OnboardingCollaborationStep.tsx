@@ -300,7 +300,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   const canCreateSession = hasSelectedFriends && sessionName.trim().length > 0
 
   return (
-    <KeyboardAwareScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+    <KeyboardAwareScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" keyboardPadding={160}>
       <Text style={styles.headline}>Plan something together</Text>
       <Text style={styles.body}>
         Start a session with your crew. Discover things to do, vote on favorites, and actually make it happen.

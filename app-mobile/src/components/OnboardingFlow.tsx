@@ -2813,6 +2813,7 @@ const OnboardingFlow = ({
           }}
           onContinue={(sessions) => {
             setData(prev => ({ ...prev, createdSessions: sessions }))
+            goNext()
           }}
           onSkip={() => {}}
           onActionTaken={() => {
@@ -2861,7 +2862,8 @@ const OnboardingFlow = ({
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity'}
+      disableKeyboardAvoidance={navState.subStep === 'collaborations'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
