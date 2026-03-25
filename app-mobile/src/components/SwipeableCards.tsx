@@ -1055,7 +1055,8 @@ export default function SwipeableCards({
             // Move to next card
             setCurrentCardIndex(0);
 
-            // Handle swipe logic (tracking, saving, etc.) in background
+            // RELIABILITY: .catch() on fire-and-forget handleSwipe. Without this,
+            // any error becomes an unhandled promise rejection.
             handleSwipeRef.current?.(direction, cardToRemove)?.catch((err) => {
               console.error('[SwipeableCards] Swipe handler error:', err);
             });
@@ -1219,6 +1220,9 @@ export default function SwipeableCards({
           } catch {}
 
           if (direction === 'right') {
+            // RELIABILITY: Await onCardLike and check the boolean result. If false (save
+            // failed), remove card.id from removedCards so it reappears in the deck. Without
+            // this rollback, a failed save = permanent card loss (not in saved, not in deck).
             const saveResult = await onCardLike(card);
             if (saveResult === false) {
               // Rollback: re-add card to deck by removing from removedCards

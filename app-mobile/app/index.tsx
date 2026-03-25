@@ -1584,10 +1584,11 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [currentMode, user?.id]);
 
-  // Wait for Zustand to finish rehydrating persisted state.
-  // Without this, the profile gate below sees profile=null (the default)
-  // even when a profile IS persisted — causing a flash of "Getting things ready"
-  // or, on Android with expired JWT, a permanent loading screen.
+  // RELIABILITY: Gate on !_hasHydrated || isLoadingAuth. This ensures the profile
+  // gate below sees the Zustand-persisted profile value (from AsyncStorage rehydration)
+  // instead of the default null. Without this, Android cold start with expired token
+  // shows permanent "Getting things ready" because profile fetch fails but persisted
+  // profile hasn't loaded yet.
   if (!_hasHydrated || isLoadingAuth) {
     logger.nav('Render: AuthLoading screen', { hydrated: _hasHydrated, authLoading: isLoadingAuth });
     return <AppLoadingScreen message="Welcome back" testID="auth-loading" />;

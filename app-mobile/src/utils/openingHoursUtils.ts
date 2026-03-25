@@ -42,6 +42,10 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  *
  * @returns true (open), false (closed), or null (cannot determine)
  */
+// RELIABILITY: isPlaceOpenAt checks a SPECIFIC datetime, not the current time.
+// Schedule validation MUST use isPlaceOpenAt(hours, selectedDateTime) — checking
+// current time would wrongly block scheduling for a future open time, or allow
+// scheduling for a time when the place is closed.
 /**
  * Checks if a place is open at a specific date/time.
  * Returns true (open), false (closed), or null (cannot determine — no hours data).

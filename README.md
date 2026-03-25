@@ -24,6 +24,18 @@ A mobile app for planning social outings — combining pool-first card serving, 
 
 8. **Subtract before adding.** When fixing an ownership or consistency issue, remove the competing path — don't add a sync layer on top.
 
+9. **No fabricated data.** Never render hardcoded fallback values as if they were real data. Missing data = hidden or "—". A fake "4.5" rating is worse than no rating.
+
+10. **Currency-aware everywhere.** Every price display must use the user's currency via `useLocalePreferences()` or prop-threaded `currency`. No hardcoded `$` symbols.
+
+11. **One auth instance.** Only one component may call `useAuthSimple()` — the root AppStateManager. All other components read auth state from `useAppStore()` or receive it via props. Duplicate auth instances cause racing token refreshes that break Android.
+
+12. **Validate at the right time.** Schedule validation checks the selected time, not the current time. Any time-dependent validation must use the user's chosen datetime, not `new Date()`.
+
+13. **Exclusions must be consistent across all card-serving paths.** Every card-serving function (discover-cards, discover-experiences, generate-curated-experiences) must apply the same exclusion filters: global type exclusions, per-category type exclusions, AND venue name keyword exclusions (`isChildVenueName`). Check the full `types` array, not just `primary_type`.
+
+14. **Prefer persisted state for instant startup.** On cold start, use Zustand-persisted state (profile, preferences, saved cards) to render immediately. Refresh from server in background. Gate on `_hasHydrated`, not network responses.
+
 ### Supporting Documents
 
 | Document | Purpose |
@@ -33,6 +45,54 @@ A mobile app for planning social outings — combining pool-first card serving, 
 | [`docs/MUTATION_CONTRACT.md`](docs/MUTATION_CONTRACT.md) | Standard for all state-changing operations |
 | [`docs/QUERY_KEY_REGISTRY.md`](docs/QUERY_KEY_REGISTRY.md) | Canonical query key shapes and invalidation rules |
 | [`docs/TRANSITIONAL_ITEMS_REGISTRY.md`](docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary solutions tracker with owners and exit conditions |
+
+---
+
+## Behavioral Contracts
+
+Verified behaviors from the launch hardening session. These are load-bearing — do not change without understanding the full chain.
+
+### Preferences → Deck Contract
+- On preference change (solo): optimistic cache updated immediately, deck resets via preferencesRefreshKey bump, new cards fetched with new preferences. No invalidateQueries race — AppHandlers is the single owner.
+- On preference change (collab): board_session_preferences updated in DB, session deck query invalidated via `queryClient.invalidateQueries(['session-deck', sessionId])`.
+- Stale batch rejection: cached deck batches include prefsHash. On cold start, batches with non-matching hash are rejected (safe migration for old batches without hash).
+
+### Save Contract
+- On swipe-right: card removed from deck (optimistic), save fires.
+  - Success: card stays removed, toast shown.
+  - Failure: card rolls back into deck (removedCards Set delete), Alert shown by AppHandlers.
+  - `handleSaveCard` returns `Promise<boolean>` — true on success/duplicate, false on failure.
+
+### Schedule Validation Contract
+- Hours validation occurs AFTER user picks a time, not before.
+- Uses `isPlaceOpenAt(weekdayText, selectedDateTime)`, not `isPlaceOpenNow()`.
+- Soft gate: Alert with "Schedule Anyway" option (hours data may be stale).
+- Curated cards: each stop validated at estimated arrival time (cumulative duration + travel).
+
+### Session Load Contract
+- 6 queries in 1 parallel phase (was 11 queries in 3 sequential phases).
+- Validation derived from Phase 1 data (no separate BoardErrorHandler queries).
+- Saved cards + unread count fire at T=0 (not gated on validation).
+- Expected: ~0.5s healthy, ~2s degraded.
+
+### Auth Contract
+- Single `useAuthSimple()` instance in AppStateManager. All others use `useAppStore()`.
+- On TOKEN_REFRESHED: `invalidateQueries()` retries all failed queries with new token.
+- Cold start: 5s grace period prevents 3-strike forced sign-out during token refresh.
+- Zustand `_hasHydrated` gate: app renders from persisted state immediately, refreshes in background. No "Getting things ready" blocking screen for returning users.
+
+### Exclusion Contract
+- All 3 card-serving functions apply: GLOBAL_EXCLUDED_PLACE_TYPES (type check), category_type_exclusions (DB table), `isChildVenueName()` (keyword check).
+- Type checks scan full `types[]` array, not just `primary_type`.
+- Curated stops: both stop types AND stop names checked.
+
+### Card Display Contract
+- Missing rating: hidden (no badge/text). Never show "0.0" or fake "4.5".
+- Missing travel time: hidden. Never show "15m" or "12 min drive".
+- Missing price: show "—" (em dash). Never show "$12-28".
+- Star color: `#fbbf24` on light backgrounds, `white` on dark/image overlays.
+- Travel icon: `getTravelModeIcon(travelMode)` — car-outline for driving, bicycle for biking, bus-outline for transit, walk-outline for walking, navigate-outline for unknown/null.
+- Currency: all price displays use user's currency via `useLocalePreferences()` or prop-threaded currency code. No hardcoded `$` symbols.
 
 ---
 

@@ -64,6 +64,9 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   // → permanent "Pulling up more for you" loader with no auto-recovery.
   const isEnabled = enabled && location !== null;
   const currentPillsKey = [...params.categories].sort().join(',');
+  // RELIABILITY: Match cached batches by prefsHash. Without this, a batch cached
+  // with old price/travel/time prefs is served on cold start if only categories
+  // matched. Old batches without prefsHash are safely rejected (undefined !== hash).
   const currentPrefsHash = useAppStore.getState().deckPrefsHash;
   const latestBatch = isEnabled
     ? useAppStore.getState().deckBatches.find(

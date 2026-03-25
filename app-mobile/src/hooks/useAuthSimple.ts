@@ -58,8 +58,10 @@ export const useAuthSimple = () => {
     const initializeAuth = async () => {
       try {
         logger.auth('Initializing — fetching session...');
-        // Cold start with expired token: prevent 401 burst from triggering forced sign-out
-        // during the token refresh window. Same pattern as useForegroundRefresh (line 106).
+        // RELIABILITY: Enter 401 grace period BEFORE getSession() on cold start.
+        // Android stored tokens are often expired. getSession() returns them as-is,
+        // queries fire with expired JWT, get 401s. The grace period prevents the
+        // 3-strike zombie auth handler from force-signing-out during the refresh window.
         const { enterAuth401GracePeriod } = require('../config/queryClient');
         enterAuth401GracePeriod(5000);
 
@@ -187,9 +189,12 @@ export const useAuthSimple = () => {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
 
-      // After token refresh, queries that fired with the expired token are stuck
-      // in error state. Invalidate all queries so they refetch with the new valid JWT.
-      // Also reset the 401 counter since those 401s were from the expired token, not zombie auth.
+      // RELIABILITY: On TOKEN_REFRESHED, invalidate ALL React Query queries so they
+      // refetch with the new valid JWT. Without this, Android cold-start with expired
+      // token leaves all queries in permanent error state (they exhausted retry:1 with
+      // the old token and never retry). Also reset 401 counter since those 401s were
+      // from the expired token, not zombie auth.
+      // See: LAUNCH_READINESS_TRACKER — "Token refresh / expiry handling"
       if (event === 'TOKEN_REFRESHED') {
         const { queryClient, resetAuth401Counter } = require('../config/queryClient');
         resetAuth401Counter();

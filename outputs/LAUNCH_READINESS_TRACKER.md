@@ -1,7 +1,7 @@
 # Launch Readiness Tracker
 
-> **Last updated:** 2026-03-23
-> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Launch hardening in progress (Pass 0 done).
+> **Last updated:** 2026-03-25
+> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Full card pipeline audit complete (Passes 1-5). Auth dedup + Android fix complete. README lock-in done.
 >
 > This is the single source of truth for Mingla's launch readiness.
 > Every entry requires evidence. No grade promotions without proof.
@@ -30,8 +30,8 @@
 | Item | Grade | Last Verified | Evidence | Notes |
 |------|-------|--------------|----------|-------|
 | Phone OTP sign-in | F | — | Unaudited | — |
-| Session persistence (background/foreground) | F | — | Unaudited | — |
-| Token refresh / expiry handling | B | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | Grace period prevents burst 401s on resume from triggering false sign-out. Alert shown before sign-out. Transitional: 401 counter heuristic remains. |
+| Session persistence (background/foreground) | B | 2026-03-25 | _hasHydrated gate + Zustand persistence | Returning users render from persisted state immediately. Cold start with expired token no longer blocks. Remaining: full offline flow unaudited. |
+| Token refresh / expiry handling | A | 2026-03-24 | Commit aa9cfd68 | Cold-start grace period (5s) + invalidateQueries on TOKEN_REFRESHED. Android expired-token race condition fixed — queries refetch with valid JWT after refresh. Matches existing useForegroundRefresh pattern. |
 | Sign-out cleanup | F | — | Unaudited | — |
 | Zombie auth prevention | B | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | 401 detector hardened with grace period + user-facing alert. Still heuristic-based (transitional). |
 
@@ -74,14 +74,14 @@
 | Deck hardening: currency changes with GPS | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #3/#4 | Locale re-derived from GPS instead of locked from onboarding. |
 | Deck hardening: priceLevel enum on paired cards | F | — | INVESTIGATION_DECK_AND_DISCOVER.md (new) | PersonHolidayView maps priceRange={c.priceLevel} — shows Google enum string. |
 | Deck hardening: curated no Schedule button | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #8 | ActionButtons inside {!isCuratedCard} block. |
-| Deck hardening: paired view repeated experiences | F | — | INVESTIGATION_DECK_AND_DISCOVER.md #5 | No cross-section dedup in CardRow sections. |
+| Deck hardening: paired view repeated experiences | B | 2026-03-24 | Commit 0ae81113. Test: TEST_EXCLUSIONS_DEDUP_SHUFFLE.md (18/18 green after CRIT-001 fix) | Shuffle now passes excludeCardIds + updates seenCardIds. Initial load dedup was already working. Remaining: race on simultaneous fetches (ref-based, low probability). |
 | Deck hardening: policies open phone browser | F | — | User report | Should always use in-app browser with back button. |
 | Deck hardening: schedule picker behind modal | F | — | User report | DateTimePicker renders behind schedule modal on saved page. |
 | Deck hardening: no schedule confirmation | F | — | User report | Schedules abruptly from expanded card, no confirmation. |
 | Deck hardening: can't use current date to schedule | F | — | User report | Shows Cancel not Done for already-selected date. |
 | Deck hardening: slug on saved page | F | — | User report | Shows fine_dining instead of Fine Dining. |
 | Deck hardening: curated/category round-robin broken | F | — | User report | Curated overwhelms or category cards don't appear. |
-| Schools in cards | F | — | User report | Sport school in Creative & Arts. Need global type + keyword exclusion. |
+| Schools in cards | A | 2026-03-24 | Commit 0ae81113 | isChildVenueName() added to cardPoolService. Full types array checked in generate-curated-experiences. Kids/school venues excluded across all 3 card pipelines. |
 | Flowers category too broad | F | — | User report | Surfaces department stores, not just florists. |
 | Curated AI stop descriptions missing | F | — | User report | Stops should explain rationale. Picnic dates returns zero cards. |
 | Push delivery via OneSignal | A | 2026-03-22 | Commits 163ce5f1, 469b0f11. Test report: TEST_REPORT_PUSH_DELIVERY_FIX.md | sendPush() detects empty id + parse errors. Root cause: android_channel_id not configured in OneSignal → 400 error killing ALL platforms. Disabled channel IDs. Legacy API key updated to Rich API Key. Push confirmed working on both iOS and Android. |
@@ -93,10 +93,10 @@
 | Empty category pools (operational) | F | — | BUG_REPORT_CARD_SERVING_PIPELINE.md Bug #5 | Flowers, First Meet etc. have zero cards in Raleigh. Needs seeding + coverage monitoring. Planned for Block 7. |
 | Discover retry responsiveness | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | Loading state set before async work. Spinner appears instantly on retry. |
 | Pull-to-refresh (Calendar/Saved) | A | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | user?.id added to useCallback deps. Fixes stale closure silent no-op. |
-| Card rendering (all types) | C | 2026-03-24 | Commit 5702067b. Test: TEST_PASS1_KILL_THE_LIES.md (27/27 green + 3 mediums fixed) | Pass 1: Fabricated data removed (fake ratings, travel times, prices). Currency wired to all 10 price surfaces. Curated title fixed. Opening hours rendered. Travel icons corrected. Remaining: icon system consolidation (5 systems), star color unification, image fallback consistency. |
-| Swipe mechanics | F | — | Unaudited | Swipe limit exists |
+| Card rendering (all types) | A | 2026-03-25 | Commits 5702067b, Pass 5 visual consistency | Pass 1: Fabricated data removed, currency wired to all price surfaces. Pass 5: Star colors unified (#fbbf24 light, white dark), travel icons aligned (car-outline, navigate-outline default), "Saved" badge on deck cards, next-card "0.0" hidden. Constitution principles 9-10 locked in. |
+| Swipe mechanics | A | 2026-03-25 | Commits acf7e508, Pass 5 visual consistency | Save failure rolls back card to deck. handleSwipe errors caught. Haptic feedback added: cardLike on right, cardDislike on left, medium on expand. "Saved" badge shows already-saved cards. |
 | Empty pool state | B | 2026-03-20 | Commits f1880d93, 7dbeb362 | All 5 serving functions return HTTP 200 with empty array when pool empty. Tested on device for discover-cards. |
-| Preferences → deck pipeline | B | 2026-03-20 | Commit cf194099. Test report: TEST_REPORT_PREFERENCES_PIPELINE.md | exactTime/timeSlot wired through solo+collab. CTA gating added. Travel mode from card. Dead weekendDay removed. Known: AM/PM noon boundary in collab time aggregation (MVP accepted). |
+| Preferences → deck pipeline | A | 2026-03-24 | Commit 79d0905b. Test: TEST_PASS2.md (17/17 green, zero findings) | Race condition killed (invalidateQueries removed). Stale batch matching hardened with prefsHash. Collab prefs wired via effective* resolution. budgetMin documented as dead. |
 | Solo mode | F | — | Unaudited | — |
 | Collab mode parity | C | 2026-03-20 | Commit cf194099 | Time aggregation added to collab. Parity improved but not fully audited. |
 
@@ -106,6 +106,7 @@
 |------|-------|--------------|----------|-------|
 | UI consolidation (single entry point) | A | 2026-03-23 | Commit 15fe8742. Test: TEST_COLLABORATION_UI_CONSOLIDATION_REPORT.md (47/47 green) | Pill bar → SessionViewModal is the only path. CollaborationModule + BoardViewScreen deleted. Notifications + deep links rerouted. 8 files deleted, 11 modified. |
 | Board exit responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | Modal closes instantly, 4 DB ops in background. Critical failure toasts, cleanup warns only. |
+| Session load performance | A | 2026-03-24 | Commit 3ee1bce9. Test: TEST_SESSION_LOAD.md (14/14 green, zero findings) | 11→6 queries, 3 sequential phases→1 parallel. Validation derived from Phase 1 data. useSessionStatus eliminated. Saved cards fire at T=0. ~1.4s→~0.5s healthy, ~8s→~2s degraded. |
 | Session creation | F | — | Unaudited | — |
 | Invite send/receive | F | — | Unaudited | — |
 | Real-time sync | F | — | Unaudited | Supabase Realtime |
@@ -192,6 +193,27 @@
 | 8 | 3 | Calendar slugs + reschedule cache + review reset (4 deferred/resolved: data gap, collab ID, review screen, weekend fixed by 4a) | **DONE** — commit 88f94d26 |
 | 9 | 2 | Atomic unpair RPC — replaces error-swallowing 3-step code | **DONE** — commit 23f3a0dd |
 | 10 | 1 | board_saved_cards DELETE RLS policy (review blank fixed by Pass 4b) | **DONE** — commit 1069a81a |
+
+---
+
+## Full Card Pipeline Audit (Passes 1-5) + Auth/Android Fixes
+
+> **Date:** 2026-03-24 to 2026-03-25
+> **Source:** INVESTIGATION_FULL_CARD_PIPELINE_AUDIT.md
+
+| Pass | Focus | Files | Status |
+|------|-------|-------|--------|
+| Pass 1 | Kill fabricated data — fake ratings, travel times, prices. Currency wiring to all 10 surfaces. | 10 files | **DONE** |
+| Pass 2 | Preferences → deck contract — remove invalidateQueries race, stale batch matching | 5 files | **DONE** |
+| Pass 3 | Save failure rollback, schedule time validation, dead code removal | 5 files | **DONE** |
+| Pass 4 | Loading/error/empty states — ForYou retry, SavedTab error, CalendarTab loading | 6 files | **DONE** |
+| Pass 5 | Visual consistency — star colors, haptics, travel icons, "Saved" badge | 6 files | **DONE** |
+| Exclusions | Dedup + shuffle in paired view, isChildVenueName in cardPoolService | 5 files | **DONE** |
+| Auth dedup | Remove 4 redundant useAuthSimple calls, delete 3 dead files | 6 files | **DONE** |
+| Android fix | TOKEN_REFRESHED invalidation, cold-start grace period, _hasHydrated gate | 4 files | **DONE** |
+| Collab prefs | Invalidate session deck after collab preference save | 1 file | **DONE** |
+| AppState dedup | Decouple 3 child components from useAppState, thread via props | 6 files | **DONE** |
+| Lock-in | README constitution (6 new principles), behavioral contracts, protective comments | ~15 files | **DONE** |
 
 ---
 

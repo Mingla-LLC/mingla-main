@@ -256,9 +256,9 @@ export const useBoardSession = (sessionId?: string) => {
           return [...list, updatedUserPrefs];
         });
 
-        // Force the session deck to refetch with the new preferences.
-        // The edge function reads prefs from the DB (already written above),
-        // so invalidation is sufficient — no need to pass prefs as params.
+        // RELIABILITY: Invalidate session deck after collab prefs save. Without this,
+        // the query key ['session-deck', sessionId] never changes, staleTime is 30min,
+        // and cached cards are served forever after preference changes.
         // Partial key match covers all batchSeed variants for this session.
         queryClient.invalidateQueries({ queryKey: ['session-deck', sessionId] });
       } catch (err: any) {

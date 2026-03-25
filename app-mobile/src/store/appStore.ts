@@ -126,6 +126,10 @@ export const useAppStore = create<AppState>()(
   persist(
     devLoggerMiddleware<AppState>((set, get, _api) => ({
       // Initial state
+      // RELIABILITY: _hasHydrated is NOT persisted — starts false every cold start.
+      // Set to true by onRehydrateStorage. index.tsx gates on this to ensure the
+      // profile gate sees hydrated profile (not default null). Without this, Android
+      // shows permanent "Getting things ready" when profile fetch fails with expired token.
       _hasHydrated: false,
       user: null,
       isAuthenticated: false,
@@ -227,7 +231,7 @@ export const useAppStore = create<AppState>()(
           state.deckBatches = [];
           state.deckSchemaVersion = DECK_SCHEMA_VERSION;
         }
-        // Signal that Zustand has finished restoring persisted state.
+        // RELIABILITY: Signal that Zustand has finished restoring persisted state.
         // Components can now trust that `profile`, `user`, `isAuthenticated`
         // reflect the persisted values (not just the defaults).
         useAppStore.setState({ _hasHydrated: true });

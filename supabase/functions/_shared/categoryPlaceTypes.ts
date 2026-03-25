@@ -623,5 +623,9 @@ export function isExcludedVenueName(placeName: string): boolean {
   return EXCLUDED_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
 }
 
+// RELIABILITY: isChildVenueName() checks venue names against keyword patterns
+// (kids, children, bounce, playground, etc.). This is the ONLY filter that catches
+// kids venues with adult Google place types. All 3 card-serving functions must
+// apply this filter. See also: generate-curated-experiences checks stop names.
 // Backward-compatible alias
 export const isChildVenueName = isExcludedVenueName;
