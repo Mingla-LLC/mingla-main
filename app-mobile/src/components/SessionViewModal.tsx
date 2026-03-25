@@ -17,7 +17,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from './ui/Icon';
 import { useBoardSession } from "../hooks/useBoardSession";
-import { useSessionVoting } from "../hooks/useSessionVoting";
 import { useCollaborationCalendar } from "../hooks/useCollaborationCalendar";
 import { supabase } from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
@@ -473,23 +472,9 @@ export default function SessionViewModal({
 
   const activeParticipantsCount = participants.filter((p) => p.has_accepted).length;
 
-  // Phase 2 hooks: voting, session status, calendar
-  const {
-    voteCounts,
-    rsvpCounts,
-    lockedCards,
-    handleVote,
-    handleRSVP,
-    loadCounts: loadVoteAndRSVPCounts,
-  } = useSessionVoting(sessionId, user?.id, activeParticipantsCount);
-
   // Session status derived from useBoardSession data — no separate query needed.
   // Realtime updates to session.status come via useBoardSession's realtime subscription.
   const sessionStatus = session?.status ?? null;
-  const isStatusLoaded = !sessionLoading && !!session;
-  const canVote = isStatusLoaded && (sessionStatus === 'active' || sessionStatus === 'voting');
-  const canRSVP = isStatusLoaded && (sessionStatus === 'active' || sessionStatus === 'voting');
-  const isSessionLocked = isStatusLoaded && sessionStatus === 'locked';
 
   const advanceToVoting = useCallback(async () => {
     if (!sessionId || !isAdmin) return;

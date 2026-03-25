@@ -38,6 +38,7 @@ interface BoardSessionCardProps {
   onVote?: (cardId: string, vote: "yes" | "no") => void;
   onRSVP?: (cardId: string, rsvp: "yes" | "no") => void;
   onViewDetails?: (cardId: string) => void;
+  isLocked?: boolean;
   currentIndex?: number;
   totalCards?: number;
 }
@@ -52,6 +53,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
   onVote,
   onRSVP,
   onViewDetails,
+  isLocked = false,
   currentIndex = 0,
   totalCards = 1,
 }) => {
@@ -157,8 +159,9 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
           <View style={styles.actionButtons}>
             {/* Thumbs Up */}
             <TouchableOpacity
-              style={[styles.voteButton, styles.thumbsUpButton]}
+              style={[styles.voteButton, styles.thumbsUpButton, isLocked && styles.buttonDisabled]}
               onPress={() => onVote?.(card.id, "yes")}
+              disabled={isLocked}
             >
               <Icon name="thumbs-up" size={20} color="white" />
               <Text style={styles.voteButtonText}>{voteCounts.yes}</Text>
@@ -166,8 +169,9 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
 
             {/* Thumbs Down */}
             <TouchableOpacity
-              style={[styles.voteButton, styles.thumbsDownButton]}
+              style={[styles.voteButton, styles.thumbsDownButton, isLocked && styles.buttonDisabled]}
               onPress={() => onVote?.(card.id, "no")}
+              disabled={isLocked}
             >
               <Icon name="thumbs-down" size={20} color="#d63d1f" />
               <Text style={styles.thumbsDownText}>{voteCounts.no}</Text>
@@ -179,8 +183,10 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
             style={[
               styles.rsvpButton,
               rsvpCounts.userRSVP === "yes" && styles.rsvpButtonActive,
+              isLocked && styles.buttonDisabled,
             ]}
             onPress={() => onRSVP?.(card.id, "yes")}
+            disabled={isLocked}
           >
             <Text
               style={[
@@ -384,6 +390,10 @@ const styles = StyleSheet.create({
   },
   rsvpButtonActive: {
     backgroundColor: "#eb7825",
+  },
+  buttonDisabled: {
+    opacity: 0.35,
+    backgroundColor: "#D1D5DB",
   },
   rsvpButtonText: {
     fontSize: 16,

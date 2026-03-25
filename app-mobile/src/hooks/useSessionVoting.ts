@@ -278,12 +278,6 @@ export function useSessionVoting(
             .eq('user_id', userId);
 
           if (error) throw error;
-
-          // Broadcast vote removal so other users see the change
-          realtimeService.broadcastVoteUpdate(sessionId, savedCardId, {
-            user_id: userId,
-            vote_type: 'down', // placeholder — receivers call loadCounts() anyway
-          });
         } else {
           // Upsert vote — single round-trip, race-condition safe
           const { error } = await supabase
@@ -299,12 +293,6 @@ export function useSessionVoting(
             );
 
           if (error) throw error;
-
-          // Broadcast optimistic update
-          realtimeService.broadcastVoteUpdate(sessionId, savedCardId, {
-            user_id: userId,
-            vote_type: voteType,
-          });
 
           // Notify card saver about the vote (fire-and-forget, only for positive votes)
           if (voteType === 'up') {
@@ -412,8 +400,8 @@ export function useSessionVoting(
 
       if (rsvp === 'yes') {
         if (previousRSVP === 'yes') {
-          // Toggle off
-          finalRSVP = null;
+          // Toggle off — store "not attending" instead of removing
+          finalRSVP = 'no';
           newResponded = Math.max(0, newResponded - 1);
           newAttendees = newAttendees.filter((a) => a !== userId);
         } else {
@@ -425,8 +413,8 @@ export function useSessionVoting(
           newAttendees.push(userId);
         }
       } else {
-        // RSVP "no" — remove
-        finalRSVP = null;
+        // Explicit "no" RSVP
+        finalRSVP = 'no';
         if (previousRSVP === 'yes') {
           newResponded = Math.max(0, newResponded - 1);
           newAttendees = newAttendees.filter((a) => a !== userId);
@@ -445,22 +433,22 @@ export function useSessionVoting(
       }));
 
       try {
-        if (finalRSVP === null) {
-          // Remove RSVP
+        if (finalRSVP === 'no') {
+          // Store "not attending" — don't delete, so other users can see the explicit decline
           const { error } = await supabase
             .from('board_card_rsvps')
-            .delete()
-            .eq('session_id', sessionId)
-            .eq('saved_card_id', savedCardId)
-            .eq('user_id', userId);
+            .upsert(
+              {
+                session_id: sessionId,
+                saved_card_id: savedCardId,
+                user_id: userId,
+                rsvp_status: 'not_attending',
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'session_id,saved_card_id,user_id' }
+            );
 
           if (error) throw error;
-
-          // Broadcast RSVP removal so other users see the change
-          realtimeService.broadcastRSVPUpdate(sessionId, savedCardId, {
-            user_id: userId,
-            rsvp_status: 'not_attending', // placeholder — receivers call loadCounts() anyway
-          });
         } else {
           const rsvpStatus =
             finalRSVP === 'yes' ? 'attending' : 'not_attending';
@@ -479,12 +467,6 @@ export function useSessionVoting(
             );
 
           if (error) throw error;
-
-          // Broadcast RSVP update
-          realtimeService.broadcastRSVPUpdate(sessionId, savedCardId, {
-            user_id: userId,
-            rsvp_status: rsvpStatus as 'attending' | 'not_attending',
-          });
 
           // Notify card saver about RSVP (fire-and-forget, only for 'attending')
           if (rsvpStatus === 'attending') {
