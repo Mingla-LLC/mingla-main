@@ -280,12 +280,14 @@ export const useBoardSession = (sessionId?: string) => {
   // Subscribe to real-time updates — debounced to prevent rapid subscribe/unsubscribe
   // cycling during mode transitions when sessionId flickers across renders.
   const stableSessionIdRef = useRef<string | undefined>(undefined);
+  const boardCallbacksRef = useRef<any>(null);
 
   useEffect(() => {
     // If sessionId is cleared, unsubscribe immediately (no debounce needed)
     if (!sessionId) {
-      if (stableSessionIdRef.current) {
-        realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+      if (stableSessionIdRef.current && boardCallbacksRef.current) {
+        realtimeService.unregisterBoardCallbacks(stableSessionIdRef.current, boardCallbacksRef.current);
+        boardCallbacksRef.current = null;
         stableSessionIdRef.current = undefined;
       }
       return;
@@ -298,7 +300,10 @@ export const useBoardSession = (sessionId?: string) => {
     // from corrupting state during the debounce window (HIGH-001 fix).
     // Only the subscribe is debounced — unsubscribe is always instant.
     if (stableSessionIdRef.current) {
-      realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+      if (boardCallbacksRef.current) {
+        realtimeService.unregisterBoardCallbacks(stableSessionIdRef.current, boardCallbacksRef.current);
+        boardCallbacksRef.current = null;
+      }
       stableSessionIdRef.current = undefined;
       setAllParticipantPreferences([]);
     }
@@ -308,8 +313,8 @@ export const useBoardSession = (sessionId?: string) => {
     const timer = setTimeout(() => {
       stableSessionIdRef.current = sessionId;
 
-      realtimeService.subscribeToBoardSession(sessionId, {
-        onSessionUpdated: (updatedSession) => {
+      const callbacks = {
+        onSessionUpdated: (updatedSession: any) => {
           if (capturedSessionId !== stableSessionIdRef.current) {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;
@@ -376,7 +381,9 @@ export const useBoardSession = (sessionId?: string) => {
             queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
           }
         },
-      });
+      };
+      boardCallbacksRef.current = callbacks;
+      realtimeService.subscribeToBoardSession(sessionId, callbacks);
     }, 300);
 
     return () => {
@@ -384,11 +391,12 @@ export const useBoardSession = (sessionId?: string) => {
     };
   }, [sessionId]);
 
-  // Cleanup on unmount — unsubscribe from whatever channel is active
+  // Cleanup on unmount — unregister callbacks (safe — doesn't destroy channel)
   useEffect(() => {
     return () => {
-      if (stableSessionIdRef.current) {
-        realtimeService.unsubscribe(`board_session:${stableSessionIdRef.current}`);
+      if (stableSessionIdRef.current && boardCallbacksRef.current) {
+        realtimeService.unregisterBoardCallbacks(stableSessionIdRef.current, boardCallbacksRef.current);
+        boardCallbacksRef.current = null;
         stableSessionIdRef.current = undefined;
       }
     };

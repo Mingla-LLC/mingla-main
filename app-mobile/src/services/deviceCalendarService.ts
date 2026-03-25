@@ -146,8 +146,13 @@ export class DeviceCalendarService {
     }
   ): Promise<void> {
     try {
-      const { status } = await Calendar.getCalendarPermissionsAsync();
-      if (status !== 'granted') return;
+      const hasPermissions = await this.hasPermissions();
+      if (!hasPermissions) {
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          throw new Error('Calendar permission denied');
+        }
+      }
       await Calendar.updateEventAsync(eventId, updates);
     } catch (err) {
       console.warn('[DeviceCalendar] Failed to update event:', err);

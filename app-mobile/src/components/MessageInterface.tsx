@@ -24,6 +24,7 @@ import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble } from "./chat/MessageBubble";
@@ -768,12 +769,10 @@ export default function MessageInterface({
         style={[
           styles.inputArea,
           {
-            paddingBottom: animatedKeyboardHeight.interpolate({
-              inputRange: [0, 1],
-              outputRange: [Math.max(insets.bottom, 6), 6],
-              extrapolate: "clamp",
-            }),
-            marginBottom: animatedKeyboardHeight,
+            paddingBottom: keyboardVisible ? 0 : insets.bottom,
+            // iOS: keyboard doesn't resize the window — push input up manually
+            // Android: adjustResize shrinks the window — no margin needed
+            marginBottom: Platform.OS === 'ios' ? animatedKeyboardHeight : 0,
           },
         ]}
       >
@@ -1440,7 +1439,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     paddingHorizontal: 12,
     paddingTop: 6,
-    paddingBottom: 6,
+    paddingBottom: 0,
     backgroundColor: "white",
   },
   inputContainer: {

@@ -110,6 +110,20 @@ export function CardFilterBar({
 
       {isExpanded && (
         <View style={styles.filterPanel}>
+          {activeFilterCount > 0 && (
+            <TouchableOpacity
+              style={styles.clearAllButton}
+              onPress={() => {
+                onWhenChange('all');
+                onCategoryChange('all');
+                onTierChange('all');
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="close-circle" size={14} color="#f97316" />
+              <Text style={styles.clearAllText}>Clear filters</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.filterLabel}>When</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
             {FILTER_WHEN.map(w => (
@@ -213,6 +227,19 @@ const styles = StyleSheet.create({
   },
   filterPanel: {
     marginTop: 12,
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  clearAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f97316',
   },
   filterLabel: {
     fontSize: 12,

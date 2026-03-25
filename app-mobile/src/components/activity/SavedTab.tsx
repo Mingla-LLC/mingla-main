@@ -2055,9 +2055,10 @@ const SavedTab = ({
           <TouchableOpacity
             style={styles.clearFiltersButton}
             onPress={() => {
-              setSearchQuery("");
-              setSelectedWhen("all");
-              setSelectedCategory("all");
+              setSearchQuery('');
+              setSelectedWhen('all');
+              setSelectedCategory('all');
+              setSelectedTier('all');
             }}
             activeOpacity={0.7}
           >

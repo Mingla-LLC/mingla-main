@@ -517,6 +517,15 @@ export function useSessionVoting(
   const loadCountsRef = useRef(loadCounts);
   useEffect(() => { loadCountsRef.current = loadCounts; }, [loadCounts]);
 
+  // Load vote/RSVP/lock counts immediately on mount.
+  // Don't rely solely on realtime events — the channel may not be ready yet,
+  // and there may be no other active users to trigger an event.
+  useEffect(() => {
+    if (sessionId && userId) {
+      loadCounts();
+    }
+  }, [sessionId, userId, loadCounts]);
+
   // Listen for realtime vote/RSVP/lock events — only depends on sessionId
   useEffect(() => {
     if (!sessionId) return;

@@ -175,10 +175,8 @@ function SwipeableFriendRow({
   const initials = getInitials(name);
   const avatarColor = hashColor(friend.friend_user_id);
 
-  // Simulated online status (no real presence system in the hook)
-  // For now we show "Last seen" with the created_at as a fallback
+  // No real presence system — hide status line entirely
   const isOnline = false;
-  const statusText = isOnline ? "Online" : `Last seen ${formatTimestamp(friend.created_at)}`;
 
   const handlePress = () => {
     Animated.timing(pressOpacity, {
@@ -298,15 +296,6 @@ function SwipeableFriendRow({
           <View style={swipeStyles.info}>
             <Text style={swipeStyles.name} numberOfLines={1}>
               {name}
-            </Text>
-            <Text
-              style={[
-                swipeStyles.status,
-                isOnline && { color: colors.success[600] },
-              ]}
-              numberOfLines={1}
-            >
-              {statusText}
             </Text>
           </View>
         </TouchableOpacity>

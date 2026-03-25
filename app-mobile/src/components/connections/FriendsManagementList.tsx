@@ -161,11 +161,6 @@ export function FriendsManagementList({
                     />
                   )}
                 </View>
-                {friend.username ? (
-                  <Text style={styles.userUsername} numberOfLines={1}>
-                    @{friend.username}
-                  </Text>
-                ) : null}
               </View>
 
               {/* Three-dot menu */}

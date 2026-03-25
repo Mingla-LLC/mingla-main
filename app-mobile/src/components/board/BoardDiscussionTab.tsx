@@ -25,6 +25,7 @@ import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
 import { CardTagPopover } from "./CardTagPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import EmojiReactionPicker from "../discussion/EmojiReactionPicker";
 import * as Haptics from "expo-haptics";
 
@@ -51,6 +52,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
 }) => {
   const { user } = useAppStore();
   const networkState = useNetworkMonitor();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -590,6 +592,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     <KeyboardAwareView
       style={styles.container}
       dismissOnTap={false}
+      bottomOffset={Platform.OS === 'ios' ? insets.bottom : 0}
     >
       {/* Messages List */}
       <ScrollView
@@ -990,8 +993,8 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 0,
     backgroundColor: "#ffffff",
     borderTopWidth: 1,
     borderTopColor: "#F0F1F3",
@@ -1005,8 +1008,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
-    marginBottom: 8,
-    paddingBottom: 2,
+    marginBottom: 2,
   },
   editingIndicator: {
     flexDirection: "row",

@@ -33,6 +33,7 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
 import { useToast } from "./ToastManager";
@@ -109,11 +110,16 @@ export default function ConnectionsPageRefactored({
   // Replaces KeyboardAvoidingView which conflicts with fixed-height sheets.
   // Captures the window height BEFORE the keyboard opens so Android's
   // adjustResize doesn't pollute the baseline, then subtracts keyboard height.
+  const chatInsets = useSafeAreaInsets();
   const {
     isVisible: keyboardVisible,
-    keyboardHeight,
+    keyboardHeight: rawKeyboardHeight,
     dismiss: dismissKeyboard,
   } = useKeyboard({ disableLayoutAnimation: true });
+  // iOS keyboardHeight includes safe area bottom — subtract it so input sits flush against keyboard
+  const keyboardHeight = Platform.OS === 'ios'
+    ? Math.max(0, rawKeyboardHeight - chatInsets.bottom)
+    : rawKeyboardHeight;
 
   const stableHeightRef = useRef(screenHeight);
   useEffect(() => {
