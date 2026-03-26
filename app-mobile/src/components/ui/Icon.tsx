@@ -76,6 +76,7 @@ import {
   Globe,
   Grid3x3,
   Hamburger,
+  Hand,
   Heart,
   Hourglass,
   Image,
@@ -266,6 +267,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'flag':                       Flag,
   'flag-outline':               Flag,
   'flame':                      Flame,
+  'flame-outline':              Flame,
   'flash':                      Zap,
   'flower':                     Flower2,
   'flower-outline':             Flower2,
@@ -280,6 +282,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'grid-outline':               Grid3x3,
 
   // ─── H ───
+  'hand-right-outline':         Hand,
   'heart':                      Heart,
   'heart-outline':              Heart,
   'hourglass':                  Hourglass,

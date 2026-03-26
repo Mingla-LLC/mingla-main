@@ -7,6 +7,10 @@ interface LayerTogglesProps {
   onTogglePlaces: () => void;
   peopleLayerOn: boolean;
   onTogglePeople: () => void;
+  feedOn?: boolean;
+  onToggleFeed?: () => void;
+  heatmapOn?: boolean;
+  onToggleHeatmap?: () => void;
 }
 
 export function LayerToggles({
@@ -14,6 +18,10 @@ export function LayerToggles({
   onTogglePlaces,
   peopleLayerOn,
   onTogglePeople,
+  feedOn,
+  onToggleFeed,
+  heatmapOn,
+  onToggleHeatmap,
 }: LayerTogglesProps) {
   return (
     <View style={styles.container}>
@@ -31,6 +39,24 @@ export function LayerToggles({
       >
         <Icon name="people" size={20} color={peopleLayerOn ? '#FFF' : '#6b7280'} />
       </TouchableOpacity>
+      {onToggleFeed && (
+        <TouchableOpacity
+          style={[styles.fab, feedOn && styles.fabActive]}
+          onPress={onToggleFeed}
+          activeOpacity={0.7}
+        >
+          <Icon name="notifications-outline" size={20} color={feedOn ? '#FFF' : '#6b7280'} />
+        </TouchableOpacity>
+      )}
+      {onToggleHeatmap && (
+        <TouchableOpacity
+          style={[styles.fab, heatmapOn && styles.fabActive]}
+          onPress={onToggleHeatmap}
+          activeOpacity={0.7}
+        >
+          <Icon name="flame-outline" size={20} color={heatmapOn ? '#FFF' : '#6b7280'} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

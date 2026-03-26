@@ -14,13 +14,17 @@ import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Recommendation } from '../../types/recommendation';
 import { PlacePin } from './PlacePin';
+import { AnimatedPlacePin } from './AnimatedPlacePin';
 import { PersonPin } from './PersonPin';
+import { CuratedRoute } from './CuratedRoute';
 import { MapFilterBar } from './MapFilterBar';
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { LayerToggles } from './LayerToggles';
 import { GoDarkFAB } from './GoDarkFAB';
 import { ActivityStatusPicker } from './ActivityStatusPicker';
+import { ActivityFeedOverlay } from './ActivityFeedOverlay';
+import { PlaceHeatmap } from './PlaceHeatmap';
 import { getCategorySlug } from '../../utils/categoryUtils';
 import { useNearbyPeople, NearbyPerson } from '../../hooks/useNearbyPeople';
 import { useMapLocation } from '../../hooks/useMapLocation';
@@ -63,6 +67,8 @@ export function DiscoverMap({
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
   const [peopleLayerOn, setPeopleLayerOn] = useState(false);
+  const [feedOn, setFeedOn] = useState(false);
+  const [heatmapOn, setHeatmapOn] = useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
@@ -212,15 +218,22 @@ export function DiscoverMap({
         radius={50}
         maxZoom={16}
       >
-        {filteredCards.map(card => (
-          <PlacePin
+        {filteredCards.map((card, index) => (
+          <AnimatedPlacePin
             key={card.id}
             card={card}
+            index={index}
             isSaved={savedCardIds.has(card.id)}
             isScheduled={scheduledCardIds.has(card.id)}
             onPress={() => handlePinPress(card)}
           />
         ))}
+        {selectedCard?.strollData && (
+          <CuratedRoute card={selectedCard} />
+        )}
+        {heatmapOn && (
+          <PlaceHeatmap cards={cards} savedCardIds={savedCardIds} />
+        )}
         {peopleLayerOn && nearbyPeople.map(person => (
           <PersonPin
             key={person.userId}
@@ -258,6 +271,10 @@ export function DiscoverMap({
         onTogglePlaces={() => setPlacesLayerOn(p => !p)}
         peopleLayerOn={peopleLayerOn}
         onTogglePeople={() => setPeopleLayerOn(p => !p)}
+        feedOn={feedOn}
+        onToggleFeed={() => setFeedOn(p => !p)}
+        heatmapOn={heatmapOn}
+        onToggleHeatmap={() => setHeatmapOn(p => !p)}
       />
 
       <MapBottomSheet
@@ -285,6 +302,8 @@ export function DiscoverMap({
       <View style={styles.goDarkPosition}>
         <GoDarkFAB isDark={isDark} onToggle={handleToggleGoDark} />
       </View>
+
+      <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />
 
       {isLoading && (
         <View style={styles.loadingOverlay}>

@@ -19,11 +19,35 @@ const TIER_BORDER_COLORS: Record<string, string> = {
   lavish: '#F59E0B',
 };
 
-export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps) {
+// Extracted content — used by both PlacePin and AnimatedPlacePin
+export function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinProps, 'onPress'>) {
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
   const categoryIcon = getCategoryIcon(card.category) || 'location-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
 
+  return (
+    <View style={styles.wrapper}>
+      <View style={[styles.pinOuter, { borderColor: tierColor }]}>
+        <View style={[styles.pinInner, { backgroundColor: categoryColor }]}>
+          <Icon name={categoryIcon} size={14} color="#FFF" />
+        </View>
+      </View>
+      {isSaved && (
+        <View style={[styles.badge, styles.savedBadge]}>
+          <Icon name="heart" size={8} color="#ef4444" />
+        </View>
+      )}
+      {isScheduled && (
+        <View style={[styles.badge, styles.scheduledBadge]}>
+          <Icon name="calendar" size={8} color="#3b82f6" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Full PlacePin with Marker wrapper — backward compatible
+export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps) {
   if (card.lat == null || card.lng == null) return null;
 
   return (
@@ -32,23 +56,7 @@ export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps)
       onPress={onPress}
       tracksViewChanges={false}
     >
-      <View style={styles.wrapper}>
-        <View style={[styles.pinOuter, { borderColor: tierColor }]}>
-          <View style={[styles.pinInner, { backgroundColor: categoryColor }]}>
-            <Icon name={categoryIcon} size={14} color="#FFF" />
-          </View>
-        </View>
-        {isSaved && (
-          <View style={[styles.badge, styles.savedBadge]}>
-            <Icon name="heart" size={8} color="#ef4444" />
-          </View>
-        )}
-        {isScheduled && (
-          <View style={[styles.badge, styles.scheduledBadge]}>
-            <Icon name="calendar" size={8} color="#3b82f6" />
-          </View>
-        )}
-      </View>
+      <PlacePinContent card={card} isSaved={isSaved} isScheduled={isScheduled} />
     </Marker>
   );
 }
