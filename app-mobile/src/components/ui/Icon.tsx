@@ -65,6 +65,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  EyeOff,
   FileText,
   Filter,
   Flag,
@@ -251,6 +252,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'enter-outline':              LogIn,
   'exit-outline':               LogOut,
   'eye':                        Eye,
+  'eye-off':                    EyeOff,
+  'eye-outline':                Eye,
+  'moon-outline':               Moon,
 
   // ─── F ───
   'fast-food':                   Hamburger,

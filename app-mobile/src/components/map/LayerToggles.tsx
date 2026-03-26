@@ -5,11 +5,15 @@ import { Icon } from '../ui/Icon';
 interface LayerTogglesProps {
   placesLayerOn: boolean;
   onTogglePlaces: () => void;
+  peopleLayerOn: boolean;
+  onTogglePeople: () => void;
 }
 
 export function LayerToggles({
   placesLayerOn,
   onTogglePlaces,
+  peopleLayerOn,
+  onTogglePeople,
 }: LayerTogglesProps) {
   return (
     <View style={styles.container}>
@@ -19,6 +23,13 @@ export function LayerToggles({
         activeOpacity={0.7}
       >
         <Icon name="location" size={20} color={placesLayerOn ? '#FFF' : '#6b7280'} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.fab, peopleLayerOn && styles.fabActive]}
+        onPress={onTogglePeople}
+        activeOpacity={0.7}
+      >
+        <Icon name="people" size={20} color={peopleLayerOn ? '#FFF' : '#6b7280'} />
       </TouchableOpacity>
     </View>
   );

@@ -3433,6 +3433,18 @@ export default function DiscoverScreen({
                   savedCardIds={mapSavedCardIds}
                   scheduledCardIds={mapScheduledCardIds}
                   onCardExpand={(card) => handleCardPress(featuredFromRecommendation(card))}
+                  onPersonMessage={(userId) => {
+                    // Navigate to chat with this user via pill selection
+                    const pill = pairingPills.find(p => p.pairedUserId === userId);
+                    if (pill) setSelectedPillId(pill.id);
+                  }}
+                  onPersonInvite={() => {}}
+                  onPersonCards={(userId) => {
+                    // Open PersonHolidayView by selecting the paired person's pill
+                    const pill = pairingPills.find(p => p.pairedUserId === userId);
+                    if (pill) setSelectedPillId(pill.id);
+                  }}
+                  onPersonProfile={() => {}}
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}

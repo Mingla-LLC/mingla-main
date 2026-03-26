@@ -12,16 +12,26 @@ import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Recommendation } from '../../types/recommendation';
 import { PlacePin } from './PlacePin';
+import { PersonPin } from './PersonPin';
 import { MapFilterBar } from './MapFilterBar';
 import { MapBottomSheet } from './MapBottomSheet';
+import { PersonBottomSheet } from './PersonBottomSheet';
 import { LayerToggles } from './LayerToggles';
+import { GoDarkFAB } from './GoDarkFAB';
 import { getCategorySlug } from '../../utils/categoryUtils';
+import { useNearbyPeople, NearbyPerson } from '../../hooks/useNearbyPeople';
+import { useMapLocation } from '../../hooks/useMapLocation';
+import { useMapSettings } from '../../hooks/useMapSettings';
 
 interface DiscoverMapProps {
   cards: Recommendation[];
   savedCardIds: Set<string>;
   scheduledCardIds: Set<string>;
   onCardExpand: (card: Recommendation) => void;
+  onPersonMessage?: (userId: string) => void;
+  onPersonInvite?: (userId: string) => void;
+  onPersonCards?: (userId: string) => void;
+  onPersonProfile?: (userId: string) => void;
   accountPreferences: { currency?: string; measurementSystem?: string };
   userLocation: { latitude: number; longitude: number } | null;
   isLoading: boolean;
@@ -32,17 +42,30 @@ export function DiscoverMap({
   savedCardIds,
   scheduledCardIds,
   onCardExpand,
+  onPersonMessage,
+  onPersonInvite,
+  onPersonCards,
+  onPersonProfile,
   accountPreferences,
   userLocation,
   isLoading,
 }: DiscoverMapProps) {
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<string>('all');
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
+  const [peopleLayerOn, setPeopleLayerOn] = useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
+  const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
+
+  // People layer hooks
+  const { settings, updateSettings } = useMapSettings();
+  const isDark = !!(settings?.go_dark_until && new Date(settings.go_dark_until) > new Date());
+  const { data: nearbyPeople = [] } = useNearbyPeople(peopleLayerOn && !isDark, userLocation);
+  useMapLocation(peopleLayerOn && !isDark && settings?.visibility_level !== 'off');
 
   // Filter cards by active filters (client-side, instant)
   const filteredCards = useMemo(() => {
@@ -65,9 +88,24 @@ export function DiscoverMap({
   }, [cards, selectedCategories, selectedTier, openNowOnly, placesLayerOn]);
 
   const handlePinPress = useCallback((card: Recommendation) => {
+    setSelectedPerson(null);
+    personSheetRef.current?.close();
     setSelectedCard(card);
     bottomSheetRef.current?.snapToIndex(0);
   }, []);
+
+  const handlePersonPinPress = useCallback((person: NearbyPerson) => {
+    setSelectedCard(null);
+    bottomSheetRef.current?.close();
+    setSelectedPerson(person);
+    personSheetRef.current?.snapToIndex(0);
+  }, []);
+
+  const handleToggleGoDark = useCallback(() => {
+    if (!updateSettings) return;
+    const newValue = isDark ? null : new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    updateSettings({ go_dark_until: newValue });
+  }, [isDark, updateSettings]);
 
   const handleNext = useCallback(() => {
     if (filteredCards.length === 0) return;
@@ -130,6 +168,13 @@ export function DiscoverMap({
             onPress={() => handlePinPress(card)}
           />
         ))}
+        {peopleLayerOn && nearbyPeople.map(person => (
+          <PersonPin
+            key={person.userId}
+            person={person}
+            onPress={() => handlePersonPinPress(person)}
+          />
+        ))}
       </ClusteredMapView>
 
       <MapFilterBar
@@ -144,6 +189,8 @@ export function DiscoverMap({
       <LayerToggles
         placesLayerOn={placesLayerOn}
         onTogglePlaces={() => setPlacesLayerOn(p => !p)}
+        peopleLayerOn={peopleLayerOn}
+        onTogglePeople={() => setPeopleLayerOn(p => !p)}
       />
 
       <MapBottomSheet
@@ -154,6 +201,20 @@ export function DiscoverMap({
         onClose={() => setSelectedCard(null)}
         accountPreferences={accountPreferences}
       />
+
+      <PersonBottomSheet
+        ref={personSheetRef}
+        person={selectedPerson}
+        onClose={() => setSelectedPerson(null)}
+        onMessage={(userId) => onPersonMessage?.(userId)}
+        onInviteToSession={(userId) => onPersonInvite?.(userId)}
+        onViewPairedCards={(userId) => onPersonCards?.(userId)}
+        onViewProfile={(userId) => onPersonProfile?.(userId)}
+      />
+
+      <View style={styles.goDarkPosition}>
+        <GoDarkFAB isDark={isDark} onToggle={handleToggleGoDark} />
+      </View>
 
       {isLoading && (
         <View style={styles.loadingOverlay}>
@@ -171,6 +232,12 @@ const MAP_HEIGHT = Dimensions.get('window').height - 200; // account for tabs + 
 const styles = StyleSheet.create({
   container: {
     height: MAP_HEIGHT,
+  },
+  goDarkPosition: {
+    position: 'absolute',
+    bottom: 76,
+    right: 16,
+    zIndex: 10,
   },
   loadingOverlay: {
     position: 'absolute',

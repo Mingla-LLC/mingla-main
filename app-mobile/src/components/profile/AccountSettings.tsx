@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
+import { MapPrivacySettings } from "../map/MapPrivacySettings";
+import { useMapSettings } from "../../hooks/useMapSettings";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/edgeFunctionError";
@@ -91,6 +93,7 @@ interface AccountSettingsProps {
 export default function AccountSettings({ user, onSignOut, visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
   const insets = useSafeAreaInsets();
   const profile = useAppStore((s) => s.profile);
+  const { settings: mapSettings, updateSettings: updateMapSettings } = useMapSettings();
 
   // Field states
   const [birthday, setBirthday] = useState<string | null>(profile?.birthday || null);
@@ -626,6 +629,13 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   onToggle={() => onNotificationsToggle?.(!notificationsEnabled)}
                 />
               </View>
+
+              <View style={styles.rowDivider} />
+
+              {/* Map Privacy */}
+              {mapSettings && (
+                <MapPrivacySettings settings={mapSettings} onUpdate={updateMapSettings} />
+              )}
             </AccordionCard>
 
             {/* Section 3: Notification Settings (accordion) */}

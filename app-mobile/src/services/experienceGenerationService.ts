@@ -335,8 +335,8 @@ export class ExperienceGenerationService {
         "An amazing experience waiting for you.",
       highlights: card.highlights || card.topHighlights || [],
       address: card.address || "",
-      lat: card.lat || card.location?.lat,
-      lng: card.lng || card.location?.lng,
+      lat: card.lat ?? card.location?.lat,
+      lng: card.lng ?? card.location?.lng,
       placeId: card.place_id || card.placeId,
       matchFactors: card.matchFactors || {
         location: 85,
