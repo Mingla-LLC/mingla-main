@@ -1,5 +1,6 @@
 import React from 'react';
-import { Circle } from 'react-native-maps';
+import { View, StyleSheet } from 'react-native';
+import { Marker } from 'react-native-maps';
 import type { Recommendation } from '../../types/recommendation';
 
 interface PlaceHeatmapProps {
@@ -7,6 +8,8 @@ interface PlaceHeatmapProps {
   savedCardIds: Set<string>;
 }
 
+// Uses Marker + View instead of native Circle to avoid native component crashes
+// on Expo Go / dev builds without native rebuild.
 export function PlaceHeatmap({ cards, savedCardIds }: PlaceHeatmapProps) {
   const points = cards.filter(c => c.lat != null && c.lng != null);
 
@@ -17,16 +20,36 @@ export function PlaceHeatmap({ cards, savedCardIds }: PlaceHeatmapProps) {
       {points.map(c => {
         const isSaved = savedCardIds.has(c.id);
         return (
-          <Circle
+          <Marker
             key={`heat-${c.id}`}
-            center={{ latitude: c.lat!, longitude: c.lng! }}
-            radius={isSaved ? 400 : 250}
-            fillColor={isSaved ? 'rgba(235,120,37,0.18)' : 'rgba(235,120,37,0.08)'}
-            strokeColor="transparent"
-            zIndex={-10}
-          />
+            coordinate={{ latitude: c.lat!, longitude: c.lng! }}
+            tracksViewChanges={false}
+            anchor={{ x: 0.5, y: 0.5 }}
+            opacity={0.3}
+          >
+            <View style={[
+              styles.heatDot,
+              isSaved ? styles.heatDotSaved : styles.heatDotNormal,
+            ]} />
+          </Marker>
         );
       })}
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  heatDot: {
+    borderRadius: 999,
+  },
+  heatDotNormal: {
+    width: 24,
+    height: 24,
+    backgroundColor: 'rgba(235,120,37,0.35)',
+  },
+  heatDotSaved: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(235,120,37,0.5)',
+  },
+});

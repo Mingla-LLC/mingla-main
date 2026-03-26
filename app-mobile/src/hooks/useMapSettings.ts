@@ -3,13 +3,14 @@ import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 
 export interface MapSettings {
-  visibility_level: 'off' | 'paired' | 'friends' | 'everyone';
+  visibility_level: 'off' | 'paired' | 'friends' | 'friends_of_friends' | 'everyone';
   show_saved_places: boolean;
   show_scheduled_places: boolean;
   activity_status: string | null;
   discovery_radius_km: number;
   time_delay_enabled: boolean;
   go_dark_until: string | null;
+  activity_status_expires_at: string | null;
 }
 
 export function useMapSettings() {

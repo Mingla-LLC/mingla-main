@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS public.user_map_settings (
   user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   visibility_level TEXT NOT NULL DEFAULT 'friends'
-    CHECK (visibility_level IN ('off', 'paired', 'friends', 'everyone')),
+    CHECK (visibility_level IN ('off', 'paired', 'friends', 'friends_of_friends', 'everyone')),
   show_saved_places BOOLEAN NOT NULL DEFAULT false,
   show_scheduled_places BOOLEAN NOT NULL DEFAULT false,
   activity_status TEXT DEFAULT NULL,

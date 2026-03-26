@@ -16,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Recommendation } from '../../types/recommendation';
 import { PlacePin } from './PlacePin';
 import { AnimatedPlacePin } from './AnimatedPlacePin';
+import { Icon } from '../ui/Icon';
 import { PersonPin } from './PersonPin';
 import { CuratedRoute } from './CuratedRoute';
 // MapFilterBar removed — all cards shown, filtered by open-now only
@@ -88,7 +89,9 @@ export function DiscoverMap({
   const { settings, updateSettings } = useMapSettings();
   const isDark = !!(settings?.go_dark_until && new Date(settings.go_dark_until) > new Date());
   const { data: nearbyPeople = [] } = useNearbyPeople(peopleLayerOn && !isDark, userLocation);
-  useMapLocation(peopleLayerOn && !isDark && settings?.visibility_level !== 'off');
+  // Always update location when map is visible — ensures your row exists for friends to see
+  useMapLocation(!isDark && settings?.visibility_level !== 'off');
+
 
   // Fetch ALL cards from pool for the map (200 limit, not the 20 from discover)
   const { data: mapCards = [], isLoading: mapCardsLoading } = useMapCards(userLocation);
@@ -162,6 +165,15 @@ export function DiscoverMap({
   const profile = useAppStore(s => s.profile);
   const queryClient = useQueryClient();
 
+  // Seed location on first map load so the user_map_settings row is created
+  useEffect(() => {
+    if (userLocation && user?.id && settings?.visibility_level !== 'off') {
+      supabase.functions.invoke('update-map-location', {
+        body: { lat: userLocation.latitude, lng: userLocation.longitude },
+      }).catch(() => {});
+    }
+  }, [user?.id, !!userLocation]);
+
   const handleAddFriendFromMap = useCallback(async (userId: string) => {
     try {
       await supabase
@@ -231,6 +243,28 @@ export function DiscoverMap({
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   };
+
+  // Android: react-native-maps requires a native rebuild (npx expo prebuild).
+  // In Expo Go, the AIRMap native component is not available — show fallback.
+  if (Platform.OS === 'android') {
+    try {
+      // Test if MapView is available by checking the native module registry
+      const { UIManager } = require('react-native');
+      if (!UIManager.getViewManagerConfig || !UIManager.getViewManagerConfig('AIRMap')) {
+        return (
+          <View style={[styles.container, styles.androidFallback]}>
+            <Icon name="map-outline" size={48} color="#d1d5db" />
+            <Text style={styles.androidFallbackTitle}>Map requires native build</Text>
+            <Text style={styles.androidFallbackText}>
+              Run: npx expo prebuild --clean && npx expo run:android
+            </Text>
+          </View>
+        );
+      }
+    } catch {
+      // UIManager check failed — proceed and hope for the best
+    }
+  }
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -308,19 +342,23 @@ export function DiscoverMap({
       </ClusteredMapView>
 
 
-      {peopleLayerOn && (
-        <ActivityStatusPicker
+      <ActivityStatusPicker
           currentStatus={settings?.activity_status || null}
+          peopleLayerOn={peopleLayerOn}
+          onTogglePeople={() => setPeopleLayerOn(p => !p)}
+          visibility={settings?.visibility_level || 'friends'}
+          onVisibilityChange={async (level) => {
+            await updateSettings({ visibility_level: level });
+            if (level === 'off') setPeopleLayerOn(false);
+          }}
           onSetStatus={async (status) => {
+            if (status && !peopleLayerOn) setPeopleLayerOn(true); // auto-enable people layer
             await updateSettings({
               activity_status: status,
-              activity_status_expires_at: status
-                ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-                : null,
+              activity_status_expires_at: null,
             });
           }}
         />
-      )}
 
       <LayerToggles
         placesLayerOn={placesLayerOn}
@@ -419,6 +457,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
+  },
+  androidFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f9fafb',
+    gap: 12,
+    padding: 32,
+  },
+  androidFallbackTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  androidFallbackText: {
+    fontSize: 13,
+    color: '#9ca3af',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   loadingOverlay: {
     position: 'absolute',
