@@ -1552,6 +1552,7 @@ function AIValidationTab() {
   const [dryRun, setDryRun] = useState(false);
   const [running, setRunning] = useState(false);
   const [runResults, setRunResults] = useState(null);
+  const [progress, setProgress] = useState(null);
 
   // ── Browser state ──
   const [cards, setCards] = useState([]);
@@ -1562,24 +1563,94 @@ function AIValidationTab() {
   const [catFilter, setCatFilter] = useState("");
   const BROWSER_PAGE_SIZE = 20;
 
-  // ── Run AI Validation ──
+  // ── Restore last run from localStorage ──
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ai_validation_last_run");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          setRunResults(parsed);
+        } else {
+          localStorage.removeItem("ai_validation_last_run");
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }, []);
+
+  // ── Run AI Validation (micro-batch loop) ──
   const handleRunValidation = async () => {
     setRunning(true);
     setRunResults(null);
+    setProgress({ processed: 0, approved: 0, rejected: 0, failed: 0, total: runLimit });
+
+    let afterCreatedAt = null;
+    let totalProcessed = 0;
+    let totalApproved = 0;
+    let totalRejected = 0;
+    let totalFailed = 0;
+    let totalCategoriesChanged = 0;
+    let totalCost = 0;
+    const allRejectedExamples = [];
+    const allRecategorizedExamples = [];
+    const MICRO_BATCH = 5;
+
     try {
-      const body = { limit: runLimit, dryRun };
-      if (runCategory) body.categorySlug = runCategory;
-      const { data, error } = await supabase.functions.invoke("ai-validate-cards", { body });
-      if (error) throw error;
-      if (!mounted.current) return;
-      setRunResults(data);
-      addToast({ variant: "success", title: `Validated ${data.processed} cards` });
-      fetchCards(); // refresh browser
+      while (totalProcessed < runLimit) {
+        const batchLimit = Math.min(MICRO_BATCH, runLimit - totalProcessed);
+        const body = { limit: batchLimit, dryRun };
+        if (runCategory) body.categorySlug = runCategory;
+        if (afterCreatedAt) body.afterCreatedAt = afterCreatedAt;
+
+        const { data, error } = await supabase.functions.invoke("ai-validate-cards", { body });
+        if (error) throw error;
+        if (!mounted.current) return;
+
+        totalProcessed += data.processed;
+        totalApproved += data.approved;
+        totalRejected += data.rejected;
+        totalFailed += data.failed || 0;
+        totalCategoriesChanged += data.categoriesChanged || 0;
+        totalCost += data.costUsd || 0;
+        if (data.rejectedExamples) allRejectedExamples.push(...data.rejectedExamples);
+        if (data.recategorizedExamples) allRecategorizedExamples.push(...data.recategorizedExamples);
+
+        setProgress({
+          processed: totalProcessed,
+          approved: totalApproved,
+          rejected: totalRejected,
+          failed: totalFailed,
+          total: runLimit,
+        });
+
+        afterCreatedAt = data.continuation_token;
+        if (data.processed < batchLimit || !data.continuation_token) break;
+      }
+
+      const finalResults = {
+        processed: totalProcessed,
+        approved: totalApproved,
+        rejected: totalRejected,
+        failed: totalFailed,
+        categoriesChanged: totalCategoriesChanged,
+        costUsd: Math.round(totalCost * 100) / 100,
+        rejectedExamples: allRejectedExamples.slice(0, 10),
+        recategorizedExamples: allRecategorizedExamples.slice(0, 10),
+        dryRun,
+        timestamp: Date.now(),
+      };
+      setRunResults(finalResults);
+      localStorage.setItem("ai_validation_last_run", JSON.stringify(finalResults));
+      addToast({ variant: "success", title: `Validated ${totalProcessed} cards` });
+      fetchCards();
     } catch (err) {
       if (!mounted.current) return;
       addToast({ variant: "error", title: "Validation failed", description: err.message });
     } finally {
-      if (mounted.current) setRunning(false);
+      if (mounted.current) {
+        setRunning(false);
+        setProgress(null);
+      }
     }
   };
 
@@ -1615,6 +1686,13 @@ function AIValidationTab() {
   }, [statusFilter, catFilter, browserPage]);
 
   useEffect(() => { fetchCards(); }, [fetchCards]);
+
+  // ── Auto-refresh browser during validation ──
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => { fetchCards(); }, 30000);
+    return () => clearInterval(interval);
+  }, [running, fetchCards]);
 
   // ── Override handler ──
   const handleOverride = async (cardId, newValue) => {
@@ -1686,6 +1764,22 @@ function AIValidationTab() {
           </Button>
         </div>
 
+        {/* Progress bar during validation */}
+        {progress && (
+          <div className="mt-4 space-y-2">
+            <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
+              <span>Processing card {progress.processed} of {progress.total}...</span>
+              <span>{progress.approved} approved · {progress.rejected} rejected · {progress.failed} failed</span>
+            </div>
+            <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-brand-500)] rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, (progress.processed / progress.total) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Results summary */}
         {runResults && (
           <div className="mt-4 space-y-3">
@@ -1696,6 +1790,11 @@ function AIValidationTab() {
               <StatCard label="Recategorized" value={runResults.categoriesChanged} className="flex-1 min-w-[100px]" />
               <StatCard label="Est. Cost" value={`$${runResults.costUsd}`} className="flex-1 min-w-[100px]" />
             </div>
+            {runResults.timestamp && (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Last run: {new Date(runResults.timestamp).toLocaleString()}{runResults.dryRun ? " (dry run)" : ""}
+              </p>
+            )}
             {runResults.dryRun && <p className="text-xs text-amber-500 font-medium">Dry run — no changes written to database</p>}
 
             {runResults.rejectedExamples?.length > 0 && (
@@ -1705,7 +1804,7 @@ function AIValidationTab() {
                   { key: "name", label: "Place" },
                   { key: "originalCategory", label: "Category" },
                   { key: "reason", label: "Reason" },
-                ]} data={runResults.rejectedExamples} />
+                ]} rows={runResults.rejectedExamples} />
               </div>
             )}
 
@@ -1717,7 +1816,7 @@ function AIValidationTab() {
                   { key: "from", label: "From", render: (_, r) => r.from.join(", ") },
                   { key: "to", label: "To", render: (_, r) => r.to.join(", ") },
                   { key: "reason", label: "Reason" },
-                ]} data={runResults.recategorizedExamples} />
+                ]} rows={runResults.recategorizedExamples} />
               </div>
             )}
           </div>
@@ -1749,7 +1848,7 @@ function AIValidationTab() {
           ? <div className="text-center py-8 text-[var(--color-text-muted)]"><Loader className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</div>
           : cards.length === 0
             ? <div className="text-center py-8 text-[var(--color-text-muted)]">No cards match filters</div>
-            : <DataTable columns={browserColumns} data={cards} />
+            : <DataTable columns={browserColumns} rows={cards} />
         }
 
         {/* Pagination */}
