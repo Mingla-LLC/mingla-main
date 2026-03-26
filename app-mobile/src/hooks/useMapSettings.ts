@@ -26,7 +26,7 @@ export function useMapSettings() {
         .maybeSingle();
       if (error) throw error;
       return data || {
-        visibility_level: 'off' as const,
+        visibility_level: 'friends' as const,
         show_saved_places: false,
         show_scheduled_places: false,
         activity_status: null,
