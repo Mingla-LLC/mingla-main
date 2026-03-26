@@ -44,6 +44,9 @@ import type { GatedFeature } from '../hooks/useFeatureGate';
 import PersonHolidayView from "./PersonHolidayView";
 import CustomHolidayModal from "./CustomHolidayModal";
 import { STANDARD_HOLIDAYS, DEFAULT_PERSON_SECTIONS } from "../constants/holidays";
+import { DiscoverMap } from "./map/DiscoverMap";
+import { useSavedCards } from "../hooks/useSavedCards";
+import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchPersonHeroCards } from '../services/personHeroCardsService';
 import { personCardKeys } from '../hooks/queryKeys';
@@ -879,6 +882,10 @@ export default function DiscoverScreen({
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
   const prefetchQueryClient = useQueryClient();
+  const { data: mapSavedCards } = useSavedCards(user?.id);
+  const { data: mapCalendarEntries } = useCalendarEntries(user?.id);
+  const mapSavedCardIds = useMemo(() => new Set((mapSavedCards ?? []).map(c => c.id)), [mapSavedCards]);
+  const mapScheduledCardIds = useMemo(() => new Set((mapCalendarEntries ?? []).map((e: any) => e.card_id).filter(Boolean)), [mapCalendarEntries]);
 
   // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled,
   // or optimistic update removed it after accept/decline).
@@ -3415,6 +3422,21 @@ export default function DiscoverScreen({
                   travelMode={userTravelMode}
                 />
               ) : (
+                <DiscoverMap
+                  cards={recommendations}
+                  savedCardIds={mapSavedCardIds}
+                  scheduledCardIds={mapScheduledCardIds}
+                  onCardSave={(card) => handleCardPress(featuredFromRecommendation(card))}
+                  onCardSchedule={(card) => handleCardPress(featuredFromRecommendation(card))}
+                  onCardExpand={(card) => handleCardPress(featuredFromRecommendation(card))}
+                  accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
+                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
+                  isLoading={recommendationsLoading}
+                />
+              )}
+
+              {/* Legacy ForYou grid content — hidden while map is active */}
+              {false && (
                 <>
                   {/* Paired People Row — horizontal scroll of paired people cards */}
                   {canAccess('pairing') ? (
