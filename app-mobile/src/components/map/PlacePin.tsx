@@ -2,8 +2,24 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Icon } from '../ui/Icon';
-import { getCategoryIcon, getCategoryColor } from '../../utils/categoryUtils';
+import { getCategoryIcon, getCategoryColor, getCategorySlug } from '../../utils/categoryUtils';
 import { Recommendation } from '../../types/recommendation';
+
+// Direct slug → icon map matching preferences sheet exactly
+const CATEGORY_ICON_MAP: Record<string, string> = {
+  nature: 'leaf-outline',
+  first_meet: 'chatbubbles-outline',
+  picnic_park: 'basket-outline',
+  drink: 'wine-outline',
+  casual_eats: 'fast-food-outline',
+  fine_dining: 'restaurant-outline',
+  watch: 'film-outline',
+  live_performance: 'musical-notes-outline',
+  creative_arts: 'color-palette-outline',
+  play: 'game-controller-outline',
+  wellness: 'body-outline',
+  flowers: 'flower-outline',
+};
 
 interface PlacePinProps {
   card: Recommendation;
@@ -21,15 +37,17 @@ const TIER_BORDER_COLORS: Record<string, string> = {
 
 // Extracted content — used by both PlacePin and AnimatedPlacePin
 export function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinProps, 'onPress'>) {
+  const slug = getCategorySlug(card.category);
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
-  const categoryIcon = getCategoryIcon(card.category) || 'location-outline';
+  const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
+  const isCurated = !!card.strollData;
 
   return (
-    <View style={styles.wrapper}>
-      <View style={[styles.pinOuter, { borderColor: tierColor }]}>
-        <View style={[styles.pinInner, { backgroundColor: categoryColor }]}>
-          <Icon name={categoryIcon} size={14} color="#FFF" />
+    <View style={isCurated ? styles.wrapperLarge : styles.wrapper}>
+      <View style={[isCurated ? styles.pinOuterLarge : styles.pinOuter, { borderColor: tierColor }]}>
+        <View style={[isCurated ? styles.pinInnerLarge : styles.pinInner, { backgroundColor: categoryColor }]}>
+          <Icon name={isCurated ? 'map-outline' : categoryIcon} size={isCurated ? 20 : 14} color="#FFF" />
         </View>
       </View>
       {isSaved && (
@@ -79,6 +97,27 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Curated cards — larger pins
+  wrapperLarge: {
+    width: 50,
+    height: 50,
+  },
+  pinOuterLarge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  pinInnerLarge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },

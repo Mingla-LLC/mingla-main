@@ -102,7 +102,7 @@ export function MapFilterBar({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 8,
+    top: 80,
     left: 0,
     right: 0,
     zIndex: 10,

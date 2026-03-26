@@ -1,14 +1,15 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
+  Text,
+  Image,
   StyleSheet,
   ActivityIndicator,
   Platform,
-  Dimensions,
   Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Region, UrlTile, Marker } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -17,18 +18,17 @@ import { PlacePin } from './PlacePin';
 import { AnimatedPlacePin } from './AnimatedPlacePin';
 import { PersonPin } from './PersonPin';
 import { CuratedRoute } from './CuratedRoute';
-import { MapFilterBar } from './MapFilterBar';
+// MapFilterBar removed — all cards shown, filtered by open-now only
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { LayerToggles } from './LayerToggles';
-import { GoDarkFAB } from './GoDarkFAB';
 import { ActivityStatusPicker } from './ActivityStatusPicker';
 import { ActivityFeedOverlay } from './ActivityFeedOverlay';
 import { PlaceHeatmap } from './PlaceHeatmap';
-import { getCategorySlug } from '../../utils/categoryUtils';
 import { useNearbyPeople, NearbyPerson } from '../../hooks/useNearbyPeople';
 import { useMapLocation } from '../../hooks/useMapLocation';
 import { useMapSettings } from '../../hooks/useMapSettings';
+import { useMapCards } from '../../hooks/useMapCards';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
@@ -45,6 +45,7 @@ interface DiscoverMapProps {
   accountPreferences: { currency?: string; measurementSystem?: string };
   userLocation: { latitude: number; longitude: number } | null;
   isLoading: boolean;
+  centerTrigger?: number;
 }
 
 export function DiscoverMap({
@@ -59,12 +60,10 @@ export function DiscoverMap({
   accountPreferences,
   userLocation,
   isLoading,
+  centerTrigger,
 }: DiscoverMapProps) {
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-  const [selectedTier, setSelectedTier] = useState<string>('all');
-  const [openNowOnly, setOpenNowOnly] = useState(false);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
   const [peopleLayerOn, setPeopleLayerOn] = useState(false);
   const [feedOn, setFeedOn] = useState(false);
@@ -73,37 +72,77 @@ export function DiscoverMap({
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
 
+  // Center on user location when For You pill is tapped
+  useEffect(() => {
+    if (centerTrigger && centerTrigger > 0 && userLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }, 500);
+    }
+  }, [centerTrigger, userLocation]);
+
   // People layer hooks
   const { settings, updateSettings } = useMapSettings();
   const isDark = !!(settings?.go_dark_until && new Date(settings.go_dark_until) > new Date());
   const { data: nearbyPeople = [] } = useNearbyPeople(peopleLayerOn && !isDark, userLocation);
   useMapLocation(peopleLayerOn && !isDark && settings?.visibility_level !== 'off');
 
-  // Filter cards by active filters (client-side, instant)
+  // Fetch ALL cards from pool for the map (200 limit, not the 20 from discover)
+  const { data: mapCards = [], isLoading: mapCardsLoading } = useMapCards(userLocation);
+  const allCards = mapCards.length > 0 ? mapCards : cards; // fallback to prop cards
+
+  // Filter cards for map display:
+  // 1. Must have valid lat/lng
+  // 2. Must have a photo (no placeholder pins)
+  // 3. Must have a title
+  // 4. Single cards: must be open now (if hours available)
+  // 5. Curated cards: ALL stops must be open now (if hours available)
   const filteredCards = useMemo(() => {
     if (!placesLayerOn) return [];
-    return cards.filter(card => {
-      // lat/lng can be 0 (valid coordinate) — check for undefined/null, not falsy
+    return allCards.filter(card => {
+      // Valid coordinates
       if (card.lat == null || card.lng == null) return false;
-      // Cards use readable names ("Casual Eats"), filters use slugs ("casual_eats")
-      const slug = getCategorySlug(card.category);
-      if (selectedCategories.size > 0 && !selectedCategories.has(slug)) return false;
-      if (selectedTier !== 'all' && card.priceTier !== selectedTier) return false;
-      if (openNowOnly) {
-        const oh = card.openingHours;
-        if (typeof oh === 'object' && oh !== null && 'open_now' in oh) {
-          if (!oh.open_now) return false;
-        }
+
+      // Must have a photo — curated cards always pass (stops have images)
+      if (!card.strollData) {
+        const hasImage = card.image || (card.images && card.images.length > 0);
+        if (!hasImage) return false;
       }
+
+      // Must have a title
+      if (!card.title || card.title.trim() === '') return false;
+
+      // Curated card — check all stops are open
+      if (card.strollData) {
+        const stops = [card.strollData.anchor, ...card.strollData.companionStops];
+        return !stops.some((stop: any) => {
+          const oh = stop?.openingHours ?? stop?.opening_hours;
+          if (typeof oh === 'object' && oh !== null && 'open_now' in oh) {
+            return oh.open_now === false;
+          }
+          return false;
+        });
+      }
+
+      // Single card — check open_now
+      const oh = card.openingHours;
+      if (typeof oh === 'object' && oh !== null && 'open_now' in oh) {
+        return oh.open_now !== false;
+      }
+
+      // No hours data — show it (benefit of doubt)
       return true;
     });
-  }, [cards, selectedCategories, selectedTier, openNowOnly, placesLayerOn]);
+  }, [allCards, placesLayerOn]);
 
   const handlePinPress = useCallback((card: Recommendation) => {
     setSelectedPerson(null);
     personSheetRef.current?.close();
     setSelectedCard(card);
-    bottomSheetRef.current?.snapToIndex(0);
+    bottomSheetRef.current?.snapToIndex(1); // 45% — middle snap
   }, []);
 
   const handlePersonPinPress = useCallback((person: NearbyPerson) => {
@@ -120,6 +159,7 @@ export function DiscoverMap({
   }, [isDark, updateSettings]);
 
   const user = useAppStore(s => s.user);
+  const profile = useAppStore(s => s.profile);
   const queryClient = useQueryClient();
 
   const handleAddFriendFromMap = useCallback(async (userId: string) => {
@@ -184,17 +224,6 @@ export function DiscoverMap({
     }
   }, [filteredCards, selectedCard]);
 
-  const toggleCategory = useCallback((slug: string) => {
-    setSelectedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(slug)) {
-        next.delete(slug);
-      } else {
-        next.add(slug);
-      }
-      return next;
-    });
-  }, []);
 
   const initialRegion: Region = {
     latitude: userLocation?.latitude ?? 35.7796,
@@ -208,16 +237,54 @@ export function DiscoverMap({
       <ClusteredMapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={initialRegion}
-        showsUserLocation
+        showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass={false}
-        mapPadding={{ top: 50, right: 0, bottom: 0, left: 0 }}
+        showsTraffic={false}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsPointsOfInterest={false}
+        mapPadding={{ top: 60, right: 0, bottom: -40, left: 0 }}
         clusterColor="#eb7825"
         radius={50}
         maxZoom={16}
       >
+        {/* CartoDB Positron — clean map with city names. Replaces native map. */}
+        <UrlTile
+          urlTemplate="https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+          maximumZ={19}
+          tileSize={256}
+          shouldReplaceMapContent
+        />
+        {/* User avatar marker */}
+        {userLocation && (
+          <Marker
+            coordinate={userLocation}
+            tracksViewChanges={false}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={999}
+            title="This is you"
+            description={profile?.first_name ? `Hey ${profile.first_name} 👋` : "You're here"}
+          >
+            <View style={styles.userMarker}>
+              <View style={styles.userMarkerPulse} />
+              <View style={styles.userAvatarRing}>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={styles.userAvatar} />
+                ) : (
+                  <View style={styles.userAvatarFallback}>
+                    <Text style={styles.userAvatarInitials}>
+                      {(profile?.first_name || profile?.display_name || 'Y')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Marker>
+        )}
+
+        {heatmapOn && <PlaceHeatmap cards={allCards} savedCardIds={savedCardIds} />}
         {filteredCards.map((card, index) => (
           <AnimatedPlacePin
             key={card.id}
@@ -231,9 +298,6 @@ export function DiscoverMap({
         {selectedCard?.strollData && (
           <CuratedRoute card={selectedCard} />
         )}
-        {heatmapOn && (
-          <PlaceHeatmap cards={cards} savedCardIds={savedCardIds} />
-        )}
         {peopleLayerOn && nearbyPeople.map(person => (
           <PersonPin
             key={person.userId}
@@ -243,14 +307,6 @@ export function DiscoverMap({
         ))}
       </ClusteredMapView>
 
-      <MapFilterBar
-        selectedCategories={selectedCategories}
-        onToggleCategory={toggleCategory}
-        selectedTier={selectedTier}
-        onTierChange={setSelectedTier}
-        openNowOnly={openNowOnly}
-        onOpenNowToggle={() => setOpenNowOnly(p => !p)}
-      />
 
       {peopleLayerOn && (
         <ActivityStatusPicker
@@ -271,6 +327,8 @@ export function DiscoverMap({
         onTogglePlaces={() => setPlacesLayerOn(p => !p)}
         peopleLayerOn={peopleLayerOn}
         onTogglePeople={() => setPeopleLayerOn(p => !p)}
+        isDark={isDark}
+        onToggleGoDark={handleToggleGoDark}
         feedOn={feedOn}
         onToggleFeed={() => setFeedOn(p => !p)}
         heatmapOn={heatmapOn}
@@ -299,13 +357,9 @@ export function DiscoverMap({
         onReport={handleReportFromMap}
       />
 
-      <View style={styles.goDarkPosition}>
-        <GoDarkFAB isDark={isDark} onToggle={handleToggleGoDark} />
-      </View>
-
       <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />
 
-      {isLoading && (
+      {(isLoading || mapCardsLoading) && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color="#eb7825" />
         </View>
@@ -314,19 +368,57 @@ export function DiscoverMap({
   );
 }
 
-// Map is rendered inside a ScrollView which gives children infinite height.
-// flex: 1 resolves to 0 — must use explicit height.
-const MAP_HEIGHT = Dimensions.get('window').height - 200; // account for tabs + pills + tab bar
-
+// Clean map style — hides POIs, transit, road labels. Only terrain + water + Mingla pins.
+// Works on Google Maps (Android). Apple Maps uses showsPointsOfInterest={false} prop instead.
 const styles = StyleSheet.create({
   container: {
-    height: MAP_HEIGHT,
+    flex: 1,
   },
-  goDarkPosition: {
+  userMarker: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userMarkerPulse: {
     position: 'absolute',
-    bottom: 76,
-    right: 16,
-    zIndex: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(235,120,37,0.15)',
+  },
+  userAvatarRing: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 3,
+    borderColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  userAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  userAvatarFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarInitials: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
   },
   loadingOverlay: {
     position: 'absolute',

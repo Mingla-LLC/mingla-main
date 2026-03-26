@@ -26,7 +26,7 @@ interface MapBottomSheetProps {
   accountPreferences: { currency?: string; measurementSystem?: string };
 }
 
-const snapPoints = ['45%', '90%'];
+const snapPoints = ['15%', '45%', '90%'];
 
 export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
   ({ card, onExpand, onNext, onClose, accountPreferences }, ref) => {
@@ -34,26 +34,12 @@ export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
     const currencySymbol = getCurrencySymbol(currency);
     const currencyRate = getCurrencyRate(currency);
 
-    const renderBackdrop = useCallback(
-      (props: any) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.3}
-        />
-      ),
-      []
-    );
-
     return (
       <BottomSheet
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
-        enablePanDownToClose
-        onClose={onClose}
-        backdropComponent={renderBackdrop}
+        enablePanDownToClose={false}
         handleIndicatorStyle={styles.handle}
         backgroundStyle={styles.sheetBackground}
       >

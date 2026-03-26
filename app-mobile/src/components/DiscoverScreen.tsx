@@ -1966,6 +1966,8 @@ export default function DiscoverScreen({
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
   const recommendationsLoading = discoverLoading;
+  // Map is showing when For You tab is active and no person is selected
+  const isMapShowing = activeTab === 'for-you' && !(selectedPill?.pillState === 'active' && user?.id);
   const recommendationsError = discoverError;
   const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
@@ -2651,8 +2653,10 @@ export default function DiscoverScreen({
   };
 
   // Handle "For You" selection
+  const [mapCenterTrigger, setMapCenterTrigger] = useState(0);
   const handleForYouSelect = () => {
     setSelectedPillId("for-you");
+    setMapCenterTrigger(p => p + 1);
   };
 
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
@@ -3251,8 +3255,9 @@ export default function DiscoverScreen({
         {/* Content */}
         <ScrollView
           style={styles.content}
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={[styles.contentContainer, isMapShowing && { flex: 1, padding: 0, paddingBottom: 0 }]}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!isMapShowing}
         >
           {activeTab === "for-you" && (
             <>
@@ -3260,7 +3265,7 @@ export default function DiscoverScreen({
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.tabHeaderScrollView}
+                style={[styles.tabHeaderScrollView, isMapShowing && styles.floatingPillBar]}
                 contentContainerStyle={styles.tabHeaderContent}
               >
                 {/* For You Pill - Always First */}
@@ -3432,7 +3437,113 @@ export default function DiscoverScreen({
                   cards={recommendations}
                   savedCardIds={mapSavedCardIds}
                   scheduledCardIds={mapScheduledCardIds}
-                  onCardExpand={(card) => handleCardPress(featuredFromRecommendation(card))}
+                  onCardExpand={(card) => {
+                    if (card.strollData) {
+                      // Curated card — use raw stops from edge function if available
+                      const edgeStops = (card as any)._rawStops;
+                      const curatedStops = edgeStops
+                        ? edgeStops.map((s: any) => ({
+                            stopNumber: s.stopNumber || 1,
+                            stopLabel: s.stopLabel || 'Explore',
+                            placeId: s.placeId || '',
+                            placeName: s.placeName || s.name || 'Stop',
+                            placeType: s.placeType || s.role || 'place',
+                            address: s.address || '',
+                            rating: s.rating || 0,
+                            reviewCount: s.reviewCount || 0,
+                            imageUrl: s.imageUrl || s.imageUrls?.[0] || '',
+                            imageUrls: s.imageUrls || (s.imageUrl ? [s.imageUrl] : []),
+                            priceLevelLabel: s.priceLevelLabel || s.priceTier || 'chill',
+                            priceTier: s.priceTier || 'chill',
+                            priceMin: s.priceMin || 0,
+                            priceMax: s.priceMax || 0,
+                            openingHours: s.openingHours || {},
+                            isOpenNow: s.isOpenNow ?? true,
+                            website: s.website || null,
+                            lat: s.lat || 0,
+                            lng: s.lng || 0,
+                            distanceFromUserKm: s.distanceFromUserKm || 0,
+                            travelTimeFromUserMin: s.travelTimeFromUserMin || 0,
+                            travelTimeFromPreviousStopMin: s.travelTimeFromPreviousStopMin ?? null,
+                            travelModeFromPreviousStop: s.travelModeFromPreviousStop || null,
+                            aiDescription: s.aiDescription || '',
+                            estimatedDurationMinutes: s.estimatedDurationMinutes || 30,
+                            role: s.role || 'Activity',
+                          }))
+                        : [card.strollData.anchor, ...card.strollData.companionStops].map((s: any, i: number, arr: any[]) => ({
+                            stopNumber: i + 1,
+                            stopLabel: i === 0 ? 'Start Here' : i === arr.length - 1 ? 'End With' : 'Then',
+                            placeId: s.placeId || s.id || '',
+                            placeName: s.name || 'Stop',
+                            placeType: s.type || 'place',
+                            address: s.address || '',
+                            rating: s.rating || 0,
+                            reviewCount: s.reviewCount || 0,
+                            imageUrl: s.imageUrl || '',
+                            imageUrls: [],
+                            priceLevelLabel: 'chill',
+                            priceTier: 'chill',
+                            priceMin: 0,
+                            priceMax: 0,
+                            openingHours: {},
+                            isOpenNow: true,
+                            website: null,
+                            lat: s.location?.lat ?? 0,
+                            lng: s.location?.lng ?? 0,
+                            distanceFromUserKm: 0,
+                            travelTimeFromUserMin: 0,
+                            travelTimeFromPreviousStopMin: null,
+                            travelModeFromPreviousStop: null,
+                            aiDescription: '',
+                            estimatedDurationMinutes: 30,
+                            role: s.type || 'Activity',
+                          }));
+                      // Build as CuratedExperienceCard — the ExpandedCardModal casts to this type
+                      const totalPriceMin = curatedStops.reduce((s: number, st: any) => s + (st.priceMin || 0), 0);
+                      const totalPriceMax = curatedStops.reduce((s: number, st: any) => s + (st.priceMax || 0), 0);
+                      const totalDuration = curatedStops.reduce((s: number, st: any) => s + (st.estimatedDurationMinutes || 30), 0);
+
+                      const expandedCardData: any = {
+                        id: card.id,
+                        placeId: card.placeId || card.id,
+                        title: card.title,
+                        category: card.category,
+                        categoryIcon: 'map-outline',
+                        description: card.description || card.oneLiner || '',
+                        fullDescription: card.fullDescription || card.description || '',
+                        image: card.image,
+                        images: card.images?.length ? card.images : [card.image].filter(Boolean),
+                        rating: card.rating || 0,
+                        reviewCount: card.reviewCount || 0,
+                        priceRange: card.priceRange || '',
+                        distance: card.distance || '',
+                        travelTime: card.travelTime || '',
+                        address: card.address || '',
+                        highlights: card.highlights || [],
+                        tags: card.tags || [],
+                        matchScore: card.matchScore || 75,
+                        matchFactors: card.matchFactors || { location: 85, budget: 85, category: 85, time: 85, popularity: 85 },
+                        socialStats: card.socialStats || { views: 0, likes: 0, saves: 0, shares: 0 },
+                        openingHours: card.openingHours,
+                        selectedDateTime: new Date(),
+                        // CuratedExperienceCard fields — required by ExpandedCardModal
+                        cardType: 'curated',
+                        experienceType: card.experienceType || card.category || 'adventurous',
+                        pairingKey: '',
+                        tagline: card.oneLiner || card.description || '',
+                        categoryLabel: card.category,
+                        stops: curatedStops,
+                        totalPriceMin,
+                        totalPriceMax,
+                        estimatedDurationMinutes: totalDuration,
+                        strollData: card.strollData,
+                      };
+                      setSelectedCardForExpansion(expandedCardData);
+                      setIsExpandedModalVisible(true);
+                    } else {
+                      handleCardPress(featuredFromRecommendation(card));
+                    }
+                  }}
                   onPersonMessage={(userId) => {
                     // Navigate to chat with this user via pill selection
                     const pill = pairingPills.find(p => p.pairedUserId === userId);
@@ -3448,6 +3559,7 @@ export default function DiscoverScreen({
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}
+                  centerTrigger={mapCenterTrigger}
                 />
               )}
 
@@ -4026,6 +4138,24 @@ const styles = StyleSheet.create({
   tabHeaderScrollView: {
     marginBottom: 16,
     marginHorizontal: -16,
+  },
+  floatingPillBar: {
+    position: 'absolute',
+    top: 12,
+    left: 16,
+    right: 16,
+    zIndex: 20,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginBottom: 0,
+    marginHorizontal: 0,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   tabHeaderContent: {
     flexDirection: "row",

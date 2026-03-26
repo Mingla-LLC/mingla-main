@@ -72,7 +72,7 @@ export function ActivityStatusPicker({ currentStatus, onSetStatus }: ActivitySta
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 52,
+    top: 124,
     left: 0,
     right: 0,
     zIndex: 9,
