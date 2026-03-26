@@ -32,6 +32,15 @@ serve(async (req) => {
     const { lat, lng, radiusKm = 15 } = await req.json();
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Bidirectional visibility: fetch requester's own visibility level.
+    // You must be visible to see strangers — no lurking.
+    const { data: requesterSettings } = await adminClient
+      .from("user_map_settings")
+      .select("visibility_level")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const requesterVisibility = requesterSettings?.visibility_level || "off";
+
     // Get requester's friends + paired people
     const [friendsResult, pairingsResult] = await Promise.all([
       adminClient.from("friends")
@@ -88,6 +97,11 @@ serve(async (req) => {
       const isFriend = friendIds.has(s.user_id);
       if (s.visibility_level === "paired" && !isPaired) continue;
       if (s.visibility_level === "friends" && !isFriend && !isPaired) continue;
+
+      // Bidirectional: strangers can only see each other if BOTH are set to 'everyone'
+      const isStranger = !isPaired && !isFriend;
+      if (isStranger && requesterVisibility !== "everyone") continue;
+
       visibleUserIds.push(s.user_id);
       relationshipMap.set(s.user_id, isPaired ? "paired" : isFriend ? "friend" : "stranger");
     }
@@ -106,6 +120,82 @@ serve(async (req) => {
 
     const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
 
+    // Taste match lookup for strangers
+    const strangerIds = visibleUserIds.filter(id => relationshipMap.get(id) === "stranger");
+    const tasteMatchMap = new Map<string, { matchPercentage: number; sharedCategories: string[]; sharedTiers: string[] }>();
+
+    if (strangerIds.length > 0) {
+      const canonicalPairs = strangerIds.map(id => {
+        const [a, b] = [user.id, id].sort();
+        return { a, b, originalId: id };
+      });
+
+      const { data: cachedMatches } = await adminClient
+        .from("user_taste_matches")
+        .select("user_a_id, user_b_id, match_percentage, shared_categories, shared_tiers, computed_at")
+        .or(canonicalPairs.map(p => `and(user_a_id.eq.${p.a},user_b_id.eq.${p.b})`).join(","));
+
+      const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const freshMatches = new Map<string, any>();
+      const staleOrMissingIds: string[] = [];
+
+      for (const pair of canonicalPairs) {
+        const cached = (cachedMatches || []).find(
+          (m: any) => m.user_a_id === pair.a && m.user_b_id === pair.b
+        );
+        if (cached && new Date(cached.computed_at) > staleThreshold) {
+          freshMatches.set(pair.originalId, cached);
+        } else {
+          staleOrMissingIds.push(pair.originalId);
+        }
+      }
+
+      // Compute stale/missing matches (max 10 per request)
+      for (const strangerId of staleOrMissingIds.slice(0, 10)) {
+        try {
+          const [a, b] = [user.id, strangerId].sort();
+          const { data: matchResult } = await adminClient.rpc("compute_taste_match", {
+            p_user_a: a, p_user_b: b,
+          });
+          if (matchResult && matchResult.length > 0) {
+            const m = matchResult[0];
+            await adminClient.from("user_taste_matches").upsert({
+              user_a_id: a, user_b_id: b,
+              match_percentage: m.match_percentage,
+              shared_categories: m.shared_categories,
+              shared_tiers: m.shared_tiers,
+              shared_intents: m.shared_intents,
+              computed_at: new Date().toISOString(),
+            }, { onConflict: "user_a_id,user_b_id" });
+            freshMatches.set(strangerId, m);
+          }
+        } catch (e) {
+          console.warn(`[get-nearby-people] taste match compute failed for ${strangerId}:`, e);
+        }
+      }
+
+      for (const [id, match] of freshMatches) {
+        tasteMatchMap.set(id, {
+          matchPercentage: match.match_percentage,
+          sharedCategories: match.shared_categories || [],
+          sharedTiers: match.shared_tiers || [],
+        });
+      }
+    }
+
+    // Rate limit check for map friend requests
+    let mapFriendRequestsToday = 0;
+    if (strangerIds.length > 0) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count } = await adminClient
+        .from("friend_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("sender_id", user.id)
+        .eq("source", "map")
+        .gte("created_at", twentyFourHoursAgo);
+      mapFriendRequestsToday = count || 0;
+    }
+
     // Build response (NEVER include real_lat/lng)
     const result = nearbySettings
       .filter((s: any) => visibleUserIds.includes(s.user_id))
@@ -113,6 +203,9 @@ serve(async (req) => {
         const profile = profileMap.get(s.user_id);
         const status = s.activity_status_expires_at && new Date(s.activity_status_expires_at) < now
           ? null : s.activity_status;
+        const relationship = relationshipMap.get(s.user_id) || "stranger";
+        const tasteMatch = tasteMatchMap.get(s.user_id);
+
         return {
           userId: s.user_id,
           displayName: profile?.display_name || profile?.first_name || "Someone",
@@ -122,7 +215,12 @@ serve(async (req) => {
           approximateLng: s.approximate_lng,
           activityStatus: status,
           lastActiveAt: s.last_active_at,
-          relationship: relationshipMap.get(s.user_id) || "stranger",
+          relationship,
+          tasteMatchPct: tasteMatch?.matchPercentage ?? null,
+          sharedCategories: tasteMatch?.sharedCategories ?? [],
+          sharedTiers: tasteMatch?.sharedTiers ?? [],
+          canSendFriendRequest: relationship === "stranger" && mapFriendRequestsToday < 10,
+          mapFriendRequestsRemaining: Math.max(0, 10 - mapFriendRequestsToday),
         };
       });
 

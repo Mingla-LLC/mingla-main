@@ -12,12 +12,15 @@ interface PersonBottomSheetProps {
   onInviteToSession: (userId: string) => void;
   onViewPairedCards: (userId: string) => void;
   onViewProfile: (userId: string) => void;
+  onAddFriend: (userId: string) => void;
+  onBlock: (userId: string) => void;
+  onReport: (userId: string) => void;
 }
 
 const snapPoints = ['40%'];
 
 export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>(
-  ({ person, onClose, onMessage, onInviteToSession, onViewPairedCards, onViewProfile }, ref) => {
+  ({ person, onClose, onMessage, onInviteToSession, onViewPairedCards, onViewProfile, onAddFriend, onBlock, onReport }, ref) => {
     return (
       <BottomSheet
         ref={ref}
@@ -44,13 +47,28 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 <View style={styles.headerText}>
                   <Text style={styles.name}>{person.displayName}</Text>
                   <Text style={styles.relationship}>
-                    {person.relationship === 'paired' ? 'Your pair' : 'Friend'}
+                    {person.relationship === 'paired' ? 'Your pair'
+                      : person.relationship === 'friend' ? 'Friend'
+                      : 'Nearby'}
                   </Text>
                   {person.activityStatus && (
                     <Text style={styles.status}>{person.activityStatus}</Text>
                   )}
                 </View>
               </View>
+
+              {/* Taste match section — strangers only */}
+              {person.relationship === 'stranger' && person.tasteMatchPct != null && (
+                <View style={styles.tasteMatchSection}>
+                  <Text style={styles.matchPctLarge}>{person.tasteMatchPct}%</Text>
+                  <Text style={styles.matchLabel}>taste match</Text>
+                  {person.sharedCategories.length > 0 && (
+                    <Text style={styles.sharedValues}>
+                      You both enjoy {person.sharedCategories.join(', ')}
+                    </Text>
+                  )}
+                </View>
+              )}
 
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionWrapper} onPress={() => onMessage(person.userId)} activeOpacity={0.7}>
@@ -80,6 +98,36 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                   </BlurView>
                 </TouchableOpacity>
               </View>
+
+              {/* Stranger: Add Friend + Block/Report */}
+              {person.relationship === 'stranger' && (
+                <>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={styles.actionWrapper}
+                      onPress={() => onAddFriend(person.userId)}
+                      disabled={!person.canSendFriendRequest}
+                      activeOpacity={0.7}
+                    >
+                      <BlurView intensity={40} tint="light" style={[styles.blurButton, !person.canSendFriendRequest && styles.buttonDisabled]}>
+                        <Icon name="person-add-outline" size={18} color={person.canSendFriendRequest ? '#111' : '#9ca3af'} />
+                        <Text style={[styles.actionText, !person.canSendFriendRequest && styles.textDisabled]}>
+                          {person.canSendFriendRequest ? 'Add Friend' : 'Limit reached'}
+                        </Text>
+                      </BlurView>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.safetyRow}>
+                    <TouchableOpacity onPress={() => onBlock(person.userId)} activeOpacity={0.7}>
+                      <Text style={styles.safetyText}>Block</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.safetyDot}>·</Text>
+                    <TouchableOpacity onPress={() => onReport(person.userId)} activeOpacity={0.7}>
+                      <Text style={styles.safetyText}>Report</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
           )}
         </BottomSheetScrollView>
@@ -115,4 +163,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.03)',
   },
   actionText: { fontSize: 11, fontWeight: '600', color: '#111827' },
+  tasteMatchSection: { alignItems: 'center', paddingVertical: 12, gap: 4 },
+  matchPctLarge: { fontSize: 28, fontWeight: '800', color: '#eb7825' },
+  matchLabel: { fontSize: 11, color: '#6b7280', marginTop: -2 },
+  sharedValues: { fontSize: 12, color: '#6b7280', textAlign: 'center', marginTop: 4 },
+  buttonDisabled: { opacity: 0.4 },
+  textDisabled: { color: '#9ca3af' },
+  safetyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16 },
+  safetyText: { fontSize: 13, color: '#9ca3af' },
+  safetyDot: { fontSize: 13, color: '#d1d5db' },
 });

@@ -5,7 +5,9 @@ import {
   ActivityIndicator,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import BottomSheet from '@gorhom/bottom-sheet';
@@ -18,10 +20,14 @@ import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { LayerToggles } from './LayerToggles';
 import { GoDarkFAB } from './GoDarkFAB';
+import { ActivityStatusPicker } from './ActivityStatusPicker';
 import { getCategorySlug } from '../../utils/categoryUtils';
 import { useNearbyPeople, NearbyPerson } from '../../hooks/useNearbyPeople';
 import { useMapLocation } from '../../hooks/useMapLocation';
 import { useMapSettings } from '../../hooks/useMapSettings';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../../services/supabase';
+import { useAppStore } from '../../store/appStore';
 
 interface DiscoverMapProps {
   cards: Recommendation[];
@@ -107,6 +113,53 @@ export function DiscoverMap({
     updateSettings({ go_dark_until: newValue });
   }, [isDark, updateSettings]);
 
+  const user = useAppStore(s => s.user);
+  const queryClient = useQueryClient();
+
+  const handleAddFriendFromMap = useCallback(async (userId: string) => {
+    try {
+      await supabase
+        .from('friend_requests')
+        .upsert(
+          { sender_id: user!.id, receiver_id: userId, status: 'pending', source: 'map' },
+          { onConflict: 'sender_id,receiver_id' }
+        );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+    } catch {
+      Alert.alert('Error', 'Could not send friend request. Try again later.');
+    }
+  }, [user, queryClient]);
+
+  const handleBlockFromMap = useCallback(async (userId: string) => {
+    Alert.alert('Block User', "They won't be able to see you or contact you.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Block', style: 'destructive', onPress: async () => {
+        try {
+          await supabase.from('blocked_users').upsert(
+            { blocker_id: user!.id, blocked_user_id: userId },
+            { onConflict: 'blocker_id,blocked_user_id' }
+          );
+          personSheetRef.current?.close();
+          queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+        } catch {}
+      }},
+    ]);
+  }, [user, queryClient]);
+
+  const handleReportFromMap = useCallback(async (userId: string) => {
+    try {
+      await supabase.from('user_reports').insert({
+        reporter_id: user!.id,
+        reported_user_id: userId,
+        reason: 'map_interaction',
+        details: 'Reported from map discovery',
+      });
+    } catch {}
+    Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
+    personSheetRef.current?.close();
+  }, [user]);
+
   const handleNext = useCallback(() => {
     if (filteredCards.length === 0) return;
     const currentIdx = selectedCard
@@ -186,6 +239,20 @@ export function DiscoverMap({
         onOpenNowToggle={() => setOpenNowOnly(p => !p)}
       />
 
+      {peopleLayerOn && (
+        <ActivityStatusPicker
+          currentStatus={settings?.activity_status || null}
+          onSetStatus={async (status) => {
+            await updateSettings({
+              activity_status: status,
+              activity_status_expires_at: status
+                ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
+                : null,
+            });
+          }}
+        />
+      )}
+
       <LayerToggles
         placesLayerOn={placesLayerOn}
         onTogglePlaces={() => setPlacesLayerOn(p => !p)}
@@ -210,6 +277,9 @@ export function DiscoverMap({
         onInviteToSession={(userId) => onPersonInvite?.(userId)}
         onViewPairedCards={(userId) => onPersonCards?.(userId)}
         onViewProfile={(userId) => onPersonProfile?.(userId)}
+        onAddFriend={handleAddFriendFromMap}
+        onBlock={handleBlockFromMap}
+        onReport={handleReportFromMap}
       />
 
       <View style={styles.goDarkPosition}>

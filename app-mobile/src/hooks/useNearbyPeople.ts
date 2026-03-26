@@ -11,6 +11,11 @@ export interface NearbyPerson {
   activityStatus: string | null;
   lastActiveAt: string;
   relationship: 'paired' | 'friend' | 'stranger';
+  tasteMatchPct: number | null;
+  sharedCategories: string[];
+  sharedTiers: string[];
+  canSendFriendRequest: boolean;
+  mapFriendRequestsRemaining: number;
 }
 
 export function useNearbyPeople(

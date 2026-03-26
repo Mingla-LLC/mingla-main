@@ -11,6 +11,7 @@ interface PersonPinProps {
 export function PersonPin({ person, onPress }: PersonPinProps) {
   const isOnline = Date.now() - new Date(person.lastActiveAt).getTime() < 15 * 60_000;
   const isPaired = person.relationship === 'paired';
+  const isStranger = person.relationship === 'stranger';
 
   return (
     <Marker
@@ -19,7 +20,11 @@ export function PersonPin({ person, onPress }: PersonPinProps) {
       tracksViewChanges={false}
     >
       <View style={styles.wrapper}>
-        <View style={[styles.avatarRing, isPaired && styles.pairedRing]}>
+        <View style={[
+          styles.avatarRing,
+          isPaired && styles.pairedRing,
+          isStranger && styles.strangerRing,
+        ]}>
           {person.avatarUrl ? (
             <Image source={{ uri: person.avatarUrl }} style={styles.avatar} />
           ) : (
@@ -31,6 +36,11 @@ export function PersonPin({ person, onPress }: PersonPinProps) {
           )}
         </View>
         {isOnline && <View style={styles.onlineDot} />}
+        {isStranger && person.tasteMatchPct != null && person.tasteMatchPct > 0 && (
+          <View style={styles.matchBadge}>
+            <Text style={styles.matchText}>{person.tasteMatchPct}%</Text>
+          </View>
+        )}
         {person.activityStatus && (
           <View style={styles.statusBubble}>
             <Text style={styles.statusText} numberOfLines={1}>{person.activityStatus}</Text>
@@ -49,6 +59,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF',
   },
   pairedRing: { borderColor: '#eb7825' },
+  strangerRing: { borderColor: '#9ca3af' },
   avatar: { width: 34, height: 34, borderRadius: 17 },
   avatarFallback: {
     width: 34, height: 34, borderRadius: 17,
@@ -65,4 +76,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 8, maxWidth: 100,
   },
   statusText: { fontSize: 9, color: '#FFF' },
+  matchBadge: {
+    position: 'absolute', bottom: -4, left: -4,
+    backgroundColor: '#eb7825', borderRadius: 8,
+    paddingHorizontal: 4, paddingVertical: 1,
+    borderWidth: 1.5, borderColor: '#FFF',
+    minWidth: 28, alignItems: 'center',
+  },
+  matchText: { fontSize: 8, fontWeight: '700', color: '#FFF' },
 });
