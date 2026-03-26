@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import BottomSheet, { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import { BlurView } from 'expo-blur';
 import { Icon } from '../ui/Icon';
 import { Recommendation } from '../../types/recommendation';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
@@ -19,9 +20,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface MapBottomSheetProps {
   card: Recommendation | null;
-  onSave: (card: Recommendation) => void;
-  onSchedule: (card: Recommendation) => void;
   onExpand: (card: Recommendation) => void;
+  onNext: () => void;
   onClose: () => void;
   accountPreferences: { currency?: string; measurementSystem?: string };
 }
@@ -29,7 +29,7 @@ interface MapBottomSheetProps {
 const snapPoints = ['45%', '90%'];
 
 export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
-  ({ card, onSave, onSchedule, onExpand, onClose, accountPreferences }, ref) => {
+  ({ card, onExpand, onNext, onClose, accountPreferences }, ref) => {
     const currency = accountPreferences?.currency || 'USD';
     const currencySymbol = getCurrencySymbol(currency);
     const currencyRate = getCurrencyRate(currency);
@@ -101,17 +101,17 @@ export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
               </View>
 
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionButton} onPress={() => onSave(card)} activeOpacity={0.7}>
-                  <Icon name="heart-outline" size={20} color="#eb7825" />
-                  <Text style={styles.actionText}>Save</Text>
+                <TouchableOpacity style={styles.buttonWrapper} onPress={() => onExpand(card)} activeOpacity={0.8}>
+                  <View style={styles.solidButtonDetails}>
+                    <Icon name="information-circle-outline" size={17} color="#FFF" />
+                    <Text style={styles.solidButtonDetailsText}>Details</Text>
+                  </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={() => onSchedule(card)} activeOpacity={0.7}>
-                  <Icon name="calendar-outline" size={20} color="#eb7825" />
-                  <Text style={styles.actionText}>Schedule</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={() => onExpand(card)} activeOpacity={0.7}>
-                  <Icon name="expand-outline" size={20} color="#eb7825" />
-                  <Text style={styles.actionText}>Details</Text>
+                <TouchableOpacity style={styles.buttonWrapper} onPress={onNext} activeOpacity={0.8}>
+                  <BlurView intensity={60} tint="dark" style={styles.glassButtonNext}>
+                    <Text style={styles.glassButtonNextText}>Next</Text>
+                    <Icon name="arrow-forward" size={15} color="#FFF" />
+                  </BlurView>
                 </TouchableOpacity>
               </View>
             </>
@@ -212,21 +212,44 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: 10,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    paddingVertical: 14,
   },
-  actionButton: {
+  buttonWrapper: {
+    flex: 1,
+  },
+  solidButtonDetails: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#eb7825',
   },
-  actionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#eb7825',
+  solidButtonDetailsText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.3,
+  },
+  glassButtonNext: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  glassButtonNextText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.3,
   },
 });

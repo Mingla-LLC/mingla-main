@@ -24,7 +24,7 @@ export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps)
   const categoryIcon = getCategoryIcon(card.category) || 'location-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
 
-  if (!card.lat || !card.lng) return null;
+  if (card.lat == null || card.lng == null) return null;
 
   return (
     <Marker

@@ -1272,11 +1272,17 @@ export default function DiscoverScreen({
     }
   };
 
-  // Load custom holidays on mount, when user changes, or when pairings load
+  // Load custom holidays on mount and when user changes.
+  // pairingPills removed from deps — it's a new array reference every render,
+  // causing an infinite loop. Custom holidays don't depend on pairing data.
+  const hasLoadedHolidaysRef = useRef(false);
   useEffect(() => {
+    if (!user?.id) { hasLoadedHolidaysRef.current = false; return; }
+    if (hasLoadedHolidaysRef.current) return;
+    hasLoadedHolidaysRef.current = true;
     loadCustomHolidays();
     loadArchivedHolidaysFromStorage();
-  }, [user?.id, pairingPills]);
+  }, [user?.id]);
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -3426,8 +3432,6 @@ export default function DiscoverScreen({
                   cards={recommendations}
                   savedCardIds={mapSavedCardIds}
                   scheduledCardIds={mapScheduledCardIds}
-                  onCardSave={(card) => handleCardPress(featuredFromRecommendation(card))}
-                  onCardSchedule={(card) => handleCardPress(featuredFromRecommendation(card))}
                   onCardExpand={(card) => handleCardPress(featuredFromRecommendation(card))}
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}

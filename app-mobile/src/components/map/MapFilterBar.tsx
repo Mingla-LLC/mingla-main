@@ -16,7 +16,7 @@ const VISIBLE_CATEGORIES = [
   { slug: 'fine_dining', shortLabel: 'Dining', icon: 'restaurant-outline', color: '#EF4444' },
   { slug: 'watch', shortLabel: 'Watch', icon: 'film-outline', color: '#3B82F6' },
   { slug: 'play', shortLabel: 'Play', icon: 'game-controller-outline', color: '#EC4899' },
-  { slug: 'wellness', shortLabel: 'Wellness', icon: 'fitness-outline', color: '#14B8A6' },
+  { slug: 'wellness', shortLabel: 'Wellness', icon: 'body-outline', color: '#14B8A6' },
   { slug: 'live_performance', shortLabel: 'Live', icon: 'musical-notes-outline', color: '#6366F1' },
   { slug: 'creative_arts', shortLabel: 'Arts', icon: 'color-palette-outline', color: '#F97316' },
 ] as const;
