@@ -24,6 +24,7 @@ const SUB_TABS = [
   { id: "map", label: "Map View" },
   { id: "browse", label: "Browse Pool" },
   { id: "photos", label: "Photo Management" },
+  { id: "ai", label: "AI Validation" },
   { id: "stale", label: "Stale Review" },
   { id: "stats", label: "Stats & Analytics" },
 ];
@@ -1529,7 +1530,244 @@ function PhotoTab({ city, stats, tiles }) {
   );
 }
 
-// ── Tab 5: Stale Review ──────────────────────────────────────────────────────
+// ── Tab 5: AI Validation ─────────────────────────────────────────────────────
+
+const AI_STATUS_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "pending", label: "Pending" },
+  { value: "override_approved", label: "Override (Approved)" },
+  { value: "override_rejected", label: "Override (Rejected)" },
+];
+
+function AIValidationTab() {
+  const { addToast } = useToast();
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  // ── Run Validation state ──
+  const [runCategory, setRunCategory] = useState("");
+  const [runLimit, setRunLimit] = useState(25);
+  const [dryRun, setDryRun] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runResults, setRunResults] = useState(null);
+
+  // ── Browser state ──
+  const [cards, setCards] = useState([]);
+  const [browserTotal, setBrowserTotal] = useState(0);
+  const [browserPage, setBrowserPage] = useState(1);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [catFilter, setCatFilter] = useState("");
+  const BROWSER_PAGE_SIZE = 20;
+
+  // ── Run AI Validation ──
+  const handleRunValidation = async () => {
+    setRunning(true);
+    setRunResults(null);
+    try {
+      const body = { limit: runLimit, dryRun };
+      if (runCategory) body.categorySlug = runCategory;
+      const { data, error } = await supabase.functions.invoke("ai-validate-cards", { body });
+      if (error) throw error;
+      if (!mounted.current) return;
+      setRunResults(data);
+      addToast({ variant: "success", title: `Validated ${data.processed} cards` });
+      fetchCards(); // refresh browser
+    } catch (err) {
+      if (!mounted.current) return;
+      addToast({ variant: "error", title: "Validation failed", description: err.message });
+    } finally {
+      if (mounted.current) setRunning(false);
+    }
+  };
+
+  // ── Fetch cards with AI status ──
+  const fetchCards = useCallback(async () => {
+    setBrowserLoading(true);
+    let q = supabase.from("card_pool")
+      .select(`
+        id, categories, original_categories, ai_approved, ai_reason,
+        ai_categories, ai_validated_at, ai_override, card_type,
+        place_pool!inner ( name, address )
+      `, { count: "exact" })
+      .eq("is_active", true)
+      .eq("card_type", "single")
+      .order("ai_validated_at", { ascending: false, nullsFirst: false });
+
+    // Status filter
+    if (statusFilter === "approved") { q = q.eq("ai_approved", true).is("ai_override", null); }
+    else if (statusFilter === "rejected") { q = q.eq("ai_approved", false).is("ai_override", null); }
+    else if (statusFilter === "pending") { q = q.is("ai_approved", null); }
+    else if (statusFilter === "override_approved") { q = q.eq("ai_override", true); }
+    else if (statusFilter === "override_rejected") { q = q.eq("ai_override", false); }
+
+    if (catFilter) q = q.contains("categories", [catFilter]);
+
+    q = q.range((browserPage - 1) * BROWSER_PAGE_SIZE, browserPage * BROWSER_PAGE_SIZE - 1);
+    const { data, count, error } = await q;
+    if (!error && mounted.current) {
+      setCards(data || []);
+      setBrowserTotal(count || 0);
+    }
+    if (mounted.current) setBrowserLoading(false);
+  }, [statusFilter, catFilter, browserPage]);
+
+  useEffect(() => { fetchCards(); }, [fetchCards]);
+
+  // ── Override handler ──
+  const handleOverride = async (cardId, newValue) => {
+    const { error } = await supabase
+      .from("card_pool")
+      .update({ ai_override: newValue })
+      .eq("id", cardId);
+    if (error) { addToast({ variant: "error", title: "Override failed", description: error.message }); return; }
+    addToast({ variant: "success", title: newValue === null ? "Override cleared" : newValue ? "Force-approved" : "Force-rejected" });
+    fetchCards();
+  };
+
+  const getStatusBadge = (card) => {
+    if (card.ai_override === true) return <Badge variant="info">Override: Show</Badge>;
+    if (card.ai_override === false) return <Badge variant="error">Override: Hide</Badge>;
+    if (card.ai_approved === true) return <Badge variant="success">Approved</Badge>;
+    if (card.ai_approved === false) return <Badge variant="error">Rejected</Badge>;
+    return <Badge variant="outline">Pending</Badge>;
+  };
+
+  const totalPages = Math.ceil(browserTotal / BROWSER_PAGE_SIZE);
+
+  const browserColumns = [
+    { key: "name", label: "Place", render: (_, r) => r.place_pool?.name || "—" },
+    { key: "original_categories", label: "Original", render: (_, r) => (r.original_categories || []).join(", ") || "—" },
+    { key: "ai_categories", label: "AI Categories", render: (_, r) => (r.ai_categories || []).join(", ") || "—" },
+    { key: "status", label: "Status", render: (_, r) => getStatusBadge(r) },
+    { key: "ai_reason", label: "Reason", render: (_, r) => <span className="text-xs max-w-xs truncate block" title={r.ai_reason}>{r.ai_reason || "—"}</span> },
+    { key: "ai_validated_at", label: "Validated", render: (_, r) => r.ai_validated_at ? new Date(r.ai_validated_at).toLocaleDateString() : "—" },
+    { key: "actions", label: "Override", render: (_, r) => (
+      <div className="flex gap-1">
+        <button onClick={() => handleOverride(r.id, true)} title="Force approve"
+          className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 cursor-pointer">
+          <CheckCircle className="w-4 h-4" />
+        </button>
+        <button onClick={() => handleOverride(r.id, false)} title="Force reject"
+          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 cursor-pointer">
+          <XCircle className="w-4 h-4" />
+        </button>
+        {r.ai_override !== null && (
+          <button onClick={() => handleOverride(r.id, null)} title="Clear override"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 cursor-pointer">
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    )},
+  ];
+
+  return (
+    <div className="space-y-6 py-6">
+      {/* ── Run Validation Panel ── */}
+      <SectionCard title="Run AI Validation" subtitle="Validate cards using GPT-5.4-mini with web search">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-48">
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Category</label>
+            <select value={runCategory} onChange={e => setRunCategory(e.target.value)}
+              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
+              <option value="">All Categories</option>
+              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+            </select>
+          </div>
+          <div className="w-28">
+            <Input label="Limit" type="number" value={runLimit} onChange={e => setRunLimit(Math.min(100, Math.max(1, parseInt(e.target.value) || 25)))} />
+          </div>
+          <Toggle label="Dry run" checked={dryRun} onChange={setDryRun} />
+          <Button variant="primary" icon={Zap} loading={running} onClick={handleRunValidation}>
+            {running ? "Validating..." : "Run AI Validation"}
+          </Button>
+        </div>
+
+        {/* Results summary */}
+        {runResults && (
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-3 flex-wrap">
+              <StatCard label="Processed" value={runResults.processed} className="flex-1 min-w-[100px]" />
+              <StatCard label="Approved" value={runResults.approved} className="flex-1 min-w-[100px]" />
+              <StatCard label="Rejected" value={runResults.rejected} className="flex-1 min-w-[100px]" />
+              <StatCard label="Recategorized" value={runResults.categoriesChanged} className="flex-1 min-w-[100px]" />
+              <StatCard label="Est. Cost" value={`$${runResults.costUsd}`} className="flex-1 min-w-[100px]" />
+            </div>
+            {runResults.dryRun && <p className="text-xs text-amber-500 font-medium">Dry run — no changes written to database</p>}
+
+            {runResults.rejectedExamples?.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-1">Rejected Examples</h4>
+                <DataTable columns={[
+                  { key: "name", label: "Place" },
+                  { key: "originalCategory", label: "Category" },
+                  { key: "reason", label: "Reason" },
+                ]} data={runResults.rejectedExamples} />
+              </div>
+            )}
+
+            {runResults.recategorizedExamples?.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-1">Recategorized Examples</h4>
+                <DataTable columns={[
+                  { key: "name", label: "Place" },
+                  { key: "from", label: "From", render: (_, r) => r.from.join(", ") },
+                  { key: "to", label: "To", render: (_, r) => r.to.join(", ") },
+                  { key: "reason", label: "Reason" },
+                ]} data={runResults.recategorizedExamples} />
+              </div>
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── AI Status Browser ── */}
+      <SectionCard title="AI Status Browser" subtitle={`${browserTotal} cards`}>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="w-44">
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">AI Status</label>
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setBrowserPage(1); }}
+              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
+              {AI_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="w-44">
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Category</label>
+            <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setBrowserPage(1); }}
+              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
+              <option value="">All</option>
+              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+            </select>
+          </div>
+          <Button variant="ghost" icon={RefreshCw} onClick={fetchCards} loading={browserLoading}>Refresh</Button>
+        </div>
+
+        {browserLoading && cards.length === 0
+          ? <div className="text-center py-8 text-[var(--color-text-muted)]"><Loader className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</div>
+          : cards.length === 0
+            ? <div className="text-center py-8 text-[var(--color-text-muted)]">No cards match filters</div>
+            : <DataTable columns={browserColumns} data={cards} />
+        }
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-xs text-[var(--color-text-muted)]">Page {browserPage} of {totalPages}</span>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" disabled={browserPage <= 1} onClick={() => setBrowserPage(p => p - 1)}>Previous</Button>
+              <Button variant="ghost" size="sm" disabled={browserPage >= totalPages} onClick={() => setBrowserPage(p => p + 1)}>Next</Button>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+// ── Tab 6: Stale Review ──────────────────────────────────────────────────────
 
 function StaleTab({ city }) {
   const { addToast } = useToast();
@@ -2051,6 +2289,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
             {activeTab === "map" && <MapTab city={isRegistered ? selectedCity : null} tiles={tiles} places={places} seedingOps={seedingOps} />}
             {activeTab === "browse" && <BrowseTab city={isRegistered ? selectedCity : null} onRefresh={refresh} />}
             {activeTab === "photos" && <PhotoTab city={isRegistered ? selectedCity : null} stats={stats} tiles={tiles} />}
+            {activeTab === "ai" && <AIValidationTab />}
             {activeTab === "stale" && <StaleTab city={isRegistered ? selectedCity : null} />}
             {activeTab === "stats" && <StatsTab city={isRegistered ? selectedCity : null} stats={stats} refreshKey={refreshKey} />}
           </div>

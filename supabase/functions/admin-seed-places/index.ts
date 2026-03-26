@@ -46,6 +46,7 @@ const FIELD_MASK = [
   "places.photos",
   "places.websiteUri",
   "places.businessStatus",
+  "places.editorialSummary",
 ].join(",");
 
 const COST_PER_NEARBY_SEARCH = 0.032;
@@ -190,6 +191,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
       heightPx: p.heightPx,
     })),
     website: gPlace.websiteUri ?? null,
+    editorial_summary: (gPlace.editorialSummary as { text?: string })?.text ?? null,
     raw_google_data: gPlace,
     fetched_via: "nearby_search",
     last_detail_refresh: new Date().toISOString(),
