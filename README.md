@@ -81,6 +81,17 @@ Verified behaviors from the launch hardening session. These are load-bearing —
 - Cold start: 5s grace period prevents 3-strike forced sign-out during token refresh.
 - Zustand `_hasHydrated` gate: app renders from persisted state immediately, refreshes in background. No "Getting things ready" blocking screen for returning users.
 
+### AI Quality Gate Contract
+- AI validation is a post-generation quality layer. It does NOT change seeding, type mappings, or card generation logic.
+- `original_categories` is set exactly once (first validation). It is never overwritten on re-validation.
+- `categories` is REPLACED with AI's `fits_categories` list when AI approves. If AI rejects (empty list), categories stay as original (card hidden by `ai_approved = false`).
+- Serving filter: `COALESCE(ai_override, ai_approved, true) = true`. This means: admin override wins, then AI verdict, then backward compat (NULL = show).
+- Phase 1: AI filter is additive — old SQL exclusions remain active as safety net.
+- Phase 2 (pending): SQL exclusions removed, AI becomes sole quality gate. Must NOT deploy Phase 2 until AI has validated all existing cards.
+- `ai-validate-cards` is admin-only (service_role key or admin JWT). Sequential processing, no parallelism, ~$0.005/card.
+- GPT failures are isolated per-card — a failed card gets `ai_reason = 'AI validation failed: ...'` and `ai_validated_at` set, but `ai_approved` stays NULL (will be retried on next run).
+- Must never happen: removing `original_categories` column, deploying Phase 2 without full validation, or allowing non-admin access to `ai-validate-cards`.
+
 ### Exclusion Contract
 - All 3 card-serving functions apply: GLOBAL_EXCLUDED_PLACE_TYPES (type check), category_type_exclusions (DB table), `isChildVenueName()` (keyword check).
 - Type checks scan full `types[]` array, not just `primary_type`.
@@ -104,8 +115,8 @@ Verified behaviors from the launch hardening session. These are load-bearing —
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 61 Deno serverless functions |
-| AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
+| Edge Functions | 62 Deno serverless functions |
+| AI | OpenAI GPT-5.4-mini (card quality gate with web search), GPT-4o-mini (AI reasons), Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
@@ -141,7 +152,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                       # 61 Deno edge functions
+│   ├── functions/                       # 62 Deno edge functions
 │   │   ├── _shared/                     # Shared edge function utilities
 │   │   ├── admin-send-email/            # Admin email sending via Resend
 │   │   ├── admin-place-search/          # Google Places search for admin
@@ -159,7 +170,7 @@ Mingla/
 │       │   ├── SubscriptionManagementPage.jsx  # Subscriptions with server-side stats
 │       │   ├── AnalyticsPage.jsx        # Analytics with server-side RPCs + Leaflet map
 │       │   ├── ContentModerationPage.jsx # Content with image preview, bulk actions, review moderation
-│       │   ├── PlacePoolManagementPage.jsx  # Place pool: 6 tabs (seed, map, browse, photos, stale, stats)
+│       │   ├── PlacePoolManagementPage.jsx  # Place pool: 7 tabs (seed, map, browse, photos, AI validation, stale, stats)
 │       │   ├── PoolIntelligencePage.jsx    # Pool Intelligence: 5-tab drill-down (geo, categories, grid, uncat, cards)
 │       │   ├── CardPoolManagementPage.jsx   # Card pool: 4 tabs (readiness, generate, browse, gaps)
 │       │   ├── BetaFeedbackPage.jsx     # Feedback with audio retry, bulk status
@@ -193,7 +204,7 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 - **Subscriptions** — server-side stats via RPC, expiring override alerts, column sorting, CSV export
 - **Analytics** — 5 server-side RPCs (growth, engagement, retention, funnel, geo), custom date range, Leaflet map on geography tab
 - **Content** — image thumbnails, bulk actions, review moderation (approve/reject/flag)
-- **Place Pool** — 6-tab management: tile-based seeding with sequential batch approval (prepare → approve one batch at a time → retry failed → auto-complete), Leaflet map view with status-colored tiles (gray/blue/green/red) and coverage gap detection (orange dashed), browse/filter/edit pool with rating filter, photo management with tile/category/rating filters and partial batch controls with cost estimates, stale review, stats with seeding run history (expandable batch details, status/category/tile filters)
+- **Place Pool** — 7-tab management: tile-based seeding with sequential batch approval (prepare → approve one batch at a time → retry failed → auto-complete), Leaflet map view with status-colored tiles (gray/blue/green/red) and coverage gap detection (orange dashed), browse/filter/edit pool with rating filter, photo management with tile/category/rating filters and partial batch controls with cost estimates, **AI Validation (new 2026-03-25)** with run panel (category/limit/dry-run controls, stat cards, rejected/recategorized example tables) and status browser (filterable by AI status + category, per-card override buttons for force-approve/reject/clear), stale review, stats with seeding run history (expandable batch details, status/category/tile filters)
 - **Card Pool (hardened 2026-03-21)** — 4-tab management fully rewritten to TEXT-based V2 RPCs, zero seeding_cities dependency. Overview (card intelligence stat cards + category health), Browse (direct card_pool TEXT query, card detail modal, bulk activate/deactivate — curated cards no longer excluded), Generate (fixed request body format, bounding box from place_pool data, dry-run toggle, category + experience type filters, formatted results), Card Health (orphaned/stale/never-served cards, category gaps, cross-city comparison via single admin_country_overview RPC). Breadcrumb navigation matching PoolIntelligencePage. Must never happen: referencing seeding_cities, seeding_tiles, or UUID-param RPCs from this page.
 - **Feedback** — audio auto-retry on 403, bulk status update
 - **Email** — database-backed templates, city/tier/activity segments, rate limiting (100/day), send history export
@@ -266,7 +277,7 @@ A full-featured admin panel for managing the Mingla platform. Grouped sidebar na
 
 Two full-featured pages replacing three old ones (PlacePoolBuilderPage, CityLauncherPage, PhotoPoolManagementPage).
 
-1. **Two pages** — Place Pool Management (seed, map, browse, photos, stale, stats) and Card Pool Management (readiness, generate, browse, gaps).
+1. **Two pages** — Place Pool Management (seed, map, browse, photos, AI validation, stale, stats) and Card Pool Management (readiness, generate, browse, gaps).
 2. **City selector** — Google Places Autocomplete validates cities. Auto-generates hex-grid tiles on save.
 3. **Map view** — Leaflet with tile grid overlay, category-coded pins (13 colors), status coloring (gray=unseeded, blue=partial, green=full, red=errors), coverage gap detection (orange dashed for tiles with <5 places).
 4. **Photo management** — integrated into Place Pool with tile/category/rating filters, sort by rating or impressions, partial batch downloads with limit control and cost estimates.
@@ -361,8 +372,9 @@ A seeding-independent database exploration tool. Shows what exists in `place_poo
 - **Flowers stop** — optional/dismissible on Romantic and First Date. Always included by default. Mobile renders with flower icon + dismiss button.
 - **Picnic reverse proximity** — finds the park first (anchor), then queries grocery and flowers within 3km of the park.
 - **Global exclusions** — `gym`, `fitness_center`, `dog_park` excluded from all card serving (code + SQL `query_pool_cards`).
+- **AI Card Quality Gate (Phase 1, 2026-03-25)** — post-generation AI quality layer. GPT-5.4-mini with web search (OpenAI Responses API) evaluates each card in `card_pool`: researches the actual business online, determines which Mingla categories it genuinely fits, replaces `categories` with AI's definitive list, hides cards that fit nothing (`ai_approved = false`). Original categories preserved in `original_categories` for admin revert. Serving filter: `COALESCE(ai_override, ai_approved, true) = true` in all 3 `query_pool_cards` CTEs. Precedence: admin override > AI verdict > backward compat (NULL = show). Admin can force-approve, force-reject, or clear override via AI Validation tab. Edge function `ai-validate-cards` processes up to 100 cards per batch with continuation tokens (`afterCreatedAt` cursor). Supports `dryRun`, `categorySlug` filter, `revalidate` mode. ~$0.005/card. Phase 2 (pending): remove SQL exclusions, let AI be sole gate. Must never happen: deploying Phase 2 before AI has validated all existing cards, or removing `original_categories` backup.
 - **Children's + school venue filter (hardened 2026-03-22)** — `EXCLUDED_VENUE_NAME_KEYWORDS` in `categoryPlaceTypes.ts` rejects places with child-related AND school-related keywords (kids, toddler, bounce, school, academy, institute, university, college, etc.) at generation time. School types (`school`, `primary_school`, `secondary_school`, `university`, `preschool`) added to global exclusions — filtered at both SQL and TypeScript levels. Must never happen: schools or kids' venues appearing in a dating app.
-- **Flowers category (hardened 2026-03-22):** `includedTypes: ['florist']` only — no grocery stores or supermarkets. Grocery/retail types explicitly excluded. Must never happen: department stores surfacing as "Flowers" recommendations.
+- **Flowers category (hardened 2026-03-22, AI gate 2026-03-25):** `includedTypes: ['florist']` only at seeding time — no grocery stores or supermarkets. Grocery/retail types explicitly excluded via `category_type_exclusions`. **Phase 1:** AI quality gate adds a second layer — GPT verifies each flowers card is a genuine flower-selling business via web search. **Phase 2 (pending):** AI becomes sole gate, SQL exclusions removed. The test is: "Can I reliably walk in and leave with a nice, date-worthy bouquet?" — so Trader Joe's/Whole Foods (real floral departments) will pass but random convenience stores won't. Must never happen: department stores or gas stations surfacing as "Flowers" recommendations.
 - **Per-category exclusions (hardened 2026-03-21)** — `category_type_exclusions` table (~697 rows) maps each of the 13 categories to their excluded Google Places types. `query_pool_cards` checks the user's selected categories against the place's types via NOT EXISTS join — if the place has a type excluded for the queried category, the card is filtered out. Exclusions are based on what the user is browsing (v_slug_categories), not what the card is tagged with. Empty category filter = no per-category exclusions, only globals. Admin-auditable: `SELECT * FROM category_type_exclusions WHERE category_slug = ?`.
 - **Curated card exclusion (hardened 2026-03-22)** — Curated cards (place_pool_id = NULL) are checked via `card_pool_stops → place_pool → category_type_exclusions` join. Both global and per-category exclusions enforced at serve time. At generation time, `generate-curated-experiences` queries `category_type_exclusions` table (DB-driven, not hardcoded lists) to filter stop candidates. Must never happen: curated card with excluded-type stops passing through unfiltered.
 - **Category balancing (hardened 2026-03-22)** — `query_pool_cards` uses `ROW_NUMBER() OVER (PARTITION BY category)` with per-category cap (`CEIL(limit / num_categories)`) to ensure balanced deck representation. Applied to primary + fallback CTEs. Count CTE returns true total. No balancing when no categories selected. Must never happen: single category dominating a multi-category query.
@@ -449,6 +461,7 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **AI Card Quality Gate — Phase 1 (2026-03-25)** — GPT-5.4-mini with web search validates every card in `card_pool`. Uses OpenAI Responses API so GPT actually researches each place online before judging. Determines which Mingla categories a place genuinely fits, replaces categories with AI's definitive list, hides cards that fit nothing. 6 new columns on `card_pool` (`ai_approved`, `ai_reason`, `ai_categories`, `original_categories`, `ai_validated_at`, `ai_override`). `editorial_summary` column added to `place_pool` (extracted from Google data). AI filter (`COALESCE(ai_override, ai_approved, true)`) added to all 3 CTEs in `query_pool_cards`. New `ai-validate-cards` edge function with admin-only auth, dry run, continuation tokens, per-card error isolation. New AI Validation tab in admin Place Pool page with run panel + status browser + per-card override buttons. Phase 2 pending: remove SQL exclusions, relax seeding criteria, let AI be sole quality gate.
 - **Sequential Batch Seeding with Retry (2026-03-24)** — Complete rewrite of the admin seeding flow. Old "fire and forget" replaced with a two-phase prepare-then-approve model. `create_run` builds the full batch queue (preparing → verify count → ready). Admin manually approves each tile × category batch one at a time. Every batch is logged to `seeding_batches` with full results. Failed batches can be retried or skipped. Run stays paused while failed batches exist — only auto-completes when all are resolved. Full DB-backed state: close the browser mid-run, come back next week, resume exactly where you left off. New tables: `seeding_runs`, `seeding_batches`. 10 edge function actions. StatsTab enhanced with expandable seeding runs + batch filters (status, category, tile index).
 - **Collaboration UI Consolidation** — Deleted CollaborationModule (hidden chat-menu modal) and BoardViewScreen (full-page board view) — both redundant with the existing SessionViewModal. All notification and deep link handlers rerouted from `board-view` page to HomePage + auto-open SessionViewModal via `pendingSessionOpen` state. Cleaned up `onNavigateToBoard` prop chain (ConnectionsPage → MessagesTab → MessageInterface), removed `boardViewSessionId` state, removed "Send Collaboration Invite" chat menu item. 8 files deleted (~5,000 lines net reduction), 11 files modified.
 - **Card Image Pipeline Fix** — All 10 category discover functions gutted to pool-only (~70 lines each, down from ~500). Removed all legacy Google API fallback code (`getPhotoUrl`, `batchSearchPlaces`, `getAllPhotoUrls`). Added error logging to 3 silent `.catch(() => {})` sites. New `backfill-place-photos` edge function re-downloads photos for places with empty `stored_photo_urls`. SQL migration backfills `card_pool.image_url` from `place_pool.stored_photo_urls` for cards with Unsplash/NULL images.

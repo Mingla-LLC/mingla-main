@@ -1,7 +1,7 @@
 # Launch Readiness Tracker
 
 > **Last updated:** 2026-03-25
-> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Full card pipeline audit complete (Passes 1-5). Auth dedup + Android fix complete. README lock-in done.
+> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Full card pipeline audit complete (Passes 1-5). Auth dedup + Android fix complete. AI Card Quality Gate Phase 1 deployed. README lock-in done.
 >
 > This is the single source of truth for Mingla's launch readiness.
 > Every entry requires evidence. No grade promotions without proof.
@@ -82,7 +82,8 @@
 | Deck hardening: slug on saved page | F | — | User report | Shows fine_dining instead of Fine Dining. |
 | Deck hardening: curated/category round-robin broken | F | — | User report | Curated overwhelms or category cards don't appear. |
 | Schools in cards | A | 2026-03-24 | Commit 0ae81113 | isChildVenueName() added to cardPoolService. Full types array checked in generate-curated-experiences. Kids/school venues excluded across all 3 card pipelines. |
-| Flowers category too broad | F | — | User report | Surfaces department stores, not just florists. |
+| AI Card Quality Gate (Phase 1) | B | 2026-03-25 | Commit c9708465. Test: TEST_REPORT_AI_CARD_QUALITY_GATE_PHASE1.md (64/67 pass, 3 fixed). | GPT-5.4-mini + web search validates card_pool. AI filter in all 3 query_pool_cards CTEs. Admin UI with run/override. Phase 2 pending: remove SQL exclusions. Grade B because: not yet run on production data, curated cards not yet handled. |
+| Flowers category too broad | B | 2026-03-25 | Commit c9708465 (AI quality gate). | Phase 1: AI validates flowers cards via web research. Phase 2: SQL exclusions removed, AI sole gate. Grocery stores with real floral departments (Trader Joe's, Whole Foods) will pass. Previously F. |
 | Curated AI stop descriptions missing | F | — | User report | Stops should explain rationale. Picnic dates returns zero cards. |
 | Push delivery via OneSignal | A | 2026-03-22 | Commits 163ce5f1, 469b0f11. Test report: TEST_REPORT_PUSH_DELIVERY_FIX.md | sendPush() detects empty id + parse errors. Root cause: android_channel_id not configured in OneSignal → 400 error killing ALL platforms. Disabled channel IDs. Legacy API key updated to Rich API Key. Push confirmed working on both iOS and Android. |
 | Missing icon: paper-plane-outline | A | 2026-03-22 | Commit ba2a37be | Added to ICON_MAP → Send. |
