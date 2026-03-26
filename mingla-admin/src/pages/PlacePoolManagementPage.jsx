@@ -1543,8 +1543,8 @@ const AI_STATUS_OPTIONS = [
 
 function AIValidationTab() {
   const { addToast } = useToast();
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Note: removed mounted.current pattern — broken in React 18 StrictMode dev mode.
+  // React 18 silently no-ops setState on unmounted components.
 
   // ── Run Validation state ──
   const [runCategory, setRunCategory] = useState("");
@@ -1602,10 +1602,9 @@ function AIValidationTab() {
         if (runCategory) body.categorySlug = runCategory;
         if (afterCreatedAt) body.afterCreatedAt = afterCreatedAt;
 
-        const { data, error } = await supabase.functions.invoke("ai-validate-cards", { body });
+        const { data: rawData, error } = await supabase.functions.invoke("ai-validate-cards", { body });
         if (error) throw error;
-        if (!mounted.current) return;
-
+        const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
         totalProcessed += data.processed;
         totalApproved += data.approved;
         totalRejected += data.rejected;
@@ -1644,13 +1643,10 @@ function AIValidationTab() {
       addToast({ variant: "success", title: `Validated ${totalProcessed} cards` });
       fetchCards();
     } catch (err) {
-      if (!mounted.current) return;
       addToast({ variant: "error", title: "Validation failed", description: err.message });
     } finally {
-      if (mounted.current) {
-        setRunning(false);
-        setProgress(null);
-      }
+      setRunning(false);
+      setProgress(null);
     }
   };
 
@@ -1661,7 +1657,7 @@ function AIValidationTab() {
       .select(`
         id, categories, original_categories, ai_approved, ai_reason,
         ai_categories, ai_validated_at, ai_override, card_type,
-        place_pool!inner ( name, address )
+        place_pool ( name, address )
       `, { count: "exact" })
       .eq("is_active", true)
       .eq("card_type", "single")
@@ -1678,11 +1674,14 @@ function AIValidationTab() {
 
     q = q.range((browserPage - 1) * BROWSER_PAGE_SIZE, browserPage * BROWSER_PAGE_SIZE - 1);
     const { data, count, error } = await q;
-    if (!error && mounted.current) {
-      setCards(data || []);
-      setBrowserTotal(count || 0);
+    if (error) {
+      console.error("AI browser fetch error:", error.message, error.details, error.hint);
     }
-    if (mounted.current) setBrowserLoading(false);
+    if (!error) {
+      setCards(data || []);
+      setBrowserTotal(count ?? data?.length ?? 0);
+    }
+    setBrowserLoading(false);
   }, [statusFilter, catFilter, browserPage]);
 
   useEffect(() => { fetchCards(); }, [fetchCards]);
@@ -1774,7 +1773,7 @@ function AIValidationTab() {
             <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
               <div
                 className="h-full bg-[var(--color-brand-500)] rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(100, (progress.processed / progress.total) * 100)}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, (progress.processed / progress.total) * 100) || 0)}%` }}
               />
             </div>
           </div>
