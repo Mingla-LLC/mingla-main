@@ -1563,6 +1563,34 @@ function AIValidationTab() {
   const [catFilter, setCatFilter] = useState("");
   const BROWSER_PAGE_SIZE = 20;
 
+  // ── Validation stats ──
+  const [stats, setStats] = useState(null);
+
+  const fetchStats = useCallback(async () => {
+    const [totalRes, approvedRes, rejectedRes, pendingRes, overriddenRes] = await Promise.all([
+      supabase.from("card_pool").select("id", { count: "exact", head: true })
+        .eq("is_active", true).eq("card_type", "single"),
+      supabase.from("card_pool").select("id", { count: "exact", head: true })
+        .eq("is_active", true).eq("card_type", "single").eq("ai_approved", true).is("ai_override", null),
+      supabase.from("card_pool").select("id", { count: "exact", head: true })
+        .eq("is_active", true).eq("card_type", "single").eq("ai_approved", false).is("ai_override", null),
+      supabase.from("card_pool").select("id", { count: "exact", head: true })
+        .eq("is_active", true).eq("card_type", "single").is("ai_approved", null),
+      supabase.from("card_pool").select("id", { count: "exact", head: true })
+        .eq("is_active", true).eq("card_type", "single").not("ai_override", "is", null),
+    ]);
+    setStats({
+      total: totalRes.count ?? 0,
+      approved: approvedRes.count ?? 0,
+      rejected: rejectedRes.count ?? 0,
+      pending: pendingRes.count ?? 0,
+      overridden: overriddenRes.count ?? 0,
+      validated: (approvedRes.count ?? 0) + (rejectedRes.count ?? 0) + (overriddenRes.count ?? 0),
+    });
+  }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
   // ── Restore last run from localStorage ──
   useEffect(() => {
     try {
@@ -1642,6 +1670,7 @@ function AIValidationTab() {
       localStorage.setItem("ai_validation_last_run", JSON.stringify(finalResults));
       addToast({ variant: "success", title: `Validated ${totalProcessed} cards` });
       fetchCards();
+      fetchStats();
     } catch (err) {
       addToast({ variant: "error", title: "Validation failed", description: err.message });
     } finally {
@@ -1702,6 +1731,7 @@ function AIValidationTab() {
     if (error) { addToast({ variant: "error", title: "Override failed", description: error.message }); return; }
     addToast({ variant: "success", title: newValue === null ? "Override cleared" : newValue ? "Force-approved" : "Force-rejected" });
     fetchCards();
+    fetchStats();
   };
 
   const getStatusBadge = (card) => {
@@ -1743,6 +1773,41 @@ function AIValidationTab() {
 
   return (
     <div className="space-y-6 py-6">
+      {/* ── Validation Overview ── */}
+      {stats && (
+        <SectionCard title="Validation Overview" subtitle={stats.pending > 0 ? `${stats.pending} cards need validation` : "All cards validated"}>
+          <div className="flex gap-3 flex-wrap">
+            <StatCard label="Total Cards" value={stats.total} className="flex-1 min-w-[100px]" />
+            <StatCard label="Validated" value={stats.validated} className="flex-1 min-w-[100px]" />
+            <StatCard label="Pending" value={stats.pending} className="flex-1 min-w-[100px]" />
+            <StatCard label="Approved" value={stats.approved} className="flex-1 min-w-[100px]" />
+            <StatCard label="Rejected" value={stats.rejected} className="flex-1 min-w-[100px]" />
+            <StatCard label="Overridden" value={stats.overridden} className="flex-1 min-w-[100px]" />
+          </div>
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-[var(--color-text-secondary)] mb-1">
+              <span>{stats.validated} of {stats.total} cards validated ({stats.total > 0 ? Math.round(stats.validated / stats.total * 100) : 0}%)</span>
+              <span>{stats.pending} remaining</span>
+            </div>
+            <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${stats.total > 0 ? (stats.validated / stats.total * 100) : 0}%`,
+                  background: stats.validated > 0
+                    ? `linear-gradient(to right, #22c55e ${Math.round(stats.approved / stats.validated * 100)}%, #ef4444 ${Math.round(stats.approved / stats.validated * 100)}%)`
+                    : "var(--gray-300)"
+                }}
+              />
+            </div>
+            <div className="flex gap-4 mt-1 text-xs text-[var(--color-text-muted)]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Approved ({stats.approved})</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Rejected ({stats.rejected})</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300" /> Pending ({stats.pending})</span>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
       {/* ── Run Validation Panel ── */}
       <SectionCard title="Run AI Validation" subtitle="Validate cards using GPT-5.4-mini with web search">
         <div className="flex flex-wrap items-end gap-4">
