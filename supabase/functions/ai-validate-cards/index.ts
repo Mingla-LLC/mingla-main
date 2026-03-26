@@ -583,12 +583,12 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Check admin_users table
+      // Check admin_users table (uses email, not user_id — table has no user_id column)
       const { data: adminUser } = await supabaseAdmin
         .from("admin_users")
         .select("id")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
+        .eq("email", user.email?.toLowerCase())
+        .eq("status", "active")
         .single();
       if (!adminUser) {
         return new Response(JSON.stringify({ error: "Forbidden: not admin" }), {
