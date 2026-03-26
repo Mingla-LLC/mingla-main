@@ -11,7 +11,6 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   getPlaceTypesForCategory,
   resolveCategories,
-  GLOBAL_EXCLUDED_PLACE_TYPES,
   isChildVenueName,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
@@ -845,22 +844,10 @@ export async function serveCardsFromPipeline(
 
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
 
-  // Filter excluded place types from pool results.
-  // Belt-and-suspenders: the SQL query_pool_cards already excludes globally
-  // banned types, but pool cards lack a full `types` array — only `primary_type`
-  // is available. This filter catches any card whose primary_type is banned
-  // (e.g. gym, fitness_center, dog_park) even if the SQL-level filter was bypassed.
-  const globalSet = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
-
+  // Phase 2: Type exclusions removed — AI is the sole quality gate.
+  // isChildVenueName() is kept as a safety net for kids venues.
+  // See Architecture Constitution Principle 13.
   poolCards = poolCards.filter((card: any) => {
-    // Check primary_type against global exclusions (works on pool cards)
-    if (card.primary_type && globalSet.has(card.primary_type)) return false;
-
-    // RELIABILITY: isChildVenueName() checks venue names against keyword patterns
-    // (kids, children, bounce, playground, etc.). This is the ONLY filter that catches
-    // kids venues with adult Google place types (e.g., "Kids Fun Zone Bowling" has
-    // types=['bowling_alley'] which passes all type-based exclusions). All 3 card-serving
-    // functions must apply this filter. See Architecture Constitution Principle 13.
     const venueName = card.name || card.title || '';
     if (venueName && isChildVenueName(venueName)) return false;
 
@@ -870,13 +857,8 @@ export async function serveCardsFromPipeline(
         const stopName = stop.placeName || stop.name || '';
         return stopName && isChildVenueName(stopName);
       })) return false;
-      return !card.stops.some((stop: any) => {
-        const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
-        return stopTypes.some((t: string) => globalSet.has(t));
-      });
     }
-    const types = card.types ?? card.place_types ?? [];
-    return !types.some((t: string) => globalSet.has(t));
+    return true;
   });
 
   // ── STEP 3: If pool has enough → serve directly ───────────────────────

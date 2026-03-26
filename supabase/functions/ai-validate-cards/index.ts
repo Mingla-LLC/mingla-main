@@ -173,12 +173,30 @@ interface ValidationResult {
 }
 
 interface RequestBody {
+  cardType?: "single" | "curated"; // default: 'single'
   categorySlug?: string;
   cardIds?: string[];
   revalidate?: boolean;
   limit?: number;
   dryRun?: boolean;
   afterCreatedAt?: string; // continuation token (ISO timestamp)
+}
+
+interface CuratedStopRow {
+  card_id: string;
+  stop_number: number;
+  role: string | null;
+  optional: boolean;
+  name: string;
+  primary_type: string | null;
+  types: string[];
+  rating: number | null;
+  review_count: number;
+  price_level: string | null;
+  website: string | null;
+  address: string | null;
+  editorial_summary: string | null;
+  google_summary: string | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -291,6 +309,237 @@ async function callGPT(
   return parsed;
 }
 
+// ── Curated Card Validation ──────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleCuratedValidation(
+  supabaseAdmin: any,
+  openaiApiKey: string,
+  opts: {
+    revalidate: boolean;
+    limit: number;
+    dryRun: boolean;
+    afterCreatedAt?: string;
+    cardIds?: string[];
+  }
+): Promise<Response> {
+  const { revalidate, limit, dryRun, afterCreatedAt, cardIds } = opts;
+
+  // Fetch curated cards that need validation
+  let cardQuery = supabaseAdmin
+    .from("card_pool")
+    .select("id, created_at, categories, original_categories, experience_type")
+    .eq("is_active", true)
+    .eq("card_type", "curated")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (!revalidate) {
+    cardQuery = cardQuery.is("ai_approved", null);
+  }
+  if (cardIds && cardIds.length > 0) {
+    cardQuery = cardQuery.in("id", cardIds);
+  }
+  if (afterCreatedAt) {
+    cardQuery = cardQuery.lt("created_at", afterCreatedAt);
+  }
+
+  const { data: curatedCards, error: cardErr } = await cardQuery;
+  if (cardErr) {
+    return new Response(
+      JSON.stringify({ error: `Fetch failed: ${cardErr.message}` }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!curatedCards || curatedCards.length === 0) {
+    return new Response(
+      JSON.stringify({
+        processed: 0, approved: 0, rejected: 0, failed: 0,
+        categoriesChanged: 0, categoriesAdded: 0, categoriesRemoved: 0,
+        rejectedExamples: [], recategorizedExamples: [], costUsd: 0,
+        continuation_token: null,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Fetch all stops for these cards
+  const cardIdList = curatedCards.map((c: any) => c.id);
+  const { data: stopsRaw, error: stopsErr } = await supabaseAdmin
+    .from("card_pool_stops")
+    .select(`
+      card_pool_id,
+      stop_number,
+      role,
+      optional,
+      place_pool!inner (
+        name, primary_type, types, rating, review_count,
+        price_level, website, address, editorial_summary, raw_google_data
+      )
+    `)
+    .in("card_pool_id", cardIdList)
+    .order("stop_number", { ascending: true });
+
+  if (stopsErr) {
+    return new Response(
+      JSON.stringify({ error: `Stops fetch failed: ${stopsErr.message}` }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Group stops by card_pool_id
+  const stopsByCard = new Map<string, any[]>();
+  for (const stop of (stopsRaw || [])) {
+    const list = stopsByCard.get(stop.card_pool_id) || [];
+    list.push(stop);
+    stopsByCard.set(stop.card_pool_id, list);
+  }
+
+  let approved = 0;
+  let rejected = 0;
+  let failed = 0;
+  let lastProcessedCreatedAt: string | null = null;
+  const rejectedExamples: Array<{ name: string; originalCategory: string; reason: string }> = [];
+
+  for (const card of curatedCards) {
+    const stops = stopsByCard.get(card.id) || [];
+    if (stops.length === 0) {
+      // No stops found — mark as rejected to prevent infinite retry
+      if (!dryRun) {
+        await supabaseAdmin
+          .from("card_pool")
+          .update({
+            ai_approved: false,
+            ai_reason: "No stops found in card_pool_stops — broken curated card",
+            ai_validated_at: new Date().toISOString(),
+          })
+          .eq("id", card.id);
+      }
+      rejected++;
+      rejectedExamples.push({
+        name: `Curated: Card ${card.id.slice(0, 8)}`,
+        originalCategory: (card.categories || []).join(", "),
+        reason: "No stops found in card_pool_stops",
+      });
+      lastProcessedCreatedAt = card.created_at;
+      continue;
+    }
+
+    const stopResults: string[] = [];
+    let allRequiredPass = true;
+    let cardFailed = false;
+
+    for (const stop of stops) {
+      const pp = stop.place_pool;
+      if (!pp) continue;
+
+      const stopRow: CardRow = {
+        card_id: card.id,
+        categories: card.categories || [],
+        original_categories: card.original_categories,
+        card_type: "curated",
+        name: pp.name,
+        primary_type: pp.primary_type,
+        types: pp.types || [],
+        rating: pp.rating,
+        review_count: pp.review_count || 0,
+        price_level: pp.price_level,
+        website: pp.website,
+        address: pp.address,
+        editorial_summary: pp.editorial_summary,
+        google_summary: pp.raw_google_data?.editorialSummary?.text ?? null,
+      };
+
+      let result: ValidationResult;
+      try {
+        const prompt = buildPrompt(stopRow);
+        result = await callGPT(prompt, openaiApiKey);
+      } catch (err) {
+        console.error(`AI validation failed for curated card ${card.id} stop ${stop.stop_number}:`, err);
+        stopResults.push(`Stop ${stop.stop_number} (${pp.name}): GPT failed — ${(err as Error).message}`);
+        if (!stop.optional) {
+          cardFailed = true;
+          allRequiredPass = false;
+        }
+        failed++;
+        continue;
+      }
+
+      // Check if this stop's role category is in fits_categories
+      const roleCategory = stop.role || "";
+      const stopFits = result.fits_categories.length > 0;
+      const fitsRole = roleCategory ? result.fits_categories.includes(roleCategory) : stopFits;
+
+      if (!fitsRole) {
+        if (stop.optional) {
+          stopResults.push(`Optional stop ${stop.stop_number} (${pp.name}): does not fit role "${roleCategory}" — ${result.reason}`);
+        } else {
+          allRequiredPass = false;
+          stopResults.push(`Stop ${stop.stop_number} (${pp.name}): FAILED role "${roleCategory}" — ${result.reason}`);
+        }
+      } else {
+        stopResults.push(`Stop ${stop.stop_number} (${pp.name}): OK [${result.fits_categories.join(", ")}]`);
+      }
+    }
+
+    const cardApproved = allRequiredPass && !cardFailed;
+    const aiReason = cardApproved
+      ? "All required stops validated"
+      : stopResults.filter((s) => s.includes("FAILED") || s.includes("failed")).join(" | ");
+
+    if (cardApproved) {
+      approved++;
+    } else {
+      rejected++;
+      const firstName = stops[0]?.place_pool?.name || `Card ${card.id.slice(0, 8)}`;
+      rejectedExamples.push({
+        name: `Curated: ${firstName}...`,
+        originalCategory: (card.categories || []).join(", "),
+        reason: aiReason,
+      });
+    }
+
+    if (!dryRun) {
+      await supabaseAdmin
+        .from("card_pool")
+        .update({
+          ai_approved: cardApproved,
+          ai_reason: aiReason,
+          ai_validated_at: new Date().toISOString(),
+          // Do NOT change categories on curated cards
+        })
+        .eq("id", card.id);
+    }
+
+    lastProcessedCreatedAt = card.created_at;
+    console.log(
+      `Curated validated: ${card.id.slice(0, 8)} → ${cardApproved ? "approved" : "rejected"} (${stops.length} stops)`
+    );
+  }
+
+  const processed = approved + rejected + failed;
+  const costUsd = Math.round(processed * 0.02 * 100) / 100; // curated costs more (multiple stops)
+
+  return new Response(
+    JSON.stringify({
+      processed,
+      approved,
+      rejected,
+      failed,
+      categoriesChanged: 0,
+      categoriesAdded: 0,
+      categoriesRemoved: 0,
+      rejectedExamples: rejectedExamples.slice(0, 10),
+      recategorizedExamples: [],
+      costUsd,
+      continuation_token: lastProcessedCreatedAt,
+      dryRun,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -351,6 +600,7 @@ serve(async (req) => {
 
     const body: RequestBody = await req.json();
     const {
+      cardType = "single",
       categorySlug,
       cardIds,
       revalidate = false,
@@ -361,7 +611,16 @@ serve(async (req) => {
 
     const limit = Math.min(Math.max(rawLimit, 1), 100);
 
-    // ── Step 1: Fetch cards to validate ─────────────────────────────────────
+    // ── Branch: curated card validation ─────────────────────────────────────
+    if (cardType === "curated") {
+      return await handleCuratedValidation(
+        supabaseAdmin,
+        openaiApiKey,
+        { revalidate, limit, dryRun, afterCreatedAt, cardIds }
+      );
+    }
+
+    // ── Step 1: Fetch single cards to validate ──────────────────────────────
 
     let query = supabaseAdmin
       .from("card_pool")

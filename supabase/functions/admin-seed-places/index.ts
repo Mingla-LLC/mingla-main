@@ -7,7 +7,8 @@ import {
   ALL_SEEDING_CATEGORY_IDS,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
-import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
+// Phase 2: type exclusion imports removed — AI is the sole quality gate
+// import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
 // Ten actions:
@@ -216,17 +217,12 @@ interface FilterResult {
 }
 
 // deno-lint-ignore no-explicit-any
-function applyPostFetchFilters(places: any[], categoryId: string): FilterResult {
+function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult {
   let rejectedNoPhotos = 0;
   let rejectedClosed = 0;
-  let rejectedExcludedType = 0;
 
-  // PER-CATEGORY TYPE EXCLUSION (Block 2 — hardened 2026-03-21)
-  // Checks ALL types (not just primaryType) against full exclusion set.
-  // getExcludedTypesForCategory returns global + category-specific exclusions.
-  // This prevents places with excluded secondary types from entering the pool.
-  const excludedTypes = getExcludedTypesForCategory(categoryId);
-  const excludedSet = new Set(excludedTypes);
+  // Phase 2: Type exclusions removed — AI is the sole quality gate.
+  // All place types now enter the pool. AI validates quality post-seeding.
 
   // deno-lint-ignore no-explicit-any
   const passed = places.filter((p: any) => {
@@ -240,16 +236,10 @@ function applyPostFetchFilters(places: any[], categoryId: string): FilterResult 
       rejectedNoPhotos++;
       return false;
     }
-    // Check ALL types (not just primaryType) against full exclusion set (global + category-specific)
-    const placeTypes: string[] = p.types ?? [];
-    if (placeTypes.some((t: string) => excludedSet.has(t))) {
-      rejectedExcludedType++;
-      return false;
-    }
     return true;
   });
 
-  return { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType };
+  return { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
 }
 
 // ── Parse country from formattedAddress ─────────────────────────────────────
