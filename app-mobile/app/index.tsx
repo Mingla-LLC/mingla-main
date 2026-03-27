@@ -2167,12 +2167,8 @@ function AppContent() {
 
                   </View>
                 </ErrorBoundary>
-                </TourTargetProvider>
-              </NavigationProvider>
-            </MobileFeaturesProvider>
-          </RecommendationsProvider>
-        </CardsCacheProvider>
-        {showCollabPreferences && currentMode !== "solo" && currentSessionId ? (
+
+                {showCollabPreferences && currentMode !== "solo" && currentSessionId ? (
           <ErrorBoundary>
             <PreferencesSheet
               visible={true}
@@ -2210,7 +2206,13 @@ function AppContent() {
               }}
             />
           </ErrorBoundary>
-        ) : null}
+                ) : null}
+
+                </TourTargetProvider>
+              </NavigationProvider>
+            </MobileFeaturesProvider>
+          </RecommendationsProvider>
+        </CardsCacheProvider>
         <ToastContainer />
       </ToastProvider>
     );

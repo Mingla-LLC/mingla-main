@@ -594,12 +594,12 @@ export function seedTourData(queryClient: QueryClient, userId: string): void {
   queryClient.setQueryDefaults(deckKey, { staleTime: Infinity, gcTime: Infinity });
 
   // Pairing pills
-  const pillsKey = ['pairings', 'pills'] as const;
+  const pillsKey = ['pairings', 'pills', userId] as const;
   queryClient.setQueryData(pillsKey, TOUR_PAIRING_PILLS);
   queryClient.setQueryDefaults(pillsKey, { staleTime: Infinity, gcTime: Infinity });
 
   // Incoming pair requests (empty)
-  const incomingKey = ['pairings', 'incoming'] as const;
+  const incomingKey = ['pairings', 'incoming', userId] as const;
   queryClient.setQueryData(incomingKey, []);
   queryClient.setQueryDefaults(incomingKey, { staleTime: Infinity, gcTime: Infinity });
 

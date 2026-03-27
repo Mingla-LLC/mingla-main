@@ -22,7 +22,7 @@ export function useMapSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_map_settings')
-        .select('visibility_level, show_saved_places, show_scheduled_places, activity_status, discovery_radius_km, time_delay_enabled, go_dark_until')
+        .select('visibility_level, show_saved_places, show_scheduled_places, activity_status, discovery_radius_km, time_delay_enabled, go_dark_until, activity_status_expires_at')
         .eq('user_id', user!.id)
         .maybeSingle();
       if (error) throw error;
@@ -34,6 +34,7 @@ export function useMapSettings() {
         discovery_radius_km: 5,
         time_delay_enabled: false,
         go_dark_until: null,
+        activity_status_expires_at: null,
       };
     },
     enabled: !!user?.id,

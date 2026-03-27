@@ -13,7 +13,6 @@ import ClusteredMapView from 'react-native-map-clustering';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Recommendation } from '../../types/recommendation';
-import { PlacePin } from './PlacePin';
 import { AnimatedPlacePin } from './AnimatedPlacePin';
 import { Icon } from '../ui/Icon';
 import { PersonPin } from './PersonPin';
@@ -103,6 +102,18 @@ export function DiscoverMap({
   const { data: mapCards, isLoading: mapCardsLoading } = useMapCards(userLocation);
   const allCards = (mapCards && mapCards.length > 0) ? mapCards : cards; // fallback to prop cards
 
+  const isStopClosed = useCallback((stop: any) => {
+    if (stop?.isOpenNow === false) return true;
+
+    const oh = stop?.openingHours ?? stop?.opening_hours;
+    if (typeof oh === 'object' && oh !== null) {
+      if ('open_now' in oh) return oh.open_now === false;
+      if ('_isOpenNow' in oh) return oh._isOpenNow === false;
+    }
+
+    return false;
+  }, []);
+
   // Filter cards for map display:
   // 1. Must have valid lat/lng
   // 2. Must have a title
@@ -122,14 +133,9 @@ export function DiscoverMap({
 
       // Curated card — check all stops are open
       if (card.strollData) {
-        const stops = [card.strollData.anchor, ...card.strollData.companionStops];
-        return !stops.some((stop: any) => {
-          const oh = stop?.openingHours ?? stop?.opening_hours;
-          if (typeof oh === 'object' && oh !== null && 'open_now' in oh) {
-            return oh.open_now === false;
-          }
-          return false;
-        });
+        const rawStops = Array.isArray((card as any)._rawStops) ? (card as any)._rawStops : null;
+        const stops = rawStops ?? [card.strollData.anchor, ...card.strollData.companionStops];
+        return !stops.some(isStopClosed);
       }
 
       // Single card — check open_now
@@ -141,7 +147,7 @@ export function DiscoverMap({
       // No hours data — show it
       return true;
     }).slice(0, 30); // Cap at 30 markers for performance
-  }, [allCards, placesLayerOn]);
+  }, [allCards, isStopClosed, placesLayerOn]);
 
   const handlePinPress = useCallback((card: Recommendation) => {
     setSelectedPerson(null);
@@ -371,31 +377,27 @@ export function DiscoverMap({
         onToggleHeatmap={() => setHeatmapOn(p => !p)}
       />
 
-      {selectedCard && (
-        <MapBottomSheet
-          ref={bottomSheetRef}
-          card={selectedCard}
-          onExpand={onCardExpand}
-          onNext={handleNext}
-          onClose={() => setSelectedCard(null)}
-          accountPreferences={accountPreferences}
-        />
-      )}
+      <MapBottomSheet
+        ref={bottomSheetRef}
+        card={selectedCard}
+        onExpand={onCardExpand}
+        onNext={handleNext}
+        onClose={() => setSelectedCard(null)}
+        accountPreferences={accountPreferences}
+      />
 
-      {selectedPerson && (
-        <PersonBottomSheet
-          ref={personSheetRef}
-          person={selectedPerson}
-          onClose={() => setSelectedPerson(null)}
-          onMessage={(userId) => onPersonMessage?.(userId)}
-          onInviteToSession={(userId) => onPersonInvite?.(userId)}
-          onViewPairedCards={(userId) => onPersonCards?.(userId)}
-          onViewProfile={(userId) => onPersonProfile?.(userId)}
-          onAddFriend={handleAddFriendFromMap}
-          onBlock={handleBlockFromMap}
-          onReport={handleReportFromMap}
-        />
-      )}
+      <PersonBottomSheet
+        ref={personSheetRef}
+        person={selectedPerson}
+        onClose={() => setSelectedPerson(null)}
+        onMessage={(userId) => onPersonMessage?.(userId)}
+        onInviteToSession={(userId) => onPersonInvite?.(userId)}
+        onViewPairedCards={(userId) => onPersonCards?.(userId)}
+        onViewProfile={(userId) => onPersonProfile?.(userId)}
+        onAddFriend={handleAddFriendFromMap}
+        onBlock={handleBlockFromMap}
+        onReport={handleReportFromMap}
+      />
 
       {feedOn && <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />}
 

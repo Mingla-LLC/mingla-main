@@ -17,8 +17,6 @@ const COACH_MARK_IDS = [
   'tour_deck',
   'tour_preferences',
   'tour_sessions',
-  'tour_invite',
-  'tour_collab_prefs',
   'tour_pairings',
   'tour_map',
   'tour_chats',
@@ -56,18 +54,8 @@ const TOUR_STEPS: TourStep[] = [
   {
     tab: 'home',
     targetId: 'tour-target-sessions',
-    tooltipText: 'Plan together! These are your group sessions.',
+    tooltipText: 'Plan together! Invite friends, merge tastes, and discover as a group.',
     onEnter: (ctx) => ctx.setShowPreferences(false),
-  },
-  {
-    tab: 'home',
-    targetId: 'tour-target-invite',
-    tooltipText: "Invite friends to discover together. They'll get their own cards.",
-  },
-  {
-    tab: 'home',
-    targetId: 'tour-target-collab-prefs',
-    tooltipText: "Everyone's preferences merge so the group gets the best of all tastes.",
   },
   {
     tab: 'discover',
@@ -162,16 +150,31 @@ export function TourOrchestrator({
   }, [tourStep, tourMode]);
 
   // Re-poll target layout if still null (component might not have rendered yet)
+  // Hard timeout after 5s — skip the step rather than freezing the app
   useEffect(() => {
     if (!tourMode || targetLayout) return;
     const step = TOUR_STEPS[tourStep];
     if (!step) return;
 
+    let pollCount = 0;
+    const MAX_POLLS = 25; // 25 × 200ms = 5 seconds
+
     const interval = setInterval(() => {
+      pollCount++;
       const layout = getTargetLayout(step.targetId);
       if (layout) {
         setTargetLayout(layout);
         clearInterval(interval);
+      } else if (pollCount >= MAX_POLLS) {
+        // Target never appeared — skip this step to avoid freezing
+        console.warn(`[Tour] Target "${step.targetId}" not found after 5s, skipping step ${tourStep}`);
+        clearInterval(interval);
+        if (tourStep >= TOUR_STEPS.length - 1) {
+          skipTour();
+        } else {
+          setTargetLayout(null);
+          advanceTour();
+        }
       }
     }, 200);
 
@@ -192,7 +195,7 @@ export function TourOrchestrator({
       )
       .then(() => {});
 
-    if (tourStep >= 10) {
+    if (tourStep >= TOUR_STEPS.length - 1) {
       // Last step — complete
       await handleComplete();
     } else {

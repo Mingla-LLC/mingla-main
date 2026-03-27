@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { Recommendation } from '../types/recommendation';
 import { useAppStore } from '../store/appStore';
+import { curatedExperiencesService } from '../services/curatedExperiencesService';
 
 // All 12 Mingla categories — must match edge function's MINGLA_CATEGORY_PLACE_TYPES keys
 const ALL_CATEGORIES = [
@@ -20,6 +21,19 @@ function transformCard(card: any): Recommendation {
   const curatedImage = firstStop?.imageUrl || firstStop?.imageUrls?.[0] || null;
   const curatedLat = firstStop?.lat;
   const curatedLng = firstStop?.lng;
+  const toMapStop = (stop: any, fallbackId: string) => ({
+    id: stop?.placeId || stop?.placePoolId || stop?.id || fallbackId,
+    placeId: stop?.placeId,
+    name: stop?.placeName || stop?.name || 'Stop',
+    location: { lat: stop?.lat, lng: stop?.lng },
+    address: stop?.address || '',
+    rating: stop?.rating,
+    reviewCount: stop?.reviewCount,
+    imageUrl: stop?.imageUrl || stop?.imageUrls?.[0] || null,
+    type: stop?.role || stop?.placeType || 'stop',
+    openingHours: stop?.openingHours || stop?.opening_hours || null,
+    isOpenNow: stop?.isOpenNow ?? null,
+  });
 
   return {
     id: card.id,
@@ -52,23 +66,8 @@ function transformCard(card: any): Recommendation {
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     matchFactors: card.matchFactors || { location: 85, budget: 85, category: 85, time: 85, popularity: 85 },
     strollData: card.strollData || (card.stops && card.stops.length > 0 ? {
-      anchor: {
-        id: card.stops[0].placeId || card.stops[0].placePoolId || card.id,
-        name: card.stops[0].placeName || card.title,
-        location: { lat: card.stops[0].lat, lng: card.stops[0].lng },
-        address: card.stops[0].address || '',
-      },
-      companionStops: card.stops.slice(1).map((s: any) => ({
-        id: s.placeId || s.placePoolId || s.id,
-        name: s.placeName || s.name || 'Stop',
-        location: { lat: s.lat, lng: s.lng },
-        address: s.address || '',
-        rating: s.rating,
-        reviewCount: s.reviewCount,
-        imageUrl: s.imageUrl || s.imageUrls?.[0] || null,
-        placeId: s.placeId,
-        type: s.role || 'stop',
-      })),
+      anchor: toMapStop(card.stops[0], card.id),
+      companionStops: card.stops.slice(1).map((s: any, i: number) => toMapStop(s, `${card.id}-${i + 1}`)),
       route: {
         duration: card.estimatedDurationMinutes || 120,
         startLocation: { lat: card.stops[0].lat, lng: card.stops[0].lng },
@@ -134,13 +133,13 @@ export function useMapCards(
     queryKey: ['map-cards-curated', locKey],
     queryFn: async () => {
       if (!location) return [];
-      const curatedBody = (type: string) => ({
+      const curatedBody = (type: (typeof CURATED_TYPES)[number]) => ({
         experienceType: type,
         location: { lat: location.latitude, lng: location.longitude },
         budgetMin: 0,
         budgetMax: 1000,
         travelMode: 'driving',
-        travelConstraintType: 'time',
+        travelConstraintType: 'time' as const,
         travelConstraintValue: 30,
         limit: 10,
         skipDescriptions: true,
@@ -150,7 +149,7 @@ export function useMapCards(
       console.log(`[useMapCards] Fetching curated types: ${CURATED_TYPES.join(', ')}`);
       const results = await Promise.allSettled(
         CURATED_TYPES.map(type =>
-          supabase.functions.invoke('generate-curated-experiences', { body: curatedBody(type) })
+          curatedExperiencesService.generateCuratedExperiences(curatedBody(type))
         )
       );
 
@@ -158,12 +157,7 @@ export function useMapCards(
       CURATED_TYPES.forEach((type, i) => {
         const result = results[i];
         if (result.status === 'fulfilled') {
-          const { data: responseData, error: invokeError } = result.value;
-          if (invokeError) {
-            console.warn(`[useMapCards] Curated "${type}" invoke error:`, invokeError);
-            return;
-          }
-          const curatedCards = responseData?.cards || (Array.isArray(responseData) ? responseData : []);
+          const curatedCards = result.value;
           console.log(`[useMapCards] Curated "${type}": ${curatedCards.length} cards returned`);
           for (const card of curatedCards) {
             if (card.stops && card.stops.length > 0) {

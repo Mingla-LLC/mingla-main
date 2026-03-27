@@ -267,8 +267,6 @@ export default function HomePage({
               ]}
             >
               <TourTarget id="tour-target-sessions">
-              <TourTarget id="tour-target-invite">
-              <TourTarget id="tour-target-collab-prefs">
               <CollaborationSessions
                 sessions={collaborationSessions}
                 currentMode={currentMode}
@@ -286,8 +284,6 @@ export default function HomePage({
                 openSessionId={openSessionId}
                 onOpenSessionHandled={onOpenSessionHandled}
               />
-              </TourTarget>
-              </TourTarget>
               </TourTarget>
             </Animated.View>
           )}

@@ -1,25 +1,24 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
-  Dimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import Animated, {
   FadeIn,
-  FadeOut,
   ZoomIn,
 } from 'react-native-reanimated';
 import Svg, { Defs, Mask, Rect } from 'react-native-svg';
 import type { TourTargetLayout } from '../../contexts/TourTargetContext';
-import { designSystem } from '../../constants/designSystem';
+import { radius, spacing, shadows, typography, colors, touchTargets } from '../../constants/designSystem';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CUTOUT_PADDING = 8;
-const CUTOUT_RADIUS = designSystem.borderRadius.lg; // 16
+const CUTOUT_RADIUS = radius.lg; // 16
 const TOOLTIP_MAX_WIDTH = 300;
 const ARROW_SIZE = 8;
+const BOTTOM_NAV_HEIGHT = 80; // bottom nav + gesture bar padding
 
 interface TourOverlayProps {
   targetLayout: TourTargetLayout | null;
@@ -40,15 +39,25 @@ export function TourOverlay({
   onNext,
   onSkip,
 }: TourOverlayProps) {
-  // If target hasn't measured yet, show just the dark overlay briefly
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+
+  // If target hasn't measured yet, show dark overlay with skip escape hatch
   if (!targetLayout) {
     return (
       <Animated.View
         entering={FadeIn.duration(200)}
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, styles.overlayRoot]}
         pointerEvents="box-only"
       >
         <View style={styles.loadingOverlay} />
+        <TouchableOpacity
+          onPress={onSkip}
+          style={styles.loadingSkipButton}
+          accessibilityRole="button"
+          accessibilityLabel="Skip tour"
+        >
+          <Text style={styles.loadingSkipText}>Skip Tour</Text>
+        </TouchableOpacity>
       </Animated.View>
     );
   }
@@ -74,9 +83,15 @@ export function TourOverlay({
     )
   );
 
-  const tooltipTop = placeAbove
-    ? cutout.y - 16 - ARROW_SIZE // positioned above, will measure down
-    : cutout.y + cutout.height + 16 + ARROW_SIZE;
+  // Clamp tooltip so it stays above the bottom nav (min 16px from edges)
+  const tooltipTopBelow = Math.min(
+    cutout.y + cutout.height + 16 + ARROW_SIZE,
+    SCREEN_H - BOTTOM_NAV_HEIGHT - 160 // leave room for tooltip + bottom nav
+  );
+  const tooltipBottomAbove = Math.max(
+    SCREEN_H - cutout.y + ARROW_SIZE + 8,
+    16 // never clip at top
+  );
 
   // Arrow horizontal center relative to cutout center
   const arrowLeft = Math.max(
@@ -87,7 +102,7 @@ export function TourOverlay({
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, styles.overlayRoot]}
       pointerEvents="box-none"
     >
       {/* Dark overlay with cutout hole */}
@@ -147,8 +162,8 @@ export function TourOverlay({
           styles.tooltip,
           {
             left: tooltipLeft,
-            top: placeAbove ? undefined : tooltipTop,
-            bottom: placeAbove ? SCREEN_H - cutout.y + ARROW_SIZE + 8 : undefined,
+            top: placeAbove ? undefined : tooltipTopBelow,
+            bottom: placeAbove ? tooltipBottomAbove : undefined,
           },
         ]}
       >
@@ -182,9 +197,27 @@ export function TourOverlay({
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    zIndex: 10,
+    elevation: 10,
+  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  loadingSkipButton: {
+    position: 'absolute',
+    bottom: 80,
+    alignSelf: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    minHeight: touchTargets.minimum,
+    justifyContent: 'center',
+  },
+  loadingSkipText: {
+    fontSize: typography.md.fontSize,
+    color: '#ffffff',
+    textDecorationLine: 'underline',
   },
   arrow: {
     position: 'absolute',
@@ -202,22 +235,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     maxWidth: TOOLTIP_MAX_WIDTH,
     backgroundColor: '#ffffff',
-    borderRadius: designSystem.borderRadius.lg,
-    padding: designSystem.spacing.md,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     zIndex: 1000,
-    ...designSystem.shadows.lg,
+    ...shadows.lg,
   },
   stepIndicator: {
-    fontSize: designSystem.typography.sm.fontSize,
-    lineHeight: designSystem.typography.sm.lineHeight,
-    color: designSystem.colors.text.tertiary,
-    marginBottom: designSystem.spacing.xs,
+    fontSize: typography.sm.fontSize,
+    lineHeight: typography.sm.lineHeight,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xs,
   },
   tooltipText: {
-    fontSize: designSystem.typography.md.fontSize,
-    lineHeight: designSystem.typography.md.lineHeight,
-    color: designSystem.colors.text.primary,
-    marginBottom: designSystem.spacing.md,
+    fontSize: typography.md.fontSize,
+    lineHeight: typography.md.lineHeight,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -225,26 +258,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   skipButton: {
-    paddingVertical: designSystem.spacing.sm,
-    paddingHorizontal: designSystem.spacing.md,
-    minHeight: designSystem.touchTargets.minimum,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: touchTargets.minimum,
     justifyContent: 'center',
   },
   skipButtonText: {
-    fontSize: designSystem.typography.sm.fontSize,
-    color: designSystem.colors.text.tertiary,
+    fontSize: typography.sm.fontSize,
+    color: colors.text.tertiary,
   },
   nextButton: {
-    backgroundColor: designSystem.colors.primary[500],
-    borderRadius: designSystem.borderRadius.md,
-    paddingVertical: designSystem.spacing.sm,
-    paddingHorizontal: designSystem.spacing.xl,
-    minHeight: designSystem.touchTargets.comfortable,
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    minHeight: touchTargets.comfortable,
     justifyContent: 'center',
     alignItems: 'center',
   },
   nextButtonText: {
-    fontSize: designSystem.typography.md.fontSize,
+    fontSize: typography.md.fontSize,
     fontWeight: '600',
     color: '#ffffff',
   },

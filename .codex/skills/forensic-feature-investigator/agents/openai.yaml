@@ -1,0 +1,4 @@
+interface:
+  display_name: "Forensic Feature Investigator"
+  short_description: "Trace Mingla features end to end"
+  default_prompt: "Use $forensic-feature-investigator to audit a Mingla feature from user intent through mobile, admin, Supabase, and production readiness."
