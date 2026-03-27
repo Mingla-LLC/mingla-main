@@ -466,6 +466,7 @@ export default function SwipeableCards({
     loading: sessionsLoading,
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
+  const tourMode = useAppStore((state) => state.tourMode);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own cached preferences.
@@ -1812,7 +1813,8 @@ export default function SwipeableCards({
                 ],
               },
             ]}
-            {...panResponder.panHandlers}
+            {...(tourMode ? {} : panResponder.panHandlers)}
+            pointerEvents={tourMode ? 'none' : 'auto'}
           >
             <View style={styles.cardInner}>
             {/* Swipe Direction Overlays */}

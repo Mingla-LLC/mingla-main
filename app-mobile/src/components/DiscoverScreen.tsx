@@ -27,6 +27,7 @@ import { ExperienceGenerationService } from "../services/experienceGenerationSer
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAppStore } from "../store/appStore";
+import { TourTarget } from "./tour/TourTarget";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
@@ -876,6 +877,7 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const user = useAppStore((s) => s.user);
+  const tourMode = useAppStore((s) => s.tourMode);
   const { canAccess } = useFeatureGate();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
@@ -3413,7 +3415,7 @@ export default function DiscoverScreen({
               </ScrollView>
 
               {/* Person-specific view when a person is selected */}
-              {selectedPill?.pillState === 'active' && user?.id ? (
+              {selectedPill?.pillState === 'active' && user?.id && (
                 <PersonHolidayView
                   pairedUserId={selectedPill.pairedUserId!}
                   pairingId={selectedPill.pairingId!}
@@ -3432,7 +3434,11 @@ export default function DiscoverScreen({
                   onDeleteCustomDay={handleConfirmDeleteCustomHoliday}
                   travelMode={userTravelMode}
                 />
-              ) : (
+              )}
+
+              {/* Map — always mounted, hidden when PersonHolidayView active */}
+              <TourTarget id="tour-target-map">
+              <View style={isMapShowing ? { flex: 1 } : { width: 1, height: 1, opacity: 0, overflow: 'hidden' as const }}>
                 <DiscoverMap
                   cards={recommendations}
                   savedCardIds={mapSavedCardIds}
@@ -3557,10 +3563,33 @@ export default function DiscoverScreen({
                   }}
                   onPersonProfile={() => {}}
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
-                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
+                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : tourMode ? { latitude: 51.52, longitude: -0.13 } : null}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
+                  paused={!isMapShowing}
                 />
+              </View>
+              </TourTarget>
+
+              {/* Paired People Row — shown during coach tour */}
+              {tourMode && (
+                <TourTarget id="tour-target-pairings">
+                  <PairedPeopleRow
+                    people={pairingPills
+                      .filter((p) => p.pillState === "active" && p.pairedUserId)
+                      .map((p) => ({
+                        pairedUserId: p.pairedUserId!,
+                        pairingId: p.pairingId!,
+                        displayName: p.displayName,
+                        firstName: p.firstName,
+                        avatarUrl: p.avatarUrl,
+                        initials: p.initials,
+                        birthday: p.birthday,
+                        gender: p.gender,
+                      }))}
+                    onSelectPerson={() => {}}
+                  />
+                </TourTarget>
               )}
 
               {/* Legacy ForYou grid content — hidden while map is active */}

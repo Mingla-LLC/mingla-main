@@ -489,6 +489,12 @@ function buildCardFromStops(
   const totalDuration = mainStops.reduce((sum, s) => sum + s.estimatedDurationMinutes, 0)
     + mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
 
+  // Derive category slug from first main stop's Google place type so mobile
+  // can render category-colored pins instead of gray fallback.
+  const category = mainStops[0]?.placeType
+    ? googleTypeToSlug(mainStops[0].placeType)
+    : 'casual_eats';
+
   return {
     id: `curated_${experienceType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     cardType: 'curated',
@@ -496,6 +502,7 @@ function buildCardFromStops(
     pairingKey,
     title,
     tagline,
+    category,
     categoryLabel: CURATED_TYPE_LABELS[experienceType] || 'Explore',
     stops,
     totalPriceMin,

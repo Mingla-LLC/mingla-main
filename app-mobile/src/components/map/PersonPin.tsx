@@ -8,7 +8,7 @@ interface PersonPinProps {
   onPress: () => void;
 }
 
-export function PersonPin({ person, onPress }: PersonPinProps) {
+export const PersonPin = React.memo(function PersonPin({ person, onPress }: PersonPinProps) {
   const isOnline = Date.now() - new Date(person.lastActiveAt).getTime() < 15 * 60_000;
   const isPaired = person.relationship === 'paired';
   const isStranger = person.relationship === 'stranger';
@@ -49,7 +49,7 @@ export function PersonPin({ person, onPress }: PersonPinProps) {
       </View>
     </Marker>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: { alignItems: 'center', width: 52, height: 58 },

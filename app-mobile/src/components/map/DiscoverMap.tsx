@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   ActivityIndicator,
   Platform,
@@ -47,6 +46,7 @@ interface DiscoverMapProps {
   userLocation: { latitude: number; longitude: number } | null;
   isLoading: boolean;
   centerTrigger?: number;
+  paused?: boolean;  // true when PersonHolidayView is showing — stops polling
 }
 
 export function DiscoverMap({
@@ -62,11 +62,12 @@ export function DiscoverMap({
   userLocation,
   isLoading,
   centerTrigger,
+  paused = false,
 }: DiscoverMapProps) {
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
-  const [peopleLayerOn, setPeopleLayerOn] = useState(false);
+  const [peopleLayerOn, setPeopleLayerOn] = useState(true); // default ON — visibility defaults to 'friends'
   const [feedOn, setFeedOn] = useState(false);
   const [heatmapOn, setHeatmapOn] = useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -88,32 +89,33 @@ export function DiscoverMap({
   // People layer hooks
   const { settings, updateSettings } = useMapSettings();
   const isDark = !!(settings?.go_dark_until && new Date(settings.go_dark_until) > new Date());
-  const { data: nearbyPeople = [] } = useNearbyPeople(peopleLayerOn && !isDark, userLocation);
-  // Always update location when map is visible — ensures your row exists for friends to see
-  useMapLocation(!isDark && settings?.visibility_level !== 'off');
+  const { data: nearbyPeople = [] } = useNearbyPeople(peopleLayerOn && !isDark && !paused, userLocation);
+  // Always update location when map is visible and not paused
+  useMapLocation(!isDark && !paused && settings?.visibility_level !== 'off');
 
+
+  // Warm edge functions before map cards query fires
+  useEffect(() => {
+    supabase.functions.invoke('keep-warm').catch(() => {});
+  }, []);
 
   // Fetch ALL cards from pool for the map (200 limit, not the 20 from discover)
-  const { data: mapCards = [], isLoading: mapCardsLoading } = useMapCards(userLocation);
-  const allCards = mapCards.length > 0 ? mapCards : cards; // fallback to prop cards
+  const { data: mapCards, isLoading: mapCardsLoading } = useMapCards(userLocation);
+  const allCards = (mapCards && mapCards.length > 0) ? mapCards : cards; // fallback to prop cards
 
   // Filter cards for map display:
   // 1. Must have valid lat/lng
-  // 2. Must have a photo (no placeholder pins)
-  // 3. Must have a title
-  // 4. Single cards: must be open now (if hours available)
-  // 5. Curated cards: ALL stops must be open now (if hours available)
+  // 2. Must have a title
+  // 3. Single cards: must be open now (if hours available)
+  // 4. Curated cards: ALL stops must be open now (if hours available)
   const filteredCards = useMemo(() => {
     if (!placesLayerOn) return [];
     return allCards.filter(card => {
       // Valid coordinates
       if (card.lat == null || card.lng == null) return false;
 
-      // Must have a photo — curated cards always pass (stops have images)
-      if (!card.strollData) {
-        const hasImage = card.image || (card.images && card.images.length > 0);
-        if (!hasImage) return false;
-      }
+      // Photos not required for map pins (pins show category icons, not photos).
+      // Photos are only needed when user taps a pin and opens the bottom sheet.
 
       // Must have a title
       if (!card.title || card.title.trim() === '') return false;
@@ -136,9 +138,9 @@ export function DiscoverMap({
         return oh.open_now !== false;
       }
 
-      // No hours data — show it (benefit of doubt)
+      // No hours data — show it
       return true;
-    });
+    }).slice(0, 30); // Cap at 30 markers for performance
   }, [allCards, placesLayerOn]);
 
   const handlePinPress = useCallback((card: Recommendation) => {
@@ -165,9 +167,9 @@ export function DiscoverMap({
   const profile = useAppStore(s => s.profile);
   const queryClient = useQueryClient();
 
-  // Seed location on first map load so the user_map_settings row is created
+  // Seed location on first map load — always fires to ensure user_map_settings row exists
   useEffect(() => {
-    if (userLocation && user?.id && settings?.visibility_level !== 'off') {
+    if (userLocation && user?.id) {
       supabase.functions.invoke('update-map-location', {
         body: { lat: userLocation.latitude, lng: userLocation.longitude },
       }).catch(() => {});
@@ -279,7 +281,7 @@ export function DiscoverMap({
         showsBuildings={false}
         showsIndoors={false}
         showsPointsOfInterest={false}
-        mapPadding={{ top: 60, right: 0, bottom: -40, left: 0 }}
+        mapPadding={{ top: 60, right: 0, bottom: 80, left: 0 }}
         clusterColor="#eb7825"
         radius={50}
         maxZoom={16}
@@ -291,7 +293,7 @@ export function DiscoverMap({
           tileSize={256}
           shouldReplaceMapContent
         />
-        {/* User avatar marker */}
+        {/* User avatar marker — uses initials only (remote images + tracksViewChanges=false = glitchy) */}
         {userLocation && (
           <Marker
             coordinate={userLocation}
@@ -304,15 +306,11 @@ export function DiscoverMap({
             <View style={styles.userMarker}>
               <View style={styles.userMarkerPulse} />
               <View style={styles.userAvatarRing}>
-                {profile?.avatar_url ? (
-                  <Image source={{ uri: profile.avatar_url }} style={styles.userAvatar} />
-                ) : (
-                  <View style={styles.userAvatarFallback}>
-                    <Text style={styles.userAvatarInitials}>
-                      {(profile?.first_name || profile?.display_name || 'Y')[0].toUpperCase()}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.userAvatarFallback}>
+                  <Text style={styles.userAvatarInitials}>
+                    {(profile?.first_name || profile?.display_name || 'Y')[0].toUpperCase()}
+                  </Text>
+                </View>
               </View>
             </View>
           </Marker>
@@ -373,31 +371,35 @@ export function DiscoverMap({
         onToggleHeatmap={() => setHeatmapOn(p => !p)}
       />
 
-      <MapBottomSheet
-        ref={bottomSheetRef}
-        card={selectedCard}
-        onExpand={onCardExpand}
-        onNext={handleNext}
-        onClose={() => setSelectedCard(null)}
-        accountPreferences={accountPreferences}
-      />
+      {selectedCard && (
+        <MapBottomSheet
+          ref={bottomSheetRef}
+          card={selectedCard}
+          onExpand={onCardExpand}
+          onNext={handleNext}
+          onClose={() => setSelectedCard(null)}
+          accountPreferences={accountPreferences}
+        />
+      )}
 
-      <PersonBottomSheet
-        ref={personSheetRef}
-        person={selectedPerson}
-        onClose={() => setSelectedPerson(null)}
-        onMessage={(userId) => onPersonMessage?.(userId)}
-        onInviteToSession={(userId) => onPersonInvite?.(userId)}
-        onViewPairedCards={(userId) => onPersonCards?.(userId)}
-        onViewProfile={(userId) => onPersonProfile?.(userId)}
-        onAddFriend={handleAddFriendFromMap}
-        onBlock={handleBlockFromMap}
-        onReport={handleReportFromMap}
-      />
+      {selectedPerson && (
+        <PersonBottomSheet
+          ref={personSheetRef}
+          person={selectedPerson}
+          onClose={() => setSelectedPerson(null)}
+          onMessage={(userId) => onPersonMessage?.(userId)}
+          onInviteToSession={(userId) => onPersonInvite?.(userId)}
+          onViewPairedCards={(userId) => onPersonCards?.(userId)}
+          onViewProfile={(userId) => onPersonProfile?.(userId)}
+          onAddFriend={handleAddFriendFromMap}
+          onBlock={handleBlockFromMap}
+          onReport={handleReportFromMap}
+        />
+      )}
 
-      <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />
+      {feedOn && <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />}
 
-      {(isLoading || mapCardsLoading) && (
+      {(isLoading || mapCardsLoading) && allCards.length === 0 && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color="#eb7825" />
         </View>

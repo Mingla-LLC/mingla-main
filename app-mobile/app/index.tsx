@@ -38,6 +38,9 @@ import { RecommendationsProvider } from "../src/contexts/RecommendationsContext"
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { ToastProvider } from "../src/components/ToastManager";
+import { TourTargetProvider } from "../src/contexts/TourTargetContext";
+import { TourOrchestrator } from "../src/components/tour/TourOrchestrator";
+import { useAppStore } from "../src/store/appStore";
 import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
@@ -191,6 +194,8 @@ function AppContent() {
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
   const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
+  const [likesNavData, setLikesNavData] = useState<{ activeTab?: 'saved' | 'calendar' } | null>(null);
+  const tourMode = useAppStore((s) => s.tourMode);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -1351,6 +1356,12 @@ function AppContent() {
   const handleDeepLink = async (url: string) => {
     console.log("Deep link received:", url);
 
+    // Coach tour: suppress deep links to prevent navigation interference
+    if (useAppStore.getState().tourMode) {
+      console.log('[DEEPLINK] Suppressed during coach tour:', url);
+      return;
+    }
+
     // OAuth callbacks MUST run immediately — they ARE the auth flow.
     // All other deep links: if the user isn't authenticated, defer to
     // AsyncStorage and process after login completes. This prevents
@@ -1765,6 +1776,8 @@ function AppContent() {
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
+            navigationData={likesNavData}
+            onNavigationComplete={() => setLikesNavData(null)}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -1885,6 +1898,7 @@ function AppContent() {
           >
             <MobileFeaturesProvider>
               <NavigationProvider>
+                <TourTargetProvider>
                 <ErrorBoundary>
                   <View style={styles.safeArea}>
                     <StatusBar
@@ -1914,6 +1928,14 @@ function AppContent() {
                         )}
                       </View>
 
+                      {/* Coach Tour Overlay — renders above page content, covers everything */}
+                      {tourMode && (
+                        <TourOrchestrator
+                          setCurrentPage={setCurrentPage as (page: string) => void}
+                          setShowPreferences={setShowPreferences}
+                          setLikesSubTab={(tab: string) => setLikesNavData({ activeTab: tab as 'saved' | 'calendar' })}
+                        />
+                      )}
 
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
                       <View
@@ -2145,6 +2167,7 @@ function AppContent() {
 
                   </View>
                 </ErrorBoundary>
+                </TourTargetProvider>
               </NavigationProvider>
             </MobileFeaturesProvider>
           </RecommendationsProvider>

@@ -36,7 +36,7 @@ const TIER_BORDER_COLORS: Record<string, string> = {
 };
 
 // Extracted content — used by both PlacePin and AnimatedPlacePin
-export function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinProps, 'onPress'>) {
+export const PlacePinContent = React.memo(function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinProps, 'onPress'>) {
   const slug = getCategorySlug(card.category);
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
   const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
@@ -62,7 +62,7 @@ export function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinPro
       )}
     </View>
   );
-}
+});
 
 // Full PlacePin with Marker wrapper — backward compatible
 export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps) {

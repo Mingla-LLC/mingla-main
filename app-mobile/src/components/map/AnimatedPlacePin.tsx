@@ -12,20 +12,24 @@ interface AnimatedPlacePinProps {
   index: number;
 }
 
-export function AnimatedPlacePin({ card, isSaved, isScheduled, onPress, index }: AnimatedPlacePinProps) {
+export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
+  card, isSaved, isScheduled, onPress, index,
+}: AnimatedPlacePinProps) {
   const scale = useRef(new Animated.Value(0)).current;
-  const [animating, setAnimating] = useState(true);
+  // Start false — only enable during the 300ms spring window
+  const [tracking, setTracking] = useState(false);
 
   useEffect(() => {
     const delay = Math.min(index * 50, 500);
     const timer = setTimeout(() => {
+      setTracking(true); // enable before animation
       Animated.spring(scale, {
         toValue: 1,
         friction: 6,
         tension: 80,
         useNativeDriver: true,
       }).start(() => {
-        setAnimating(false);
+        setTracking(false); // disable after animation
       });
     }, delay);
     return () => clearTimeout(timer);
@@ -37,11 +41,11 @@ export function AnimatedPlacePin({ card, isSaved, isScheduled, onPress, index }:
     <Marker
       coordinate={{ latitude: card.lat, longitude: card.lng }}
       onPress={onPress}
-      tracksViewChanges={animating}
+      tracksViewChanges={tracking}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
         <PlacePinContent card={card} isSaved={isSaved} isScheduled={isScheduled} />
       </Animated.View>
     </Marker>
   );
-}
+});

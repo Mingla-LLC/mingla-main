@@ -6,6 +6,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Icon } from './ui/Icon';
+import { TourTarget } from "./tour/TourTarget";
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
@@ -135,6 +136,7 @@ export default function LikesPage({
       {/* Content */}
       <View style={styles.content}>
         {activeTab === "saved" && (
+          <TourTarget id="tour-target-saved">
           <SavedTab
             savedCards={savedCards}
             calendarEntries={calendarEntries}
@@ -147,9 +149,11 @@ export default function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
           />
+          </TourTarget>
         )}
 
         {activeTab === "calendar" && (
+          <TourTarget id="tour-target-calendar">
           <CalendarTab
             calendarEntries={calendarEntries}
             isLoading={isLoadingCalendarEntries}
@@ -160,6 +164,7 @@ export default function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
           />
+          </TourTarget>
         )}
       </View>
     </View>

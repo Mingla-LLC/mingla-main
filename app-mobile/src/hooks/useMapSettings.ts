@@ -42,6 +42,7 @@ export function useMapSettings() {
 
   const mutation = useMutation({
     mutationFn: async (updates: Partial<MapSettings>) => {
+      if (useAppStore.getState().tourMode) return;
       const { error } = await supabase
         .from('user_map_settings')
         .upsert({ user_id: user!.id, ...updates, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });

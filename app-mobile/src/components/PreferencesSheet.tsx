@@ -18,6 +18,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
+import { TourTarget } from "./tour/TourTarget";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { Icon } from './ui/Icon';
@@ -1177,6 +1178,7 @@ export default function PreferencesSheet({
       >
         <View style={styles.sheetOverlay}>
           <Pressable style={styles.backdropTouch} onPress={onClose} />
+          <TourTarget id="tour-target-preferences">
           <View style={[styles.sheetContent, { height: appLayout.screenHeight - appLayout.insets.top - vs(20) }]}>
             {preferencesLoading ? (
               <LoadingShimmer />
@@ -1184,6 +1186,7 @@ export default function PreferencesSheet({
               sheetContent
             )}
           </View>
+          </TourTarget>
         </View>
       </Modal>
     );

@@ -50,6 +50,8 @@ export interface BoardSessionPreferences {
 }
 
 export const useBoardSession = (sessionId?: string) => {
+  const tourMode = useAppStore((s) => s.tourMode);
+
   const [session, setSession] = useState<BoardSession | null>(null);
   const [preferences, setPreferences] =
     useState<BoardSessionPreferences | null>(null);
@@ -408,6 +410,23 @@ export const useBoardSession = (sessionId?: string) => {
       loadSession(sessionId);
     }
   }, [sessionId, user?.id, loadSession]);
+
+  // Tour mode: return mock data, skip all network calls
+  if (tourMode) {
+    return {
+      session: null,
+      preferences: null,
+      allParticipantPreferences: null,
+      loading: false,
+      error: null,
+      sessionValid: true,
+      hasPermission: true,
+      isAdmin: true,
+      loadSession: async () => {},
+      updatePreferences: async () => {},
+      getInviteLink: async () => null,
+    };
+  }
 
   return {
     session,

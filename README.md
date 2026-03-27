@@ -14,9 +14,9 @@ A monorepo mobile + admin platform for social discovery -- combining an interact
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage + Edge Functions + RLS) |
-| Edge Functions | ~70 Deno serverless functions |
+| Edge Functions | ~71 Deno serverless functions |
 | AI | OpenAI GPT-5.4-mini (card quality gate with web search), GPT-4o-mini (AI reasons), Whisper (audio transcription) |
-| Maps & Places | Google Maps (CartoDB Positron tiles), Google Places API (New) |
+| Maps & Places | Google Maps (CartoDB Positron tiles -- clean barren map, faint roads, city names only, no POIs), Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
 | SMS | Twilio (OTP verification + Programmable Messaging for invites) |
 | Email | Resend (admin email sending) |
@@ -148,45 +148,45 @@ Mingla/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── map/                     # Discover Map feature
-│   │   │   │   ├── DiscoverMap.tsx
+│   │   │   │   ├── DiscoverMap.tsx       # Edge-to-edge map with floating pill bar
 │   │   │   │   ├── PlacePin.tsx
 │   │   │   │   ├── AnimatedPlacePin.tsx
-│   │   │   │   ├── PersonPin.tsx
-│   │   │   │   ├── CuratedRoute.tsx
-│   │   │   │   ├── MapBottomSheet.tsx
+│   │   │   │   ├── PersonPin.tsx         # User avatar marker with profile photo
+│   │   │   │   ├── CuratedRoute.tsx      # Curated pins (46x46) with map-outline icon
+│   │   │   │   ├── MapBottomSheet.tsx     # 3 snap points (15% peek, 45% preview, 90% expanded)
 │   │   │   │   ├── PersonBottomSheet.tsx
-│   │   │   │   ├── MapFilterBar.tsx
-│   │   │   │   ├── ActivityStatusPicker.tsx
+│   │   │   │   ├── MapFilterBar.tsx       # Floating rounded pill bar (solid white, 24px border radius)
+│   │   │   │   ├── ActivityStatusPicker.tsx  # Collapsible bottom-left pill with dropdown
 │   │   │   │   ├── ActivityFeedOverlay.tsx
-│   │   │   │   ├── PlaceHeatmap.tsx
-│   │   │   │   ├── LayerToggles.tsx
+│   │   │   │   ├── PlaceHeatmap.tsx       # Marker+View circles (no native dependency)
+│   │   │   │   ├── LayerToggles.tsx       # Collapsible orange FAB at bottom-right
 │   │   │   │   ├── GoDarkFAB.tsx
 │   │   │   │   └── MapPrivacySettings.tsx
 │   │   │   ├── activity/
 │   │   │   │   └── CardFilterBar.tsx    # Shared filter for SavedTab + CalendarTab
-│   │   │   └── ...                      # ~100+ UI components
+│   │   │   └── ...                      # ~107 UI components
 │   │   ├── hooks/
-│   │   │   ├── useMapCards.ts
+│   │   │   ├── useMapCards.ts           # Fetches 200 single + all 6 curated types
 │   │   │   ├── useMapLocation.ts
 │   │   │   ├── useMapSettings.ts
 │   │   │   ├── useNearbyPeople.ts
-│   │   │   └── ...                      # ~67+ React Query hooks + realtime hooks
-│   │   ├── services/                    # ~75 service files
+│   │   │   └── ...                      # ~73 React Query hooks + realtime hooks
+│   │   ├── services/                    # ~81 service files
 │   │   ├── contexts/                    # 3 React contexts
 │   │   ├── store/                       # Zustand store (appStore)
 │   │   ├── types/                       # TypeScript types
 │   │   ├── constants/                   # Design tokens, config, categories
-│   │   └── utils/                       # ~27 utility files
+│   │   └── utils/                       # ~31 utility files
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                       # ~70 Deno edge functions
+│   ├── functions/                       # ~71 Deno edge functions
 │   │   ├── _shared/                     # Shared edge function utilities
 │   │   ├── update-map-location/         # User map location updates
 │   │   ├── get-nearby-people/           # Nearby people with taste matching
 │   │   ├── keep-warm/                   # Cold start elimination
 │   │   └── [function-name]/             # Individual edge functions
-│   ├── migrations/                      # 287 SQL migration files
+│   ├── migrations/                      # 288 SQL migration files
 │   │   └── (includes: user_map_settings, user_taste_matches,
 │   │        taste_match_rpc, friend_request_source,
 │   │        device_calendar_event_id, sync_display_name_trigger)
@@ -195,7 +195,7 @@ Mingla/
 ├── mingla-admin/                        # Admin dashboard (React 19 + Vite + Tailwind v4)
 │   └── src/
 │       ├── App.jsx                      # Root with hash routing + Cmd+K
-│       ├── pages/                       # 14 feature pages
+│       ├── pages/                       # 18 feature pages
 │       ├── components/
 │       │   ├── layout/                  # AppShell, Sidebar, Header
 │       │   ├── ui/                      # 14 reusable components
@@ -211,29 +211,77 @@ Mingla/
 
 ## Key Features
 
-- Interactive discovery map with CartoDB Positron tiles
+### Discover Map
+- Edge-to-edge interactive map with CartoDB Positron tiles (clean barren map -- faint roads, city names only, no POIs)
+- Floating rounded pill bar (solid white, 24px border radius) with category icons matched to preferences sheet (direct slug-to-icon map)
+- useMapCards hook fetches 200 single cards + all 6 curated types with open-now filtering built in (single + curated all-stops-open)
+- Cards without photos or titles automatically hidden
+- For You pill centers map on user location
+- User avatar marker with profile photo + "This is you" callout
+- Curated pins larger (46x46) with map-outline icon
+- Bottom sheet with 3 snap points (15% peek, 45% preview, 90% expanded), no dismiss
 - Friends and paired people visible on map with privacy controls
 - Taste matching for nearby strangers (Jaccard similarity)
-- Activity status picker (Exploring, Looking for plans, etc.)
+- Bidirectional visibility for strangers; friends-of-friends visibility option
+- Default visibility set to 'friends' (not 'off')
+- Location seeded on first map load
+- ActivityStatusPicker: collapsible pill at bottom-left with dropdown (visibility settings + people toggle + status presets + custom). Status stays until changed (no auto-expiry)
+- LayerToggles: collapsible orange FAB at bottom-right with labeled dropdown (Places, Go Dark, Activity Feed, Heatmap)
+- Both menus: matching style -- orange FABs, labeled rows, checkmarks
 - Go Dark mode (24h invisibility)
 - Curated multi-stop routes with polyline visualization
 - Pin entrance animations (staggered spring cascade)
 - Real-time activity feed overlay
-- Circle-based heatmap of popular areas
-- Collapsible layer toggles (places, people, feed, heatmap, go dark)
-- Shared CardFilterBar component for SavedTab and CalendarTab
-- Calendar reschedule with device event ID tracking
-- Session voting, RSVP, and lock awareness
+- PlaceHeatmap uses Marker+View circles (no native dependency)
+- Android fallback screen when native map module unavailable
+
+### Discovery and Cards
 - Card-based swipe interface with pool-first serving and 5-factor scoring
-- Onboarding: name collection, friends, pairing, collaborations, consent
-- Fire-and-forget push notifications for instant UI response
-- keep-warm edge function for cold start elimination
 - AI card quality gate (GPT-5.4-mini with web search)
+- Shared CardFilterBar component for SavedTab and CalendarTab
+- Inactive paired pills use darker grey (#e5e7eb)
+- Pill bar borderRadius 24, solid white
+
+### Social
 - Real-time collaboration sessions with synchronized decks
-- Subscription tiers (Free/Pro/Elite) with server-side enforcement
-- Elite-only 3-tier pairing with preference learning
+- Session voting, RSVP, and lock awareness
 - Dual-channel real-time messaging with deduplication
+- @username removed from friend lists (display names only)
+- Elite-only 3-tier pairing with preference learning
 - Unified notification dispatch with preferences and quiet hours
+- Fire-and-forget push notifications for instant UI response (friend accept 4.6s down to instant)
+
+### Onboarding and Identity
+- Onboarding: name collection, friends, pairing, collaborations, consent
+- Country picker unlocked in onboarding and Account Settings with auto-derived currency/units
+- Centralized name display via `getDisplayName()` (53 inline fallback chains replaced)
+- `sync_display_name` trigger keeps profile display names in sync
+- Delete account modal redesigned
+- Keyboard fixes across MessageInterface, BoardDiscussionTab, and onboarding screens
+
+### Calendar and Scheduling
+- Calendar sync with device event ID tracking for proper reschedule and unschedule
+- Partial unique index prevents duplicate pending entries
+- All calendar methods request permissions properly
+
+### Subscriptions
+- Subscription tiers (Free/Pro/Elite) with server-side enforcement
+- Unified tier price ranges with updated rates
+
+### Coach Tour
+- Interactive 11-stop guided walkthrough with spotlight overlay
+- Auto-triggers after onboarding completion, replayable from Profile settings
+- SVG mask cutout overlay with animated tooltip cards and step progression
+- Mock data injection via React Query cache seeding (zero network calls during tour)
+- Per-stop progress tracking in `coach_mark_progress` table
+- Covers: deck, preferences, sessions, invites, collab prefs, pairings, map, chats, saved, calendar, profile
+- App kill recovery via persisted Zustand state
+
+### Performance
+- keep-warm edge function eliminates cold starts
+- Skeleton cards during loading
+- Prefetch for anticipated navigation
+- Persisted Zustand state for instant cold-start rendering
 
 ---
 
@@ -268,7 +316,7 @@ Mingla/
 
 ## Edge Functions
 
-~70 Deno edge functions deployed on Supabase. New functions marked with **(new)**.
+~71 Deno edge functions deployed on Supabase.
 
 ### Discovery and Serving
 - `discover-cards` -- Pool-only card serving with 5-factor scoring
@@ -281,9 +329,9 @@ Mingla/
 - `get-companion-stops` -- Companion stop suggestions
 - `get-picnic-grocery` -- Grocery stop for picnic experiences
 
-### Map **(new)**
-- `update-map-location` **(new)** -- User map location and activity status updates
-- `get-nearby-people` **(new)** -- Nearby people discovery with taste matching
+### Map
+- `update-map-location` -- User map location and activity status updates
+- `get-nearby-people` -- Nearby people discovery with taste matching
 
 ### Generation and AI
 - `generate-single-cards` -- Batch single card generation from place pool
@@ -334,7 +382,7 @@ Mingla/
 - `notify-referral-credited` -- Referral credit notifications
 
 ### Utilities
-- `keep-warm` **(new)** -- Periodic invocation to eliminate cold starts
+- `keep-warm` -- Periodic invocation to eliminate cold starts
 - `warm-cache` -- Cache warming for frequently accessed data
 - `events` -- Event processing
 - `ticketmaster-events` -- Ticketmaster API integration
@@ -395,8 +443,12 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
-- **Discover Map (4 phases)** -- Interactive map with place pins on CartoDB Positron tiles, people layer with privacy controls, taste matching for nearby strangers (Jaccard similarity), curated multi-stop route visualization, staggered spring pin entrance animations, activity feed overlay, circle-based heatmap, collapsible layer toggles, Go Dark mode (24h invisibility).
-- **Onboarding overhaul** -- Name collection during onboarding with sync_display_name trigger, shell footer pattern for consistent bottom navigation, keyboard avoidance fixes, country picker unlocked in onboarding and Account Settings with auto-derived currency/units.
-- **Card pipeline reliability** -- 5 passes of hardening across card generation and serving. Fabricated data eliminated (no fake ratings, prices, or travel times). AI quality gate (GPT-5.4-mini with web search) replaces all type-based exclusion logic. Truthful error states throughout.
-- **Calendar sync** -- Device event ID tracking for proper reschedule and unschedule. Partial unique index prevents duplicate pending entries. Shared CardFilterBar component for SavedTab and CalendarTab.
-- **Performance** -- keep-warm edge function eliminates cold starts, skeleton cards during loading, prefetch for anticipated navigation, fire-and-forget push notifications for instant UI response.
+- **Interactive coach tour** -- 11-stop guided walkthrough with spotlight overlay, mock data injection, per-stop tracking, auto-trigger after onboarding, replayable from Profile. SVG mask cutout, Reanimated animations, zero Supabase calls during tour.
+- **Discover Map polish** -- Edge-to-edge map with CartoDB Positron tiles, floating rounded pill bar (solid white, 24px border radius), useMapCards fetches 200 single + all 6 curated types with open-now filtering, cards without photos/titles hidden, category icons matched to preferences sheet via direct slug-to-icon map, user avatar marker with profile photo + "This is you" callout, curated pins at 46x46 with map-outline icon, bottom sheet with 3 snap points (15% peek, 45% preview, 90% expanded, no dismiss), For You pill centers on user location.
+- **Map controls** -- ActivityStatusPicker as collapsible bottom-left pill (visibility settings, people toggle, status presets, custom status, no auto-expiry). LayerToggles as collapsible orange FAB at bottom-right (Places, Go Dark, Activity Feed, Heatmap). Both menus: matching style with orange FABs, labeled rows, checkmarks. PlaceHeatmap uses Marker+View circles (no native dependency).
+- **Map visibility** -- Bidirectional visibility for strangers, friends-of-friends option added, default visibility changed from 'off' to 'friends', location seeded on first map load, Android fallback screen when native map module unavailable.
+- **UI refinements** -- Inactive paired pills darker grey (#e5e7eb), pill bar borderRadius 24 solid white, @username removed from friend lists, delete account modal redesigned, keyboard fixes across MessageInterface/BoardDiscussionTab/onboarding.
+- **Onboarding and identity** -- Name collection during onboarding with sync_display_name trigger, country picker unlocked in onboarding and Account Settings with auto-derived currency/units, centralized name display via `getDisplayName()` replacing 53 inline fallback chains.
+- **Performance and reliability** -- Fire-and-forget push notifications (friend accept 4.6s down to instant), all calendar methods request permissions properly, keep-warm edge function eliminates cold starts, skeleton cards during loading, prefetch for anticipated navigation.
+- **Card pipeline** -- 5 passes of hardening across card generation and serving. Fabricated data eliminated. AI quality gate (GPT-5.4-mini with web search) replaces all type-based exclusion logic. Unified tier price ranges with updated rates. Truthful error states throughout.
+- **Calendar sync** -- Device event ID tracking for proper reschedule and unschedule. Partial unique index prevents duplicate pending entries. Shared CardFilterBar for SavedTab and CalendarTab.

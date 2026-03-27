@@ -51,6 +51,11 @@ export function useIncomingPairRequests(userId: string | undefined) {
 
 // ── Mutations ───────────────────────────────────────────────────────────────
 
+/** Returns true if tour mode is active — mutations should no-op */
+function isTourMode(): boolean {
+  return useAppStore.getState().tourMode;
+}
+
 export function useSendPairRequest() {
   const queryClient = useQueryClient();
   return useMutation<
@@ -58,7 +63,7 @@ export function useSendPairRequest() {
     Error,
     { friendUserId?: string; phoneE164?: string }
   >({
-    mutationFn: sendPairRequest,
+    mutationFn: async (args) => { if (isTourMode()) return {} as SendPairRequestResponse; return sendPairRequest(args); },
     onSuccess: () => {
       logAppsFlyerEvent('pair_request_sent', {});
       // Invalidate pills — the new request will appear there
@@ -73,7 +78,7 @@ export function useSendPairRequest() {
 export function useCancelPairRequest() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
-    mutationFn: cancelPairRequest,
+    mutationFn: async (id) => { if (isTourMode()) return; return cancelPairRequest(id); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
@@ -86,7 +91,7 @@ export function useCancelPairRequest() {
 export function useCancelPairInvite() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
-    mutationFn: cancelPairInvite,
+    mutationFn: async (id) => { if (isTourMode()) return; return cancelPairInvite(id); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
@@ -99,7 +104,7 @@ export function useCancelPairInvite() {
 export function useUnpair() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
-    mutationFn: unpair,
+    mutationFn: async (id) => { if (isTourMode()) return; return unpair(id); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
       queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
@@ -119,7 +124,7 @@ export function useAcceptPairRequest() {
     string
   >({
     mutationKey: ["pairings", "accept"],
-    mutationFn: acceptPairRequest,
+    mutationFn: async (id) => { if (isTourMode()) return { pairingId: '', pairedWithUserId: '' }; return acceptPairRequest(id); },
     onMutate: async (requestId) => {
       // Cancel in-flight fetches so they don't overwrite our optimistic update
       await queryClient.cancelQueries({ queryKey: pairingKeys.prefix });
@@ -181,7 +186,7 @@ export function useDeclinePairRequest() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationKey: ["pairings", "decline"],
-    mutationFn: declinePairRequest,
+    mutationFn: async (id) => { if (isTourMode()) return; return declinePairRequest(id); },
     onMutate: async (requestId) => {
       await queryClient.cancelQueries({ queryKey: pairingKeys.prefix });
 

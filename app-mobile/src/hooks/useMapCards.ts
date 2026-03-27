@@ -11,9 +11,8 @@ const ALL_CATEGORIES = [
 ];
 
 // All curated experience types
-const CURATED_TYPES = [
-  'adventurous', 'first-date', 'romantic', 'group-fun', 'picnic-dates', 'take-a-stroll',
-] as const;
+// Top 3 most relevant curated types — reduces API calls from 6 to 3
+const CURATED_TYPES = ['adventurous', 'romantic', 'first-date'] as const;
 
 function transformCard(card: any): Recommendation {
   // Curated cards: extract image + lat/lng from first stop
@@ -99,12 +98,42 @@ export function useMapCards(
 ) {
   const user = useAppStore(s => s.user);
 
-  return useQuery<Recommendation[]>({
-    queryKey: ['map-cards', location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)],
+  const locKey = location ? `${location.latitude.toFixed(2)}.${location.longitude.toFixed(2)}` : '';
+
+  // Wave 1: Single cards (fast — pool query, ~500ms)
+  const singlesQuery = useQuery<Recommendation[]>({
+    queryKey: ['map-cards-singles', locKey],
     queryFn: async () => {
       if (!location) return [];
+      const { data, error } = await supabase.functions.invoke('discover-cards', {
+        body: {
+          categories: ALL_CATEGORIES,
+          location: { lat: location.latitude, lng: location.longitude },
+          limit: 200,
+          batchSeed: 0,
+          travelMode: 'driving',
+          travelConstraintType: 'time',
+          travelConstraintValue: 30,
+        },
+      });
+      if (error) {
+        console.warn('[useMapCards] Singles fetch error:', error);
+        throw error;
+      }
+      const singles = (data?.cards || []).map(transformCard);
+      console.log(`[useMapCards] Singles: ${singles.length} cards loaded`);
+      return singles;
+    },
+    enabled: !!user?.id && !!location,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+  });
 
-      // Fetch single cards + ALL curated types in parallel
+  // Wave 2: Curated routes (slower — AI generation, ~2-5s)
+  const curatedQuery = useQuery<Recommendation[]>({
+    queryKey: ['map-cards-curated', locKey],
+    queryFn: async () => {
+      if (!location) return [];
       const curatedBody = (type: string) => ({
         experienceType: type,
         location: { lat: location.latitude, lng: location.longitude },
@@ -118,49 +147,50 @@ export function useMapCards(
         batchSeed: 0,
       });
 
-      const [singleResult, ...curatedResults] = await Promise.allSettled([
-        supabase.functions.invoke('discover-cards', {
-          body: {
-            categories: ALL_CATEGORIES,
-            location: { lat: location.latitude, lng: location.longitude },
-            limit: 200,
-            batchSeed: 0,
-            travelMode: 'driving',
-            travelConstraintType: 'time',
-            travelConstraintValue: 30,
-          },
-        }),
-        ...CURATED_TYPES.map(type =>
+      console.log(`[useMapCards] Fetching curated types: ${CURATED_TYPES.join(', ')}`);
+      const results = await Promise.allSettled(
+        CURATED_TYPES.map(type =>
           supabase.functions.invoke('generate-curated-experiences', { body: curatedBody(type) })
-        ),
-      ]);
+        )
+      );
 
-      const allCards: Recommendation[] = [];
-
-      // Process single cards
-      if (singleResult.status === 'fulfilled' && singleResult.value.data?.cards) {
-        for (const card of singleResult.value.data.cards) {
-          allCards.push(transformCard(card));
-        }
-      }
-
-      // Process curated cards — response may be { cards: [...] } or direct array
-      for (const result of curatedResults) {
+      const cards: Recommendation[] = [];
+      CURATED_TYPES.forEach((type, i) => {
+        const result = results[i];
         if (result.status === 'fulfilled') {
-          const responseData = result.value.data;
+          const { data: responseData, error: invokeError } = result.value;
+          if (invokeError) {
+            console.warn(`[useMapCards] Curated "${type}" invoke error:`, invokeError);
+            return;
+          }
           const curatedCards = responseData?.cards || (Array.isArray(responseData) ? responseData : []);
+          console.log(`[useMapCards] Curated "${type}": ${curatedCards.length} cards returned`);
           for (const card of curatedCards) {
             if (card.stops && card.stops.length > 0) {
-              allCards.push(transformCard(card));
+              cards.push(transformCard(card));
             }
           }
+        } else {
+          console.warn(`[useMapCards] Curated "${type}" FAILED:`, (result as any).reason?.message || result);
         }
-      }
-
-      return allCards;
+      });
+      console.log(`[useMapCards] Total curated cards with stops: ${cards.length}`);
+      return cards;
     },
     enabled: !!user?.id && !!location,
-    staleTime: 10 * 60_000,
-    gcTime: 30 * 60_000,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
   });
+
+  // Merge both waves — singles appear first, curated adds later
+  const singles = singlesQuery.data || [];
+  const curated = curatedQuery.data || [];
+  const data = singles.length > 0 || curated.length > 0
+    ? [...singles, ...curated]
+    : [];
+
+  return {
+    data,
+    isLoading: singlesQuery.isLoading, // only show loading for fast wave
+  };
 }

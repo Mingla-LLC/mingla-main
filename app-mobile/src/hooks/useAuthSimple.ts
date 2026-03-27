@@ -90,6 +90,22 @@ export const useAuthSimple = () => {
           // Fire-and-forget — failure is harmless, success saves 2-5s.
           supabase.functions.invoke('keep-warm').catch(() => {});
 
+          // Seed map location so friends can see this user on the map.
+          // Fire-and-forget — uses last known GPS or skips if unavailable.
+          import('expo-location').then(async (Location) => {
+            try {
+              const { status } = await Location.getForegroundPermissionsAsync();
+              if (status === 'granted') {
+                const loc = await Location.getLastKnownPositionAsync();
+                if (loc) {
+                  supabase.functions.invoke('update-map-location', {
+                    body: { lat: loc.coords.latitude, lng: loc.coords.longitude },
+                  }).catch(() => {});
+                }
+              }
+            } catch {}
+          }).catch(() => {});
+
           // Load profile (non-blocking — user sees home while this completes)
           try {
             const { data: profile, error: profileError } = await supabase

@@ -14,6 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
+import { TourTarget } from "./tour/TourTarget";
 import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
@@ -265,6 +266,9 @@ export default function HomePage({
                 { opacity: sessionsOpacity },
               ]}
             >
+              <TourTarget id="tour-target-sessions">
+              <TourTarget id="tour-target-invite">
+              <TourTarget id="tour-target-collab-prefs">
               <CollaborationSessions
                 sessions={collaborationSessions}
                 currentMode={currentMode}
@@ -282,9 +286,13 @@ export default function HomePage({
                 openSessionId={openSessionId}
                 onOpenSessionHandled={onOpenSessionHandled}
               />
+              </TourTarget>
+              </TourTarget>
+              </TourTarget>
             </Animated.View>
           )}
 
+          <TourTarget id="tour-target-deck">
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
@@ -302,6 +310,7 @@ export default function HomePage({
             refreshKey={refreshKey}
             savedCards={savedCards}
           />
+          </TourTarget>
         </View>
 
         {/* V2 Notifications Modal — server-synced */}

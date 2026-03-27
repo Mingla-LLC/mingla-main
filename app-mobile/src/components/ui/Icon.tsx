@@ -224,6 +224,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'clock':                      Clock,
   'close':                      X,
   'close-circle':               CircleX,
+  'close-circle-outline':       CircleX,
   'close-outline':              X,
   'cloud-offline-outline':      CloudOff,
   'cloud-upload-outline':       CloudUpload,
