@@ -12,8 +12,11 @@ import { Platform } from 'react-native'
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-// RevenueCat API key (test key — replace with platform-specific prod keys before launch)
-const RC_API_KEY = 'test_VOcmlrBhMcrSUqAlhRqDzUfkRYL'
+// RevenueCat API keys (production, platform-specific)
+const RC_API_KEY = Platform.select({
+  ios: 'appl_yzYuVHaYIiCbmxvMyhZIRkrKnpU',
+  android: 'goog_oUptdmxGGaJtLttloQbnxLqYXuz',
+}) ?? ''
 
 // Entitlement identifiers — must match exactly what's in the RC dashboard
 export const RC_PRO_ENTITLEMENT_ID = 'Mingla Pro'
