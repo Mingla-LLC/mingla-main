@@ -164,19 +164,39 @@ eas build --platform ios --profile development
 eas build --platform all --profile development
 ```
 
-### Production Builds
+### Production Builds (TestFlight / App Store)
 
-Production builds are optimized and ready for store submission.
+Build numbers are managed remotely by EAS (`appVersionSource: "remote"` in eas.json). They auto-increment on each build — no manual changes needed.
 
 ```bash
-# Android
+cd app-mobile
+
+# Build iOS and auto-submit to TestFlight when done
+eas build --platform ios --profile production --auto-submit
+
+# Build Android for Play Store
 eas build --platform android --profile production
 
-# iOS
-eas build --platform ios --profile production
-
-# Both platforms
+# Build both platforms
 eas build --platform all --profile production
+```
+
+To manually set or check the build number:
+
+```bash
+# View current remote build number
+eas build:version:set --platform ios
+
+# Example: set build number to 3
+# Enter the version (1.0.0) then the build number (3)
+```
+
+After the build completes and auto-submits, it appears in TestFlight within 10-30 minutes. Apple sends an email when processing is done.
+
+To submit a completed build manually (without --auto-submit):
+
+```bash
+eas submit --platform ios --latest
 ```
 
 ### Build Profiles
