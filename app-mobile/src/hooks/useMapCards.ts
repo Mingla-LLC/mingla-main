@@ -96,6 +96,7 @@ export function useMapCards(
   location: { latitude: number; longitude: number } | null,
 ) {
   const user = useAppStore(s => s.user);
+  const tourMode = useAppStore(s => s.tourMode);
 
   const locKey = location ? `${location.latitude.toFixed(2)}.${location.longitude.toFixed(2)}` : '';
 
@@ -123,7 +124,7 @@ export function useMapCards(
       console.log(`[useMapCards] Singles: ${singles.length} cards loaded`);
       return singles;
     },
-    enabled: !!user?.id && !!location,
+    enabled: !!user?.id && !!location && !tourMode,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,
   });
@@ -171,7 +172,7 @@ export function useMapCards(
       console.log(`[useMapCards] Total curated cards with stops: ${cards.length}`);
       return cards;
     },
-    enabled: !!user?.id && !!location,
+    enabled: !!user?.id && !!location && !tourMode,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,
   });

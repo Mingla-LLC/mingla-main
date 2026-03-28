@@ -11,6 +11,7 @@ import {
   Clipboard,
   Modal,
   TouchableWithoutFeedback,
+  Keyboard,
   Platform,
   ScrollView,
   useWindowDimensions,
@@ -85,6 +86,13 @@ const getConversationsCacheKey = (userId: string) =>
 
 const getMessagesCacheKey = (conversationId: string) =>
   `mingla:connections:messages:${CONNECTIONS_CACHE_VERSION}:${conversationId}`;
+
+const normalizeSearchText = (value: string | null | undefined): string =>
+  (value || "")
+    .toLowerCase()
+    .replace(/^@/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default function ConnectionsPageRefactored({
   onSendCollabInvite,
@@ -247,19 +255,40 @@ export default function ConnectionsPageRefactored({
 
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
-    if (!searchQuery.trim()) return sortedConversations;
-    const q = searchQuery.toLowerCase();
+    const q = normalizeSearchText(searchQuery);
+    if (!q) return sortedConversations;
+
     return sortedConversations.filter((conv) => {
-      // Filter by participant name
-      const nameMatch = conv.participants.some((p) => {
-        const name = getDisplayName(p, "").toLowerCase();
-        return name.includes(q);
+      const otherParticipants = conv.participants.filter((p) => p.id !== user?.id);
+      const searchableParticipants =
+        otherParticipants.length > 0 ? otherParticipants : conv.participants;
+
+      const nameMatch = searchableParticipants.some((p) => {
+        const candidateNames = [
+          getDisplayName(p, ""),
+          p.display_name || "",
+          p.username || "",
+          p.username ? `@${p.username}` : "",
+          [p.first_name, p.last_name].filter(Boolean).join(" "),
+        ];
+
+        return candidateNames.some((candidate) =>
+          normalizeSearchText(candidate).includes(q)
+        );
       });
-      // Filter by last message content
-      const contentMatch = (conv.last_message?.content || "").toLowerCase().includes(q);
+
+      const contentCandidates = [
+        conv.last_message?.content || "",
+        conv.last_message?.message_type === "image" ? "photo image" : "",
+        conv.last_message?.message_type === "file" ? "file attachment document" : "",
+      ];
+      const contentMatch = contentCandidates.some((candidate) =>
+        normalizeSearchText(candidate).includes(q)
+      );
+
       return nameMatch || contentMatch;
     });
-  }, [sortedConversations, searchQuery]);
+  }, [sortedConversations, searchQuery, user?.id]);
 
   // ── Shared conversation fetch + transform ─────────────────
   const fetchConversations = useCallback(async (userId: string) => {
@@ -1776,6 +1805,11 @@ export default function ConnectionsPageRefactored({
               style={styles.searchInput}
               placeholderTextColor="#9ca3af"
               autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              autoComplete="off"
+              returnKeyType="search"
+              clearButtonMode="while-editing"
             />
           </View>
 
@@ -1785,6 +1819,7 @@ export default function ConnectionsPageRefactored({
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
               <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
               <Text style={styles.emptyTitle}>Your chats live here</Text>
@@ -1797,16 +1832,19 @@ export default function ConnectionsPageRefactored({
                 <Text style={styles.emptyCtaText}>Start a chat</Text>
               </TouchableOpacity>
             </View>
+            </TouchableWithoutFeedback>
           ) : filteredConversations.length === 0 && searchQuery.trim() ? (
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
-              <Icon name="search" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No results</Text>
+              <Text style={styles.emptyTitle}>No results for "{searchQuery}"</Text>
             </View>
+            </TouchableWithoutFeedback>
           ) : (
             <FlatList
               data={filteredConversations}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               renderItem={({ item, index }) => {
                 const isMuted = item.participants?.some((p) =>
                   mutedUserIds.includes(p.id)
@@ -1839,7 +1877,6 @@ export default function ConnectionsPageRefactored({
       </View>
       </TourTarget>
 
-      {/* Action Panel Bottom Sheet */}
       {/* Action Panel Bottom Sheet */}
       <Modal
         visible={activePanel !== null}
@@ -2011,20 +2048,21 @@ backdropFill: {
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 15,
+    paddingVertical: 12,
+    minHeight: 62,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
   },
   title: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#6B7280",
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 10,
   },
   headerDivider: {
     width: 1,
@@ -2076,20 +2114,21 @@ backdropFill: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 4,
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 10,
     backgroundColor: "#f3f4f6",
-    borderRadius: 20,
+    borderRadius: 12,
     paddingHorizontal: 14,
+    height: 44,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 9,
     fontSize: 15,
-    color: "#111827",
+    color: "#1f2937",
+    paddingVertical: 0,
   },
   // ── Chat list ─────────────────────────────
   chatListContent: {

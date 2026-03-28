@@ -15,6 +15,7 @@ export interface MapSettings {
 
 export function useMapSettings() {
   const user = useAppStore(s => s.user);
+  const tourMode = useAppStore(s => s.tourMode);
   const queryClient = useQueryClient();
 
   const query = useQuery<MapSettings>({
@@ -37,7 +38,7 @@ export function useMapSettings() {
         activity_status_expires_at: null,
       };
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !tourMode,
     staleTime: 5 * 60_000,
   });
 
@@ -51,6 +52,9 @@ export function useMapSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['map-settings', user?.id] });
+    },
+    onError: (err: Error) => {
+      console.warn('[useMapSettings] Update failed:', err.message);
     },
   });
 

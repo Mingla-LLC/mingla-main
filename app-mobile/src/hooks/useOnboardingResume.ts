@@ -133,8 +133,17 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
           base.userPreferredLanguage = profile.preferred_language || getDefaultLanguageCode()
         }
 
-        // 5. Restore preferences from Supabase
-        const prefs = await PreferencesService.getUserPreferences(userId)
+        // 5. Restore preferences from Supabase (with timeout to prevent infinite freeze)
+        const PREFS_TIMEOUT_MS = 8_000
+        const prefs = await Promise.race([
+          PreferencesService.getUserPreferences(userId),
+          new Promise<null>((resolve) => {
+            setTimeout(() => {
+              logger.warn('useOnboardingResume: getUserPreferences timed out, proceeding with defaults')
+              resolve(null)
+            }, PREFS_TIMEOUT_MS)
+          }),
+        ])
         if (prefs) {
           const restoredUseGps = prefs.use_gps_location === true
 

@@ -93,10 +93,14 @@ export function DiscoverMap({
   useMapLocation(!isDark && !paused && settings?.visibility_level !== 'off');
 
 
-  // Warm edge functions before map cards query fires
+  // Warm edge functions before map cards query fires (skip during tour)
+  const tourMode = useAppStore(s => s.tourMode);
   useEffect(() => {
-    supabase.functions.invoke('keep-warm').catch(() => {});
-  }, []);
+    if (tourMode) return;
+    supabase.functions.invoke('keep-warm').catch((err) => {
+      console.warn('[DiscoverMap] keep-warm failed:', err?.message || err);
+    });
+  }, [tourMode]);
 
   // Fetch ALL cards from pool for the map (200 limit, not the 20 from discover)
   const { data: mapCards, isLoading: mapCardsLoading } = useMapCards(userLocation);
@@ -173,14 +177,17 @@ export function DiscoverMap({
   const profile = useAppStore(s => s.profile);
   const queryClient = useQueryClient();
 
-  // Seed location on first map load — always fires to ensure user_map_settings row exists
+  // Seed location on first map load — skip during tour
   useEffect(() => {
+    if (tourMode) return;
     if (userLocation && user?.id) {
       supabase.functions.invoke('update-map-location', {
         body: { lat: userLocation.latitude, lng: userLocation.longitude },
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn('[DiscoverMap] update-map-location failed:', err?.message || err);
+      });
     }
-  }, [user?.id, !!userLocation]);
+  }, [user?.id, !!userLocation, tourMode]);
 
   const handleAddFriendFromMap = useCallback(async (userId: string) => {
     try {
@@ -299,11 +306,11 @@ export function DiscoverMap({
           tileSize={256}
           shouldReplaceMapContent
         />
-        {/* User avatar marker — uses initials only (remote images + tracksViewChanges=false = glitchy) */}
+        {/* User avatar marker — initials only, so tracksViewChanges is safe (no remote image perf hit) */}
         {userLocation && (
           <Marker
             coordinate={userLocation}
-            tracksViewChanges={false}
+            tracksViewChanges={true}
             anchor={{ x: 0.5, y: 0.5 }}
             zIndex={999}
             title="This is you"

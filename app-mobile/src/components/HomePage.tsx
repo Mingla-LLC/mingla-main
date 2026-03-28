@@ -266,7 +266,7 @@ export default function HomePage({
                 { opacity: sessionsOpacity },
               ]}
             >
-              <TourTarget id="tour-target-sessions">
+              <TourTarget id="tour-target-sessions" inset={{ left: 8, right: 8, top: 4, bottom: 4 }}>
               <CollaborationSessions
                 sessions={collaborationSessions}
                 currentMode={currentMode}
@@ -288,7 +288,7 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <TourTarget id="tour-target-deck">
+          <TourTarget id="tour-target-deck" style={styles.tourTargetDeck}>
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     position: "relative",
     zIndex: 100,
-    paddingVertical: vs(8),
+    paddingVertical: vs(2),
   },
   headerLeft: {
     flexDirection: "row",
@@ -410,15 +410,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoContainer: {
-    height: vs(46),
-    width: s(170),
+    height: vs(54),
+    width: s(140),
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
   logo: {
-    height: vs(92),
-    width: s(210),
+    height: ms(106),
+    width: ms(106),
     resizeMode: "contain",
   },
   headerRight: {
@@ -464,10 +464,14 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
     flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: "flex-start",
+    alignItems: "stretch",
     position: "relative",
     overflow: "hidden",
+  },
+  tourTargetDeck: {
+    flex: 1,
+    width: '100%',
   },
   sessionsAnimatedWrapper: {
     width: '100%',

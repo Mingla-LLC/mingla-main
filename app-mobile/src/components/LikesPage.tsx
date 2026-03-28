@@ -136,7 +136,7 @@ export default function LikesPage({
       {/* Content */}
       <View style={styles.content}>
         {activeTab === "saved" && (
-          <TourTarget id="tour-target-saved">
+          <TourTarget id="tour-target-saved" style={styles.tourTargetFlex}>
           <SavedTab
             savedCards={savedCards}
             calendarEntries={calendarEntries}
@@ -153,7 +153,7 @@ export default function LikesPage({
         )}
 
         {activeTab === "calendar" && (
-          <TourTarget id="tour-target-calendar">
+          <TourTarget id="tour-target-calendar" style={styles.tourTargetFlex}>
           <CalendarTab
             calendarEntries={calendarEntries}
             isLoading={isLoadingCalendarEntries}
@@ -214,6 +214,9 @@ const styles = StyleSheet.create({
   },
   // Content styles
   content: {
+    flex: 1,
+  },
+  tourTargetFlex: {
     flex: 1,
   },
 });

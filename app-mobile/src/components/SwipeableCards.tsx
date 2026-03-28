@@ -2073,8 +2073,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     alignItems: "center",
     paddingTop: 2,
-    paddingBottom: 0,
-    marginBottom: 24,
+    paddingBottom: 8,
   },
   cardContainer: {
     width: SCREEN_WIDTH - 32,

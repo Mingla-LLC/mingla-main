@@ -1968,8 +1968,8 @@ export default function DiscoverScreen({
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
   const recommendationsLoading = discoverLoading;
-  // Map is showing when For You tab is active and no person is selected
-  const isMapShowing = activeTab === 'for-you' && !(selectedPill?.pillState === 'active' && user?.id);
+  // Map is showing when For You tab is active and no person is selected (or in tour mode — map-first)
+  const isMapShowing = activeTab === 'for-you' && (tourMode || !(selectedPill?.pillState === 'active' && user?.id));
   const recommendationsError = discoverError;
   const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
@@ -2694,7 +2694,7 @@ export default function DiscoverScreen({
       const dateStr = `${String(holiday.month).padStart(2, "0")}-${String(holiday.day).padStart(2, "0")}`;
 
       // Find the pairingId and pairedUserId for the selected pill
-      const pill = pairingPills?.find((p) => `pairing-${p.pairingId}` === selectedPillId);
+      const pill = pairingPills?.find((p) => p.id === selectedPillId);
       const pairingId = pill?.pairingId;
       const pairedUserId = pill?.pairedUserId;
 
@@ -3414,8 +3414,8 @@ export default function DiscoverScreen({
                 })}
               </ScrollView>
 
-              {/* Person-specific view when a person is selected */}
-              {selectedPill?.pillState === 'active' && user?.id && (
+              {/* Person-specific view when a person is selected (skipped in tour — map-first design) */}
+              {!tourMode && selectedPill?.pillState === 'active' && user?.id && (
                 <PersonHolidayView
                   pairedUserId={selectedPill.pairedUserId!}
                   pairingId={selectedPill.pairingId!}
@@ -3437,8 +3437,8 @@ export default function DiscoverScreen({
               )}
 
               {/* Map — always mounted, hidden when PersonHolidayView active */}
-              <TourTarget id="tour-target-map">
-              <View style={isMapShowing ? { flex: 1 } : { width: 1, height: 1, opacity: 0, overflow: 'hidden' as const }}>
+              <TourTarget id="tour-target-map" style={isMapShowing ? styles.mapFullscreen : styles.mapHidden} inset={{ top: 60, bottom: 80, left: 16, right: 16 }}>
+              <View style={{ flex: 1 }}>
                 <DiscoverMap
                   cards={recommendations}
                   savedCardIds={mapSavedCardIds}
@@ -3573,7 +3573,7 @@ export default function DiscoverScreen({
 
               {/* Paired People Row — shown during coach tour */}
               {tourMode && (
-                <TourTarget id="tour-target-pairings">
+                <TourTarget id="tour-target-pairings" inset={{ left: 8, right: 8, top: 4, bottom: 4 }}>
                   <PairedPeopleRow
                     people={pairingPills
                       .filter((p) => p.pillState === "active" && p.pairedUserId)
@@ -4167,6 +4167,16 @@ const styles = StyleSheet.create({
   tabHeaderScrollView: {
     marginBottom: 16,
     marginHorizontal: -16,
+  },
+  mapFullscreen: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  mapHidden: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden' as const,
   },
   floatingPillBar: {
     position: 'absolute',
