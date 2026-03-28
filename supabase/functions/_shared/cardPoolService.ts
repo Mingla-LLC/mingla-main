@@ -723,6 +723,7 @@ function poolCardToApiCard(
       tip: card.tip || null,
       scoringFactors: card.scoring_factors || null,
       teaserText: card.teaser_text || null,
+      utcOffsetMinutes: card.utc_offset_minutes ?? 0,
       _poolCardId: card.id,
     };
   }
@@ -769,6 +770,7 @@ function poolCardToApiCard(
     tip: card.tip || null,
     scoringFactors: card.scoring_factors || null,
     matchFactors: {},
+    utcOffsetMinutes: card.utc_offset_minutes ?? 0,
     _poolCardId: card.id,
   };
 }

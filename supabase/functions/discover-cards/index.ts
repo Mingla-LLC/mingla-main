@@ -90,16 +90,25 @@ function filterByDateTime(
   timeSlot: string | null,
   exactTime?: string | null
 ): any[] {
-  // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22)
-  // Replaced stale isOpenNow boolean (set once at seeding time) with real-time
-  // computation using parseHoursText() + current day/time.
-  // Cards with no opening hours data pass through (included by default).
+  // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22, timezone-aware 2026-03-28)
+  // Uses place-local time via utcOffsetMinutes for correct timezone handling.
+  // Always-open types (parks, beaches, etc.) bypass hours check.
+  // Cards with no hours AND not always-open are EXCLUDED.
   if (dateOption === 'now' || (!datetimePref && !timeSlot && !exactTime)) {
-    const now = new Date();
-    const targetDay = now.getDay();
-    const targetHourFrac = now.getHours() + now.getMinutes() / 60;
+    const utcNow = new Date();
 
     return places.filter(place => {
+      // Compute place-local day and hour using its UTC offset
+      const offsetMin = place.utcOffsetMinutes ?? 0;
+      const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
+      const localDate = new Date(localMs);
+      const targetDay = localDate.getUTCDay();
+      const targetHourFrac = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
+
+      // Always-open place types: no hours check needed
+      const pType = place.placeType || '';
+      if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
       // Path A: Google API format — regularOpeningHours.periods
       const periods = place.regularOpeningHours?.periods;
       if (periods && periods.length > 0) {
@@ -118,42 +127,48 @@ function filterByDateTime(
       if (oh && typeof oh === 'object') {
         const dayName = DAY_NAMES[targetDay];
         const dayText = oh[dayName];
-        if (!dayText) return true; // No data for this day — include
+        if (!dayText) return true; // No data for this specific day — include
         const parsed = parseHoursText(dayText);
         if (!parsed) return false; // "Closed" or unparseable
         return targetHourFrac >= parsed.open && targetHourFrac < parsed.close;
       }
 
-      // No opening hours data at all — include (don't penalize missing data)
-      return true;
+      // No opening hours data AND not an always-open type → EXCLUDE
+      return false;
     });
   }
 
-  // Determine target day and hour
-  const targetDate = datetimePref ? new Date(datetimePref) : new Date();
-  const targetDay = targetDate.getDay();
-
-  let targetHourStart: number;
-  // Fix 4: exact_time takes priority (e.g., "4:00 PM" → hour 16)
-  if (exactTime) {
-    const etMatch = exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-    if (etMatch) {
-      let h = parseInt(etMatch[1]);
-      const ampm = etMatch[3].toUpperCase();
-      if (ampm === 'PM' && h !== 12) h += 12;
-      if (ampm === 'AM' && h === 12) h = 0;
-      targetHourStart = h;
-    } else {
-      targetHourStart = targetDate.getHours();
-    }
-  } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
-    targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
-  } else {
-    targetHourStart = targetDate.getHours();
-  }
-
   return places.filter(place => {
-    // Path A: Google API format — regularOpeningHours.periods
+    // Compute place-local target time
+    const offsetMin = place.utcOffsetMinutes ?? 0;
+    const baseDate = datetimePref ? new Date(datetimePref) : new Date();
+    const localMs = baseDate.getTime() + offsetMin * 60 * 1000;
+    const localDate = new Date(localMs);
+    const targetDay = localDate.getUTCDay();
+
+    let targetHourStart: number;
+    if (exactTime) {
+      const etMatch = exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+      if (etMatch) {
+        let h = parseInt(etMatch[1]);
+        const ampm = etMatch[3].toUpperCase();
+        if (ampm === 'PM' && h !== 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        targetHourStart = h;
+      } else {
+        targetHourStart = localDate.getUTCHours();
+      }
+    } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+      targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
+    } else {
+      targetHourStart = localDate.getUTCHours();
+    }
+
+    // Always-open place types
+    const pType = place.placeType || '';
+    if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
+    // Path A: periods
     const periods = place.regularOpeningHours?.periods;
     if (periods && periods.length > 0) {
       return periods.some((period: any) => {
@@ -161,25 +176,24 @@ function filterByDateTime(
         const openHour = period.open?.hour ?? 0;
         let closeHour = period.close?.hour ?? 24;
         if (closeHour === 0) closeHour = 24;
-        // Overnight wraparound: bar open 17-02 → effectiveClose = 26
         if (closeHour <= openHour) closeHour += 24;
         return targetHourStart >= openHour && targetHourStart < closeHour;
       });
     }
 
-    // Path B: Pool format — openingHours as Record<string, string> (e.g., { "monday": "9 AM - 5 PM" })
+    // Path B: Record<string, string>
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
       const dayName = DAY_NAMES[targetDay];
       const dayText = oh[dayName];
-      if (!dayText) return true; // No data for this day — include
+      if (!dayText) return true;
       const parsed = parseHoursText(dayText);
-      if (!parsed) return false; // "Closed" or unparseable
+      if (!parsed) return false;
       return targetHourStart >= parsed.open && targetHourStart < parsed.close;
     }
 
-    // No opening hours data at all — include (don't penalize missing data)
-    return true;
+    // No hours and not always-open → EXCLUDE
+    return false;
   });
 }
 
@@ -229,20 +243,24 @@ function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): boolean {
 
 function filterCuratedByStopHours(
   cards: any[],
-  startHour: number,
-  dayOfWeek: number,
+  utcNow: Date,
 ): any[] {
   return cards.filter(card => {
     if (card.cardType !== 'curated' || !card.stops?.length) return true;
 
-    let currentHour = startHour;
+    // Compute place-local start time using card's timezone offset
+    const offsetMin = card.utcOffsetMinutes ?? 0;
+    const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
+    const localDate = new Date(localMs);
+    let currentHour = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
+    const localDay = localDate.getUTCDay();
+
     for (let i = 0; i < card.stops.length; i++) {
       const stop = card.stops[i];
-      if (stop.optional) continue; // Skip optional stops in timing calc
+      if (stop.optional) continue;
 
-      if (!isStopOpenAtHour(stop, currentHour, dayOfWeek)) return false;
+      if (!isStopOpenAtHour(stop, currentHour, localDay)) return false;
 
-      // Advance clock: stop duration + travel to next stop
       const duration = CURATED_STOP_DURATION[stop.placeType] || 45;
       const travelToNext = (i < card.stops.length - 1)
         ? (card.stops[i + 1]?.travelTimeFromPreviousStopMin || 15)
@@ -460,30 +478,9 @@ serve(async (req: Request) => {
           // Apply date/time filter to pool-served cards
           const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
 
-          // Apply cascading hours filter to curated cards
-          let hoursFilteredCards = timeFilteredCards;
-          {
-            const targetDate = datetimePref ? new Date(datetimePref) : new Date();
-            let startHour: number;
-            if (_exactTime) {
-              const etMatch = _exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-              if (etMatch) {
-                let h = parseInt(etMatch[1]);
-                const ampm = etMatch[3].toUpperCase();
-                if (ampm === 'PM' && h !== 12) h += 12;
-                if (ampm === 'AM' && h === 12) h = 0;
-                startHour = h;
-              } else {
-                startHour = targetDate.getHours();
-              }
-            } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
-              startHour = TIME_SLOT_RANGES[timeSlot].start;
-            } else {
-              startHour = targetDate.getHours();
-            }
-            const dayOfWeek = targetDate.getDay();
-            hoursFilteredCards = filterCuratedByStopHours(hoursFilteredCards, startHour, dayOfWeek);
-          }
+          // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
+          const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
+          const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
           const scoredPoolCards = scorePoolCards(hoursFilteredCards);
           console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
