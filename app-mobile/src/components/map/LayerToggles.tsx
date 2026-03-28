@@ -11,8 +11,6 @@ interface LayerTogglesProps {
   onTogglePlaces: () => void;
   peopleLayerOn: boolean;
   onTogglePeople: () => void;
-  isDark: boolean;
-  onToggleGoDark: () => void;
   feedOn?: boolean;
   onToggleFeed?: () => void;
   heatmapOn?: boolean;
@@ -24,8 +22,6 @@ export function LayerToggles({
   onTogglePlaces,
   peopleLayerOn,
   onTogglePeople,
-  isDark,
-  onToggleGoDark,
   feedOn,
   onToggleFeed,
   heatmapOn,
@@ -53,18 +49,9 @@ export function LayerToggles({
             onPress={onTogglePlaces}
             activeOpacity={0.7}
           >
-            <Icon name="location" size={16} color={placesLayerOn ? '#eb7825' : '#6b7280'} />
+            <Icon name="location" size={14} color={placesLayerOn ? '#eb7825' : '#6b7280'} />
             <Text style={[styles.menuLabel, placesLayerOn && styles.menuLabelActive]}>Places</Text>
-            {placesLayerOn && <Icon name="checkmark" size={14} color="#eb7825" />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuRow, isDark && styles.menuRowActive]}
-            onPress={onToggleGoDark}
-            activeOpacity={0.7}
-          >
-            <Icon name={isDark ? 'eye-off' : 'moon-outline'} size={16} color={isDark ? '#eb7825' : '#6b7280'} />
-            <Text style={[styles.menuLabel, isDark && styles.menuLabelActive]}>{isDark ? 'Go Dark (on)' : 'Go Dark'}</Text>
-            {isDark && <Icon name="checkmark" size={14} color="#eb7825" />}
+            {placesLayerOn && <Icon name="checkmark" size={12} color="#eb7825" />}
           </TouchableOpacity>
           {onToggleFeed && (
             <TouchableOpacity
@@ -72,9 +59,9 @@ export function LayerToggles({
               onPress={onToggleFeed}
               activeOpacity={0.7}
             >
-              <Icon name="notifications-outline" size={16} color={feedOn ? '#eb7825' : '#6b7280'} />
-              <Text style={[styles.menuLabel, feedOn && styles.menuLabelActive]}>Activity Feed</Text>
-              {feedOn && <Icon name="checkmark" size={14} color="#eb7825" />}
+              <Icon name="notifications-outline" size={14} color={feedOn ? '#eb7825' : '#6b7280'} />
+              <Text style={[styles.menuLabel, feedOn && styles.menuLabelActive]}>Feed</Text>
+              {feedOn && <Icon name="checkmark" size={12} color="#eb7825" />}
             </TouchableOpacity>
           )}
           {onToggleHeatmap && (
@@ -83,9 +70,9 @@ export function LayerToggles({
               onPress={onToggleHeatmap}
               activeOpacity={0.7}
             >
-              <Icon name="flame-outline" size={16} color={heatmapOn ? '#eb7825' : '#6b7280'} />
+              <Icon name="flame-outline" size={14} color={heatmapOn ? '#eb7825' : '#6b7280'} />
               <Text style={[styles.menuLabel, heatmapOn && styles.menuLabelActive]}>Heatmap</Text>
-              {heatmapOn && <Icon name="checkmark" size={14} color="#eb7825" />}
+              {heatmapOn && <Icon name="checkmark" size={12} color="#eb7825" />}
             </TouchableOpacity>
           )}
         </View>
@@ -117,28 +104,28 @@ const styles = StyleSheet.create({
   dropdown: {
     marginBottom: 8,
     backgroundColor: 'rgba(255,255,255,0.98)',
-    borderRadius: 14,
-    paddingVertical: 4,
+    borderRadius: 12,
+    paddingVertical: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 6,
-    width: 180,
+    width: 155,
     alignSelf: 'flex-end',
   },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   menuRowActive: {
     backgroundColor: 'rgba(235,120,37,0.08)',
   },
   menuLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#374151',
     flex: 1,
   },
