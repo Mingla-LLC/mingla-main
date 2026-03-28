@@ -35,6 +35,20 @@ export const revenueCatKeys = {
   offerings: () => [...revenueCatKeys.all, 'offerings'] as const,
 }
 
+function isRevenueCatOfferingsConfigError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+
+  const message = error.message.toLowerCase()
+
+  return (
+    message.includes('there is an issue with your configuration') ||
+    message.includes('error fetching offerings') ||
+    message.includes('no app store products registered') ||
+    message.includes('why-are-offerings-empty') ||
+    message.includes('offeringsmanager.error')
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Customer info
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,12 +112,24 @@ export function useIsProEntitled(): boolean {
  *
  * staleTime: 30 minutes — offerings change rarely; no need to refetch often.
  */
-export function useOfferings(): UseQueryResult<PurchasesOffering | null, Error> {
+export function useOfferings(enabled: boolean = true): UseQueryResult<PurchasesOffering | null, Error> {
   return useQuery({
     queryKey: revenueCatKeys.offerings(),
-    queryFn: getCurrentOffering,
+    queryFn: async () => {
+      try {
+        return await getCurrentOffering()
+      } catch (error) {
+        if (isRevenueCatOfferingsConfigError(error)) {
+          console.warn('[RevenueCat] Offerings unavailable; returning null instead of failing query.')
+          return null
+        }
+
+        throw error
+      }
+    },
     staleTime: 30 * 60 * 1000,
-    retry: 2,
+    retry: false,
+    enabled,
   })
 }
 

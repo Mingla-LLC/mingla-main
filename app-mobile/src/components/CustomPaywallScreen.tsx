@@ -106,7 +106,7 @@ export function CustomPaywallScreen({
 }: CustomPaywallScreenProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { data: offering } = useOfferings();
+  const { data: offering } = useOfferings(isVisible);
   const { mutateAsync: purchase, isPending: isPurchasing } = usePurchasePackage();
   const { mutateAsync: restore, isPending: isRestoring } = useRestorePurchases();
 

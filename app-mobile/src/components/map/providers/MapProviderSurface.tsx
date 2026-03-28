@@ -1,23 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { ACTIVE_DISCOVER_MAP_PROVIDER } from './config';
+import { MapLibreProvider } from './MapLibreProvider';
 import { ReactNativeMapsProvider } from './ReactNativeMapsProvider';
-import type { DiscoverMapProviderKind, DiscoverMapProviderProps } from './types';
-
-const ACTIVE_DISCOVER_MAP_PROVIDER: DiscoverMapProviderKind = 'react-native-maps';
+import type { DiscoverMapProviderProps } from './types';
 
 export function MapProviderSurface(props: DiscoverMapProviderProps) {
   switch (ACTIVE_DISCOVER_MAP_PROVIDER) {
     case 'react-native-maps':
       return <ReactNativeMapsProvider {...props} />;
     case 'maplibre':
-      return (
-        <View style={styles.unsupportedContainer}>
-          <Text style={styles.unsupportedTitle}>Map provider not implemented</Text>
-          <Text style={styles.unsupportedText}>
-            MapLibre is not wired in yet for this build.
-          </Text>
-        </View>
-      );
+      return <MapLibreProvider {...props} />;
     default:
       return (
         <View style={styles.unsupportedContainer}>

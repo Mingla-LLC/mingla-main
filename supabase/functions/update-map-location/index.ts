@@ -46,13 +46,7 @@ serve(async (req) => {
       });
     }
 
-    // Deterministic 500m offset: same position for same user within the same hour
     const hourSeed = Math.floor(Date.now() / 3_600_000);
-    const hash = simpleHash(`${user.id}-${hourSeed}`);
-    const angle = (hash % 360) * (Math.PI / 180);
-    const distance = 300 + (hash % 200); // 300-500 meters
-    const dLat = (distance / 111_320) * Math.cos(angle);
-    const dLng = (distance / (111_320 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle);
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -62,6 +56,27 @@ serve(async (req) => {
       .select("time_delay_enabled")
       .eq("user_id", user.id)
       .maybeSingle();
+
+    const { data: activePairing } = await adminClient
+      .from("pairings")
+      .select("user_a_id, user_b_id")
+      .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
+      .maybeSingle();
+
+    const offsetSeed = activePairing
+      ? [
+        activePairing.user_a_id,
+        activePairing.user_b_id,
+      ].sort().join(":")
+      : user.id;
+
+    // Deterministic privacy offset: paired users share the same offset so they
+    // still appear together when they are physically together.
+    const hash = simpleHash(`${offsetSeed}-${hourSeed}`);
+    const angle = (hash % 360) * (Math.PI / 180);
+    const distance = 300 + (hash % 200); // 300-500 meters
+    const dLat = (distance / 111_320) * Math.cos(angle);
+    const dLng = (distance / (111_320 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle);
 
     const updates: Record<string, any> = {
       user_id: user.id,

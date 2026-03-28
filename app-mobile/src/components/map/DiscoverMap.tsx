@@ -38,6 +38,9 @@ interface DiscoverMapProps {
   paused?: boolean;
 }
 
+const MAX_VISIBLE_MAP_CARDS = 30;
+const MAX_VISIBLE_CURATED_CARDS = 8;
+
 export function DiscoverMap({
   cards,
   savedCardIds,
@@ -79,6 +82,17 @@ export function DiscoverMap({
 
   const { settings, updateSettings } = useMapSettings();
   const isHidden = settings?.visibility_level === 'off';
+  const currentUserActivityStatus = useMemo(() => {
+    if (
+      settings?.activity_status_expires_at &&
+      new Date(settings.activity_status_expires_at) < new Date()
+    ) {
+      return null;
+    }
+
+    return settings?.activity_status ?? null;
+  }, [settings?.activity_status, settings?.activity_status_expires_at]);
+
   const { data: nearbyPeople = [] } = useNearbyPeople(
     peopleLayerOn && !isHidden && !paused,
     userLocation,
@@ -109,7 +123,7 @@ export function DiscoverMap({
   const filteredCards = useMemo(() => {
     if (!placesLayerOn) return [];
 
-    return allCards
+    const eligibleCards = allCards
       .filter((card) => {
         if (card.lat == null || card.lng == null) return false;
         if (!card.title || card.title.trim() === '') return false;
@@ -126,8 +140,23 @@ export function DiscoverMap({
         }
 
         return true;
-      })
-      .slice(0, 30);
+      });
+
+    const curatedCards = eligibleCards.filter((card) => !!card.strollData);
+    const singleCards = eligibleCards.filter((card) => !card.strollData);
+
+    if (curatedCards.length === 0) {
+      return singleCards.slice(0, MAX_VISIBLE_MAP_CARDS);
+    }
+
+    // Reserve visible space for curated cards so they are never pushed out by singles.
+    const visibleCuratedCount = Math.min(curatedCards.length, MAX_VISIBLE_CURATED_CARDS);
+    const visibleSinglesCount = Math.max(0, MAX_VISIBLE_MAP_CARDS - visibleCuratedCount);
+
+    return [
+      ...singleCards.slice(0, visibleSinglesCount),
+      ...curatedCards.slice(0, visibleCuratedCount),
+    ];
   }, [allCards, isStopClosed, placesLayerOn]);
 
   const handlePinPress = useCallback((card: Recommendation) => {
@@ -147,6 +176,15 @@ export function DiscoverMap({
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
   const queryClient = useQueryClient();
+
+  const handleUserMarkerPress = useCallback(() => {
+    const firstName = profile?.first_name || profile?.display_name?.split(' ')[0] || 'there';
+    const statusMessage = currentUserActivityStatus
+      ? `You're currently "${currentUserActivityStatus}".`
+      : 'You found yourself. Very Mingla.';
+
+    Alert.alert('Hey, this is you', `${statusMessage} Hi, ${firstName}.`);
+  }, [currentUserActivityStatus, profile?.display_name, profile?.first_name]);
 
   useEffect(() => {
     if (userLocation && user?.id) {
@@ -249,16 +287,20 @@ export function DiscoverMap({
         userLocation={userLocation}
         userMarkerInitial={(profile?.first_name || profile?.display_name || 'Y')[0].toUpperCase()}
         userMarkerDescription={profile?.first_name ? `Hey ${profile.first_name}` : "You're here"}
+        userAvatarUrl={profile?.avatar_url ?? null}
+        userActivityStatus={currentUserActivityStatus}
         allCards={allCards}
         filteredCards={filteredCards}
         savedCardIds={savedCardIds}
         scheduledCardIds={scheduledCardIds}
         selectedCard={selectedCard}
+        selectedPerson={selectedPerson}
         nearbyPeople={nearbyPeople}
         peopleLayerOn={peopleLayerOn}
         heatmapOn={heatmapOn}
         onPlacePress={handlePinPress}
         onPersonPress={handlePersonPinPress}
+        onUserPress={handleUserMarkerPress}
       />
 
       <ActivityStatusPicker

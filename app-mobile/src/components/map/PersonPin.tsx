@@ -6,47 +6,93 @@ import type { NearbyPerson } from '../../hooks/useNearbyPeople';
 interface PersonPinProps {
   person: NearbyPerson;
   onPress: () => void;
+  coordinate?: { latitude: number; longitude: number };
+  zIndex?: number;
 }
 
-export const PersonPin = React.memo(function PersonPin({ person, onPress }: PersonPinProps) {
+interface SelfPinContentProps {
+  avatarUrl: string | null;
+  initial: string;
+  activityStatus: string | null;
+}
+
+export const PersonPinContent = React.memo(function PersonPinContent({ person }: Omit<PersonPinProps, 'onPress'>) {
   const isOnline = Date.now() - new Date(person.lastActiveAt).getTime() < 15 * 60_000;
   const isPaired = person.relationship === 'paired';
   const isStranger = person.relationship === 'stranger';
 
   return (
-    <Marker
-      coordinate={{ latitude: person.approximateLat, longitude: person.approximateLng }}
-      onPress={onPress}
-      tracksViewChanges={false}
-    >
-      <View style={styles.wrapper}>
-        <View style={[
-          styles.avatarRing,
-          isPaired && styles.pairedRing,
-          isStranger && styles.strangerRing,
-        ]}>
-          {person.avatarUrl ? (
-            <Image source={{ uri: person.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.initials}>
-                {(person.firstName || person.displayName || '?')[0].toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </View>
-        {isOnline && <View style={styles.onlineDot} />}
-        {isStranger && person.tasteMatchPct != null && person.tasteMatchPct > 0 && (
-          <View style={styles.matchBadge}>
-            <Text style={styles.matchText}>{person.tasteMatchPct}%</Text>
-          </View>
-        )}
-        {person.activityStatus && (
-          <View style={styles.statusBubble}>
-            <Text style={styles.statusText} numberOfLines={1}>{person.activityStatus}</Text>
+    <View style={styles.wrapper}>
+      <View style={[
+        styles.avatarRing,
+        isPaired && styles.pairedRing,
+        isStranger && styles.strangerRing,
+      ]}>
+        {person.avatarUrl ? (
+          <Image source={{ uri: person.avatarUrl }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.initials}>
+              {(person.firstName || person.displayName || '?')[0].toUpperCase()}
+            </Text>
           </View>
         )}
       </View>
+      {isOnline && <View style={styles.onlineDot} />}
+      {isStranger && person.tasteMatchPct != null && person.tasteMatchPct > 0 && (
+        <View style={styles.matchBadge}>
+          <Text style={styles.matchText}>{person.tasteMatchPct}%</Text>
+        </View>
+      )}
+      {person.activityStatus && (
+        <View style={styles.statusBubble}>
+          <Text style={styles.statusText} numberOfLines={1}>{person.activityStatus}</Text>
+        </View>
+      )}
+    </View>
+  );
+});
+
+export const SelfPinContent = React.memo(function SelfPinContent({
+  avatarUrl,
+  initial,
+  activityStatus,
+}: SelfPinContentProps) {
+  return (
+    <View style={styles.wrapper}>
+      <View style={[styles.avatarRing, styles.pairedRing, styles.selfRing]}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatarFallback, styles.selfAvatarFallback]}>
+            <Text style={[styles.initials, styles.selfInitials]}>{initial}</Text>
+          </View>
+        )}
+      </View>
+      {activityStatus && (
+        <View style={styles.statusBubble}>
+          <Text style={styles.statusText} numberOfLines={1}>{activityStatus}</Text>
+        </View>
+      )}
+    </View>
+  );
+});
+
+export const PersonPin = React.memo(function PersonPin({
+  person,
+  onPress,
+  coordinate,
+  zIndex,
+}: PersonPinProps) {
+  return (
+    <Marker
+      coordinate={coordinate ?? { latitude: person.approximateLat, longitude: person.approximateLng }}
+      onPress={onPress}
+      tracksViewChanges={false}
+      zIndex={zIndex}
+      anchor={{ x: 0.5, y: 0.35 }}
+    >
+      <PersonPinContent person={person} />
     </Marker>
   );
 });
@@ -60,12 +106,26 @@ const styles = StyleSheet.create({
   },
   pairedRing: { borderColor: '#eb7825' },
   strangerRing: { borderColor: '#9ca3af' },
+  selfRing: {
+    borderWidth: 3,
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    elevation: 5,
+  },
   avatar: { width: 34, height: 34, borderRadius: 17 },
   avatarFallback: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center',
   },
+  selfAvatarFallback: {
+    backgroundColor: '#eb7825',
+  },
   initials: { fontSize: 14, fontWeight: '700', color: '#6b7280' },
+  selfInitials: {
+    color: '#FFF',
+  },
   onlineDot: {
     position: 'absolute', top: 0, right: 4,
     width: 12, height: 12, borderRadius: 6,

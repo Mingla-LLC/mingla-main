@@ -1,30 +1,43 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Platform, UIManager } from 'react-native';
 import { Marker, UrlTile } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import { Icon } from '../../ui/Icon';
 import { AnimatedPlacePin } from '../AnimatedPlacePin';
 import { CuratedRoute } from '../CuratedRoute';
-import { PersonPin } from '../PersonPin';
+import { PersonPin, SelfPinContent } from '../PersonPin';
 import { PlaceHeatmap } from '../PlaceHeatmap';
+import { layoutNearbyPeople } from '../layoutNearbyPeople';
 import type { DiscoverMapProviderProps } from './types';
 
 export function ReactNativeMapsProvider({
   mapRef,
   userLocation,
   userMarkerInitial,
-  userMarkerDescription,
+  userMarkerDescription: _userMarkerDescription,
+  userAvatarUrl,
+  userActivityStatus,
   allCards,
   filteredCards,
   savedCardIds,
   scheduledCardIds,
   selectedCard,
+  selectedPerson,
   nearbyPeople,
   peopleLayerOn,
   heatmapOn,
   onPlacePress,
   onPersonPress,
+  onUserPress,
 }: DiscoverMapProviderProps) {
+  const renderedPeople = useMemo(
+    () => layoutNearbyPeople(nearbyPeople, {
+      userLocation,
+      selectedPersonId: selectedPerson?.userId ?? null,
+    }),
+    [nearbyPeople, selectedPerson?.userId, userLocation],
+  );
+
   if (Platform.OS === 'android') {
     try {
       if (!UIManager.getViewManagerConfig || !UIManager.getViewManagerConfig('AIRMap')) {
@@ -75,19 +88,18 @@ export function ReactNativeMapsProvider({
       {userLocation && (
         <Marker
           coordinate={userLocation}
-          tracksViewChanges={true}
-          anchor={{ x: 0.5, y: 0.5 }}
-          zIndex={999}
-          title="This is you"
-          description={userMarkerDescription}
+          onPress={onUserPress}
+          tracksViewChanges={false}
+          anchor={{ x: 0.5, y: 0.35 }}
+          zIndex={30}
         >
           <View style={styles.userMarker}>
             <View style={styles.userMarkerPulse} />
-            <View style={styles.userAvatarRing}>
-              <View style={styles.userAvatarFallback}>
-                <Text style={styles.userAvatarInitials}>{userMarkerInitial}</Text>
-              </View>
-            </View>
+            <SelfPinContent
+              avatarUrl={userAvatarUrl}
+              initial={userMarkerInitial}
+              activityStatus={userActivityStatus}
+            />
           </View>
         </Marker>
       )}
@@ -107,10 +119,12 @@ export function ReactNativeMapsProvider({
 
       {selectedCard?.strollData && <CuratedRoute card={selectedCard} />}
 
-      {peopleLayerOn && nearbyPeople.map((person) => (
+      {peopleLayerOn && renderedPeople.map(({ person, coordinate, zIndex }) => (
         <PersonPin
           key={person.userId}
           person={person}
+          coordinate={coordinate}
+          zIndex={zIndex}
           onPress={() => onPersonPress(person)}
         />
       ))}
@@ -123,8 +137,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userMarker: {
-    width: 52,
-    height: 52,
+    width: 56,
+    height: 68,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -134,34 +148,6 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     backgroundColor: 'rgba(235,120,37,0.15)',
-  },
-  userAvatarRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 3,
-    borderColor: '#eb7825',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  userAvatarFallback: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#eb7825',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userAvatarInitials: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFF',
   },
   androidFallback: {
     alignItems: 'center',
