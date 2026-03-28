@@ -41,7 +41,6 @@ export function useUpdateProfileInterests() {
 
   return useMutation({
     mutationFn: async (interests: ProfileInterests) => {
-      if (useAppStore.getState().tourMode) return;
       const { error } = await supabase
         .from('preferences')
         .update({

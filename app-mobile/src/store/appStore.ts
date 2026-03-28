@@ -97,11 +97,6 @@ interface AppState {
   deckPrefsHash: string;
   deckSchemaVersion: number;
 
-  // Tour state
-  tourMode: boolean;
-  tourStep: number;
-  tourStartedAt: string | null;
-
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
 
@@ -122,13 +117,6 @@ interface AppState {
   addDeckBatch: (batch: DeckBatch) => void;
   navigateToDeckBatch: (index: number) => void;
   resetDeckHistory: (newPrefsHash: string) => void;
-
-  // Tour actions
-  startTour: () => void;
-  advanceTour: () => void;
-  skipTour: () => void;
-  completeTour: () => void;
-  resetTourState: () => void;
 
   // Utilities
   clearUserData: () => void;
@@ -155,9 +143,6 @@ export const useAppStore = create<AppState>()(
       currentDeckBatchIndex: -1,
       deckPrefsHash: '',
       deckSchemaVersion: DECK_SCHEMA_VERSION,
-      tourMode: false,
-      tourStep: 0,
-      tourStartedAt: null,
       showAccountSettings: false,
 
       // Auth actions
@@ -206,40 +191,6 @@ export const useAppStore = create<AppState>()(
         deckPrefsHash: newPrefsHash,
       }),
 
-      // Tour actions — synchronous state changes only.
-      // Side effects (cache seeding/clearing, DB writes, realtime) happen in TourOrchestrator.
-      startTour: () => set({
-        tourMode: true,
-        tourStep: 0,
-        tourStartedAt: new Date().toISOString(),
-      }),
-
-      advanceTour: () => set((state: AppState) => {
-        if (state.tourStep >= 10) {
-          // Last step — completeTour should be called instead
-          return { tourMode: false, tourStep: 0, tourStartedAt: null };
-        }
-        return { tourStep: state.tourStep + 1 };
-      }),
-
-      skipTour: () => set({
-        tourMode: false,
-        tourStep: 0,
-        tourStartedAt: null,
-      }),
-
-      completeTour: () => set({
-        tourMode: false,
-        tourStep: 0,
-        tourStartedAt: null,
-      }),
-
-      resetTourState: () => set({
-        tourMode: false,
-        tourStep: 0,
-        tourStartedAt: null,
-      }),
-
       // Utilities
       clearUserData: () =>
         set({
@@ -255,9 +206,6 @@ export const useAppStore = create<AppState>()(
           currentDeckBatchIndex: -1,
           deckPrefsHash: '',
           deckSchemaVersion: DECK_SCHEMA_VERSION,
-          tourMode: false,
-          tourStep: 0,
-          tourStartedAt: null,
         }),
     })),  // end of state definition + devLoggerMiddleware
     {
@@ -276,10 +224,6 @@ export const useAppStore = create<AppState>()(
         currentDeckBatchIndex: state.currentDeckBatchIndex,
         deckPrefsHash: state.deckPrefsHash,
         deckSchemaVersion: state.deckSchemaVersion,
-        // Tour state — persisted so tour survives app kill mid-tour
-        tourMode: state.tourMode,
-        tourStep: state.tourStep,
-        tourStartedAt: state.tourStartedAt,
       }),
       onRehydrateStorage: () => (state) => {
         // Clear stale deck batches when schema version changes

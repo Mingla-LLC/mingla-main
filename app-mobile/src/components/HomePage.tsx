@@ -14,7 +14,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
-import { TourTarget } from "./tour/TourTarget";
 import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
@@ -266,7 +265,6 @@ export default function HomePage({
                 { opacity: sessionsOpacity },
               ]}
             >
-              <TourTarget id="tour-target-sessions" inset={{ left: 8, right: 8, top: 4, bottom: 4 }}>
               <CollaborationSessions
                 sessions={collaborationSessions}
                 currentMode={currentMode}
@@ -284,11 +282,10 @@ export default function HomePage({
                 openSessionId={openSessionId}
                 onOpenSessionHandled={onOpenSessionHandled}
               />
-              </TourTarget>
             </Animated.View>
           )}
 
-          <TourTarget id="tour-target-deck" style={styles.tourTargetDeck}>
+          <View style={styles.deckWrapper}>
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
@@ -306,7 +303,7 @@ export default function HomePage({
             refreshKey={refreshKey}
             savedCards={savedCards}
           />
-          </TourTarget>
+          </View>
         </View>
 
         {/* V2 Notifications Modal — server-synced */}
@@ -469,7 +466,7 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
   },
-  tourTargetDeck: {
+  deckWrapper: {
     flex: 1,
     width: '100%',
   },

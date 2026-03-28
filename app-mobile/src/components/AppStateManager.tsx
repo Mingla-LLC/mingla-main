@@ -300,13 +300,6 @@ export function useAppState() {
     const hasCompleted = profile.has_completed_onboarding === true;
     if (!hasCompleted) return; // Onboarding overrides — don't restore
 
-    // Auto-trigger coach tour for users who haven't seen it yet
-    if ((profile as any).coach_map_tour_status === null && !useAppStore.getState().tourMode) {
-      hasRestoredPageRef.current = true;
-      useAppStore.getState().startTour();
-      return; // Don't restore page — tour will navigate
-    }
-
     hasRestoredPageRef.current = true;
     AsyncStorage.getItem('mingla_last_page').then(savedPage => {
       if (savedPage && (PERSISTED_PAGES as readonly string[]).includes(savedPage)) {

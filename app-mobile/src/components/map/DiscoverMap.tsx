@@ -93,14 +93,12 @@ export function DiscoverMap({
   useMapLocation(!isDark && !paused && settings?.visibility_level !== 'off');
 
 
-  // Warm edge functions before map cards query fires (skip during tour)
-  const tourMode = useAppStore(s => s.tourMode);
+  // Warm edge functions before map cards query fires
   useEffect(() => {
-    if (tourMode) return;
     supabase.functions.invoke('keep-warm').catch((err) => {
       console.warn('[DiscoverMap] keep-warm failed:', err?.message || err);
     });
-  }, [tourMode]);
+  }, []);
 
   // Fetch ALL cards from pool for the map (200 limit, not the 20 from discover)
   const { data: mapCards, isLoading: mapCardsLoading } = useMapCards(userLocation);
@@ -177,9 +175,8 @@ export function DiscoverMap({
   const profile = useAppStore(s => s.profile);
   const queryClient = useQueryClient();
 
-  // Seed location on first map load — skip during tour
+  // Seed location on first map load
   useEffect(() => {
-    if (tourMode) return;
     if (userLocation && user?.id) {
       supabase.functions.invoke('update-map-location', {
         body: { lat: userLocation.latitude, lng: userLocation.longitude },
@@ -187,7 +184,7 @@ export function DiscoverMap({
         console.warn('[DiscoverMap] update-map-location failed:', err?.message || err);
       });
     }
-  }, [user?.id, !!userLocation, tourMode]);
+  }, [user?.id, !!userLocation]);
 
   const handleAddFriendFromMap = useCallback(async (userId: string) => {
     try {

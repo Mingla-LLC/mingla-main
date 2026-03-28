@@ -15,7 +15,6 @@ export interface MapSettings {
 
 export function useMapSettings() {
   const user = useAppStore(s => s.user);
-  const tourMode = useAppStore(s => s.tourMode);
   const queryClient = useQueryClient();
 
   const query = useQuery<MapSettings>({
@@ -38,13 +37,12 @@ export function useMapSettings() {
         activity_status_expires_at: null,
       };
     },
-    enabled: !!user?.id && !tourMode,
+    enabled: !!user?.id,
     staleTime: 5 * 60_000,
   });
 
   const mutation = useMutation({
     mutationFn: async (updates: Partial<MapSettings>) => {
-      if (useAppStore.getState().tourMode) return;
       const { error } = await supabase
         .from('user_map_settings')
         .upsert({ user_id: user!.id, ...updates, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });

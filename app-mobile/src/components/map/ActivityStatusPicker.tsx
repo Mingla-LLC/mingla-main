@@ -163,7 +163,7 @@ export function ActivityStatusPicker({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 12,
     left: 14,
     zIndex: 11,
   },

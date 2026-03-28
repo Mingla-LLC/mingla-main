@@ -105,7 +105,7 @@ export function LayerToggles({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 12,
     right: 14,
     zIndex: 10,
     alignItems: 'center',

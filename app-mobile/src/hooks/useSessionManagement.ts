@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
-import { TOUR_SESSIONS } from '../data/mockTourData';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
 import { PreferencesService } from '../services/preferencesService';
@@ -143,8 +142,6 @@ async function buildSeedFromSoloPrefs(
 }
 
 export const useSessionManagement = () => {
-  const tourMode = useAppStore((s) => s.tourMode);
-
   const [sessionState, setSessionState] = useState<SessionState>(() => {
     // Try to restore session state from AsyncStorage (mobile equivalent of localStorage)
     // For now, we'll use a simple in-memory state
@@ -1194,25 +1191,6 @@ export const useSessionManagement = () => {
     if (!user) return;
     loadUserSessions();
   }, [user, loadUserSessions]);
-
-  // Tour mode: return mock sessions, all mutations are no-ops
-  if (tourMode) {
-    return {
-      currentSession: null,
-      availableSessions: TOUR_SESSIONS as any[],
-      pendingInvites: [] as any[],
-      isInSolo: true,
-      loading: false,
-      switchToSolo: async () => {},
-      switchToCollaborative: async (_sessionId: string) => {},
-      createCollaborativeSession: async (_name: string, _friends: any[]) => {},
-      createCollaborativeSessionV2: async (_name: string, _participants: any[]) => {},
-      cancelSession: async (_sessionId: string) => {},
-      acceptInvite: async (_sessionId: string) => {},
-      declineInvite: async (_sessionId: string) => {},
-      loadUserSessions: async () => {},
-    };
-  }
 
   return {
     ...sessionState,

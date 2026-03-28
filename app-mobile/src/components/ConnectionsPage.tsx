@@ -19,7 +19,6 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
-import { TourTarget } from "./tour/TourTarget";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage } from "../services/messagingService";
@@ -1478,7 +1477,6 @@ export default function ConnectionsPageRefactored({
   if (error && conversations.length === 0) {
     return (
       <>
-        <TourTarget id="tour-target-chats">
         <View style={styles.container}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>Chats</Text>
@@ -1523,7 +1521,6 @@ export default function ConnectionsPageRefactored({
             </TouchableOpacity>
           </View>
         </View>
-        </TourTarget>
 
         {/* Action Panel Bottom Sheet (accessible even in error state) */}
         <Modal
@@ -1732,7 +1729,6 @@ export default function ConnectionsPageRefactored({
   // ── Main chat list view ──────────────────────────────────
   return (
     <>
-      <TourTarget id="tour-target-chats">
       <View style={styles.container}>
         <View style={styles.content}>
           {/* Compact header: title + action icons */}
@@ -1875,7 +1871,6 @@ export default function ConnectionsPageRefactored({
           )}
         </View>
       </View>
-      </TourTarget>
 
       {/* Action Panel Bottom Sheet */}
       <Modal

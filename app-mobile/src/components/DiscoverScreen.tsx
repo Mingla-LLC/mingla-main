@@ -27,7 +27,6 @@ import { ExperienceGenerationService } from "../services/experienceGenerationSer
 import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAppStore } from "../store/appStore";
-import { TourTarget } from "./tour/TourTarget";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
@@ -877,7 +876,6 @@ export default function DiscoverScreen({
 
   // Get auth for Discover features
   const user = useAppStore((s) => s.user);
-  const tourMode = useAppStore((s) => s.tourMode);
   const { canAccess } = useFeatureGate();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
@@ -1968,8 +1966,8 @@ export default function DiscoverScreen({
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
   const recommendationsLoading = discoverLoading;
-  // Map is showing when For You tab is active and no person is selected (or in tour mode — map-first)
-  const isMapShowing = activeTab === 'for-you' && (tourMode || !(selectedPill?.pillState === 'active' && user?.id));
+  // Map is showing when For You tab is active and no person is selected
+  const isMapShowing = activeTab === 'for-you' && !(selectedPill?.pillState === 'active' && user?.id);
   const recommendationsError = discoverError;
   const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
@@ -3414,8 +3412,8 @@ export default function DiscoverScreen({
                 })}
               </ScrollView>
 
-              {/* Person-specific view when a person is selected (skipped in tour — map-first design) */}
-              {!tourMode && selectedPill?.pillState === 'active' && user?.id && (
+              {/* Person-specific view when a person is selected */}
+              {selectedPill?.pillState === 'active' && user?.id && (
                 <PersonHolidayView
                   pairedUserId={selectedPill.pairedUserId!}
                   pairingId={selectedPill.pairingId!}
@@ -3437,7 +3435,7 @@ export default function DiscoverScreen({
               )}
 
               {/* Map — always mounted, hidden when PersonHolidayView active */}
-              <TourTarget id="tour-target-map" style={isMapShowing ? styles.mapFullscreen : styles.mapHidden} inset={{ top: 60, bottom: 80, left: 16, right: 16 }}>
+              <View style={isMapShowing ? styles.mapFullscreen : styles.mapHidden}>
               <View style={{ flex: 1 }}>
                 <DiscoverMap
                   cards={recommendations}
@@ -3563,34 +3561,13 @@ export default function DiscoverScreen({
                   }}
                   onPersonProfile={() => {}}
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
-                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : tourMode ? { latitude: 51.52, longitude: -0.13 } : null}
+                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
                   paused={!isMapShowing}
                 />
               </View>
-              </TourTarget>
-
-              {/* Paired People Row — shown during coach tour */}
-              {tourMode && (
-                <TourTarget id="tour-target-pairings" inset={{ left: 8, right: 8, top: 4, bottom: 4 }}>
-                  <PairedPeopleRow
-                    people={pairingPills
-                      .filter((p) => p.pillState === "active" && p.pairedUserId)
-                      .map((p) => ({
-                        pairedUserId: p.pairedUserId!,
-                        pairingId: p.pairingId!,
-                        displayName: p.displayName,
-                        firstName: p.firstName,
-                        avatarUrl: p.avatarUrl,
-                        initials: p.initials,
-                        birthday: p.birthday,
-                        gender: p.gender,
-                      }))}
-                    onSelectPerson={() => {}}
-                  />
-                </TourTarget>
-              )}
+              </View>
 
               {/* Legacy ForYou grid content — hidden while map is active */}
               {false && (

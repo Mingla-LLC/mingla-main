@@ -6,7 +6,6 @@ import {
   StyleSheet,
 } from "react-native";
 import { Icon } from './ui/Icon';
-import { TourTarget } from "./tour/TourTarget";
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
@@ -136,7 +135,6 @@ export default function LikesPage({
       {/* Content */}
       <View style={styles.content}>
         {activeTab === "saved" && (
-          <TourTarget id="tour-target-saved" style={styles.tourTargetFlex}>
           <SavedTab
             savedCards={savedCards}
             calendarEntries={calendarEntries}
@@ -149,11 +147,9 @@ export default function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
           />
-          </TourTarget>
         )}
 
         {activeTab === "calendar" && (
-          <TourTarget id="tour-target-calendar" style={styles.tourTargetFlex}>
           <CalendarTab
             calendarEntries={calendarEntries}
             isLoading={isLoadingCalendarEntries}
@@ -164,7 +160,6 @@ export default function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
           />
-          </TourTarget>
         )}
       </View>
     </View>
@@ -214,9 +209,6 @@ const styles = StyleSheet.create({
   },
   // Content styles
   content: {
-    flex: 1,
-  },
-  tourTargetFlex: {
     flex: 1,
   },
 });

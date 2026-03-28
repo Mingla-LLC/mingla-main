@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { PreferencesService } from "../services/preferencesService";
 import { offlineService } from "../services/offlineService";
 import { useBoardSession } from "./useBoardSession";
-import { useAppStore } from "../store/appStore";
-import { TOUR_PREFERENCES } from "../data/mockTourData";
 
 /**
  * Hook for efficiently loading and managing preferences data
@@ -20,8 +18,6 @@ export const usePreferencesData = (
   sessionId: string | undefined,
   shouldLoad: boolean = true
 ) => {
-  const tourMode = useAppStore((s) => s.tourMode);
-
   const isCollaborationMode = !!sessionId;
   
   // Collaboration mode - load from board session
@@ -91,18 +87,6 @@ export const usePreferencesData = (
 
   const isLoading = isCollaborationMode ? loadingBoardPreferences : loadingSoloPreferences;
   const preferences = isCollaborationMode ? boardPreferences : soloPreferences;
-
-  // Tour mode: return mock preferences instead of real data
-  if (tourMode) {
-    return {
-      preferences: TOUR_PREFERENCES,
-      isLoading: false,
-      error: null,
-      isCollaborationMode: false,
-      updateBoardPreferences: async () => {},
-      refetch: async () => {},
-    };
-  }
 
   return {
     preferences,

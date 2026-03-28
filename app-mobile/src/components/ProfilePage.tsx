@@ -17,7 +17,6 @@ import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
 import { supabase } from "../services/supabase";
-import { TourTarget } from "./tour/TourTarget";
 import { mixpanelService } from "../services/mixpanelService";
 import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProfileInterests";
 import ProfileHeroSection from "./profile/ProfileHeroSection";
@@ -248,7 +247,6 @@ export default function ProfilePage({
       <KeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.content}>
           {/* 1. Hero Section — extends behind status bar */}
-          <TourTarget id="tour-target-profile">
           <ProfileHeroSection
             isOwnProfile
             firstName={userIdentity?.firstName || null}
@@ -266,7 +264,6 @@ export default function ProfilePage({
             statusBarHeight={insets.top}
             onSaveName={handleSaveName}
           />
-          </TourTarget>
 
           {/* 2. Interests Section */}
           <View style={styles.sectionSpacing}>
@@ -329,32 +326,6 @@ export default function ProfilePage({
               <Text style={styles.legalLink}>Terms of Service</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Replay Tour — only visible if user has completed or skipped */}
-          {profile?.coach_map_tour_status && (
-            <SettingsRow
-              icon="compass"
-              label="Replay Tour"
-              description="Take the guided walkthrough again"
-              showChevron
-              onPress={async () => {
-                if (!user?.id) return;
-                // Delete existing tour progress
-                await supabase
-                  .from('coach_mark_progress')
-                  .delete()
-                  .eq('user_id', user.id)
-                  .like('coach_mark_id', 'tour_%');
-                // Reset profile status
-                await supabase
-                  .from('profiles')
-                  .update({ coach_map_tour_status: null })
-                  .eq('id', user.id);
-                // Start the tour
-                useAppStore.getState().startTour();
-              }}
-            />
-          )}
 
           {/* 7. Sign Out */}
           <View style={styles.signOutSection}>
