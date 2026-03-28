@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback } from 'react';
+import React, { forwardRef } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,12 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import BottomSheet, { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
 import { Icon } from '../ui/Icon';
 import { Recommendation } from '../../types/recommendation';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
-import { formatTierLabel } from '../../constants/priceTiers';
+import { formatTierLabel, type PriceTierSlug } from '../../constants/priceTiers';
 import { getCurrencySymbol } from '../../utils/currency';
 import { getCurrencyRate } from '../utils/formatters';
 
@@ -26,7 +26,11 @@ interface MapBottomSheetProps {
   accountPreferences: { currency?: string; measurementSystem?: string };
 }
 
-const snapPoints = ['15%', '45%', '90%'];
+const snapPoints = ['45%', '90%'];
+
+function isPriceTierSlug(value: string): value is PriceTierSlug {
+  return ['chill', 'comfy', 'bougie', 'lavish'].includes(value);
+}
 
 export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
   ({ card, onExpand, onNext, onClose, accountPreferences }, ref) => {
@@ -39,7 +43,8 @@ export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
-        enablePanDownToClose={false}
+        enablePanDownToClose
+        onClose={onClose}
         handleIndicatorStyle={styles.handle}
         backgroundStyle={styles.sheetBackground}
       >
@@ -61,7 +66,7 @@ export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
                   <Text style={styles.categoryChip}>
                     {getReadableCategoryName(card.category)}
                   </Text>
-                  {card.priceTier && (
+                  {card.priceTier && isPriceTierSlug(card.priceTier) && (
                     <Text style={styles.tierChip}>
                       {formatTierLabel(card.priceTier, currencySymbol, currencyRate)}
                     </Text>

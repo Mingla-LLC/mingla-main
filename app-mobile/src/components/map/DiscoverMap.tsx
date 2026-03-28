@@ -129,7 +129,9 @@ export function DiscoverMap({
         if (!card.title || card.title.trim() === '') return false;
 
         if (card.strollData) {
-          const rawStops = Array.isArray((card as any)._rawStops) ? (card as any)._rawStops : null;
+          const rawStops = Array.isArray((card as Recommendation & { _rawStops?: unknown })._rawStops)
+            ? (card as Recommendation & { _rawStops?: { location?: { lat?: number; lng?: number }; name?: string }[] })._rawStops ?? null
+            : null;
           const stops = rawStops ?? [card.strollData.anchor, ...card.strollData.companionStops];
           return !stops.some(isStopClosed);
         }
@@ -163,7 +165,7 @@ export function DiscoverMap({
     setSelectedPerson(null);
     personSheetRef.current?.close();
     setSelectedCard(card);
-    bottomSheetRef.current?.snapToIndex(1);
+    bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
   const handlePersonPinPress = useCallback((person: NearbyPerson) => {
@@ -231,7 +233,9 @@ export function DiscoverMap({
               );
               personSheetRef.current?.close();
               queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
-            } catch {}
+            } catch {
+              Alert.alert('Error', 'Could not block user. Try again later.');
+            }
           },
         },
       ]);
@@ -248,10 +252,11 @@ export function DiscoverMap({
           reason: 'map_interaction',
           details: 'Reported from map discovery',
         });
-      } catch {}
-
-      Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
-      personSheetRef.current?.close();
+        Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
+        personSheetRef.current?.close();
+      } catch {
+        Alert.alert('Error', 'Could not submit report. Try again later.');
+      }
     },
     [user],
   );
