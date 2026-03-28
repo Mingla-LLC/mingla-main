@@ -145,6 +145,48 @@ Run pending migrations:
 supabase db push
 ```
 
+## EAS Builds
+
+All builds use [EAS Build](https://docs.expo.dev/build/introduction/). Requires `eas-cli` installed (`npm install -g eas-cli`) and an Expo account.
+
+### Development Builds
+
+Development builds include the dev client for local debugging.
+
+```bash
+# Android
+eas build --platform android --profile development
+
+# iOS
+eas build --platform ios --profile development
+
+# Both platforms
+eas build --platform all --profile development
+```
+
+### Production Builds
+
+Production builds are optimized and ready for store submission.
+
+```bash
+# Android
+eas build --platform android --profile production
+
+# iOS
+eas build --platform ios --profile production
+
+# Both platforms
+eas build --platform all --profile production
+```
+
+### Build Profiles
+
+| Profile | Distribution | Channel | Notes |
+|---------|-------------|---------|-------|
+| `development` | internal | `development` | Dev client enabled, debug config |
+| `preview` | internal | `preview` | APK output (Android) |
+| `production` | store | `production` | Store-ready |
+
 ## Recent Changes
 
 - **Beta tester feedback system** — full audio feedback pipeline: 4 SQL migrations (profile flags, beta_feedback table, RLS policies, storage bucket), 2 new edge functions (submit-feedback, admin-feedback), 3 new services (betaFeedbackService, deviceInfoService, sessionTracker), React Query hook, and 3 UI components (BetaFeedbackModal, FeedbackHistorySheet, BetaFeedbackButton) integrated into ProfilePage
