@@ -50,13 +50,6 @@ serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if time delay is enabled
-    const { data: settings } = await adminClient
-      .from("user_map_settings")
-      .select("time_delay_enabled")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
     const { data: activePairing } = await adminClient
       .from("pairings")
       .select("user_a_id, user_b_id")
@@ -82,15 +75,12 @@ serve(async (req) => {
       user_id: user.id,
       real_lat: lat,
       real_lng: lng,
+      approximate_lat: lat + dLat,
+      approximate_lng: lng + dLng,
+      approximate_location_updated_at: new Date().toISOString(),
       last_active_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-
-    if (!settings?.time_delay_enabled) {
-      updates.approximate_lat = lat + dLat;
-      updates.approximate_lng = lng + dLng;
-      updates.approximate_location_updated_at = new Date().toISOString();
-    }
 
     await adminClient
       .from("user_map_settings")

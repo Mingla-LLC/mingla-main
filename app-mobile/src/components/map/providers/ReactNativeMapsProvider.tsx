@@ -5,7 +5,7 @@ import ClusteredMapView from 'react-native-map-clustering';
 import { Icon } from '../../ui/Icon';
 import { AnimatedPlacePin } from '../AnimatedPlacePin';
 import { CuratedRoute } from '../CuratedRoute';
-import { PersonPin, SelfPinContent } from '../PersonPin';
+import { PersonPinContent, SelfPinContent } from '../PersonPin';
 import { PlaceHeatmap } from '../PlaceHeatmap';
 import { layoutNearbyPeople } from '../layoutNearbyPeople';
 import type { DiscoverMapProviderProps } from './types';
@@ -19,7 +19,9 @@ export function ReactNativeMapsProvider({
   userActivityStatus,
   allCards,
   filteredCards,
+  pairedSavedCards,
   savedCardIds,
+  pairedSavedCardIds,
   scheduledCardIds,
   selectedCard,
   selectedPerson,
@@ -37,6 +39,17 @@ export function ReactNativeMapsProvider({
     }),
     [nearbyPeople, selectedPerson?.userId, userLocation],
   );
+
+  const visiblePlaceCards = useMemo(() => {
+    const cardMap = new Map(filteredCards.map((card) => [card.id, card]));
+    for (const pairedSavedCard of pairedSavedCards) {
+      if (!cardMap.has(pairedSavedCard.id)) {
+        cardMap.set(pairedSavedCard.id, pairedSavedCard);
+      }
+    }
+    return Array.from(cardMap.values());
+  }, [filteredCards, pairedSavedCards]);
+
 
   if (Platform.OS === 'android') {
     try {
@@ -92,6 +105,7 @@ export function ReactNativeMapsProvider({
           tracksViewChanges={false}
           anchor={{ x: 0.5, y: 0.35 }}
           zIndex={30}
+          cluster={false}
         >
           <View style={styles.userMarker}>
             <View style={styles.userMarkerPulse} />
@@ -106,12 +120,13 @@ export function ReactNativeMapsProvider({
 
       {heatmapOn && <PlaceHeatmap cards={allCards} savedCardIds={savedCardIds} />}
 
-      {filteredCards.map((card, index) => (
+      {visiblePlaceCards.map((card, index) => (
         <AnimatedPlacePin
           key={card.id}
           card={card}
           index={index}
           isSaved={savedCardIds.has(card.id)}
+          isPairedSaved={pairedSavedCardIds.has(card.id)}
           isScheduled={scheduledCardIds.has(card.id)}
           onPress={() => onPlacePress(card)}
         />
@@ -120,13 +135,17 @@ export function ReactNativeMapsProvider({
       {selectedCard?.strollData && <CuratedRoute card={selectedCard} />}
 
       {peopleLayerOn && renderedPeople.map(({ person, coordinate, zIndex }) => (
-        <PersonPin
-          key={person.userId}
-          person={person}
+        <Marker
+          key={`person-${person.userId}`}
           coordinate={coordinate}
-          zIndex={zIndex}
           onPress={() => onPersonPress(person)}
-        />
+          tracksViewChanges={false}
+          zIndex={zIndex}
+          anchor={{ x: 0.5, y: 0.35 }}
+          cluster={false}
+        >
+          <PersonPinContent person={person} />
+        </Marker>
       ))}
     </ClusteredMapView>
   );

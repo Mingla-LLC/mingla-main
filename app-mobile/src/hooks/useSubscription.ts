@@ -106,16 +106,14 @@ export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
     profile?.has_completed_onboarding ?? undefined,
   )
 
-  // Server tier includes admin overrides — take the higher of the two
-  if (serverTier && serverTier !== 'free') {
-    const tierRank: Record<string, number> = { free: 0, pro: 1, elite: 2 }
-    const serverRank = tierRank[serverTier] ?? 0
-    const clientRank = tierRank[clientTier] ?? 0
-    if (serverRank > clientRank) {
-      return serverTier as SubscriptionTier
-    }
+  // Server tier is authoritative — it checks admin overrides (Priority 0),
+  // then paid subs, trials, and referrals in the correct order.
+  // Always trust it over client-side logic when available.
+  if (serverTier) {
+    return serverTier as SubscriptionTier
   }
 
+  // Fallback to client-side tier while server query is loading
   return clientTier
 }
 

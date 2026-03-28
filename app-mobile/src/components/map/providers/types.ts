@@ -13,7 +13,9 @@ export interface DiscoverMapProviderProps {
   userActivityStatus: string | null;
   allCards: Recommendation[];
   filteredCards: Recommendation[];
+  pairedSavedCards: Recommendation[];
   savedCardIds: Set<string>;
+  pairedSavedCardIds: Set<string>;
   scheduledCardIds: Set<string>;
   selectedCard: Recommendation | null;
   selectedPerson: NearbyPerson | null;

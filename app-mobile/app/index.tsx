@@ -327,7 +327,9 @@ function AppContent() {
     ) {
       if (!userIdRef.current) {
         // Stash the deep link for after auth
-        if (data.deepLink) {
+        if (data.type === 'paired_user_saved_card' && data.notificationId) {
+          pendingDeepLinkRef.current = `mingla://discover?paired=true&notificationId=${data.notificationId as string}`;
+        } else if (data.deepLink) {
           pendingDeepLinkRef.current = data.deepLink as string;
         }
         return;
@@ -357,7 +359,33 @@ function AppContent() {
       }
 
       // Navigate via deep link
-      if (deepLink) {
+      if (data.type === 'paired_user_saved_card' && notificationId) {
+        supabase
+          .from('notifications')
+          .select('related_id')
+          .eq('id', notificationId)
+          .maybeSingle()
+          .then(({ data: notification }) => {
+            const cardId = notification?.related_id;
+            if (typeof cardId === 'string' && cardId) {
+              setDeepLinkParams({ paired: 'true', cardId });
+              setCurrentPage('discover');
+              return;
+            }
+
+            if (deepLink) {
+              const action = parseDeepLink(deepLink);
+              executeDeepLink(action, {
+                setCurrentPage: setCurrentPage as (page: string) => void,
+                setPendingSessionOpen,
+                setShowPaywall: (show: boolean) => setShowPaywall(show),
+                setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+              });
+            } else if (navigationTarget) {
+              setCurrentPage(navigationTarget as any);
+            }
+          });
+      } else if (deepLink) {
         const action = parseDeepLink(deepLink);
         executeDeepLink(action, {
           setCurrentPage: setCurrentPage as (page: string) => void,
@@ -664,12 +692,37 @@ function AppContent() {
   useEffect(() => {
     if (user?.id && pendingDeepLinkRef.current) {
       const action = parseDeepLink(pendingDeepLinkRef.current);
-      executeDeepLink(action, {
-        setCurrentPage: setCurrentPage as (page: string) => void,
-        setPendingSessionOpen,
-        setShowPaywall: (show: boolean) => setShowPaywall(show),
-        setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-      });
+
+      if (action?.page === 'discover' && action.params?.notificationId) {
+        supabase
+          .from('notifications')
+          .select('related_id')
+          .eq('id', action.params.notificationId)
+          .maybeSingle()
+          .then(({ data: notification }) => {
+            const cardId = notification?.related_id;
+            if (typeof cardId === 'string' && cardId) {
+              setDeepLinkParams({ paired: 'true', cardId });
+              setCurrentPage('discover');
+              return;
+            }
+
+            executeDeepLink(action, {
+              setCurrentPage: setCurrentPage as (page: string) => void,
+              setPendingSessionOpen,
+              setShowPaywall: (show: boolean) => setShowPaywall(show),
+              setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+            });
+          });
+      } else {
+        executeDeepLink(action, {
+          setCurrentPage: setCurrentPage as (page: string) => void,
+          setPendingSessionOpen,
+          setShowPaywall: (show: boolean) => setShowPaywall(show),
+          setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+        });
+      }
+
       pendingDeepLinkRef.current = null;
     }
   }, [user?.id]);
@@ -854,6 +907,12 @@ function AppContent() {
   const handleNotificationNavigate = (notification: ServerNotification) => {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
+
+    if (notification.type === 'paired_user_saved_card' && notification.related_id) {
+      setDeepLinkParams({ paired: 'true', cardId: notification.related_id });
+      setCurrentPage('discover');
+      return;
+    }
 
     // Try deep link first
     if (deepLink) {
@@ -1712,6 +1771,8 @@ function AppContent() {
                   | "Imperial") || "Imperial",
             }}
             preferencesRefreshKey={preferencesRefreshKey}
+            deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
+            onDeepLinkHandled={() => setDeepLinkParams(null)}
           />
         );
       case "saved":

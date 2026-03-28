@@ -18,6 +18,14 @@
 
 ---
 
+## Graduated Items
+
+| # | Item | Was Transitional Because | Graduated | How |
+|---|------|------------------------|-----------|-----|
+| G1 | iOS/Android map provider split (`config.ts`) | iOS forced to react-native-maps while MapLibre iOS stabilized — caused platform-divergence bugs (labels, clustering, person markers) | 2026-03-28 | Unified both platforms on MapLibre. Exit condition met: MapLibre iOS stable for Discover. |
+
+---
+
 ## How to Use This Registry
 
 1. **Before removing a `[TRANSITIONAL]` tag:** Check this registry. Is the exit condition met?

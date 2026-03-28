@@ -67,21 +67,6 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
         />
       </View>
 
-      <View style={styles.row}>
-        <View style={styles.rowLeft}>
-          <Icon name="time-outline" size={18} color="#6b7280" />
-          <View>
-            <Text style={styles.rowLabel}>Time Delay</Text>
-            <Text style={styles.rowHint}>Show position from 30 min ago</Text>
-          </View>
-        </View>
-        <Switch
-          value={settings.time_delay_enabled}
-          onValueChange={(v) => onUpdate({ time_delay_enabled: v })}
-          trackColor={{ true: '#eb7825', false: '#e5e7eb' }}
-          thumbColor="#FFF"
-        />
-      </View>
     </View>
   );
 }

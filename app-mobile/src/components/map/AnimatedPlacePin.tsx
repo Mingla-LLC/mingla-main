@@ -7,13 +7,14 @@ import type { Recommendation } from '../../types/recommendation';
 interface AnimatedPlacePinProps {
   card: Recommendation;
   isSaved: boolean;
+  isPairedSaved?: boolean;
   isScheduled: boolean;
   onPress: () => void;
   index: number;
 }
 
 export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
-  card, isSaved, isScheduled, onPress, index,
+  card, isSaved, isPairedSaved = false, isScheduled, onPress, index,
 }: AnimatedPlacePinProps) {
   const scale = useRef(new Animated.Value(0)).current;
   // Start false — only enable during the 300ms spring window
@@ -44,7 +45,12 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
       tracksViewChanges={tracking}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        <PlacePinContent card={card} isSaved={isSaved} isScheduled={isScheduled} />
+        <PlacePinContent
+          card={card}
+          isSaved={isSaved}
+          isPairedSaved={isPairedSaved}
+          isScheduled={isScheduled}
+        />
       </Animated.View>
     </Marker>
   );

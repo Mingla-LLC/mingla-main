@@ -24,6 +24,7 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
 interface PlacePinProps {
   card: Recommendation;
   isSaved: boolean;
+  isPairedSaved?: boolean;
   isScheduled: boolean;
   onPress: () => void;
 }
@@ -36,7 +37,12 @@ const TIER_BORDER_COLORS: Record<string, string> = {
 };
 
 // Extracted content — used by both PlacePin and AnimatedPlacePin
-export const PlacePinContent = React.memo(function PlacePinContent({ card, isSaved, isScheduled }: Omit<PlacePinProps, 'onPress'>) {
+export const PlacePinContent = React.memo(function PlacePinContent({
+  card,
+  isSaved,
+  isPairedSaved = false,
+  isScheduled,
+}: Omit<PlacePinProps, 'onPress'>) {
   const slug = getCategorySlug(card.category);
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
   const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
@@ -50,6 +56,11 @@ export const PlacePinContent = React.memo(function PlacePinContent({ card, isSav
           <Icon name={isCurated ? 'map-outline' : categoryIcon} size={isCurated ? 20 : 14} color="#FFF" />
         </View>
       </View>
+      {isPairedSaved && (
+        <View style={[styles.badge, styles.pairedSavedBadge]}>
+          <Icon name="people-outline" size={8} color="#eb7825" />
+        </View>
+      )}
       {isSaved && (
         <View style={[styles.badge, styles.savedBadge]}>
           <Icon name="heart" size={8} color="#ef4444" />
@@ -65,7 +76,7 @@ export const PlacePinContent = React.memo(function PlacePinContent({ card, isSav
 });
 
 // Full PlacePin with Marker wrapper — backward compatible
-export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps) {
+export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, onPress }: PlacePinProps) {
   if (card.lat == null || card.lng == null) return null;
 
   return (
@@ -74,7 +85,7 @@ export function PlacePin({ card, isSaved, isScheduled, onPress }: PlacePinProps)
       onPress={onPress}
       tracksViewChanges={false}
     >
-      <PlacePinContent card={card} isSaved={isSaved} isScheduled={isScheduled} />
+      <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
     </Marker>
   );
 }
@@ -135,6 +146,11 @@ const styles = StyleSheet.create({
   },
   savedBadge: {
     backgroundColor: '#FEE2E2',
+  },
+  pairedSavedBadge: {
+    backgroundColor: '#FFF7ED',
+    left: -2,
+    right: 'auto',
   },
   scheduledBadge: {
     backgroundColor: '#DBEAFE',

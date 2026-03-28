@@ -19,12 +19,13 @@ import type { Recommendation } from '../../../types/recommendation';
 import { PlacePinContent } from '../PlacePin';
 import { PersonPinContent, SelfPinContent } from '../PersonPin';
 import { layoutNearbyPeople } from '../layoutNearbyPeople';
+import type { NearbyPerson } from '../../../hooks/useNearbyPeople';
 import type { DiscoverMapProviderProps } from './types';
 
 const FALLBACK_COORDINATE: [number, number] = [-78.6382, 35.7796];
 const DEFAULT_LATITUDE_DELTA = 0.05;
 const DEFAULT_LONGITUDE_DELTA = 0.05;
-const CARTO_LIGHT_TILE_URL = 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+const CARTO_LIGHT_TILE_URL = 'https://basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png';
 const MAP_STYLE_LIGHT_BLANK = {
   version: 8,
   sources: {},
@@ -106,11 +107,17 @@ function formatClusterLabel(pointCount: number, abbreviated?: string | number | 
   return String(pointCount);
 }
 
-function getClusterDiameter(pointCount: number) {
+function getClusterDiameter(pointCount: number): 36 | 40 | 44 {
   if (pointCount >= 20) return 44;
   if (pointCount >= 8) return 40;
   return 36;
 }
+
+const CLUSTER_SIZE_STYLES = {
+  36: StyleSheet.create({ size: { width: 36, height: 36, borderRadius: 18 } }).size,
+  40: StyleSheet.create({ size: { width: 40, height: 40, borderRadius: 20 } }).size,
+  44: StyleSheet.create({ size: { width: 44, height: 44, borderRadius: 22 } }).size,
+};
 
 function getPlaceRenderWeight(card: Recommendation, selectedCardId: string | null) {
   if (card.id === selectedCardId) return 2;
@@ -215,6 +222,104 @@ function hasViewportMeaningfullyChanged(currentViewport: ViewportState, nextView
   ));
 }
 
+/* ─── Extracted memoized marker components (stable press handlers) ─── */
+
+const ClusterMarker = React.memo(function ClusterMarker({
+  cluster,
+  onPress,
+}: {
+  cluster: RenderCluster;
+  onPress: (cluster: RenderCluster) => void;
+}) {
+  const handlePress = useCallback(() => onPress(cluster), [cluster, onPress]);
+  return (
+    <MarkerView
+      coordinate={cluster.coordinate}
+      anchor={{ x: 0.5, y: 0.5 }}
+      allowOverlap
+    >
+      <Pressable
+        hitSlop={8}
+        onPress={handlePress}
+        style={[styles.clusterMarker, CLUSTER_SIZE_STYLES[getClusterDiameter(cluster.pointCount)]]}
+      >
+        <Text style={styles.clusterMarkerText}>{cluster.label}</Text>
+      </Pressable>
+    </MarkerView>
+  );
+});
+
+const PlaceMarker = React.memo(function PlaceMarker({
+  card,
+  savedCardIds,
+  pairedSavedCardIds,
+  scheduledCardIds,
+  isSelected,
+  onPress,
+}: {
+  card: Recommendation;
+  savedCardIds: Set<string>;
+  pairedSavedCardIds: Set<string>;
+  scheduledCardIds: Set<string>;
+  isSelected: boolean;
+  onPress: (cardId: string) => void;
+}) {
+  const handlePress = useCallback(() => onPress(card.id), [card.id, onPress]);
+  return (
+    <MarkerView
+      coordinate={[card.lng!, card.lat!]}
+      anchor={{ x: 0.5, y: 0.5 }}
+      allowOverlap
+      isSelected={isSelected}
+    >
+      <Pressable
+        hitSlop={8}
+        onPress={handlePress}
+        style={isSelected ? styles.selectedPlaceMarker : undefined}
+      >
+        <PlacePinContent
+          card={card}
+          isSaved={savedCardIds.has(card.id)}
+          isPairedSaved={pairedSavedCardIds.has(card.id)}
+          isScheduled={scheduledCardIds.has(card.id)}
+        />
+      </Pressable>
+    </MarkerView>
+  );
+});
+
+const PersonMarker = React.memo(function PersonMarker({
+  person,
+  coordinate,
+  isSelected,
+  onPress,
+}: {
+  person: NearbyPerson;
+  coordinate: { longitude: number; latitude: number };
+  isSelected: boolean;
+  onPress: (userId: string) => void;
+}) {
+  const handlePress = useCallback(() => onPress(person.userId), [person.userId, onPress]);
+  return (
+    <MarkerView
+      coordinate={[coordinate.longitude, coordinate.latitude]}
+      anchor={{ x: 0.5, y: 0.35 }}
+      allowOverlap
+      isSelected={isSelected}
+    >
+      <Pressable
+        hitSlop={8}
+        onPress={handlePress}
+        style={isSelected ? styles.selectedPersonMarker : undefined}
+      >
+        <PersonPinContent person={person} />
+      </Pressable>
+    </MarkerView>
+  );
+});
+
+/* ─── Main provider ─── */
+
 export function MapLibreProvider({
   mapRef,
   userLocation,
@@ -224,7 +329,9 @@ export function MapLibreProvider({
   userActivityStatus,
   allCards,
   filteredCards,
+  pairedSavedCards,
   savedCardIds,
+  pairedSavedCardIds,
   scheduledCardIds,
   selectedCard,
   selectedPerson,
@@ -244,31 +351,39 @@ export function MapLibreProvider({
     return [userLocation.longitude, userLocation.latitude];
   }, [userLocation]);
 
-  const [viewport, setViewport] = useState<ViewportState>(() => ({
+  const viewportRef = useRef<ViewportState>({
     bounds: boundsFromRegion(
       defaultCenterCoordinate,
       DEFAULT_LATITUDE_DELTA,
       DEFAULT_LONGITUDE_DELTA,
     ),
     zoom: latitudeDeltaToZoom(DEFAULT_LATITUDE_DELTA),
-  }));
+  });
+  const [clusterViewport, setClusterViewport] = useState<ViewportState>(() => viewportRef.current);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setViewport((currentViewport) => {
-      if (currentViewport.zoom !== latitudeDeltaToZoom(DEFAULT_LATITUDE_DELTA)) {
-        return currentViewport;
-      }
+    if (viewportRef.current.zoom !== latitudeDeltaToZoom(DEFAULT_LATITUDE_DELTA)) {
+      return;
+    }
 
-      return {
-        bounds: boundsFromRegion(
-          defaultCenterCoordinate,
-          DEFAULT_LATITUDE_DELTA,
-          DEFAULT_LONGITUDE_DELTA,
-        ),
-        zoom: currentViewport.zoom,
-      };
-    });
+    viewportRef.current = {
+      bounds: boundsFromRegion(
+        defaultCenterCoordinate,
+        DEFAULT_LATITUDE_DELTA,
+        DEFAULT_LONGITUDE_DELTA,
+      ),
+      zoom: viewportRef.current.zoom,
+    };
+    setClusterViewport(viewportRef.current);
   }, [defaultCenterCoordinate]);
+
+  // Cleanup flush timer on unmount
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, []);
 
   const animateToRegion = useCallback(
     (region: LegacyMapRegion, duration = 500) => {
@@ -294,17 +409,27 @@ export function MapLibreProvider({
     };
   }, [animateToRegion, mapRef]);
 
+  const visiblePlaceCards = useMemo(() => {
+    const cardMap = new Map(filteredCards.map((card) => [card.id, card]));
+    for (const pairedSavedCard of pairedSavedCards) {
+      if (!cardMap.has(pairedSavedCard.id)) {
+        cardMap.set(pairedSavedCard.id, pairedSavedCard);
+      }
+    }
+    return Array.from(cardMap.values());
+  }, [filteredCards, pairedSavedCards]);
+
   const placeCardMap = useMemo(
-    () => new Map(filteredCards.map((card) => [card.id, card])),
-    [filteredCards],
+    () => new Map(visiblePlaceCards.map((card) => [card.id, card])),
+    [visiblePlaceCards],
   );
 
   const placeFeatures = useMemo(
     () =>
-      filteredCards
+      visiblePlaceCards
         .filter((card) => card.lat != null && card.lng != null)
         .map((card) => toPlaceFeature(card)),
-    [filteredCards],
+    [visiblePlaceCards],
   );
 
   const placeClusters = useMemo(() => {
@@ -322,10 +447,10 @@ export function MapLibreProvider({
     if (placeFeatures.length === 0) return [];
 
     return placeClusters.getClusters(
-      viewport.bounds,
-      Math.max(0, Math.round(viewport.zoom)),
+      clusterViewport.bounds,
+      Math.max(0, Math.round(clusterViewport.zoom)),
     ) as ClusteredPlaceFeature[];
-  }, [placeClusters, placeFeatures.length, viewport.bounds, viewport.zoom]);
+  }, [placeClusters, placeFeatures.length, clusterViewport.bounds, clusterViewport.zoom]);
 
   const renderedClusters = useMemo<RenderCluster[]>(() => {
     return clusteredPlaceFeatures.flatMap((feature) => {
@@ -380,13 +505,16 @@ export function MapLibreProvider({
 
   const handleRegionDidChange = useCallback((feature: RegionChangeFeature) => {
     const nextViewport = extractViewportState(feature);
-    if (nextViewport) {
-      setViewport((currentViewport) => (
-        hasViewportMeaningfullyChanged(currentViewport, nextViewport)
-          ? nextViewport
-          : currentViewport
-      ));
-    }
+    if (!nextViewport) return;
+
+    if (!hasViewportMeaningfullyChanged(viewportRef.current, nextViewport)) return;
+    viewportRef.current = nextViewport;
+
+    // Debounce: flush to render state after 400ms of quiet
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => {
+      setClusterViewport(viewportRef.current);
+    }, 400);
   }, []);
 
   const handleClusterPress = useCallback(
@@ -406,6 +534,16 @@ export function MapLibreProvider({
     },
     [placeClusters],
   );
+
+  const handlePlaceCardPress = useCallback((cardId: string) => {
+    const card = placeCardMap.get(cardId);
+    if (card) onPlacePress(card);
+  }, [placeCardMap, onPlacePress]);
+
+  const handlePersonMarkerPress = useCallback((userId: string) => {
+    const positioned = renderedPeople.find((p) => p.person.userId === userId);
+    if (positioned) onPersonPress(positioned.person);
+  }, [renderedPeople, onPersonPress]);
 
   const curatedStops = useMemo(
     () => (selectedCard?.strollData ? getCuratedStops(selectedCard) : []),
@@ -469,7 +607,7 @@ export function MapLibreProvider({
         logoEnabled={false}
         attributionEnabled
         attributionPosition={{ bottom: 12, left: 14 }}
-        regionDidChangeDebounceTime={180}
+        regionDidChangeDebounceTime={500}
         onWillStartLoadingMap={() => {
           setStyleLoaded(false);
           setLoadError(null);
@@ -552,7 +690,7 @@ export function MapLibreProvider({
 
         {curatedStops.map((stop) => (
           <MarkerView
-            key={`discover-maplibre-stop-${selectedCard?.id ?? 'active'}-${stop.step}`}
+            key={`discover-maplibre-stop-${stop.step}`}
             coordinate={stop.coordinates}
             anchor={{ x: 0.5, y: 0.5 }}
             allowOverlap
@@ -564,63 +702,33 @@ export function MapLibreProvider({
         ))}
 
         {renderedClusters.map((cluster) => (
-          <MarkerView
+          <ClusterMarker
             key={`discover-maplibre-cluster-${cluster.clusterId}`}
-            coordinate={cluster.coordinate}
-            anchor={{ x: 0.5, y: 0.5 }}
-            allowOverlap
-          >
-            <Pressable
-              hitSlop={8}
-              onPress={() => handleClusterPress(cluster)}
-              style={[
-                styles.clusterMarker,
-                { width: getClusterDiameter(cluster.pointCount), height: getClusterDiameter(cluster.pointCount), borderRadius: getClusterDiameter(cluster.pointCount) / 2 },
-              ]}
-            >
-              <Text style={styles.clusterMarkerText}>{cluster.label}</Text>
-            </Pressable>
-          </MarkerView>
+            cluster={cluster}
+            onPress={handleClusterPress}
+          />
         ))}
 
         {renderedPlaceCards.map((card) => (
-          <MarkerView
+          <PlaceMarker
             key={`discover-maplibre-card-${card.id}`}
-            coordinate={[card.lng!, card.lat!]}
-            anchor={{ x: 0.5, y: 0.5 }}
-            allowOverlap
+            card={card}
+            savedCardIds={savedCardIds}
+            pairedSavedCardIds={pairedSavedCardIds}
+            scheduledCardIds={scheduledCardIds}
             isSelected={selectedCard?.id === card.id}
-          >
-            <Pressable
-              hitSlop={8}
-              onPress={() => onPlacePress(card)}
-              style={selectedCard?.id === card.id ? styles.selectedPlaceMarker : undefined}
-            >
-              <PlacePinContent
-                card={card}
-                isSaved={savedCardIds.has(card.id)}
-                isScheduled={scheduledCardIds.has(card.id)}
-              />
-            </Pressable>
-          </MarkerView>
+            onPress={handlePlaceCardPress}
+          />
         ))}
 
         {renderedPeople.map(({ person, coordinate }) => (
-          <MarkerView
+          <PersonMarker
             key={`discover-maplibre-person-${person.userId}`}
-            coordinate={[coordinate.longitude, coordinate.latitude]}
-            anchor={{ x: 0.5, y: 0.35 }}
-            allowOverlap
+            person={person}
+            coordinate={coordinate}
             isSelected={selectedPerson?.userId === person.userId}
-          >
-            <Pressable
-              hitSlop={8}
-              onPress={() => onPersonPress(person)}
-              style={selectedPerson?.userId === person.userId ? styles.selectedPersonMarker : undefined}
-            >
-              <PersonPinContent person={person} />
-            </Pressable>
-          </MarkerView>
+            onPress={handlePersonMarkerPress}
+          />
         ))}
       </MapView>
 

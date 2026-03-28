@@ -454,6 +454,8 @@ interface DiscoverScreenProps {
     measurementSystem: "Metric" | "Imperial";
   };
   preferencesRefreshKey?: number; // Incremented when user saves preferences
+  deepLinkParams?: Record<string, string> | null;
+  onDeepLinkHandled?: () => void;
 }
 
 // Tabs component similar to BoardTabs
@@ -729,6 +731,8 @@ export default function DiscoverScreen({
   onAddFriend,
   accountPreferences,
   preferencesRefreshKey,
+  deepLinkParams,
+  onDeepLinkHandled,
 }: DiscoverScreenProps) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
@@ -886,6 +890,13 @@ export default function DiscoverScreen({
   const { data: mapCalendarEntries } = useCalendarEntries(user?.id);
   const mapSavedCardIds = useMemo(() => new Set((mapSavedCards ?? []).map(c => c.id)), [mapSavedCards]);
   const mapScheduledCardIds = useMemo(() => new Set((mapCalendarEntries ?? []).map((e: any) => e.card_id).filter(Boolean)), [mapCalendarEntries]);
+  const activePairedUserIds = useMemo(
+    () => pairingPills
+      .filter((pill) => pill.pillState === 'active' && pill.pairedUserId)
+      .map((pill) => pill.pairedUserId!)
+      .sort(),
+    [pairingPills],
+  );
 
   // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled,
   // or optimistic update removed it after accept/decline).
@@ -3565,6 +3576,9 @@ export default function DiscoverScreen({
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
                   paused={!isMapShowing}
+                  activePairedUserIds={activePairedUserIds}
+                  pendingFocusCardId={deepLinkParams?.cardId ?? null}
+                  onFocusCardHandled={onDeepLinkHandled}
                 />
               </View>
               </View>

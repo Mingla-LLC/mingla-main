@@ -14,6 +14,7 @@ import { useNearbyPeople, NearbyPerson } from '../../hooks/useNearbyPeople';
 import { useMapLocation } from '../../hooks/useMapLocation';
 import { useMapSettings } from '../../hooks/useMapSettings';
 import { useMapCards } from '../../hooks/useMapCards';
+import { usePairedMapSavedCards } from '../../hooks/usePairedMapSavedCards';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
 import { MapBottomSheet } from './MapBottomSheet';
@@ -36,6 +37,9 @@ interface DiscoverMapProps {
   isLoading: boolean;
   centerTrigger?: number;
   paused?: boolean;
+  activePairedUserIds?: string[];
+  pendingFocusCardId?: string | null;
+  onFocusCardHandled?: () => void;
 }
 
 const MAX_VISIBLE_MAP_CARDS = 30;
@@ -55,6 +59,9 @@ export function DiscoverMap({
   isLoading,
   centerTrigger,
   paused = false,
+  activePairedUserIds = [],
+  pendingFocusCardId = null,
+  onFocusCardHandled,
 }: DiscoverMapProps) {
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
@@ -106,7 +113,22 @@ export function DiscoverMap({
   }, []);
 
   const { data: mapCards, isLoading: mapCardsLoading } = useMapCards(userLocation);
-  const allCards = mapCards && mapCards.length > 0 ? mapCards : cards;
+  const { cards: pairedSavedCards, pairedSavedCardIds, isLoading: pairedSavedCardsLoading } =
+    usePairedMapSavedCards(activePairedUserIds);
+  const baseCards = mapCards && mapCards.length > 0 ? mapCards : cards;
+  const allCards = useMemo(() => {
+    const cardMap = new Map(baseCards.map((card) => [card.id, card]));
+    for (const pairedSavedCard of pairedSavedCards) {
+      if (!cardMap.has(pairedSavedCard.id)) {
+        cardMap.set(pairedSavedCard.id, pairedSavedCard);
+      }
+    }
+    return Array.from(cardMap.values());
+  }, [baseCards, pairedSavedCards]);
+  const visiblePairedSavedCards = useMemo(
+    () => (placesLayerOn ? pairedSavedCards : []),
+    [pairedSavedCards, placesLayerOn],
+  );
 
   const isStopClosed = useCallback((stop: any) => {
     if (stop?.isOpenNow === false) return true;
@@ -285,6 +307,50 @@ export function DiscoverMap({
     }
   }, [filteredCards, selectedCard]);
 
+  const focusCardById = useCallback((cardId: string) => {
+    const targetCard = allCards.find((card) => card.id === cardId || card.placeId === cardId);
+    if (!targetCard) return false;
+
+    setSelectedPerson(null);
+    personSheetRef.current?.close();
+    setSelectedCard(targetCard);
+    bottomSheetRef.current?.snapToIndex(0);
+
+    if (targetCard.lat != null && targetCard.lng != null) {
+      mapRef.current?.animateToRegion(
+        {
+          latitude: targetCard.lat,
+          longitude: targetCard.lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        400,
+      );
+    }
+
+    return true;
+  }, [allCards]);
+
+  useEffect(() => {
+    if (!pendingFocusCardId) return;
+
+    if (focusCardById(pendingFocusCardId)) {
+      onFocusCardHandled?.();
+      return;
+    }
+
+    if (!isLoading && !mapCardsLoading && !pairedSavedCardsLoading) {
+      onFocusCardHandled?.();
+    }
+  }, [
+    focusCardById,
+    isLoading,
+    mapCardsLoading,
+    onFocusCardHandled,
+    pairedSavedCardsLoading,
+    pendingFocusCardId,
+  ]);
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <MapProviderSurface
@@ -296,7 +362,9 @@ export function DiscoverMap({
         userActivityStatus={currentUserActivityStatus}
         allCards={allCards}
         filteredCards={filteredCards}
+        pairedSavedCards={visiblePairedSavedCards}
         savedCardIds={savedCardIds}
+        pairedSavedCardIds={pairedSavedCardIds}
         scheduledCardIds={scheduledCardIds}
         selectedCard={selectedCard}
         selectedPerson={selectedPerson}
@@ -354,7 +422,15 @@ export function DiscoverMap({
         onReport={handleReportFromMap}
       />
 
-      {feedOn && <ActivityFeedOverlay enabled={feedOn} nearbyPeople={nearbyPeople} />}
+      {feedOn && (
+        <ActivityFeedOverlay
+          enabled={feedOn}
+          nearbyPeople={nearbyPeople}
+          onActivityPress={(cardId) => {
+            focusCardById(cardId);
+          }}
+        />
+      )}
 
       {(isLoading || mapCardsLoading) && allCards.length === 0 && (
         <View style={styles.loadingOverlay}>
