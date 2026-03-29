@@ -704,7 +704,7 @@ Key groups:
 
 ### Card Serving Pipeline
 1. Query `card_pool` by category + location bounding box
-2. Exclude `user_card_impressions` (already seen)
+2. Exclude cards with impressions **newer than `preferences.updated_at`** (session-scoped dedup, not permanent)
 3. Filter by opening hours (timezone-aware)
 4. Filter by price tier match
 5. Score 5 factors: category affinity, time-of-day, rating, popularity, preference learning
@@ -712,8 +712,9 @@ Key groups:
 7. Paginate by batch_seed * limit
 8. Record impressions (UNIQUE per user+card)
 9. Return `{cards[], hasMore, diagnostics}`
+10. **Impression saturation fallback:** If all pool cards have been seen, rotate least-recently-seen cards back in
 
-Impressions reset when preferences change (trigger: `clear_impressions_on_preference_change`).
+Changing preferences resets the impression filter (all cards eligible again). Impressions older than 30 days cleaned up by daily cron.
 
 ### Storage Buckets
 

@@ -32,8 +32,9 @@ yarn-error.*
 # === TypeScript ===
 *.tsbuildinfo
 
-# === Claude Code memory (local only — never commit) ===
-.claude/projects/
+# === AI tool configs (private) ===
+.claude/
+.codex/
 
 # === Native (signing keys) ===
 *.jks
