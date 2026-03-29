@@ -289,7 +289,7 @@ Mingla/
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles with display name, phone, avatar, onboarding state |
+| `profiles` | User profiles with display name, phone, avatar, onboarding state, is_seed flag |
 | `preferences` | User preferences (categories, budget, travel mode, location) |
 | `place_pool` | Seeded places with Google data, photos, AI status |
 | `card_pool` | Generated cards (single + curated) with AI validation |
@@ -316,7 +316,7 @@ Mingla/
 
 ## Edge Functions
 
-~71 Deno edge functions deployed on Supabase.
+~72 Deno edge functions deployed on Supabase.
 
 ### Discovery and Serving
 - `discover-cards` -- Pool-only card serving with 5-factor scoring
@@ -347,6 +347,7 @@ Mingla/
 - `admin-seed-places` -- Tile-based place seeding with sequential batch approval
 - `admin-place-search` -- Google Places search for admin
 - `admin-refresh-places` -- Refresh place data from Google
+- `admin-seed-map-strangers` -- Seed fake stranger profiles around real users for map population
 - `admin-send-email` -- Email sending via Resend
 - `admin-feedback` -- Feedback management
 - `backfill-place-photos` -- Re-download photos for places
@@ -443,6 +444,7 @@ supabase db push   # Apply all migrations
 
 ## Recent Changes
 
+- **Seed map strangers** -- Admin edge function (`admin-seed-map-strangers`) creates fake international stranger profiles around real users so the Discover Map looks populated. 50 diverse names, random preferences/activity statuses, clean `is_seed` flag for bulk cleanup. Three actions: seed (single point), seed_around_all_users, cleanup.
 - **Interactive coach tour** -- 11-stop guided walkthrough with spotlight overlay, mock data injection, per-stop tracking, auto-trigger after onboarding, replayable from Profile. SVG mask cutout, Reanimated animations, zero Supabase calls during tour.
 - **Discover Map polish** -- Edge-to-edge map with CartoDB Positron tiles, floating rounded pill bar (solid white, 24px border radius), useMapCards fetches 200 single + all 6 curated types with open-now filtering, cards without photos/titles hidden, category icons matched to preferences sheet via direct slug-to-icon map, user avatar marker with profile photo + "This is you" callout, curated pins at 46x46 with map-outline icon, bottom sheet with 3 snap points (15% peek, 45% preview, 90% expanded, no dismiss), For You pill centers on user location.
 - **Map controls** -- ActivityStatusPicker as collapsible bottom-left pill (visibility settings, people toggle, status presets, custom status, no auto-expiry). LayerToggles as collapsible orange FAB at bottom-right (Places, Go Dark, Activity Feed, Heatmap). Both menus: matching style with orange FABs, labeled rows, checkmarks. PlaceHeatmap uses Marker+View circles (no native dependency).
