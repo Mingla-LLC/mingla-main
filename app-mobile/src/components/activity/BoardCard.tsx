@@ -23,7 +23,7 @@ interface Board {
   lastActivity: string;
   icon: any;
   gradient: string;
-  creatorId: string;
+  creatorId: string | null;
   admins: string[];
   currentUserId: string;
 }
