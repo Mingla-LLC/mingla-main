@@ -464,7 +464,7 @@ function MultiStopPlanView({
   }, []);
 
   const toggleStop = (stopNumber: number) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedStops(prev => {
       const next = new Set(prev);
       next.has(stopNumber) ? next.delete(stopNumber) : next.add(stopNumber);
@@ -580,7 +580,7 @@ function MultiStopPlanView({
                         {isOptional && (
                           <TouchableOpacity
                             onPress={() => {
-                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                              if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                               setDismissedStops(prev => new Set([...prev, originalIdx]));
                             }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

@@ -722,6 +722,20 @@ const OnboardingFlow = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])  // intentionally empty — run once on mount only
 
+  // ─── Deferred TextInput Focus ───
+  // autoFocus on a TextInput inside a scrollEnabled={false} ScrollView causes a
+  // native crash on iOS Fabric (New Architecture). iOS tries to scroll the focused
+  // field into view, but the disabled ScrollView can't scroll → native exception.
+  // Fix: focus manually after the native view hierarchy has fully committed.
+  useEffect(() => {
+    if (navState.subStep === 'welcome' && !(data.firstName || '').trim()) {
+      const timer = setTimeout(() => {
+        firstNameRef.current?.focus()
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+  }, [navState.subStep]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── UI State ───
   const [otpCode, setOtpCode] = useState('')
   const [otpError, setOtpError] = useState(false)
@@ -822,6 +836,8 @@ const OnboardingFlow = ({
   const tagTopAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
   const tagAccentAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
   const welcomeAnimRan = useRef(false)
+  const firstNameRef = useRef<TextInput>(null)
+  const lastNameRef = useRef<TextInput>(null)
 
   // ─── Intent Card Stagger Animations ───
   const intentAnims = useRef(
@@ -1892,6 +1908,7 @@ const OnboardingFlow = ({
 
           <View style={styles.nameInputRow}>
             <TextInput
+              ref={firstNameRef}
               style={styles.nameInput}
               placeholder="First"
               placeholderTextColor={colors.gray[300]}
@@ -1899,11 +1916,12 @@ const OnboardingFlow = ({
               onChangeText={(text) => setData((p) => ({ ...p, firstName: text }))}
               autoCapitalize="words"
               autoCorrect={false}
-              autoFocus
               returnKeyType="next"
+              onSubmitEditing={() => lastNameRef.current?.focus()}
               textAlign="center"
             />
             <TextInput
+              ref={lastNameRef}
               style={styles.nameInput}
               placeholder="Last"
               placeholderTextColor={colors.gray[300]}

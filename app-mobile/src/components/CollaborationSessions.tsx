@@ -120,6 +120,15 @@ export default function CollaborationSessions({
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const lastHandledInviteTriggerNonce = useRef<number | null>(null);
+  const createSessionInputRef = useRef<TextInput>(null);
+
+  // Deferred focus: autoFocus inside Modal crashes on iOS Fabric.
+  useEffect(() => {
+    if (showCreateModal) {
+      const timer = setTimeout(() => createSessionInputRef.current?.focus(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [showCreateModal]);
 
   // Phone input state
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -513,11 +522,11 @@ export default function CollaborationSessions({
               {/* Session Name Input */}
               <Text style={styles.modalLabel}>Session Name</Text>
               <TextInput
+                ref={createSessionInputRef}
                 style={styles.modalInput}
                 placeholder="e.g., Weekend Plans, Date Night..."
                 value={newSessionName}
                 onChangeText={setNewSessionName}
-                autoFocus
                 maxLength={30}
               />
 

@@ -176,21 +176,8 @@ serve(async (req) => {
           if (error) console.warn("[delete-user] beta_feedback anonymize:", error.message);
         }),
 
-      // Anonymize place_reviews PII — scrub audio/text, keep star rating + place data.
-      // Rows preserved via SET NULL on user_id. review_count and avg_rating stay accurate.
-      adminClient
-        .from("place_reviews")
-        .update({
-          audio_urls: [],
-          audio_durations_seconds: [],
-          transcription: null,
-          ai_summary: null,
-          feedback_text: null,
-        })
-        .eq("user_id", userId)
-        .then(({ error }) => {
-          if (error) console.warn("[delete-user] place_reviews anonymize:", error.message);
-        }),
+      // place_reviews: audio columns dropped. Only rating + place data remain.
+      // Rows preserved via SET NULL on user_id — star ratings survive deletion.
 
       // Cancel pending invites by inviter_id
       adminClient

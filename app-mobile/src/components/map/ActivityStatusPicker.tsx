@@ -53,7 +53,7 @@ export function ActivityStatusPicker({
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
   const toggleExpanded = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded(p => !p);
     if (expanded) {
       setShowCustom(false);
@@ -65,7 +65,7 @@ export function ActivityStatusPicker({
   const selectStatus = (label: string) => {
     const isActive = currentStatus === label;
     onSetStatus(isActive ? null : label);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setStatusDropdownOpen(false);
     setShowCustom(false);
   };
@@ -83,7 +83,7 @@ export function ActivityStatusPicker({
           <TouchableOpacity
             style={styles.visSelector}
             onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setVisDropdownOpen(p => !p);
             }}
             activeOpacity={0.7}
@@ -103,7 +103,7 @@ export function ActivityStatusPicker({
                     style={[styles.visOption, isActive && styles.visOptionActive]}
                     onPress={() => {
                       onVisibilityChange(opt.key);
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                       setVisDropdownOpen(false);
                     }}
                     activeOpacity={0.7}
@@ -133,7 +133,7 @@ export function ActivityStatusPicker({
           <TouchableOpacity
             style={styles.visSelector}
             onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setStatusDropdownOpen(p => !p);
             }}
             activeOpacity={0.7}

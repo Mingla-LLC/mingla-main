@@ -36,7 +36,7 @@ export function LayerToggles({
     (heatmapOn ? 1 : 0);
 
   const toggleExpanded = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded(p => !p);
   };
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Layers, CreditCard, Star, Database, Trash2, Edit3, Eye, EyeOff,
-  Save, RefreshCw, Mic, FileText, ChevronDown, ChevronUp, AlertCircle,
+  Save, RefreshCw, ChevronDown, ChevronUp, AlertCircle,
   X, Power, PowerOff, Download, Image, CheckCircle, XCircle, Flag,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -35,20 +35,6 @@ const EXPERIENCE_CATEGORIES = [
   "Watch", "Creative Arts", "Play", "Wellness", "Groceries & Flowers", "Work & Business",
 ];
 
-const SENTIMENT_OPTIONS = [
-  { value: "", label: "All Sentiments" },
-  { value: "positive", label: "Positive" },
-  { value: "negative", label: "Negative" },
-  { value: "mixed", label: "Mixed" },
-  { value: "neutral", label: "Neutral" },
-];
-
-const SENTIMENT_VARIANTS = {
-  positive: "success",
-  negative: "error",
-  mixed: "warning",
-  neutral: "default",
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -785,7 +771,6 @@ function ReviewsSubView() {
   const [reviewPage, setReviewPage] = useState(0);
   const [reviewSearch, setReviewSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [reviewSentimentFilter, setReviewSentimentFilter] = useState("");
   const [expandedReview, setExpandedReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(true);
   const [reviewError, setReviewError] = useState(null);
@@ -821,7 +806,6 @@ function ReviewsSubView() {
           .range(reviewPage * PAGE_SIZE, (reviewPage + 1) * PAGE_SIZE - 1);
 
         if (debouncedSearch) query = query.ilike("place_name", `%${escapeLike(debouncedSearch)}%`);
-        if (reviewSentimentFilter) query = query.eq("sentiment", reviewSentimentFilter);
 
         const result = await query;
         if (result.error) {
@@ -840,7 +824,6 @@ function ReviewsSubView() {
           .range(reviewPage * PAGE_SIZE, (reviewPage + 1) * PAGE_SIZE - 1);
 
         if (debouncedSearch) query = query.ilike("place_name", `%${escapeLike(debouncedSearch)}%`);
-        if (reviewSentimentFilter) query = query.eq("sentiment", reviewSentimentFilter);
 
         const result = await query;
         if (result.error) throw result.error;
@@ -866,7 +849,7 @@ function ReviewsSubView() {
     } finally {
       if (mountedRef.current) setReviewLoading(false);
     }
-  }, [reviewPage, debouncedSearch, reviewSentimentFilter, addToast]);
+  }, [reviewPage, debouncedSearch, addToast]);
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);
 
@@ -903,12 +886,6 @@ function ReviewsSubView() {
     }
   };
 
-  const getAudioCount = (row) => {
-    if (Array.isArray(row.audio_urls) && row.audio_urls.length > 0) return row.audio_urls.length;
-    if (row.audio_url) return 1;
-    return 0;
-  };
-
   const columns = [
     {
       key: "place_name",
@@ -932,38 +909,6 @@ function ReviewsSubView() {
       render: (_v, row) => (
         <span className="text-yellow-400 text-xs tracking-wide">{renderStars(row.rating)}</span>
       ),
-    },
-    {
-      key: "sentiment",
-      label: "Sentiment",
-      render: (_v, row) => row.sentiment
-        ? <Badge variant={SENTIMENT_VARIANTS[row.sentiment] || "default"}>{row.sentiment}</Badge>
-        : <span className="text-[var(--color-text-muted)]">—</span>,
-    },
-    {
-      key: "themes",
-      label: "Themes",
-      render: (_v, row) => {
-        const themes = Array.isArray(row.themes) ? row.themes.slice(0, 3) : [];
-        if (themes.length === 0) return <span className="text-[var(--color-text-muted)]">—</span>;
-        return (
-          <div className="flex flex-wrap gap-1">
-            {themes.map((t, i) => (
-              <span key={i} className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-[var(--gray-100)] text-[var(--color-text-tertiary)]">{t}</span>
-            ))}
-          </div>
-        );
-      },
-    },
-    {
-      key: "type",
-      label: "Type",
-      render: (_v, row) => {
-        const audioCount = getAudioCount(row);
-        return audioCount > 0
-          ? <Mic className="h-4 w-4 text-[var(--color-text-tertiary)]" title={`${audioCount} audio recording(s)`} />
-          : <FileText className="h-4 w-4 text-[var(--color-text-muted)]" title="Text review" />;
-      },
     },
     {
       key: "created_at",
@@ -1012,15 +957,6 @@ function ReviewsSubView() {
           placeholder="Search by place name..."
           className="w-64"
         />
-        <select
-          value={reviewSentimentFilter}
-          onChange={(e) => { setReviewSentimentFilter(e.target.value); setReviewPage(0); }}
-          className="h-10 px-3 rounded-lg text-sm bg-[var(--color-background-primary)] border border-[var(--gray-200)] text-[var(--color-text-primary)] cursor-pointer"
-        >
-          {SENTIMENT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
         <Button variant="ghost" size="sm" icon={RefreshCw} onClick={fetchReviews}>Refresh</Button>
         <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">{reviewCount} total</span>
       </div>
@@ -1069,60 +1005,14 @@ function ReviewsSubView() {
               <Button variant="ghost" size="sm" icon={X} onClick={() => setExpandedReview(null)} />
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              {expandedData.sentiment && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[var(--color-text-secondary)]">Sentiment:</span>
-                  <Badge variant={SENTIMENT_VARIANTS[expandedData.sentiment] || "default"}>{expandedData.sentiment}</Badge>
-                </div>
-              )}
-              {Array.isArray(expandedData.themes) && expandedData.themes.length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[var(--color-text-secondary)]">Themes:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {expandedData.themes.map((t, i) => (
-                      <Badge key={i} variant="outline">{t}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {expandedData.transcription && (
+            {expandedData.feedback_text && (
               <div>
-                <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">Transcription</h4>
-                <p className="text-sm text-[var(--color-text-primary)] bg-[var(--color-background-secondary)] rounded-lg p-3 italic">
-                  "{expandedData.transcription}"
-                </p>
-              </div>
-            )}
-
-            {expandedData.ai_summary && (
-              <div>
-                <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">AI Summary</h4>
+                <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">Feedback</h4>
                 <p className="text-sm text-[var(--color-text-primary)] bg-[var(--color-background-secondary)] rounded-lg p-3">
-                  {expandedData.ai_summary}
+                  {expandedData.feedback_text}
                 </p>
               </div>
             )}
-
-            <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--color-text-tertiary)]">
-              {expandedData.processing_status && (
-                <span>
-                  Processing: {expandedData.processing_status === "completed"
-                    ? <Badge variant="success">Completed</Badge>
-                    : expandedData.processing_status === "failed"
-                    ? <Badge variant="error">Failed</Badge>
-                    : <Badge variant="warning">{expandedData.processing_status}</Badge>}
-                </span>
-              )}
-              {getAudioCount(expandedData) > 0 && (
-                <span className="flex items-center gap-1">
-                  <Mic className="h-3.5 w-3.5" />
-                  {getAudioCount(expandedData)} recording{getAudioCount(expandedData) > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
 
             <div className="pt-2 border-t border-[var(--gray-200)]">
               <Button variant="danger" size="sm" icon={Trash2} loading={deletingId === expandedData.id} onClick={() => setDeleteConfirmId(expandedData.id)}>

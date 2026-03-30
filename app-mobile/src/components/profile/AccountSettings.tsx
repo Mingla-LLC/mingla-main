@@ -127,7 +127,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
   const toggleSection = useCallback((id: SectionId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    LayoutAnimation.configureNext(ACCORDION_ANIM);
+    if (Platform.OS === 'android') LayoutAnimation.configureNext(ACCORDION_ANIM);
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
