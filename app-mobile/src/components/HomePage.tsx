@@ -135,9 +135,10 @@ export default function HomePage({
 
   const handleOpenNotifications = useCallback(() => {
     setShowNotificationsModal(true);
-    // Reset iOS badge count when user opens notifications (Block 3 Pass 2 — hardened 2026-03-21)
-    clearNotificationBadge();
-  }, []);
+    if (unreadNotificationCount > 0) {
+      clearNotificationBadge();
+    }
+  }, [unreadNotificationCount]);
 
   const handleCloseNotifications = useCallback(() => {
     setShowNotificationsModal(false);
