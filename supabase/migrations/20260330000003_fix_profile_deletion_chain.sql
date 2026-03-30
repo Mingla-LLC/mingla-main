@@ -78,6 +78,13 @@ WHERE id IN (
 
 -- ── Fix 3: Add FK from profiles.id → auth.users(id) ON DELETE CASCADE ────
 
-ALTER TABLE public.profiles
-    ADD CONSTRAINT profiles_id_fkey_auth_users
-    FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'profiles_id_fkey_auth_users'
+    ) THEN
+        ALTER TABLE public.profiles
+            ADD CONSTRAINT profiles_id_fkey_auth_users
+            FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+    END IF;
+END $$;
