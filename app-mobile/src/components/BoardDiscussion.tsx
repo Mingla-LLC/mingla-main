@@ -67,7 +67,7 @@ interface BoardDiscussionProps {
     }>;
     admins: string[];
     currentUserId: string;
-    creatorId: string;
+    creatorId: string | null;
   };
   onBack: () => void;
   onExitBoard?: (boardId: string, boardName: string) => void;

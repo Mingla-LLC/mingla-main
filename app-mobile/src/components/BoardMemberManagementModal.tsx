@@ -19,7 +19,7 @@ interface BoardMemberManagementModalProps {
     participants: Participant[];
     admins: string[];
     currentUserId: string;
-    creatorId: string;
+    creatorId: string | null;
   };
   onPromoteToAdmin: (participantId: string) => void;
   onDemoteFromAdmin: (participantId: string) => void;

@@ -6,7 +6,7 @@ import { getDisplayName } from '../utils/getDisplayName';
 export interface DirectMessage {
   id: string;
   conversation_id: string;
-  sender_id: string;
+  sender_id: string | null;
   content: string;
   message_type: 'text' | 'image' | 'video' | 'file';
   file_url?: string;
@@ -22,7 +22,7 @@ export interface DirectMessage {
 export interface Conversation {
   id: string;
   type: 'direct' | 'group';
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   last_message_at?: string;
@@ -482,7 +482,9 @@ export class MessagingService {
   /**
    * Get sender name with caching to avoid N+1 queries
    */
-  private async getSenderName(senderId: string): Promise<string> {
+  private async getSenderName(senderId: string | null): Promise<string> {
+    if (!senderId) return 'Deleted User';
+
     const cached = this.senderProfileCache.get(senderId);
     if (cached && Date.now() - cached.cachedAt < MessagingService.PROFILE_CACHE_TTL) {
       return cached.name;
