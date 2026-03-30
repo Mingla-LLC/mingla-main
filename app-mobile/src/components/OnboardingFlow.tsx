@@ -1660,8 +1660,14 @@ const OnboardingFlow = ({
   // Launch animation + handler now lives in GettingExperiencesScreen (Step 7b)
 
   // ─── Welcome Text Entrance Animation ───
+  // CRITICAL: Only run when Phase 2 (Animated.Text greeting) is rendered.
+  // Phase 1 (name collection) uses regular Text/TextInput — the animated values
+  // aren't attached to any native view. On iOS Fabric, starting useNativeDriver
+  // animations on detached nodes throws a native ObjC exception → SIGABRT crash.
+  const hasNameForGreeting = !!(data.firstName || '').trim() && data.phoneVerified
   useEffect(() => {
     if (navState.subStep !== 'welcome' || welcomeAnimRan.current) return
+    if (!hasNameForGreeting) return  // Phase 1 — no Animated.Text in tree, skip
     welcomeAnimRan.current = true
 
     const runWelcomeAnim = async () => {
@@ -1718,7 +1724,7 @@ const OnboardingFlow = ({
     }
 
     runWelcomeAnim()
-  }, [navState.subStep])
+  }, [navState.subStep, hasNameForGreeting])
 
   // ─── Step-Level Nav Handlers ───
   const handleGoNext = useCallback(() => {
