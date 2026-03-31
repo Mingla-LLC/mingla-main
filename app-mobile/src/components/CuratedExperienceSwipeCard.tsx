@@ -8,10 +8,10 @@ import { parseAndFormatDistance, formatCurrency, getCurrencySymbol, getCurrencyR
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
-  'First Date':    'people-outline',
-  'Romantic':      'heart-outline',
-  'Group Fun':     'people-circle-outline',
-  'Picnic Dates':  'basket-outline',
+  'First Date':    'sparkles',
+  'Romantic':      'heart',
+  'Group Fun':     'people',
+  'Picnic Dates':  'sandwich',
   'Take a Stroll': 'walk-outline',
 };
 

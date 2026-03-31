@@ -74,10 +74,10 @@ interface PreferencesSheetProps {
 // Experience Types — 7 curated types (kebab-case IDs match edge function)
 const experienceTypes = [
   { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
-  { id: "first-date",    label: "First Date",    icon: "people-outline" },
-  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
-  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
-  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "first-date",    label: "First Date",    icon: "sparkles" },
+  { id: "romantic",      label: "Romantic",       icon: "heart" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "sandwich" },
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
@@ -85,21 +85,17 @@ const experienceTypes = [
 
 // Categories with exact icons from image
 const categories = [
-  { id: "nature", label: "Nature & Views", icon: "leaf-outline" },
-  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
-  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
+  { id: "nature", label: "Nature & Views", icon: "trees" },
+  { id: "first_meet", label: "First Meet", icon: "handshake" },
+  { id: "picnic_park", label: "Picnic Park", icon: "tree-pine" },
   { id: "drink", label: "Drink", icon: "wine-outline" },
-  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
-  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
-  { id: "watch", label: "Watch", icon: "film-outline" },
+  { id: "casual_eats", label: "Casual Eats", icon: "utensils-crossed" },
+  { id: "fine_dining", label: "Fine Dining", icon: "chef-hat" },
+  { id: "watch", label: "Watch", icon: "film-new" },
   { id: "live_performance", label: "Live Performance", icon: "musical-notes-outline" },
-  {
-    id: "creative_arts",
-    label: "Creative & Arts",
-    icon: "color-palette-outline",
-  },
+  { id: "creative_arts", label: "Creative & Arts", icon: "color-palette-outline" },
   { id: "play", label: "Play", icon: "game-controller-outline" },
-  { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "wellness", label: "Wellness", icon: "heart-pulse" },
   { id: "flowers", label: "Flowers", icon: "flower-outline" },
 ];
 

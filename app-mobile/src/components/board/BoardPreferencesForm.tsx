@@ -29,10 +29,10 @@ interface BoardPreferencesFormProps {
 
 const experienceTypes = [
   { id: 'adventurous', label: 'Adventurous', icon: 'compass-outline' },
-  { id: 'first-date', label: 'First Date', icon: 'heart-outline' },
+  { id: 'first-date', label: 'First Date', icon: 'sparkles' },
   { id: 'romantic', label: 'Romantic', icon: 'heart' },
   { id: 'group-fun', label: 'Group Fun', icon: 'people' },
-  { id: 'picnic-dates', label: 'Picnic Dates', icon: 'basket-outline' },
+  { id: 'picnic-dates', label: 'Picnic Dates', icon: 'sandwich' },
   { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline' },
 ];
 

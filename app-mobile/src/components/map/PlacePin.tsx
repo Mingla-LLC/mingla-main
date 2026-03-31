@@ -7,17 +7,17 @@ import { Recommendation } from '../../types/recommendation';
 
 // Direct slug → icon map matching preferences sheet exactly
 const CATEGORY_ICON_MAP: Record<string, string> = {
-  nature: 'leaf-outline',
-  first_meet: 'chatbubbles-outline',
-  picnic_park: 'basket-outline',
+  nature: 'trees',
+  first_meet: 'handshake',
+  picnic_park: 'tree-pine',
   drink: 'wine-outline',
-  casual_eats: 'fast-food-outline',
-  fine_dining: 'restaurant-outline',
-  watch: 'film-outline',
+  casual_eats: 'utensils-crossed',
+  fine_dining: 'chef-hat',
+  watch: 'film-new',
   live_performance: 'musical-notes-outline',
   creative_arts: 'color-palette-outline',
   play: 'game-controller-outline',
-  wellness: 'body-outline',
+  wellness: 'heart-pulse',
   flowers: 'flower-outline',
 };
 

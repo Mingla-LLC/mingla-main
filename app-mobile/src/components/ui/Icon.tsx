@@ -39,6 +39,7 @@ import {
   Car,
   Check,
   CheckCheck,
+  ChefHat,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -77,8 +78,10 @@ import {
   Grid3x3,
   Hamburger,
   Hand,
+  Film,
+  Handshake,
   Heart,
-  HeartHandshake,
+  HeartPulse,
   Hourglass,
   Image,
   Images,
@@ -157,6 +160,9 @@ import {
   X,
   Zap,
   Flower2,
+  Sandwich,
+  TreePine,
+  Trees,
 } from 'lucide-react-native';
 
 // ── Master mapping: every Ionicons / Feather name → Lucide component ─
@@ -238,6 +244,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'copy':                       Copy,
   'copy-outline':               Copy,
   'create-outline':             SquarePen,
+  'chef-hat':                   ChefHat,
   'credit-card':                CreditCard,
   'crown-outline':              Crown,
 
@@ -258,13 +265,13 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'eye':                        Eye,
   'eye-off':                    EyeOff,
   'eye-outline':                Eye,
-  'moon-outline':               Moon,
 
   // ─── F ───
   'fast-food':                   Hamburger,
   'fast-food-outline':          Hamburger,
   'file-text':                  FileText,
   'film':                        Clapperboard,
+  'film-new':                   Film,
   'film-outline':               Clapperboard,
   'filter':                     Filter,
   'flag':                       Flag,
@@ -281,15 +288,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'gift-outline':               Gift,
   'globe':                      Globe,
   'globe-outline':              Globe,
-  'globe-outline':              Globe,
   'grid':                       Grid3x3,
   'grid-outline':               Grid3x3,
 
   // ─── H ───
   'hand-right-outline':         Hand,
+  'handshake':                  Handshake,
   'heart':                      Heart,
-  'heart-handshake':            HeartHandshake,
   'heart-outline':              Heart,
+  'heart-pulse':                HeartPulse,
   'hourglass':                  Hourglass,
   'hourglass-outline':          Hourglass,
 
@@ -400,6 +407,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'star-outline':               Star,
   'stats-chart':                BarChart3,
   'stop':                       Minus,
+  'sandwich':                   Sandwich,
   'storefront':                 Store,
   'sunny-outline':              Sun,
 
@@ -415,9 +423,12 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'trash':                      Trash2,
   'trash-outline':              Trash2,
   'trophy':                     Trophy,
+  'tree-pine':                  TreePine,
+  'trees':                      Trees,
   'trophy-outline':             Trophy,
 
   // ─── U ───
+  'utensils-crossed':           UtensilsCrossed,
   'user-minus':                 UserMinus,
   'user-plus':                  UserPlus,
   'user-x':                     UserX,

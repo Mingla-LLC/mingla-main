@@ -34,13 +34,13 @@ export const GamifiedHistory: React.FC<GamifiedHistoryProps> = ({
 
   const getCategoryIcon = (category: string) => {
     const iconMap: Record<string, string> = {
-      'sip_chill': 'wine',
-      'dining': 'restaurant',
-      'play_move': 'fitness',
-      'creative': 'brush',
+      'sip_chill': 'wine-outline',
+      'dining': 'chef-hat',
+      'play_move': 'game-controller-outline',
+      'creative': 'color-palette-outline',
       'stroll': 'walk-outline',
-      'screen_relax': 'tv',
-      'casual_eats': 'fast-food',
+      'screen_relax': 'film-new',
+      'casual_eats': 'utensils-crossed',
       'freestyle': 'sparkles'
     };
     return iconMap[category] || 'star';
