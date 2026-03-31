@@ -139,7 +139,7 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
           PreferencesService.getUserPreferences(userId),
           new Promise<null>((resolve) => {
             setTimeout(() => {
-              logger.warn('useOnboardingResume: getUserPreferences timed out, proceeding with defaults')
+              console.warn('[useOnboardingResume] getUserPreferences timed out, proceeding with defaults')
               resolve(null)
             }, PREFS_TIMEOUT_MS)
           }),
@@ -165,7 +165,7 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
               }
             } catch (gpsErr) {
               // Non-fatal: some Android versions throw here. GPS defaults to false.
-              logger.warn('useOnboardingResume: getForegroundPermissionsAsync failed', { error: String(gpsErr) })
+              console.warn('[useOnboardingResume] getForegroundPermissionsAsync failed', String(gpsErr))
             }
           }
         }

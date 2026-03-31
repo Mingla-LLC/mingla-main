@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -85,6 +86,23 @@ import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService"
 import type { ServerNotification } from "../src/hooks/useNotifications";
 
 const TAB_BAR_ICON_SIZE = ms(20);
+
+// ── Sentry ──────────────────────────────────────────────────────────────────
+// Initialize BEFORE any React component renders. Sentry's native module
+// installs a global NSException handler that captures the crash details
+// (module name, method, exception reason) before the process terminates.
+// This is the ONLY way to identify unsymbolicated native crashes without Xcode.
+Sentry.init({
+  dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
+  enableNativeFramesTracking: true,
+  enableAutoSessionTracking: true,
+  // Capture 100% of errors (we need every crash right now)
+  tracesSampleRate: 0,
+  // Attach breadcrumbs from our logger
+  maxBreadcrumbs: 50,
+  enabled: !__DEV__, // Only in production builds
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 function AppContent() {
   useLifecycleLogger();
@@ -2401,7 +2419,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function App() {
+function App() {
   // Gate: clear oversized React Query persisted cache BEFORE provider mounts.
   // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow.
   // Only clear if the cache actually exceeds the safety threshold (1.5MB).
@@ -2481,3 +2499,5 @@ export default function App() {
     </>
   );
 }
+
+export default Sentry.wrap(App);
