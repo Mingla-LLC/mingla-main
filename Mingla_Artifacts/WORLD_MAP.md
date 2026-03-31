@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-03-30
+> Last updated: 2026-03-31
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -10,7 +10,7 @@
 
 | Surface | Domain | Key Files | Grade | Items Tracked | Coverage |
 |---------|--------|-----------|-------|---------------|----------|
-| Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (1A, 2B, 4F) | 7 | Weak |
+| Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
 | Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 9F) | 11 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (30A, 4B, 1C, 14F) | 49 | Partial |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
@@ -67,12 +67,12 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
-| ORCH-0001 | Phone OTP sign-in | Auth | S0 | unaudited | open | F | — | — |
+| ORCH-0001 | Phone OTP verification (onboarding) | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — backend solid, client in onboarding scope |
 | ORCH-0002 | Session persistence | Auth | S1 | quality-gap | verified | B | 2026-03-25 | _hasHydrated gate + Zustand persistence |
 | ORCH-0003 | Token refresh / expiry handling | Auth | S0 | bug | closed | A | 2026-03-24 | Commit aa9cfd68 |
-| ORCH-0004 | Sign-out cleanup | Auth | S0 | unaudited | open | F | — | — |
-| ORCH-0005 | Google Sign-In flow | Auth | S0 | unaudited | open | F | — | — |
-| ORCH-0006 | Apple Sign-In flow | Auth | S0 | unaudited | open | F | — | — |
+| ORCH-0004 | Sign-out cleanup | Auth | S0 | bug | closed | A | 2026-03-31 | QA_ORCH-0004_SIGNOUT_CLEANUP_REPORT.md — RevenueCat/Mixpanel added, 401 rewired, dead code removed |
+| ORCH-0005 | Google Sign-In flow | Auth | S1 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — works but brittle string matching in retry logic |
+| ORCH-0006 | Apple Sign-In flow | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — clean, minor fire-and-forget name risk |
 | ORCH-0007 | Zombie auth prevention | Auth | S1 | bug | verified | B | 2026-03-23 | Commit 2a96c8f6 |
 
 ### Section 2: Onboarding
