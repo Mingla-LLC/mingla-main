@@ -46,7 +46,7 @@ BEGIN
 
   RETURN EXISTS (
     SELECT 1 FROM public.used_trial_phones
-    WHERE phone_hash = encode(digest(p_phone, 'sha256'), 'hex')
+    WHERE phone_hash = encode(extensions.digest(p_phone, 'sha256'), 'hex')
   );
 END;
 $$;
@@ -63,7 +63,7 @@ BEGIN
   END IF;
 
   INSERT INTO public.used_trial_phones (phone_hash, first_trial_at, last_trial_at, trial_count)
-  VALUES (encode(digest(p_phone, 'sha256'), 'hex'), now(), now(), 1)
+  VALUES (encode(extensions.digest(p_phone, 'sha256'), 'hex'), now(), now(), 1)
   ON CONFLICT (phone_hash) DO UPDATE
   SET last_trial_at = now(),
       trial_count = used_trial_phones.trial_count + 1;
@@ -73,7 +73,7 @@ $$;
 -- 5. Backfill: hash phones of all users who have had a trial
 INSERT INTO public.used_trial_phones (phone_hash, first_trial_at, last_trial_at, trial_count)
 SELECT
-  encode(digest(p.phone, 'sha256'), 'hex'),
+  encode(extensions.digest(p.phone, 'sha256'), 'hex'),
   COALESCE(s.created_at, now()),
   COALESCE(s.created_at, now()),
   1
