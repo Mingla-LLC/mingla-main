@@ -78,6 +78,7 @@ import {
   Hamburger,
   Hand,
   Heart,
+  HeartHandshake,
   Hourglass,
   Image,
   Images,
@@ -287,6 +288,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   // ─── H ───
   'hand-right-outline':         Hand,
   'heart':                      Heart,
+  'heart-handshake':            HeartHandshake,
   'heart-outline':              Heart,
   'hourglass':                  Hourglass,
   'hourglass-outline':          Hourglass,
