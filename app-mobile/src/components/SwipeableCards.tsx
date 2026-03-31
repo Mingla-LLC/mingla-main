@@ -1025,6 +1025,9 @@ export default function SwipeableCards({
               toValue: { x: 0, y: 0 },
               useNativeDriver: false,
             }).start();
+            // Show paywall instead of silently snapping back (CF-02)
+            setPaywallFeature('unlimited_swipes');
+            setShowPaywall(true);
             return;
           }
 
@@ -1174,10 +1177,11 @@ export default function SwipeableCards({
   ) => {
     if (!card) return;
 
-    // Record swipe count — await so state updates before render
+    // Record swipe count and capture the post-update result.
     // The PanResponder ref check blocks swipes 21+ synchronously before animation.
+    let swipeResult: { allowed: boolean } | undefined;
     if (!isUnlimited) {
-      await recordSwipe();
+      swipeResult = await recordSwipe();
     }
 
     // ── AppsFlyer: save or dismiss ──
@@ -1364,8 +1368,10 @@ export default function SwipeableCards({
     // currentCardIndex is always 0 in the removed-cards pattern, so remaining = length - 1
     handleDeckCardProgress(0, availableRecommendations.length);
 
-    // Show paywall after the 20th swipe (all tracking complete, card already gone)
-    if (!isUnlimited && swipeLimitRef.current.remaining <= 0) {
+    // Show paywall after the 20th swipe (all tracking complete, card already gone).
+    // Uses the synchronous return value from recordSwipe() — NOT the stale ref
+    // (React 18 batching delays the ref update to the next render).
+    if (!isUnlimited && swipeResult && !swipeResult.allowed) {
       setPaywallFeature('unlimited_swipes');
       setShowPaywall(true);
     }

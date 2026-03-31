@@ -1,7 +1,7 @@
 # Master Bug List
 
-> Last updated: 2026-03-30
-> Total: 265 | Open: 143 | Closed: 68 | Verified (B grade): 15 | Deferred: 1
+> Last updated: 2026-03-31
+> Total: 272 | Open: 143 | Closed: 69 | Verified (B grade): 19 | Deferred: 1
 
 ## Summary by Status
 
@@ -29,10 +29,6 @@
 
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
-| ORCH-0001 | Phone OTP sign-in | Auth | unaudited | Tracker |
-| ORCH-0004 | Sign-out cleanup | Auth | unaudited | Tracker |
-| ORCH-0005 | Google Sign-In flow | Auth | unaudited | Tracker |
-| ORCH-0006 | Apple Sign-In flow | Auth | unaudited | Tracker |
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
@@ -89,11 +85,29 @@
 | ORCH-0238 | Notification system provider | Lifecycle | unaudited | Tracker |
 | ORCH-0242 | AppsFlyer integration | Analytics | unaudited | Tracker |
 
+### New from Wave 1b (Payments Investigation)
+
+| ID | Title | Surface | Severity | Classification | Source |
+|----|-------|---------|----------|---------------|--------|
+| ORCH-0143 | Referral bonus grants 'pro' on server, 'elite' on client | Payments | S0 | bug | Investigation |
+| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | Investigation |
+| ORCH-0145 | Session creation limit not enforced in UI | Payments | S1 | bug | Investigation |
+| ORCH-0146 | Swipe limit paywall doesn't trigger (stale ref) | Payments | S1 | bug | Investigation |
+| ORCH-0147 | Silent swipe blocking after limit — no user feedback | Payments | S2 | quality-gap | Investigation |
+| ORCH-0148 | useEffectiveTier can downgrade user (misleading comment) | Payments | S2 | quality-gap | Investigation |
+| ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | Investigation |
+
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (Wave 1a)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0004 | Sign-out cleanup | RevenueCat/Mixpanel cleanup added, 401 handler rewired, dead code removed | 2026-03-31 | QA_ORCH-0004_SIGNOUT_CLEANUP_REPORT.md |
 
 ## Closed Issues (Grade A)
 
-68 items closed with evidence. Key closures:
+69 items closed with evidence. Key closures:
 
 | Area | Count | Key Commits |
 |------|-------|-------------|

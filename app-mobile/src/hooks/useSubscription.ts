@@ -90,8 +90,8 @@ export function useServerTier(userId: string | undefined) {
  *   3. Server-side RPC          — admin subscription overrides (Priority 0 on server)
  *   4. Fallback                 → 'free'
  *
- * Takes the higher of client-side and server-side tiers so neither source
- * can downgrade the user.
+ * When the server tier is available it is authoritative (includes admin
+ * overrides the client cannot see). Falls back to client tier while loading.
  */
 export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
   const { data: customerInfo } = useCustomerInfo()

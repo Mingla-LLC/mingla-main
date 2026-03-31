@@ -20,7 +20,7 @@
 | Profile & Settings | Mobile | ProfilePage.tsx, AccountSettings.tsx | Mixed (3A, 1B, 6F) | 10 | Weak |
 | Map & Location | Mobile + Backend | DiscoverMap.tsx, get-nearby-people | All F | 16 | Unaudited |
 | Chat / DM | Mobile + Backend | messagingService.ts, useMessages.ts | All F | 8 | Unaudited |
-| Payments & Subscriptions | Mobile + Backend | useRevenueCat.ts, PaywallScreen.tsx | All F | 8 | Unaudited |
+| Payments & Subscriptions | Mobile + Backend | useRevenueCat.ts, PaywallScreen.tsx | Mixed (1A, 3B, 2C, 2D) | 8 | Partial |
 | Calendar & Scheduling | Mobile | CalendarTab.tsx, calendarService.ts | All F | 8 | Unaudited |
 | Holidays & Events | Mobile + Backend | holiday-experiences, CustomHolidayModal.tsx | Mixed (1B, 6F) | 7 | Weak |
 | People Discovery | Mobile + Backend | DiscoverScreen.tsx, get-person-hero-cards | All F | 10 | Unaudited |
@@ -251,14 +251,21 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
-| ORCH-0135 | Paywall screen | Payments | S0 | unaudited | open | F | — | — |
-| ORCH-0136 | Custom paywall screen | Payments | S1 | unaudited | open | F | — | — |
-| ORCH-0137 | RevenueCat integration | Payments | S0 | unaudited | open | F | — | — |
-| ORCH-0138 | Subscription service | Payments | S1 | unaudited | open | F | — | — |
-| ORCH-0139 | Creator tier gating | Payments | S2 | unaudited | open | F | — | — |
-| ORCH-0140 | Feature gate enforcement | Payments | S1 | unaudited | open | F | — | — |
-| ORCH-0141 | Swipe limit (free users) | Payments | S1 | unaudited | open | F | — | — |
-| ORCH-0142 | Referral processing | Payments | S2 | unaudited | open | F | — | — |
+| ORCH-0135 | Paywall screen | Payments | S0 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0136 | Custom paywall screen | Payments | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0137 | RevenueCat integration | Payments | S0 | closed | closed | A | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0138 | Subscription service | Payments | S1 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0139 | Creator tier gating | Payments | S2 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0140 | Feature gate enforcement | Payments | S1 | bug | verified | C | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0141 | Swipe limit (free users) | Payments | S1 | bug | open | D | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0142 | Referral processing | Payments | S2 | bug | open | D | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0143 | Referral tier: server 'pro', client 'elite' | Payments | S0 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-01 |
+| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-02 |
+| ORCH-0145 | Session creation limit not enforced | Payments | S1 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-03 |
+| ORCH-0146 | Swipe paywall doesn't trigger (stale ref) | Payments | S1 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-04 |
+| ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md CF-02 |
+| ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md CF-01 |
+| ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-05 |
 
 ### Section 12: Calendar & Scheduling
 
