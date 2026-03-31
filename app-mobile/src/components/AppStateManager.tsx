@@ -760,6 +760,22 @@ export function useAppState() {
       const { logoutOneSignal } = await import("../services/oneSignalService");
       logoutOneSignal();
 
+      // Reset RevenueCat customer so next sign-in gets the correct subscription state.
+      // Fire-and-forget — sign-out must not block on SDK cleanup.
+      import("../services/revenueCatService").then(({ logoutRevenueCat }) => {
+        logoutRevenueCat().catch((e: unknown) =>
+          console.warn("[SIGN-OUT] RevenueCat logout failed:", e)
+        );
+      }).catch(() => {});
+
+      // Reset Mixpanel identity so events aren't attributed to the previous user.
+      // trackLogout() calls reset() internally — clears distinct_id + super properties.
+      import("../services/mixpanelService").then(({ mixpanelService }) => {
+        try { mixpanelService.trackLogout(); } catch (e) {
+          console.warn("[SIGN-OUT] Mixpanel reset failed:", e);
+        }
+      }).catch(() => {});
+
       // Clear in-memory offline queue (AsyncStorage key cleared by prefix sweep below)
       const { realtimeService } = await import('../services/realtimeService');
       realtimeService.clearQueue();
@@ -826,6 +842,13 @@ export function useAppState() {
       });
     }
   }, [queryClient]);
+
+  // Register handleSignOut with the 401 handler so forced sign-outs
+  // trigger the full cleanup chain (SDK resets, AsyncStorage, React Query).
+  useEffect(() => {
+    const { setSignOutHandler } = require('../config/queryClient');
+    setSignOutHandler(handleSignOut);
+  }, [handleSignOut]);
 
   return {
     // Authentication State (now using Supabase)

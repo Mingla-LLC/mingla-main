@@ -22,23 +22,10 @@ export interface UserProfile {
 class AuthService {
   private appStore = useAppStore.getState();
 
-  async signOut() {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
-      // Clear all user data including session state
-      this.appStore.clearUserData();
-
-      // AsyncStorage cleanup is handled by handleSignOut() in AppStateManager.tsx.
-      // Do not duplicate cleanup logic here — single source of truth.
-
-      return { error: null };
-    } catch (error) {
-      console.error("Sign out error:", error);
-      return { error };
-    }
-  }
+  // signOut() intentionally removed — the sole sign-out path is
+  // handleSignOut() in AppStateManager.tsx, which handles SDK cleanup
+  // (OneSignal, RevenueCat, Mixpanel), AsyncStorage sweep, React Query
+  // clear, and Supabase session revocation in one place. (ORCH-0004)
 
   async getCurrentUser() {
     try {
@@ -299,19 +286,8 @@ class AuthService {
     await this.loadUserProfile(userId);
   }
 
-  // Listen for auth state changes
-  onAuthStateChange(callback: (user: any) => void) {
-    return supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        this.loadUserProfile(session.user.id);
-        this.appStore.setAuth(session.user as any);
-        callback(session.user);
-      } else if (event === "SIGNED_OUT") {
-        this.appStore.clearUserData();
-        callback(null);
-      }
-    });
-  }
+  // onAuthStateChange() intentionally removed — the sole auth state
+  // listener is in useAuthSimple.ts (INV-A01: single auth instance). (ORCH-0004)
 }
 
 export const authService = new AuthService();
