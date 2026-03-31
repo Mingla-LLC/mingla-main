@@ -20,7 +20,7 @@
 | Profile & Settings | Mobile | ProfilePage.tsx, AccountSettings.tsx | Mixed (3A, 1B, 6F) | 10 | Weak |
 | Map & Location | Mobile + Backend | DiscoverMap.tsx, get-nearby-people | All F | 16 | Unaudited |
 | Chat / DM | Mobile + Backend | messagingService.ts, useMessages.ts | All F | 8 | Unaudited |
-| Payments & Subscriptions | Mobile + Backend | useRevenueCat.ts, PaywallScreen.tsx | Mixed (6A, 5B, 1C, 1D, 2F) | 15 | Partial |
+| Payments & Subscriptions | Mobile + Backend | useRevenueCat.ts, PaywallScreen.tsx | Mixed (8A, 6B, 1C) | 15 | Strong |
 | Calendar & Scheduling | Mobile | CalendarTab.tsx, calendarService.ts | All F | 8 | Unaudited |
 | Holidays & Events | Mobile + Backend | holiday-experiences, CustomHolidayModal.tsx | Mixed (1B, 6F) | 7 | Weak |
 | People Discovery | Mobile + Backend | DiscoverScreen.tsx, get-person-hero-cards | All F | 10 | Unaudited |
@@ -258,14 +258,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0139 | Creator tier gating | Payments | S2 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
 | ORCH-0140 | Feature gate enforcement | Payments | S1 | bug | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md — session limits now enforced. Remaining gap: referral tier expiry (ORCH-0144) |
 | ORCH-0141 | Swipe limit (free users) | Payments | S1 | bug | verified | B | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md — paywall now triggers, PanResponder feedback works. Remaining gap: client-authoritative count (OB-02) |
-| ORCH-0142 | Referral processing | Payments | S2 | bug | open | D | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md |
+| ORCH-0142 | Referral processing | Payments | S2 | bug | verified | B | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — referral has finite expiry, tier correct. Remaining: no UI for "days remaining" (cosmetic) |
 | ORCH-0143 | Referral tier: server 'pro', client 'elite' | Payments | S0 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_CLEAR_BUGS_REPORT.md |
-| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-02 |
+| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — date-based expiry, no cron |
 | ORCH-0145 | Session creation limit not enforced | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_CLEAR_BUGS_REPORT.md |
 | ORCH-0146 | Swipe paywall doesn't trigger (stale ref) | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_CLEAR_BUGS_REPORT.md |
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
-| ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | open | F | — | INVESTIGATION_PAYMENTS_WAVE1B.md RC-05 |
+| ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
 
 ### Section 12: Calendar & Scheduling
 

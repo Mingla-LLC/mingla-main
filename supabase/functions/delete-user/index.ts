@@ -150,6 +150,18 @@ serve(async (req) => {
     const userPhone = profileData?.phone ?? null;
     console.log(`[delete-user] Phone: ${userPhone ? userPhone.slice(0, 4) + "****" : "none"}`);
 
+    // ── Step 1b: Record phone hash for trial dedup ──
+    // Must run BEFORE account deletion. The used_trial_phones table
+    // survives CASCADE and prevents trial abuse on re-signup.
+    if (userPhone) {
+      const { error: trialHashError } = await adminClient
+        .rpc('record_trial_phone', { p_phone: userPhone });
+      if (trialHashError) {
+        // Non-blocking — log but don't fail deletion
+        console.warn("[delete-user] Failed to record trial phone hash:", trialHashError.message);
+      }
+    }
+
     // ── Step 2: All pre-deletion work in ONE parallel batch ──
     // These must complete BEFORE deleteUser() because CASCADE would
     // destroy or NULL-ify the rows we need to update.

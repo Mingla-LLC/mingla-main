@@ -8,11 +8,11 @@
 | Metric | Value |
 |--------|-------|
 | Total items tracked | 272 |
-| Grade A (launch-ready) | 72 (26%) |
-| Grade B (solid, minor gaps) | 22 (8%) |
+| Grade A (launch-ready) | 74 (27%) |
+| Grade B (solid, minor gaps) | 23 (8%) |
 | Grade C (functional, incomplete) | 2 (<1%) |
-| Grade D (fragile) | 1 (<1%) |
-| Grade F (broken/unaudited) | 175 (64%) |
+| Grade D (fragile) | 0 (0%) |
+| Grade F (broken/unaudited) | 173 (64%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 10 (44 bugs fixed) |
 
@@ -33,11 +33,11 @@
 
 ## Top 5 Launch Blockers
 
-1. **Referral expiry + trial abuse (ORCH-0144, 0149)** — ORCH-0143 fixed (tier disagreement closed). Remaining: referral bonus never expires (S0), trial abuse via delete+re-signup gives infinite Elite (S1). Revenue leak.
-2. **Payments unaudited (ORCH-0135, 0137)** — Paywall and RevenueCat integration at F. Revenue = zero if broken. S0.
-3. **Security layer unaudited (ORCH-0223, 0224, 0225)** — RLS, admin auth, PII handling all at F. Data exposure risk. S0.
+1. **Security layer unaudited (ORCH-0223, 0224, 0225)** — RLS, admin auth, PII handling all at F. Data exposure risk. S0.
+2. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
+3. **Account deletion at F (ORCH-0102)** — Apple/Google require it. App Store rejection if missing. S0.
 4. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
-5. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
+5. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
 
 ## Top 5 Quality Risks
 
@@ -55,12 +55,12 @@
 - **Chat responsiveness** — 4 items at A. Instant open, background fetch, block timeouts.
 - **Preferences-to-deck contract** — Race condition killed, prefsHash matching, atomic save.
 - **Auth & Session** — 2A/4B/1C. Sign-out hardened. OAuth flows verified.
+- **Payments & Subscriptions** — 8A/6B/1C. Paywalls, RevenueCat, tier gating, swipe limits, referral expiry, trial abuse prevention all verified.
 
 ## What's Fragile (Grade D/F Surfaces)
 
 - **Map & Location** — 16 items, 100% at F. Entire feature unaudited.
 - **Chat / DM** — 8 items, 100% at F. No verification of send/receive, presence, realtime.
-- **Payments & Subscriptions** — 15 items (6A, 5B, 1C, 1D, 2F). 5 bugs closed this cycle. Remaining risks: referral expiry (ORCH-0144, S0) and trial abuse (ORCH-0149, S1).
 - **Calendar & Scheduling** — 8 items, 100% at F. Core loop step, unverified.
 - **People Discovery** — 10 items, 100% at F.
 - **Sharing & Invites** — 10 items, 100% at F.
@@ -74,4 +74,4 @@
 - **2 notification passes** completed (2026-03-21 to 2026-03-23)
 - **9 cross-cutting passes** completed (2026-03-23)
 - Last commit with hardening work: 2026-03-26 (AI Quality Gate Phase 2)
-- Wave 1b payment fixes: 5 bugs closed 2026-03-31 (ORCH-0143/0145/0146/0147/0148)
+- Wave 1b payment fixes: 7 bugs closed 2026-03-31 (ORCH-0143/0144/0145/0146/0147/0148/0149)

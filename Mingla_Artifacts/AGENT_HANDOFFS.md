@@ -1,13 +1,13 @@
 # Agent Handoffs
 
 > Last updated: 2026-03-31
-> Total: 1 active | 6 completed
+> Total: 0 active | 9 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| AH-006 | ORCH-0144/0149 | Spec Writer | 2026-03-31 | prompts/WAVE1B_PAYMENTS_SPEC_EXPIRY_TRIAL.md | Awaiting dispatch |
+| — | — | — | — | — | — |
 
 ## Completed Dispatches
 
@@ -18,7 +18,10 @@
 | AH-003 | ORCH-0004 | Tester | 2026-03-31 | QA_ORCH-0004_SIGNOUT_CLEANUP_REPORT.md | CONDITIONAL PASS |
 | AH-004 | ORCH-0135-0142 | Investigator | 2026-03-31 | INVESTIGATION_PAYMENTS_WAVE1B.md | APPROVED |
 | AH-005 | ORCH-0143/0145/0146 | Implementor | 2026-03-31 | IMPLEMENTATION_PAYMENTS_CLEAR_BUGS_REPORT.md | APPROVED |
+| AH-006 | ORCH-0144/0149 | Spec Writer | 2026-03-31 | SPEC_PAYMENTS_EXPIRY_TRIAL.md | APPROVED |
 | AH-007 | ORCH-0143/0145/0146 | Tester | 2026-03-31 | QA_PAYMENTS_CLEAR_BUGS_REPORT.md | PASS |
+| AH-008 | ORCH-0144/0149 | Implementor | 2026-03-31 | IMPLEMENTATION_PAYMENTS_EXPIRY_TRIAL_REPORT.md | APPROVED |
+| AH-009 | ORCH-0144/0149 | Tester | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md | PASS (after P1 rework) |
 
 ## Historical (Pre-Orchestrator)
 

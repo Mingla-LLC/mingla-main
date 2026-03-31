@@ -6,7 +6,7 @@ import {
   getEffectiveTier,
   getTrialDaysRemaining,
   getTrialTotalDays,
-  getReferralMonthsRemaining,
+  getReferralDaysRemaining,
   hasElevatedAccess,
 } from '../types/subscription'
 import { useCustomerInfo } from './useRevenueCat'
@@ -142,10 +142,10 @@ export function useTrialTotalDays(userId: string | undefined): number {
   return getTrialTotalDays(subscription ?? null)
 }
 
-/** Returns how many referral bonus months remain, or 0 if none. */
-export function useReferralMonthsRemaining(userId: string | undefined): number {
+/** Returns how many referral bonus days remain, or 0 if none. */
+export function useReferralDaysRemaining(userId: string | undefined): number {
   const { data: subscription } = useSubscription(userId)
-  return getReferralMonthsRemaining(subscription ?? null)
+  return getReferralDaysRemaining(subscription ?? null)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

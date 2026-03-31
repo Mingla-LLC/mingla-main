@@ -19,29 +19,25 @@
 
 | Rank | ID | Title | Score | Surface | Severity | Action | Rationale |
 |------|----|-------|-------|---------|----------|--------|-----------|
-| 1 | ORCH-0137 | RevenueCat integration | 88 | Payments | S0 | Investigate | No revenue without working payments. Tier resolution affects every feature gate. |
-| 2 | ORCH-0144 | Referral bonus never expires | 90 | Payments | S0 | Spec+Implement | Permanent elevated access from one referral. Revenue loss. |
-| 3 | ORCH-0135 | Paywall screen | 86 | Payments | S0 | Investigate | User-facing purchase flow. Broken paywall = zero conversion. |
-| 4 | ORCH-0223 | RLS policy coverage | 85 | Security | S0 | Investigate | 392+ policies, zero audit. Data exposure risk across all user data. |
-| 5 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
-| 6 | ORCH-0225 | PII handling | 82 | Security | S0 | Investigate | Phone numbers, location data. Regulatory risk. |
-| 7 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
-| 8 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
-| 9 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
-| 10 | ORCH-0149 | Trial abuse via delete+re-signup | 75 | Payments | S1 | Spec+Implement | Infinite free Elite via account cycling. |
-| 11 | ORCH-0048 | Curated/category round-robin broken | 75 | Discovery | S1 | Investigate | User-reported. Card variety is core UX promise. |
-| 12 | ORCH-0038 | Coordinates replacing text in location | 73 | Discovery | S1 | Implement | Known bug. Users see "37.7749, -122.4194" instead of city name. |
-| 13 | ORCH-0065 | Solo mode | 72 | Discovery | S1 | Investigate | Entire solo mode unaudited. Most users start solo. |
-| 14 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
-| 15 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
-| 16 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
-| 17 | ORCH-0070 | Session creation | 64 | Collaboration | S1 | Investigate | Collaboration creation flow unaudited. Core social feature. |
+| 1 | ORCH-0223 | RLS policy coverage | 85 | Security | S0 | Investigate | 392+ policies, zero audit. Data exposure risk across all user data. |
+| 2 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
+| 3 | ORCH-0225 | PII handling | 82 | Security | S0 | Investigate | Phone numbers, location data. Regulatory risk. |
+| 4 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
+| 5 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
+| 6 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
+| 7 | ORCH-0048 | Curated/category round-robin broken | 75 | Discovery | S1 | Investigate | User-reported. Card variety is core UX promise. |
+| 8 | ORCH-0038 | Coordinates replacing text in location | 73 | Discovery | S1 | Implement | Known bug. Users see "37.7749, -122.4194" instead of city name. |
+| 9 | ORCH-0065 | Solo mode | 72 | Discovery | S1 | Investigate | Entire solo mode unaudited. Most users start solo. |
+| 10 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
+| 11 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
+| 12 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
+| 13 | ORCH-0070 | Session creation | 64 | Collaboration | S1 | Investigate | Collaboration creation flow unaudited. Core social feature. |
 
 ## Strategic Categories
 
 | Category | Score Range | Count | IDs |
 |----------|-----------|-------|-----|
-| Fix Now | 70-100 | 14 | ORCH-0008, 0038, 0041, 0048, 0065, 0094, 0102, 0127, 0135, 0137, 0144, 0149, 0223, 0225 |
+| Fix Now | 70-100 | 10 | ORCH-0008, 0038, 0041, 0048, 0065, 0094, 0102, 0127, 0223, 0225 |
 | Fix Next | 50-69 | ~30 | Remaining S1 items + high S2 items |
 | Should Fix | 30-49 | ~40 | S2 items on non-critical flows |
 | Debt | 10-29 | ~30 | S3 items, cosmetic issues |
@@ -49,9 +45,6 @@
 
 ## Recommended First Action
 
-**Spec + implement ORCH-0144 (referral expiry) and ORCH-0149 (trial abuse) — the last two open payment bugs. Both need policy decisions before code.**
+**Investigate ORCH-0223 (RLS policy coverage) — the highest-severity unaudited surface remaining. 392+ policies with zero audit. Data exposure risk.**
 
-Rationale: Wave 1b payment fixes complete (ORCH-0143/0145/0146/0147/0148 all closed, QA passed). Two remaining payment bugs need specs because they involve business rules (expiry duration, abuse detection strategy).
-
-Second priority: Security (ORCH-0223, 0225) — data protection.
-Third priority: Remaining discovery bugs (ORCH-0041, 0038, 0048) — user-visible quality.
+Rationale: Payments surface fully closed (all 7 bugs fixed, QA passed). Security is now the top priority — RLS and PII handling are S0 items with unknown blast radius. Onboarding state machine (ORCH-0008) is second priority. Discovery bugs (ORCH-0041, 0038, 0048) are third — user-visible quality issues with known fix paths.

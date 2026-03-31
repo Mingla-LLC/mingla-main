@@ -1,15 +1,15 @@
 # Master Bug List
 
 > Last updated: 2026-03-31
-> Total: 272 | Open: 138 | Closed: 74 | Verified (B grade): 19 | Deferred: 1
+> Total: 272 | Open: 136 | Closed: 76 | Verified (B grade): 19 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
 | Open (F grade, unaudited) | 133 | 50% |
-| Open (F grade, known bug) | 5 | 2% |
-| Closed (A grade) | 73 | 28% |
+| Open (F grade, known bug) | 3 | 1% |
+| Closed (A grade) | 75 | 28% |
 | Verified (B grade) | 15 | 6% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
@@ -90,16 +90,23 @@
 | ID | Title | Surface | Severity | Classification | Source |
 |----|-------|---------|----------|---------------|--------|
 | ORCH-0143 | Referral bonus grants 'pro' on server, 'elite' on client | Payments | S0 | bug | **CLOSED** |
-| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | Investigation |
+| ORCH-0144 | Referral bonus months never expire | Payments | S0 | bug | **CLOSED** |
 | ORCH-0145 | Session creation limit not enforced in UI | Payments | S1 | bug | **CLOSED** |
 | ORCH-0146 | Swipe limit paywall doesn't trigger (stale ref) | Payments | S1 | bug | **CLOSED** |
 | ORCH-0147 | Silent swipe blocking after limit — no user feedback | Payments | S2 | quality-gap | **CLOSED** |
 | ORCH-0148 | useEffectiveTier can downgrade user (misleading comment) | Payments | S2 | quality-gap | **CLOSED** |
-| ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | Investigation |
+| ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
 
-## Recently Closed (Wave 1b — Payments)
+## Recently Closed (Wave 1b — Payments Expiry/Trial)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0144 | Referral bonus never expires | Date-based expiry: started_at + months*30d | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md |
+| ORCH-0149 | Trial abuse via delete+re-signup | Phone-hash table survives deletion, checked at onboarding | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md |
+
+## Recently Closed (Wave 1b — Payments Clear Bugs)
 
 | ID | Title | Resolution | Closed Date | Evidence |
 |----|-------|-----------|-------------|----------|
@@ -117,7 +124,7 @@
 
 ## Closed Issues (Grade A)
 
-74 items closed with evidence. Key closures:
+76 items closed with evidence. Key closures:
 
 | Area | Count | Key Commits |
 |------|-------|-------------|

@@ -23,7 +23,7 @@ import {
   useSubscription,
   useTrialDaysRemaining,
   useTrialTotalDays,
-  useReferralMonthsRemaining,
+  useReferralDaysRemaining,
 } from "../../hooks/useSubscription";
 import type { SubscriptionTier } from "../../types/subscription";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
@@ -105,7 +105,7 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
   const { data: subscription, isLoading, isError, refetch } = useSubscription(userId);
   const trialDays = useTrialDaysRemaining(userId);
   const trialTotalDays = useTrialTotalDays(userId);
-  const referralMonths = useReferralMonthsRemaining(userId);
+  const referralDays = useReferralDaysRemaining(userId);
   const { mutateAsync: restorePurchases, isPending: isRestoring } = useRestorePurchases();
 
   // Internal paywall state for upgrade/downgrade flows
@@ -225,7 +225,7 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
                   tier={effectiveTier}
                   trialDays={trialDays}
                   trialTotalDays={trialTotalDays}
-                  referralMonths={referralMonths}
+                  referralDays={referralDays}
                 />
 
                 {/* Compare Plans */}
@@ -290,13 +290,13 @@ interface CurrentPlanCardProps {
   tier: SubscriptionTier;
   trialDays: number;
   trialTotalDays: number;
-  referralMonths: number;
+  referralDays: number;
 }
 
-function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralMonths }: CurrentPlanCardProps) {
+function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: CurrentPlanCardProps) {
   const config = TIERS[tier];
   const isOnTrial = trialDays > 0;
-  const hasReferralBonus = referralMonths > 0 && !isOnTrial;
+  const hasReferralBonus = referralDays > 0 && !isOnTrial;
 
   // Progress bar: fraction of trial remaining, derived from actual trial duration
   const trialProgress = trialTotalDays > 0
@@ -352,7 +352,7 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralMonths }: Cu
         <View style={styles.referralRow}>
           <Icon name="gift-outline" size={14} color="#eb7825" />
           <Text style={styles.referralText}>
-            {referralMonths} bonus {referralMonths === 1 ? "month" : "months"} remaining
+            {referralDays} bonus {referralDays === 1 ? "day" : "days"} remaining
           </Text>
         </View>
       )}

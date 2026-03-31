@@ -18,6 +18,7 @@ interface SubscriptionRow {
   trial_ends_at: string | null
   referral_bonus_months: number
   referral_bonus_used_months: number
+  referral_bonus_started_at: string | null
   is_active: boolean
   cancelled_at: string | null
   created_at: string
@@ -45,6 +46,7 @@ function mapSubscription(row: SubscriptionRow): Subscription {
     trialEndsAt: row.trial_ends_at,
     referralBonusMonths: row.referral_bonus_months,
     referralBonusUsedMonths: row.referral_bonus_used_months,
+    referralBonusStartedAt: row.referral_bonus_started_at,
     isActive: row.is_active,
     cancelledAt: row.cancelled_at,
     createdAt: row.created_at,

@@ -22,6 +22,7 @@ export interface Subscription {
   trialEndsAt: string | null
   referralBonusMonths: number
   referralBonusUsedMonths: number
+  referralBonusStartedAt: string | null
   isActive: boolean
   cancelledAt: string | null
   createdAt: string
@@ -94,8 +95,14 @@ export function getEffectiveTierFromSupabase(
     return 'elite'
   }
 
-  // Unused referral bonus months
-  if (sub.referralBonusMonths > sub.referralBonusUsedMonths) {
+  // Referral bonus (date-based: 30 days per referral from start date)
+  if (
+    sub.referralBonusMonths > 0 &&
+    sub.referralBonusStartedAt &&
+    new Date(sub.referralBonusStartedAt).getTime()
+      + sub.referralBonusMonths * 30 * 24 * 60 * 60 * 1000
+      > Date.now()
+  ) {
     return 'elite'
   }
 
@@ -173,9 +180,12 @@ export function getTrialTotalDays(sub: Subscription | null): number {
   return Math.ceil(totalMs / (1000 * 60 * 60 * 24))
 }
 
-export function getReferralMonthsRemaining(sub: Subscription | null): number {
-  if (!sub) return 0
-  return Math.max(0, sub.referralBonusMonths - sub.referralBonusUsedMonths)
+export function getReferralDaysRemaining(sub: Subscription | null): number {
+  if (!sub || !sub.referralBonusStartedAt || sub.referralBonusMonths <= 0) return 0
+  const expiresAt = new Date(sub.referralBonusStartedAt).getTime()
+    + sub.referralBonusMonths * 30 * 24 * 60 * 60 * 1000
+  const remaining = expiresAt - Date.now()
+  return Math.max(0, Math.ceil(remaining / (1000 * 60 * 60 * 24)))
 }
 
 /**
