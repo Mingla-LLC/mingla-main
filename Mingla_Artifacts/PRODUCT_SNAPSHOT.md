@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total items tracked | 265 |
-| Grade A (launch-ready) | 69 (26%) |
-| Grade B (solid, minor gaps) | 20 (8%) |
-| Grade C (functional, incomplete) | 1 (<1%) |
-| Grade D (fragile) | 0 (0%) |
-| Grade F (broken/unaudited) | 130 (49%) |
+| Total items tracked | 272 |
+| Grade A (launch-ready) | 72 (26%) |
+| Grade B (solid, minor gaps) | 22 (8%) |
+| Grade C (functional, incomplete) | 2 (<1%) |
+| Grade D (fragile) | 1 (<1%) |
+| Grade F (broken/unaudited) | 175 (64%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 10 (44 bugs fixed) |
 
@@ -33,7 +33,7 @@
 
 ## Top 5 Launch Blockers
 
-1. **Referral tier disagreement + permanent bonus (ORCH-0143, 0144)** — Server/client disagree on referral tier. Bonus never expires. Revenue leak. S0.
+1. **Referral expiry + trial abuse (ORCH-0144, 0149)** — ORCH-0143 fixed (tier disagreement closed). Remaining: referral bonus never expires (S0), trial abuse via delete+re-signup gives infinite Elite (S1). Revenue leak.
 2. **Payments unaudited (ORCH-0135, 0137)** — Paywall and RevenueCat integration at F. Revenue = zero if broken. S0.
 3. **Security layer unaudited (ORCH-0223, 0224, 0225)** — RLS, admin auth, PII handling all at F. Data exposure risk. S0.
 4. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
@@ -60,7 +60,7 @@
 
 - **Map & Location** — 16 items, 100% at F. Entire feature unaudited.
 - **Chat / DM** — 8 items, 100% at F. No verification of send/receive, presence, realtime.
-- **Payments & Subscriptions** — 8 existing items now graded (1A, 3B, 2C, 2D), but 7 new bugs found (2 S0, 3 S1, 2 S2).
+- **Payments & Subscriptions** — 15 items (6A, 5B, 1C, 1D, 2F). 5 bugs closed this cycle. Remaining risks: referral expiry (ORCH-0144, S0) and trial abuse (ORCH-0149, S1).
 - **Calendar & Scheduling** — 8 items, 100% at F. Core loop step, unverified.
 - **People Discovery** — 10 items, 100% at F.
 - **Sharing & Invites** — 10 items, 100% at F.
@@ -74,4 +74,4 @@
 - **2 notification passes** completed (2026-03-21 to 2026-03-23)
 - **9 cross-cutting passes** completed (2026-03-23)
 - Last commit with hardening work: 2026-03-26 (AI Quality Gate Phase 2)
-- No hardening activity since 2026-03-26 (4 days ago)
+- Wave 1b payment fixes: 5 bugs closed 2026-03-31 (ORCH-0143/0145/0146/0147/0148)

@@ -16,7 +16,7 @@
 | Profile & Settings | 10 | 3 | 1 | 0 | 0 | 6 | 60% | 0% | Weak |
 | Map & Location | 16 | 0 | 0 | 0 | 0 | 16 | 100% | 0% | Unaudited |
 | Chat / DM | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
-| Payments & Subscriptions | 8 | 1 | 3 | 2 | 2 | 0 | 0% | 0% | Partial |
+| Payments & Subscriptions | 15 | 6 | 5 | 1 | 1 | 2 | 13% | 0% | Partial |
 | Calendar & Scheduling | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
 | Holidays & Events | 7 | 0 | 1 | 0 | 0 | 6 | 86% | 0% | Weak |
 | People Discovery | 10 | 0 | 0 | 0 | 0 | 10 | 100% | 0% | Unaudited |
@@ -35,7 +35,7 @@
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **265** | **67** | **20** | **3** | **2** | **173** | **65%** | **0%** | **Weak** |
+| **TOTAL** | **272** | **72** | **22** | **2** | **1** | **175** | **64%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
@@ -46,7 +46,7 @@
 
 ### Partial (40-70% at A/B)
 - Auth & Session (6/7 A+B = 86%)
-- Payments & Subscriptions (4/8 A+B = 50%)
+- Payments & Subscriptions (11/15 A+B = 73%)
 - Notifications (8/11 A+B = 73%)
 
 ### Weak (<40% at A/B)
@@ -74,5 +74,5 @@
 
 ## Staleness Check
 
-All evidence dates are within 7 days (latest: 2026-03-26). No stale items.
-However, no new verification activity in 4 days — audit velocity has stalled.
+All evidence dates are within 7 days (latest: 2026-03-31). No stale items.
+5 payment bugs closed 2026-03-31 — audit velocity resumed.

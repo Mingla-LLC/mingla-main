@@ -20,31 +20,28 @@
 | Rank | ID | Title | Score | Surface | Severity | Action | Rationale |
 |------|----|-------|-------|---------|----------|--------|-----------|
 | 1 | ORCH-0137 | RevenueCat integration | 88 | Payments | S0 | Investigate | No revenue without working payments. Tier resolution affects every feature gate. |
-| 2 | ORCH-0143 | Referral tier disagreement | 92 | Payments | S0 | Implement | Server returns wrong tier for referral users. Revenue + UX impact. |
-| 3 | ORCH-0144 | Referral bonus never expires | 90 | Payments | S0 | Spec+Implement | Permanent elevated access from one referral. Revenue loss. |
-| 4 | ORCH-0135 | Paywall screen | 86 | Payments | S0 | Investigate | User-facing purchase flow. Broken paywall = zero conversion. |
-| 5 | ORCH-0223 | RLS policy coverage | 85 | Security | S0 | Investigate | 392+ policies, zero audit. Data exposure risk across all user data. |
-| 6 | ORCH-0146 | Swipe paywall never triggers | 85 | Payments | S1 | Implement | Primary conversion funnel is dead. Free users hit wall with no prompt. |
-| 7 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
-| 8 | ORCH-0145 | Session limit unenforced | 78 | Payments | S1 | Implement | Free users get unlimited sessions (paid feature). |
-| 9 | ORCH-0225 | PII handling | 82 | Security | S0 | Investigate | Phone numbers, location data. Regulatory risk. |
-| 10 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
-| 11 | ORCH-0149 | Trial abuse via delete+re-signup | 75 | Payments | S1 | Spec+Implement | Infinite free Elite via account cycling. |
-| 12 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
-| 13 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
-| 14 | ORCH-0048 | Curated/category round-robin broken | 75 | Discovery | S1 | Investigate | User-reported. Card variety is core UX promise. |
-| 15 | ORCH-0038 | Coordinates replacing text in location | 73 | Discovery | S1 | Implement | Known bug. Users see "37.7749, -122.4194" instead of city name. |
-| 16 | ORCH-0065 | Solo mode | 72 | Discovery | S1 | Investigate | Entire solo mode unaudited. Most users start solo. |
-| 17 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
-| 18 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
-| 19 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
-| 20 | ORCH-0140 | Feature gate enforcement | 67 | Payments | S1 | Investigate | If gates don't work, free users access paid features or paid users are wrongly restricted. |
+| 2 | ORCH-0144 | Referral bonus never expires | 90 | Payments | S0 | Spec+Implement | Permanent elevated access from one referral. Revenue loss. |
+| 3 | ORCH-0135 | Paywall screen | 86 | Payments | S0 | Investigate | User-facing purchase flow. Broken paywall = zero conversion. |
+| 4 | ORCH-0223 | RLS policy coverage | 85 | Security | S0 | Investigate | 392+ policies, zero audit. Data exposure risk across all user data. |
+| 5 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
+| 6 | ORCH-0225 | PII handling | 82 | Security | S0 | Investigate | Phone numbers, location data. Regulatory risk. |
+| 7 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
+| 8 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
+| 9 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
+| 10 | ORCH-0149 | Trial abuse via delete+re-signup | 75 | Payments | S1 | Spec+Implement | Infinite free Elite via account cycling. |
+| 11 | ORCH-0048 | Curated/category round-robin broken | 75 | Discovery | S1 | Investigate | User-reported. Card variety is core UX promise. |
+| 12 | ORCH-0038 | Coordinates replacing text in location | 73 | Discovery | S1 | Implement | Known bug. Users see "37.7749, -122.4194" instead of city name. |
+| 13 | ORCH-0065 | Solo mode | 72 | Discovery | S1 | Investigate | Entire solo mode unaudited. Most users start solo. |
+| 14 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
+| 15 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
+| 16 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
+| 17 | ORCH-0070 | Session creation | 64 | Collaboration | S1 | Investigate | Collaboration creation flow unaudited. Core social feature. |
 
 ## Strategic Categories
 
 | Category | Score Range | Count | IDs |
 |----------|-----------|-------|-----|
-| Fix Now | 70-100 | 17 | ORCH-0008, 0038, 0041, 0048, 0065, 0094, 0102, 0127, 0135, 0137, 0143, 0144, 0145, 0146, 0149, 0223, 0225 |
+| Fix Now | 70-100 | 14 | ORCH-0008, 0038, 0041, 0048, 0065, 0094, 0102, 0127, 0135, 0137, 0144, 0149, 0223, 0225 |
 | Fix Next | 50-69 | ~30 | Remaining S1 items + high S2 items |
 | Should Fix | 30-49 | ~40 | S2 items on non-critical flows |
 | Debt | 10-29 | ~30 | S3 items, cosmetic issues |
@@ -52,9 +49,9 @@
 
 ## Recommended First Action
 
-**Implement the 3 clear payment fixes (ORCH-0143, 0145, 0146) — prompts already written. Spec for ORCH-0144 and ORCH-0149 in parallel.**
+**Spec + implement ORCH-0144 (referral expiry) and ORCH-0149 (trial abuse) — the last two open payment bugs. Both need policy decisions before code.**
 
-Rationale: Auth is now at B/C (Wave 1a complete). Payments is the new front door to revenue. Three bugs have clear fix paths with implementation prompts ready. Two others (referral expiry, trial abuse) need specs first because they require policy decisions.
+Rationale: Wave 1b payment fixes complete (ORCH-0143/0145/0146/0147/0148 all closed, QA passed). Two remaining payment bugs need specs because they involve business rules (expiry duration, abuse detection strategy).
 
 Second priority: Security (ORCH-0223, 0225) — data protection.
 Third priority: Remaining discovery bugs (ORCH-0041, 0038, 0048) — user-visible quality.
