@@ -51,13 +51,14 @@ function shouldAcceptSession(session, otpVerifiedRef, dynamicEmails) {
  */
 async function checkIsInvitedAdmin(email) {
   try {
-    const { data } = await supabase
-      .from("admin_users")
-      .select("status")
-      .eq("email", email.toLowerCase())
-      .eq("status", "invited")
-      .maybeSingle();
-    return !!data;
+    const { data, error } = await supabase.rpc("check_invited_admin", {
+      p_email: email,
+    });
+    if (error) {
+      console.warn("[AuthContext] check_invited_admin RPC failed:", error.message);
+      return false;
+    }
+    return data === true;
   } catch {
     return false;
   }
@@ -121,30 +122,18 @@ export function AuthProvider({ children }) {
    */
   const fetchDynamicAdmins = useCallback(async () => {
     try {
-      // Use SECURITY DEFINER RPC that only exposes email + status (not full table)
+      // get_admin_emails() is SECURITY DEFINER — works for authenticated callers.
+      // For anon (pre-login init), this will fail gracefully → empty list.
+      // The hardcoded ALLOWED_ADMIN_EMAILS covers the initial login check;
+      // non-hardcoded admins are verified via is_admin_email() RPC in verifyPassword.
       const { data, error } = await supabase.rpc("get_admin_emails");
       if (error) {
-        // RPC may not exist yet — fall back to direct table query, then hardcoded list
-        if (error.code === "PGRST202" || error.message?.includes("does not exist")) {
-          // Try direct table query as fallback (pre-migration)
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from("admin_users")
-            .select("email, status")
-            .in("status", ["active", "invited"]);
-          if (fallbackError) {
-            if (fallbackError.code !== "42P01" && !fallbackError.message?.includes("does not exist")) {
-              console.error("Failed to fetch admin_users:", fallbackError.message);
-            }
-            return [];
-          }
-          return (fallbackData || []).map((a) => a.email);
-        }
-        console.error("Failed to fetch admin emails:", error.message);
+        // Expected to fail for anon callers — fall back to hardcoded list only
         return [];
       }
       return (data || []).map((a) => a.email);
     } catch (err) {
-      console.error("Failed to fetch admin_users:", err.message);
+      console.error("Failed to fetch dynamic admin list:", err.message);
       return [];
     }
   }, []);
@@ -257,18 +246,14 @@ export function AuthProvider({ children }) {
     const { error: pwError } = await supabase.auth.updateUser({ password });
     if (pwError) throw pwError;
 
-    // Activate in admin_users
-    const email = inviteSetup.user?.email;
-    if (email) {
-      try {
-        await supabase
-          .from("admin_users")
-          .update({ status: "active", accepted_at: new Date().toISOString() })
-          .eq("email", email.toLowerCase())
-          .eq("status", "invited");
-      } catch (activateErr) {
+    // Activate in admin_users via SECURITY DEFINER RPC (self-activation only)
+    try {
+      const { error: activateErr } = await supabase.rpc("activate_invited_admin");
+      if (activateErr) {
         console.error("Auto-activate admin failed:", activateErr.message);
       }
+    } catch (activateErr) {
+      console.error("Auto-activate admin failed:", activateErr.message);
     }
 
     // Accept the session as fully authenticated
@@ -286,8 +271,14 @@ export function AuthProvider({ children }) {
    * The suppressSessionRef prevents onAuthStateChange from flashing the dashboard.
    */
   const verifyPassword = async (email, password) => {
+    // Check hardcoded list first (sync), then RPC (async, works pre-auth as anon)
     if (!isEmailAllowed(email, dynamicEmailsRef.current)) {
-      throw new Error("Access denied. This email is not authorized.");
+      const { data: isAllowed } = await supabase.rpc("is_admin_email", {
+        p_email: email,
+      });
+      if (!isAllowed) {
+        throw new Error("Access denied. This email is not authorized.");
+      }
     }
 
     suppressSessionRef.current = true;
@@ -352,13 +343,12 @@ export function AuthProvider({ children }) {
       localStorage.setItem(FULL_AUTH_KEY, "true");
       // Session is now set via onAuthStateChange (which checked otpVerifiedRef).
 
-      // Auto-activate invited admins on successful login
+      // Auto-activate invited admins on successful login (self-activation only)
       try {
-        await supabase
-          .from("admin_users")
-          .update({ status: "active", accepted_at: new Date().toISOString() })
-          .eq("email", email.toLowerCase())
-          .eq("status", "invited");
+        const { error: activateErr } = await supabase.rpc("activate_invited_admin");
+        if (activateErr) {
+          console.error("Auto-activate admin failed:", activateErr.message);
+        }
       } catch (activateErr) {
         // Non-critical — don't break login if this fails
         console.error("Auto-activate admin failed:", activateErr.message);

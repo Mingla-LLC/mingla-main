@@ -1,27 +1,28 @@
 # Master Bug List
 
 > Last updated: 2026-03-31
-> Total: 272 | Open: 136 | Closed: 76 | Verified (B grade): 19 | Deferred: 1
+> Total: 281 | Open: 144 | Closed: 77 | Verified (B grade): 19 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
-| Open (F grade, unaudited) | 133 | 50% |
-| Open (F grade, known bug) | 3 | 1% |
-| Closed (A grade) | 75 | 28% |
-| Verified (B grade) | 15 | 6% |
-| Verified (C grade) | 1 | <1% |
+| Open (F grade, unaudited) | 125 | 44% |
+| Open (F grade, known bug) | 11 | 4% |
+| Open (D grade, quality-gap) | 2 | <1% |
+| Closed (A grade) | 76 | 27% |
+| Verified (B grade) | 16 | 6% |
+| Verified (C grade) | 2 | <1% |
 | Deferred | 1 | <1% |
 
 ## Summary by Severity
 
 | Severity | Open | Closed/Verified | Total |
 |----------|------|-----------------|-------|
-| S0 (Critical) | 7 | 6 | 13 |
-| S1 (High) | 51 | 38 | 89 |
-| S2 (Medium) | 64 | 33 | 97 |
-| S3 (Low) | 16 | 12 | 28 |
+| S0 (Critical) | 5 | 8 | 13 |
+| S1 (High) | 55 | 39 | 94 |
+| S2 (Medium) | 67 | 33 | 100 |
+| S3 (Low) | 18 | 12 | 30 |
 
 ## Active Issues (Open — Grade F)
 
@@ -32,9 +33,6 @@
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
-| ORCH-0223 | RLS policy coverage | Security | unaudited | Tracker |
-| ORCH-0224 | Admin auth (3-layer) | Security | unaudited | Tracker |
-| ORCH-0225 | PII handling | Security | unaudited | Tracker |
 
 ### S1-High (Degrades Critical Flow)
 
@@ -98,6 +96,34 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (Wave 2 — Security Emergency Fix)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0253 | USING(true) on profiles — PII exposure | RLS policy tightened to remove public read | 2026-03-31 | QA_EMERGENCY_RLS_FIX_REPORT.md |
+
+## Regraded from Investigation (Wave 2 — Security)
+
+| ID | Title | Old Grade | New Grade | Evidence |
+|----|-------|-----------|-----------|----------|
+| ORCH-0223 | RLS policy coverage | F | D | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0224 | Admin auth (3-layer) | F | B | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0225 | PII handling | F | C | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0226 | Storage path injection | F | D | INVESTIGATION_SECURITY_WAVE2.md |
+
+## New Bugs (Wave 2 — Security Investigation)
+
+| ID | Title | Surface | Severity | Classification | Source |
+|----|-------|---------|----------|---------------|--------|
+| ORCH-0250 | Avatars bucket no user-scoping | Security | S1 | bug | Investigation |
+| ORCH-0251 | Messages bucket public — DM files accessible without auth | Security | S1 | bug | Investigation |
+| ORCH-0252 | get_admin_emails() exposes admin list to anon | Security | S2 | bug | Investigation |
+| ORCH-0254 | Full phone numbers logged in console | Security | S3 | bug | Investigation |
+| ORCH-0255 | board-attachments + experience-images buckets missing | Security | S2 | bug | Investigation |
+| ORCH-0256 | Client-side brute-force lockout bypassable | Security | S3 | bug | Investigation |
+| ORCH-0257 | 6 edge functions have no auth (incl. Google Maps key) | Security | S2 | bug | Investigation |
+| ORCH-0258 | admin_users USING(true) on UPDATE/DELETE — privilege escalation | Security | S1 | bug | Investigation |
 
 ## Recently Closed (Wave 1b — Payments Expiry/Trial)
 

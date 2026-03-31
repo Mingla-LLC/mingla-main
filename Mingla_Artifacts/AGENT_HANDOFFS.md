@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-03-31
-> Total: 0 active | 9 completed
+> Total: 0 active | 12 completed
 
 ## Active Dispatches
 
@@ -22,6 +22,9 @@
 | AH-007 | ORCH-0143/0145/0146 | Tester | 2026-03-31 | QA_PAYMENTS_CLEAR_BUGS_REPORT.md | PASS |
 | AH-008 | ORCH-0144/0149 | Implementor | 2026-03-31 | IMPLEMENTATION_PAYMENTS_EXPIRY_TRIAL_REPORT.md | APPROVED |
 | AH-009 | ORCH-0144/0149 | Tester | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md | PASS (after P1 rework) |
+| AH-010 | ORCH-0223-0226 | Investigator | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md | APPROVED |
+| AH-011 | ORCH-0253 | Implementor | 2026-03-31 | IMPLEMENTATION_EMERGENCY_RLS_FIX_REPORT.md | APPROVED |
+| AH-012 | ORCH-0253 | Tester | 2026-03-31 | QA_EMERGENCY_RLS_FIX_REPORT.md | PASS |
 
 ## Historical (Pre-Orchestrator)
 

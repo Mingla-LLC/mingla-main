@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total items tracked | 272 |
-| Grade A (launch-ready) | 74 (27%) |
-| Grade B (solid, minor gaps) | 23 (8%) |
-| Grade C (functional, incomplete) | 2 (<1%) |
-| Grade D (fragile) | 0 (0%) |
-| Grade F (broken/unaudited) | 173 (64%) |
+| Total items tracked | 281 |
+| Grade A (launch-ready) | 75 (27%) |
+| Grade B (solid, minor gaps) | 24 (9%) |
+| Grade C (functional, incomplete) | 3 (1%) |
+| Grade D (fragile) | 2 (<1%) |
+| Grade F (broken/unaudited) | 177 (63%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 10 (44 bugs fixed) |
 
@@ -33,15 +33,19 @@
 
 ## Top 5 Launch Blockers
 
-1. **Security layer unaudited (ORCH-0223, 0224, 0225)** — RLS, admin auth, PII handling all at F. Data exposure risk. S0.
-2. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
-3. **Account deletion at F (ORCH-0102)** — Apple/Google require it. App Store rejection if missing. S0.
-4. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
-5. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
+1. **Admin privilege escalation (ORCH-0258)** — admin_users USING(true) lets any admin UPDATE/DELETE other admins. S1.
+2. **Avatar impersonation (ORCH-0250)** — Avatars bucket has no user-scoping RLS. Any user can overwrite another's avatar. S1.
+3. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
+4. **Account deletion at F (ORCH-0102)** — Apple/Google require it. App Store rejection if missing. S0.
+5. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
+6. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
+
+### Recently Resolved Blockers
+- **ORCH-0253 (PII exposure via USING(true) on profiles)** — CLOSED. RLS policy tightened. QA passed.
 
 ## Top 5 Quality Risks
 
-1. **54% of items unaudited** — Unknown bug count in production code
+1. **63% of items at F** — Unknown bug count in production code
 2. **Map surface entirely unaudited (16 items at F)** — Large feature with zero verification
 3. **Chat entirely unaudited (8 items at F)** — Social feature with zero verification
 4. **Calendar entirely unaudited (8 items at F)** — Scheduling is core loop step

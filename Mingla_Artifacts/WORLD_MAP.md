@@ -33,7 +33,7 @@
 | Chat Responsiveness | Cross-cutting | messagingService.ts | All A | 4 | Strong |
 | Hardening Infrastructure | Cross-cutting | withTimeout.ts, mutationErrorToast.ts | All A | 3 | Strong |
 | Error Handling | Cross-cutting | ErrorBoundary.tsx, edgeFunctionError.ts | All F | 5 | Unaudited |
-| Security & Auth | Cross-cutting | RLS policies, admin auth | All F | 4 | Unaudited |
+| Security & Auth | Cross-cutting | RLS policies, admin auth | Mixed (1A, 1B, 1C, 2D) | 13 | Weak |
 | Deep Linking | Cross-cutting | deepLinkService.ts | Mixed (1B, 3F) | 4 | Weak |
 | App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx | Mixed (1A, 1B, 9F) | 11 | Weak |
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
@@ -411,10 +411,19 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
-| ORCH-0223 | RLS policy coverage | Security | S0 | unaudited | open | F | — | — |
-| ORCH-0224 | Admin auth (3-layer) | Security | S0 | unaudited | open | F | — | — |
-| ORCH-0225 | PII handling | Security | S0 | unaudited | open | F | — | — |
-| ORCH-0226 | Storage path injection | Security | S1 | unaudited | open | F | — | — |
+| ORCH-0223 | RLS policy coverage | Security | S0 | quality-gap | verified | D | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0224 | Admin auth (3-layer) | Security | S0 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0225 | PII handling | Security | S0 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0226 | Storage path injection | Security | S1 | quality-gap | verified | D | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0250 | Avatars bucket no user-scoping | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0251 | Messages bucket public — DM files accessible without auth | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0252 | get_admin_emails() exposes admin list to anon | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0253 | USING(true) on profiles — PII exposure | Security | S1 | bug | closed | A | 2026-03-31 | IMPLEMENTATION_EMERGENCY_RLS_FIX_REPORT.md, QA_EMERGENCY_RLS_FIX_REPORT.md |
+| ORCH-0254 | Full phone numbers logged in console | Security | S3 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0255 | board-attachments + experience-images buckets missing | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0256 | Client-side brute-force lockout bypassable | Security | S3 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0257 | 6 edge functions have no auth (incl. Google Maps key) | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0258 | admin_users USING(true) on UPDATE/DELETE — privilege escalation | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
 
 ### Cross-Cutting: Deep Linking
 

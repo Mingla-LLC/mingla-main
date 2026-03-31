@@ -29,13 +29,13 @@
 | Chat Responsiveness | 4 | 4 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Hardening Infrastructure | 3 | 3 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Error Handling | 5 | 0 | 0 | 0 | 0 | 5 | 100% | 0% | Unaudited |
-| Security & Auth | 4 | 0 | 0 | 0 | 0 | 4 | 100% | 0% | Unaudited |
+| Security & Auth | 13 | 2 | 1 | 1 | 2 | 7 | 54% | 0% | Weak |
 | Deep Linking | 4 | 0 | 1 | 0 | 0 | 3 | 75% | 0% | Weak |
 | App Lifecycle | 11 | 1 | 1 | 0 | 0 | 9 | 82% | 0% | Weak |
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **272** | **74** | **23** | **2** | **0** | **173** | **64%** | **0%** | **Weak** |
+| **TOTAL** | **281** | **75** | **24** | **3** | **2** | **177** | **63%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
@@ -53,6 +53,7 @@
 - Profile & Settings (4/10 = 40%)
 - Collaboration Sessions (3/7 = 43%)
 - Pairing System (3/10 = 30%)
+- Security & Auth (3/13 A+B = 23%)
 - All cross-cutting except Chat-Resp and Infra
 
 ### Unaudited (>80% at F)
@@ -65,7 +66,6 @@
 - Post-Experience (100%)
 - Booking (100%)
 - Error Handling (100%)
-- Security & Auth (100%)
 - Weather & External (100%)
 - Onboarding (82%)
 - Holidays & Events (86%)
@@ -76,3 +76,4 @@
 
 All evidence dates are within 7 days (latest: 2026-03-31). No stale items.
 7 payment bugs closed 2026-03-31 — audit velocity resumed. All payment bugs now closed.
+Security Wave 2: 4 items regraded (D/B/C/D), 1 closed (ORCH-0253), 8 new bugs registered 2026-03-31.
