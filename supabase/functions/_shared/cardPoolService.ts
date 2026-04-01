@@ -12,6 +12,7 @@ import {
   getPlaceTypesForCategory,
   resolveCategories,
   isChildVenueName,
+  toSlug,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 import { downloadAndStorePhotos, resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
@@ -642,6 +643,7 @@ function poolCardToApiCard(
   userLat?: number,
   userLng?: number,
   travelMode?: string,
+  requestedCategories?: string[],
 ): any {
   if (card.card_type === 'curated') {
     // SERVE-TIME TRAVEL RECOMPUTATION (Block 8 — hardened 2026-03-22)
@@ -736,11 +738,21 @@ function poolCardToApiCard(
     travelTimeMin = estimateTravelMin(distanceKm, travelMode);
   }
 
+  // Pick the matched category from the user's pill selection instead of the card's
+  // dominant category. E.g., a museum tagged [creative_arts, casual_eats] shows as
+  // "Casual Eats" when the user selects the Casual Eats pill.
+  let displayCategory = card.category;
+  if (requestedCategories && requestedCategories.length > 0 && card.categories) {
+    const requestedSlugs = requestedCategories.map((c: string) => toSlug(c));
+    const matched = requestedSlugs.find((slug: string) => card.categories.includes(slug));
+    if (matched) displayCategory = matched;
+  }
+
   return {
     id: card.google_place_id || card.id,
     placeId: card.google_place_id || null,
     title: card.title,
-    category: card.category,
+    category: displayCategory,
     matchScore: card.match_score ?? card.base_match_score ?? 85,
     image: resolvePhotoUrl(card.stored_photo_urls, card.photos?.[0]?.name, '') || null,
     images: resolveAllPhotoUrls(card.stored_photo_urls, card.photos, ''),
@@ -881,7 +893,7 @@ export async function serveCardsFromPipeline(
   if (poolCards.length >= limit) {
     const served = poolCards.slice(0, limit);
     const servedIds = served.map((c: any) => c.id);
-    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
     // Record impressions SYNCHRONOUSLY to prevent cross-batch duplicates (CF-002 fix)
     await recordImpressions(supabaseAdmin, userId, servedIds);
@@ -917,7 +929,7 @@ export async function serveCardsFromPipeline(
   // ── Pool insufficient: serve what we have ───────────────────────────
   const served = poolCards.slice(0, limit);
   const servedIds = served.map((c: any) => c.id);
-  const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+  const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
   // Record impressions for pool cards we're serving
   if (servedIds.length > 0) {
