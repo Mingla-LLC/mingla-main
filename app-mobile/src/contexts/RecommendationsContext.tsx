@@ -165,22 +165,20 @@ export const RecommendationsProvider: React.FC<
   const { data: savedCards } = useSavedCards(user?.id);
   const { data: calendarEntries } = useCalendarEntries(user?.id);
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const excludeCardIds = useMemo(() => {
     const ids = new Set<string>();
-    // Saved card IDs
+    // Saved card IDs (Google Place IDs like "ChIJwSz...")
     if (savedCards) {
       for (const card of savedCards) {
-        if (card.id && UUID_RE.test(card.id)) ids.add(card.id);
+        if (card.id) ids.add(card.id);
       }
     }
-    // Scheduled card IDs (pending/confirmed only, UUID format only)
+    // Scheduled card IDs (pending/confirmed only — can be Place IDs or UUIDs)
     if (calendarEntries) {
       for (const entry of calendarEntries) {
         if (
           (entry.status === 'pending' || entry.status === 'confirmed') &&
-          entry.card_id &&
-          UUID_RE.test(entry.card_id)
+          entry.card_id
         ) {
           ids.add(entry.card_id);
         }
@@ -189,7 +187,7 @@ export const RecommendationsProvider: React.FC<
     // Session-served IDs — cards already delivered in earlier pages this session.
     // servedIdsVersion triggers recomputation when new cards are accumulated.
     for (const id of sessionServedIdsRef.current) {
-      if (UUID_RE.test(id)) ids.add(id);
+      ids.add(id);
     }
     return Array.from(ids);
     // eslint-disable-next-line react-hooks/exhaustive-deps

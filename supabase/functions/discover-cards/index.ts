@@ -373,10 +373,9 @@ serve(async (req: Request) => {
       excludeCardIds: rawExcludeCardIds = [],
     } = body;
 
-    // Validate exclude IDs — only accept valid UUID strings
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
     const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
-      ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && UUID_RE.test(id))
+      ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
       : [];
 
     // Sanitize time inputs
@@ -536,7 +535,7 @@ serve(async (req: Request) => {
           limit,
           cardType: 'single' as const,
           priceTiers: priceTiers as PriceTierSlug[] | undefined,
-          excludeCardIds,
+          excludePlaceIds: excludeCardIds,
         };
 
         const poolResult = await serveCardsFromPipeline(

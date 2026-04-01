@@ -31,7 +31,8 @@ export interface PoolQueryParams {
   limit: number;                   // how many cards to return (e.g., 20)
   cardType?: 'single' | 'curated';
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
-  excludeCardIds?: string[];       // additional exclusions
+  excludeCardIds?: string[];       // additional UUID exclusions (card_pool.id)
+  excludePlaceIds?: string[];      // Place ID exclusions (card_pool.google_place_id)
   priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
 }
 
@@ -173,6 +174,7 @@ async function queryPoolCards(
     p_pref_updated_at: prefUpdatedAt,
     p_exclude_card_ids: excludeCardIds || [],
     p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
+    p_exclude_place_ids: params.excludePlaceIds || [],
     p_limit: limit,
   });
 
