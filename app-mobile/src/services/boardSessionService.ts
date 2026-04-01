@@ -27,7 +27,7 @@ export interface BoardSessionData {
   lastActivity: string;
   icon: any;
   gradient: string;
-  creatorId: string;
+  creatorId: string | null;
   admins: string[];
   currentUserId: string;
   sessionId?: string;
@@ -218,7 +218,7 @@ class BoardSessionService {
           const boardType = typeMap[session.session_type] || "group-hangout";
 
           // Get admins: creator is always admin, plus any participants with is_admin = true
-          const admins: string[] = [session.created_by];
+          const admins: string[] = session.created_by ? [session.created_by] : [];
           participantsData.forEach((p: any) => {
             if (p.is_admin && !admins.includes(p.user_id)) {
               admins.push(p.user_id);

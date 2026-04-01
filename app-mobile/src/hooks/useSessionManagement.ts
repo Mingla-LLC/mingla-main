@@ -19,7 +19,7 @@ export interface SessionParticipantInput {
 interface SessionRow {
   id: string
   name: string
-  created_by: string
+  created_by: string | null
   status: string
   board_id: string | null
   created_at: string
@@ -327,7 +327,7 @@ export const useSessionManagement = () => {
           }
 
           // Get inviter profile (creator of the session)
-          const inviterProfile = getProfile(session.created_by);
+          const inviterProfile = session.created_by ? getProfile(session.created_by) : null;
           const formattedInviterProfile = inviterProfile ? {
             id: inviterProfile.id,
             name: formatProfileName(inviterProfile),
@@ -933,7 +933,9 @@ export const useSessionManagement = () => {
               const collaboratorRows = acceptedMembers.map((participant) => ({
                 board_id: actualBoardId,
                 user_id: participant.user_id,
-                role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator',
+                role: (sessionData.created_by && participant.user_id === sessionData.created_by)
+                  ? 'owner'
+                  : (participant.is_admin ? 'owner' : 'collaborator'),
               }));
 
               const { error: collaboratorError } = await supabase

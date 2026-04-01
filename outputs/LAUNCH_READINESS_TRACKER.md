@@ -1,7 +1,7 @@
 # Launch Readiness Tracker
 
-> **Last updated:** 2026-03-25
-> **Status:** Active — Blocks 1-8 complete (all A). Deck hardening complete (10 passes). Full card pipeline audit complete (Passes 1-5). Auth dedup + Android fix complete. AI Card Quality Gate complete (Phase 1 + Phase 2). README lock-in done.
+> **Last updated:** 2026-03-29
+> **Status:** Active — Full codebase audit complete. 18 sections (was 8). ~180 tracked items (was ~85). Blocks 1-8 hardened. 10 new sections added: Map, Chat, Payments, Calendar, Holidays, People Discovery, Pairing, Sharing, Post-Experience, Booking. Admin Dashboard (17 pages) now tracked. Cross-cutting expanded with Deep Linking, App Lifecycle, Analytics, Weather, UI Components.
 >
 > This is the single source of truth for Mingla's launch readiness.
 > Every entry requires evidence. No grade promotions without proof.
@@ -33,6 +33,8 @@
 | Session persistence (background/foreground) | B | 2026-03-25 | _hasHydrated gate + Zustand persistence | Returning users render from persisted state immediately. Cold start with expired token no longer blocks. Remaining: full offline flow unaudited. |
 | Token refresh / expiry handling | A | 2026-03-24 | Commit aa9cfd68 | Cold-start grace period (5s) + invalidateQueries on TOKEN_REFRESHED. Android expired-token race condition fixed — queries refetch with valid JWT after refresh. Matches existing useForegroundRefresh pattern. |
 | Sign-out cleanup | F | — | Unaudited | — |
+| Google Sign-In flow | F | — | Unaudited | useAuthSimple.ts — Google auth path |
+| Apple Sign-In flow | F | — | Unaudited | useAuthSimple.ts — Apple auth path |
 | Zombie auth prevention | B | 2026-03-23 | Commit 2a96c8f6. Test: TEST_PASS_3_REPORT.md (34/34 green) | 401 detector hardened with grace period + user-facing alert. Still heuristic-based (transitional). |
 
 ### 2. Onboarding
@@ -44,6 +46,11 @@
 | Preference save reliability | A | 2026-03-23 | Commit 302b74d5. Test: TEST_PASS_4_REPORT.md (27/27 green) | 6 redundant writes removed. Atomic save with withTimeout(8000) + retry UI on failure. PreferencesService throws on error. |
 | Resume after interruption | F | — | Unaudited | — |
 | Audio recording (voice review) | F | — | Unaudited | E.164 sanitization was applied |
+| Country/language picker | F | — | Unaudited | CountryPickerModal.tsx, LanguagePickerModal.tsx |
+| Intent selection step | F | — | Unaudited | IntentSelectionStep.tsx |
+| Travel mode selection | F | — | Unaudited | TravelModeStep.tsx |
+| Friends & pairing onboarding step | F | — | Unaudited | OnboardingFriendsAndPairingStep.tsx |
+| Consent step | F | — | Unaudited | OnboardingConsentStep.tsx |
 | Skip button responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | onComplete() fires first, profile update in background with withTimeout(5000) |
 
 ### 3. Discovery / Explore (Card Deck)
@@ -123,6 +130,9 @@
 | Link intent flow | F | — | Unaudited | — |
 | Block/unblock/remove responsiveness | A | 2026-03-23 | Commit 76cd2ca7. Test: TEST_PASS_2_REPORT.md (46/46 green) | All 4 handlers (block, unblock, remove×2) non-blocking. Modals/alerts close instantly. Background work with error toasts. |
 | Friend-based content visibility | F | — | Unaudited | RLS policies |
+| Friend search (search-users) | F | — | Unaudited | search-users edge function, AddFriendView.tsx |
+| View friend profile | F | — | Unaudited | ViewFriendProfileScreen.tsx, useFriendProfile.ts |
+| Mute/unmute friends | F | — | Unaudited | muteService.ts |
 | Pairing / paired saves | F | — | Unaudited | — |
 
 ### 6. Notifications
@@ -165,6 +175,154 @@
 | Subscription tier freshness | B | 2026-03-23 | Commit cdd3cac0. Test: TEST_PASS_5_REPORT.md (27/27 green) | StaleTime 5min→60s. Transitional: "take highest of 3" model remains. Exception list: TIER_AUTHORITY_EXCEPTION_LIST.md |
 | Purchase error handling | A | 2026-03-23 | Commit cdd3cac0. Test: TEST_PASS_5_REPORT.md (27/27 green) | onError on all 4 RC mutations. Sync retry + info toast in both paywall screens. |
 | Subscription management | F | — | Unaudited | RevenueCat integration |
+| Edit bio | F | — | Unaudited | EditBioSheet.tsx |
+| Edit interests | F | — | Unaudited | EditInterestsSheet.tsx |
+| Privacy controls | F | — | Unaudited | PrivacyControls.tsx, MapPrivacySettings.tsx |
+| Billing management | F | — | Unaudited | BillingSheet.tsx |
+| Terms of Service / Privacy Policy screens | F | — | Unaudited | TermsOfService.tsx, PrivacyPolicy.tsx |
+
+### 9. Map & Location
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Map rendering (dual provider) | F | — | Unaudited | MapLibreProvider.tsx, ReactNativeMapsProvider.tsx |
+| User location tracking | F | — | Unaudited | useUserLocation.ts, locationService.ts, enhancedLocationService.ts |
+| Map location update | F | — | Unaudited | update-map-location edge function |
+| Nearby people display | F | — | Unaudited | get-nearby-people edge function, useNearbyPeople.ts, PersonPin.tsx |
+| Person bottom sheet on map | F | — | Unaudited | PersonBottomSheet.tsx |
+| Place pins on map | F | — | Unaudited | PlacePin.tsx, AnimatedPlacePin.tsx |
+| Place heatmap | F | — | Unaudited | PlaceHeatmap.tsx |
+| Map filter bar | F | — | Unaudited | MapFilterBar.tsx |
+| Layer toggles | F | — | Unaudited | LayerToggles.tsx |
+| Map bottom sheet | F | — | Unaudited | MapBottomSheet.tsx |
+| Curated route display | F | — | Unaudited | CuratedRoute.tsx |
+| Go Dark / privacy FAB | F | — | Unaudited | GoDarkFAB.tsx, MapPrivacySettings.tsx |
+| Activity feed overlay | F | — | Unaudited | ActivityFeedOverlay.tsx |
+| Activity status picker | F | — | Unaudited | ActivityStatusPicker.tsx |
+| Map cards hook | F | — | Unaudited | useMapCards.ts, useMapSettings.ts |
+| Nearby people layout algorithm | F | — | Unaudited | layoutNearbyPeople.ts |
+| Discover map integration | F | — | Unaudited | DiscoverMap.tsx |
+
+### 10. Direct Messaging & Chat
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Send/receive messages | F | — | Unaudited | messagingService.ts, useMessages.ts |
+| Message list rendering | F | — | Unaudited | MessageBubble.tsx (chat/ and discussion/) |
+| Conversation list | F | — | Unaudited | MessagesTab.tsx, ChatListItem.tsx, ConversationCard.tsx |
+| Chat presence (online/typing) | F | — | Unaudited | useChatPresence.ts, chatPresenceService.ts, TypingIndicator.tsx |
+| Broadcast receiver (realtime) | F | — | Unaudited | useBroadcastReceiver.ts |
+| Messaging realtime | F | — | Unaudited | useMessagingRealtime.ts |
+| DM email notification | F | — | Unaudited | send-message-email edge function |
+| Chat status line | F | — | Unaudited | ChatStatusLine.tsx |
+
+### 11. Payments & Subscriptions
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Paywall screen | F | — | Unaudited | PaywallScreen.tsx |
+| Custom paywall screen | F | — | Unaudited | CustomPaywallScreen.tsx |
+| RevenueCat integration | F | — | Unaudited | useRevenueCat.ts, revenueCatService.ts |
+| Subscription service | F | — | Unaudited | subscriptionService.ts, useSubscription.ts |
+| Creator tier gating | F | — | Unaudited | useCreatorTier.ts |
+| Feature gate enforcement | F | — | Unaudited | useFeatureGate.ts |
+| Swipe limit (free users) | F | — | Unaudited | useSwipeLimit.ts |
+| Referral processing | F | — | Unaudited | process-referral edge function |
+
+### 12. Calendar & Scheduling
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Calendar tab display | F | — | Unaudited | CalendarTab.tsx, useCalendarEntries.ts |
+| Device calendar sync | F | — | Unaudited | deviceCalendarService.ts |
+| Calendar service | F | — | Unaudited | calendarService.ts |
+| Date options grid | F | — | Unaudited | DateOptionsGrid.tsx |
+| Propose date/time modal | F | — | Unaudited | ProposeDateTimeModal.tsx, ProposeDateTimeFooter.tsx |
+| Weekend day selection | F | — | Unaudited | WeekendDaySelection.tsx |
+| Collaboration calendar | F | — | Unaudited | useCollaborationCalendar.ts |
+| Calendar button on cards | F | — | Unaudited | CalendarButton.tsx |
+
+### 13. Holidays & Events
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Holiday categories | F | — | Unaudited | generate-holiday-categories edge function, useHolidayCategories.ts |
+| Holiday experiences | F | — | Unaudited | holiday-experiences edge function, holidayExperiencesService.ts |
+| Holiday cards | F | — | Unaudited | get-holiday-cards edge function, holidayCardsService.ts |
+| Custom holidays CRUD | F | — | Unaudited | CustomHolidayModal.tsx, useCustomHolidays.ts, customHolidayService.ts |
+| Calendar holidays mapping | F | — | Unaudited | useCalendarHolidays.ts |
+| Holiday reminder notifications | B | 2026-03-21 | Commit d4c6725e | Cron at 9 AM UTC. Per-user timezone. Known: custom_holidays.year NOT NULL, no recurring. |
+| Ticketmaster events | F | — | Unaudited | ticketmaster-events edge function, events edge function |
+
+### 14. People Discovery
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Discover screen (people) | F | — | Unaudited | DiscoverScreen.tsx, useDiscoverQuery.ts |
+| Person grid cards | F | — | Unaudited | PersonGridCard.tsx |
+| Person tab bar | F | — | Unaudited | PersonTabBar.tsx |
+| Person holiday view | F | — | Unaudited | PersonHolidayView.tsx |
+| Person hero cards | F | — | Unaudited | usePersonHeroCards.ts, get-person-hero-cards edge function |
+| Personalized cards | F | — | Unaudited | usePersonalizedCards.ts, get-personalized-cards edge function |
+| Link request banner | F | — | Unaudited | LinkRequestBanner.tsx (Discover page) |
+| Link consent card | F | — | Unaudited | LinkConsentCard.tsx (ConnectionsPage) |
+| Enhanced profile view | F | — | Unaudited | useEnhancedProfile.ts, enhancedProfileService.ts |
+| Phone lookup (friend discovery) | F | — | Unaudited | usePhoneLookup.ts, phoneLookupService.ts, lookup-phone edge function |
+
+### 15. Pairing System
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Send pair request | F | — | Unaudited | send-pair-request edge function, pairingService.ts |
+| Pair request modal | F | — | Unaudited | PairRequestModal.tsx |
+| Incoming pair request card | F | — | Unaudited | IncomingPairRequestCard.tsx |
+| Paired profile section | F | — | Unaudited | PairedProfileSection.tsx |
+| Paired people row | F | — | Unaudited | PairedPeopleRow.tsx |
+| Paired saves list | F | — | Unaudited | PairedSavesListScreen.tsx, usePairedSaves.ts, get-paired-saves edge function |
+| Paired map saved cards | F | — | Unaudited | usePairedMapSavedCards.ts |
+| Paired cards | F | — | Unaudited | usePairedCards.ts |
+| Pair accepted notification | A | 2026-03-21 | Commit 376cd237 | Already audited — moved from Notifications. |
+| Pair activity notifications | A | 2026-03-21 | Commit 376cd237 | Already audited — moved from Notifications. |
+| Unpair flow (atomic RPC) | A | 2026-03-22 | Commit 23f3a0dd (Pass 9) | Atomic RPC replaces 3-step error-swallowing code. |
+| Pairing info card | F | — | Unaudited | PairingInfoCard.tsx |
+
+### 16. Sharing & Invites
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Share modal | F | — | Unaudited | ShareModal.tsx |
+| User invite modal | F | — | Unaudited | UserInviteModal.tsx |
+| Phone invite flow | F | — | Unaudited | usePhoneInvite.ts, phoneInviteService.ts, send-phone-invite edge function |
+| Invite link share | F | — | Unaudited | InviteLinkShare.tsx |
+| QR code display | F | — | Unaudited | QRCodeDisplay.tsx |
+| Invite code display | F | — | Unaudited | InviteCodeDisplay.tsx |
+| Invite method selector | F | — | Unaudited | InviteMethodSelector.tsx |
+| Invite accept screen | F | — | Unaudited | InviteAcceptScreen.tsx |
+| Board invite service | F | — | Unaudited | boardInviteService.ts |
+| Collaboration invite service | F | — | Unaudited | collaborationInviteService.ts, send-collaboration-invite edge function |
+| Friend request email | F | — | Unaudited | send-friend-request-email edge function |
+| Referral credited notification | F | — | Unaudited | notify-referral-credited edge function |
+
+### 17. Post-Experience & Reviews
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Post-experience modal | F | — | Unaudited | PostExperienceModal.tsx |
+| Post-experience check | F | — | Unaudited | usePostExperienceCheck.ts |
+| Record visit | F | — | Unaudited | record-visit edge function, visitService.ts, useVisits.ts |
+| Voice review recording | F | — | Unaudited | voiceReviewService.ts, process-voice-review edge function |
+| Experience feedback | F | — | Unaudited | experienceFeedbackService.ts |
+| Visit badge display | F | — | Unaudited | VisitBadge.tsx |
+| Dismissed cards sheet | F | — | Unaudited | DismissedCardsSheet.tsx |
+| Deck history sheet | F | — | Unaudited | DeckHistorySheet.tsx |
+| Feedback history sheet | F | — | Unaudited | FeedbackHistorySheet.tsx |
+
+### 18. Booking
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Booking service | F | — | Unaudited | bookingService.ts |
+| Enhanced favorites | F | — | Unaudited | enhancedFavoritesService.ts |
 
 ---
 
@@ -276,6 +434,121 @@
 | Admin auth (3-layer) | F | — | Unaudited | Complex with localStorage flags |
 | PII handling | F | — | Unaudited | Phone numbers, location data |
 | Storage path injection | F | — | Unaudited | E.164 sanitization applied in one place |
+
+### Deep Linking
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Deep link service routing | F | — | Unaudited | deepLinkService.ts |
+| Session deep links (mingla://session/) | B | 2026-03-23 | Commit 15fe8742 | Routes to home + auto-open modal. Invalid sessionId lingers. |
+| Universal link handling | F | — | Unaudited | — |
+| Deferred deep links (pre-install) | F | — | Unaudited | AppsFlyer integration |
+
+### App Lifecycle
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Animated splash screen | F | — | Unaudited | AnimatedSplashScreen.tsx |
+| App loading screen | F | — | Unaudited | AppLoadingScreen.tsx |
+| Error boundary (app-wide) | F | — | Unaudited | ErrorBoundary.tsx — class-based, wraps entire tree |
+| Error state component | F | — | Unaudited | ErrorState.tsx |
+| Offline indicator | F | — | Unaudited | OfflineIndicator.tsx, networkMonitor.ts |
+| App state manager | F | — | Unaudited | AppStateManager.tsx |
+| App handlers | F | — | Unaudited | AppHandlers.tsx |
+| Notification system provider | F | — | Unaudited | NotificationSystem.tsx |
+| Mobile features provider | F | — | Unaudited | MobileFeaturesProvider.tsx |
+| Foreground refresh | B | 2026-03-22 | Commit f3312371 (Pass 7) | Was dead code, now mounted. Lightweight queries refetch on foreground. |
+| Lifecycle logger | F | — | Unaudited | useLifecycleLogger.ts |
+
+### Analytics & Tracking
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| AppsFlyer integration | F | — | Unaudited | appsFlyerService.ts |
+| Mixpanel integration | F | — | Unaudited | mixpanelService.ts |
+| Screen logger | F | — | Unaudited | useScreenLogger.ts |
+| Tracked pressable / touchable | A | 2026-03-22 | Commit dba7b3f0 | TrackedPressable.tsx, TrackedTouchableOpacity.tsx |
+| User activity service | F | — | Unaudited | userActivityService.ts |
+| User interaction service | F | — | Unaudited | userInteractionService.ts |
+| Session tracker | F | — | Unaudited | sessionTracker.ts |
+| A/B testing service | F | — | Unaudited | abTestingService.ts |
+
+### Weather & External Data
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Weather service | F | — | Unaudited | weatherService.ts, weather edge function |
+| Busyness data | F | — | Unaudited | busynessService.ts, BusynessSection.tsx |
+| Geocoding service | F | — | Unaudited | geocodingService.ts |
+| Currency service | F | — | Unaudited | currencyService.ts, countryCurrencyService.ts |
+| Translation service | F | — | Unaudited | translationService.ts |
+| Locale preferences | F | — | Unaudited | useLocalePreferences.ts |
+
+### UI Components & Design System
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Toast system | F | — | Unaudited | Toast.tsx, ToastContainer.tsx, ToastManager.tsx |
+| In-app browser | A | 2026-03-22 | Commit 0254bc4f (Pass 3b) | InAppBrowserModal.tsx |
+| Pull-to-refresh | A | 2026-03-23 | Commit 2a96c8f6 | PullToRefresh.tsx — stale closure fixed |
+| Image with fallback | F | — | Unaudited | ImageWithFallback.tsx |
+| Loading skeleton | F | — | Unaudited | LoadingSkeleton.tsx |
+| Keyboard-aware scroll view | F | — | Unaudited | KeyboardAwareScrollView.tsx, KeyboardAwareView.tsx |
+| Success animation | F | — | Unaudited | SuccessAnimation.tsx |
+| Popularity indicators | F | — | Unaudited | PopularityIndicators.tsx |
+| Confidence score | F | — | Unaudited | ConfidenceScore.tsx |
+| Icon map completeness | A | 2026-03-22 | Commit 88f2d43f | 11 missing entries fixed |
+
+---
+
+## Admin Dashboard
+
+> **Stack:** React 19 + Vite + JSX (no TS) + Tailwind v4 + Framer Motion + Recharts + Leaflet
+> **Auth:** 3-layer (email allowlist → password → OTP 2FA)
+> **State:** React Context (Auth, Theme, Toast) — NOT React Query/Zustand
+> **Data:** Direct Supabase JS client calls
+
+### Admin Auth & Layout
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Admin login (3-layer auth) | F | — | Unaudited | LoginScreen.jsx |
+| Admin invite setup | F | — | Unaudited | InviteSetupScreen.jsx |
+| App shell (header + sidebar) | F | — | Unaudited | AppShell.jsx, Header.jsx, Sidebar.jsx |
+| Command palette | F | — | Unaudited | CommandPalette.jsx |
+| Admin error boundary | F | — | Unaudited | ErrorBoundary.jsx |
+
+### Admin Pages
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Overview page | F | — | Unaudited | OverviewPage.jsx — stats, alerts, activity feed |
+| User management page | F | — | Unaudited | UserManagementPage.jsx — search, profiles, export |
+| Subscription management page | F | — | Unaudited | SubscriptionManagementPage.jsx — tiers, overrides |
+| Analytics page | F | — | Unaudited | AnalyticsPage.jsx — growth, engagement, retention, funnel, geo |
+| Content moderation page | F | — | Unaudited | ContentModerationPage.jsx — experiences, reviews, cards |
+| Photo pool management page | F | — | Unaudited | PhotoPoolManagementPage.jsx — inventory, health |
+| Email campaigns page | F | — | Unaudited | EmailPage.jsx — compose, history, preferences |
+| Place pool builder page | F | — | Unaudited | PlacePoolBuilderPage.jsx — search, import, map |
+| Seed/scripts page | F | — | Unaudited | SeedPage.jsx — destructive operations |
+| Reports page | F | — | Unaudited | ReportsPage.jsx — user reports, severity |
+| Beta feedback page | F | — | Unaudited | BetaFeedbackPage.jsx — audio, transcriptions |
+| City launcher page | F | — | Unaudited | CityLauncherPage.jsx — 5-step city launch wizard |
+| Table browser page | F | — | Unaudited | TableBrowserPage.jsx — generic DB browser |
+| Settings page | F | — | Unaudited | SettingsPage.jsx — theme, flags, config, integrations |
+| Card pool management page | A | 2026-03-21 | Commit e58d8769. Test: TEST_REPORT_ADMIN_CARD_POOL.md | Full rewrite. V2 RPCs. 35/35 green. |
+| Pool intelligence page | F | — | Unaudited | PoolIntelligencePage.jsx — geo, category, neighborhood analytics |
+| Admin users page | F | — | Unaudited | AdminPage.jsx — invite, manage, activity logs |
+
+### Admin UI Components
+
+| Item | Grade | Last Verified | Evidence | Notes |
+|------|-------|--------------|----------|-------|
+| Data table component | F | — | Unaudited | Table.jsx — pagination, sorting, filtering |
+| Chart components | F | — | Unaudited | Recharts integration in AnalyticsPage |
+| Map visualization | F | — | Unaudited | Leaflet integration in PlacePoolBuilderPage |
+| Admin audit logging | F | — | Unaudited | logAdminAction utility |
+| CSV export utility | F | — | Unaudited | exportCsv across multiple pages |
 
 ---
 

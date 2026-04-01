@@ -19,7 +19,7 @@ import { supabase } from '../services/supabase';
 export interface Message {
   id: string;
   conversation_id: string;
-  sender_id: string;
+  sender_id: string | null;
   content?: string;
   message_type: 'text' | 'image' | 'file';
   file_url?: string;
