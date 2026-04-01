@@ -138,6 +138,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const [revalProgress, setRevalProgress] = useState(null);
   const mountedRef = useRef(true);
 
   const fetchData = useCallback(() => {
@@ -244,8 +246,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           trend={data.without_seeding_category === 0 ? "Clean" : "Needs Fix"} trendUp={data.without_seeding_category === 0} />
       </div>
 
-      {/* AI Validation Summary + Run button */}
-      {data.ai_pending_count > 0 && (
+      {/* AI Validation Summary + Run buttons */}
+      {(data.ai_pending_count > 0 || data.ai_validated_count > 0) && (
         <SectionCard title="AI Validation Summary">
           <div className="grid grid-cols-4 gap-4 mb-4">
             <StatCard label="Validated" value={data.ai_validated_count} />
@@ -253,43 +255,90 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
             <StatCard label="Rejected" value={data.ai_rejected_count} />
             <StatCard label="Pending" value={data.ai_pending_count} />
           </div>
-          <Button icon={Zap} variant="primary" size="sm" loading={validating}
-            onClick={async () => {
-              setValidating(true);
-              try {
-                const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
-                  body: {
-                    limit: 25,
-                    ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
-                    ...(selectedCity ? { cityFilter: selectedCity } : {}),
-                  },
-                });
-                if (fnErr) throw new Error(fnErr.message);
-                const r = typeof result === "string" ? JSON.parse(result) : result;
-                addToast({
-                  variant: "success",
-                  title: `Validated ${r.processed} places`,
-                  description: `${r.approved} approved, ${r.rejected} rejected, ${r.failed} failed`,
-                });
-                fetchData();
-              } catch (err) {
-                addToast({ variant: "error", title: "Validation failed", description: err.message });
-              } finally {
-                setValidating(false);
-              }
-            }}>
-            Validate {Math.min(data.ai_pending_count, 25)} Pending Places
-          </Button>
-        </SectionCard>
-      )}
-
-      {selectedCity && data.ai_pending_count === 0 && data.ai_validated_count > 0 && (
-        <SectionCard title="AI Validation Summary">
-          <div className="grid grid-cols-4 gap-4">
-            <StatCard label="Validated" value={data.ai_validated_count} />
-            <StatCard label="Approved" value={data.ai_approved_count} />
-            <StatCard label="Rejected" value={data.ai_rejected_count} />
-            <StatCard label="Pending" value={data.ai_pending_count} />
+          <div className="flex gap-3 items-center">
+            {data.ai_pending_count > 0 && (
+              <Button icon={Zap} variant="primary" size="sm" loading={validating}
+                onClick={async () => {
+                  setValidating(true);
+                  try {
+                    const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+                      body: {
+                        limit: 25,
+                        ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
+                        ...(selectedCity ? { cityFilter: selectedCity } : {}),
+                      },
+                    });
+                    if (fnErr) throw new Error(fnErr.message);
+                    const r = typeof result === "string" ? JSON.parse(result) : result;
+                    addToast({
+                      variant: "success",
+                      title: `Validated ${r.processed} places`,
+                      description: `${r.approved} approved, ${r.rejected} rejected, ${r.failed} failed`,
+                    });
+                    fetchData();
+                  } catch (err) {
+                    addToast({ variant: "error", title: "Validation failed", description: err.message });
+                  } finally {
+                    setValidating(false);
+                  }
+                }}>
+                Validate {Math.min(data.ai_pending_count, 25)} Pending Places
+              </Button>
+            )}
+            <Button icon={RefreshCw} variant="ghost" size="sm" loading={revalidating}
+              disabled={validating}
+              onClick={async () => {
+                if (!confirm(`Revalidate ALL ${data.active_places} places with AI? This will re-run validation on every place, including ones already validated. This may take a while.`)) return;
+                setRevalidating(true);
+                setRevalProgress({ processed: 0, total: data.active_places });
+                let totalProcessed = 0, totalApproved = 0, totalRejected = 0, totalFailed = 0;
+                let continuationToken = null;
+                try {
+                  while (true) {
+                    const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+                      body: {
+                        limit: 25,
+                        revalidate: true,
+                        ...(continuationToken ? { afterCreatedAt: continuationToken } : {}),
+                        ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
+                        ...(selectedCity ? { cityFilter: selectedCity } : {}),
+                      },
+                    });
+                    if (fnErr) throw new Error(fnErr.message);
+                    const r = typeof result === "string" ? JSON.parse(result) : result;
+                    totalProcessed += r.processed;
+                    totalApproved += r.approved;
+                    totalRejected += r.rejected;
+                    totalFailed += r.failed;
+                    setRevalProgress({ processed: totalProcessed, total: data.active_places });
+                    if (r.processed === 0 || !r.continuation_token) break;
+                    continuationToken = r.continuation_token;
+                  }
+                  addToast({
+                    variant: "success",
+                    title: `Revalidated ${totalProcessed} places`,
+                    description: `${totalApproved} approved, ${totalRejected} rejected, ${totalFailed} failed`,
+                  });
+                  fetchData();
+                } catch (err) {
+                  addToast({
+                    variant: "error",
+                    title: `Revalidation stopped after ${totalProcessed} places`,
+                    description: err.message,
+                  });
+                  fetchData();
+                } finally {
+                  setRevalidating(false);
+                  setRevalProgress(null);
+                }
+              }}>
+              Revalidate All Places
+            </Button>
+            {revalProgress && (
+              <span className="text-sm text-[var(--color-text-secondary)]">
+                {revalProgress.processed} / {revalProgress.total} processed...
+              </span>
+            )}
           </div>
         </SectionCard>
       )}

@@ -116,31 +116,43 @@ The test: "Can you buy a variety of ingredients to prepare a meal or assemble a 
 const VALIDATION_RESPONSE_SCHEMA = {
   type: "object" as const,
   properties: {
+    primary_identity: {
+      type: "string" as const,
+      description:
+        "What this place fundamentally IS in 1-3 words (e.g., 'Italian restaurant', 'art museum', 'cocktail bar', 'children\\'s play center', 'gym'). This is NOT a Mingla category — it is your honest assessment of the place's core identity.",
+    },
     dominated_category: {
       type: ["string", "null"] as const,
       description:
-        "The single BEST Mingla category for this place, or null if it fits none",
+        "The single BEST Mingla category slug for this place, or null if it fits none. Must be one of the provided category slugs.",
     },
     fits_categories: {
       type: "array" as const,
       items: { type: "string" as const },
       description:
-        "ALL Mingla category slugs this place genuinely fits. Can be empty.",
+        "ALL Mingla category slugs this place genuinely fits as a CORE function. Can be empty. Only include categories where the match is obvious and undeniable.",
+    },
+    confidence: {
+      type: "number" as const,
+      description:
+        "How confident you are in this classification from 0.0 to 1.0. Below 0.7 means you are unsure and this should be flagged for human review.",
     },
     reason: {
       type: "string" as const,
       description:
-        "One sentence explaining why it fits these categories (or why it fits none)",
+        "Your reasoning: state the primary identity, then for each category you considered explain why you included or excluded it.",
     },
     web_evidence: {
       type: "string" as const,
       description:
-        "Brief summary of what you found when searching for this place online",
+        "Brief summary of what you found when searching for this place online — website info, reviews, photos, what the place actually offers.",
     },
   },
   required: [
+    "primary_identity",
     "dominated_category",
     "fits_categories",
+    "confidence",
     "reason",
     "web_evidence",
   ],
@@ -165,8 +177,10 @@ interface PlaceRow {
 }
 
 interface ValidationResult {
+  primary_identity: string;
   dominated_category: string | null;
   fits_categories: string[];
+  confidence: number;
   reason: string;
   web_evidence: string;
 }
@@ -189,8 +203,23 @@ function buildPrompt(place: PlaceRow): string {
     .map(([slug, criteria]) => `**${slug}**: ${criteria}`)
     .join("\n\n");
 
-  return `You are a quality judge for Mingla, a dating and experiences app.
-Your job: determine which categories a real-world place GENUINELY belongs to.
+  return `You are a strict quality gatekeeper for Mingla, a dating and experiences app.
+Your job: determine which categories a real-world place belongs to. Your DEFAULT answer
+is that a place fits ZERO categories. You only add a category when the match is OBVIOUS
+and UNDENIABLE.
+
+CRITICAL RULES:
+- First, determine what this place PRIMARILY IS (its core identity: restaurant, museum,
+  bar, park, theater, etc.). This is the lens through which you judge everything.
+- A place's PRIMARY IDENTITY must match a category's core purpose to qualify.
+  A museum is NOT "casual_eats" just because it has a café inside.
+  A park is NOT "drink" just because there's a nearby kiosk.
+  A hotel is NOT "wellness" just because it has a pool.
+- Only add a SECONDARY category when that function is a MAJOR, ADVERTISED part of the
+  business — not a side feature, not an afterthought, not something you might find if you
+  look hard enough.
+- When in doubt, EXCLUDE the category. A false positive (wrong category) is far worse
+  than a false negative (missing category). Users lose trust when they see irrelevant places.
 
 IMPORTANT: Use web search to research this place. Look up the business name and location.
 Check their website, read reviews, look at photos, verify what they actually offer.
@@ -205,22 +234,83 @@ PLACE DATA (from Google):
 - Price level: ${place.price_level || "unknown"}
 - Website: ${place.website || "none"}
 - Google says: "${place.google_summary || place.editorial_summary || "no description available"}"
-- Currently assigned to: ${place.seeding_category || "none"}
 
 AVAILABLE MINGLA CATEGORIES AND WHAT THEY MEAN:
 
 ${categoryCriteria}
 
+WORKED EXAMPLES (learn the reasoning pattern):
+
+Example 1: "The Metropolitan Museum of Art" — primary identity: MUSEUM
+- creative_arts: YES — it is literally an art museum, this is its core purpose
+- casual_eats: NO — it has a cafeteria inside, but nobody goes to the Met to eat. Reject.
+- first_meet: NO — you could meet someone here, but it's not a café/low-pressure spot. Reject.
+- Result: fits_categories: ["creative_arts"], dominated_category: "creative_arts"
+
+Example 2: "The Rooftop at Pier 17" — primary identity: ROOFTOP BAR/VENUE
+- drink: YES — it is a bar, drinks are a core offering
+- nature_views: YES — it is a rooftop with panoramic skyline/waterfront views, this is a major draw
+- live_performance: YES — it hosts regular scheduled concerts as a major part of its identity
+- casual_eats: NO — it serves food, but people go for drinks/views/shows, not the food. Reject.
+- Result: fits_categories: ["drink", "nature_views", "live_performance"], dominated_category: "drink"
+
+Example 3: "Whole Foods Market" — primary identity: GROCERY STORE
+- groceries: YES — it is literally a grocery store
+- flowers: YES — Whole Foods is KNOWN for having a large, staffed floral department with quality bouquets
+- casual_eats: NO — it has a hot bar, but it's a grocery store, not a restaurant. Reject.
+- Result: fits_categories: ["groceries", "flowers"], dominated_category: "groceries"
+
+Example 4: "Planet Fitness" — primary identity: GYM
+- play: NO — it's a gym, not a fun/recreational activity venue. Reject.
+- wellness: NO — it's a fitness center, not a spa. Reject.
+- Result: fits_categories: [], dominated_category: null
+
+Example 5: "Brooklyn Flea & Smorgasburg" — primary identity: FARMERS MARKET / FLEA MARKET
+- casual_eats: NO — there are food vendors, but availability is seasonal/unpredictable and it's not a restaurant. Reject.
+- groceries: NO — you might find produce, but it's not a grocery store. Reject.
+- flowers: NO — a vendor might sell flowers one week and not the next. Unreliable. Reject.
+- creative_arts: NO — there are craft vendors, but it's a market, not a gallery or art experience. Reject.
+- Result: fits_categories: [], dominated_category: null
+
+Example 6: "KidZania" — primary identity: CHILDREN'S ENTERTAINMENT CENTER
+- play: NO — it's designed for kids, not for an adult date. Reject.
+- creative_arts: NO — kid-focused activities, not an adult cultural experience. Reject.
+- Result: fits_categories: [], dominated_category: null
+
+AUTOMATIC REJECTIONS — these place types NEVER fit any Mingla category:
+
+1. KIDS-ORIENTED: children's museums, kids' play centers, children's theaters, kiddie
+   amusement parks, indoor playgrounds, kid-focused trampoline parks, baby gyms, etc.
+   Test: "Would two adults on a date feel out of place here without children?" If yes → reject all.
+
+2. RELIGIOUS INSTITUTIONS: churches, mosques, temples, synagogues, religious centers.
+   Exception: if the place is primarily a TOURIST LANDMARK (e.g., Sagrada Família, Notre-Dame)
+   it may qualify for creative_arts. But a regular neighborhood church → reject all.
+
+3. MEDICAL / HEALTHCARE: hospitals, clinics, dentists, urgent care, pharmacies, physical
+   therapy offices, chiropractors, optometrists, veterinary clinics.
+
+4. GOVERNMENT / CIVIC: DMVs, courthouses, post offices, police stations, fire stations,
+   tax offices, embassies (unless a historic landmark open to tourists).
+
+5. EDUCATION: schools, daycares, tutoring centers. Exception: university campus venues that
+   are open to the public (e.g., a campus art gallery or public lecture hall) may qualify on
+   their own merits — judge the specific venue, not the university.
+
+6. UTILITARIAN: gas stations, car washes, laundromats, storage facilities, parking garages,
+   auto repair shops, hardware stores, office supply stores, banks, ATMs.
+
+7. FARMERS MARKETS / FLEA MARKETS / POP-UPS: seasonal, unpredictable availability. A user
+   could show up and find nothing. Reject all unless it is a PERMANENT, year-round market
+   with reliable vendors.
+
 YOUR TASK:
 1. Search the web for "${place.name}" near "${place.address}" to understand what this place ACTUALLY is.
-2. Based on your research, determine which Mingla categories this place GENUINELY fits.
-   - A place can fit MULTIPLE categories (e.g., a rooftop bar with views fits "drink" AND "nature_views")
-   - A place can fit just ONE category
-   - A place can fit NO categories (if it's not suitable for any dating/experience context)
-3. Pick the single BEST category for this place (its dominant use case for a date).
-
-Be strict but fair. The goal is: if a user sees this place under a category, they should feel
-HAPPY about the suggestion, not confused or disappointed.
+2. State the place's PRIMARY IDENTITY in one word (restaurant, museum, bar, park, etc.).
+3. Go through EACH Mingla category and ask: "Is this a CORE function of this place?"
+   - If YES and it's obvious → include it
+   - If MAYBE or you have to stretch → EXCLUDE it
+4. Pick the single BEST category (or null if none fit).
 
 Respond with JSON only.`;
 }
@@ -236,7 +326,7 @@ async function callGPT(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-5.4-mini",
+      model: "gpt-4o-mini",
       tools: [{ type: "web_search_preview" }],
       input: prompt,
       text: {
@@ -512,7 +602,10 @@ serve(async (req) => {
           .from("place_pool")
           .update({
             ai_approved: fitsAny,
+            ai_primary_identity: result.primary_identity,
+            ai_confidence: result.confidence,
             ai_reason: result.reason,
+            ai_web_evidence: result.web_evidence,
             ai_categories: result.fits_categories,
             ai_validated_at: new Date().toISOString(),
           })
