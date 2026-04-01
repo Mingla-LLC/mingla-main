@@ -338,7 +338,7 @@ export const VISIBLE_CATEGORY_NAMES = ALL_CATEGORY_NAMES.filter(
 import type { PriceTierSlug } from './priceTiers.ts';
 
 export const CATEGORY_MIN_PRICE_TIER: Partial<Record<string, PriceTierSlug>> = {
-  'Fine Dining': 'bougie', // Only PRICE_LEVEL_EXPENSIVE ($150–$300) and above
+  'fine_dining': 'bougie', // Only PRICE_LEVEL_EXPENSIVE ($150–$300) and above
 };
 
 // ── Per-category search strategy override ─────────────────────────────────────

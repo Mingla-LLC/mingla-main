@@ -132,6 +132,11 @@ export const RecommendationsProvider: React.FC<
   const hasStartedRef = useRef(false);
   // Accumulated cards from all pages (flat array, not per-batch)
   const accumulatedCardsRef = useRef<Recommendation[]>([]);
+  // Counter that increments when session-served IDs change — triggers excludeCardIds memo recomputation
+  const [servedIdsVersion, setServedIdsVersion] = useState(0);
+  // Guard: prevents stale batchSeed from firing a query during pref-change reset.
+  // Set to false when reset starts, true after batchSeed has been confirmed 0.
+  const [batchSeedReady, setBatchSeedReady] = useState(true);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
   const previousRefreshKeyRef = useRef(propRefreshKey);
@@ -181,8 +186,14 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
+    // Session-served IDs — cards already delivered in earlier pages this session.
+    // servedIdsVersion triggers recomputation when new cards are accumulated.
+    for (const id of sessionServedIdsRef.current) {
+      if (UUID_RE.test(id)) ids.add(id);
+    }
     return Array.from(ids);
-  }, [savedCards, calendarEntries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCards, calendarEntries, servedIdsVersion]);
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
@@ -471,7 +482,8 @@ export const RecommendationsProvider: React.FC<
       !!activeDeckLocation &&
       activeDeckParams !== null &&
       isDeckParamsStable &&
-      !isWaitingForSessionResolution,
+      !isWaitingForSessionResolution &&
+      batchSeedReady,
     excludeCardIds,
   });
 
@@ -483,7 +495,7 @@ export const RecommendationsProvider: React.FC<
   } = useSessionDeck(
     isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
     batchSeed,
-    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution,
+    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady,
     excludeCardIds,
   );
 
@@ -502,7 +514,12 @@ export const RecommendationsProvider: React.FC<
     ? (sessionDeckData?.hasMore ?? false)
     : soloDeckHasMore;
 
-  // (Batch system removed — batchSeed is now an uncapped page counter incremented by prefetch)
+  // batchSeed race guard: re-enable queries once batchSeed has settled to 0
+  useEffect(() => {
+    if (!batchSeedReady && batchSeed === 0) {
+      setBatchSeedReady(true);
+    }
+  }, [batchSeed, batchSeedReady]);
 
   // ── Dismissed card callbacks ─────────────────────────────────────────────
   const addDismissedCard = useCallback((card: Recommendation) => {
@@ -558,12 +575,14 @@ export const RecommendationsProvider: React.FC<
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
       // Reset page to 0 — the query key change from new params will
       // naturally trigger a refetch. No need to manually invalidate.
+      setBatchSeedReady(false); // Block queries until batchSeed is confirmed 0
       setBatchSeed(0);
       setIsExhausted(false);
       setHasMoreCards(true);
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
+      setServedIdsVersion(0);
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
@@ -671,6 +690,7 @@ export const RecommendationsProvider: React.FC<
             prefetchDateOption,
             prefetchTimeSlot ?? '',
             nextSeed,
+            excludeCardIds.sort().join(','),
           ],
           queryFn: () => deckService.fetchDeck({
             location: activeDeckLocation,
@@ -708,16 +728,25 @@ export const RecommendationsProvider: React.FC<
           // Deduplicate against already-served cards in this session
           const dedupedCards = deckCards.filter(c => !sessionServedIdsRef.current.has(c.id));
           for (const c of dedupedCards) sessionServedIdsRef.current.add(c.id);
+          if (dedupedCards.length > 0) {
+            setServedIdsVersion(v => v + 1); // Trigger excludeCardIds recomputation
+          }
 
-          if (batchSeed === 0) {
+          if (dedupedCards.length === 0 && batchSeed > 0 && deckHasMore && isDeckBatchLoaded) {
+            // All cards on this page are duplicates, fetch succeeded, server says more exist.
+            // Skip to next page. (If deckHasMore is false or fetch errored, stop.)
+            setBatchSeed(prev => prev + 1);
+            prefetchFiredRef.current = false;
+            // Don't overwrite accumulatedCardsRef — keep existing cards visible
+          } else if (batchSeed === 0) {
             // First page: replace (fresh session or pref change)
             accumulatedCardsRef.current = dedupedCards.length > 0 ? dedupedCards : deckCards;
+            setRecommendations(accumulatedCardsRef.current);
           } else {
-            // Subsequent pages: append
-            const newCards = dedupedCards.length > 0 ? dedupedCards : deckCards;
-            accumulatedCardsRef.current = [...accumulatedCardsRef.current, ...newCards];
+            // Subsequent pages: append new unique cards
+            accumulatedCardsRef.current = [...accumulatedCardsRef.current, ...dedupedCards];
+            setRecommendations(accumulatedCardsRef.current);
           }
-          setRecommendations(accumulatedCardsRef.current);
         }
 
         // If we were exhausted but new cards arrived, un-exhaust
@@ -732,7 +761,7 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -779,6 +808,7 @@ export const RecommendationsProvider: React.FC<
       accumulatedCardsRef.current = [];
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
+      setServedIdsVersion(0);
 
       // Clear deck session state — each mode starts fresh
       const { resetDeckHistory } = useAppStore.getState();

@@ -65,31 +65,6 @@ export default function PracticalDetailsSection({
         </TouchableOpacity>
       )}
 
-      {/* Opening Hours */}
-      {openingHours && (
-        <View style={styles.hoursRow}>
-          <View style={styles.iconBadge}>
-            <Icon name="time-outline" size={14} color="#ea580c" />
-          </View>
-          <View style={styles.hoursContent}>
-            {typeof openingHours === 'string' ? (
-              <Text style={styles.hoursText}>{openingHours}</Text>
-            ) : (
-              <>
-                {openingHours.open_now != null && (
-                  <Text style={[styles.openStatus, { color: openingHours.open_now ? '#16a34a' : '#dc2626' }]}>
-                    {openingHours.open_now ? 'Open now' : 'Closed'}
-                  </Text>
-                )}
-                {openingHours.weekday_text?.map((day: string, i: number) => (
-                  <Text key={i} style={styles.hoursText}>{day}</Text>
-                ))}
-              </>
-            )}
-          </View>
-        </View>
-      )}
-
       {/* Phone row */}
       {phone && (
         <View style={styles.contactRow}>
@@ -160,29 +135,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: "#374151",
-  },
-  hoursRow: {
-    flexDirection: "row",
-    backgroundColor: "#fef7f0",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: "#eb782533",
-    gap: 8,
-  },
-  hoursContent: {
-    flex: 1,
-    gap: 2,
-  },
-  hoursText: {
-    fontSize: 12,
-    color: "#374151",
-    lineHeight: 16,
-  },
-  openStatus: {
-    fontSize: 13,
-    fontWeight: "600" as const,
-    marginBottom: 2,
   },
 });

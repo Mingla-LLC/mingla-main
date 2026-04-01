@@ -270,7 +270,7 @@ export async function upsertPlaceToPool(
     price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
     price_min: priceRange.min,
     price_max: priceRange.max,
-    opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
+    opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow, ...(parsedOH.periods ? { _periods: parsedOH.periods } : {}) } : null,
     photos: photos,
     website: place.websiteUri || place.website || null,
     raw_google_data: place,
@@ -585,9 +585,9 @@ function estimateTravelMin(distKm: number, mode: string = 'walking'): number {
 
 function parseGoogleOpeningHours(
   roh: any
-): { hours: Record<string, string> | null; isOpenNow: boolean | null } {
+): { hours: Record<string, string> | null; isOpenNow: boolean | null; periods?: any[] } {
   if (!roh) return { hours: null, isOpenNow: null };
-  if (!roh.weekdayDescriptions && roh.openNow == null) return { hours: null, isOpenNow: null };
+  if (!roh.weekdayDescriptions && roh.openNow == null && !roh.periods) return { hours: null, isOpenNow: null };
 
   const hours: Record<string, string> = {};
   for (const desc of roh.weekdayDescriptions ?? []) {
@@ -598,6 +598,8 @@ function parseGoogleOpeningHours(
   return {
     hours: Object.keys(hours).length > 0 ? hours : null,
     isOpenNow: roh.openNow ?? null,
+    // Preserve structured periods for reliable time filtering (no regex needed)
+    periods: Array.isArray(roh.periods) && roh.periods.length > 0 ? roh.periods : undefined,
   };
 }
 

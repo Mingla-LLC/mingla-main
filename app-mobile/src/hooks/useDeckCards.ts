@@ -82,6 +82,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       params.dateOption ?? 'now',
       params.timeSlot ?? '',
       params.batchSeed,
+      (params.excludeCardIds ?? []).sort().join(','),
     ],
     queryFn: () =>
       deckService.fetchDeck({
