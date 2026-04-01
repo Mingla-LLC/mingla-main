@@ -197,9 +197,10 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       while (true) {
         if (jobCancelledRef.current) break;
 
-        console.log("[AI Validation] Calling edge function, batch starting from:", token || "beginning");
-        const resp = await supabase.functions.invoke("ai-validate-places", {
+        // Start the edge function call (don't await yet)
+        const fnPromise = supabase.functions.invoke("ai-validate-places", {
           body: {
+            jobId,
             limit: 25,
             revalidate: job.revalidate,
             ...(token ? { afterCreatedAt: token } : {}),
@@ -208,8 +209,26 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           },
         });
 
-        console.log("[AI Validation] Edge function response:", { error: resp.error, dataType: typeof resp.data, data: resp.data });
+        // Poll the job row every 3s while the edge function is running
+        let fnDone = false;
+        let fnResult = null;
+        fnPromise.then((r) => { fnResult = r; fnDone = true; });
 
+        while (!fnDone && !jobCancelledRef.current) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const { data: polled } = await supabase
+            .from("ai_validation_jobs")
+            .select("processed, approved, rejected, failed")
+            .eq("id", jobId)
+            .single();
+          if (polled) {
+            setActiveJob((prev) => ({ ...prev, ...polled }));
+          }
+        }
+
+        if (jobCancelledRef.current) break;
+
+        const resp = fnResult;
         if (resp.error) {
           const errMsg = resp.error?.message || resp.error?.context?.statusText || JSON.stringify(resp.error);
           throw new Error(errMsg);
@@ -219,7 +238,6 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
         if (!r || typeof r.processed !== "number") {
           throw new Error("Unexpected response: " + JSON.stringify(r));
         }
-        console.log("[AI Validation] Batch result:", r.processed, "processed,", r.approved, "approved,", r.rejected, "rejected");
 
         processed += r.processed;
         approved += r.approved;

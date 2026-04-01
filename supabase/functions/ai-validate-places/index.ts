@@ -186,6 +186,7 @@ interface ValidationResult {
 }
 
 interface RequestBody {
+  jobId?: string;
   categorySlug?: string;
   placeIds?: string[];
   revalidate?: boolean;
@@ -445,6 +446,7 @@ serve(async (req) => {
 
     const body: RequestBody = await req.json();
     const {
+      jobId,
       categorySlug,
       placeIds,
       revalidate = false,
@@ -573,6 +575,13 @@ serve(async (req) => {
             .eq("id", place.id);
         }
         lastProcessedCreatedAt = place.created_at;
+        if (jobId && !dryRun) {
+          const processed = approved + rejected + failed;
+          await supabaseAdmin
+            .from("ai_validation_jobs")
+            .update({ processed, approved, rejected, failed, continuation_token: lastProcessedCreatedAt, updated_at: new Date().toISOString() })
+            .eq("id", jobId);
+        }
         continue;
       }
 
@@ -620,6 +629,23 @@ serve(async (req) => {
       }
 
       lastProcessedCreatedAt = place.created_at;
+
+      // Update job row after each place so the UI can poll live progress
+      if (jobId && !dryRun) {
+        const processed = approved + rejected + failed;
+        await supabaseAdmin
+          .from("ai_validation_jobs")
+          .update({
+            processed,
+            approved,
+            rejected,
+            failed,
+            continuation_token: lastProcessedCreatedAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      }
+
       console.log(
         `Validated place: ${placeRow.name} → ${fitsAny ? "approved" : "rejected"} [${result.fits_categories.join(", ")}]`
       );
