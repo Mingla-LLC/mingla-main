@@ -138,9 +138,9 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [validating, setValidating] = useState(false);
-  const [revalidating, setRevalidating] = useState(false);
-  const [revalProgress, setRevalProgress] = useState(null);
+  const [activeJob, setActiveJob] = useState(null); // persisted job row
   const mountedRef = useRef(true);
+  const jobLoopRef = useRef(false); // prevents duplicate loops
 
   const fetchData = useCallback(() => {
     mountedRef.current = true;
@@ -175,6 +175,117 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       setLoading(false);
     });
   }, [selectedCountry, selectedCity]);
+
+  // ── Job-driven validation loop (persists across page refreshes) ──────────
+  const runJobLoop = useCallback(async (job) => {
+    if (jobLoopRef.current) return; // already running
+    jobLoopRef.current = true;
+    setActiveJob(job);
+
+    let { id: jobId, processed, approved, rejected, failed, continuation_token: token } = job;
+
+    try {
+      while (mountedRef.current) {
+        const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+          body: {
+            limit: 25,
+            revalidate: job.revalidate,
+            ...(token ? { afterCreatedAt: token } : {}),
+            ...(job.country_filter ? { countryFilter: job.country_filter } : {}),
+            ...(job.city_filter ? { cityFilter: job.city_filter } : {}),
+          },
+        });
+        if (fnErr) throw new Error(fnErr.message);
+        const r = typeof result === "string" ? JSON.parse(result) : result;
+
+        processed += r.processed;
+        approved += r.approved;
+        rejected += r.rejected;
+        failed += r.failed;
+        token = r.continuation_token;
+
+        const done = r.processed === 0 || !r.continuation_token;
+        const updatedJob = {
+          processed, approved, rejected, failed,
+          continuation_token: token,
+          status: done ? "completed" : "running",
+          updated_at: new Date().toISOString(),
+        };
+        await supabase.from("ai_validation_jobs").update(updatedJob).eq("id", jobId);
+        setActiveJob((prev) => ({ ...prev, ...updatedJob }));
+
+        if (done) {
+          addToast({
+            variant: "success",
+            title: `${job.revalidate ? "Revalidated" : "Validated"} ${processed} places`,
+            description: `${approved} approved, ${rejected} rejected, ${failed} failed`,
+          });
+          fetchData();
+          break;
+        }
+      }
+    } catch (err) {
+      await supabase.from("ai_validation_jobs").update({
+        status: "failed", error_message: err.message, updated_at: new Date().toISOString(),
+      }).eq("id", jobId);
+      setActiveJob(null);
+      addToast({
+        variant: "error",
+        title: `Validation stopped after ${processed} places`,
+        description: err.message,
+      });
+      fetchData();
+    } finally {
+      jobLoopRef.current = false;
+    }
+  }, [addToast, fetchData]);
+
+  const startJob = useCallback(async (revalidate) => {
+    const totalPlaces = data?.active_places || 0;
+    const { data: job, error: insertErr } = await supabase.from("ai_validation_jobs").insert({
+      revalidate,
+      total_places: totalPlaces,
+      country_filter: selectedCountry || null,
+      city_filter: selectedCity || null,
+    }).select().single();
+    if (insertErr) {
+      addToast({ variant: "error", title: "Failed to create job", description: insertErr.message });
+      return;
+    }
+    runJobLoop(job);
+  }, [data, selectedCountry, selectedCity, addToast, runJobLoop]);
+
+  const cancelJob = useCallback(async () => {
+    if (!activeJob) return;
+    mountedRef.current = false; // stop loop
+    await supabase.from("ai_validation_jobs").update({
+      status: "cancelled", updated_at: new Date().toISOString(),
+    }).eq("id", activeJob.id);
+    setActiveJob(null);
+    jobLoopRef.current = false;
+    mountedRef.current = true;
+    addToast({ variant: "info", title: "Validation cancelled" });
+    fetchData();
+  }, [activeJob, addToast, fetchData]);
+
+  // Check for active job on mount (resume after page refresh)
+  useEffect(() => {
+    supabase.from("ai_validation_jobs")
+      .select("*")
+      .eq("status", "running")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data: jobs }) => {
+        if (jobs && jobs.length > 0) {
+          const job = jobs[0];
+          // Only resume if filters match current scope
+          const matchesScope =
+            (job.country_filter || null) === (selectedCountry || null) &&
+            (job.city_filter || null) === (selectedCity || null);
+          if (matchesScope) runJobLoop(job);
+        }
+      });
+  }, [selectedCountry, selectedCity, runJobLoop]);
 
   useEffect(() => {
     fetchData();
@@ -255,8 +366,35 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
             <StatCard label="Rejected" value={data.ai_rejected_count} />
             <StatCard label="Pending" value={data.ai_pending_count} />
           </div>
+
+          {/* Active job progress bar */}
+          {activeJob && (
+            <div className="mb-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  {activeJob.revalidate ? "Revalidating" : "Validating"} places...
+                </span>
+                <span className="font-medium">
+                  {activeJob.processed} / {activeJob.total_places}
+                  {activeJob.total_places > 0 && ` (${Math.round((activeJob.processed / activeJob.total_places) * 100)}%)`}
+                </span>
+              </div>
+              <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2.5">
+                <div
+                  className="bg-[var(--color-brand-500)] h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${activeJob.total_places > 0 ? Math.round((activeJob.processed / activeJob.total_places) * 100) : 0}%` }}
+                />
+              </div>
+              <div className="flex gap-4 text-xs text-[var(--color-text-tertiary)]">
+                <span>{activeJob.approved} approved</span>
+                <span>{activeJob.rejected} rejected</span>
+                <span>{activeJob.failed} failed</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3 items-center">
-            {data.ai_pending_count > 0 && (
+            {data.ai_pending_count > 0 && !activeJob && (
               <Button icon={Zap} variant="primary" size="sm" loading={validating}
                 onClick={async () => {
                   setValidating(true);
@@ -285,59 +423,19 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
                 Validate {Math.min(data.ai_pending_count, 25)} Pending Places
               </Button>
             )}
-            <Button icon={RefreshCw} variant="ghost" size="sm" loading={revalidating}
-              disabled={validating}
-              onClick={async () => {
-                if (!confirm(`Revalidate ALL ${data.active_places} places with AI? This will re-run validation on every place, including ones already validated. This may take a while.`)) return;
-                setRevalidating(true);
-                setRevalProgress({ processed: 0, total: data.active_places });
-                let totalProcessed = 0, totalApproved = 0, totalRejected = 0, totalFailed = 0;
-                let continuationToken = null;
-                try {
-                  while (true) {
-                    const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
-                      body: {
-                        limit: 25,
-                        revalidate: true,
-                        ...(continuationToken ? { afterCreatedAt: continuationToken } : {}),
-                        ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
-                        ...(selectedCity ? { cityFilter: selectedCity } : {}),
-                      },
-                    });
-                    if (fnErr) throw new Error(fnErr.message);
-                    const r = typeof result === "string" ? JSON.parse(result) : result;
-                    totalProcessed += r.processed;
-                    totalApproved += r.approved;
-                    totalRejected += r.rejected;
-                    totalFailed += r.failed;
-                    setRevalProgress({ processed: totalProcessed, total: data.active_places });
-                    if (r.processed === 0 || !r.continuation_token) break;
-                    continuationToken = r.continuation_token;
-                  }
-                  addToast({
-                    variant: "success",
-                    title: `Revalidated ${totalProcessed} places`,
-                    description: `${totalApproved} approved, ${totalRejected} rejected, ${totalFailed} failed`,
-                  });
-                  fetchData();
-                } catch (err) {
-                  addToast({
-                    variant: "error",
-                    title: `Revalidation stopped after ${totalProcessed} places`,
-                    description: err.message,
-                  });
-                  fetchData();
-                } finally {
-                  setRevalidating(false);
-                  setRevalProgress(null);
-                }
-              }}>
-              Revalidate All Places
-            </Button>
-            {revalProgress && (
-              <span className="text-sm text-[var(--color-text-secondary)]">
-                {revalProgress.processed} / {revalProgress.total} processed...
-              </span>
+            {!activeJob && (
+              <Button icon={RefreshCw} variant="ghost" size="sm" disabled={validating}
+                onClick={() => {
+                  if (!confirm(`Revalidate ALL ${data.active_places} places with AI? This will re-run validation on every place, including ones already validated.`)) return;
+                  startJob(true);
+                }}>
+                Revalidate All Places
+              </Button>
+            )}
+            {activeJob && (
+              <Button icon={XCircle} variant="ghost" size="sm" onClick={cancelJob}>
+                Cancel
+              </Button>
             )}
           </div>
         </SectionCard>
