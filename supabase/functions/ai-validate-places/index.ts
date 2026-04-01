@@ -140,12 +140,12 @@ const VALIDATION_RESPONSE_SCHEMA = {
     reason: {
       type: "string" as const,
       description:
-        "Your reasoning: state the primary identity, then for each category you considered explain why you included or excluded it.",
+        "One sentence: primary identity + why it fits or doesn't fit the chosen categories.",
     },
     web_evidence: {
       type: "string" as const,
       description:
-        "Brief summary of what you found when searching for this place online — website info, reviews, photos, what the place actually offers.",
+        "One sentence: what the place is according to web results.",
     },
   },
   required: [
@@ -327,7 +327,8 @@ async function callGPT(
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      tools: [{ type: "web_search_preview" }],
+      tools: [{ type: "web_search_preview", search_context_size: "low" }],
+      max_output_tokens: 300,
       input: prompt,
       text: {
         format: {
