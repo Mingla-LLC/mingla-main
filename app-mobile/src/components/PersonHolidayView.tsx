@@ -335,10 +335,11 @@ function CardRow({
   fallbackCards,
   onCardPress,
   onShuffleCategories,
-  seenCardIds,
   travelMode,
   onLoaded,
-  waitForPrimary,
+  excludeCardIds = [],
+  enabled = true,
+  onCardsLoaded,
 }: {
   pairedUserId: string;
   holidayKey: string;
@@ -347,48 +348,46 @@ function CardRow({
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
-  seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
   onLoaded?: () => void;
-  waitForPrimary?: boolean;
+  excludeCardIds?: string[];
+  enabled?: boolean;
+  onCardsLoaded?: (cardIds: string[]) => void;
 }) {
   const { currency } = useLocalePreferences();
   const currencySymbol = getCurrencySymbol(currency);
   const currencyRate = getCurrencyRate(currency);
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
-  const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
 
-  const isEnabled = hasLoc && !waitForPrimary;
   const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
-    isEnabled ? { pairedUserId, holidayKey, location, sections, excludeCardIds: excludeIds } : null
+    enabled && hasLoc ? { pairedUserId, holidayKey, location, sections, excludeCardIds } : null
   );
 
   const allCards = data?.cards ?? [];
+  const pairedCards = allCards;
+
+  // Report loaded card IDs to parent for next stage's exclusions
+  const reportedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoading && !isFetching && allCards.length > 0 && onCardsLoaded && !reportedRef.current) {
+      reportedRef.current = true;
+      onCardsLoaded(allCards.map(c => c.id));
+    }
+  }, [isLoading, isFetching, allCards, onCardsLoaded]);
+
+  // Reset reported flag when query re-fires (e.g., after shuffle or stage change)
+  useEffect(() => {
+    reportedRef.current = false;
+  }, [holidayKey, enabled]);
 
   const shufflePairedCards = useShufflePairedCards();
   const handleShuffle = useCallback(async () => {
-    // Remove THIS section's current cards from seenCardIds before shuffling
-    // so they can potentially appear in other sections' future shuffles
-    const currentCards = allCards;
-    if (seenCardIds?.current) {
-      for (const c of currentCards) seenCardIds.current.delete(c.id);
-    }
-
-    // Pass all OTHER sections' card IDs as exclusions
-    const excludeIds = seenCardIds?.current ? Array.from(seenCardIds.current) : undefined;
-    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeIds);
-
+    reportedRef.current = false;
+    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeCardIds);
     if (onShuffleCategories) onShuffleCategories();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, onShuffleCategories, allCards, seenCardIds]);
-  const pairedCards = useMemo(() => {
-    if (!seenCardIds?.current) return allCards;
-    const filtered = allCards.filter(c => !seenCardIds.current.has(c.id));
-    // Register this section's cards so later sections skip them
-    for (const c of filtered) seenCardIds.current.add(c.id);
-    return filtered;
-  }, [allCards, seenCardIds]);
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, excludeCardIds, onShuffleCategories]);
 
-  // Signal parent that this section's cards are registered in seenCardIds
+  // Signal parent that loading finished
   useEffect(() => {
     if (!isLoading && !isFetching && onLoaded) {
       onLoaded();
@@ -527,7 +526,7 @@ function HolidaySectionView({
   pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
-  seenCardIds, travelMode, waitForPrimary,
+  travelMode, excludeCardIds, enabled, onCardsLoaded,
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -541,9 +540,10 @@ function HolidaySectionView({
   isExpanded: boolean;
   onToggle: () => void;
   onArchive: () => void;
-  seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
-  waitForPrimary?: boolean;
+  excludeCardIds?: string[];
+  enabled?: boolean;
+  onCardsLoaded?: (cardIds: string[]) => void;
 }) {
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
   const cd = countdownText(daysAway);
@@ -584,9 +584,10 @@ function HolidaySectionView({
             sections={aiSections} location={location}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
-            seenCardIds={seenCardIds}
             travelMode={travelMode}
-            waitForPrimary={waitForPrimary}
+            excludeCardIds={excludeCardIds}
+            enabled={enabled}
+            onCardsLoaded={onCardsLoaded}
           />
         </>
       )}
@@ -599,7 +600,7 @@ function HolidaySectionView({
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
-  seenCardIds, travelMode, waitForPrimary,
+  travelMode, excludeCardIds, enabled, onCardsLoaded,
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -608,9 +609,10 @@ function CustomHolidaySectionView({
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   isExpanded: boolean; onToggle: () => void;
   onDelete?: () => void;
-  seenCardIds?: React.MutableRefObject<Set<string>>;
   travelMode?: string;
-  waitForPrimary?: boolean;
+  excludeCardIds?: string[];
+  enabled?: boolean;
+  onCardsLoaded?: (cardIds: string[]) => void;
 }) {
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
@@ -660,9 +662,10 @@ function CustomHolidaySectionView({
             sections={ai} location={location}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
-            seenCardIds={seenCardIds}
             travelMode={travelMode}
-            waitForPrimary={waitForPrimary}
+            excludeCardIds={excludeCardIds}
+            enabled={enabled}
+            onCardsLoaded={onCardsLoaded}
           />
         </>
       )}
@@ -689,15 +692,36 @@ export default function PersonHolidayView({
   const [showSavesList, setShowSavesList] = useState(false);
   const [showVisitsList, setShowVisitsList] = useState(false);
 
-  // Dedup: track card IDs already shown in earlier sections
-  const seenCardIds = useRef<Set<string>>(new Set());
-  const [primaryLoaded, setPrimaryLoaded] = useState(false);
+  // Staged dedup: accumulate card IDs from each loading stage
+  const [stage1Ids, setStage1Ids] = useState<string[]>([]);
+  const [stage1Done, setStage1Done] = useState(false);
+  const [stage2Ids, setStage2Ids] = useState<string[]>([]);
+  const [stage2Done, setStage2Done] = useState(false);
+  const customLoadedRef = useRef(0);
 
-  // Reset dedup set when viewing a different person
+  // Reset when viewing a different person
   useEffect(() => {
-    seenCardIds.current = new Set();
-    setPrimaryLoaded(false);
+    setStage1Ids([]);
+    setStage1Done(false);
+    setStage2Ids([]);
+    setStage2Done(false);
+    customLoadedRef.current = 0;
   }, [pairedUserId]);
+
+  // If no birthday, skip stage 1 immediately
+  const hasBirthday = !!birthday;
+  useEffect(() => {
+    if (!hasBirthday) setStage1Done(true);
+  }, [hasBirthday]);
+
+  // If no custom holidays, skip stage 2 immediately
+  const customCount = customHolidays?.length || 0;
+  useEffect(() => {
+    if (customCount === 0) setStage2Done(true);
+  }, [customCount]);
+
+  // Stable combined exclude list for standard holidays
+  const standardExcludeIds = useMemo(() => [...stage1Ids, ...stage2Ids], [stage1Ids, stage2Ids]);
 
   // Load bilateral mode from AsyncStorage per paired person
   useEffect(() => {
@@ -851,9 +875,13 @@ export default function PersonHolidayView({
               pairedUserId={pairedUserId} holidayKey="birthday"
               sections={DEFAULT_PERSON_SECTIONS} location={location}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
-              seenCardIds={seenCardIds}
               travelMode={travelMode}
-              onLoaded={() => setPrimaryLoaded(true)}
+              excludeCardIds={[]}
+              enabled={true}
+              onCardsLoaded={(ids) => {
+                setStage1Ids(ids);
+                setStage1Done(true);
+              }}
             />
           </View>
         );
@@ -879,9 +907,16 @@ export default function PersonHolidayView({
               isExpanded={expandedIds.has(`custom_${ch.id}`)}
               onToggle={() => toggle(`custom_${ch.id}`)}
               onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
-              seenCardIds={seenCardIds}
               travelMode={travelMode}
-              waitForPrimary={!primaryLoaded}
+              excludeCardIds={stage1Ids}
+              enabled={stage1Done}
+              onCardsLoaded={(ids) => {
+                setStage2Ids(prev => [...prev, ...ids]);
+                customLoadedRef.current += 1;
+                if (customLoadedRef.current >= (customHolidays?.length || 0)) {
+                  setStage2Done(true);
+                }
+              }}
             />
           ))
         ) : (
@@ -914,9 +949,9 @@ export default function PersonHolidayView({
               isExpanded={expandedIds.has(holiday.id)}
               onToggle={() => toggle(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}
-              seenCardIds={seenCardIds}
               travelMode={travelMode}
-              waitForPrimary={!primaryLoaded}
+              excludeCardIds={standardExcludeIds}
+              enabled={stage2Done || (customHolidays?.length || 0) === 0}
             />
           ))}
 
