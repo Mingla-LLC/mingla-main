@@ -170,9 +170,14 @@ export const useAppStore = create<AppState>()(
         set({ showAccountSettings }),
 
       // Deck session actions
-      addSwipedCard: (card) => set((state: AppState) => ({
-        sessionSwipedCards: [...state.sessionSwipedCards, card],
-      })),
+      addSwipedCard: (card) => set((state: AppState) => {
+        const updated = [...state.sessionSwipedCards, card];
+        // Cap at 200 entries — drop oldest on overflow
+        if (updated.length > 200) {
+          return { sessionSwipedCards: updated.slice(updated.length - 200) };
+        }
+        return { sessionSwipedCards: updated };
+      }),
 
       resetDeckHistory: (newPrefsHash) => set({
         sessionSwipedCards: [],

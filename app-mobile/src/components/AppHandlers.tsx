@@ -159,7 +159,6 @@ export function useAppHandlers(state: any) {
             : 20,
         time_of_day: preferences.selectedTimeSlot || null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: null,
         datetime_pref: preferences.selectedDate || null,
         date_option: preferences.selectedDateOption
           ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[preferences.selectedDateOption as string] ?? preferences.selectedDateOption)
@@ -620,7 +619,6 @@ export function useAppHandlers(state: any) {
             : null
           : null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,
@@ -650,7 +648,6 @@ export function useAppHandlers(state: any) {
         datetime_pref: dbPreferences.datetime_pref,
         date_option: dbPreferences.date_option,
         time_slot: dbPreferences.time_slot,
-        exact_time: dbPreferences.exact_time,
         custom_location: dbPreferences.custom_location,
         custom_lat: dbPreferences.custom_lat,
         custom_lng: dbPreferences.custom_lng,

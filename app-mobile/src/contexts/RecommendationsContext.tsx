@@ -438,12 +438,11 @@ export const RecommendationsProvider: React.FC<
     ? collabDeckParams.datetimePref
     : userPrefs?.datetime_pref ?? undefined;
 
-  // dateOption, timeSlot, exactTime: collab aggregation doesn't compute these
+  // dateOption, timeSlot: collab aggregation doesn't compute these
   // (they're solo-only UI concepts). For collab, pass defaults so the edge
   // function falls back to datetimePref-based filtering.
   const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
   const effectiveTimeSlot = isCollaborationMode ? null : (userPrefs?.time_slot ?? null);
-  const effectiveExactTime = isCollaborationMode ? null : (userPrefs?.exact_time ?? null);
 
   const {
     cards: soloDeckCards,
@@ -467,7 +466,6 @@ export const RecommendationsProvider: React.FC<
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
     timeSlot: effectiveTimeSlot,
-    exactTime: effectiveExactTime,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&
@@ -649,7 +647,6 @@ export const RecommendationsProvider: React.FC<
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
         const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
-        const prefetchExactTime = isSoloMode ? (userPrefs?.exact_time ?? '') : '';
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -673,7 +670,6 @@ export const RecommendationsProvider: React.FC<
             prefetchDatetimePref,
             prefetchDateOption,
             prefetchTimeSlot ?? '',
-            prefetchExactTime,
             nextSeed,
           ],
           queryFn: () => deckService.fetchDeck({
@@ -689,7 +685,6 @@ export const RecommendationsProvider: React.FC<
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
             timeSlot: prefetchTimeSlot,
-            exactTime: isSoloMode ? (userPrefs?.exact_time ?? null) : null,
             batchSeed: nextSeed,
             limit: 20,
             excludeCardIds,

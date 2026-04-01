@@ -46,7 +46,6 @@ import {
   Recommendation,
   DeckUIState,
 } from "../contexts/RecommendationsContext";
-import { DeckHistorySheet } from "./DeckHistorySheet";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
@@ -404,37 +403,24 @@ export default function SwipeableCards({
     error,
     userLocation,
     isModeTransitioning,
-    isBatchTransitioning,
     isWaitingForSessionResolution,
     isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
-    generateNextBatch,
-    restorePreviousBatch,
-    deckBatches,
-    currentDeckBatchIndex,
-    navigateToDeckBatch,
     handleDeckCardProgress,
-    totalDeckCardsViewed,
     hasMoreCards,
-    batchSeed,
     dismissedCards,
     addDismissedCard,
     removeDismissedCard,
     addCardToFront,
+    addSwipedCard,
+    sessionSwipedCards,
     isExhausted,
-    isSlowBatchLoad,
     deckUIState,
     collabTravelMode,
   } = useRecommendations();
 
-  // Combine all loading states for UI consistency and to prevent animation freezing
-  // Note: We only block the UI for initial loading (loading), not background refetches (isFetching)
-  // Include isBatchTransitioning so the loader shows while curated batch is loading,
-  // but exclude it when isSlowBatchLoad is true so the slow-load state can render instead
-  const isAnyLoading =
-    loading || isModeTransitioning || isWaitingForSessionResolution ||
-    (isBatchTransitioning && !isSlowBatchLoad);
+  const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -451,7 +437,6 @@ export default function SwipeableCards({
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
-  const [historyVisible, setHistoryVisible] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
 
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
@@ -626,11 +611,10 @@ export default function SwipeableCards({
   const effectiveUIState: DeckUIState = React.useMemo(() => {
     if (deckUIState.type === 'LOADED' && availableRecommendations.length === 0) {
       if (isExhausted) return { type: 'EXHAUSTED' };
-      if (isBatchTransitioning) return { type: 'BATCH_LOADING', previousCards: [] };
       return { type: 'EMPTY' };
     }
     return deckUIState;
-  }, [deckUIState, availableRecommendations.length, isExhausted, isBatchTransitioning]);
+  }, [deckUIState, availableRecommendations.length, isExhausted]);
 
   // ── Prefetch next 2 card images for instant swipe transitions ──
   // When the current card changes, prefetch the images for the next 2 cards.
@@ -668,7 +652,6 @@ export default function SwipeableCards({
       !isExhausted &&
       !loading &&
       !isModeTransitioning &&
-      !isBatchTransitioning &&
       !isWaitingForSessionResolution
     ) {
       const recoveryTimer = setTimeout(() => {
@@ -686,7 +669,7 @@ export default function SwipeableCards({
   }, [
     availableRecommendations.length, recommendations.length, removedCards.size,
     hasCompletedInitialFetch, isExhausted, loading, isModeTransitioning,
-    isBatchTransitioning, isWaitingForSessionResolution,
+    isWaitingForSessionResolution,
   ]);
 
   useEffect(() => {
@@ -821,7 +804,6 @@ export default function SwipeableCards({
         // swiped card from carrying its offset into the fresh deck.
         setIsExpandedModalVisible(false);
         setSelectedCardForExpansion(null);
-        setHistoryVisible(false);
         setDismissedSheetVisible(false);
         position.setValue({ x: 0, y: 0 });
 
@@ -1177,6 +1159,9 @@ export default function SwipeableCards({
   ) => {
     if (!card) return;
 
+    // Track swiped card in session history
+    addSwipedCard(card);
+
     // Record swipe count and capture the post-update result.
     // The PanResponder ref check blocks swipes 21+ synchronously before animation.
     let swipeResult: { allowed: boolean } | undefined;
@@ -1409,18 +1394,6 @@ export default function SwipeableCards({
     }
   };
 
-  const handleReconsiderCard = useCallback((card: Recommendation) => {
-    removeDismissedCard(card);
-    addCardToFront(card);
-    setRemovedCards((prev) => {
-      const next = new Set(prev);
-      next.delete(card.id);
-      return next;
-    });
-    setCurrentCardIndex(0);
-    setDismissedSheetVisible(false);
-  }, [removeDismissedCard, addCardToFront]);
-
   const handleSaveDismissedCard = useCallback((card: Recommendation) => {
     onCardLike(card);
   }, [onCardLike]);
@@ -1534,9 +1507,7 @@ export default function SwipeableCards({
       );
 
     case 'EMPTY':
-    case 'EXHAUSTED': {
-      const hasMultipleBatches = deckBatches.length > 1;
-      const canLoadMore = hasMoreCards && batchSeed + 1 < 3; // MAX_BATCHES = 3
+    case 'EXHAUSTED':
       return (
         <View style={styles.emptyDeckContainer}>
           <View style={styles.emptyDeckContent}>
@@ -1544,104 +1515,35 @@ export default function SwipeableCards({
               <Icon name="earth-outline" size={24} color="#eb7825" />
             </View>
             <Text style={styles.emptyDeckTitle}>
-              {`That's a wrap on Round ${currentDeckBatchIndex + 1}`}
+              You've seen everything available
             </Text>
             <Text style={styles.emptyDeckSubtitle}>
-              {canLoadMore
-                ? "More where that came from."
-                : hasMultipleBatches
-                  ? "You've seen it all. For now."
-                  : "Shift your vibe, or give a skipped spot a second look."}
+              Shift your vibe to unlock new spots, or look back at what you've been through.
             </Text>
 
             <View style={styles.emptyDeckActions}>
-              {/* Load next deck — primary action when more cards exist */}
-              {canLoadMore && (
-                <TouchableOpacity
-                  style={styles.emptyDeckButton}
-                  onPress={generateNextBatch}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="add-circle-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.emptyDeckButtonText}>Another round</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Review previous decks */}
-              {hasMultipleBatches && deckBatches.map((batch, idx) => (
-                idx !== currentDeckBatchIndex ? (
-                  <TouchableOpacity
-                    key={batch.batchSeed}
-                    style={styles.emptyDeckOutlineButton}
-                    onPress={() => navigateToDeckBatch(idx)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="albums-outline" size={16} color="#eb7825" />
-                    <Text style={styles.emptyDeckOutlineButtonText}>
-                      Revisit Round {idx + 1} — {batch.cards.length} places
-                    </Text>
-                  </TouchableOpacity>
-                ) : null
-              ))}
-
-              {/* Hint about deck chip when multiple batches exist */}
-              {hasMultipleBatches && (
-                <Text style={styles.emptyDeckHint}>
-                  Switch rounds from the <Icon name="layers-outline" size={12} color="#9ca3af" /> chip anytime
-                </Text>
-              )}
-
-              {/* Review skipped cards */}
-              {dismissedCards.length > 0 && (
-                <TouchableOpacity
-                  style={styles.emptyDeckOutlineButton}
-                  onPress={() => setDismissedSheetVisible(true)}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="refresh-outline" size={16} color="#eb7825" />
-                  <Text style={styles.emptyDeckOutlineButtonText}>
-                    Revisit {dismissedCards.length} skipped place{dismissedCards.length !== 1 ? "s" : ""}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Shift your vibe — always available */}
               <TouchableOpacity
                 style={styles.emptyDeckButton}
                 onPress={handleOpenPreferences}
                 activeOpacity={0.7}
               >
                 <Icon name="options-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.emptyDeckButtonText}>Shift your vibe</Text>
+                <Text style={styles.emptyDeckButtonText}>Shift preferences</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      );
-    }
 
-    case 'BATCH_SLOW':
-      return (
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingContent}>
-            <PulseDots size={10} speed={600} />
-            <View style={styles.loaderTextGroup}>
-              <Text style={styles.loadingTitle}>Digging a little deeper</Text>
-              <Text style={styles.loaderSubtitle}>
-                The best spots don't always surface first
-              </Text>
+              {sessionSwipedCards.length > 0 && (
+                <TouchableOpacity
+                  style={styles.emptyDeckOutlineButton}
+                  onPress={() => setDismissedSheetVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="time-outline" size={16} color="#eb7825" />
+                  <Text style={styles.emptyDeckOutlineButtonText}>
+                    Review all cards
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <IndeterminateBar />
-          </View>
-        </View>
-      );
-
-    case 'BATCH_LOADING':
-      return (
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingContent}>
-            <PulseDots size={8} speed={400} />
-            <Text style={styles.batchTransitionText}>Pulling up more for you</Text>
           </View>
         </View>
       );
@@ -1677,17 +1579,17 @@ export default function SwipeableCards({
               </Text>
             </View>
           )}
-          {/* Batch chip overlay — only when multiple decks exist */}
-          {deckBatches.length > 1 && (
+          {/* View Previous overlay — appears after first swipe */}
+          {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
               style={styles.batchChip}
-              onPress={() => setHistoryVisible(true)}
+              onPress={() => setDismissedSheetVisible(true)}
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Icon name="layers-outline" size={14} color="#6b7280" />
+              <Icon name="time-outline" size={14} color="#6b7280" />
               <Text style={styles.batchChipText}>
-                Round {currentDeckBatchIndex + 1}
+                {sessionSwipedCards.length} viewed
               </Text>
             </TouchableOpacity>
           )}
@@ -2039,20 +1941,11 @@ export default function SwipeableCards({
         accountPreferences={accountPreferences}
       />
 
-      <DeckHistorySheet
-        visible={historyVisible}
-        onClose={() => setHistoryVisible(false)}
-        deckBatches={deckBatches}
-        currentDeckBatchIndex={currentDeckBatchIndex}
-        navigateToDeckBatch={navigateToDeckBatch}
-        totalDeckCardsViewed={totalDeckCardsViewed}
-      />
-
       <DismissedCardsSheet
         visible={dismissedSheetVisible}
         onClose={() => setDismissedSheetVisible(false)}
         dismissedCards={dismissedCards}
-        onReconsider={handleReconsiderCard}
+        sessionSwipedCards={sessionSwipedCards}
         onSave={handleSaveDismissedCard}
         onCardPress={handleDismissedCardPress}
       />

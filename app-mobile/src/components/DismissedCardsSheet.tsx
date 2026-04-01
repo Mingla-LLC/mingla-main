@@ -22,7 +22,7 @@ interface DismissedCardsSheetProps {
   visible: boolean;
   onClose: () => void;
   dismissedCards: Recommendation[];
-  onReconsider: (card: Recommendation) => void;
+  sessionSwipedCards: Recommendation[];
   onSave: (card: Recommendation) => void;
   onCardPress: (card: Recommendation) => void;
 }
@@ -31,15 +31,23 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
   visible,
   onClose,
   dismissedCards,
-  onReconsider,
+  sessionSwipedCards,
   onSave,
   onCardPress,
 }) => {
   const { measurementSystem } = useLocalePreferences();
-  const handleReconsider = (card: Recommendation) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onReconsider(card);
-  };
+
+  // Build a set of dismissed card IDs for quick lookup
+  const dismissedIds = new Set(dismissedCards.map(c => c.id));
+  // Build a set of saved card IDs (swiped right = not dismissed)
+  const savedIds = new Set(
+    sessionSwipedCards
+      .filter(c => !dismissedIds.has(c.id))
+      .map(c => c.id)
+  );
+
+  // Show all swiped cards, most recent first
+  const allCards = [...sessionSwipedCards].reverse();
 
   const handleSave = (card: Recommendation) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -67,7 +75,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <Text style={styles.title}>
-                {dismissedCards.length} Dismissed Card{dismissedCards.length !== 1 ? 's' : ''}
+                {allCards.length} Card{allCards.length !== 1 ? 's' : ''} Viewed
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -79,68 +87,81 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
           <ScrollView
             style={styles.list}
             showsVerticalScrollIndicator={false}
-            bounces={dismissedCards.length > 4}
+            bounces={allCards.length > 4}
           >
-            {dismissedCards.length === 0 ? (
+            {allCards.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No dismissed cards</Text>
+                <Text style={styles.emptyText}>No cards viewed yet</Text>
               </View>
             ) : (
-              dismissedCards.map((card, index) => (
-                <React.Fragment key={card.id}>
-                  <TouchableOpacity
-                    style={styles.cardRow}
-                    activeOpacity={0.7}
-                    onPress={() => onCardPress(card)}
-                  >
-                    <Image
-                      source={{ uri: card.image || card.images?.[0] }}
-                      style={styles.thumbnail}
-                    />
-                    <View style={styles.infoColumn}>
-                      <Text style={styles.cardTitle} numberOfLines={1}>
-                        {card.title}
-                      </Text>
-                      <View style={styles.metaRow}>
-                        <Icon
-                          name={(card.categoryIcon) || 'location-outline'}
-                          size={13}
-                          color="#6B7280"
-                        />
-                        <Text style={styles.metaText}>
-                          {getReadableCategoryName(card.category)}
+              allCards.map((card, index) => {
+                const isDismissed = dismissedIds.has(card.id);
+                const isSaved = savedIds.has(card.id);
+                return (
+                  <React.Fragment key={`${card.id}-${index}`}>
+                    <TouchableOpacity
+                      style={styles.cardRow}
+                      activeOpacity={0.7}
+                      onPress={() => onCardPress(card)}
+                    >
+                      <Image
+                        source={{ uri: card.image || card.images?.[0] }}
+                        style={styles.thumbnail}
+                      />
+                      <View style={styles.infoColumn}>
+                        <Text style={styles.cardTitle} numberOfLines={1}>
+                          {card.title}
                         </Text>
-                        <Icon name="star" size={13} color="#F59E0B" style={styles.starIcon} />
-                        <Text style={styles.metaText}>{card.rating?.toFixed(1) ?? '—'}</Text>
+                        <View style={styles.metaRow}>
+                          <Icon
+                            name={(card.categoryIcon) || 'location-outline'}
+                            size={13}
+                            color="#6B7280"
+                          />
+                          <Text style={styles.metaText}>
+                            {getReadableCategoryName(card.category)}
+                          </Text>
+                          <Icon name="star" size={13} color="#F59E0B" style={styles.starIcon} />
+                          <Text style={styles.metaText}>{card.rating?.toFixed(1) ?? '—'}</Text>
+                        </View>
+                        <View style={styles.statusRow}>
+                          {isDismissed ? (
+                            <View style={styles.statusBadgeDismissed}>
+                              <Icon name="close-circle-outline" size={12} color="#9ca3af" />
+                              <Text style={styles.statusTextDismissed}>Passed</Text>
+                            </View>
+                          ) : isSaved ? (
+                            <View style={styles.statusBadgeSaved}>
+                              <Icon name="bookmark" size={12} color="#10B981" />
+                              <Text style={styles.statusTextSaved}>Saved</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.distanceText}>
+                              {card.distance
+                                ? parseAndFormatDistance(card.distance, measurementSystem)
+                                : card.travelTime}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                      <Text style={styles.distanceText}>
-                        {card.distance
-                          ? parseAndFormatDistance(card.distance, measurementSystem)
-                          : card.travelTime}
-                      </Text>
-                    </View>
-                    <View style={styles.actionsColumn}>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => handleReconsider(card)}
-                        activeOpacity={0.6}
-                      >
-                        <Icon name="refresh-outline" size={16} color="#eb7825" />
-                        <Text style={styles.actionText}>Reconsider</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => handleSave(card)}
-                        activeOpacity={0.6}
-                      >
-                        <Icon name="bookmark-outline" size={16} color="#eb7825" />
-                        <Text style={styles.actionText}>Save</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                  {index < dismissedCards.length - 1 && <View style={styles.separator} />}
-                </React.Fragment>
-              ))
+                      {/* Save button — only for cards not already saved */}
+                      {isDismissed && (
+                        <View style={styles.actionsColumn}>
+                          <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={() => handleSave(card)}
+                            activeOpacity={0.6}
+                          >
+                            <Icon name="bookmark-outline" size={16} color="#eb7825" />
+                            <Text style={styles.actionText}>Save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    {index < allCards.length - 1 && <View style={styles.separator} />}
+                  </React.Fragment>
+                );
+              })
             )}
           </ScrollView>
         </View>
@@ -241,6 +262,29 @@ const styles = StyleSheet.create({
   },
   starIcon: {
     marginLeft: 8,
+  },
+  statusRow: {
+    marginTop: 3,
+  },
+  statusBadgeSaved: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  statusTextSaved: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
+  },
+  statusBadgeDismissed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  statusTextDismissed: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontWeight: '500',
   },
   distanceText: {
     fontSize: 13,

@@ -154,7 +154,6 @@ export function computePrefsHash(prefs: any): string {
     prefs.travel_constraint_value ?? '',
     prefs.date_option ?? '',
     prefs.time_slot ?? '',
-    prefs.exact_time ?? '',
     // Normalize to ISO string so "Z" vs "+00:00" don't produce different hashes
     prefs.datetime_pref ? normalizeDateTime(prefs.datetime_pref) : '',
     prefs.custom_location ?? '',
