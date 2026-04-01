@@ -684,10 +684,18 @@ export function useAppHandlers(state: any) {
     }
   };
 
-  const handleNotificationsToggle = (enabled: boolean) => {
+  const handleNotificationsToggle = async (enabled: boolean) => {
     setNotificationsEnabled(enabled);
+    try {
+      await AsyncStorage.setItem(
+        "mingla_notifications_enabled",
+        JSON.stringify(enabled)
+      );
+    } catch (e) {
+      console.warn("[handleNotificationsToggle] Failed to persist:", e);
+    }
     if (enabled) {
-      if ("Notification" in window && Notification.permission === "default") {
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
         Notification.requestPermission();
       }
     }

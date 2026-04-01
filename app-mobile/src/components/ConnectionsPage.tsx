@@ -76,6 +76,9 @@ interface ConnectionsPageProps {
   onUnreadCountChange?: (count: number) => void;
   onNavigateToFriendProfile?: (userId: string) => void;
   onFriendAccepted?: () => void;
+  /** When set (e.g. Discover map "Message"), open DM with this user; clear via onOpenDirectMessageHandled */
+  openDirectMessageWithUserId?: string | null;
+  onOpenDirectMessageHandled?: () => void;
 }
 
 const CONNECTIONS_CACHE_VERSION = "v1";
@@ -109,6 +112,8 @@ export default function ConnectionsPageRefactored({
   onUnreadCountChange,
   onNavigateToFriendProfile,
   onFriendAccepted,
+  openDirectMessageWithUserId,
+  onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const user = useAppStore((state) => state.user);
@@ -859,6 +864,58 @@ export default function ConnectionsPageRefactored({
         });
       });
   };
+
+  // ── Open DM from external navigation (Discover map "Message") ────────────
+  const pendingDmConsumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openDirectMessageWithUserId || !user?.id) {
+      pendingDmConsumedRef.current = null;
+      return;
+    }
+
+    const targetId = openDirectMessageWithUserId;
+    if (pendingDmConsumedRef.current === targetId) {
+      return;
+    }
+    pendingDmConsumedRef.current = targetId;
+
+    void (async () => {
+      try {
+        const existing = conversations.find((c) =>
+          c.participants.some((p) => p.id === targetId)
+        );
+        if (existing) {
+          await handleSelectConversation(existing);
+        } else {
+          const friend = dbFriends.find(
+            (f) => (f.friend_user_id || f.id) === targetId
+          );
+          if (friend) {
+            await handlePickFriend(friend);
+          } else {
+            await handlePickFriend({
+              id: targetId,
+              user_id: user.id,
+              friend_user_id: targetId,
+              username: "user",
+              status: "accepted",
+              created_at: new Date().toISOString(),
+            } as UseFriend);
+          }
+        }
+      } finally {
+        onOpenDirectMessageHandled?.();
+      }
+    })();
+    // Intentionally omit handleSelectConversation / handlePickFriend — consume once per pending id
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    openDirectMessageWithUserId,
+    user?.id,
+    conversations,
+    dbFriends,
+    onOpenDirectMessageHandled,
+  ]);
 
   // ── Mark conversation as read (messages + local state) ──
   // Called after messages are loaded — uses the actual loaded messages,

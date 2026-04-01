@@ -192,6 +192,7 @@ function AppContent() {
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
   const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
+  const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
   const [likesNavData, setLikesNavData] = useState<{ activeTab?: 'saved' | 'calendar' } | null>(null);
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -1762,6 +1763,11 @@ function AppContent() {
               // Navigate to connections or show add friend modal
               setCurrentPage("connections");
             }}
+            onOpenChatWithUser={(friendUserId) => {
+              setPendingOpenDmUserId(friendUserId);
+              setCurrentPage("connections");
+            }}
+            onViewFriendProfile={(friendUserId) => setViewingFriendProfileId(friendUserId)}
             onUpgradePress={() => setShowPaywall(true)}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -1814,6 +1820,8 @@ function AppContent() {
             onUnreadCountChange={setTotalUnreadMessages}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
             onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
+            openDirectMessageWithUserId={pendingOpenDmUserId}
+            onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
           />
         );
       case "likes":
@@ -1867,9 +1875,7 @@ function AppContent() {
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             notificationsEnabled={notificationsEnabled}
-            onNotificationsToggle={(enabled: boolean) =>
-              console.log("Toggle notifications:", enabled)
-            }
+            onNotificationsToggle={handlers.handleNotificationsToggle}
             userIdentity={userIdentity}
           />
         );
