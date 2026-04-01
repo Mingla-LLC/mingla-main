@@ -131,11 +131,13 @@ function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCo
 // ── OverviewTab ─────────────────────────────────────────────────────────────
 
 function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+  const { addToast } = useToast();
   const [data, setData] = useState(null);
   const [drilldownRows, setDrilldownRows] = useState([]);
   const [catBreakdown, setCatBreakdown] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [validating, setValidating] = useState(false);
   const mountedRef = useRef(true);
 
   const fetchData = useCallback(() => {
@@ -242,8 +244,46 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           trend={data.without_seeding_category === 0 ? "Clean" : "Needs Fix"} trendUp={data.without_seeding_category === 0} />
       </div>
 
-      {/* AI Validation Summary — city level only */}
-      {selectedCity && (
+      {/* AI Validation Summary + Run button */}
+      {data.ai_pending_count > 0 && (
+        <SectionCard title="AI Validation Summary">
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            <StatCard label="Validated" value={data.ai_validated_count} />
+            <StatCard label="Approved" value={data.ai_approved_count} />
+            <StatCard label="Rejected" value={data.ai_rejected_count} />
+            <StatCard label="Pending" value={data.ai_pending_count} />
+          </div>
+          <Button icon={Zap} variant="primary" size="sm" loading={validating}
+            onClick={async () => {
+              setValidating(true);
+              try {
+                const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+                  body: {
+                    limit: 25,
+                    ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
+                    ...(selectedCity ? { cityFilter: selectedCity } : {}),
+                  },
+                });
+                if (fnErr) throw new Error(fnErr.message);
+                const r = typeof result === "string" ? JSON.parse(result) : result;
+                addToast({
+                  variant: "success",
+                  title: `Validated ${r.processed} places`,
+                  description: `${r.approved} approved, ${r.rejected} rejected, ${r.failed} failed`,
+                });
+                fetchData();
+              } catch (err) {
+                addToast({ variant: "error", title: "Validation failed", description: err.message });
+              } finally {
+                setValidating(false);
+              }
+            }}>
+            Validate {Math.min(data.ai_pending_count, 25)} Pending Places
+          </Button>
+        </SectionCard>
+      )}
+
+      {selectedCity && data.ai_pending_count === 0 && data.ai_validated_count > 0 && (
         <SectionCard title="AI Validation Summary">
           <div className="grid grid-cols-4 gap-4">
             <StatCard label="Validated" value={data.ai_validated_count} />
@@ -2601,6 +2641,93 @@ function SeedingTab({ registeredCity, tiles, stats, seedingOps, refreshKey, onRe
   );
 }
 
+// ── Seeding Tab Wrapper (self-contained city selector) ──────────────────────
+
+function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKey, onRefresh, onDeleteCity, onSeedingChange, onAddCity }) {
+  const [cities, setCities] = useState([]);
+  const [selectedSeedCity, setSelectedSeedCity] = useState(registeredCity);
+  const [seedTiles, setSeedTiles] = useState(tiles || []);
+  const [seedStats, setSeedStats] = useState(stats);
+  const [seedOps, setSeedOps] = useState(seedingOps || []);
+  const [loadingCity, setLoadingCity] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // Load all seeding cities
+  useEffect(() => {
+    supabase.from("seeding_cities").select("*").order("name")
+      .then(({ data }) => { if (mountedRef.current) setCities(data || []); });
+  }, [refreshKey]);
+
+  // Sync with parent if registeredCity matches
+  useEffect(() => {
+    if (registeredCity) {
+      setSelectedSeedCity(registeredCity);
+      setSeedTiles(tiles || []);
+      setSeedStats(stats);
+      setSeedOps(seedingOps || []);
+    }
+  }, [registeredCity, tiles, stats, seedingOps]);
+
+  // When user picks a city from the dropdown, load its data
+  const handleSelectCity = useCallback((city) => {
+    setSelectedSeedCity(city);
+    if (!city) { setSeedTiles([]); setSeedStats(null); setSeedOps([]); return; }
+    setLoadingCity(true);
+
+    Promise.all([
+      supabase.from("seeding_tiles").select("*").eq("city_id", city.id).order("tile_index"),
+      supabase.rpc("admin_city_place_stats", { p_city_id: city.id }),
+      supabase.from("seeding_operations").select("*").eq("city_id", city.id).order("created_at", { ascending: false }).limit(50),
+    ]).then(([tilesRes, statsRes, opsRes]) => {
+      if (!mountedRef.current) return;
+      setSeedTiles(tilesRes.data || []);
+      setSeedStats(statsRes.data);
+      setSeedOps(opsRes.data || []);
+      setLoadingCity(false);
+    });
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <select
+          className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
+          value={selectedSeedCity?.id || ""}
+          onChange={(e) => {
+            const city = cities.find((c) => c.id === e.target.value);
+            handleSelectCity(city || null);
+          }}
+        >
+          <option value="">Select a seeding city...</option>
+          {cities.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}, {c.country} — {c.status}</option>
+          ))}
+        </select>
+        <Button icon={Plus} size="sm" onClick={onAddCity}>Add City</Button>
+      </div>
+
+      {loadingCity && <div className="text-center py-8 text-[var(--color-text-secondary)]">Loading city data...</div>}
+
+      {!loadingCity && selectedSeedCity && (
+        <SeedingTab
+          registeredCity={selectedSeedCity} tiles={seedTiles} stats={seedStats}
+          seedingOps={seedOps} refreshKey={refreshKey} onRefresh={() => { onRefresh(); handleSelectCity(selectedSeedCity); }}
+          onDeleteCity={(city) => { onDeleteCity(city); setSelectedSeedCity(null); }}
+          onSeedingChange={onSeedingChange}
+        />
+      )}
+
+      {!loadingCity && !selectedSeedCity && (
+        <div className="text-center py-12 text-[var(--color-text-tertiary)]">
+          Select a city above to manage seeding, or add a new city.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export function PlacePoolManagementPage({ onTabChange }) {
@@ -2689,12 +2816,12 @@ export function PlacePoolManagementPage({ onTabChange }) {
 
   const isCityRegistered = !!registeredCity;
 
-  // Dynamic tabs
+  // Dynamic tabs — Seeding always visible (has its own city selector inside)
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "browse", label: "Browse Pool" },
     { id: "map", label: "Map View" },
-    ...(isCityRegistered ? [{ id: "seeding", label: "Seeding" }] : []),
+    { id: "seeding", label: "Seeding" },
     { id: "photos", label: "Photo Management" },
     { id: "stale", label: "Stale Review" },
   ];
@@ -2702,7 +2829,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
   // Reset to valid tab when tabs change
   useEffect(() => {
     if (!tabs.find((t) => t.id === activeTab)) setActiveTab("overview");
-  }, [isCityRegistered]);
+  }, [tabs, activeTab]);
 
   const handleAddCity = (city) => {
     refresh();
@@ -2730,9 +2857,6 @@ export function PlacePoolManagementPage({ onTabChange }) {
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
           <p className="text-sm text-[var(--color-text-secondary)]">Browse, manage, and seed places across all cities.</p>
         </div>
-        {selectedCity && !isCityRegistered && (
-          <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Register City for Seeding</Button>
-        )}
       </div>
 
       <CountryFilterBar
@@ -2758,9 +2882,12 @@ export function PlacePoolManagementPage({ onTabChange }) {
           <MapTab selectedCountry={selectedCountry} selectedCity={selectedCity}
             registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
         )}
-        {activeTab === "seeding" && isCityRegistered && (
-          <SeedingTab registeredCity={registeredCity} tiles={tiles} stats={stats} seedingOps={seedingOps}
-            refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive} />
+        {activeTab === "seeding" && (
+          <SeedingTabWrapper
+            registeredCity={registeredCity} tiles={tiles} stats={stats} seedingOps={seedingOps}
+            refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive}
+            onAddCity={() => setAddCityOpen(true)}
+          />
         )}
         {activeTab === "photos" && (
           <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity} />

@@ -356,8 +356,6 @@ async function queryPlacePool(
   radiusMeters: number,
   limit: number = 50,
 ): Promise<any[]> {
-  const includedTypes = getIncludedTypes(categoryId);
-  if (includedTypes.length === 0) return [];
   const excludedPrimary = getExcludedPrimaryTypes(categoryId);
 
   const latDelta = radiusMeters / 111320;
@@ -365,13 +363,14 @@ async function queryPlacePool(
 
   const { data, error } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes')
+    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes, ai_categories')
     .eq('is_active', true)
+    .eq('ai_approved', true)
+    .contains('ai_categories', [categoryId])
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
     .gte('lng', centerLng - lngDelta)
     .lte('lng', centerLng + lngDelta)
-    .overlaps('types', includedTypes)
     .order('rating', { ascending: false })
     .limit(limit);
 
@@ -467,6 +466,7 @@ function buildPoolStop(
     cityId: place.city_id || null,
     city: place.city || null,
     country: place.country || null,
+    aiCategories: place.ai_categories || [],
   };
 }
 
@@ -1217,10 +1217,12 @@ serve(async (req) => {
             const stopPlacePoolIds = stops.map((s: any) => s.placePoolId).filter(Boolean);
             const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
 
-            // Resolve category slug and city_id from first main stop
-            const stopCategorySlug = mainStops[0]?.placeType
-              ? googleTypeToSlug(mainStops[0].placeType)
-              : 'casual_eats';
+            // Resolve category from AI data on stop places, fallback to Google type mapping
+            const stopCategorySlug = mainStops[0]?.aiCategories?.[0]
+              || (mainStops[0]?.placeType ? googleTypeToSlug(mainStops[0].placeType) : 'casual_eats');
+            const stopCategories = [...new Set(mainStops.flatMap((s: any) =>
+              s.aiCategories?.length > 0 ? s.aiCategories : [googleTypeToSlug(s.placeType || 'restaurant')]
+            ))];
             const stopCityId = mainStops[0]?.cityId || null;
 
             return {
@@ -1230,7 +1232,8 @@ serve(async (req) => {
                 google_place_id: mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 title: card.title || `${experienceType} Experience`,
                 category: stopCategorySlug,
-                categories: mainStops.map((s: any) => googleTypeToSlug(s.placeType || 'restaurant')),
+                categories: stopCategories,
+                ai_approved: true,
                 description: card.tagline || '',
                 highlights: [],
                 image_url: mainStops[0]?.imageUrl || null,
