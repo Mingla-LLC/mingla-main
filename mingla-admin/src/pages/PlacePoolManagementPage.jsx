@@ -1522,6 +1522,7 @@ function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingO
 // ── Tab 3: Browse Pool ───────────────────────────────────────────────────────
 
 function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
+  const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -1549,9 +1550,10 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
     q = q.order("created_at", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
     const { data, count, error } = await q;
-    if (!error) { setPlaces(data || []); setTotal(count || 0); }
+    if (error) { addToast({ variant: "error", title: "Failed to load places", description: error.message }); }
+    else { setPlaces(data || []); setTotal(count || 0); }
     setLoading(false);
-  }, [selectedCountry, selectedCity, filters, page]);
+  }, [selectedCountry, selectedCity, filters, page, addToast]);
 
   useEffect(() => { fetchPlaces(); }, [fetchPlaces]);
   useEffect(() => { setPage(1); }, [selectedCountry, selectedCity]);
@@ -1619,7 +1621,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
             value={filters.aiStatus} onChange={(e) => { setFilters((f) => ({ ...f, aiStatus: e.target.value })); setPage(1); }}>
             <option value="">All</option>
-            <option value="validated">Validated</option>
+            <option value="validated">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="pending">Pending</option>
           </select>
@@ -1655,7 +1657,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
 
 // ── Tab 4: Photo Management ──────────────────────────────────────────────────
 
-function PhotoTab({ city, stats, tiles }) {
+function PhotoTab({ selectedCountry, selectedCity }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -1671,29 +1673,29 @@ function PhotoTab({ city, stats, tiles }) {
   const stopRef = useRef(false);
   const pollRef = useRef(null);
 
-  // Query actual DB counts via SQL RPC — single source of truth, city-scoped
+  // Query actual DB counts via new text-based RPC
   const fetchCounts = async () => {
-    if (!city) return;
+    if (!selectedCity) return;
     try {
-      const { data } = await supabase.rpc("admin_city_place_stats", { p_city_id: city.id });
-
+      const { data } = await supabase.rpc("admin_place_photo_stats", {
+        p_country: selectedCountry,
+        p_city: selectedCity,
+      });
       if (mountedRef.current && data) {
-        const total = (data.total_places || 0) + (data.inactive_places || 0);
-        const withP = data.with_photos || 0;
-        const withoutP = data.without_photos || 0;
-        setTotalPlaces(data.total_places || 0);
-        setWithPhotos(withP);
-        setMissingCount(withoutP);
+        const row = Array.isArray(data) ? data[0] : data;
+        setTotalPlaces(Number(row.total_places) || 0);
+        setWithPhotos(Number(row.with_photos) || 0);
+        setMissingCount(Number(row.without_photos) || 0);
       }
     } catch { /* ignore */ }
   };
 
   // Initial load
   useEffect(() => {
-    if (!city) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
+    if (!selectedCity) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
     setLoading(true);
     fetchCounts().then(() => { if (mountedRef.current) setLoading(false); });
-  }, [city]);
+  }, [selectedCountry, selectedCity]);
 
   // Poll DB every 5s while downloading — gives real-time progress within a batch
   useEffect(() => {
@@ -1767,7 +1769,7 @@ function PhotoTab({ city, stats, tiles }) {
   const downloaded = initialMissing != null && missingCount != null ? Math.max(0, initialMissing - missingCount) : totalSucceeded;
   const progressPct = initialMissing > 0 ? Math.min(100, Math.round((downloaded / initialMissing) * 100)) : 0;
 
-  if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
+  if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>;
 
   return (
     <div className="space-y-6">
@@ -2282,7 +2284,7 @@ function StaleTab({ selectedCountry, selectedCity }) {
     if (selectedCity) q = q.eq("city", selectedCity);
     else if (selectedCountry) q = q.eq("country", selectedCountry);
     q.then(({ data }) => { setStale(data || []); setLoading(false); });
-  }, [city]);
+  }, [selectedCountry, selectedCity]);
 
   const refreshPlace = async (placeId) => {
     const { error } = await supabase.functions.invoke("admin-refresh-places", {
@@ -2761,7 +2763,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
             refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive} />
         )}
         {activeTab === "photos" && (
-          <PhotoTab city={registeredCity} stats={stats} tiles={tiles} />
+          <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
         )}
         {activeTab === "stale" && (
           <StaleTab selectedCountry={selectedCountry} selectedCity={selectedCity} />

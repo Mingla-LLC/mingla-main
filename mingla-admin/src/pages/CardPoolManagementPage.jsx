@@ -100,7 +100,7 @@ function ErrorBanner({ error, onRetry }) {
   );
 }
 
-// ── CountryFilterBar (breadcrumb nav, matching PoolIntelligencePage) ─────────
+// ── CountryFilterBar (breadcrumb nav) ────────────────────────────────────────
 
 function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
   const items = [

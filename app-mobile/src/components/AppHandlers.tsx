@@ -434,7 +434,7 @@ export function useAppHandlers(state: any) {
     updateBoardsSessions(updatedBoards);
 
     if (!updatedBoards.find((b: any) => b.id === boardId)) {
-      setCurrentPage("activity");
+      setCurrentPage("likes");
       setActivityNavigation({ activeTab: "boards" });
     }
   };
@@ -698,7 +698,7 @@ export function useAppHandlers(state: any) {
   };
 
   const handleNavigateToActivity = (tab: "saved" | "boards" | "calendar") => {
-    setCurrentPage("activity");
+    setCurrentPage("likes");
     setActivityNavigation({ activeTab: tab });
   };
 
@@ -706,7 +706,7 @@ export function useAppHandlers(state: any) {
     board: any,
     discussionTab: string = "discussion"
   ) => {
-    setCurrentPage("activity");
+    setCurrentPage("likes");
     setActivityNavigation({
       selectedBoard: board,
       activeTab: "boards",

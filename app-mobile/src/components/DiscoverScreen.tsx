@@ -448,6 +448,7 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 }
 
 interface DiscoverScreenProps {
+  isTabVisible?: boolean;
   onAddFriend?: () => void;
   accountPreferences?: {
     currency: string;
@@ -728,6 +729,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 };
 
 export default function DiscoverScreen({
+  isTabVisible = true,
   onAddFriend,
   accountPreferences,
   preferencesRefreshKey,
@@ -3575,7 +3577,7 @@ export default function DiscoverScreen({
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
-                  paused={!isMapShowing}
+                  paused={!isMapShowing || !isTabVisible}
                   activePairedUserIds={activePairedUserIds}
                   pendingFocusCardId={deepLinkParams?.cardId ?? null}
                   onFocusCardHandled={onDeepLinkHandled}

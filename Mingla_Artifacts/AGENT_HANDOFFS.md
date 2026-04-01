@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-03-31
-> Total: 0 active | 18 completed
+> Total: 0 active | 24 completed
 
 ## Active Dispatches
 
@@ -31,6 +31,12 @@
 | AH-016 | PDC-01 to PDC-05 | Spec Writer | 2026-03-31 | SPEC_DETERMINISTIC_DECK_CONTRACT.md | APPROVED |
 | AH-017 | ORCH-0266/0267/0268/0038/0048 | Implementor | 2026-03-31 | IMPLEMENTATION_DETERMINISTIC_DECK_CONTRACT_REPORT.md | APPROVED |
 | AH-018 | ORCH-0266/0267/0268/0038/0048 | Tester | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md | PASS |
+| AH-019 | ORCH-0209/0240 (State Persistence) | Investigator | 2026-03-31 | INVESTIGATION_STATE_PERSISTENCE.md | APPROVED |
+| AH-020 | ORCH-0209/0240 (State Persistence) | Spec Writer | 2026-03-31 | SPEC_STATE_PERSISTENCE.md | APPROVED |
+| AH-021 | ORCH-0209/0240 (State Persistence) | Implementor | 2026-03-31 | IMPLEMENTATION_STATE_PERSISTENCE_REPORT.md | APPROVED |
+| AH-022 | ORCH-0209/0240 (State Persistence) | Tester | 2026-03-31 | QA_STATE_PERSISTENCE_REPORT.md | CONDITIONAL PASS |
+| AH-023 | ORCH-0209/0240 (State Persistence) | Implementor (rework) | 2026-03-31 | IMPLEMENTATION_STATE_PERSISTENCE_REWORK_REPORT.md | APPROVED |
+| AH-024 | ORCH-0209/0240/0270/0271 (State Persistence) | Tester (retest) | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md | PASS |
 
 ## Historical (Pre-Orchestrator)
 

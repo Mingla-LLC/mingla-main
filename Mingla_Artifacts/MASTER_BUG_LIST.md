@@ -1,17 +1,17 @@
 # Master Bug List
 
 > Last updated: 2026-03-31
-> Total: 284 | Open: 138 | Closed: 84 | Verified (B grade): 21 | Deferred: 1
+> Total: 286 | Open: 134 | Closed: 88 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
-| Open (F grade, unaudited) | 124 | 44% |
+| Open (F grade, unaudited) | 123 | 43% |
 | Open (F grade, known bug) | 7 | 2% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 84 | 30% |
-| Verified (B grade) | 17 | 6% |
+| Closed (A grade) | 88 | 31% |
+| Verified (B grade) | 16 | 6% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
 
@@ -20,8 +20,8 @@
 | Severity | Open | Closed/Verified | Total |
 |----------|------|-----------------|-------|
 | S0 (Critical) | 4 | 10 | 14 |
-| S1 (High) | 51 | 44 | 95 |
-| S2 (Medium) | 66 | 35 | 101 |
+| S1 (High) | 50 | 45 | 95 |
+| S2 (Medium) | 64 | 38 | 102 |
 | S3 (Low) | 18 | 12 | 30 |
 
 ## Active Issues (Open — Grade F)
@@ -93,6 +93,15 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (State Persistence)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0209 | App background/foreground state survival | Always-mounted tabs + resume prefetch | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md |
+| ORCH-0240 | Foreground refresh | Refreshes ALL tabs (all mounted), preferences prefetched | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md |
+| ORCH-0270 | Tab switching loading spinners (SP-01 root cause) | Always-mounted tabs eliminate remount spinners | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md |
+| ORCH-0271 | PreferencesSheet loading shimmer on every open | Opens from cache, no shimmer | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md |
 
 ## Recently Closed (Deterministic Deck Contract)
 
@@ -171,7 +180,7 @@
 
 ## Closed Issues (Grade A)
 
-84 items closed with evidence. Key closures:
+88 items closed with evidence. Key closures:
 
 | Area | Count | Key Commits |
 |------|-------|-------------|
@@ -179,7 +188,7 @@
 | Notifications | 6 | 376cd237, d4c6725e, ea655d36 |
 | Collaboration UI | 3 | 15fe8742, 76cd2ca7, 3ee1bce9 |
 | Profile & Settings | 4 | a268b19f, 302b74d5, cdd3cac0 |
-| State & Cache | 2 | 846e7cce, 27e475ac |
+| State & Cache | 5 | 846e7cce, 27e475ac |
 | Chat Responsiveness | 4 | bef4ca3b, 2549dbe6 |
 | Hardening Infrastructure | 3 | 06614e98 |
 | UI Components | 3 | 0254bc4f, 2a96c8f6, 88f2d43f |
@@ -206,7 +215,6 @@
 | ORCH-0103 | Subscription tier freshness | "Take highest of 3" transitional model |
 | ORCH-0156 | Holiday reminder notifications | custom_holidays.year NOT NULL, no recurring |
 | ORCH-0204 | Offline queue observability | No user notification on discard |
-| ORCH-0240 | Foreground refresh | Was dead code, now mounted |
 | ORCH-0065 | Solo mode | Full offline + edge cases unaudited |
 | ORCH-0066 | Collab mode parity | Collab-specific edge cases unaudited |
 

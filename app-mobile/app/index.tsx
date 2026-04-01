@@ -1721,226 +1721,8 @@ function AppContent() {
     return <AppLoadingScreen message="Getting things ready" testID="profile-loading" />;
   }
 
-  // Function to render current page based on navigation
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case "home":
-        return (
-          <HomePage
-            onOpenPreferences={() => {
-              logger.action('Open preferences pressed');
-              setShowPreferences(true);
-            }}
-
-            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
-            currentMode={currentMode ?? "solo"}
-
-            userPreferences={userPreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            onAddToCalendar={(experienceData: any) =>
-              console.log("Add to calendar:", experienceData)
-            }
-            savedCards={savedCards}
-            onSaveCard={handlers.handleSaveCard}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-              console.log("Purchase complete:", experienceData, purchaseOption)
-            }
-            removedCardIds={removedCardIds}
-            onResetCards={() => setRemovedCardIds([])}
-            generateNewMockCard={() => console.log("Generate new card")}
-            refreshKey={preferencesRefreshKey}
-            collaborationSessions={collaborationSessions}
-            selectedSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            onSoloSelect={handleSoloSelect}
-            onCreateSession={handleCreateSession}
-            onAcceptInvite={handleAcceptInvite}
-            onDeclineInvite={handleDeclineInvite}
-            onCancelInvite={handleCancelInvite}
-            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
-            availableFriends={availableFriendsForSessions}
-            isCreatingSession={isCreatingSession}
-            onNotificationNavigate={handleNotificationNavigate}
-            userId={user?.id}
-            openSessionId={pendingSessionOpen}
-            onOpenSessionHandled={() => setPendingSessionOpen(null)}
-          />
-        );
-      case "discover":
-        return (
-          <DiscoverScreen
-            onAddFriend={() => {
-              // Navigate to connections or show add friend modal
-              setCurrentPage("connections");
-            }}
-            onUpgradePress={() => setShowPaywall(true)}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            preferencesRefreshKey={preferencesRefreshKey}
-            deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
-            onDeepLinkHandled={() => setDeepLinkParams(null)}
-          />
-        );
-      case "saved":
-        return (
-          <SavedExperiencesPage
-            savedCards={savedCards}
-            isLoading={isLoadingSavedCards}
-            userPreferences={userPreferences}
-            onScheduleFromSaved={(card: any) => {
-              console.log("Scheduling from saved:", card);
-            }}
-            onPurchaseFromSaved={(card: any, option: any) => {
-              console.log("Purchasing from saved:", card, option);
-            }}
-            onShareCard={handlers.handleShareCard}
-          />
-        );
-      case "connections":
-        return (
-          <ConnectionsPage
-            onSendCollabInvite={(friend: any) => {
-              console.log("Sending collaboration invite to:", friend);
-            }}
-            onAddToBoard={handlers.handleAddToBoard}
-            onShareSavedCard={handlers.handleShareSavedCard}
-            onRemoveFriend={handlers.handleRemoveFriend}
-            onBlockUser={handlers.handleBlockUser}
-            onReportUser={handlers.handleReportUser}
-            accountPreferences={accountPreferences}
-            boardsSessions={boardsSessions}
-            currentMode={currentMode ?? "solo"}
-            onModeChange={handlers.handleModeChange}
-            onUpdateBoardSession={(board: any) => {
-              console.log("Updating board session:", board);
-            }}
-            onCreateSession={async () => {
-              await refreshAllSessions({ showLoading: true });
-            }}
-            onUnreadCountChange={setTotalUnreadMessages}
-            onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-            onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
-          />
-        );
-      case "likes":
-        return (
-          <LikesPage
-            savedCards={savedCards}
-            isLoadingSavedCards={isLoadingSavedCards}
-            isSavedCardsError={isSavedCardsError}
-            onRetrySavedCards={refetchSavedCards}
-            isLoadingCalendarEntries={isLoadingCalendarEntries}
-            calendarEntries={calendarEntries}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            navigationData={likesNavData}
-            onNavigationComplete={() => setLikesNavData(null)}
-            onPurchaseFromSaved={(card: any, purchaseOption: any) => {
-              console.log("Purchasing from saved:", card, purchaseOption);
-              // Handle purchase logic here
-            }}
-            onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-            onShareCard={handlers.handleShareCard}
-            onAddToCalendar={(entry: any) => {
-              console.log("Adding to calendar:", entry);
-              // Handle add to calendar logic here
-            }}
-            onShowQRCode={(entryId: string) => {
-              console.log("Showing QR code for:", entryId);
-              // Handle show QR code logic here
-            }}
-          />
-        );
-      case "activity":
-        // Legacy — redirect to likes page
-        setCurrentPage("likes");
-        return null;
-      case "profile":
-        return (
-          <ProfilePage
-            onSignOut={async () => {
-              logger.action('Sign out pressed');
-              await handleSignOut();
-            }}
-            onUserIdentityUpdate={handleUserIdentityUpdate}
-            onNavigateToActivity={handlers.handleNavigateToActivity}
-            onNavigateToConnections={() => {
-              logger.action('Navigate to connections from profile');
-              setCurrentPage("connections");
-            }}
-            onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
-            onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
-            savedExperiences={savedCards?.length || 0}
-            boardsCount={boardsSessions?.length || 0}
-            notificationsEnabled={notificationsEnabled}
-            onNotificationsToggle={(enabled: boolean) =>
-              console.log("Toggle notifications:", enabled)
-            }
-            userIdentity={userIdentity}
-          />
-        );
-      default:
-        return (
-          <HomePage
-            onOpenPreferences={() => {
-              logger.action('Open preferences pressed');
-              setShowPreferences(true);
-            }}
-
-            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
-            currentMode={currentMode ?? "solo"}
-
-            userPreferences={userPreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            onAddToCalendar={(experienceData: any) =>
-              console.log("Add to calendar:", experienceData)
-            }
-            savedCards={savedCards}
-            onSaveCard={handlers.handleSaveCard}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-              console.log("Purchase complete:", experienceData, purchaseOption)
-            }
-            removedCardIds={removedCardIds}
-            onResetCards={() => setRemovedCardIds([])}
-            generateNewMockCard={() => console.log("Generate new card")}
-            collaborationSessions={collaborationSessions}
-            selectedSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            onSoloSelect={handleSoloSelect}
-            onCreateSession={handleCreateSession}
-            onAcceptInvite={handleAcceptInvite}
-            onDeclineInvite={handleDeclineInvite}
-            onCancelInvite={handleCancelInvite}
-            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
-            availableFriends={availableFriendsForSessions}
-            isCreatingSession={isCreatingSession}
-            onNotificationNavigate={handleNotificationNavigate}
-            userId={user?.id}
-            openSessionId={pendingSessionOpen}
-            onOpenSessionHandled={() => setPendingSessionOpen(null)}
-          />
-        );
-    }
-  };
+  // Whether any full-screen overlay is active (hides tab container)
+  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id) || showTermsOfService || showPrivacyPolicy;
 
   // Ensure any full-screen profile overlays are closed when switching tabs/pages
   const closeProfileOverlays = () => {
@@ -1977,6 +1759,7 @@ function AppContent() {
                     <View style={styles.container}>
                       {/* Main Content — paddingTop for safe area; profile page manages its own for full-bleed gradient */}
                       <View style={[styles.mainContent, { paddingTop: currentPage === "profile" ? 0 : layout.insets.top }]}>
+                        {/* Full-screen overlays render ON TOP of tabs */}
                         {viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
@@ -1991,8 +1774,170 @@ function AppContent() {
                           <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
                         ) : showPrivacyPolicy ? (
                           <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
-                        ) : (
-                          renderCurrentPage()
+                        ) : null}
+
+                        {/* All 5 tabs always mounted — only active tab visible */}
+                        {/* Hidden when a full-screen overlay is active */}
+                        {!isOverlayActive && (
+                          <View style={{ flex: 1 }}>
+                            <View style={currentPage === 'home' ? styles.tabVisible : styles.tabHidden}>
+                              <HomePage
+                                isTabVisible={currentPage === 'home'}
+                                onOpenPreferences={() => {
+                                  logger.action('Open preferences pressed');
+                                  setShowPreferences(true);
+                                }}
+                                onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
+                                currentMode={currentMode ?? "solo"}
+                                userPreferences={userPreferences}
+                                accountPreferences={{
+                                  currency: accountPreferences?.currency || "USD",
+                                  measurementSystem:
+                                    (accountPreferences?.measurementSystem as
+                                      | "Metric"
+                                      | "Imperial") || "Imperial",
+                                }}
+                                onAddToCalendar={(experienceData: any) =>
+                                  console.log("Add to calendar:", experienceData)
+                                }
+                                savedCards={savedCards}
+                                onSaveCard={handlers.handleSaveCard}
+                                onShareCard={handlers.handleShareCard}
+                                onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
+                                  console.log("Purchase complete:", experienceData, purchaseOption)
+                                }
+                                removedCardIds={removedCardIds}
+                                onResetCards={() => setRemovedCardIds([])}
+                                generateNewMockCard={() => console.log("Generate new card")}
+                                refreshKey={preferencesRefreshKey}
+                                collaborationSessions={collaborationSessions}
+                                selectedSessionId={currentSessionId}
+                                onSessionSelect={handleSessionSelect}
+                                onSoloSelect={handleSoloSelect}
+                                onCreateSession={handleCreateSession}
+                                onAcceptInvite={handleAcceptInvite}
+                                onDeclineInvite={handleDeclineInvite}
+                                onCancelInvite={handleCancelInvite}
+                                onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
+                                availableFriends={availableFriendsForSessions}
+                                isCreatingSession={isCreatingSession}
+                                onNotificationNavigate={handleNotificationNavigate}
+                                userId={user?.id}
+                                openSessionId={pendingSessionOpen}
+                                onOpenSessionHandled={() => setPendingSessionOpen(null)}
+                              />
+                            </View>
+                            <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
+                              <DiscoverScreen
+                                isTabVisible={currentPage === 'discover'}
+                                onAddFriend={() => {
+                                  setCurrentPage("connections");
+                                }}
+                                onUpgradePress={() => setShowPaywall(true)}
+                                accountPreferences={{
+                                  currency: accountPreferences?.currency || "USD",
+                                  measurementSystem:
+                                    (accountPreferences?.measurementSystem as
+                                      | "Metric"
+                                      | "Imperial") || "Imperial",
+                                }}
+                                preferencesRefreshKey={preferencesRefreshKey}
+                                deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
+                                onDeepLinkHandled={() => setDeepLinkParams(null)}
+                              />
+                            </View>
+                            <View style={currentPage === 'connections' ? styles.tabVisible : styles.tabHidden}>
+                              <ConnectionsPage
+                                isTabVisible={currentPage === 'connections'}
+                                onSendCollabInvite={(friend: any) => {
+                                  console.log("Sending collaboration invite to:", friend);
+                                }}
+                                onAddToBoard={handlers.handleAddToBoard}
+                                onShareSavedCard={handlers.handleShareSavedCard}
+                                onRemoveFriend={handlers.handleRemoveFriend}
+                                onBlockUser={handlers.handleBlockUser}
+                                onReportUser={handlers.handleReportUser}
+                                accountPreferences={accountPreferences}
+                                boardsSessions={boardsSessions}
+                                currentMode={currentMode ?? "solo"}
+                                onModeChange={handlers.handleModeChange}
+                                onUpdateBoardSession={(board: any) => {
+                                  console.log("Updating board session:", board);
+                                }}
+                                onCreateSession={async () => {
+                                  await refreshAllSessions({ showLoading: true });
+                                }}
+                                onUnreadCountChange={setTotalUnreadMessages}
+                                onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
+                                onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
+                              />
+                            </View>
+                            <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>
+                              <SavedExperiencesPage
+                                isTabVisible={currentPage === 'saved'}
+                                savedCards={savedCards}
+                                isLoading={isLoadingSavedCards}
+                                userPreferences={userPreferences}
+                                onScheduleFromSaved={(card: any) => {
+                                  console.log("Scheduling from saved:", card);
+                                }}
+                                onPurchaseFromSaved={(card: any, option: any) => {
+                                  console.log("Purchasing from saved:", card, option);
+                                }}
+                                onShareCard={handlers.handleShareCard}
+                              />
+                            </View>
+                            <View style={currentPage === 'likes' ? styles.tabVisible : styles.tabHidden}>
+                              <LikesPage
+                                isTabVisible={currentPage === 'likes'}
+                                savedCards={savedCards}
+                                isLoadingSavedCards={isLoadingSavedCards}
+                                isSavedCardsError={isSavedCardsError}
+                                onRetrySavedCards={refetchSavedCards}
+                                isLoadingCalendarEntries={isLoadingCalendarEntries}
+                                calendarEntries={calendarEntries}
+                                userPreferences={userPreferences}
+                                accountPreferences={accountPreferences}
+                                navigationData={likesNavData}
+                                onNavigationComplete={() => setLikesNavData(null)}
+                                onPurchaseFromSaved={(card: any, purchaseOption: any) => {
+                                  console.log("Purchasing from saved:", card, purchaseOption);
+                                }}
+                                onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
+                                onShareCard={handlers.handleShareCard}
+                                onAddToCalendar={(entry: any) => {
+                                  console.log("Adding to calendar:", entry);
+                                }}
+                                onShowQRCode={(entryId: string) => {
+                                  console.log("Showing QR code for:", entryId);
+                                }}
+                              />
+                            </View>
+                            <View style={currentPage === 'profile' ? styles.tabVisible : styles.tabHidden}>
+                              <ProfilePage
+                                isTabVisible={currentPage === 'profile'}
+                                onSignOut={async () => {
+                                  logger.action('Sign out pressed');
+                                  await handleSignOut();
+                                }}
+                                onUserIdentityUpdate={handleUserIdentityUpdate}
+                                onNavigateToActivity={handlers.handleNavigateToActivity}
+                                onNavigateToConnections={() => {
+                                  logger.action('Navigate to connections from profile');
+                                  setCurrentPage("connections");
+                                }}
+                                onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
+                                onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
+                                savedExperiences={savedCards?.length || 0}
+                                boardsCount={boardsSessions?.length || 0}
+                                notificationsEnabled={notificationsEnabled}
+                                onNotificationsToggle={(enabled: boolean) =>
+                                  console.log("Toggle notifications:", enabled)
+                                }
+                                userIdentity={userIdentity}
+                              />
+                            </View>
+                          </View>
                         )}
                       </View>
 
@@ -2313,6 +2258,18 @@ const styles = StyleSheet.create({
   },
   mainContent: {
     flex: 1,
+  },
+  tabVisible: {
+    flex: 1,
+  },
+  tabHidden: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0,
+    pointerEvents: 'none',
   },
   bottomNavigation: {
     backgroundColor: "white",

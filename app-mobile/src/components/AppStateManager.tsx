@@ -108,7 +108,6 @@ export function useAppState() {
     | "home"
     | "discover"
     | "connections"
-    | "activity"
     | "likes"
     | "saved"
     | "profile"

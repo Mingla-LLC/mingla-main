@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total items tracked | 284 |
-| Grade A (launch-ready) | 83 (29%) |
-| Grade B (solid, minor gaps) | 25 (9%) |
+| Total items tracked | 286 |
+| Grade A (launch-ready) | 87 (30%) |
+| Grade B (solid, minor gaps) | 24 (8%) |
 | Grade C (functional, incomplete) | 2 (<1%) |
 | Grade D (fragile) | 2 (<1%) |
-| Grade F (broken/unaudited) | 172 (61%) |
+| Grade F (broken/unaudited) | 171 (60%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 10 (44 bugs fixed) |
 
@@ -48,7 +48,7 @@
 
 ## Top 5 Quality Risks
 
-1. **61% of items at F** — Unknown bug count in production code
+1. **60% of items at F** — Unknown bug count in production code
 2. **Map surface entirely unaudited (16 items at F)** — Large feature with zero verification
 3. **Chat entirely unaudited (8 items at F)** — Social feature with zero verification
 4. **Calendar entirely unaudited (8 items at F)** — Scheduling is core loop step
@@ -65,6 +65,7 @@
 - **Auth & Session** — 2A/4B/1C. Sign-out hardened. OAuth flows verified.
 - **Admin Security** — Admin auth upgraded to A. Privilege escalation fixed, admin email exposure closed, is_admin_user() gating enforced.
 - **Payments & Subscriptions** — 8A/6B/1C. Paywalls, RevenueCat, tier gating, swipe limits, referral expiry, trial abuse prevention all verified.
+- **State Persistence** — Instant tab switching (always-mounted tabs), PreferencesSheet opens from cache, all tabs always live on foreground resume. 4 items closed at A.
 
 ## What's Fragile (Grade D/F Surfaces)
 

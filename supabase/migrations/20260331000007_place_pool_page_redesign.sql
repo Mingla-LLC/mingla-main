@@ -246,7 +246,11 @@ $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 6. Extend admin_edit_place with p_seeding_category parameter
+-- Drop the old 4-param version first to avoid PostgreSQL function overload.
+-- PostgREST cannot disambiguate overloaded functions and returns 300.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
+DROP FUNCTION IF EXISTS public.admin_edit_place(UUID, TEXT, TEXT, BOOLEAN);
 
 CREATE OR REPLACE FUNCTION public.admin_edit_place(
   p_place_id UUID,

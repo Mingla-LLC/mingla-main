@@ -25,17 +25,17 @@
 | Post-Experience | 9 | 0 | 0 | 0 | 0 | 9 | 100% | 0% | Unaudited |
 | Booking | 2 | 0 | 0 | 0 | 0 | 2 | 100% | 0% | Unaudited |
 | Network & Offline | 5 | 0 | 1 | 0 | 0 | 4 | 80% | 0% | Weak |
-| State & Cache | 6 | 2 | 0 | 0 | 0 | 4 | 67% | 0% | Weak |
+| State & Cache | 8 | 5 | 0 | 0 | 0 | 3 | 38% | 0% | Partial |
 | Chat Responsiveness | 4 | 4 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Hardening Infrastructure | 3 | 3 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Error Handling | 5 | 0 | 0 | 0 | 0 | 5 | 100% | 0% | Unaudited |
 | Security & Auth | 13 | 5 | 0 | 1 | 2 | 5 | 38% | 0% | Weak |
 | Deep Linking | 4 | 0 | 1 | 0 | 0 | 3 | 75% | 0% | Weak |
-| App Lifecycle | 11 | 1 | 1 | 0 | 0 | 9 | 82% | 0% | Weak |
+| App Lifecycle | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **284** | **83** | **25** | **2** | **2** | **172** | **61%** | **0%** | **Weak** |
+| **TOTAL** | **286** | **87** | **24** | **2** | **2** | **171** | **60%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
@@ -48,13 +48,14 @@
 ### Partial (40-70% at A/B)
 - Auth & Session (6/7 A+B = 86%)
 - Notifications (8/11 A+B = 73%)
+- State & Cache (5/8 A = 63%)
 
 ### Weak (<40% at A/B)
 - Profile & Settings (4/10 = 40%)
 - Collaboration Sessions (3/7 = 43%)
 - Pairing System (3/10 = 30%)
 - Security & Auth (5/13 A+B = 38%)
-- All cross-cutting except Chat-Resp and Infra
+- All cross-cutting except Chat-Resp, Infra, and State & Cache
 
 ### Unaudited (>80% at F)
 - Saved / Boards (100%)
@@ -78,3 +79,4 @@ All evidence dates are within 7 days (latest: 2026-03-31). No stale items.
 7 payment bugs closed 2026-03-31 — audit velocity resumed. All payment bugs now closed.
 Security Wave 2: 4 items regraded (D/B/C/D → D/A/C/D), 3 closed (ORCH-0253, ORCH-0258, ORCH-0252), 8 new bugs registered 2026-03-31.
 Deterministic Deck Contract: 5 closed (ORCH-0266/0267/0268/0038/0048), 2 upgraded (ORCH-0065 F→B, ORCH-0066 C→B). Discovery now 81% A+B.
+State Persistence: 4 closed (ORCH-0209 F→A, ORCH-0240 B→A, ORCH-0270 new→A, ORCH-0271 new→A). State & Cache now 63% A. App Lifecycle loses its only B, now 2A/9F.

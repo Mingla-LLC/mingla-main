@@ -29,13 +29,13 @@
 | Post-Experience & Reviews | Mobile + Backend | PostExperienceModal.tsx, record-visit | All F | 9 | Unaudited |
 | Booking | Mobile | bookingService.ts | All F | 2 | Unaudited |
 | Network & Offline | Cross-cutting | networkMonitor.ts | Mixed (1B, 4F) | 5 | Weak |
-| State & Cache | Cross-cutting | queryKeys.ts, Zustand stores | Mixed (2A, 4F) | 6 | Weak |
+| State & Cache | Cross-cutting | queryKeys.ts, Zustand stores | Mixed (5A, 3F) | 8 | Partial |
 | Chat Responsiveness | Cross-cutting | messagingService.ts | All A | 4 | Strong |
 | Hardening Infrastructure | Cross-cutting | withTimeout.ts, mutationErrorToast.ts | All A | 3 | Strong |
 | Error Handling | Cross-cutting | ErrorBoundary.tsx, edgeFunctionError.ts | All F | 5 | Unaudited |
 | Security & Auth | Cross-cutting | RLS policies, admin auth | Mixed (1A, 1B, 1C, 2D) | 13 | Weak |
 | Deep Linking | Cross-cutting | deepLinkService.ts | Mixed (1B, 3F) | 4 | Weak |
-| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx | Mixed (1A, 1B, 9F) | 11 | Weak |
+| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx | Mixed (2A, 9F) | 11 | Weak |
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
 | Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |
@@ -380,8 +380,10 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0206 | Mutation error handling | State | S1 | quality-gap | closed | A | 2026-03-23 | Commit 27e475ac |
 | ORCH-0207 | React Query cache invalidation | State | S2 | unaudited | open | F | — | — |
 | ORCH-0208 | Zustand persistence schema versioning | State | S2 | unaudited | open | F | — | — |
-| ORCH-0209 | App background/foreground state survival | State | S2 | unaudited | open | F | — | — |
+| ORCH-0209 | App background/foreground state survival | State | S2 | bug | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — always-mounted tabs + resume prefetch |
 | ORCH-0210 | Memory pressure on large lists | State | S3 | unaudited | open | F | — | — |
+| ORCH-0270 | Tab switching loading spinners | State | S1 | bug | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — SP-01 root cause, always-mounted tabs |
+| ORCH-0271 | PreferencesSheet loading shimmer on every open | State | S2 | bug | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — opens from cache |
 
 ### Cross-Cutting: Chat Responsiveness
 
@@ -450,7 +452,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0237 | App handlers | Lifecycle | S2 | unaudited | open | F | — | — |
 | ORCH-0238 | Notification system provider | Lifecycle | S1 | unaudited | open | F | — | — |
 | ORCH-0239 | Mobile features provider | Lifecycle | S2 | unaudited | open | F | — | — |
-| ORCH-0240 | Foreground refresh | Lifecycle | S2 | quality-gap | verified | B | 2026-03-22 | Commit f3312371 |
+| ORCH-0240 | Foreground refresh | Lifecycle | S2 | quality-gap | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — refreshes ALL tabs (all mounted), preferences prefetched |
 | ORCH-0241 | Lifecycle logger | Lifecycle | S3 | unaudited | open | F | — | — |
 
 ### Cross-Cutting: Analytics & Tracking
