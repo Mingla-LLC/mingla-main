@@ -510,6 +510,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
 function PlaceDetailModal({ place, open, onClose, onSave }) {
   const { addToast } = useToast();
   const [aiCard, setAiCard] = useState(null);
+  const [expandedPhoto, setExpandedPhoto] = useState(null);
   const [editForm, setEditForm] = useState({
     name: "", price_tier: "", seeding_category: "", is_active: true,
     ai_approved: null, ai_primary_identity: "", ai_categories: [], ai_reason: "", ai_confidence: null,
@@ -617,10 +618,29 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             </h4>
             {photos.length > 0 ? (
               <div className="flex gap-2 overflow-x-auto pb-2">
-                {photos.map((url, i) => <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0" />)}
+                {photos.map((url, i) => (
+                  <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setExpandedPhoto(url)} />
+                ))}
               </div>
             ) : (
               <div className="text-sm text-[var(--color-text-tertiary)]">No stored photos</div>
+            )}
+            {expandedPhoto && (
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center" style={{ zIndex: 9999 }}
+                onClick={(e) => { if (e.target === e.currentTarget) setExpandedPhoto(null); }}>
+                <button className="absolute top-4 right-4 text-white/70 hover:text-white text-3xl cursor-pointer" onClick={() => setExpandedPhoto(null)}>&times;</button>
+                {photos.length > 1 && (
+                  <button className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl cursor-pointer px-2"
+                    onClick={() => { const idx = photos.indexOf(expandedPhoto); setExpandedPhoto(photos[(idx - 1 + photos.length) % photos.length]); }}>&lsaquo;</button>
+                )}
+                <img src={expandedPhoto} alt="" className="max-w-[85vw] max-h-[85vh] rounded-lg object-contain" />
+                {photos.length > 1 && (
+                  <button className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl cursor-pointer px-2"
+                    onClick={() => { const idx = photos.indexOf(expandedPhoto); setExpandedPhoto(photos[(idx + 1) % photos.length]); }}>&rsaquo;</button>
+                )}
+                <div className="absolute bottom-4 text-white/60 text-sm">{photos.indexOf(expandedPhoto) + 1} / {photos.length}</div>
+              </div>
             )}
           </div>
 
@@ -1818,9 +1838,9 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
   const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", minRating: "", aiStatus: "", nameSearch: "" });
+  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", aiStatus: "", nameSearch: "" });
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
@@ -1829,19 +1849,22 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
     let q = supabase.from("place_pool").select("*", { count: "exact" });
     if (selectedCity) q = q.eq("city", selectedCity);
     else if (selectedCountry) q = q.eq("country", selectedCountry);
-    if (filters.category) q = q.eq("seeding_category", filters.category);
+    if (filters.category) q = q.contains("ai_categories", [filters.category]);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
     else if (filters.photoStatus === "missing") q = q.or("stored_photo_urls.is.null,stored_photo_urls.eq.{}");
-    if (filters.priceTier) q = q.eq("price_tier", filters.priceTier);
+    if (filters.priceTier === "missing") q = q.is("price_tier", null);
+    else if (filters.priceTier) q = q.eq("price_tier", filters.priceTier);
+    if (filters.priceLevel === "missing") q = q.is("price_level", null);
+    else if (filters.priceLevel) q = q.eq("price_level", filters.priceLevel);
     if (filters.minRating) q = q.gte("rating", parseFloat(filters.minRating));
     if (filters.aiStatus === "validated") q = q.eq("ai_approved", true);
     else if (filters.aiStatus === "rejected") q = q.eq("ai_approved", false);
     else if (filters.aiStatus === "pending") q = q.is("ai_approved", null);
     if (filters.nameSearch) q = q.ilike("name", `%${filters.nameSearch}%`);
     q = q.order("created_at", { ascending: false })
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     const { data, count, error } = await q;
     if (error) { addToast({ variant: "error", title: "Failed to load places", description: error.message }); }
     else { setPlaces(data || []); setTotal(count || 0); }
@@ -1849,7 +1872,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
   }, [selectedCountry, selectedCity, filters, page, addToast]);
 
   useEffect(() => { fetchPlaces(); }, [fetchPlaces]);
-  useEffect(() => { setPage(1); }, [selectedCountry, selectedCity]);
+  useEffect(() => { setPage(0); }, [selectedCountry, selectedCity]);
 
   const relativeTime = (dateStr) => {
     if (!dateStr) return "—";
@@ -1861,7 +1884,11 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
 
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => setDetailPlace(r)}>{r.name}</button> },
-    { key: "seeding_category", label: "Category", render: (_, r) => r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]}</span> : "—" },
+    { key: "ai_categories", label: "Category", render: (_, r) => {
+      const cats = r.ai_categories || [];
+      if (cats.length === 0) return r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]} <span className="ml-1 opacity-60">(seed)</span></span> : "—";
+      return <div className="flex flex-wrap gap-1">{cats.map((c) => <span key={c} className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[c] || "#6b7280" }}>{CATEGORY_LABELS[c] || c}</span>)}</div>;
+    }},
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
@@ -1886,7 +1913,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(1); }}>
+            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
           </select>
@@ -1894,7 +1921,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Status</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1); }}>
+            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -1903,7 +1930,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Photos</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.photoStatus} onChange={(e) => { setFilters((f) => ({ ...f, photoStatus: e.target.value })); setPage(1); }}>
+            value={filters.photoStatus} onChange={(e) => { setFilters((f) => ({ ...f, photoStatus: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             <option value="has">Has Photos</option>
             <option value="missing">Missing Photos</option>
@@ -1912,7 +1939,7 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.aiStatus} onChange={(e) => { setFilters((f) => ({ ...f, aiStatus: e.target.value })); setPage(1); }}>
+            value={filters.aiStatus} onChange={(e) => { setFilters((f) => ({ ...f, aiStatus: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             <option value="validated">Approved</option>
             <option value="rejected">Rejected</option>
@@ -1922,20 +1949,34 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Price Tier</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.priceTier} onChange={(e) => { setFilters((f) => ({ ...f, priceTier: e.target.value })); setPage(1); }}>
+            value={filters.priceTier} onChange={(e) => { setFilters((f) => ({ ...f, priceTier: e.target.value })); setPage(0); }}>
             <option value="">All</option>
+            <option value="missing">Missing</option>
             {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-[var(--color-text-secondary)]">Price Level</label>
+          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+            value={filters.priceLevel} onChange={(e) => { setFilters((f) => ({ ...f, priceLevel: e.target.value })); setPage(0); }}>
+            <option value="">All</option>
+            <option value="missing">Missing</option>
+            <option value="PRICE_LEVEL_FREE">Free</option>
+            <option value="PRICE_LEVEL_INEXPENSIVE">Inexpensive</option>
+            <option value="PRICE_LEVEL_MODERATE">Moderate</option>
+            <option value="PRICE_LEVEL_EXPENSIVE">Expensive</option>
+            <option value="PRICE_LEVEL_VERY_EXPENSIVE">Very Expensive</option>
           </select>
         </div>
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
           <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
             className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(1); }} />
+            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(0); }} />
         </div>
         <div className="flex-1 min-w-[200px]">
           <Input label="Search" value={filters.nameSearch} placeholder="Place name..."
-            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(1); }} />
+            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(0); }} />
         </div>
       </div>
 
