@@ -141,6 +141,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   const [activeJob, setActiveJob] = useState(null); // persisted job row
   const mountedRef = useRef(true);
   const jobLoopRef = useRef(false); // prevents duplicate loops
+  const jobCancelledRef = useRef(false); // separate signal to stop the job loop
 
   const fetchData = useCallback(() => {
     mountedRef.current = true;
@@ -177,16 +178,20 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   }, [selectedCountry, selectedCity]);
 
   // ── Job-driven validation loop (persists across page refreshes) ──────────
-  const runJobLoop = useCallback(async (job) => {
-    if (jobLoopRef.current) return; // already running
+  const runJobLoop = async (job) => {
+    if (jobLoopRef.current) return;
     jobLoopRef.current = true;
+    jobCancelledRef.current = false;
     setActiveJob(job);
 
     let { id: jobId, processed, approved, rejected, failed, continuation_token: token } = job;
 
     try {
-      while (mountedRef.current) {
-        const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (jobCancelledRef.current) break;
+
+        const resp = await supabase.functions.invoke("ai-validate-places", {
           body: {
             limit: 25,
             revalidate: job.revalidate,
@@ -195,8 +200,17 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
             ...(job.city_filter ? { cityFilter: job.city_filter } : {}),
           },
         });
-        if (fnErr) throw new Error(fnErr.message);
-        const r = typeof result === "string" ? JSON.parse(result) : result;
+
+        if (resp.error) {
+          // Supabase functions.invoke returns error as FunctionsHttpError/FunctionsRelayError
+          const errMsg = resp.error?.message || resp.error?.context?.statusText || JSON.stringify(resp.error);
+          throw new Error(errMsg);
+        }
+
+        const r = typeof resp.data === "string" ? JSON.parse(resp.data) : resp.data;
+        if (!r || typeof r.processed !== "number") {
+          throw new Error("Unexpected response: " + JSON.stringify(r));
+        }
 
         processed += r.processed;
         approved += r.approved;
@@ -225,22 +239,23 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
         }
       }
     } catch (err) {
+      console.error("Job loop error:", err);
       await supabase.from("ai_validation_jobs").update({
-        status: "failed", error_message: err.message, updated_at: new Date().toISOString(),
+        status: "failed", error_message: String(err?.message || err), updated_at: new Date().toISOString(),
       }).eq("id", jobId);
       setActiveJob(null);
       addToast({
         variant: "error",
         title: `Validation stopped after ${processed} places`,
-        description: err.message,
+        description: String(err?.message || err),
       });
       fetchData();
     } finally {
       jobLoopRef.current = false;
     }
-  }, [addToast, fetchData]);
+  };
 
-  const startJob = useCallback(async (revalidate) => {
+  const startJob = async (revalidate) => {
     const totalPlaces = data?.active_places || 0;
     const { data: job, error: insertErr } = await supabase.from("ai_validation_jobs").insert({
       revalidate,
@@ -253,20 +268,19 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       return;
     }
     runJobLoop(job);
-  }, [data, selectedCountry, selectedCity, addToast, runJobLoop]);
+  };
 
-  const cancelJob = useCallback(async () => {
+  const cancelJob = async () => {
     if (!activeJob) return;
-    mountedRef.current = false; // stop loop
+    jobCancelledRef.current = true;
     await supabase.from("ai_validation_jobs").update({
       status: "cancelled", updated_at: new Date().toISOString(),
     }).eq("id", activeJob.id);
     setActiveJob(null);
     jobLoopRef.current = false;
-    mountedRef.current = true;
     addToast({ variant: "info", title: "Validation cancelled" });
     fetchData();
-  }, [activeJob, addToast, fetchData]);
+  };
 
   // Check for active job on mount (resume after page refresh)
   useEffect(() => {
@@ -278,14 +292,13 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       .then(({ data: jobs }) => {
         if (jobs && jobs.length > 0) {
           const job = jobs[0];
-          // Only resume if filters match current scope
           const matchesScope =
             (job.country_filter || null) === (selectedCountry || null) &&
             (job.city_filter || null) === (selectedCity || null);
           if (matchesScope) runJobLoop(job);
         }
       });
-  }, [selectedCountry, selectedCity, runJobLoop]);
+  }, []);
 
   useEffect(() => {
     fetchData();
