@@ -804,6 +804,8 @@ export default function PreferencesSheet({
       searchLocation,
       useGpsLocation: normalized.use_gps_location ?? useGpsLocation,
       custom_location: normalized.custom_location ?? customLocationValue,
+      custom_lat: selectedCoords?.lat ?? null,
+      custom_lng: selectedCoords?.lng ?? null,
     };
 
     // === CLOSE SHEET IMMEDIATELY — user sees instant response ===

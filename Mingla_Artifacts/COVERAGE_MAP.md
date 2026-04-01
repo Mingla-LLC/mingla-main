@@ -8,7 +8,7 @@
 |---------|-------|---|---|---|---|---|-------------|---------|------------|
 | Auth & Session | 7 | 2 | 4 | 1 | 0 | 0 | 0% | 0% | Partial |
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Discovery / Explore | 49 | 30 | 5 | 1 | 0 | 13 | 27% | 0% | Partial |
+| Discovery / Explore | 52 | 35 | 7 | 0 | 0 | 10 | 19% | 0% | Strong |
 | Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
@@ -29,20 +29,20 @@
 | Chat Responsiveness | 4 | 4 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Hardening Infrastructure | 3 | 3 | 0 | 0 | 0 | 0 | 0% | 0% | Strong |
 | Error Handling | 5 | 0 | 0 | 0 | 0 | 5 | 100% | 0% | Unaudited |
-| Security & Auth | 13 | 2 | 1 | 1 | 2 | 7 | 54% | 0% | Weak |
+| Security & Auth | 13 | 5 | 0 | 1 | 2 | 5 | 38% | 0% | Weak |
 | Deep Linking | 4 | 0 | 1 | 0 | 0 | 3 | 75% | 0% | Weak |
 | App Lifecycle | 11 | 1 | 1 | 0 | 0 | 9 | 82% | 0% | Weak |
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **281** | **75** | **24** | **3** | **2** | **177** | **63%** | **0%** | **Weak** |
+| **TOTAL** | **284** | **83** | **25** | **2** | **2** | **172** | **61%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
 ### Strong (>70% at A/B)
 - Chat Responsiveness (4/4 A)
 - Hardening Infrastructure (3/3 A)
-- Discovery / Explore (35/49 A+B = 71%)
+- Discovery / Explore (42/52 A+B = 81%)
 - Payments & Subscriptions (14/15 A+B = 93%)
 
 ### Partial (40-70% at A/B)
@@ -53,7 +53,7 @@
 - Profile & Settings (4/10 = 40%)
 - Collaboration Sessions (3/7 = 43%)
 - Pairing System (3/10 = 30%)
-- Security & Auth (3/13 A+B = 23%)
+- Security & Auth (5/13 A+B = 38%)
 - All cross-cutting except Chat-Resp and Infra
 
 ### Unaudited (>80% at F)
@@ -76,4 +76,5 @@
 
 All evidence dates are within 7 days (latest: 2026-03-31). No stale items.
 7 payment bugs closed 2026-03-31 — audit velocity resumed. All payment bugs now closed.
-Security Wave 2: 4 items regraded (D/B/C/D), 1 closed (ORCH-0253), 8 new bugs registered 2026-03-31.
+Security Wave 2: 4 items regraded (D/B/C/D → D/A/C/D), 3 closed (ORCH-0253, ORCH-0258, ORCH-0252), 8 new bugs registered 2026-03-31.
+Deterministic Deck Contract: 5 closed (ORCH-0266/0267/0268/0038/0048), 2 upgraded (ORCH-0065 F→B, ORCH-0066 C→B). Discovery now 81% A+B.

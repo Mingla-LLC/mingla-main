@@ -41,6 +41,8 @@ export interface UserPreferences {
   time_slot?: string | null;
   exact_time?: string | null;
   custom_location?: string | null;
+  custom_lat?: number | null;
+  custom_lng?: number | null;
   use_gps_location?: boolean;
   experience_types?: string[];
 }

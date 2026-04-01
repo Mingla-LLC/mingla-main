@@ -12,7 +12,7 @@
 |---------|--------|-----------|-------|---------------|----------|
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
 | Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 9F) | 11 | Weak |
-| Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (30A, 4B, 1C, 14F) | 49 | Partial |
+| Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (35A, 5B, 0C, 12F) | 52 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
 | Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Strong (6A, 2B, 3F) | 11 | Partial |
@@ -114,7 +114,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0035 | Triple duplicate API calls | Discovery | S2 | performance | verified | B | 2026-03-22 | One hidden flaw remains |
 | ORCH-0036 | ActionButtons analytics | Discovery | S3 | missing-feature | closed | A | 2026-03-22 | Commit dba7b3f0 |
 | ORCH-0037 | Expanded card travel mode icon | Discovery | S3 | bug | closed | A | 2026-03-22 | Commit dba7b3f0 |
-| ORCH-0038 | Coordinates replacing text in location | Discovery | S1 | bug | open | F | — | INVESTIGATION_DECK_AND_DISCOVER.md |
+| ORCH-0038 | Coordinates replacing text in location | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — custom location now deterministic, GPS fallback eliminated |
 | ORCH-0039 | Currency changes with GPS | Discovery | S1 | bug | open | F | — | INVESTIGATION_DECK_AND_DISCOVER.md |
 | ORCH-0040 | priceLevel enum on paired cards | Discovery | S2 | bug | open | F | — | INVESTIGATION_DECK_AND_DISCOVER.md |
 | ORCH-0041 | Curated cards missing Schedule button | Discovery | S1 | bug | open | F | — | INVESTIGATION_DECK_AND_DISCOVER.md |
@@ -124,7 +124,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0045 | No schedule confirmation | Discovery | S2 | ux | open | F | — | User report |
 | ORCH-0046 | Can't use current date to schedule | Discovery | S2 | bug | open | F | — | User report |
 | ORCH-0047 | Slug on saved page | Discovery | S2 | bug | open | F | — | User report |
-| ORCH-0048 | Curated/category round-robin broken | Discovery | S1 | bug | open | F | — | User report |
+| ORCH-0048 | Curated/category round-robin broken | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — category interleave rewritten with round-robin balancer |
 | ORCH-0049 | Schools in cards | Discovery | S1 | bug | closed | A | 2026-03-24 | Commit 0ae81113 |
 | ORCH-0050 | AI Card Quality Gate | Discovery | S1 | architecture-flaw | verified | B | 2026-03-26 | Commits c9708465, 97a5dfd0 |
 | ORCH-0051 | Flowers category too broad | Discovery | S2 | quality-gap | verified | B | 2026-03-26 | Commit 97a5dfd0 |
@@ -141,8 +141,11 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0062 | Swipe mechanics | Discovery | S1 | bug | closed | A | 2026-03-25 | Commits acf7e508 + Pass 5 |
 | ORCH-0063 | Empty pool state | Discovery | S2 | quality-gap | verified | B | 2026-03-20 | HTTP 200 with empty array |
 | ORCH-0064 | Preferences → deck pipeline | Discovery | S0 | architecture-flaw | closed | A | 2026-03-24 | Commit 79d0905b |
-| ORCH-0065 | Solo mode | Discovery | S1 | unaudited | open | F | — | — |
-| ORCH-0066 | Collab mode parity | Discovery | S1 | quality-gap | verified | C | 2026-03-20 | Commit cf194099 |
+| ORCH-0065 | Solo mode | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — core contract verified, deck deterministic |
+| ORCH-0066 | Collab mode parity | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — collab verified as part of SC-09, parity confirmed |
+| ORCH-0266 | Double pagination — card pool unreachable | Discovery | S0 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — duplicate .range() removed, all 200 pool cards reachable |
+| ORCH-0267 | Travel time not enforced in deck | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — hard filter added, out-of-range cards excluded |
+| ORCH-0268 | NULL price tier passthrough | Discovery | S2 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — NULL price_level now filtered before deck assembly |
 
 ### Section 4: Collaboration Sessions
 
@@ -412,18 +415,18 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
 | ORCH-0223 | RLS policy coverage | Security | S0 | quality-gap | verified | D | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
-| ORCH-0224 | Admin auth (3-layer) | Security | S0 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0224 | Admin auth (3-layer) | Security | S0 | quality-gap | closed | A | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md, QA_ADMIN_USERS_RLS_REPORT.md — admin email exposure (SEC-01) fixed: get_admin_emails revoked from anon, replaced with is_admin_email boolean |
 | ORCH-0225 | PII handling | Security | S0 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0226 | Storage path injection | Security | S1 | quality-gap | verified | D | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0250 | Avatars bucket no user-scoping | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0251 | Messages bucket public — DM files accessible without auth | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
-| ORCH-0252 | get_admin_emails() exposes admin list to anon | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0252 | get_admin_emails() exposes admin list to anon | Security | S2 | bug | closed | A | 2026-03-31 | Fixed with ORCH-0258 — get_admin_emails revoked from anon, replaced with is_admin_email() boolean |
 | ORCH-0253 | USING(true) on profiles — PII exposure | Security | S1 | bug | closed | A | 2026-03-31 | IMPLEMENTATION_EMERGENCY_RLS_FIX_REPORT.md, QA_EMERGENCY_RLS_FIX_REPORT.md |
 | ORCH-0254 | Full phone numbers logged in console | Security | S3 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0255 | board-attachments + experience-images buckets missing | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0256 | Client-side brute-force lockout bypassable | Security | S3 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0257 | 6 edge functions have no auth (incl. Google Maps key) | Security | S2 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
-| ORCH-0258 | admin_users USING(true) on UPDATE/DELETE — privilege escalation | Security | S1 | bug | open | F | — | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0258 | admin_users USING(true) on UPDATE/DELETE — privilege escalation | Security | S1 | bug | closed | A | 2026-03-31 | QA_ADMIN_USERS_RLS_REPORT.md — all permissive policies dropped, is_admin_user() gating |
 
 ### Cross-Cutting: Deep Linking
 

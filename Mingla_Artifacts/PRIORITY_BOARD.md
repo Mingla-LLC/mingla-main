@@ -19,27 +19,23 @@
 
 | Rank | ID | Title | Score | Surface | Severity | Action | Rationale |
 |------|----|-------|-------|---------|----------|--------|-----------|
-| 1 | ORCH-0258 | admin_users USING(true) — privilege escalation | 88 | Security | S1 | Implement | Any admin can escalate/delete other admins. Discovered by both implementor and tester. |
-| 2 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
-| 3 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
-| 4 | ORCH-0250 | Avatars bucket no user-scoping | 80 | Security | S1 | Implement | Any user can overwrite another user's avatar. Identity impersonation risk. |
-| 5 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
-| 6 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
-| 7 | ORCH-0251 | Messages bucket public — DM files without auth | 75 | Security | S1 | Implement | Anyone with a URL can access DM file attachments. Privacy violation. |
-| 8 | ORCH-0048 | Curated/category round-robin broken | 75 | Discovery | S1 | Investigate | User-reported. Card variety is core UX promise. |
-| 9 | ORCH-0038 | Coordinates replacing text in location | 73 | Discovery | S1 | Implement | Known bug. Users see "37.7749, -122.4194" instead of city name. |
-| 10 | ORCH-0065 | Solo mode | 72 | Discovery | S1 | Investigate | Entire solo mode unaudited. Most users start solo. |
-| 11 | ORCH-0257 | 6 edge functions have no auth (incl. Google Maps key) | 70 | Security | S2 | Implement | Unauthenticated endpoints expose API keys and server logic. |
-| 12 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
-| 13 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
-| 14 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
-| 15 | ORCH-0070 | Session creation | 64 | Collaboration | S1 | Investigate | Collaboration creation flow unaudited. Core social feature. |
+| 1 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
+| 2 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
+| 3 | ORCH-0250 | Avatars bucket no user-scoping | 80 | Security | S1 | Implement | Any user can overwrite another user's avatar. Identity impersonation risk. |
+| 4 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
+| 5 | ORCH-0041 | Curated no Schedule button | 76 | Discovery | S1 | Implement | Known bug with fix path. Curated cards missing Schedule = half the deck unusable for planning. |
+| 6 | ORCH-0251 | Messages bucket public — DM files without auth | 75 | Security | S1 | Implement | Anyone with a URL can access DM file attachments. Privacy violation. |
+| 7 | ORCH-0257 | 6 edge functions have no auth (incl. Google Maps key) | 70 | Security | S2 | Implement | Unauthenticated endpoints expose API keys and server logic. |
+| 8 | ORCH-0127 | Send/receive messages | 70 | Chat | S1 | Investigate | Social feature. If DM broken, friend connections are hollow. |
+| 9 | ORCH-0039 | Currency changes with GPS | 68 | Discovery | S1 | Investigate | Currency re-derived from GPS instead of locked from onboarding. User sees different $ symbols. |
+| 10 | ORCH-0111 | Map rendering (dual provider) | 65 | Map | S1 | Investigate | Entire map feature unaudited. 16 items at F. Start with the renderer. |
+| 11 | ORCH-0070 | Session creation | 64 | Collaboration | S1 | Investigate | Collaboration creation flow unaudited. Core social feature. |
 
 ## Strategic Categories
 
 | Category | Score Range | Count | IDs |
 |----------|-----------|-------|-----|
-| Fix Now | 70-100 | 13 | ORCH-0008, 0038, 0041, 0048, 0065, 0094, 0102, 0127, 0250, 0251, 0257, 0258 |
+| Fix Now | 70-100 | 8 | ORCH-0008, 0041, 0094, 0102, 0127, 0250, 0251, 0257 |
 | Fix Next | 50-69 | ~30 | Remaining S1 items + high S2 items |
 | Should Fix | 30-49 | ~40 | S2 items on non-critical flows |
 | Debt | 10-29 | ~30 | S3 items, cosmetic issues |
@@ -47,6 +43,6 @@
 
 ## Recommended First Action
 
-**Implement ORCH-0258 (admin_users privilege escalation) — any admin can UPDATE/DELETE other admins via USING(true) on admin_users table. Highest-priority security fix remaining.**
+**Investigate ORCH-0008 (Onboarding state machine) — users may get stuck mid-onboarding, completion rate unknown. Top priority now that admin security fixes are complete.**
 
-Rationale: Security Wave 2 investigation complete. ORCH-0253 (profiles PII exposure) already closed. ORCH-0258 is the next most dangerous finding — admin privilege escalation. ORCH-0250 (avatar impersonation) and ORCH-0251 (public DM files) follow. Onboarding state machine (ORCH-0008) remains the top non-security priority.
+Rationale: ORCH-0258 (admin privilege escalation), ORCH-0252 (admin email exposure), and ORCH-0253 (profiles PII) are all closed. ORCH-0250 (avatar impersonation) and ORCH-0251 (public DM files) remain as security items. Onboarding is the highest-impact non-security priority — it gates every user's first experience.

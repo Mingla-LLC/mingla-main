@@ -631,6 +631,8 @@ export function useAppHandlers(state: any) {
         dbPreferences.custom_location = preferences.searchLocation;
       }
       dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
+      dbPreferences.custom_lat = preferences.custom_lat ?? null;
+      dbPreferences.custom_lng = preferences.custom_lng ?? null;
 
       // === Optimistic cache update FIRST — deck uses this immediately ===
       queryClient.setQueryData(["userPreferences", user.id], {
@@ -649,6 +651,8 @@ export function useAppHandlers(state: any) {
         time_slot: dbPreferences.time_slot,
         exact_time: dbPreferences.exact_time,
         custom_location: dbPreferences.custom_location,
+        custom_lat: dbPreferences.custom_lat,
+        custom_lng: dbPreferences.custom_lng,
         use_gps_location: dbPreferences.use_gps_location,
       });
 

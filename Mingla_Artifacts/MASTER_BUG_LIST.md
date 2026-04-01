@@ -1,27 +1,27 @@
 # Master Bug List
 
 > Last updated: 2026-03-31
-> Total: 281 | Open: 144 | Closed: 77 | Verified (B grade): 19 | Deferred: 1
+> Total: 284 | Open: 138 | Closed: 84 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
-| Open (F grade, unaudited) | 125 | 44% |
-| Open (F grade, known bug) | 11 | 4% |
+| Open (F grade, unaudited) | 124 | 44% |
+| Open (F grade, known bug) | 7 | 2% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 76 | 27% |
-| Verified (B grade) | 16 | 6% |
-| Verified (C grade) | 2 | <1% |
+| Closed (A grade) | 84 | 30% |
+| Verified (B grade) | 17 | 6% |
+| Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
 
 ## Summary by Severity
 
 | Severity | Open | Closed/Verified | Total |
 |----------|------|-----------------|-------|
-| S0 (Critical) | 5 | 8 | 13 |
-| S1 (High) | 55 | 39 | 94 |
-| S2 (Medium) | 67 | 33 | 100 |
+| S0 (Critical) | 4 | 10 | 14 |
+| S1 (High) | 51 | 44 | 95 |
+| S2 (Medium) | 66 | 35 | 101 |
 | S3 (Low) | 18 | 12 | 30 |
 
 ## Active Issues (Open — Grade F)
@@ -43,11 +43,8 @@
 | ORCH-0011 | Resume after interruption | Onboarding | unaudited | Tracker |
 | ORCH-0014 | Intent selection step | Onboarding | unaudited | Tracker |
 | ORCH-0017 | Consent step | Onboarding | unaudited | Tracker |
-| ORCH-0038 | Coordinates replacing text | Discovery | bug | Investigation |
 | ORCH-0039 | Currency changes with GPS | Discovery | bug | Investigation |
 | ORCH-0041 | Curated no Schedule button | Discovery | bug | Investigation |
-| ORCH-0048 | Curated/category round-robin broken | Discovery | bug | User report |
-| ORCH-0065 | Solo mode | Discovery | unaudited | Tracker |
 | ORCH-0070 | Session creation | Collaboration | unaudited | Tracker |
 | ORCH-0071 | Invite send/receive | Collaboration | unaudited | Tracker |
 | ORCH-0072 | Real-time sync | Collaboration | unaudited | Tracker |
@@ -97,6 +94,30 @@
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
 
+## Recently Closed (Deterministic Deck Contract)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0266 | Double pagination — card pool unreachable | Duplicate .range() removed, all 200 pool cards reachable | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md |
+| ORCH-0267 | Travel time not enforced in deck | Hard filter added, out-of-range cards excluded | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md |
+| ORCH-0038 | Coordinates replacing text in location | Custom location deterministic, GPS fallback eliminated | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md |
+| ORCH-0268 | NULL price tier passthrough | NULL price_level filtered before deck assembly | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md |
+| ORCH-0048 | Curated/category round-robin broken | Category interleave rewritten with round-robin balancer | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md |
+
+## Regraded (Deterministic Deck Contract)
+
+| ID | Title | Old Grade | New Grade | Evidence |
+|----|-------|-----------|-----------|----------|
+| ORCH-0065 | Solo mode | F | B | INVESTIGATION_PREFS_DECK_CONTRACT.md |
+| ORCH-0066 | Collab mode parity | C | B | INVESTIGATION_PREFS_DECK_CONTRACT.md |
+
+## Recently Closed (Wave 2 — Admin Users RLS Fix)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0258 | admin_users privilege escalation | RLS locked to is_admin_user(), safe RPCs for login flow | 2026-03-31 | QA_ADMIN_USERS_RLS_REPORT.md |
+| ORCH-0252 | get_admin_emails() exposed to anon | Revoked anon access, replaced with is_admin_email() boolean | 2026-03-31 | Fixed with ORCH-0258 |
+
 ## Recently Closed (Wave 2 — Security Emergency Fix)
 
 | ID | Title | Resolution | Closed Date | Evidence |
@@ -108,7 +129,7 @@
 | ID | Title | Old Grade | New Grade | Evidence |
 |----|-------|-----------|-----------|----------|
 | ORCH-0223 | RLS policy coverage | F | D | INVESTIGATION_SECURITY_WAVE2.md |
-| ORCH-0224 | Admin auth (3-layer) | F | B | INVESTIGATION_SECURITY_WAVE2.md |
+| ORCH-0224 | Admin auth (3-layer) | F | A | INVESTIGATION_SECURITY_WAVE2.md, QA_ADMIN_USERS_RLS_REPORT.md |
 | ORCH-0225 | PII handling | F | C | INVESTIGATION_SECURITY_WAVE2.md |
 | ORCH-0226 | Storage path injection | F | D | INVESTIGATION_SECURITY_WAVE2.md |
 
@@ -150,7 +171,7 @@
 
 ## Closed Issues (Grade A)
 
-76 items closed with evidence. Key closures:
+84 items closed with evidence. Key closures:
 
 | Area | Count | Key Commits |
 |------|-------|-------------|
@@ -186,6 +207,8 @@
 | ORCH-0156 | Holiday reminder notifications | custom_holidays.year NOT NULL, no recurring |
 | ORCH-0204 | Offline queue observability | No user notification on discard |
 | ORCH-0240 | Foreground refresh | Was dead code, now mounted |
+| ORCH-0065 | Solo mode | Full offline + edge cases unaudited |
+| ORCH-0066 | Collab mode parity | Collab-specific edge cases unaudited |
 
 ## Deferred Issues
 

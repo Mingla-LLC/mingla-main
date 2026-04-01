@@ -440,7 +440,6 @@ serve(async (req: Request) => {
     }
 
     // ── Pool-first serving (ALL categories in ONE query) ──────────────────
-    const poolOffset = (batchSeed || 0) * limit;
 
     // ── Warm-pool: return immediately (pool is admin-managed) ──
     if (userId && body.warmPool) {
@@ -463,14 +462,13 @@ serve(async (req: Request) => {
           budgetMax,
           limit,
           cardType: 'single' as const,
-          offset: poolOffset,
           priceTiers: priceTiers as PriceTierSlug[] | undefined,
         };
 
         const poolResult = await serveCardsFromPipeline(
           poolParams,
           '', // No Google API key needed — pool-only serving
-          { travelMode },
+          { travelMode, travelConstraintValue },
         );
 
         if (poolResult.cards.length > 0) {
@@ -483,7 +481,7 @@ serve(async (req: Request) => {
           const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
           const scoredPoolCards = scorePoolCards(hoursFilteredCards);
-          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
+          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}) in ${elapsed}ms`);
 
           return new Response(JSON.stringify({
             cards: applyTierGating(scoredPoolCards),

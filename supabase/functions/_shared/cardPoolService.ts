@@ -31,7 +31,6 @@ export interface PoolQueryParams {
   cardType?: 'single' | 'curated';
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
   excludeCardIds?: string[];       // additional exclusions
-  offset?: number;                 // skip this many unique cards before returning (for batch pagination)
   priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
 }
 
@@ -160,8 +159,6 @@ async function queryPoolCards(
     return { poolCards: [], totalUnseenCount: 0 };
   }
 
-  const offset = params.offset || 0;
-
   const { data, error } = await supabaseAdmin.rpc('query_pool_cards', {
     p_user_id: userId,
     p_categories: resolvedCats.length > 0 ? resolvedCats : [],
@@ -176,7 +173,6 @@ async function queryPoolCards(
     p_exclude_card_ids: excludeCardIds || [],
     p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
     p_limit: limit,
-    p_offset: offset,
   });
 
   if (error) {
@@ -840,8 +836,11 @@ export async function serveCardsFromPipeline(
   // ── STEP 1: Get preference timestamp ──────────────────────────────────
   const prefUpdatedAt = await getPreferencesUpdatedAt(supabaseAdmin, userId);
 
-  // ── STEP 2: Query pool (SQL-level pagination + impression exclusion) ──
-  let { poolCards, totalUnseenCount } = await queryPoolCards(params, prefUpdatedAt);
+  // ── STEP 2: Query pool (SQL-level impression exclusion) ──────────────
+  // Over-fetch by 50% to compensate for post-query travel time filter losses.
+  const fetchLimit = Math.ceil(params.limit * 1.5);
+  const adjustedParams = { ...params, limit: fetchLimit };
+  let { poolCards, totalUnseenCount } = await queryPoolCards(adjustedParams, prefUpdatedAt);
   const totalPoolSize = totalUnseenCount; // backward compat alias
 
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
@@ -862,6 +861,21 @@ export async function serveCardsFromPipeline(
     }
     return true;
   });
+
+  // ── STEP 2b: Hard travel time filter ──────────────────────────────────
+  // Cards within the bounding box but beyond the user's travel time constraint
+  // are excluded. The bounding box uses a 1.3x expansion factor to capture
+  // detour routes; this post-query filter enforces the exact constraint.
+  if (options?.travelConstraintValue && options.travelConstraintValue > 0) {
+    const maxTravelMin = options.travelConstraintValue;
+    const mode = options.travelMode || 'walking';
+    poolCards = poolCards.filter((card: any) => {
+      if (card.lat == null || card.lng == null) return true; // keep cards without coords
+      const dist = haversine(lat, lng, card.lat, card.lng);
+      const travelMin = estimateTravelMin(dist, mode);
+      return travelMin <= maxTravelMin;
+    });
+  }
 
   // ── STEP 3: If pool has enough → serve directly ───────────────────────
   if (poolCards.length >= limit) {

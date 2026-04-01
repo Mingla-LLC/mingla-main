@@ -27,6 +27,8 @@ const fetchLocationCore = async (
   userId: string | undefined,
   currentMode: string,
   refreshKey: number | string | undefined,
+  customLat: number | null,
+  customLng: number | null,
   customLocation: string | null | undefined,
   useGpsFlag: boolean | undefined
 ): Promise<LocationData | null> => {
@@ -46,35 +48,44 @@ const fetchLocationCore = async (
   // Determine whether to use GPS or custom location
   const useGps = (useGpsFlag !== false); // default true
 
-  if (!useGps && customLocation) {
-    const coordinatesMatch = customLocation.match(
-      /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
-    );
+  if (!useGps) {
+    // Priority 1: Use saved coordinates (already resolved when user picked location)
+    if (customLat != null && customLng != null) {
+      console.log('Using saved custom coordinates from preferences:', { lat: customLat, lng: customLng });
+      return { lat: customLat, lng: customLng };
+    }
 
-    if (coordinatesMatch) {
-      const lat = parseFloat(coordinatesMatch[1]);
-      const lng = parseFloat(coordinatesMatch[2]);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        console.log('Using saved coordinates from preferences:', { lat, lng });
-        return { lat, lng };
+    // Priority 2: Geocode address string (fallback for legacy data without coords)
+    if (customLocation) {
+      const coordinatesMatch = customLocation.match(
+        /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
+      );
+      if (coordinatesMatch) {
+        const lat = parseFloat(coordinatesMatch[1]);
+        const lng = parseFloat(coordinatesMatch[2]);
+        if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
       }
-    } else {
-      // Geocode address string via HTTP API — NOT native Location.geocodeAsync
-      // (native forward geocode shares rate bucket with reverseGeocodeAsync)
+
       try {
         const suggestions = await geocodingService.autocomplete(customLocation);
         const firstWithLocation = suggestions.find(s => s.location);
         if (firstWithLocation?.location) {
-          console.log('Using geocoded location from preferences:', customLocation);
           return { lat: firstWithLocation.location.lat, lng: firstWithLocation.location.lng };
         }
       } catch {
-        // fall through to GPS
+        // Geocoding failed — do NOT fall through to GPS silently
       }
+
+      // Geocoding failed and no saved coordinates — return null, NOT GPS
+      console.warn('[useUserLocation] Custom location set but no coords and geocode failed — returning null');
+      return null;
     }
+
+    // use_gps_location=false but no custom location or coords — return null
+    return null;
   }
 
-  // Fall back to GPS
+  // GPS mode
   console.log('Using current GPS location');
   const location = await enhancedLocationService.getCurrentLocation();
   if (location) {
@@ -96,6 +107,8 @@ const fetchUserLocation = async (
   userId: string | undefined,
   currentMode: string,
   refreshKey: number | string | undefined,
+  customLat: number | null,
+  customLng: number | null,
   customLocation: string | null | undefined,
   useGpsFlag: boolean | undefined
 ): Promise<LocationData | null> => {
@@ -106,7 +119,7 @@ const fetchUserLocation = async (
     )
   );
   return Promise.race([
-    fetchLocationCore(userId, currentMode, refreshKey, customLocation, useGpsFlag),
+    fetchLocationCore(userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag),
     timeoutPromise,
   ]);
 };
@@ -124,12 +137,14 @@ export const useUserLocation = (
   const cachedPrefs = useQueryClient().getQueryData<UserPreferences>(
     ['userPreferences', userId]
   );
+  const customLat = cachedPrefs?.custom_lat ?? null;
+  const customLng = cachedPrefs?.custom_lng ?? null;
   const customLocation = cachedPrefs?.custom_location ?? null;
   const useGpsFlag = cachedPrefs?.use_gps_location ?? true;
 
   const query = useQuery({
-    queryKey: ['userLocation', userId, currentMode, refreshKey, customLocation, useGpsFlag],
-    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLocation, useGpsFlag),
+    queryKey: ['userLocation', userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag],
+    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag),
     enabled: true,
     staleTime: Infinity,
     gcTime: 24 * 60 * 60 * 1000,

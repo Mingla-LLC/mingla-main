@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total items tracked | 281 |
-| Grade A (launch-ready) | 75 (27%) |
-| Grade B (solid, minor gaps) | 24 (9%) |
-| Grade C (functional, incomplete) | 3 (1%) |
+| Total items tracked | 284 |
+| Grade A (launch-ready) | 83 (29%) |
+| Grade B (solid, minor gaps) | 25 (9%) |
+| Grade C (functional, incomplete) | 2 (<1%) |
 | Grade D (fragile) | 2 (<1%) |
-| Grade F (broken/unaudited) | 177 (63%) |
+| Grade F (broken/unaudited) | 172 (61%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 10 (44 bugs fixed) |
 
@@ -22,7 +22,7 @@
 |------|--------|------------|
 | Install + Auth | PARTIAL — Phone OTP (B), Google (C), Apple (B), Sign-out (A) | Medium |
 | Onboarding | PARTIAL — preference save + skip work (A), but state machine + GPS + resume all F | Low |
-| Explore (deck swipe) | STRONG — 30 items at A, card pipeline hardened | High |
+| Explore (deck swipe) | STRONG — 35 items at A, 7 at B, deck contract deterministic | High |
 | Save experience | UNVERIFIED — save/unsave at F | Low |
 | Schedule | PARTIAL — scheduling bugs exist (picker behind modal, no confirmation) | Medium |
 | Invite friends | UNVERIFIED — friend request send at B, but collaboration invites at F | Low |
@@ -33,19 +33,22 @@
 
 ## Top 5 Launch Blockers
 
-1. **Admin privilege escalation (ORCH-0258)** — admin_users USING(true) lets any admin UPDATE/DELETE other admins. S1.
-2. **Avatar impersonation (ORCH-0250)** — Avatars bucket has no user-scoping RLS. Any user can overwrite another's avatar. S1.
-3. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
-4. **Account deletion at F (ORCH-0102)** — Apple/Google require it. App Store rejection if missing. S0.
-5. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
-6. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
+1. **Avatar impersonation (ORCH-0250)** — Avatars bucket has no user-scoping RLS. Any user can overwrite another's avatar. S1.
+2. **Onboarding state machine at F (ORCH-0008)** — Users may get stuck. Completion rate unknown. S0.
+3. **Account deletion at F (ORCH-0102)** — Apple/Google require it. App Store rejection if missing. S0.
+4. **Save/unsave at F (ORCH-0094)** — Core loop requires saving. Cannot verify user value delivery. S1.
+5. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
 
 ### Recently Resolved Blockers
+- **Deterministic Deck Contract (5 fixes)** — ORCH-0266 (double pagination), ORCH-0267 (travel time), ORCH-0038 (custom location GPS), ORCH-0268 (NULL price tier), ORCH-0048 (category interleave). All CLOSED at A. Solo mode (ORCH-0065) upgraded F→B, collab parity (ORCH-0066) upgraded C→B.
+- **ORCH-0258 (admin_users privilege escalation)** — CLOSED. All permissive policies dropped, is_admin_user() gating. QA passed.
+- **ORCH-0252 (get_admin_emails exposed to anon)** — CLOSED. Revoked anon access, replaced with is_admin_email() boolean. Fixed with ORCH-0258.
+- **ORCH-0224 (Admin auth 3-layer)** — Upgraded B to A. Admin email exposure fixed as part of ORCH-0258.
 - **ORCH-0253 (PII exposure via USING(true) on profiles)** — CLOSED. RLS policy tightened. QA passed.
 
 ## Top 5 Quality Risks
 
-1. **63% of items at F** — Unknown bug count in production code
+1. **61% of items at F** — Unknown bug count in production code
 2. **Map surface entirely unaudited (16 items at F)** — Large feature with zero verification
 3. **Chat entirely unaudited (8 items at F)** — Social feature with zero verification
 4. **Calendar entirely unaudited (8 items at F)** — Scheduling is core loop step
@@ -53,12 +56,14 @@
 
 ## What's Strong (Grade A/B Surfaces)
 
-- **Card deck pipeline** — 30 items at A. Pool-first architecture, exclusions, balancing, photo integrity. Hardened across 10 passes.
+- **Card deck pipeline** — 35 items at A, 7 at B. Pool-first architecture, exclusions, balancing, photo integrity. Hardened across 10 passes.
+- **Deck Contract** — All 200 pool cards reachable, travel time hard-filtered, categories interleaved, custom location deterministic, NULL price tiers excluded. Solo and collab modes verified.
 - **Notification infrastructure** — 6 items at A. Push delivery, realtime subscriptions, app badge.
 - **Hardening utilities** — withTimeout, mutation error toast, query key factory. All A.
 - **Chat responsiveness** — 4 items at A. Instant open, background fetch, block timeouts.
 - **Preferences-to-deck contract** — Race condition killed, prefsHash matching, atomic save.
 - **Auth & Session** — 2A/4B/1C. Sign-out hardened. OAuth flows verified.
+- **Admin Security** — Admin auth upgraded to A. Privilege escalation fixed, admin email exposure closed, is_admin_user() gating enforced.
 - **Payments & Subscriptions** — 8A/6B/1C. Paywalls, RevenueCat, tier gating, swipe limits, referral expiry, trial abuse prevention all verified.
 
 ## What's Fragile (Grade D/F Surfaces)
