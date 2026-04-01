@@ -178,11 +178,17 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   }, [selectedCountry, selectedCity]);
 
   // ── Job-driven validation loop (persists across page refreshes) ──────────
-  const runJobLoop = async (job) => {
-    if (jobLoopRef.current) return;
+  const runJobLoop = async (job, isResume = false) => {
+    // If a loop is already running, stop the OLD one first
+    if (jobLoopRef.current) {
+      jobCancelledRef.current = true;
+      // Wait a tick for the old loop to exit
+      await new Promise((r) => setTimeout(r, 100));
+    }
     jobLoopRef.current = true;
     jobCancelledRef.current = false;
     setActiveJob(job);
+    console.log(`[AI Validation] Starting ${isResume ? "resumed" : "new"} job ${job.id}`);
 
     let { id: jobId, processed, approved, rejected, failed, continuation_token: token } = job;
 
@@ -191,6 +197,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       while (true) {
         if (jobCancelledRef.current) break;
 
+        console.log("[AI Validation] Calling edge function, batch starting from:", token || "beginning");
         const resp = await supabase.functions.invoke("ai-validate-places", {
           body: {
             limit: 25,
@@ -201,8 +208,9 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           },
         });
 
+        console.log("[AI Validation] Edge function response:", { error: resp.error, dataType: typeof resp.data, data: resp.data });
+
         if (resp.error) {
-          // Supabase functions.invoke returns error as FunctionsHttpError/FunctionsRelayError
           const errMsg = resp.error?.message || resp.error?.context?.statusText || JSON.stringify(resp.error);
           throw new Error(errMsg);
         }
@@ -211,6 +219,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
         if (!r || typeof r.processed !== "number") {
           throw new Error("Unexpected response: " + JSON.stringify(r));
         }
+        console.log("[AI Validation] Batch result:", r.processed, "processed,", r.approved, "approved,", r.rejected, "rejected");
 
         processed += r.processed;
         approved += r.approved;
@@ -295,7 +304,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           const matchesScope =
             (job.country_filter || null) === (selectedCountry || null) &&
             (job.city_filter || null) === (selectedCity || null);
-          if (matchesScope) runJobLoop(job);
+          if (matchesScope) runJobLoop(job, true);
         }
       });
   }, []);

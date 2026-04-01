@@ -305,7 +305,7 @@ AUTOMATIC REJECTIONS — these place types NEVER fit any Mingla category:
    with reliable vendors.
 
 YOUR TASK:
-1. Search the web for "${place.name}" near "${place.address}" to understand what this place ACTUALLY is.
+1. Based on the Google data above, determine what this place ACTUALLY is.
 2. State the place's PRIMARY IDENTITY in one word (restaurant, museum, bar, park, etc.).
 3. Go through EACH Mingla category and ask: "Is this a CORE function of this place?"
    - If YES and it's obvious → include it
@@ -346,6 +346,12 @@ async function callGPT(
   }
 
   const data = await response.json();
+
+  // Log the full usage breakdown so we can see exactly what's costing money
+  console.log(`[AI Validate] Usage for this call:`, JSON.stringify(data.usage || {}));
+  // Log how many web search calls GPT made
+  const searchCalls = (data.output || []).filter((item: any) => item.type === "web_search_call");
+  console.log(`[AI Validate] Web searches made: ${searchCalls.length}`);
 
   let jsonText: string | null = null;
   for (const item of data.output || []) {
