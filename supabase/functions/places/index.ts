@@ -119,6 +119,7 @@ serve(async (req) => {
         price_min: priceRange.min,
         price_max: priceRange.max,
         price_tier: googleLevelToTierSlug(place.priceLevel),
+        price_tiers: googleLevelToTierSlug(place.priceLevel) ? [googleLevelToTierSlug(place.priceLevel)] : [],
         duration_min: category_slug === 'stroll' ? 60 : category_slug === 'dining' ? 120 : 90,
         image_url: imageUrl,
         opening_hours: openingHours,

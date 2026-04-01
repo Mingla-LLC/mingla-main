@@ -512,7 +512,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   const [aiCard, setAiCard] = useState(null);
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const [editForm, setEditForm] = useState({
-    name: "", price_tier: "", seeding_category: "", is_active: true,
+    name: "", price_tiers: [], seeding_category: "", is_active: true,
     ai_approved: null, ai_primary_identity: "", ai_categories: [], ai_reason: "", ai_confidence: null,
   });
   const [saving, setSaving] = useState(false);
@@ -521,7 +521,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     if (!open || !place) return;
     setEditForm({
       name: place.name || "",
-      price_tier: place.price_tier || "",
+      price_tiers: place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []),
       seeding_category: place.seeding_category || "",
       is_active: place.is_active,
       ai_approved: place.ai_approved,
@@ -562,7 +562,8 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
       p_place_id: place.id,
       p_name: editForm.name || null,
-      p_price_tier: editForm.price_tier || null,
+      p_price_tier: editForm.price_tiers?.[0] || null,
+      p_price_tiers: editForm.price_tiers || [],
       p_seeding_category: editForm.seeding_category || null,
       p_is_active: editForm.is_active,
     });
@@ -687,7 +688,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Quality</h4>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div><span className="text-[var(--color-text-secondary)]">Rating:</span> {place.rating ? `★ ${place.rating}` : "—"} {place.review_count > 0 && `(${place.review_count} reviews)`}</div>
-              <div><span className="text-[var(--color-text-secondary)]">Price Tier:</span> {place.price_tier ? <Badge variant="outline">{place.price_tier}</Badge> : "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Price Tiers:</span> {(() => { const tiers = place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []); return tiers.length > 0 ? tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>) : "—"; })()}</div>
               <div><span className="text-[var(--color-text-secondary)]">Price Level:</span> {place.price_level || "—"}</div>
               {place.editorial_summary && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Editorial:</span> {place.editorial_summary}</div>}
             </div>
@@ -709,15 +710,28 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Edit</h4>
             <div className="space-y-3">
               <Input label="Name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[var(--color-text-secondary)]">Price Tier</label>
-                  <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-                    value={editForm.price_tier} onChange={(e) => setEditForm((f) => ({ ...f, price_tier: e.target.value }))}>
-                    <option value="">None</option>
-                    {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)]">Price Tiers (select all that apply)</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {PRICE_TIERS.map((t) => (
+                    <button key={t} type="button"
+                      className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                        editForm.price_tiers.includes(t)
+                          ? "bg-[var(--color-brand-500)] text-white border-transparent"
+                          : "text-[var(--color-text-secondary)] border-[var(--gray-300)] bg-[var(--color-background-primary)] hover:border-[var(--color-brand-500)]"
+                      }`}
+                      onClick={() => setEditForm((f) => ({
+                        ...f,
+                        price_tiers: f.price_tiers.includes(t)
+                          ? f.price_tiers.filter((x) => x !== t)
+                          : [...f.price_tiers, t],
+                      }))}>
+                      {t}
+                    </button>
+                  ))}
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-secondary)]">Seeding Category</label>
                   <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
@@ -1293,12 +1307,6 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
             await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
             onRefresh();
           }} disabled={!!activeRun}>Regenerate</Button>
-          {city.status === "draft" && onDeleteCity && !activeRun && (
-            <Button size="sm" variant="secondary" className="text-[var(--color-error-700)]"
-              onClick={() => { if (confirm(`Delete draft city "${city.name}"? This removes the city and its tiles. Places in the pool are not affected.`)) onDeleteCity(city); }}>
-              Delete Draft
-            </Button>
-          )}
         </div>}>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Coverage: {city.coverage_radius_km}km radius · Spacing: {Math.round(city.tile_radius_m * 1.4)}m
@@ -1854,8 +1862,8 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
     else if (filters.photoStatus === "missing") q = q.or("stored_photo_urls.is.null,stored_photo_urls.eq.{}");
-    if (filters.priceTier === "missing") q = q.is("price_tier", null);
-    else if (filters.priceTier) q = q.eq("price_tier", filters.priceTier);
+    if (filters.priceTier === "missing") q = q.or("price_tiers.is.null,price_tiers.eq.{}");
+    else if (filters.priceTier) q = q.contains("price_tiers", [filters.priceTier]);
     if (filters.priceLevel === "missing") q = q.is("price_level", null);
     else if (filters.priceLevel) q = q.eq("price_level", filters.priceLevel);
     if (filters.minRating) q = q.gte("rating", parseFloat(filters.minRating));
@@ -1892,7 +1900,10 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
-    { key: "price_tier", label: "Price", render: (_, r) => r.price_tier ? <Badge variant="outline">{r.price_tier}</Badge> : "—" },
+    { key: "price_tiers", label: "Price", render: (_, r) => {
+      const tiers = r.price_tiers?.length ? r.price_tiers : (r.price_tier ? [r.price_tier] : []);
+      return tiers.length > 0 ? <div className="flex gap-0.5">{tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>)}</div> : "—";
+    }},
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;
       return <Badge variant={n > 0 ? "success" : "error"}>{n}</Badge>;
@@ -2965,10 +2976,11 @@ function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKe
   }, [registeredCity, tiles, stats, seedingOps]);
 
   // When user picks a city from the dropdown, load its data
-  const handleSelectCity = useCallback((city) => {
+  const handleSelectCity = useCallback((city, isRefresh = false) => {
     setSelectedSeedCity(city);
     if (!city) { setSeedTiles([]); setSeedStats(null); setSeedOps([]); return; }
-    setLoadingCity(true);
+    // Only show loading spinner on initial selection, NOT on refresh during seeding
+    if (!isRefresh) setLoadingCity(true);
 
     Promise.all([
       supabase.from("seeding_tiles").select("*").eq("city_id", city.id).order("tile_index"),
@@ -3007,7 +3019,7 @@ function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKe
       {!loadingCity && selectedSeedCity && (
         <SeedingTab
           registeredCity={selectedSeedCity} tiles={seedTiles} stats={seedStats}
-          seedingOps={seedOps} refreshKey={refreshKey} onRefresh={() => { onRefresh(); handleSelectCity(selectedSeedCity); }}
+          seedingOps={seedOps} refreshKey={refreshKey} onRefresh={() => handleSelectCity(selectedSeedCity, true)}
           onDeleteCity={(city) => { onDeleteCity(city); setSelectedSeedCity(null); }}
           onSeedingChange={onSeedingChange}
         />

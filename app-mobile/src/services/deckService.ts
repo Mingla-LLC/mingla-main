@@ -43,6 +43,7 @@ export interface DeckParams {
   exactTime?: string | null;
   batchSeed?: number;
   limit?: number;
+  excludeCardIds?: string[];
 }
 
 export interface DeckResponse {
@@ -286,6 +287,7 @@ class DeckService {
                 exactTime: params.exactTime,
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
+                excludeCardIds: params.excludeCardIds,
               },
             }),
             timeoutPromise,

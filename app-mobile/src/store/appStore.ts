@@ -10,7 +10,7 @@ import {
 import type { Recommendation } from "../types/recommendation";
 import { logger } from "../utils/logger";
 
-const DECK_SCHEMA_VERSION = 3; // Bump this to invalidate stale persisted deck data
+const DECK_SCHEMA_VERSION = 4; // Bump this to invalidate stale persisted deck data (v4: removed DeckBatch, added sessionSwipedCards)
 
 // --- Dev activity logger middleware (zero-cost in production) ---
 // Uses `any` for the middleware wrapper types because Zustand's internal
@@ -63,6 +63,7 @@ function summarize(val: unknown): unknown {
   return String(val);
 }
 
+/** @deprecated Removed in v4 — kept only for migration safety. */
 export interface DeckBatch {
   batchSeed: number;
   cards: Recommendation[];
@@ -91,9 +92,8 @@ interface AppState {
   // Recommendations state
   currentCardIndex: number;
 
-  // Deck card history
-  deckBatches: DeckBatch[];
-  currentDeckBatchIndex: number;
+  // Deck session state
+  sessionSwipedCards: Recommendation[];
   deckPrefsHash: string;
   deckSchemaVersion: number;
 
@@ -113,9 +113,8 @@ interface AppState {
   setCurrentCardIndex: (index: number) => void;
   setShowAccountSettings: (show: boolean) => void;
 
-  // Deck card history actions
-  addDeckBatch: (batch: DeckBatch) => void;
-  navigateToDeckBatch: (index: number) => void;
+  // Deck session actions
+  addSwipedCard: (card: Recommendation) => void;
   resetDeckHistory: (newPrefsHash: string) => void;
 
   // Utilities
@@ -139,8 +138,7 @@ export const useAppStore = create<AppState>()(
       pendingInvites: [],
       isInSolo: true,
       currentCardIndex: 0,
-      deckBatches: [],
-      currentDeckBatchIndex: -1,
+      sessionSwipedCards: [],
       deckPrefsHash: '',
       deckSchemaVersion: DECK_SCHEMA_VERSION,
       showAccountSettings: false,
@@ -171,23 +169,13 @@ export const useAppStore = create<AppState>()(
       setShowAccountSettings: (showAccountSettings) =>
         set({ showAccountSettings }),
 
-      // Deck card history actions
-      addDeckBatch: (batch) => set((state: AppState) => {
-        const exists = state.deckBatches.some((b: DeckBatch) => b.batchSeed === batch.batchSeed);
-        if (exists) return state;
-        // Cap at 3 batches — do not store beyond the limit
-        if (state.deckBatches.length >= 3) return state;
-        return {
-          deckBatches: [...state.deckBatches, batch],
-          currentDeckBatchIndex: state.deckBatches.length,
-        };
-      }),
-
-      navigateToDeckBatch: (index) => set({ currentDeckBatchIndex: index }),
+      // Deck session actions
+      addSwipedCard: (card) => set((state: AppState) => ({
+        sessionSwipedCards: [...state.sessionSwipedCards, card],
+      })),
 
       resetDeckHistory: (newPrefsHash) => set({
-        deckBatches: [],
-        currentDeckBatchIndex: -1,
+        sessionSwipedCards: [],
         deckPrefsHash: newPrefsHash,
       }),
 
@@ -202,8 +190,7 @@ export const useAppStore = create<AppState>()(
           pendingInvites: [],
           isInSolo: true,
           currentCardIndex: 0,
-          deckBatches: [],
-          currentDeckBatchIndex: -1,
+          sessionSwipedCards: [],
           deckPrefsHash: '',
           deckSchemaVersion: DECK_SCHEMA_VERSION,
         }),
@@ -219,17 +206,23 @@ export const useAppStore = create<AppState>()(
         // NOT persisted. They are refreshed from the database on every app open via
         // loadActiveSession(). Persisting them would risk showing stale session state.
         currentCardIndex: state.currentCardIndex,
-        // Deck card history — persisted across sessions
-        deckBatches: state.deckBatches,
-        currentDeckBatchIndex: state.currentDeckBatchIndex,
+        // Deck session state — persisted across sessions
+        sessionSwipedCards: state.sessionSwipedCards,
         deckPrefsHash: state.deckPrefsHash,
         deckSchemaVersion: state.deckSchemaVersion,
       }),
       onRehydrateStorage: () => (state) => {
-        // Clear stale deck batches when schema version changes
+        // Migration safety: clear old data when schema version changes.
+        // v3→v4: deckBatches removed, sessionSwipedCards added.
         if (state && state.deckSchemaVersion !== DECK_SCHEMA_VERSION) {
-          state.deckBatches = [];
+          (state as any).deckBatches = undefined;
+          (state as any).currentDeckBatchIndex = undefined;
+          state.sessionSwipedCards = [];
           state.deckSchemaVersion = DECK_SCHEMA_VERSION;
+        }
+        // Ensure sessionSwipedCards exists even if hydrated from old state
+        if (state && !Array.isArray(state.sessionSwipedCards)) {
+          state.sessionSwipedCards = [];
         }
         // RELIABILITY: Signal that Zustand has finished restoring persisted state.
         // Components can now trust that `profile`, `user`, `isAuthenticated`

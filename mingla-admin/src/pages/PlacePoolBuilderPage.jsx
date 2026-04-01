@@ -492,7 +492,7 @@ function BrowsePoolView({ addToast }) {
 
   // Edit modal
   const [editTarget, setEditTarget] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", category: "", visibility: "", price_tier: "" });
+  const [editForm, setEditForm] = useState({ name: "", category: "", visibility: "", price_tiers: [] });
   const [editSaving, setEditSaving] = useState(false);
 
   // Deactivate confirmation modal
@@ -550,7 +550,7 @@ function BrowsePoolView({ addToast }) {
       name: row.name || "",
       category: row.category || "",
       visibility: row.visibility || "public",
-      price_tier: row.price_tier || "",
+      price_tiers: row.price_tiers?.length ? row.price_tiers : (row.price_tier ? [row.price_tier] : []),
     });
   };
 
@@ -558,16 +558,20 @@ function BrowsePoolView({ addToast }) {
     if (!editTarget) return;
     setEditSaving(true);
     try {
-      const { error } = await supabase
-        .from("place_pool")
-        .update({
-          name: editForm.name,
-          category: editForm.category || null,
-          visibility: editForm.visibility || "public",
-          price_tier: editForm.price_tier || null,
-        })
-        .eq("id", editTarget.id);
-      if (error) throw error;
+      // Use RPC for cascade to card_pool
+      const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
+        p_place_id: editTarget.id,
+        p_name: editForm.name || null,
+        p_price_tier: editForm.price_tiers?.[0] || null,
+        p_price_tiers: editForm.price_tiers || [],
+      });
+      if (rpcErr) throw rpcErr;
+      // Update non-RPC fields directly
+      const { error: extraErr } = await supabase.from("place_pool").update({
+        category: editForm.category || null,
+        visibility: editForm.visibility || "public",
+      }).eq("id", editTarget.id);
+      if (extraErr) throw extraErr;
       addToast({ variant: "success", title: "Place updated" });
       await logAdminAction("place.edit", "place_pool", editTarget.id, { name: editForm.name });
       setEditTarget(null);
@@ -730,8 +734,11 @@ function BrowsePoolView({ addToast }) {
       render: (val) => val != null ? (<span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 text-[#f59e0b] fill-[#f59e0b]" />{formatRating(val)}</span>) : <span className="text-[var(--color-text-muted)]">—</span>,
     },
     {
-      key: "price_tier", label: "Tier", width: "80px",
-      render: (val) => val ? <Badge variant={PRICE_TIER_VARIANT[val] || "default"}>{val}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>,
+      key: "price_tiers", label: "Tier", width: "100px",
+      render: (_, r) => {
+        const tiers = r.price_tiers?.length ? r.price_tiers : (r.price_tier ? [r.price_tier] : []);
+        return tiers.length > 0 ? <div className="flex gap-0.5">{tiers.map((t) => <Badge key={t} variant={PRICE_TIER_VARIANT[t] || "default"}>{t}</Badge>)}</div> : <span className="text-[var(--color-text-muted)]">—</span>;
+      },
     },
     {
       key: "primary_type", label: "Type", width: "120px",
@@ -846,12 +853,26 @@ function BrowsePoolView({ addToast }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-secondary)]">Price Tier</label>
-              <select value={editForm.price_tier} onChange={(e) => setEditForm(f => ({ ...f, price_tier: e.target.value }))}
-                className="w-full text-sm px-3 py-2 rounded-lg border bg-transparent" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", backgroundColor: "var(--color-background-primary)" }}>
-                <option value="">None</option>
-                {PRICE_TIER_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-secondary)]">Price Tiers</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {PRICE_TIER_OPTIONS.map(t => (
+                  <button key={t} type="button"
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      editForm.price_tiers.includes(t)
+                        ? "text-white border-transparent"
+                        : "text-[var(--color-text-secondary)] border-[var(--gray-300)] hover:border-[var(--color-brand-500)]"
+                    }`}
+                    style={editForm.price_tiers.includes(t) ? { backgroundColor: PRICE_TIER_VARIANT[t] === "success" ? "#22c55e" : PRICE_TIER_VARIANT[t] === "warning" ? "#f59e0b" : PRICE_TIER_VARIANT[t] === "error" ? "#ef4444" : "var(--color-brand-500)" } : { backgroundColor: "var(--color-background-primary)" }}
+                    onClick={() => setEditForm(f => ({
+                      ...f,
+                      price_tiers: f.price_tiers.includes(t)
+                        ? f.price_tiers.filter(x => x !== t)
+                        : [...f.price_tiers, t],
+                    }))}>
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </ModalBody>
@@ -1278,7 +1299,7 @@ function PoolStatsView() {
         let offset = 0;
         let hasMore = true;
         while (hasMore) {
-          const { data: batch } = await supabase.from("place_pool").select("address, types, primary_type, price_tier, rating, created_at").eq("is_active", true).range(offset, offset + BATCH_SIZE - 1);
+          const { data: batch } = await supabase.from("place_pool").select("address, types, primary_type, price_tier, price_tiers, rating, created_at").eq("is_active", true).range(offset, offset + BATCH_SIZE - 1);
           if (!mounted) return;
           const rows = batch || [];
           allPlaces.push(...rows);
@@ -1316,14 +1337,16 @@ function PoolStatsView() {
           if (!typeMap[type]) typeMap[type] = { type, count: 0, totalRating: 0, ratedCount: 0, tiers: {} };
           typeMap[type].count++;
           if (p.rating != null) { typeMap[type].totalRating += p.rating; typeMap[type].ratedCount++; }
-          if (p.price_tier) typeMap[type].tiers[p.price_tier] = (typeMap[type].tiers[p.price_tier] || 0) + 1;
+          const pTiers = p.price_tiers?.length ? p.price_tiers : (p.price_tier ? [p.price_tier] : []);
+          for (const tier of pTiers) { typeMap[type].tiers[tier] = (typeMap[type].tiers[tier] || 0) + 1; }
         }
         const types = Object.values(typeMap).map((t) => ({ ...t, avgRating: t.ratedCount > 0 ? t.totalRating / t.ratedCount : null, topTier: Object.entries(t.tiers).sort((a, b) => b[1] - a[1])[0]?.[0] || "—" })).sort((a, b) => b.count - a.count).slice(0, 20);
         setTypeBreakdown(types);
 
         const tiers = { chill: 0, comfy: 0, bougie: 0, lavish: 0 };
         for (const p of places) {
-          if (p.price_tier && tiers[p.price_tier] !== undefined) tiers[p.price_tier]++;
+          const pTiers = p.price_tiers?.length ? p.price_tiers : (p.price_tier ? [p.price_tier] : []);
+          for (const tier of pTiers) { if (tiers[tier] !== undefined) tiers[tier]++; }
         }
         setTierDistribution(tiers);
       } catch (err) {

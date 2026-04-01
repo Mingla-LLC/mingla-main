@@ -57,6 +57,7 @@ interface PoolCard {
   rating: number | null;
   price_level: string | null;
   price_tier?: string | null;
+  price_tiers?: string[] | null;
   description?: string | null;
   card_type?: string | null;
   address: string | null;
@@ -116,7 +117,8 @@ function mapPoolCardToResponseCard(
     googlePlaceId: chosen.google_place_id ?? null,
     lat: chosen.lat ?? null,
     lng: chosen.lng ?? null,
-    priceTier: derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+    priceTier: chosen.price_tiers?.[0] ?? derivePriceTier(chosen.price_tier ?? null, chosen.price_level ?? null),
+    priceTiers: chosen.price_tiers?.length ? chosen.price_tiers : [chosen.price_tier || 'chill'],
     description: chosen.description ?? `A great ${catName} spot to explore.`,
     cardType: (chosen.card_type as "single" | "curated") ?? "single",
     tagline: chosen.tagline ?? null,
@@ -318,7 +320,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
+            "id, title, category, image_url, rating, price_level, price_tier, price_tiers, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("category", cat.displayName)
           .gte("lat", latMin)
@@ -356,7 +358,7 @@ serve(async (req: Request) => {
         const { data: curatedCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
+            "id, title, category, image_url, rating, price_level, price_tier, price_tiers, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("card_type", "curated")
           .gte("lat", latMin)
@@ -440,7 +442,7 @@ serve(async (req: Request) => {
         const { data: poolCards } = await adminClient
           .from("card_pool")
           .select(
-            "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
+            "id, title, category, image_url, rating, price_level, price_tier, price_tiers, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
           )
           .eq("category", catName)
           .gte("lat", latMin)
@@ -526,7 +528,7 @@ serve(async (req: Request) => {
       const { data: poolCards } = await adminClient
         .from("card_pool")
         .select(
-          "id, title, category, image_url, rating, price_level, price_tier, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
+          "id, title, category, image_url, rating, price_level, price_tier, price_tiers, description, card_type, address, google_place_id, lat, lng, website, tagline, categories, stops, total_price_min, total_price_max, estimated_duration_minutes, experience_type, shopping_list"
         )
         .eq("category", resolved.displayName)
         .gte("lat", latMin)

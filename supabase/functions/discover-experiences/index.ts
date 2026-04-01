@@ -132,7 +132,8 @@ serve(async (req: Request) => {
         priceRange: card.price_min != null && card.price_max != null
           ? `$${card.price_min}\u2013$${card.price_max}`
           : null,
-        priceTier: card.price_tier || null,
+        priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
+        priceTiers: card.price_tiers?.length ? card.price_tiers : [card.price_tier || 'chill'],
         rating: card.rating || 0,
         reviewCount: card.review_count || 0,
         address: card.address || '',

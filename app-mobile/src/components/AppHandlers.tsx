@@ -159,7 +159,7 @@ export function useAppHandlers(state: any) {
             : 20,
         time_of_day: preferences.selectedTimeSlot || null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: preferences.exactTime || null,
+        exact_time: null,
         datetime_pref: preferences.selectedDate || null,
         date_option: preferences.selectedDateOption
           ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[preferences.selectedDateOption as string] ?? preferences.selectedDateOption)
@@ -585,8 +585,9 @@ export function useAppHandlers(state: any) {
 
       // Compute backward-compat budget from price tiers
       const userTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-      const highestTier = PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug));
-      const backCompatBudgetMax = highestTier?.max ?? 1000;
+      const backCompatBudgetMax = userTiers.includes('any' as PriceTierSlug)
+        ? 10000
+        : (PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug))?.max ?? 1000);
 
       const soloCats = normalizeCategoryArray(preferences.selectedCategories || []);
       const soloIntents = (preferences.selectedIntents || []).slice(0, 1);
@@ -619,7 +620,7 @@ export function useAppHandlers(state: any) {
             : null
           : null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: preferences.exactTime || null,
+        exact_time: null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,

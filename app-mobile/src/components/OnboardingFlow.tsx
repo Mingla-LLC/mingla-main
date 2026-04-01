@@ -2618,9 +2618,18 @@ const OnboardingFlow = ({
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                     setData((p) => {
                       const current = p.selectedPriceTiers
-                      const next = current.includes(tier.slug)
-                        ? current.filter((s) => s !== tier.slug)
-                        : [...current, tier.slug]
+                      // Mutual exclusion: "Any" vs specific tiers
+                      if (tier.slug === 'any') {
+                        // Selecting "Any" → replace all with ['any']
+                        return current.includes('any')
+                          ? p  // already selected, no-op (min 1)
+                          : { ...p, selectedPriceTiers: ['any'] }
+                      }
+                      // Selecting a specific tier → remove 'any' if present
+                      const withoutAny = current.filter((s) => s !== 'any')
+                      const next = withoutAny.includes(tier.slug)
+                        ? withoutAny.filter((s) => s !== tier.slug)
+                        : [...withoutAny, tier.slug]
                       if (next.length === 0) return p
                       return { ...p, selectedPriceTiers: next }
                     })

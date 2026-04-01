@@ -88,13 +88,15 @@ function filterByDateTime(
   datetimePref: string | undefined,
   dateOption: string,
   timeSlot: string | null,
-  exactTime?: string | null
 ): any[] {
+  // 'anytime' means no time-of-day filtering — return all places as-is
+  if (timeSlot === 'anytime') return places;
+
   // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22, timezone-aware 2026-03-28)
   // Uses place-local time via utcOffsetMinutes for correct timezone handling.
   // Always-open types (parks, beaches, etc.) bypass hours check.
   // Cards with no hours AND not always-open are EXCLUDED.
-  if (dateOption === 'now' || (!datetimePref && !timeSlot && !exactTime)) {
+  if (dateOption === 'now' || (!datetimePref && !timeSlot)) {
     const utcNow = new Date();
 
     return places.filter(place => {
@@ -147,18 +149,7 @@ function filterByDateTime(
     const targetDay = localDate.getUTCDay();
 
     let targetHourStart: number;
-    if (exactTime) {
-      const etMatch = exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-      if (etMatch) {
-        let h = parseInt(etMatch[1]);
-        const ampm = etMatch[3].toUpperCase();
-        if (ampm === 'PM' && h !== 12) h += 12;
-        if (ampm === 'AM' && h === 12) h = 0;
-        targetHourStart = h;
-      } else {
-        targetHourStart = localDate.getUTCHours();
-      }
-    } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+    if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
       targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
     } else {
       targetHourStart = localDate.getUTCHours();
@@ -298,18 +289,22 @@ serve(async (req: Request) => {
       datetimePref,
       dateOption = 'now',
       timeSlot: rawTimeSlot = null,
-      exactTime: rawExactTime = null,
       batchSeed = 0,
       limit = 20,
       priceTiers,
+      excludeCardIds: rawExcludeCardIds = [],
     } = body;
 
+    // Validate exclude IDs — only accept valid UUID strings
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
+      ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && UUID_RE.test(id))
+      : [];
+
     // Sanitize time inputs
-    const EXACT_TIME_RE = /^(1[0-2]|0?[1-9]):[0-5][0-9]\s?(AM|PM)$/i;
-    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight'].includes(rawTimeSlot)
+    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight', 'anytime'].includes(rawTimeSlot)
       ? rawTimeSlot
       : null;
-    const _exactTime = rawExactTime && EXACT_TIME_RE.test(rawExactTime) ? rawExactTime : null;
 
     // ── Validate ──────────────────────────────────────────────────────────
     if (!location?.lat || !location?.lng) {
@@ -463,6 +458,7 @@ serve(async (req: Request) => {
           limit,
           cardType: 'single' as const,
           priceTiers: priceTiers as PriceTierSlug[] | undefined,
+          excludeCardIds,
         };
 
         const poolResult = await serveCardsFromPipeline(
@@ -474,7 +470,7 @@ serve(async (req: Request) => {
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
-          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
+          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot);
 
           // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();

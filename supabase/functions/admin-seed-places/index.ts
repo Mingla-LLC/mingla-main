@@ -185,6 +185,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     price_min: priceInfo.min,
     price_max: priceInfo.max,
     price_tier: priceInfo.tier,
+    price_tiers: priceInfo.tier ? [priceInfo.tier] : [],
     opening_hours: gPlace.regularOpeningHours ?? null,
     photos: photos.map((p) => ({
       name: p.name,

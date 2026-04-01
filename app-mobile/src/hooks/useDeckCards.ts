@@ -35,6 +35,7 @@ interface UseDeckCardsParams {
   exactTime?: string | null;
   batchSeed: number;
   enabled: boolean;
+  excludeCardIds?: string[];
 }
 
 export interface UseDeckCardsResult {

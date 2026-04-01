@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   travelPresetPillSelected: {
-    backgroundColor: "#ffedd5",
+    backgroundColor: "#eb7825",
     borderColor: "#eb7825",
     borderWidth: 1.5,
   },
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   travelPresetPillTextSelected: {
-    color: "#eb7825",
+    color: "#ffffff",
     fontWeight: "600",
   },
   travelInputUnit: {

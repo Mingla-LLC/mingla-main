@@ -4,11 +4,12 @@ import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckSe
 export function useSessionDeck(
   sessionId: string | undefined,
   batchSeed: number,
-  enabled: boolean
+  enabled: boolean,
+  excludeCardIds: string[] = [],
 ) {
   return useQuery<SessionDeckResponse>({
     queryKey: ['session-deck', sessionId, batchSeed],
-    queryFn: () => fetchSessionDeck(sessionId!, batchSeed),
+    queryFn: () => fetchSessionDeck(sessionId!, batchSeed, excludeCardIds),
     staleTime: 30 * 60 * 1000,  // 30 min
     gcTime: 2 * 60 * 60 * 1000, // 2 hours
     enabled: enabled && !!sessionId,

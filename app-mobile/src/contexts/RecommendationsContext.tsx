@@ -21,8 +21,9 @@ import { deckService, getLastWarmPoolTimestamp } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
-import type { DeckBatch } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
+import { useSavedCards } from "../hooks/useSavedCards";
+import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
 import { useSessionDeck } from '../hooks/useSessionDeck';
 import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
@@ -36,14 +37,10 @@ export type { Recommendation };
 export type DeckUIState =
   | { type: 'INITIAL_LOADING' }
   | { type: 'LOADED'; cards: Recommendation[] }
-  | { type: 'BATCH_LOADING'; previousCards: Recommendation[] }
-  | { type: 'BATCH_SLOW'; previousCards: Recommendation[] }
   | { type: 'MODE_TRANSITIONING' }
   | { type: 'EXHAUSTED' }
   | { type: 'EMPTY' }
   | { type: 'ERROR'; message: string };
-
-const MAX_BATCHES = 3;
 
 // Stable empty arrays — prevent new references on every render that trigger
 // useEffect dependency changes and cause infinite render loops.
@@ -69,7 +66,6 @@ interface RecommendationsContextType {
   error: string | null;
   userLocation: { lat: number; lng: number } | null;
   isModeTransitioning: boolean;
-  isBatchTransitioning: boolean;
   isWaitingForSessionResolution: boolean;
   isRefreshingAfterPrefChange: boolean;
   hasCompletedInitialFetch: boolean;
@@ -79,14 +75,6 @@ interface RecommendationsContextType {
     cardId: string,
     strollData: Recommendation["strollData"]
   ) => void;
-  batchSeed: number;
-  generateNextBatch: () => void;
-  restorePreviousBatch: () => void;
-  // Deck card batch history
-  deckBatches: DeckBatch[];
-  currentDeckBatchIndex: number;
-  navigateToDeckBatch: (index: number) => void;
-  totalDeckCardsViewed: number;
   handleDeckCardProgress: (currentIndex: number, total: number) => void;
   hasMoreCards: boolean;
   dismissedCards: Recommendation[];
@@ -94,11 +82,14 @@ interface RecommendationsContextType {
   clearDismissedCards: () => void;
   removeDismissedCard: (card: Recommendation) => void;
   addCardToFront: (card: Recommendation) => void;
+  addSwipedCard: (card: Recommendation) => void;
+  sessionSwipedCards: Recommendation[];
   isExhausted: boolean;
-  isSlowBatchLoad: boolean;
   deckUIState: DeckUIState;
   /** Aggregated travel mode from collaboration session (majority vote). null in solo mode. */
   collabTravelMode: string | null;
+  onOpenPreferences?: () => void;
+  onOpenSessionHistory?: () => void;
 }
 
 const RecommendationsContext = createContext<
@@ -129,21 +120,18 @@ export const RecommendationsProvider: React.FC<
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
-  const [isBatchTransitioning, setIsBatchTransitioning] = useState(false);
   const [isRefreshingAfterPrefChange, setIsRefreshingAfterPrefChange] = useState(false);
   const [hasMoreCards, setHasMoreCards] = useState(true);
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
-  const [isSlowBatchLoad, setIsSlowBatchLoad] = useState(false);
   const prefetchFiredRef = useRef(false);
-  const previousBatchRef = useRef<Recommendation[]>([]);
   // Session-scoped dedup: tracks all card IDs served in the current session.
   // Cleared on preference change and mode switch. Catches the prefetch race
-  // condition where batch 2 starts before batch 1's impressions are committed.
+  // condition where page 2 starts before page 1's impressions are committed.
   const sessionServedIdsRef = useRef<Set<string>>(new Set());
-  // hasStartedRef: previously used by the 15s nuclear safety timeout (removed).
-  // Kept for potential future mount-tracking needs.
   const hasStartedRef = useRef(false);
+  // Accumulated cards from all pages (flat array, not per-batch)
+  const accumulatedCardsRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
   const previousRefreshKeyRef = useRef(propRefreshKey);
@@ -151,14 +139,12 @@ export const RecommendationsProvider: React.FC<
   const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
 
-  // ── Deck card batch history (Zustand) ────────────────────────────────
+  // ── Deck session state (Zustand) ────────────────────────────────────
   const {
-    addDeckBatch,
+    addSwipedCard,
     resetDeckHistory,
     deckPrefsHash,
-    deckBatches,
-    currentDeckBatchIndex,
-    navigateToDeckBatch,
+    sessionSwipedCards,
   } = useAppStore();
 
   const user = useAppStore((state) => state.user);
@@ -169,6 +155,34 @@ export const RecommendationsProvider: React.FC<
     availableSessions,
     loading: sessionsLoading,
   } = useSessionManagement();
+
+  // ── Exclusion IDs: saved + scheduled cards ─────────────────────────────
+  const { data: savedCards } = useSavedCards(user?.id);
+  const { data: calendarEntries } = useCalendarEntries(user?.id);
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const excludeCardIds = useMemo(() => {
+    const ids = new Set<string>();
+    // Saved card IDs
+    if (savedCards) {
+      for (const card of savedCards) {
+        if (card.id && UUID_RE.test(card.id)) ids.add(card.id);
+      }
+    }
+    // Scheduled card IDs (pending/confirmed only, UUID format only)
+    if (calendarEntries) {
+      for (const entry of calendarEntries) {
+        if (
+          (entry.status === 'pending' || entry.status === 'confirmed') &&
+          entry.card_id &&
+          UUID_RE.test(entry.card_id)
+        ) {
+          ids.add(entry.card_id);
+        }
+      }
+    }
+    return Array.from(ids);
+  }, [savedCards, calendarEntries]);
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
@@ -460,6 +474,7 @@ export const RecommendationsProvider: React.FC<
       activeDeckParams !== null &&
       isDeckParamsStable &&
       !isWaitingForSessionResolution,
+    excludeCardIds,
   });
 
   // ── Collaboration Deck Hook (server-side synchronized deck) ──────────
@@ -470,7 +485,8 @@ export const RecommendationsProvider: React.FC<
   } = useSessionDeck(
     isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
     batchSeed,
-    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution
+    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution,
+    excludeCardIds,
   );
 
   // ── Unified deck output (branch by mode) ─────────────────────────────
@@ -488,67 +504,7 @@ export const RecommendationsProvider: React.FC<
     ? (sessionDeckData?.hasMore ?? false)
     : soloDeckHasMore;
 
-  // ── Generate Next Batch ─────────────────────────────────────────────────
-  // Capped at MAX_BATCHES. Once all batches are loaded, rotate back to batch 0.
-  const generateNextBatch = useCallback(() => {
-    const nextSeed = batchSeed + 1;
-
-    // If we've hit the cap, rotate to the first batch instead of fetching more
-    if (nextSeed >= MAX_BATCHES) {
-      if (deckBatches.length > 0) {
-        setIsExhausted(false);
-        navigateToDeckBatch(0);
-      }
-      return;
-    }
-
-    previousBatchRef.current = recommendations;
-    setIsBatchTransitioning(true);
-    setBatchSeed(nextSeed);
-  }, [recommendations, batchSeed, deckBatches, navigateToDeckBatch]);
-
-  // Soft timeout (3s): show "Still loading..." indicator
-  // Hard timeout (20s): match DeckService 15s + network buffer. Do NOT mark
-  // exhausted on timeout — exhaustion is determined by the query returning 0
-  // cards, not by slow network. Premature exhaustion was the #1 bug.
-  useEffect(() => {
-    if (!isBatchTransitioning) return;
-
-    const softTimer = setTimeout(() => {
-      if (isBatchTransitioning) {
-        console.log('[RecommendationsContext] Batch transition slow (3s) — showing intermediate state');
-        setIsSlowBatchLoad(true);
-      }
-    }, 3000);
-
-    // 16s = DeckService client timeout (15s) + 1s buffer
-    const hardTimer = setTimeout(() => {
-      if (isBatchTransitioning) {
-        console.warn('[RecommendationsContext] Batch transition timed out after 16s — clearing transition state');
-        setIsBatchTransitioning(false);
-        setIsSlowBatchLoad(false);
-        // Do NOT setIsExhausted(true) here. A slow batch is not an exhausted
-        // batch. The query result effect handles actual exhaustion
-        // when isDeckBatchLoaded && deckCards.length === 0.
-      }
-    }, 16000);
-
-    return () => {
-      clearTimeout(softTimer);
-      clearTimeout(hardTimer);
-    };
-  }, [isBatchTransitioning]);
-
-  // Restore the previous batch (used by "Review Previous Batch")
-  const restorePreviousBatch = useCallback(() => {
-    if (batchSeed > 0) {
-      setIsBatchTransitioning(true);
-      setBatchSeed(prev => prev - 1);
-    } else if (previousBatchRef.current.length > 0) {
-      setRecommendations(previousBatchRef.current);
-      setIsBatchTransitioning(false);
-    }
-  }, [batchSeed]);
+  // (Batch system removed — batchSeed is now an uncapped page counter incremented by prefetch)
 
   // ── Dismissed card callbacks ─────────────────────────────────────────────
   const addDismissedCard = useCallback((card: Recommendation) => {
@@ -580,22 +536,17 @@ export const RecommendationsProvider: React.FC<
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
   useEffect(() => {
     setHasMoreCards(deckHasMore);
-    // Guard: never mark exhausted during transitions — the empty state is
-    // transient (old batch cleared, new batch not yet arrived). Only mark
-    // exhausted when ALL transition flags are false, meaning the deck has
-    // genuinely settled on 0 cards.
     if (
       deckCards.length === 0 &&
       !deckHasMore &&
       isDeckBatchLoaded &&
       !isDeckFetching &&
-      !isBatchTransitioning &&
       !isModeTransitioning &&
       !isRefreshingAfterPrefChange
     ) {
       setIsExhausted(true);
     }
-  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isModeTransitioning, isRefreshingAfterPrefChange]);
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isModeTransitioning, isRefreshingAfterPrefChange]);
 
   // Reset prefetchFiredRef when batchSeed changes
   useEffect(() => {
@@ -607,21 +558,18 @@ export const RecommendationsProvider: React.FC<
   // The query key change from updated categories/intents handles refetching automatically.
   useEffect(() => {
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
-      // Reset batch to 0 — the query key change from new params will
+      // Reset page to 0 — the query key change from new params will
       // naturally trigger a refetch. No need to manually invalidate.
       setBatchSeed(0);
-      setIsBatchTransitioning(false);
       setIsExhausted(false);
       setHasMoreCards(true);
-      previousBatchRef.current = [];
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
-      lastSyncedBatchIndexRef.current = -1;
+      accumulatedCardsRef.current = [];
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
       }
-      setIsSlowBatchLoad(false);
       // Reset warm pool so it re-fires with new preferences
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
@@ -664,63 +612,27 @@ export const RecommendationsProvider: React.FC<
     return () => clearTimeout(safetyTimer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Deck batch history: store arriving batches ───────────────────────
-  useEffect(() => {
-    if (deckCards.length > 0 && isDeckBatchLoaded) {
-      addDeckBatch({
-        batchSeed,
-        cards: deckCards,
-        activePills,
-        prefsHash: useAppStore.getState().deckPrefsHash,
-        timestamp: Date.now(),
-      });
-    }
-  }, [deckCards, isDeckBatchLoaded, batchSeed, activePills, addDeckBatch]);
+  // (Batch history and navigation removed — cards accumulate in flat array)
 
-  // ── Deck batch navigation: when navigating to a historical batch ─────
-  // Track the last index we synced to prevent re-fires when deckBatches
-  // array reference changes but the target batch hasn't actually changed.
-  const lastSyncedBatchIndexRef = useRef(-1);
-
-  useEffect(() => {
-    if (
-      currentDeckBatchIndex >= 0 &&
-      currentDeckBatchIndex < deckBatches.length
-    ) {
-      const batch = deckBatches[currentDeckBatchIndex];
-      // Only sync if the index actually changed AND the batchSeed differs.
-      // Without the index guard, every deckBatches array reference change
-      // (e.g. from addDeckBatch) re-fires this effect and bounces batchSeed.
-      if (
-        batch.batchSeed !== batchSeed &&
-        currentDeckBatchIndex !== lastSyncedBatchIndexRef.current
-      ) {
-        lastSyncedBatchIndexRef.current = currentDeckBatchIndex;
-        setBatchSeed(batch.batchSeed);
-        // Clear exhaustion when navigating to a batch with cards
-        if (isExhausted) {
-          setIsExhausted(false);
-        }
-      }
-    }
-  }, [currentDeckBatchIndex, deckBatches]);
-
-  // ── Pre-fetch next batch when 8 or fewer cards remain ─────────────────
+  // ── Pre-fetch next page when 8 or fewer cards remain ─────────────────
   const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
     if (!activeDeckLocation || !activeDeckParams) return;
     const remainingCards = total - currentIndex - 1;
 
-    // When 8 or fewer cards remain, prefetch next batch (once per batch)
-    // Skip prefetch if we've already hit the max batch cap
-    if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards && batchSeed + 1 < MAX_BATCHES) {
+    // When 8 or fewer cards remain, prefetch next page (once per page)
+    if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards) {
       prefetchFiredRef.current = true;
       const nextSeed = batchSeed + 1;
+
+      // Auto-increment page counter — the prefetched data will be picked up
+      // by the deck cards sync effect and appended to recommendations.
+      setBatchSeed(nextSeed);
 
       // Collaboration mode: prefetch via server-side session deck
       if (isCollaborationMode && resolvedSessionId) {
         queryClient.prefetchQuery({
           queryKey: ['session-deck', resolvedSessionId, nextSeed],
-          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed),
+          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, excludeCardIds),
           staleTime: 30 * 60 * 1000,
         });
       } else {
@@ -780,14 +692,16 @@ export const RecommendationsProvider: React.FC<
             exactTime: isSoloMode ? (userPrefs?.exact_time ?? null) : null,
             batchSeed: nextSeed,
             limit: 20,
+            excludeCardIds,
           }),
           staleTime: 5 * 60 * 1000,
         });
       }
     }
-  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient, excludeCardIds]);
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
+  // Infinite deck: APPEND new page results to accumulated cards instead of replacing.
   const previousDeckIdsRef = useRef<string>('');
 
   useEffect(() => {
@@ -796,51 +710,34 @@ export const RecommendationsProvider: React.FC<
         const deckIdsKey = `${batchSeed}:${deckCards.map(c => c.id).sort().join(',')}`;
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
-          // ALWAYS replace — never append. Each batch is a fresh set of cards.
-          // Filter out cards already served in this session (catches prefetch race).
+          // Deduplicate against already-served cards in this session
           const dedupedCards = deckCards.filter(c => !sessionServedIdsRef.current.has(c.id));
           for (const c of dedupedCards) sessionServedIdsRef.current.add(c.id);
-          if (dedupedCards.length === 0 && deckCards.length > 0) {
-            console.warn(`[RecommendationsContext] All ${deckCards.length} cards in batch already served this session — showing anyway to avoid empty deck`);
+
+          if (batchSeed === 0) {
+            // First page: replace (fresh session or pref change)
+            accumulatedCardsRef.current = dedupedCards.length > 0 ? dedupedCards : deckCards;
+          } else {
+            // Subsequent pages: append
+            const newCards = dedupedCards.length > 0 ? dedupedCards : deckCards;
+            accumulatedCardsRef.current = [...accumulatedCardsRef.current, ...newCards];
           }
-          setRecommendations(dedupedCards.length > 0 ? dedupedCards : deckCards);
+          setRecommendations(accumulatedCardsRef.current);
         }
 
-        if (isDeckBatchLoaded && (isBatchTransitioning || isSlowBatchLoad)) {
-          setIsBatchTransitioning(false);
-          setIsSlowBatchLoad(false);
-        }
-
-        // If we timed out but batch arrived late, un-exhaust
+        // If we were exhausted but new cards arrived, un-exhaust
         if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
           setIsExhausted(false);
         }
-      // IMMEDIATE EXHAUSTION DETECTION (Block 6 — hardened 2026-03-22)
-      // When server returns 0 cards during batch transition, clear immediately
-      // instead of waiting for 16s timeout. Timer kept as safety net.
-      } else if (
-        deckCards.length === 0 &&
-        isDeckBatchLoaded &&
-        !isDeckFetching &&
-        (isBatchTransitioning || isSlowBatchLoad)
-      ) {
-        setIsBatchTransitioning(false);
-        setIsSlowBatchLoad(false);
-        // Note: setIsExhausted is NOT called here. The exhaustion effect
-        // will fire on the next render cycle now that isBatchTransitioning
-        // is false, and it checks deckHasMore too.
-      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning && !isSlowBatchLoad && !isModeTransitioning) {
-        // Genuinely empty — no cards available. All guards must be false
-        // to avoid clearing recommendations while a slow batch is still loading
-        // or while a mode transition is settling (new mode's data may not have arrived yet).
-        // Use stable EMPTY_CARDS and guard against no-op to prevent infinite re-renders
-        // (Object.is([], []) is false — a new [] always triggers a re-render).
-        setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
+      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isModeTransitioning) {
+        // Genuinely empty — no cards available for current page.
+        // Only clear recommendations if accumulated stack is also empty.
+        if (accumulatedCardsRef.current.length === 0) {
+          setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
+        }
       }
-      // During batch transition with 0 cards from new query,
-      // keep previous recommendations visible (no else branch needed)
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -883,12 +780,12 @@ export const RecommendationsProvider: React.FC<
       prefetchFiredRef.current = false;
       setIsExhausted(false);
       setHasMoreCards(true);
-      setIsSlowBatchLoad(false);
       setDismissedCards([]);
+      accumulatedCardsRef.current = [];
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
 
-      // Clear deck history — each mode builds its own rounds
+      // Clear deck session state — each mode starts fresh
       const { resetDeckHistory } = useAppStore.getState();
       resetDeckHistory('');
 
@@ -1081,17 +978,7 @@ export const RecommendationsProvider: React.FC<
       return { type: 'INITIAL_LOADING' };
     }
 
-    // BATCH_SLOW (soft timer fired, batch still in flight)
-    if (isSlowBatchLoad && !isExhausted) {
-      return { type: 'BATCH_SLOW', previousCards: recommendations };
-    }
-
-    // BATCH_LOADING (transition in progress, not yet slow)
-    if (isBatchTransitioning) {
-      return { type: 'BATCH_LOADING', previousCards: recommendations };
-    }
-
-    // EXHAUSTED (all batches viewed, 0 cards remain)
+    // EXHAUSTED (server returned hasMore: false AND user has swiped through all accumulated cards)
     if (isExhausted && recommendations.length === 0) {
       return { type: 'EXHAUSTED' };
     }
@@ -1104,8 +991,7 @@ export const RecommendationsProvider: React.FC<
     if (
       hasCompletedFetchForCurrentMode &&
       recommendations.length === 0 &&
-      !isModeTransitioning &&
-      !isBatchTransitioning
+      !isModeTransitioning
     ) {
       return { type: 'EMPTY' };
     }
@@ -1122,8 +1008,8 @@ export const RecommendationsProvider: React.FC<
     return { type: 'INITIAL_LOADING' };
   }, [
     locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
-    hasCompletedFetchForCurrentMode, recommendations, isSlowBatchLoad,
-    isExhausted, isBatchTransitioning,
+    hasCompletedFetchForCurrentMode, recommendations,
+    isExhausted,
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);
@@ -1151,20 +1037,12 @@ export const RecommendationsProvider: React.FC<
     error,
     userLocation,
     isModeTransitioning,
-    isBatchTransitioning,
     isWaitingForSessionResolution,
     isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
     clearRecommendations,
     updateCardStrollData,
-    batchSeed,
-    generateNextBatch,
-    restorePreviousBatch,
-    deckBatches,
-    currentDeckBatchIndex,
-    navigateToDeckBatch,
-    totalDeckCardsViewed: deckBatches.reduce((sum, b) => sum + b.cards.length, 0),
     handleDeckCardProgress,
     hasMoreCards,
     dismissedCards,
@@ -1172,8 +1050,9 @@ export const RecommendationsProvider: React.FC<
     clearDismissedCards,
     removeDismissedCard,
     addCardToFront,
+    addSwipedCard,
+    sessionSwipedCards,
     isExhausted,
-    isSlowBatchLoad,
     deckUIState,
     collabTravelMode: isCollaborationMode ? (collabDeckParams?.travelMode ?? null) : null,
   };

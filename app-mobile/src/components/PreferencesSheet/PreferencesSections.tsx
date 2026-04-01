@@ -83,7 +83,7 @@ export const ExperienceTypesSection = memo(
                 <Icon
                   name={type.icon}
                   size={14}
-                  color={isSelected ? "#eb7825" : "#6b7280"}
+                  color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
                   style={[
@@ -240,6 +240,15 @@ CategoriesSection.displayName = "CategoriesSection";
 /**
  * Memoized Date & Time Section
  */
+// Time slots — defined here for rendering in DateTimeSection
+const timeSlots = [
+  { id: "brunch", label: "Brunch", time: "11–1", icon: "cafe-outline" },
+  { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
+  { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
+  { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
+  { id: "anytime", label: "Anytime", time: "All day", icon: "time-outline" },
+];
+
 export const DateTimeSection = memo(
   ({
     dateOptions,
@@ -250,8 +259,8 @@ export const DateTimeSection = memo(
     selectedDate,
     onShowCalendar,
     showTimeSection,
-    exactTime,
-    onShowTimePicker,
+    selectedTimeSlot,
+    onTimeSlotSelect,
     formatDateForDisplay,
   }: any) => (
     <View style={styles.section}>
@@ -316,23 +325,37 @@ export const DateTimeSection = memo(
       )}
 
       {showTimeSection && (
-        <View style={styles.exactTimeSection}>
-          <Text style={styles.exactTimeLabel}>Around What Time?</Text>
-          <TouchableOpacity
-            style={styles.exactTimeInput}
-            onPress={onShowTimePicker}
-          >
-            <Icon
-              name="time-outline"
-              size={16}
-              color={exactTime ? "#eb7825" : "#9ca3af"}
-            />
-            {exactTime ? (
-              <Text style={styles.exactTimeInputTextSelected}>{exactTime}</Text>
-            ) : (
-              <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
-            )}
-          </TouchableOpacity>
+        <View style={styles.timeSlotSection}>
+          <Text style={styles.timeSlotLabel}>Around What Time?</Text>
+          <View style={styles.timeSlotsGrid}>
+            {timeSlots.map((slot) => {
+              const isSelected = selectedTimeSlot === slot.id;
+              return (
+                <TouchableOpacity
+                  key={slot.id}
+                  onPress={() => onTimeSlotSelect(slot.id)}
+                  style={[
+                    styles.timeSlotPill,
+                    isSelected && styles.timeSlotPillSelected,
+                  ]}
+                >
+                  <Icon
+                    name={slot.icon}
+                    size={14}
+                    color={isSelected ? "#ffffff" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.timeSlotPillLabel,
+                      isSelected && styles.timeSlotPillLabelSelected,
+                    ]}
+                  >
+                    {slot.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       )}
     </View>
@@ -372,7 +395,7 @@ export const TravelModeSection = memo(
               <Icon
                 name={mode.icon}
                 size={14}
-                color={isSelected ? "#eb7825" : "#6b7280"}
+                color={isSelected ? "#ffffff" : "#6b7280"}
               />
               <Text
                 style={[
@@ -472,7 +495,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   experienceTypeButtonSelected: {
-    backgroundColor: "#ffedd5",
+    backgroundColor: "#eb7825",
     borderColor: "#eb7825",
     borderWidth: 1.5,
   },
@@ -482,7 +505,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   experienceTypeTextSelected: {
-    color: "#eb7825",
+    color: "#ffffff",
     fontWeight: "600",
   },
   categoriesContainer: {
@@ -565,11 +588,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "white",
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fafafa",
   },
   dateOptionPillSelected: {
-    backgroundColor: "#ffedd5",
+    backgroundColor: "#eb7825",
     borderColor: "#eb7825",
     borderWidth: 1.5,
   },
@@ -579,7 +602,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   dateOptionPillLabelSelected: {
-    color: "#eb7825",
+    color: "#ffffff",
     fontWeight: "600",
   },
   weekendInfoCard: {
@@ -631,37 +654,44 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  exactTimeSection: {
-    marginTop: 16,
+  timeSlotSection: {
+    marginTop: 12,
   },
-  exactTimeLabel: {
+  timeSlotLabel: {
     fontSize: 13,
     fontWeight: "600",
     color: "#111827",
     marginBottom: 8,
   },
-  exactTimeInput: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "#d1d5db",
-    backgroundColor: "#ffffff",
+  timeSlotsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  timeSlotPill: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fafafa",
   },
-  exactTimeInputText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginLeft: 8,
-    flex: 1,
+  timeSlotPillSelected: {
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
+    borderWidth: 1.5,
   },
-  exactTimeInputTextSelected: {
-    fontSize: 14,
-    color: "#111827",
-    marginLeft: 8,
-    flex: 1,
+  timeSlotPillLabel: {
+    fontSize: 11,
     fontWeight: "500",
+    color: "#374151",
+  },
+  timeSlotPillLabelSelected: {
+    color: "#ffffff",
+    fontWeight: "600",
   },
   travelModesGrid: {
     flexDirection: "row",
@@ -680,7 +710,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   travelModeCardSelected: {
-    backgroundColor: "#ffedd5",
+    backgroundColor: "#eb7825",
     borderColor: "#eb7825",
     borderWidth: 1.5,
   },
@@ -690,7 +720,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   travelModeLabelSelected: {
-    color: "#eb7825",
+    color: "#ffffff",
     fontWeight: "600",
   },
   loadingContainer: {

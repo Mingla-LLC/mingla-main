@@ -188,6 +188,10 @@ export const colors = {
     inverse: '#ffffff',
   },
 
+  // Accent — the warm orange used for selected pills, CTAs, and active states.
+  // Intentionally different from primary[500] (#f97316).
+  accent: '#eb7825',
+
   // Chat semantic aliases (no new color values — references to existing tokens)
   chat: {
     bubbleSent: '#f97316',     // primary[500]

@@ -16,10 +16,11 @@ export interface SessionDeckResponse {
 
 export async function fetchSessionDeck(
   sessionId: string,
-  batchSeed: number = 0
+  batchSeed: number = 0,
+  excludeCardIds: string[] = [],
 ): Promise<SessionDeckResponse> {
   const { data, error } = await trackedInvoke('generate-session-deck', {
-    body: { sessionId, batchSeed },
+    body: { sessionId, batchSeed, excludeCardIds },
   });
 
   if (error) {

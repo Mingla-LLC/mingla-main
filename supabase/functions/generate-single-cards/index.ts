@@ -145,7 +145,7 @@ serve(async (req: Request) => {
         const categorySlugForQuery = categoryToSlug(category);
         const { data: places, error: queryError } = await supabaseAdmin
           .from('place_pool')
-          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes, ai_categories, ai_approved')
+          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, price_tiers, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes, ai_categories, ai_approved')
           .eq('is_active', true)
           .eq('ai_approved', true)
           .contains('ai_categories', [categorySlugForQuery])
@@ -232,7 +232,8 @@ serve(async (req: Request) => {
               reviewCount: place.review_count || 0,
               priceMin: place.price_min ?? 0,
               priceMax: place.price_max ?? 0,
-              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceTier: place.price_tiers?.[0] || place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceTiers: place.price_tiers?.length ? place.price_tiers : [place.price_tier || 'chill'],
               openingHours: place.opening_hours,
               website: place.website,
               cityId: place.city_id,

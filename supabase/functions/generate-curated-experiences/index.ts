@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serveCuratedCardsFromPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
-import { googleLevelToTierSlug, tierMeetsMinimum } from '../_shared/priceTiers.ts';
+import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -288,7 +288,7 @@ async function fetchSinglesForCategory(
 
   const { data, error } = await supabaseAdmin
     .from('card_pool')
-    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
+    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
     .eq('is_active', true)
     .eq('card_type', 'single')
     .contains('categories', [categoryId])
@@ -360,10 +360,11 @@ function buildCardStop(
     reviewCount: card.review_count ?? 0,
     imageUrl: card.image_url || card.images?.[0] || null,
     imageUrls: card.images || (card.image_url ? [card.image_url] : []),
-    priceLevelLabel: card.price_tier || 'chill',
+    priceLevelLabel: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceMin: card.price_min ?? 0,
     priceMax: card.price_max ?? 0,
-    priceTier: card.price_tier || 'chill',
+    priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
+    priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
     isOpenNow: true,
     website: card.website || null,
@@ -571,8 +572,9 @@ async function generateCardsForType(
         const available = (categoryPlaces[catId] || []).filter(p => {
           if (comboUsedIds.has(p.google_place_id)) return false;
           if (!stopDef.optional && p.price_min > perStopBudget) return false;
-          // Fine Dining price floor — card already has resolved price_tier
-          if (catId === 'fine_dining' && p.price_tier && !tierMeetsMinimum(p.price_tier, 'bougie')) {
+          // Fine Dining price floor — check highest tier in array meets minimum
+          const bestTier = p.price_tiers?.length ? p.price_tiers[p.price_tiers.length - 1] : p.price_tier;
+          if (catId === 'fine_dining' && bestTier && !slugMeetsMinimum(bestTier, 'bougie')) {
             return false;
           }
           return true;
@@ -1157,6 +1159,7 @@ serve(async (req) => {
                 price_min: card.totalPriceMin || 0,
                 price_max: card.totalPriceMax || 0,
                 price_tier: mainStops[0]?.priceTier || 'comfy',
+                price_tiers: mainStops[0]?.priceTiers || (mainStops[0]?.priceTier ? [mainStops[0].priceTier] : ['comfy']),
                 opening_hours: null,
                 website: null,
                 popularity_score: popularityScore,
