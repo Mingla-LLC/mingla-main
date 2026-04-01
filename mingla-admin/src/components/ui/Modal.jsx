@@ -16,7 +16,17 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
   const previousFocusRef = useRef(null);
 
   const handleEscape = useCallback(
-    (e) => { if (e.key === "Escape") onClose(); },
+    (e) => {
+      if (e.key === "Escape") {
+        // Don't close if user is typing in an input/textarea/select
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+          document.activeElement.blur();
+          return;
+        }
+        onClose();
+      }
+    },
     [onClose]
   );
 
@@ -40,8 +50,8 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
       document.addEventListener("keydown", handleTabKey);
       document.body.style.overflow = "hidden";
       requestAnimationFrame(() => {
-        const focusable = modalRef.current?.querySelectorAll(FOCUSABLE_SELECTOR);
-        if (focusable?.length > 0) focusable[0].focus();
+        // Focus the modal container, not the first button (which is the X close button)
+        modalRef.current?.focus();
       });
     }
     return () => {
@@ -57,7 +67,7 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
   return (
     <div
       ref={overlayRef}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose(); }}
       className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[4px] animate-[fade-in_200ms_ease-out]"
       style={{ zIndex: "var(--z-modal)" }}
       role="dialog"
@@ -66,6 +76,7 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
     >
       <div
         ref={modalRef}
+        tabIndex={-1}
         className={[
           "w-full bg-[var(--color-background-primary)] rounded-xl shadow-[var(--shadow-xl)]",
           "animate-[scale-in_200ms_ease-out]",

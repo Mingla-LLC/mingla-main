@@ -510,7 +510,10 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
 function PlaceDetailModal({ place, open, onClose, onSave }) {
   const { addToast } = useToast();
   const [aiCard, setAiCard] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", price_tier: "", seeding_category: "", is_active: true });
+  const [editForm, setEditForm] = useState({
+    name: "", price_tier: "", seeding_category: "", is_active: true,
+    ai_approved: null, ai_primary_identity: "", ai_categories: [], ai_reason: "", ai_confidence: null,
+  });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -520,6 +523,11 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       price_tier: place.price_tier || "",
       seeding_category: place.seeding_category || "",
       is_active: place.is_active,
+      ai_approved: place.ai_approved,
+      ai_primary_identity: place.ai_primary_identity || "",
+      ai_categories: place.ai_categories || [],
+      ai_reason: place.ai_reason || "",
+      ai_confidence: place.ai_confidence,
     });
     // Fetch AI card data
     supabase.from("card_pool")
@@ -549,15 +557,28 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase.rpc("admin_edit_place", {
+    // Save basic fields via RPC (handles cascade to card_pool)
+    const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
       p_place_id: place.id,
       p_name: editForm.name || null,
       p_price_tier: editForm.price_tier || null,
       p_seeding_category: editForm.seeding_category || null,
       p_is_active: editForm.is_active,
     });
-    if (error) addToast({ variant: "error", title: "Save failed", description: error.message });
-    else { addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave(); }
+    if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
+
+    // Save AI fields directly
+    const { error: aiErr } = await supabase.from("place_pool").update({
+      ai_approved: editForm.ai_approved,
+      ai_primary_identity: editForm.ai_primary_identity || null,
+      ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
+      ai_reason: editForm.ai_reason || null,
+      ai_confidence: editForm.ai_confidence,
+      ai_validated_at: new Date().toISOString(),
+    }).eq("id", place.id);
+    if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
+
+    addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
     setSaving(false);
   };
 
@@ -687,6 +708,51 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                 </div>
               </div>
               <Toggle label="Active" checked={editForm.is_active} onChange={(val) => setEditForm((f) => ({ ...f, is_active: val }))} />
+            </div>
+          </div>
+
+          {/* AI Override Controls */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">AI Classification Override</h4>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
+                  <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                    value={editForm.ai_approved === null ? "" : editForm.ai_approved ? "true" : "false"}
+                    onChange={(e) => setEditForm((f) => ({ ...f, ai_approved: e.target.value === "" ? null : e.target.value === "true" }))}>
+                    <option value="">Pending</option>
+                    <option value="true">Approved</option>
+                    <option value="false">Rejected</option>
+                  </select>
+                </div>
+                <Input label="Primary Identity" value={editForm.ai_primary_identity} placeholder="e.g. restaurant, spa, museum"
+                  onChange={(e) => setEditForm((f) => ({ ...f, ai_primary_identity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)]">AI Categories (select all that apply)</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {ALL_CATEGORIES.map((c) => (
+                    <button key={c} type="button"
+                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                        editForm.ai_categories.includes(c)
+                          ? "text-white border-transparent"
+                          : "text-[var(--color-text-secondary)] border-[var(--gray-300)] bg-[var(--color-background-primary)] hover:border-[var(--color-brand-500)]"
+                      }`}
+                      style={editForm.ai_categories.includes(c) ? { backgroundColor: CATEGORY_COLORS[c] || "#6b7280" } : {}}
+                      onClick={() => setEditForm((f) => ({
+                        ...f,
+                        ai_categories: f.ai_categories.includes(c)
+                          ? f.ai_categories.filter((x) => x !== c)
+                          : [...f.ai_categories, c],
+                      }))}>
+                      {CATEGORY_LABELS[c] || c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Input label="AI Reason" value={editForm.ai_reason} placeholder="Why this classification"
+                onChange={(e) => setEditForm((f) => ({ ...f, ai_reason: e.target.value }))} />
             </div>
           </div>
         </div>
