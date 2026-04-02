@@ -45,6 +45,16 @@ class BoardSessionService {
   private static readonly DEDUP_INTERVAL_MS = 5000;
 
   /**
+   * Clears the in-memory dedupe cache so the next fetch hits the network.
+   * Call when the pill bar must reflect a mutation immediately (e.g. accept collab invite).
+   */
+  static invalidateBoardSessionCache(): void {
+    BoardSessionService.lastFetchTime = 0;
+    BoardSessionService.lastFetchUserId = "";
+    BoardSessionService.lastFetchResult = [];
+  }
+
+  /**
    * Fetch all active sessions where the user is a participant.
    * Skips the query if the last fetch was less than 5 seconds ago (returns cached result).
    */
@@ -91,22 +101,26 @@ class BoardSessionService {
         console.error("❌ Error fetching all sessions:", allSessionsError);
       }
 
-      // 3. Filter for non-archived, non-completed, non-pending sessions.
-      // Pending sessions are handled separately by refreshAllSessions():
-      // Query 2 surfaces user-created pending sessions, Query 3 surfaces
-      // received invites. Including them here would override those with
-      // a false 'active' status.
+      // 3. Filter for non-archived, non-completed sessions.
+      //
+      // We include collaboration_sessions.status = 'pending' here because every
+      // session_id above came from session_participants with has_accepted = true.
+      // After an invitee accepts, their collaboration_invites row is no longer
+      // pending, so refreshAllSessions() stops listing them under received invites;
+      // if we dropped pending rows here too, they would have no pill until the
+      // session row becomes active (timing/races) or ever if activation lags.
+      //
+      // Creator-owned pending sessions (solo "waiting on friends") still come from
+      // refreshAllSessions query 2 as well; dedupe by id keeps a single pill.
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
-        const notCompleted = s.status !== "completed" && s.status !== "archived";
-        const notPending = s.status !== "pending";
-
-        return notArchived && notCompleted && notPending;
+        const notCompleted =
+          s.status !== "completed" && s.status !== "archived";
+        return notArchived && notCompleted;
       });
 
       if (!sessions || sessions.length === 0) {
-        // All sessions are either pending, completed, or archived — none are active.
-        // This is normal during onboarding or when all sessions are still awaiting acceptance.
+        // Nothing joinable: archived, completed, or RLS returned no session rows.
         BoardSessionService.lastFetchTime = Date.now();
         BoardSessionService.lastFetchUserId = userId;
         BoardSessionService.lastFetchResult = [];
