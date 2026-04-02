@@ -236,4 +236,9 @@ export interface ExpandedCardModalProps {
     picnicData: ExpandedCardData["picnicData"],
   ) => Promise<void> | void; // Callback to persist picnic data to database
   hideTravelTime?: boolean;
+  // Review navigation: swipe through reviewed cards in expanded view
+  onNavigateNext?: () => void;
+  onNavigatePrevious?: () => void;
+  navigationIndex?: number;
+  navigationTotal?: number;
 }
