@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-02
-> Total: 0 active | 27 completed
+> Total: 0 active | 29 completed
 
 ## Active Dispatches
 
@@ -40,6 +40,8 @@
 | AH-025 | ORCH-0272 (Cross-Page Dedup) | Investigator | 2026-04-01 | INVESTIGATION_ORCH_0272_CROSS_PAGE_DEDUP.md | APPROVED |
 | AH-026 | ORCH-0272 (Cross-Page Dedup) | Implementor | 2026-04-01 | IMPLEMENTATION_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | APPROVED |
 | AH-027 | ORCH-0272 (Cross-Page Dedup) | Tester | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | PASS |
+| AH-028 | ORCH-0273 (place→card sync) | Implementor | 2026-04-02 | IMPLEMENTATION_PLACE_POOL_CARD_POOL_SYNC_REPORT.md | APPROVED |
+| AH-029 | ORCH-0273 (place→card sync) | Tester | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md | PASS |
 
 ## Historical (Pre-Orchestrator)
 

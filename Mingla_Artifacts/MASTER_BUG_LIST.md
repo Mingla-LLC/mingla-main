@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-02
-> Total: 287 | Open: 133 | Closed: 89 | Verified (B grade): 21 | Deferred: 1
+> Total: 288 | Open: 132 | Closed: 90 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -93,6 +93,12 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (place_pool → card_pool Sync)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0273 | place_pool → card_pool data drift | Unified sync trigger: 16 single card fields + curated composites. Old website trigger replaced. | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md |
 
 ## Recently Closed (Cross-Page Dedup)
 
