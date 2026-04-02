@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Modal,
   View,
@@ -12,6 +12,7 @@ import {
   Platform,
   Animated,
   LayoutAnimation,
+  PanResponder,
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
@@ -785,6 +786,10 @@ export default function ExpandedCardModal({
   onStrollDataFetched,
   onPicnicDataFetched,
   hideTravelTime,
+  onNavigateNext,
+  onNavigatePrevious,
+  navigationIndex,
+  navigationTotal,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData, collabTravelMode } = useRecommendations();
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
@@ -805,6 +810,29 @@ export default function ExpandedCardModal({
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
+
+  // Review navigation: horizontal swipe to cycle through reviewed cards
+  const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
+  const onNavigateNextRef = useRef(onNavigateNext);
+  const onNavigatePreviousRef = useRef(onNavigatePrevious);
+  onNavigateNextRef.current = onNavigateNext;
+  onNavigatePreviousRef.current = onNavigatePrevious;
+
+  const reviewSwipeResponder = useMemo(() => {
+    if (!hasNavigation) return null;
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 30 && Math.abs(gs.dy) < 40,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx < -60 && onNavigateNextRef.current) {
+          onNavigateNextRef.current();
+        } else if (gs.dx > 60 && onNavigatePreviousRef.current) {
+          onNavigatePreviousRef.current();
+        }
+      },
+    });
+  }, [hasNavigation]);
+
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
@@ -1077,9 +1105,37 @@ export default function ExpandedCardModal({
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={styles.modalContainer}>
+        <View
+          style={styles.modalContainer}
+          {...(reviewSwipeResponder?.panHandlers ?? {})}
+        >
           {/* Sticky Header */}
           <ExpandedCardHeader onClose={onClose} />
+
+          {/* Review navigation counter */}
+          {hasNavigation && navigationTotal != null && navigationIndex != null && (
+            <View style={styles.reviewNavBar}>
+              <TouchableOpacity
+                onPress={onNavigatePrevious}
+                disabled={!onNavigatePrevious}
+                style={styles.reviewNavArrow}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              >
+                <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : '#d1d5db'} />
+              </TouchableOpacity>
+              <Text style={styles.reviewNavCounter}>
+                {navigationIndex + 1} of {navigationTotal}
+              </Text>
+              <TouchableOpacity
+                onPress={onNavigateNext}
+                disabled={!onNavigateNext}
+                style={styles.reviewNavArrow}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              >
+                <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : '#d1d5db'} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Scrollable Content */}
           <ScrollView
@@ -1887,6 +1943,25 @@ const nightOutStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  reviewNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#f9fafb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  reviewNavArrow: {
+    padding: 4,
+  },
+  reviewNavCounter: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginHorizontal: 16,
+  },
   overlay: {
     flex: 1,
     justifyContent: "center",

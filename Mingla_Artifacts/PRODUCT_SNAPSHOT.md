@@ -8,13 +8,13 @@
 | Metric | Value |
 |--------|-------|
 | Total items tracked | 286 |
-| Grade A (launch-ready) | 88 (31%) |
+| Grade A (launch-ready) | 90 (31%) |
 | Grade B (solid, minor gaps) | 24 (8%) |
 | Grade C (functional, incomplete) | 2 (<1%) |
 | Grade D (fragile) | 2 (<1%) |
 | Grade F (broken/unaudited) | 171 (60%) |
 | Deferred | 1 (<1%) |
-| Deck hardening passes complete | 11 (45 bugs fixed) |
+| Deck hardening passes complete | 12 (46 bugs fixed) |
 
 ## Can a User Complete the Core Loop?
 
@@ -22,7 +22,7 @@
 |------|--------|------------|
 | Install + Auth | PARTIAL — Phone OTP (B), Google (C), Apple (B), Sign-out (A) | Medium |
 | Onboarding | PARTIAL — preference save + skip work (A), but state machine + GPS + resume all F | Low |
-| Explore (deck swipe) | STRONG — 36 items at A, 7 at B, deck contract deterministic, cross-page dedup fixed | High |
+| Explore (deck swipe) | STRONG — 37 items at A, 7 at B, deck contract deterministic, cross-page dedup fixed, place→card sync live | High |
 | Save experience | UNVERIFIED — save/unsave at F | Low |
 | Schedule | PARTIAL — scheduling bugs exist (picker behind modal, no confirmation) | Medium |
 | Invite friends | UNVERIFIED — friend request send at B, but collaboration invites at F | Low |
@@ -40,6 +40,8 @@
 5. **Chat entirely unaudited (ORCH-0127)** — Social feature with zero verification. DM broken = hollow connections. S1.
 
 ### Recently Resolved Blockers
+- **Photo Backfill Job System (ORCH-0274)** — CLOSED. Broken global photo download replaced with city-scoped batch system. 2 tables, 9 actions, auto-advance, persistent progress, job status bar. Phase 1 (backend) + Phase 2 (UI). 23/23 tests PASS.
+- **place_pool → card_pool Sync (ORCH-0273)** — CLOSED. 13+ fields drifted silently between master record and served cards. Unified trigger now syncs 16 fields for single cards + curated composites. Old website trigger replaced. 10/10 tests PASS.
 - **Cross-Page Dedup (ORCH-0272)** — CLOSED. Impression recording broken since Mar 29 due to partial index mismatch. Fixed ON CONFLICT predicate, added error throw + degraded mode, client circuit breaker. Infinite scroll restored. 7/7 tests PASS.
 - **Deterministic Deck Contract (5 fixes)** — ORCH-0266 (double pagination), ORCH-0267 (travel time), ORCH-0038 (custom location GPS), ORCH-0268 (NULL price tier), ORCH-0048 (category interleave). All CLOSED at A. Solo mode (ORCH-0065) upgraded F→B, collab parity (ORCH-0066) upgraded C→B.
 - **ORCH-0258 (admin_users privilege escalation)** — CLOSED. All permissive policies dropped, is_admin_user() gating. QA passed.
