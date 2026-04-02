@@ -19,6 +19,8 @@ export interface AcceptInviteResult {
   sessionId: string;
   sessionName: string;
   boardId: string | null;
+  /** Present on success so callers can clear matching in-app notification rows. */
+  inviteId: string;
   error?: string;
 }
 
@@ -89,6 +91,7 @@ export async function acceptCollaborationInvite(
         sessionId: '',
         sessionName: '',
         boardId: null,
+        inviteId: '',
         error: 'Invite not found or already processed.',
       };
     }
@@ -115,6 +118,7 @@ export async function acceptCollaborationInvite(
         sessionId: params.sessionId,
         sessionName: '',
         boardId: null,
+        inviteId: '',
         error: 'Invite not found.',
       };
     }
@@ -125,6 +129,7 @@ export async function acceptCollaborationInvite(
       sessionId: '',
       sessionName: '',
       boardId: null,
+      inviteId: '',
       error: 'Either inviteId or sessionId must be provided.',
     };
   }
@@ -152,6 +157,7 @@ export async function acceptCollaborationInvite(
       sessionId,
       sessionName,
       boardId: null,
+      inviteId: resolvedInvite.id,
       error: 'Failed to accept invite.',
     };
   }
@@ -344,7 +350,13 @@ export async function acceptCollaborationInvite(
     console.error('[collaborationInviteService] Error creating preferences:', preferencesError);
   }
 
-  return { success: true, sessionId, sessionName, boardId };
+  return {
+    success: true,
+    sessionId,
+    sessionName,
+    boardId,
+    inviteId: resolvedInvite.id,
+  };
 }
 
 // ── Decline ───────────────────────────────────────────────────────────────────
@@ -355,6 +367,13 @@ export interface DeclineInviteParams {
   sessionId?: string;
 }
 
+export interface DeclineInviteResult {
+  success: boolean;
+  inviteId?: string;
+  sessionId?: string;
+  error?: string;
+}
+
 /**
  * Decline a collaboration invite.
  *
@@ -363,7 +382,7 @@ export interface DeclineInviteParams {
  */
 export async function declineCollaborationInvite(
   params: DeclineInviteParams
-): Promise<{ success: boolean; error?: string }> {
+): Promise<DeclineInviteResult> {
   const { userId } = params;
 
   // Resolve the invite row — need both inviteId and sessionId for full cleanup
@@ -424,5 +443,5 @@ export async function declineCollaborationInvite(
       .eq('has_accepted', false);
   }
 
-  return { success: true };
+  return { success: true, inviteId, sessionId };
 }
