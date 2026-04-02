@@ -463,7 +463,8 @@ export async function recordImpressions(
   });
 
   if (error) {
-    console.warn('[card-pool] Record impressions error:', error.message);
+    console.error('[card-pool] CRITICAL: Record impressions failed — cross-page dedup will break:', error.message);
+    throw new Error(`Impression recording failed: ${error.message}`);
   }
 }
 
@@ -905,7 +906,12 @@ export async function serveCardsFromPipeline(
     const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
     // Record impressions SYNCHRONOUSLY to prevent cross-batch duplicates (CF-002 fix)
-    await recordImpressions(supabaseAdmin, userId, servedIds);
+    try {
+      await recordImpressions(supabaseAdmin, userId, servedIds);
+    } catch (e) {
+      // Degraded mode: serve cards even if impressions fail (dedup will be broken)
+      console.error('[card-pool] Serving cards despite impression failure — dedup degraded');
+    }
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,
@@ -942,7 +948,12 @@ export async function serveCardsFromPipeline(
 
   // Record impressions for pool cards we're serving
   if (servedIds.length > 0) {
-    await recordImpressions(supabaseAdmin, userId, servedIds);
+    try {
+      await recordImpressions(supabaseAdmin, userId, servedIds);
+    } catch (e) {
+      // Degraded mode: serve cards even if impressions fail (dedup will be broken)
+      console.error('[card-pool] Serving cards despite impression failure — dedup degraded');
+    }
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,

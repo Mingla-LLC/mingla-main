@@ -1,7 +1,7 @@
 # Master Bug List
 
-> Last updated: 2026-03-31
-> Total: 286 | Open: 134 | Closed: 88 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-02
+> Total: 287 | Open: 133 | Closed: 89 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -19,7 +19,7 @@
 
 | Severity | Open | Closed/Verified | Total |
 |----------|------|-----------------|-------|
-| S0 (Critical) | 4 | 10 | 14 |
+| S0 (Critical) | 3 | 11 | 14 |
 | S1 (High) | 50 | 45 | 95 |
 | S2 (Medium) | 64 | 38 | 102 |
 | S3 (Low) | 18 | 12 | 30 |
@@ -93,6 +93,12 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (Cross-Page Dedup)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0272 | Cross-page dedup — pages return same 20 cards + UI freeze | ON CONFLICT predicate fixed to match partial index, error throw + degraded mode, client circuit breaker | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md |
 
 ## Recently Closed (State Persistence)
 
