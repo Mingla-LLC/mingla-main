@@ -12,7 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from './ui/Icon';
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { voiceReviewService } from "../services/voiceReviewService";
+import { supabase } from "../services/supabase";
 import { CalendarService } from "../services/calendarService";
 import { useAppStore } from "../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -91,18 +91,38 @@ export default function PostExperienceModal({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await voiceReviewService.submitVoiceReview(user.id, {
-        calendarEntryId: resolvedCalendarEntryId as string,
-        cardId: review.cardId,
-        placeName: review.placeName,
-        placeAddress: review.placeAddress,
-        placeCategory: review.placeCategory,
-        placePoolId: review.placePoolId,
-        googlePlaceId: review.googlePlaceId,
-        rating,
-        didAttend: true,
-        audioClips: [],
-      });
+      const { data: reviewData, error: insertError } = await supabase
+        .from("place_reviews")
+        .insert({
+          user_id: user.id,
+          calendar_entry_id: resolvedCalendarEntryId,
+          place_pool_id: review.placePoolId || null,
+          google_place_id: review.googlePlaceId || null,
+          card_id: review.cardId,
+          place_name: review.placeName,
+          place_address: review.placeAddress || null,
+          place_category: review.placeCategory || null,
+          rating,
+          did_attend: true,
+        })
+        .select("id")
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Mark calendar entry as reviewed
+      if (resolvedCalendarEntryId) {
+        await supabase
+          .from("calendar_entries")
+          .update({
+            feedback_status: "completed",
+            review_id: reviewData.id,
+            status: "completed",
+          })
+          .eq("id", resolvedCalendarEntryId)
+          .eq("user_id", user.id);
+      }
+
       setStep("thank-you");
     } catch (error) {
       console.error("[PostExperienceModal] Submit failed:", error);
