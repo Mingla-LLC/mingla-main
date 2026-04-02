@@ -725,6 +725,20 @@ const OnboardingFlow = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])  // intentionally empty — run once on mount only
 
+  // ─── Deferred TextInput Focus ───
+  // autoFocus on a TextInput inside a scrollEnabled={false} ScrollView causes a
+  // native crash on iOS Fabric (New Architecture). iOS tries to scroll the focused
+  // field into view, but the disabled ScrollView can't scroll → native exception.
+  // Fix: focus manually after the native view hierarchy has fully committed.
+  useEffect(() => {
+    if (navState.subStep === 'welcome' && !(data.firstName || '').trim()) {
+      const timer = setTimeout(() => {
+        firstNameRef.current?.focus()
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+  }, [navState.subStep]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── UI State ───
   const [otpCode, setOtpCode] = useState('')
   const [otpError, setOtpError] = useState(false)
@@ -825,6 +839,8 @@ const OnboardingFlow = ({
   const tagTopAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
   const tagAccentAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
   const welcomeAnimRan = useRef(false)
+  const firstNameRef = useRef<TextInput>(null)
+  const lastNameRef = useRef<TextInput>(null)
 
   // ─── Intent Card Stagger Animations ───
   const intentAnims = useRef(
@@ -1647,8 +1663,14 @@ const OnboardingFlow = ({
   // Launch animation + handler now lives in GettingExperiencesScreen (Step 7b)
 
   // ─── Welcome Text Entrance Animation ───
+  // CRITICAL: Only run when Phase 2 (Animated.Text greeting) is rendered.
+  // Phase 1 (name collection) uses regular Text/TextInput — the animated values
+  // aren't attached to any native view. On iOS Fabric, starting useNativeDriver
+  // animations on detached nodes throws a native ObjC exception → SIGABRT crash.
+  const hasNameForGreeting = !!(data.firstName || '').trim() && data.phoneVerified
   useEffect(() => {
     if (navState.subStep !== 'welcome' || welcomeAnimRan.current) return
+    if (!hasNameForGreeting) return  // Phase 1 — no Animated.Text in tree, skip
     welcomeAnimRan.current = true
 
     const runWelcomeAnim = async () => {
@@ -1705,7 +1727,7 @@ const OnboardingFlow = ({
     }
 
     runWelcomeAnim()
-  }, [navState.subStep])
+  }, [navState.subStep, hasNameForGreeting])
 
   // ─── Step-Level Nav Handlers ───
   const handleGoNext = useCallback(() => {
@@ -1895,6 +1917,7 @@ const OnboardingFlow = ({
 
           <View style={styles.nameInputRow}>
             <TextInput
+              ref={firstNameRef}
               style={styles.nameInput}
               placeholder="First"
               placeholderTextColor={colors.gray[300]}
@@ -1902,11 +1925,12 @@ const OnboardingFlow = ({
               onChangeText={(text) => setData((p) => ({ ...p, firstName: text }))}
               autoCapitalize="words"
               autoCorrect={false}
-              autoFocus
               returnKeyType="next"
+              onSubmitEditing={() => lastNameRef.current?.focus()}
               textAlign="center"
             />
             <TextInput
+              ref={lastNameRef}
               style={styles.nameInput}
               placeholder="Last"
               placeholderTextColor={colors.gray[300]}
@@ -2598,9 +2622,18 @@ const OnboardingFlow = ({
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                     setData((p) => {
                       const current = p.selectedPriceTiers
-                      const next = current.includes(tier.slug)
-                        ? current.filter((s) => s !== tier.slug)
-                        : [...current, tier.slug]
+                      // Mutual exclusion: "Any" vs specific tiers
+                      if (tier.slug === 'any') {
+                        // Selecting "Any" → replace all with ['any']
+                        return current.includes('any')
+                          ? p  // already selected, no-op (min 1)
+                          : { ...p, selectedPriceTiers: ['any'] }
+                      }
+                      // Selecting a specific tier → remove 'any' if present
+                      const withoutAny = current.filter((s) => s !== 'any')
+                      const next = withoutAny.includes(tier.slug)
+                        ? withoutAny.filter((s) => s !== tier.slug)
+                        : [...withoutAny, tier.slug]
                       if (next.length === 0) return p
                       return { ...p, selectedPriceTiers: next }
                     })
@@ -2898,18 +2931,18 @@ const OnboardingFlow = ({
 // ─── Helper ───
 function getCategoryIcon(slug: string): string {
   const iconMap: Record<string, string> = {
-    nature: 'leaf-outline',
-    first_meet: 'chatbubbles-outline',
-    picnic_park: 'basket-outline',
-    picnic: 'basket-outline',
+    nature: 'trees',
+    first_meet: 'handshake',
+    picnic_park: 'tree-pine',
+    picnic: 'tree-pine',
     drink: 'wine-outline',
-    casual_eats: 'fast-food-outline',
-    fine_dining: 'restaurant-outline',
-    watch: 'film-outline',
+    casual_eats: 'utensils-crossed',
+    fine_dining: 'chef-hat',
+    watch: 'film-new',
     live_performance: 'musical-notes-outline',
     creative_arts: 'color-palette-outline',
     play: 'game-controller-outline',
-    wellness: 'body-outline',
+    wellness: 'heart-pulse',
     flowers: 'flower-outline',
   }
   return iconMap[slug] || 'ellipse-outline'

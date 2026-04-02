@@ -93,10 +93,11 @@ function mapPoolCardToCard(raw: Record<string, unknown>, rowCardType?: string): 
     googlePlaceId: (raw.google_place_id as string) ?? null,
     lat: (raw.lat as number) ?? null,
     lng: (raw.lng as number) ?? null,
-    priceTier: derivePriceTier(
+    priceTier: (raw.price_tiers as string[])?.[0] ?? derivePriceTier(
       (raw.price_tier as string) ?? null,
       (raw.price_level as string) ?? null,
     ),
+    priceTiers: (raw.price_tiers as string[])?.length ? (raw.price_tiers as string[]) : [(raw.price_tier as string) || 'chill'],
     description: (raw.description as string) ?? null,
     cardType: cardType as "single" | "curated",
     tagline: (raw.tagline as string) ?? null,

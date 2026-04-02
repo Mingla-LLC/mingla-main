@@ -112,7 +112,8 @@ serve(async (req: Request) => {
         title: row.title ?? (cardData.title as string) ?? "Unknown",
         category: row.category ?? (cardData.category as string) ?? "",
         imageUrl: row.image_url ?? (cardData.image_url as string) ?? null,
-        priceTier: (cardData.price_tier as string) ?? (cardData.priceTier as string) ?? null,
+        priceTier: (cardData.price_tiers as string[])?.[0] ?? (cardData.price_tier as string) ?? (cardData.priceTier as string) ?? null,
+        priceTiers: (cardData.price_tiers as string[])?.length ? (cardData.price_tiers as string[]) : [(cardData.price_tier as string) || 'chill'],
         rating: (cardData.rating as number) ?? null,
         savedAt: row.created_at,
       };

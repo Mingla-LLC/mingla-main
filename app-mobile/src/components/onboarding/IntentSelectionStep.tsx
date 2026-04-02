@@ -187,68 +187,16 @@ const IntentSelectionStep = ({
   });
 
   const intentOptions = [
-    {
-      id: "adventurous",
-      title: "Adventurous",
-      icon: "compass-outline",
-      description: "Explore your city — great for adventurous souls",
-      experienceType: "Adventurous",
-    },
-    {
-      id: "first-date",
-      title: "Plan First Dates",
-      icon: "heart-outline",
-      description: "Great first impression experiences",
-      experienceType: "First Date",
-    },
-    {
-      id: "romantic",
-      title: "Find Romantic Activities",
-      icon: "heart-outline",
-      description: "Intimate and romantic experiences",
-      experienceType: "Romantic",
-    },
-    {
-      id: "group-fun",
-      title: "Find Activities for Groups",
-      icon: "people-outline",
-      description: "Group activities and celebrations",
-      experienceType: "Group fun",
-    },
-    {
-      id: "picnic-dates",
-      title: "Picnic Dates",
-      icon: "basket-outline",
-      description: "Outdoor picnic experiences and parks",
-      experienceType: "Picnic Dates",
-    },
-    {
-      id: "take-a-stroll",
-      title: "Take a Stroll",
-      icon: "walk-outline",
-      description: "Scenic walks and leisurely strolls",
-      experienceType: "Take a Stroll",
-    },
+    { id: "adventurous",    title: "Adventurous",               icon: "compass-outline", description: "Explore your city — great for adventurous souls", experienceType: "Adventurous" },
+    { id: "first-date",     title: "Plan First Dates",          icon: "sparkles",        description: "Great first impression experiences",              experienceType: "First Date" },
+    { id: "romantic",       title: "Find Romantic Activities",   icon: "heart",           description: "Intimate and romantic experiences",               experienceType: "Romantic" },
+    { id: "group-fun",      title: "Find Activities for Groups", icon: "people",          description: "Group activities and celebrations",               experienceType: "Group fun" },
+    { id: "picnic-dates",   title: "Picnic Dates",              icon: "sandwich",        description: "Outdoor picnic experiences and parks",            experienceType: "Picnic Dates" },
+    { id: "take-a-stroll",  title: "Take a Stroll",             icon: "walk-outline",    description: "Scenic walks and leisurely strolls",              experienceType: "Take a Stroll" },
   ];
 
-  // Get the appropriate icon name for each option
   const getIconName = (option: (typeof intentOptions)[0]) => {
-    // Use the icon specified in the option, or map to appropriate Ionicons
-    switch (option.id) {
-      case "adventurous":
-        return "globe-outline";
-      case "first-date":
-      case "romantic":
-        return "heart-outline";
-      case "group-fun":
-        return "people-outline"; // Three+ people concept
-      case "picnic-dates":
-        return "basket-outline";
-      case "take-a-stroll":
-        return "walk-outline";
-      default:
-        return option.icon;
-    }
+    return option.icon;
   };
 
   // Check if intents are selected (robust check)

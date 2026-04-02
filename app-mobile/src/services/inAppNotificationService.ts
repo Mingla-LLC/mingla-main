@@ -35,7 +35,7 @@ export type NavigationTarget =
   | { page: "connections" }
   | { page: "likes" }
   | { page: "profile" }
-  | { page: "activity"; tab?: "saved" | "boards" | "calendar" }
+  | { page: "likes"; tab?: "saved" | "boards" | "calendar" }
   | { page: "home"; sessionId: string }
   | { page: "discover" }
   | { page: "preferences" }
@@ -348,7 +348,7 @@ class InAppNotificationServiceClass {
       "calendar_added",
       "Added to Calendar",
       `"${experienceName}" is on your schedule`,
-      { page: "activity", tab: "calendar" },
+      { page: "likes", tab: "calendar" },
       { experienceName }
     );
   }
@@ -360,7 +360,7 @@ class InAppNotificationServiceClass {
       amount
         ? `"${experienceName}" booked for ${amount} — enjoy your experience!`
         : `"${experienceName}" has been booked — enjoy!`,
-      { page: "activity" },
+      { page: "likes" },
       { experienceName, amount }
     );
   }

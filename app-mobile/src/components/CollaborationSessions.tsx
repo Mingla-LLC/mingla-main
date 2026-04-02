@@ -30,6 +30,8 @@ import { usePhoneLookup, useDebouncedValue } from '../hooks/usePhoneLookup';
 import { createPendingInvite } from '../services/phoneLookupService';
 import { getDisplayName } from '../utils/getDisplayName';
 import { useAppStore } from '../store/appStore';
+import { useSessionCreationGate } from '../hooks/useSessionCreationGate';
+import { CustomPaywallScreen } from './CustomPaywallScreen';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
 
@@ -120,6 +122,16 @@ export default function CollaborationSessions({
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const lastHandledInviteTriggerNonce = useRef<number | null>(null);
+  const createSessionInputRef = useRef<TextInput>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  // Deferred focus: autoFocus inside Modal crashes on iOS Fabric.
+  useEffect(() => {
+    if (showCreateModal) {
+      const timer = setTimeout(() => createSessionInputRef.current?.focus(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [showCreateModal]);
 
   // Phone input state
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -132,6 +144,9 @@ export default function CollaborationSessions({
   const [phoneInvitees, setPhoneInvitees] = useState<{ phoneE164: string }[]>([]);
 
   const { user } = useAppStore();
+
+  // Session creation gate — tier-based limit enforcement
+  const { canCreateSession: gateAllows, maxSessions, isUnlimited } = useSessionCreationGate();
 
   // Build E.164 phone
   const phoneRawDigits = phoneNumber.replace(/\D/g, '');
@@ -246,6 +261,20 @@ export default function CollaborationSessions({
   };
 
   const handleCreateSession = () => {
+    // Re-check tier gate in case limit changed while modal was open
+    if (!gateAllows && !isUnlimited) {
+      const limitLabel = maxSessions === 1 ? '1 session' : `${maxSessions} sessions`;
+      Alert.alert(
+        'Session limit reached',
+        `Your plan allows up to ${limitLabel}. Upgrade to create more.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => { setShowCreateModal(false); setShowPaywall(true); } },
+        ],
+      );
+      return;
+    }
+
     if (!newSessionName.trim()) {
       Alert.alert('Session name required', 'Please enter a session name before creating a session.');
       return;
@@ -371,7 +400,8 @@ export default function CollaborationSessions({
     (phoneLookupResult?.found &&
       selectedFriends.some(f => f.id === phoneLookupResult.user?.id));
 
-  const canCreateSession = newSessionName.trim().length > 0 && (selectedFriends.length > 0 || phoneInvitees.length > 0) && !isCreatingSession;
+  const uiChecksPass = newSessionName.trim().length > 0 && (selectedFriends.length > 0 || phoneInvitees.length > 0) && !isCreatingSession;
+  const canCreateSession = uiChecksPass && gateAllows;
 
   const scrollLeft = () => {
     scrollViewRef.current?.scrollTo({ x: 0, animated: true });
@@ -452,6 +482,10 @@ export default function CollaborationSessions({
           style={[styles.pill, styles.createPill]}
           onPress={() => {
             HapticFeedback.buttonPress();
+            if (!gateAllows && !isUnlimited) {
+              setShowPaywall(true);
+              return;
+            }
             setShowCreateModal(true);
           }}
           activeOpacity={0.7}
@@ -513,11 +547,11 @@ export default function CollaborationSessions({
               {/* Session Name Input */}
               <Text style={styles.modalLabel}>Session Name</Text>
               <TextInput
+                ref={createSessionInputRef}
                 style={styles.modalInput}
                 placeholder="e.g., Weekend Plans, Date Night..."
                 value={newSessionName}
                 onChangeText={setNewSessionName}
-                autoFocus
                 maxLength={30}
               />
 
@@ -902,6 +936,14 @@ export default function CollaborationSessions({
           }}
         />
       )}
+
+      <CustomPaywallScreen
+        isVisible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        userId={user?.id ?? ''}
+        feature="session_creation"
+        initialTier="pro"
+      />
 
     </View>
   );

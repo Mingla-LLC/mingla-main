@@ -61,24 +61,78 @@ const SPEED_KMH: Record<string, number> = {
 
 // ── DateTime Filter ─────────────────────────────────────────────────────────
 
-/** Parse "9:00 AM - 5:00 PM" or "9 AM - 5 PM" into { open: number, close: number } hours.
- *  Handles overnight wraparound: "5 PM - 2 AM" → { open: 17, close: 26 } (close > 24 = next day). */
-function parseHoursText(text: string): { open: number; close: number } | null {
+/** Parse a single time range like "9:00 AM – 5:00 PM" or "5:00 – 9:30 PM" (Google PM-only format).
+ *  Returns { open, close } in fractional 24h hours, or null if unparseable.
+ *  Handles overnight wraparound: "5 PM - 2 AM" → { open: 17, close: 26 }. */
+function parseSingleRange(range: string): { open: number; close: number } | null {
+  // Pattern 1: AM/PM on BOTH sides — "9:00 AM – 5:00 PM"
+  const fullMatch = range.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (fullMatch) {
+    let openH = parseInt(fullMatch[1]);
+    const openMin = parseInt(fullMatch[2] || '0');
+    const openAmPm = fullMatch[3].toUpperCase();
+    let closeH = parseInt(fullMatch[4]);
+    const closeMin = parseInt(fullMatch[5] || '0');
+    const closeAmPm = fullMatch[6].toUpperCase();
+    if (openAmPm === 'PM' && openH !== 12) openH += 12;
+    if (openAmPm === 'AM' && openH === 12) openH = 0;
+    if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
+    if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
+    const open = openH + openMin / 60;
+    let close = closeH + closeMin / 60;
+    if (close <= open) close += 24;
+    return { open, close };
+  }
+
+  // Pattern 2: AM/PM only on closing — "5:00 – 9:30 PM" (Google PM-only format)
+  const partialMatch = range.match(/(\d{1,2})(?::(\d{2}))?\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (partialMatch) {
+    let openH = parseInt(partialMatch[1]);
+    const openMin = parseInt(partialMatch[2] || '0');
+    let closeH = parseInt(partialMatch[3]);
+    const closeMin = parseInt(partialMatch[4] || '0');
+    const closeAmPm = partialMatch[5].toUpperCase();
+    if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
+    if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
+    // Infer opening AM/PM: if close is PM and open <= close (in 12h), open is PM too
+    // If close is AM (late night), open is PM (crossed midnight)
+    if (closeAmPm === 'PM') {
+      if (openH !== 12 && openH < 12) openH += 12; // Infer PM
+    } else {
+      // Close is AM (e.g., "10:00 – 1:00 AM") → open is PM
+      if (openH !== 12 && openH < 12) openH += 12;
+    }
+    const open = openH + openMin / 60;
+    let close = closeH + closeMin / 60;
+    if (close <= open) close += 24;
+    return { open, close };
+  }
+
+  return null;
+}
+
+/** Parse hours text into an array of time ranges.
+ *  Handles split hours: "11:00 AM – 2:30 PM, 5:00 – 10:00 PM" → two ranges.
+ *  Returns null if closed or empty. */
+function parseHoursText(text: string): { open: number; close: number }[] | null {
   if (!text || text.toLowerCase().includes('closed')) return null;
-  if (text.toLowerCase().includes('open 24') || text.toLowerCase().includes('24 hours')) return { open: 0, close: 24 };
-  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-  if (!match) return null;
-  let openH = parseInt(match[1]);
-  const openAmPm = match[3].toUpperCase();
-  let closeH = parseInt(match[4]);
-  const closeAmPm = match[6].toUpperCase();
-  if (openAmPm === 'PM' && openH !== 12) openH += 12;
-  if (openAmPm === 'AM' && openH === 12) openH = 0;
-  if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
-  if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
-  // Overnight wraparound: "5 PM - 2 AM" → close extends past midnight
-  if (closeH <= openH) closeH += 24;
-  return { open: openH, close: closeH };
+  if (text.toLowerCase().includes('open 24') || text.toLowerCase().includes('24 hours')) {
+    return [{ open: 0, close: 24 }];
+  }
+
+  // Split on comma for multi-range hours
+  const parts = text.split(/,\s*/);
+  const ranges: { open: number; close: number }[] = [];
+  for (const part of parts) {
+    const parsed = parseSingleRange(part.trim());
+    if (parsed) ranges.push(parsed);
+  }
+  return ranges.length > 0 ? ranges : null;
+}
+
+/** Check if a target hour falls within any of the parsed ranges. */
+function hourInRanges(hour: number, ranges: { open: number; close: number }[]): boolean {
+  return ranges.some(r => hour >= r.open && hour < r.close);
 }
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -88,18 +142,20 @@ function filterByDateTime(
   datetimePref: string | undefined,
   dateOption: string,
   timeSlot: string | null,
-  exactTime?: string | null
 ): any[] {
+  // 'anytime' means no time-of-day filtering — return all places as-is
+  if (timeSlot === 'anytime') return places;
+
   // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22, timezone-aware 2026-03-28)
   // Uses place-local time via utcOffsetMinutes for correct timezone handling.
   // Always-open types (parks, beaches, etc.) bypass hours check.
   // Cards with no hours AND not always-open are EXCLUDED.
-  if (dateOption === 'now' || (!datetimePref && !timeSlot && !exactTime)) {
+  if (dateOption === 'now' || (!datetimePref && !timeSlot)) {
     const utcNow = new Date();
 
     return places.filter(place => {
       // Compute place-local day and hour using its UTC offset
-      const offsetMin = place.utcOffsetMinutes ?? 0;
+      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
       const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
       const localDate = new Date(localMs);
       const targetDay = localDate.getUTCDay();
@@ -125,12 +181,24 @@ function filterByDateTime(
       // Path B: Pool format — openingHours as Record<string, string>
       const oh = place.openingHours;
       if (oh && typeof oh === 'object') {
+        // Path B.1: Structured periods (preserved from Google API — most reliable)
+        if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
+          return oh._periods.some((period: any) => {
+            if (period.open?.day !== targetDay) return false;
+            const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
+            let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
+            if (closeH === 0) closeH = 24;
+            if (closeH <= openH) closeH += 24;
+            return targetHourFrac >= openH && targetHourFrac < closeH;
+          });
+        }
+        // Path B.2: Text-based hours (fallback — uses regex parser)
         const dayName = DAY_NAMES[targetDay];
         const dayText = oh[dayName];
         if (!dayText) return true; // No data for this specific day — include
         const parsed = parseHoursText(dayText);
         if (!parsed) return false; // "Closed" or unparseable
-        return targetHourFrac >= parsed.open && targetHourFrac < parsed.close;
+        return hourInRanges(targetHourFrac, parsed);
       }
 
       // No opening hours data AND not an always-open type → EXCLUDE
@@ -140,25 +208,14 @@ function filterByDateTime(
 
   return places.filter(place => {
     // Compute place-local target time
-    const offsetMin = place.utcOffsetMinutes ?? 0;
+    const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
     const baseDate = datetimePref ? new Date(datetimePref) : new Date();
     const localMs = baseDate.getTime() + offsetMin * 60 * 1000;
     const localDate = new Date(localMs);
     const targetDay = localDate.getUTCDay();
 
     let targetHourStart: number;
-    if (exactTime) {
-      const etMatch = exactTime.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-      if (etMatch) {
-        let h = parseInt(etMatch[1]);
-        const ampm = etMatch[3].toUpperCase();
-        if (ampm === 'PM' && h !== 12) h += 12;
-        if (ampm === 'AM' && h === 12) h = 0;
-        targetHourStart = h;
-      } else {
-        targetHourStart = localDate.getUTCHours();
-      }
-    } else if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+    if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
       targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
     } else {
       targetHourStart = localDate.getUTCHours();
@@ -184,12 +241,24 @@ function filterByDateTime(
     // Path B: Record<string, string>
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // Path B.1: Structured periods (preserved from Google API)
+      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
+        return oh._periods.some((period: any) => {
+          if (period.open?.day !== targetDay) return false;
+          const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
+          let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
+          if (closeH === 0) closeH = 24;
+          if (closeH <= openH) closeH += 24;
+          return targetHourStart >= openH && targetHourStart < closeH;
+        });
+      }
+      // Path B.2: Text-based hours (fallback)
       const dayName = DAY_NAMES[targetDay];
       const dayText = oh[dayName];
       if (!dayText) return true;
       const parsed = parseHoursText(dayText);
       if (!parsed) return false;
-      return targetHourStart >= parsed.open && targetHourStart < parsed.close;
+      return hourInRanges(targetHourStart, parsed);
     }
 
     // No hours and not always-open → EXCLUDE
@@ -238,7 +307,7 @@ function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): boolean {
 
   const parsed = parseHoursText(dayText);
   if (!parsed) return false; // "Closed" or unparseable
-  return hour >= parsed.open && hour < parsed.close;
+  return hourInRanges(hour, parsed);
 }
 
 function filterCuratedByStopHours(
@@ -249,7 +318,7 @@ function filterCuratedByStopHours(
     if (card.cardType !== 'curated' || !card.stops?.length) return true;
 
     // Compute place-local start time using card's timezone offset
-    const offsetMin = card.utcOffsetMinutes ?? 0;
+    const offsetMin = card.utcOffsetMinutes ?? (card.lng != null ? Math.round(card.lng / 15) * 60 : 0);
     const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
     const localDate = new Date(localMs);
     let currentHour = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
@@ -298,18 +367,21 @@ serve(async (req: Request) => {
       datetimePref,
       dateOption = 'now',
       timeSlot: rawTimeSlot = null,
-      exactTime: rawExactTime = null,
       batchSeed = 0,
       limit = 20,
       priceTiers,
+      excludeCardIds: rawExcludeCardIds = [],
     } = body;
 
+    // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
+    const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
+      ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
+      : [];
+
     // Sanitize time inputs
-    const EXACT_TIME_RE = /^(1[0-2]|0?[1-9]):[0-5][0-9]\s?(AM|PM)$/i;
-    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight'].includes(rawTimeSlot)
+    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight', 'anytime'].includes(rawTimeSlot)
       ? rawTimeSlot
       : null;
-    const _exactTime = rawExactTime && EXACT_TIME_RE.test(rawExactTime) ? rawExactTime : null;
 
     // ── Validate ──────────────────────────────────────────────────────────
     if (!location?.lat || !location?.lng) {
@@ -440,7 +512,6 @@ serve(async (req: Request) => {
     }
 
     // ── Pool-first serving (ALL categories in ONE query) ──────────────────
-    const poolOffset = (batchSeed || 0) * limit;
 
     // ── Warm-pool: return immediately (pool is admin-managed) ──
     if (userId && body.warmPool) {
@@ -463,27 +534,27 @@ serve(async (req: Request) => {
           budgetMax,
           limit,
           cardType: 'single' as const,
-          offset: poolOffset,
           priceTiers: priceTiers as PriceTierSlug[] | undefined,
+          excludePlaceIds: excludeCardIds,
         };
 
         const poolResult = await serveCardsFromPipeline(
           poolParams,
           '', // No Google API key needed — pool-only serving
-          { travelMode },
+          { travelMode, travelConstraintValue },
         );
 
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
-          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, _exactTime);
+          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot);
 
           // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
           const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
           const scoredPoolCards = scorePoolCards(hoursFilteredCards);
-          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, offset=${poolOffset}) in ${elapsed}ms`);
+          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}) in ${elapsed}ms`);
 
           return new Response(JSON.stringify({
             cards: applyTierGating(scoredPoolCards),

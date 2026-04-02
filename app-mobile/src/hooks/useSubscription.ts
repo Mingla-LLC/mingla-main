@@ -6,7 +6,7 @@ import {
   getEffectiveTier,
   getTrialDaysRemaining,
   getTrialTotalDays,
-  getReferralMonthsRemaining,
+  getReferralDaysRemaining,
   hasElevatedAccess,
 } from '../types/subscription'
 import { useCustomerInfo } from './useRevenueCat'
@@ -90,8 +90,8 @@ export function useServerTier(userId: string | undefined) {
  *   3. Server-side RPC          — admin subscription overrides (Priority 0 on server)
  *   4. Fallback                 → 'free'
  *
- * Takes the higher of client-side and server-side tiers so neither source
- * can downgrade the user.
+ * When the server tier is available it is authoritative (includes admin
+ * overrides the client cannot see). Falls back to client tier while loading.
  */
 export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
   const { data: customerInfo } = useCustomerInfo()
@@ -142,10 +142,10 @@ export function useTrialTotalDays(userId: string | undefined): number {
   return getTrialTotalDays(subscription ?? null)
 }
 
-/** Returns how many referral bonus months remain, or 0 if none. */
-export function useReferralMonthsRemaining(userId: string | undefined): number {
+/** Returns how many referral bonus days remain, or 0 if none. */
+export function useReferralDaysRemaining(userId: string | undefined): number {
   const { data: subscription } = useSubscription(userId)
-  return getReferralMonthsRemaining(subscription ?? null)
+  return getReferralDaysRemaining(subscription ?? null)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

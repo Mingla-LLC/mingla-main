@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import * as Haptics from 'expo-haptics';
-import { OneSignal } from 'react-native-onesignal';
+import { clearNotificationBadge } from '../services/oneSignalService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -221,7 +221,7 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
       const cached = queryClient.getQueryData<ServerNotification[]>(notificationKeys.all(userId));
       const unreadCount = cached?.filter(n => !n.is_read).length ?? 0;
       if (unreadCount === 0) {
-        OneSignal.Notifications.clearAll();
+        clearNotificationBadge();
       }
       // Note: OneSignal RN SDK v5 doesn't expose setBadgeCount for non-zero values.
       // Badge increments via push payload; clearAll resets to 0 when all are read.
@@ -247,7 +247,7 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
         old.map((n) => ({ ...n, is_read: true, read_at: n.read_at ?? new Date().toISOString() }))
     );
     // Reset iOS badge count (Block 3 Pass 2 — hardened 2026-03-21)
-    OneSignal.Notifications.clearAll();
+    clearNotificationBadge();
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })

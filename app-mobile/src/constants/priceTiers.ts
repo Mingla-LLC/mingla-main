@@ -10,7 +10,7 @@
  * Must stay in sync with supabase/functions/_shared/priceTiers.ts
  */
 
-export type PriceTierSlug = 'chill' | 'comfy' | 'bougie' | 'lavish';
+export type PriceTierSlug = 'any' | 'chill' | 'comfy' | 'bougie' | 'lavish';
 
 export interface PriceTier {
   slug: PriceTierSlug;
@@ -24,6 +24,7 @@ export interface PriceTier {
 }
 
 export const PRICE_TIERS: readonly PriceTier[] = [
+  { slug: 'any', label: 'Any', rangeLabel: 'All prices', googleLevels: [], min: 0, max: null, icon: 'cash-outline', color: '#eb7825' },
   { slug: 'chill', label: 'Chill', rangeLabel: '$50 max', googleLevels: ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE'], min: 0, max: 50, icon: 'leaf-outline', color: '#10B981' },
   { slug: 'comfy', label: 'Comfy', rangeLabel: '$50 – $150', googleLevels: ['PRICE_LEVEL_MODERATE'], min: 50, max: 150, icon: 'cafe-outline', color: '#3B82F6' },
   { slug: 'bougie', label: 'Bougie', rangeLabel: '$150 – $300', googleLevels: ['PRICE_LEVEL_EXPENSIVE'], min: 150, max: 300, icon: 'sparkles-outline', color: '#8B5CF6' },

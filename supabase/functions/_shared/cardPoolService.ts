@@ -12,6 +12,7 @@ import {
   getPlaceTypesForCategory,
   resolveCategories,
   isChildVenueName,
+  toSlug,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 import { downloadAndStorePhotos, resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
@@ -30,8 +31,8 @@ export interface PoolQueryParams {
   limit: number;                   // how many cards to return (e.g., 20)
   cardType?: 'single' | 'curated';
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
-  excludeCardIds?: string[];       // additional exclusions
-  offset?: number;                 // skip this many unique cards before returning (for batch pagination)
+  excludeCardIds?: string[];       // additional UUID exclusions (card_pool.id)
+  excludePlaceIds?: string[];      // Place ID exclusions (card_pool.google_place_id)
   priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
 }
 
@@ -160,8 +161,6 @@ async function queryPoolCards(
     return { poolCards: [], totalUnseenCount: 0 };
   }
 
-  const offset = params.offset || 0;
-
   const { data, error } = await supabaseAdmin.rpc('query_pool_cards', {
     p_user_id: userId,
     p_categories: resolvedCats.length > 0 ? resolvedCats : [],
@@ -175,12 +174,12 @@ async function queryPoolCards(
     p_pref_updated_at: prefUpdatedAt,
     p_exclude_card_ids: excludeCardIds || [],
     p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
+    p_exclude_place_ids: params.excludePlaceIds || [],
     p_limit: limit,
-    p_offset: offset,
   });
 
   if (error) {
-    console.error('[card-pool] SQL query error:', error);
+    console.error(`[cardPoolService] query_pool_cards RPC FAILED: ${error.message} (code: ${error.code}, hint: ${error.hint ?? 'none'}, details: ${error.details ?? 'none'})`);
     return { poolCards: [], totalUnseenCount: 0 };
   }
 
@@ -273,12 +272,13 @@ export async function upsertPlaceToPool(
     price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
     price_min: priceRange.min,
     price_max: priceRange.max,
-    opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
+    opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow, ...(parsedOH.periods ? { _periods: parsedOH.periods } : {}) } : null,
     photos: photos,
     website: place.websiteUri || place.website || null,
     raw_google_data: place,
     fetched_via: fetchedVia,
     price_tier: googleLevelToTierSlug(place.priceLevel),
+    price_tiers: googleLevelToTierSlug(place.priceLevel) ? [googleLevelToTierSlug(place.priceLevel)] : [],
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
@@ -392,6 +392,7 @@ export async function insertCardToPool(
     country: cardData.country || null,
     utc_offset_minutes: cardData.utcOffsetMinutes ?? null,
     price_tier: cardData.priceTier ?? googleLevelToTierSlug(cardData.priceLevel),
+    price_tiers: cardData.priceTiers ?? (cardData.priceTier ? [cardData.priceTier] : (googleLevelToTierSlug(cardData.priceLevel) ? [googleLevelToTierSlug(cardData.priceLevel)] : [])),
     popularity_score: popularityScore,
     is_active: true,
   };
@@ -539,7 +540,8 @@ function buildSingleCardFromPlace(
     placeType: place.primary_type || 'place',
     placeTypeLabel: (place.primary_type || '').replace(/_/g, ' '),
     website: place.website || null,
-    priceTier: place.price_tier ?? googleLevelToTierSlug(place.price_level),
+    priceTier: place.price_tiers?.[0] ?? place.price_tier ?? googleLevelToTierSlug(place.price_level),
+    priceTiers: place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []),
     matchFactors: {},
   };
 }
@@ -585,9 +587,9 @@ function estimateTravelMin(distKm: number, mode: string = 'walking'): number {
 
 function parseGoogleOpeningHours(
   roh: any
-): { hours: Record<string, string> | null; isOpenNow: boolean | null } {
+): { hours: Record<string, string> | null; isOpenNow: boolean | null; periods?: any[] } {
   if (!roh) return { hours: null, isOpenNow: null };
-  if (!roh.weekdayDescriptions && roh.openNow == null) return { hours: null, isOpenNow: null };
+  if (!roh.weekdayDescriptions && roh.openNow == null && !roh.periods) return { hours: null, isOpenNow: null };
 
   const hours: Record<string, string> = {};
   for (const desc of roh.weekdayDescriptions ?? []) {
@@ -598,6 +600,8 @@ function parseGoogleOpeningHours(
   return {
     hours: Object.keys(hours).length > 0 ? hours : null,
     isOpenNow: roh.openNow ?? null,
+    // Preserve structured periods for reliable time filtering (no regex needed)
+    periods: Array.isArray(roh.periods) && roh.periods.length > 0 ? roh.periods : undefined,
   };
 }
 
@@ -646,6 +650,7 @@ function poolCardToApiCard(
   userLat?: number,
   userLng?: number,
   travelMode?: string,
+  requestedCategories?: string[],
 ): any {
   if (card.card_type === 'curated') {
     // SERVE-TIME TRAVEL RECOMPUTATION (Block 8 — hardened 2026-03-22)
@@ -718,7 +723,8 @@ function poolCardToApiCard(
         : null,
       openingHours: resolveOpeningHours(card.opening_hours).hours,
       website: card.website || null,
-      priceTier: card.price_tier ?? 'chill',
+      priceTier: card.price_tiers?.[0] ?? card.price_tier ?? 'chill',
+      priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
       oneLiner: card.one_liner || null,
       tip: card.tip || null,
       scoringFactors: card.scoring_factors || null,
@@ -740,11 +746,21 @@ function poolCardToApiCard(
     travelTimeMin = estimateTravelMin(distanceKm, travelMode);
   }
 
+  // Pick the matched category from the user's pill selection instead of the card's
+  // dominant category. E.g., a museum tagged [creative_arts, casual_eats] shows as
+  // "Casual Eats" when the user selects the Casual Eats pill.
+  let displayCategory = card.category;
+  if (requestedCategories && requestedCategories.length > 0 && card.categories) {
+    const requestedSlugs = requestedCategories.map((c: string) => toSlug(c));
+    const matched = requestedSlugs.find((slug: string) => card.categories.includes(slug));
+    if (matched) displayCategory = matched;
+  }
+
   return {
     id: card.google_place_id || card.id,
     placeId: card.google_place_id || null,
     title: card.title,
-    category: card.category,
+    category: displayCategory,
     matchScore: card.match_score ?? card.base_match_score ?? 85,
     image: resolvePhotoUrl(card.stored_photo_urls, card.photos?.[0]?.name, '') || null,
     images: resolveAllPhotoUrls(card.stored_photo_urls, card.photos, ''),
@@ -765,7 +781,8 @@ function poolCardToApiCard(
     placeType: card.primary_type || 'place',
     placeTypeLabel: card.primary_type ? card.primary_type.replace(/_/g, ' ') : '',
     website: card.website || null,
-    priceTier: card.price_tier ?? 'chill',
+    priceTier: card.price_tiers?.[0] ?? card.price_tier ?? 'chill',
+    priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     oneLiner: card.one_liner || null,
     tip: card.tip || null,
     scoringFactors: card.scoring_factors || null,
@@ -840,8 +857,11 @@ export async function serveCardsFromPipeline(
   // ── STEP 1: Get preference timestamp ──────────────────────────────────
   const prefUpdatedAt = await getPreferencesUpdatedAt(supabaseAdmin, userId);
 
-  // ── STEP 2: Query pool (SQL-level pagination + impression exclusion) ──
-  let { poolCards, totalUnseenCount } = await queryPoolCards(params, prefUpdatedAt);
+  // ── STEP 2: Query pool (SQL-level impression exclusion) ──────────────
+  // Over-fetch by 50% to compensate for post-query travel time filter losses.
+  const fetchLimit = Math.ceil(params.limit * 1.5);
+  const adjustedParams = { ...params, limit: fetchLimit };
+  let { poolCards, totalUnseenCount } = await queryPoolCards(adjustedParams, prefUpdatedAt);
   const totalPoolSize = totalUnseenCount; // backward compat alias
 
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
@@ -863,11 +883,26 @@ export async function serveCardsFromPipeline(
     return true;
   });
 
+  // ── STEP 2b: Hard travel time filter ──────────────────────────────────
+  // Cards within the bounding box but beyond the user's travel time constraint
+  // are excluded. The bounding box uses a 1.3x expansion factor to capture
+  // detour routes; this post-query filter enforces the exact constraint.
+  if (options?.travelConstraintValue && options.travelConstraintValue > 0) {
+    const maxTravelMin = options.travelConstraintValue;
+    const mode = options.travelMode || 'walking';
+    poolCards = poolCards.filter((card: any) => {
+      if (card.lat == null || card.lng == null) return true; // keep cards without coords
+      const dist = haversine(lat, lng, card.lat, card.lng);
+      const travelMin = estimateTravelMin(dist, mode);
+      return travelMin <= maxTravelMin;
+    });
+  }
+
   // ── STEP 3: If pool has enough → serve directly ───────────────────────
   if (poolCards.length >= limit) {
     const served = poolCards.slice(0, limit);
     const servedIds = served.map((c: any) => c.id);
-    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
     // Record impressions SYNCHRONOUSLY to prevent cross-batch duplicates (CF-002 fix)
     await recordImpressions(supabaseAdmin, userId, servedIds);
@@ -903,7 +938,7 @@ export async function serveCardsFromPipeline(
   // ── Pool insufficient: serve what we have ───────────────────────────
   const served = poolCards.slice(0, limit);
   const servedIds = served.map((c: any) => c.id);
-  const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
+  const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
   // Record impressions for pool cards we're serving
   if (servedIds.length > 0) {

@@ -9,21 +9,22 @@
  */
 import {
   Compass,
+  Sparkles,
   Heart,
-  HeartHandshake,
-  PartyPopper,
+  Users,
+  Sandwich,
   Footprints,
-  TreePine,
+  Trees,
   Handshake,
+  TreePine,
   UtensilsCrossed,
   Wine,
-  Hamburger,
   ChefHat,
-  Clapperboard,
+  Film,
   Music,
   Palette,
-  Target,
-  Sparkles,
+  Gamepad2,
+  HeartPulse,
   Flower2,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -32,26 +33,26 @@ import {
 
 export const INTENT_ICON_MAP: Record<string, LucideIcon> = {
   adventurous: Compass,
-  'first-date': Heart,
-  romantic: HeartHandshake,
-  'group-fun': PartyPopper,
-  'picnic-dates': UtensilsCrossed,
+  'first-date': Sparkles,
+  romantic: Heart,
+  'group-fun': Users,
+  'picnic-dates': Sandwich,
   'take-a-stroll': Footprints,
 };
 
 // ─── Category slug → Lucide Icon ───────────────────────────────────────────
 
 export const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
-  nature: TreePine,
+  nature: Trees,
   first_meet: Handshake,
-  picnic_park: UtensilsCrossed,
+  picnic_park: TreePine,
   drink: Wine,
-  casual_eats: Hamburger,
+  casual_eats: UtensilsCrossed,
   fine_dining: ChefHat,
-  watch: Clapperboard,
+  watch: Film,
   live_performance: Music,
   creative_arts: Palette,
-  play: Target,
-  wellness: Sparkles,
+  play: Gamepad2,
+  wellness: HeartPulse,
   flowers: Flower2,
 };

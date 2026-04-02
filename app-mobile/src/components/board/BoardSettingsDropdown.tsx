@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -59,6 +59,16 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   const [deletingSession, setDeletingSession] = useState(false);
   const [exitingBoard, setExitingBoard] = useState(false);
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
+  const editNameInputRef = useRef<TextInput>(null);
+
+  // Deferred focus: autoFocus inside Modal crashes on iOS Fabric.
+  // Focus manually after the Modal's native view hierarchy has committed.
+  useEffect(() => {
+    if (showEditSessionModal) {
+      const timer = setTimeout(() => editNameInputRef.current?.focus(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [showEditSessionModal]);
 
   // Check if current user can manage session (is creator or admin)
   const canManageSession = currentUserId && (sessionCreatorId === currentUserId || isAdmin);
@@ -360,12 +370,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
             </View>
 
             <TextInput
+              ref={editNameInputRef}
               style={styles.editModalInput}
               value={editSessionName}
               onChangeText={setEditSessionName}
               placeholder="Enter session name"
               placeholderTextColor="#9ca3af"
-              autoFocus
               maxLength={100}
             />
 

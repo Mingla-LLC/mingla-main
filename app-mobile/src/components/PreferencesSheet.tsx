@@ -32,7 +32,6 @@ import {
   AutocompleteSuggestion,
 } from "../services/geocodingService";
 import { Calendar } from "./ui/calendar";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useQueryClient } from "@tanstack/react-query";
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
@@ -74,10 +73,10 @@ interface PreferencesSheetProps {
 // Experience Types — 7 curated types (kebab-case IDs match edge function)
 const experienceTypes = [
   { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
-  { id: "first-date",    label: "First Date",    icon: "people-outline" },
-  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
-  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
-  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "first-date",    label: "First Date",    icon: "sparkles" },
+  { id: "romantic",      label: "Romantic",       icon: "heart" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "sandwich" },
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
@@ -85,21 +84,17 @@ const experienceTypes = [
 
 // Categories with exact icons from image
 const categories = [
-  { id: "nature", label: "Nature & Views", icon: "leaf-outline" },
-  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
-  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
+  { id: "nature", label: "Nature & Views", icon: "trees" },
+  { id: "first_meet", label: "First Meet", icon: "handshake" },
+  { id: "picnic_park", label: "Picnic Park", icon: "tree-pine" },
   { id: "drink", label: "Drink", icon: "wine-outline" },
-  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
-  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
-  { id: "watch", label: "Watch", icon: "film-outline" },
+  { id: "casual_eats", label: "Casual Eats", icon: "utensils-crossed" },
+  { id: "fine_dining", label: "Fine Dining", icon: "chef-hat" },
+  { id: "watch", label: "Watch", icon: "film-new" },
   { id: "live_performance", label: "Live Performance", icon: "musical-notes-outline" },
-  {
-    id: "creative_arts",
-    label: "Creative & Arts",
-    icon: "color-palette-outline",
-  },
+  { id: "creative_arts", label: "Creative & Arts", icon: "color-palette-outline" },
   { id: "play", label: "Play", icon: "game-controller-outline" },
-  { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "wellness", label: "Wellness", icon: "heart-pulse" },
   { id: "flowers", label: "Flowers", icon: "flower-outline" },
 ];
 
@@ -125,10 +120,11 @@ const timeSlots = [
   { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
   { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
   { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
+  { id: "anytime", label: "Anytime", time: "All day", icon: "time-outline" },
 ];
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
-type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
+type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight" | "anytime";
 
 export default function PreferencesSheet({
   visible,
@@ -160,7 +156,7 @@ export default function PreferencesSheet({
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
   // Price Tiers
-  const [selectedPriceTiers, setSelectedPriceTiers] = useState<PriceTierSlug[]>(['chill', 'comfy', 'bougie', 'lavish']);
+  const [selectedPriceTiers, setSelectedPriceTiers] = useState<PriceTierSlug[]>(['comfy', 'bougie']);
 
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -182,10 +178,7 @@ export default function PreferencesSheet({
     null
   );
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [exactTime, setExactTime] = useState<string>("");
-  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Travel Mode
   const [travelMode, setTravelMode] = useState<string>("walking");
@@ -241,14 +234,13 @@ export default function PreferencesSheet({
   // Default preferences
   const defaultPreferences = {
     selectedIntents: [],
-    selectedPriceTiers: ['chill', 'comfy', 'bougie', 'lavish'] as PriceTierSlug[],
+    selectedPriceTiers: ['comfy', 'bougie'] as PriceTierSlug[],
     budgetMin: 0,
     budgetMax: 200,
     selectedCategories: [],
     selectedDateOption: "Now" as DateOption,
     selectedTimeSlot: null,
     selectedDate: null,
-    exactTime: "",
     travelMode: "walking",
     constraintType: 'time' as const,
     constraintValue: 30,
@@ -283,7 +275,7 @@ export default function PreferencesSheet({
       }
       if ((loadedPreferences).time_of_day) {
         const timeSlot = (loadedPreferences).time_of_day;
-        if (["brunch", "afternoon", "dinner", "lateNight"].includes(timeSlot)) {
+        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(timeSlot)) {
           setSelectedTimeSlot(timeSlot as TimeSlot);
         }
       }
@@ -304,7 +296,7 @@ export default function PreferencesSheet({
         selectedIntents: collabIntents,
         selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
           ? (loadedPreferences).price_tiers
-          : ['chill', 'comfy', 'bougie', 'lavish'],
+          : ['comfy', 'bougie'],
         budgetMin: (loadedPreferences).budget_min || 0,
         budgetMax: (loadedPreferences).budget_max || 200,
         selectedCategories: collabCats,
@@ -313,7 +305,6 @@ export default function PreferencesSheet({
         selectedDate: (loadedPreferences).datetime_pref
           ? new Date((loadedPreferences).datetime_pref)
           : null,
-        exactTime: "",
         travelMode: (loadedPreferences).travel_mode || "walking",
         constraintType: 'time' as const,
         constraintValue: (loadedPreferences).travel_constraint_value || 30,
@@ -357,13 +348,9 @@ export default function PreferencesSheet({
 
       if ((loadedPreferences).time_slot) {
         const timeSlot = (loadedPreferences).time_slot;
-        if (["brunch", "afternoon", "dinner", "lateNight"].includes(timeSlot)) {
+        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(timeSlot)) {
           setSelectedTimeSlot(timeSlot as TimeSlot);
         }
-      }
-
-      if ((loadedPreferences).exact_time) {
-        setExactTime((loadedPreferences).exact_time);
       }
 
       if (loadedPreferences.datetime_pref) {
@@ -385,7 +372,7 @@ export default function PreferencesSheet({
         selectedIntents: soloIntents,
         selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
           ? (loadedPreferences).price_tiers
-          : ['chill', 'comfy', 'bougie', 'lavish'],
+          : ['comfy', 'bougie'],
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
         selectedCategories: soloCats,
@@ -402,7 +389,6 @@ export default function PreferencesSheet({
         selectedDate: loadedPreferences.datetime_pref
           ? new Date(loadedPreferences.datetime_pref)
           : null,
-        exactTime: (loadedPreferences).exact_time || "",
         travelMode: loadedPreferences.travel_mode || "walking",
         constraintType: 'time' as const,
         constraintValue: loadedPreferences.travel_constraint_value || 30,
@@ -464,10 +450,15 @@ export default function PreferencesSheet({
 
   const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
     setSelectedPriceTiers((prev) => {
-      const next = prev.includes(slug)
-        ? prev.filter((s) => s !== slug)
-        : [...prev, slug];
-      // Enforce min 1
+      // Mutual exclusion: "Any" vs specific tiers
+      if (slug === 'any') {
+        return prev.includes('any') ? prev : ['any'];
+      }
+      // Selecting a specific tier → remove 'any' if present
+      const withoutAny = prev.filter((s) => s !== 'any');
+      const next = withoutAny.includes(slug)
+        ? withoutAny.filter((s) => s !== slug)
+        : [...withoutAny, slug];
       return next.length === 0 ? prev : next;
     });
   }, []);
@@ -477,7 +468,6 @@ export default function PreferencesSheet({
     if (option === "Now") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
-      setExactTime("");
     } else if (option === "Today") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
@@ -491,46 +481,7 @@ export default function PreferencesSheet({
 
   const handleTimeSlotSelect = useCallback((slot: TimeSlot) => {
     setSelectedTimeSlot(slot);
-    setExactTime("");
   }, []);
-
-  const formatTimeForDisplay = useCallback((date: Date): string => {
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const hours12 = hours % 12 || 12;
-    const minutesStr = String(minutes).padStart(2, "0");
-    return `${hours12}:${minutesStr} ${ampm}`;
-  }, []);
-
-  const handleTimePickerChange = useCallback(
-    (event: any, selectedDate?: Date) => {
-      if (Platform.OS === "android") {
-        setShowTimePicker(false);
-      }
-
-      if (selectedDate) {
-        setSelectedTime(selectedDate);
-        const formattedTime = formatTimeForDisplay(selectedDate);
-        setExactTime(formattedTime);
-        setSelectedTimeSlot(null);
-      }
-
-      if (Platform.OS === "ios") {
-        if (event.type === "dismissed") {
-          setShowTimePicker(false);
-        }
-      }
-    },
-    [formatTimeForDisplay]
-  );
-
-  const handleTimePickerConfirm = useCallback(() => {
-    setShowTimePicker(false);
-    const formattedTime = formatTimeForDisplay(selectedTime);
-    setExactTime(formattedTime);
-    setSelectedTimeSlot(null);
-  }, [formatTimeForDisplay, selectedTime]);
 
   const handleCalendarDateSelect = useCallback((date: Date) => {
     setSelectedDate(date);
@@ -644,7 +595,6 @@ export default function PreferencesSheet({
     if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories)) return true;
     if (selectedDateOption !== initialPreferences.selectedDateOption) return true;
     if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) return true;
-    if (exactTime !== initialPreferences.exactTime) return true;
     if (!datesEqual(selectedDate, initialPreferences.selectedDate)) return true;
     if (travelMode !== initialPreferences.travelMode) return true;
     if (constraintValue !== initialPreferences.constraintValue) return true;
@@ -658,7 +608,6 @@ export default function PreferencesSheet({
     selectedCategories,
     selectedDateOption,
     selectedTimeSlot,
-    exactTime,
     selectedDate,
     travelMode,
     constraintValue,
@@ -671,26 +620,26 @@ export default function PreferencesSheet({
 
     let hasDateTime = true;
     if (selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') {
-      hasDateTime = !!selectedTimeSlot || !!exactTime;
+      hasDateTime = !!selectedTimeSlot;
     } else if (selectedDateOption === 'Pick a Date') {
-      hasDateTime = !!selectedDate && (!!selectedTimeSlot || !!exactTime);
+      hasDateTime = !!selectedDate && !!selectedTimeSlot;
     }
     // "Now" requires nothing extra
 
     const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
 
     return hasPills && hasBudget && hasDateTime && hasTravel;
-  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlot, exactTime, selectedDate, constraintValue]);
+  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue]);
 
   const ctaHintText = useMemo(() => {
     if (!isFormComplete) {
-      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && !selectedTimeSlot && !exactTime) {
+      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && !selectedTimeSlot) {
         return 'Pick a time to continue';
       }
       if (selectedDateOption === 'Pick a Date' && !selectedDate) {
         return 'Pick a date to continue';
       }
-      if (selectedDateOption === 'Pick a Date' && selectedDate && !selectedTimeSlot && !exactTime) {
+      if (selectedDateOption === 'Pick a Date' && selectedDate && !selectedTimeSlot) {
         return 'Pick a time to continue';
       }
       if (typeof constraintValue !== 'number' || constraintValue < 5) {
@@ -699,7 +648,7 @@ export default function PreferencesSheet({
       return 'Complete your preferences';
     }
     return null;
-  }, [isFormComplete, selectedDateOption, selectedTimeSlot, exactTime, selectedDate, constraintValue]);
+  }, [isFormComplete, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 0;
@@ -723,7 +672,6 @@ export default function PreferencesSheet({
       changes++;
     if (selectedDateOption !== initialPreferences.selectedDateOption) changes++;
     if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) changes++;
-    if (exactTime !== initialPreferences.exactTime) changes++;
 
     const datesEqual = (a: Date | null, b: Date | null) => {
       if (a === null && b === null) return true;
@@ -744,7 +692,6 @@ export default function PreferencesSheet({
     selectedCategories,
     selectedDateOption,
     selectedTimeSlot,
-    exactTime,
     selectedDate,
     travelMode,
     constraintValue,
@@ -759,7 +706,6 @@ export default function PreferencesSheet({
     setSelectedDateOption(defaultPreferences.selectedDateOption);
     setSelectedTimeSlot(defaultPreferences.selectedTimeSlot);
     setSelectedDate(defaultPreferences.selectedDate);
-    setExactTime(defaultPreferences.exactTime);
     setTravelMode(defaultPreferences.travelMode);
     setConstraintValue(defaultPreferences.constraintValue);
     setSearchLocation(defaultPreferences.searchLocation);
@@ -774,14 +720,14 @@ export default function PreferencesSheet({
       : searchLocation || null;
 
     // Compute backward-compat budget from selected tiers
-    const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
-    const backCompatBudgetMax = highestTier?.max ?? 1000;
+    const backCompatBudgetMax = selectedPriceTiers.includes('any' as PriceTierSlug)
+      ? 10000
+      : (PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug))?.max ?? 1000);
 
-    // Normalize date/time, exact time, and location fields for consistency
+    // Normalize date/time and location fields for consistency
     const normalized = normalizePreferencesForSave({
       date_option: selectedDateOption?.toLowerCase() || null,
       time_slot: selectedTimeSlot || null,
-      exact_time: exactTime || null,
       datetime_pref: selectedDate ? selectedDate.toISOString() : null,
       use_gps_location: useGpsLocation,
       custom_location: customLocationValue,
@@ -800,7 +746,6 @@ export default function PreferencesSheet({
       dateOption: selectedDateOption,
       selectedDate: normalized.datetime_pref || selectedDate?.toISOString(),
       selectedTimeSlot: normalized.time_slot || selectedTimeSlot,
-      exactTime: normalized.exact_time || '',
       travelMode,
       constraintType,
       constraintValue,
@@ -808,6 +753,8 @@ export default function PreferencesSheet({
       searchLocation,
       useGpsLocation: normalized.use_gps_location ?? useGpsLocation,
       custom_location: normalized.custom_location ?? customLocationValue,
+      custom_lat: selectedCoords?.lat ?? null,
+      custom_lng: selectedCoords?.lng ?? null,
     };
 
     // === CLOSE SHEET IMMEDIATELY — user sees instant response ===
@@ -832,7 +779,6 @@ export default function PreferencesSheet({
             time_of_day: selectedTimeSlot || null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
             date_option: selectedDateOption?.toLowerCase() || null,
-            exact_time: exactTime || null,
             use_gps_location: useGpsLocation,
             custom_location: customLocationValue,
           };
@@ -877,7 +823,6 @@ export default function PreferencesSheet({
     selectedDateOption,
     selectedDate,
     selectedTimeSlot,
-    exactTime,
     travelMode,
     constraintType,
     constraintValue,
@@ -950,17 +895,17 @@ export default function PreferencesSheet({
                       key={tier.slug}
                       style={[
                         styles.tierPill,
-                        isActive && { borderColor: tier.color, backgroundColor: tier.color + '14' },
+                        isActive && { borderColor: tier.color, backgroundColor: tier.color },
                       ]}
                       onPress={() => handlePriceTierToggle(tier.slug)}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.tierIconDot, isActive && { backgroundColor: tier.color }]}>
-                        <Icon name={tier.icon} size={13} color={isActive ? '#fff' : '#9CA3AF'} />
+                      <View style={[styles.tierIconDot, isActive && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                        <Icon name={tier.icon} size={13} color={isActive ? '#ffffff' : '#9CA3AF'} />
                       </View>
                       <View style={styles.tierTextContainer}>
-                        <Text style={[styles.tierLabel, isActive && { color: tier.color }]}>{tier.label}</Text>
-                        <Text style={[styles.tierRange, isActive && { color: tier.color, opacity: 0.7 }]}>{tier.rangeLabel}</Text>
+                        <Text style={[styles.tierLabel, isActive && { color: '#ffffff' }]}>{tier.label}</Text>
+                        <Text style={[styles.tierRange, isActive && { color: '#ffffff', opacity: 0.85 }]}>{tier.rangeLabel}</Text>
                       </View>
                     </TouchableOpacity>
                   );
@@ -979,8 +924,8 @@ export default function PreferencesSheet({
             selectedDate={selectedDate}
             onShowCalendar={() => setShowCalendar(true)}
             showTimeSection={selectedDateOption && selectedDateOption !== "Now"}
-            exactTime={exactTime}
-            onShowTimePicker={() => setShowTimePicker(true)}
+            selectedTimeSlot={selectedTimeSlot}
+            onTimeSlotSelect={handleTimeSlotSelect}
             formatDateForDisplay={formatDateForDisplay}
           />
 
@@ -1114,44 +1059,6 @@ export default function PreferencesSheet({
         </View>
       </Modal>
 
-      {/* Time Picker */}
-      {showTimePicker &&
-        (Platform.OS === "ios" ? (
-          <Modal
-            visible={showTimePicker}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowTimePicker(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <Pressable
-                style={styles.backdropTouch}
-                onPress={() => setShowTimePicker(false)}
-              />
-              <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Select Time</Text>
-                </View>
-                <DateTimePicker
-                  value={selectedTime}
-                  mode="time"
-                  is24Hour={false}
-                  display="spinner"
-                  onChange={handleTimePickerChange}
-                  style={styles.timePicker}
-                />
-              </SafeAreaView>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={selectedTime}
-            mode="time"
-            is24Hour={false}
-            display="default"
-            onChange={handleTimePickerChange}
-          />
-        ))}
       </SafeAreaView>
 
       <CustomPaywallScreen
@@ -1447,9 +1354,5 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#111827",
-  },
-  timePicker: {
-    width: "100%",
-    height: 200,
   },
 });

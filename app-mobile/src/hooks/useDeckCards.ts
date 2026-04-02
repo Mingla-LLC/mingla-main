@@ -10,7 +10,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
-import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
 import type { PriceTierSlug } from '../constants/priceTiers';
 import { normalizeDateTime } from '../utils/cardConverters';
@@ -32,9 +31,9 @@ interface UseDeckCardsParams {
   datetimePref?: string;
   dateOption?: string;
   timeSlot?: string | null;
-  exactTime?: string | null;
   batchSeed: number;
   enabled: boolean;
+  excludeCardIds?: string[];
 }
 
 export interface UseDeckCardsResult {
@@ -52,29 +51,7 @@ export interface UseDeckCardsResult {
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const { location, enabled, ...restParams } = params;
 
-  // If this exact batch was already fetched, serve it as initialData for instant rendering.
-  // Only provide initialData when the hook is enabled — prevents stale persisted batches
-  // from leaking through when the user has cleared their category/intent preferences.
-  //
-  // CRITICAL: Match on both batchSeed AND activePills (sorted category/intent IDs).
-  // Matching on batchSeed alone caused a dead state: Zustand persists batches across
-  // sessions, so after a preference change (e.g. 3 categories → 1), the old batch's
-  // cards would be served as initialData for the new query key. Combined with persisted
-  // removedCards in AsyncStorage, this created availableRecommendations = 0 on cold start
-  // → permanent "Pulling up more for you" loader with no auto-recovery.
   const isEnabled = enabled && location !== null;
-  const currentPillsKey = [...params.categories].sort().join(',');
-  // RELIABILITY: Match cached batches by prefsHash. Without this, a batch cached
-  // with old price/travel/time prefs is served on cold start if only categories
-  // matched. Old batches without prefsHash are safely rejected (undefined !== hash).
-  const currentPrefsHash = useAppStore.getState().deckPrefsHash;
-  const latestBatch = isEnabled
-    ? useAppStore.getState().deckBatches.find(
-        b => b.batchSeed === params.batchSeed &&
-             [...b.activePills].sort().join(',') === currentPillsKey &&
-             b.prefsHash === currentPrefsHash
-      )
-    : undefined;
 
   // Round coordinates to 3 decimal places (~110m) in the query key to prevent
   // trivial GPS drift from invalidating the deck cache. Full-precision coords
@@ -104,8 +81,8 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       normalizedDatetime,
       params.dateOption ?? 'now',
       params.timeSlot ?? '',
-      params.exactTime ?? '',
       params.batchSeed,
+      (params.excludeCardIds ?? []).sort().join(','),
     ],
     queryFn: () =>
       deckService.fetchDeck({
@@ -118,14 +95,6 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     enabled: isEnabled,
     retry: 1,
     placeholderData: (previousData) => previousData,
-    initialData: latestBatch ? {
-      cards: latestBatch.cards,
-      deckMode: 'mixed' as const,
-      activePills: latestBatch.activePills,
-      total: latestBatch.cards.length,
-      hasMore: true,
-    } : undefined,
-    initialDataUpdatedAt: latestBatch?.timestamp,
   });
 
   const cards = query.data?.cards ?? EMPTY_CARDS;

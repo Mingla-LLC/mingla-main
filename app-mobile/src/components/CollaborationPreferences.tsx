@@ -18,7 +18,6 @@ import {
 } from "react-native-safe-area-context";
 import { Icon } from "./ui/Icon";
 import { Calendar } from "./ui/calendar";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
@@ -51,10 +50,10 @@ interface CollaborationPreferencesProps {
 // Experience Types for collaboration (matching PreferencesSheet)
 const experienceTypes = [
   { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
-  { id: "first-date",    label: "First Date",    icon: "people-outline" },
-  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
-  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
-  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "first-date",    label: "First Date",    icon: "sparkles" },
+  { id: "romantic",      label: "Romantic",       icon: "heart" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "sandwich" },
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
@@ -62,20 +61,16 @@ const experienceTypes = [
 
 // Categories
 const categories = [
-  { id: "nature", label: "Nature & Views", icon: "leaf-outline" },
-  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
-  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
+  { id: "nature", label: "Nature & Views", icon: "trees" },
+  { id: "first_meet", label: "First Meet", icon: "handshake" },
+  { id: "picnic_park", label: "Picnic Park", icon: "tree-pine" },
   { id: "drink", label: "Drink", icon: "wine-outline" },
-  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
-  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
-  { id: "watch", label: "Watch", icon: "film-outline" },
-  {
-    id: "creative_arts",
-    label: "Creative & Arts",
-    icon: "color-palette-outline",
-  },
+  { id: "casual_eats", label: "Casual Eats", icon: "utensils-crossed" },
+  { id: "fine_dining", label: "Fine Dining", icon: "chef-hat" },
+  { id: "watch", label: "Watch", icon: "film-new" },
+  { id: "creative_arts", label: "Creative & Arts", icon: "color-palette-outline" },
   { id: "play", label: "Play", icon: "game-controller-outline" },
-  { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "wellness", label: "Wellness", icon: "heart-pulse" },
   { id: "live_performance", label: "Live Performance", icon: "musical-notes-outline" },
   { id: "flowers", label: "Flowers", icon: "flower-outline" },
 ];
@@ -102,10 +97,11 @@ const timeSlots = [
   { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
   { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
   { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
+  { id: "anytime", label: "Anytime", time: "All day", icon: "time-outline" },
 ];
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
-type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
+type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight" | "anytime";
 
 export default function CollaborationPreferences({
   isOpen,
@@ -149,10 +145,7 @@ export default function CollaborationPreferences({
   const [selectedWeekendDay, setSelectedWeekendDay] = useState<
     "saturday" | "sunday" | null
   >(null);
-  const [exactTime, setExactTime] = useState<string>("");
-  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Travel Mode
   const [travelMode, setTravelMode] = useState<string>("walking");
@@ -246,9 +239,6 @@ export default function CollaborationPreferences({
       if (loadedTimeSlot) {
         setSelectedTimeSlot(loadedTimeSlot as TimeSlot);
       }
-      if (dbPreferences.exact_time) {
-        setExactTime(dbPreferences.exact_time);
-      }
       if (dbPreferences.datetime_pref) {
         // Parse and set date/time preferences
         const date = new Date(dbPreferences.datetime_pref);
@@ -337,9 +327,14 @@ export default function CollaborationPreferences({
 
   const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
     setSelectedPriceTiers((prev) => {
-      const next = prev.includes(slug)
-        ? prev.filter((s) => s !== slug)
-        : [...prev, slug];
+      // Mutual exclusion: "Any" vs specific tiers
+      if (slug === 'any') {
+        return prev.includes('any') ? prev : ['any'];
+      }
+      const withoutAny = prev.filter((s) => s !== 'any');
+      const next = withoutAny.includes(slug)
+        ? withoutAny.filter((s) => s !== slug)
+        : [...withoutAny, slug];
       return next.length === 0 ? prev : next;
     });
   }, []);
@@ -348,7 +343,6 @@ export default function CollaborationPreferences({
     setSelectedDateOption(option);
     if (option === "Now") {
       setSelectedTimeSlot(null);
-      setExactTime("");
     }
   }, []);
 
@@ -365,7 +359,6 @@ export default function CollaborationPreferences({
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
     setSelectedTimeSlot(slot);
-    setExactTime("");
   };
 
   const formatDateForDisplay = (date: Date): string => {
@@ -380,25 +373,6 @@ export default function CollaborationPreferences({
       setSelectedDate(date);
       setShowCalendar(false);
     }
-  };
-
-  const handleTimePickerChange = (event: any, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowTimePicker(false);
-    }
-    if (date) {
-      setSelectedTime(date);
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      const ampm = hours >= 12 ? "PM" : "AM";
-      const displayHours = hours % 12 || 12;
-      const displayMinutes = minutes.toString().padStart(2, "0");
-      setExactTime(`${displayHours}:${displayMinutes} ${ampm}`);
-    }
-  };
-
-  const handleTimePickerConfirm = () => {
-    setShowTimePicker(false);
   };
 
   const handleUseCurrentLocation = async () => {
@@ -510,8 +484,9 @@ export default function CollaborationPreferences({
     try {
       // Transform preferences to database format
    
-      const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
-      const backCompatBudgetMax = highestTier?.max ?? 1000;
+      const backCompatBudgetMax = selectedPriceTiers.includes('any' as PriceTierSlug)
+        ? 10000
+        : (PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug))?.max ?? 1000);
 
       const isGps = useLocation === "gps";
       // Safety cap at save boundary — should already be ≤3/≤1 from toggle logic
@@ -531,7 +506,6 @@ export default function CollaborationPreferences({
         // Write both time_of_day (legacy) and time_slot (parity with solo)
         time_of_day: selectedTimeSlot || null,
         time_slot: selectedTimeSlot || null,
-        exact_time: exactTime || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
         date_option: selectedDateOption
           ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[selectedDateOption] ?? selectedDateOption)
@@ -585,7 +559,6 @@ export default function CollaborationPreferences({
         selectedDateOption,
         selectedTimeSlot,
         selectedDate: selectedDate?.toISOString(),
-        exactTime,
         travelMode,
         constraintType,
         constraintValue,
@@ -857,27 +830,6 @@ export default function CollaborationPreferences({
                   })}
                 </View>
 
-                {/* Or Set Exact Time Section */}
-                <View style={styles.exactTimeSection}>
-                  <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
-                  <TouchableOpacity
-                    style={styles.exactTimeInput}
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Icon
-                      name="time-outline"
-                      size={20}
-                      color={exactTime ? "#eb7825" : "#9ca3af"}
-                    />
-                    {exactTime ? (
-                      <Text style={styles.exactTimeInputTextSelected}>
-                        {exactTime}
-                      </Text>
-                    ) : (
-                      <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
               </>
             )}
           </View>
@@ -1172,51 +1124,6 @@ export default function CollaborationPreferences({
         </View>
       </Modal>
 
-      {/* Time Picker */}
-      {showTimePicker &&
-        (Platform.OS === "ios" ? (
-          <Modal
-            visible={showTimePicker}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowTimePicker(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <TouchableOpacity
-                style={styles.backdropTouch}
-                activeOpacity={1}
-                onPress={() => setShowTimePicker(false)}
-              />
-              <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Select Time</Text>
-                  <TouchableOpacity
-                    onPress={handleTimePickerConfirm}
-                    style={styles.modalCloseButton}
-                  >
-                    <Text style={styles.modalConfirmText}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={selectedTime}
-                  mode="time"
-                  is24Hour={false}
-                  display="spinner"
-                  onChange={handleTimePickerChange}
-                  style={styles.timePicker}
-                />
-              </SafeAreaView>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={selectedTime}
-            mode="time"
-            is24Hour={false}
-            display="default"
-            onChange={handleTimePickerChange}
-          />
-        ))}
     </SafeAreaView>
   );
 }
@@ -1577,38 +1484,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     opacity: 0.9,
   },
-  exactTimeSection: {
-    marginTop: 24,
-  },
-  exactTimeLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  exactTimeInput: {
-    width: "100%",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#d1d5db",
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  exactTimeInputText: {
-    fontSize: 16,
-    color: "#9ca3af",
-    marginLeft: 8,
-    flex: 1,
-  },
-  exactTimeInputTextSelected: {
-    fontSize: 16,
-    color: "#111827",
-    marginLeft: 8,
-    flex: 1,
-    fontWeight: "500",
-  },
   travelModesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1874,9 +1749,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#eb7825",
     fontWeight: "600",
-  },
-  timePicker: {
-    width: "100%",
-    height: 200,
   },
 });

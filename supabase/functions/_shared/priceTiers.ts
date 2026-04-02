@@ -10,7 +10,7 @@
  * Must stay in sync with app-mobile/src/constants/priceTiers.ts
  */
 
-export type PriceTierSlug = 'chill' | 'comfy' | 'bougie' | 'lavish';
+export type PriceTierSlug = 'any' | 'chill' | 'comfy' | 'bougie' | 'lavish';
 
 export interface PriceTier {
   slug: PriceTierSlug;
@@ -22,6 +22,14 @@ export interface PriceTier {
 }
 
 export const PRICE_TIERS: readonly PriceTier[] = [
+  {
+    slug: 'any',
+    label: 'Any',
+    rangeLabel: 'All prices',
+    googleLevels: [],
+    min: 0,
+    max: null,
+  },
   {
     slug: 'chill',
     label: 'Chill',
@@ -87,6 +95,7 @@ export function priceLevelToRange(priceLevel: string | number | null | undefined
 }
 
 export function cardMatchesTiers(cardTier: PriceTierSlug, userTiers: PriceTierSlug[]): boolean {
+  if (userTiers.includes('any')) return true;
   return userTiers.includes(cardTier);
 }
 

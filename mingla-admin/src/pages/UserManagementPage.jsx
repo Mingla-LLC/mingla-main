@@ -1370,7 +1370,6 @@ export function UserManagementPage() {
                 <DataTable columns={[
                   { key: "place_name", label: "Place", render: (v) => v || "—" },
                   { key: "rating", label: "Rating", render: (v) => v != null ? `${v}/5` : "—" },
-                  { key: "sentiment", label: "Sentiment", render: (v) => v ? <Badge variant={v === "positive" ? "success" : v === "negative" ? "error" : "warning"}>{v}</Badge> : "—" },
                   { key: "created_at", label: "Date", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
                 ]} rows={userReviews} emptyMessage="No reviews" />
               ) : (

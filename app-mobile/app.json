@@ -82,6 +82,10 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      ["@sentry/react-native/expo", {
+        "organization": "mingla-llc",
+        "project": "react-native"
+      }],
       "expo-splash-screen",
       "expo-location",
       "expo-camera",

@@ -164,7 +164,11 @@ export default function PostExperienceModal({
         scheduled_at: newDateISO,
       });
 
-      await voiceReviewService.markRescheduled(user.id, review.calendarEntryId);
+      await supabase
+        .from("calendar_entries")
+        .update({ feedback_status: null })
+        .eq("id", review.calendarEntryId)
+        .eq("user_id", user.id);
 
       queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
       toastManager.success("Experience rescheduled!");

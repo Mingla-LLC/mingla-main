@@ -4,6 +4,7 @@ import {
   View,
   Animated,
   LayoutAnimation,
+  Platform,
   StyleSheet,
 } from "react-native";
 import { colors, typography } from "../../constants/designSystem";
@@ -20,7 +21,7 @@ function TypingIndicator({ userNames }: TypingIndicatorProps) {
 
   useEffect(() => {
     if (userNames.length !== prevLengthRef.current) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       prevLengthRef.current = userNames.length;
     }
   }, [userNames.length]);

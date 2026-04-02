@@ -137,26 +137,22 @@ serve(async (req: Request) => {
     const categoryResults: Record<string, CategoryResult> = {};
 
     await Promise.all(categories.map(async (category) => {
-      const placeTypes = getPlaceTypesForCategory(category);
-      if (placeTypes.length === 0) {
-        categoryResults[category] = { generated: 0, skipped: 0, total: 0 };
-        return;
-      }
-
       let catGenerated = 0;
       let catSkipped = 0;
 
       try {
-        // ── Query place_pool for this category ───────────────────────
+        // ── Query place_pool for this category (AI-approved, AI-categorized) ──
+        const categorySlugForQuery = categoryToSlug(category);
         const { data: places, error: queryError } = await supabaseAdmin
           .from('place_pool')
-          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes')
+          .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, price_tiers, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes, ai_categories, ai_approved')
           .eq('is_active', true)
+          .eq('ai_approved', true)
+          .contains('ai_categories', [categorySlugForQuery])
           .gte('lat', location.lat - latDelta)
           .lte('lat', location.lat + latDelta)
           .gte('lng', location.lng - lngDelta)
           .lte('lng', location.lng + lngDelta)
-          .overlaps('types', placeTypes)
           .order('rating', { ascending: false })
           .limit(limitPerCategory);
 
@@ -217,14 +213,15 @@ serve(async (req: Request) => {
 
           // ── Build and insert card ────────────────────────────────
           try {
-            const categorySlug = categoryToSlug(category);
+            const aiCategory = place.ai_categories?.[0] || categoryToSlug(category);
+            const aiCategories = place.ai_categories?.length > 0 ? place.ai_categories : [categoryToSlug(category)];
             const cardId = await insertCardToPool(supabaseAdmin, {
               placePoolId: place.id,
               googlePlaceId: place.google_place_id,
               cardType: 'single',
               title: place.name,
-              category: categorySlug,
-              categories: [categorySlug],
+              category: aiCategory,
+              categories: aiCategories,
               description: getFallbackDescription(category, place.primary_type || 'place'),
               imageUrl: place.stored_photo_urls[0],
               images: place.stored_photo_urls.slice(0, 5),
@@ -235,7 +232,8 @@ serve(async (req: Request) => {
               reviewCount: place.review_count || 0,
               priceMin: place.price_min ?? 0,
               priceMax: place.price_max ?? 0,
-              priceTier: place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceTier: place.price_tiers?.[0] || place.price_tier || googleLevelToTierSlug(place.price_level),
+              priceTiers: place.price_tiers?.length ? place.price_tiers : [place.price_tier || 'chill'],
               openingHours: place.opening_hours,
               website: place.website,
               cityId: place.city_id,

@@ -150,6 +150,18 @@ serve(async (req) => {
     const userPhone = profileData?.phone ?? null;
     console.log(`[delete-user] Phone: ${userPhone ? userPhone.slice(0, 4) + "****" : "none"}`);
 
+    // ── Step 1b: Record phone hash for trial dedup ──
+    // Must run BEFORE account deletion. The used_trial_phones table
+    // survives CASCADE and prevents trial abuse on re-signup.
+    if (userPhone) {
+      const { error: trialHashError } = await adminClient
+        .rpc('record_trial_phone', { p_phone: userPhone });
+      if (trialHashError) {
+        // Non-blocking — log but don't fail deletion
+        console.warn("[delete-user] Failed to record trial phone hash:", trialHashError.message);
+      }
+    }
+
     // ── Step 2: All pre-deletion work in ONE parallel batch ──
     // These must complete BEFORE deleteUser() because CASCADE would
     // destroy or NULL-ify the rows we need to update.
@@ -241,6 +253,7 @@ serve(async (req) => {
       );
     }
 
+
     await Promise.allSettled(preDeleteOps);
     console.log("[delete-user] Pre-deletion work complete");
 
@@ -277,18 +290,32 @@ serve(async (req) => {
       return errorResponse("Failed to delete account. Please try again.");
     }
 
-    // ── Step 5: Delete profile → CASCADE handles remaining tables ──
-    // Tables referencing profiles: preferences, session_participants,
-    // friend_requests, saved_card, saves, user_map_settings, user_taste_matches.
-    // beta_feedback uses SET NULL (already anonymized in Step 2).
-    console.log("[delete-user] Deleting profile...");
-    const { error: profileError } = await adminClient
+    // ── Step 5: Delete profile ──
+    // With the profiles.id → auth.users(id) ON DELETE CASCADE FK, the profile
+    // should already be gone from Step 4. This is a safety net — if it still
+    // exists (e.g. FK wasn't applied yet), delete it explicitly.
+    // CRITICAL: Do NOT return success if the profile survives — an orphan profile
+    // blocks re-registration (profiles_email_unique constraint).
+    console.log("[delete-user] Verifying profile deletion...");
+    const { data: survivingProfile } = await adminClient
       .from("profiles")
-      .delete()
-      .eq("id", userId);
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
 
-    if (profileError) {
-      console.warn("[delete-user] Profile delete warning:", profileError.message);
+    if (survivingProfile) {
+      console.log("[delete-user] Profile survived CASCADE — deleting explicitly...");
+      const { error: profileError } = await adminClient
+        .from("profiles")
+        .delete()
+        .eq("id", userId);
+
+      if (profileError) {
+        console.error("[delete-user] Profile delete FAILED:", profileError.message);
+        return errorResponse(
+          "Account partially deleted. Please contact support to complete removal."
+        );
+      }
     }
 
     console.log(`[delete-user] Deletion complete for: ${userId}`);

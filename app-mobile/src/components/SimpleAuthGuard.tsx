@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { useAppStore } from '../store/appStore';
-import { authService } from '../services/authService';
+import { supabase } from '../services/supabase';
 import AuthScreen from '../screens/AuthScreen';
 
 interface SimpleAuthGuardProps {
@@ -36,7 +36,7 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
     // Check for existing authentication
     const checkAuth = async () => {
       try {
-        const { user, error } = await authService.getCurrentUser();
+        const { data: { user }, error } = await supabase.auth.getUser();
         if (error) {
           console.error('Auth check error:', error);
         }
@@ -51,8 +51,8 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
       clearTimeout(timeoutId);
     });
 
-    // Listen for auth state changes
-    const { data: { subscription } } = authService.onAuthStateChange((user) => {
+    // Listen for auth state changes (via Supabase directly — INV-A01)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
     });
 
     return () => {

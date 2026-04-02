@@ -36,6 +36,10 @@ yarn-error.*
 .claude/
 .codex/
 
+# === Orchestrator artifacts (local operational state) ===
+outputs/
+Mingla_Artifacts/prompts/
+
 # === Native (signing keys) ===
 *.jks
 *.p8

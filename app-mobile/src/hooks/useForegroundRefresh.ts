@@ -202,6 +202,13 @@ export function useForegroundRefresh(
           queryClient.invalidateQueries({ queryKey: key });
         }
 
+        // Pre-warm preferences cache — uses staleTime: Infinity so won't
+        // auto-refetch on focus without explicit invalidation above.
+        queryClient.prefetchQuery({
+          queryKey: ['userPreferences', userId],
+          staleTime: 60_000,
+        });
+
         if (__DEV__) {
           logger.lifecycle(
             `[RESUME] Invalidated ${CRITICAL_QUERY_KEYS.length} query families | longBackground=${!isShortBackground}`,

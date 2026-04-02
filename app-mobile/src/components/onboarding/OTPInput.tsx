@@ -41,6 +41,12 @@ export const OTPInput: React.FC<OTPInputProps> = ({
   const [showError, setShowError] = useState(false);
   const prevError = useRef(false);
 
+  // Deferred focus: autoFocus inside ScrollView can crash on iOS Fabric.
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Track error state changes to trigger shake
   useEffect(() => {
     if (error && !prevError.current) {
@@ -125,7 +131,6 @@ export const OTPInput: React.FC<OTPInputProps> = ({
           onChangeText={handleChangeText}
           keyboardType="number-pad"
           maxLength={length}
-          autoFocus
           caretHidden
           editable={!disabled}
           accessibilityLabel="One-time verification code"

@@ -159,7 +159,6 @@ export function useAppHandlers(state: any) {
             : 20,
         time_of_day: preferences.selectedTimeSlot || null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: preferences.exactTime || null,
         datetime_pref: preferences.selectedDate || null,
         date_option: preferences.selectedDateOption
           ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[preferences.selectedDateOption as string] ?? preferences.selectedDateOption)
@@ -434,7 +433,7 @@ export function useAppHandlers(state: any) {
     updateBoardsSessions(updatedBoards);
 
     if (!updatedBoards.find((b: any) => b.id === boardId)) {
-      setCurrentPage("activity");
+      setCurrentPage("likes");
       setActivityNavigation({ activeTab: "boards" });
     }
   };
@@ -585,8 +584,9 @@ export function useAppHandlers(state: any) {
 
       // Compute backward-compat budget from price tiers
       const userTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-      const highestTier = PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug));
-      const backCompatBudgetMax = highestTier?.max ?? 1000;
+      const backCompatBudgetMax = userTiers.includes('any' as PriceTierSlug)
+        ? 10000
+        : (PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug))?.max ?? 1000);
 
       const soloCats = normalizeCategoryArray(preferences.selectedCategories || []);
       const soloIntents = (preferences.selectedIntents || []).slice(0, 1);
@@ -619,7 +619,6 @@ export function useAppHandlers(state: any) {
             : null
           : null,
         time_slot: preferences.selectedTimeSlot || null,
-        exact_time: preferences.exactTime || null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,
@@ -631,6 +630,8 @@ export function useAppHandlers(state: any) {
         dbPreferences.custom_location = preferences.searchLocation;
       }
       dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
+      dbPreferences.custom_lat = preferences.custom_lat ?? null;
+      dbPreferences.custom_lng = preferences.custom_lng ?? null;
 
       // === Optimistic cache update FIRST — deck uses this immediately ===
       queryClient.setQueryData(["userPreferences", user.id], {
@@ -647,8 +648,9 @@ export function useAppHandlers(state: any) {
         datetime_pref: dbPreferences.datetime_pref,
         date_option: dbPreferences.date_option,
         time_slot: dbPreferences.time_slot,
-        exact_time: dbPreferences.exact_time,
         custom_location: dbPreferences.custom_location,
+        custom_lat: dbPreferences.custom_lat,
+        custom_lng: dbPreferences.custom_lng,
         use_gps_location: dbPreferences.use_gps_location,
       });
 
@@ -702,7 +704,7 @@ export function useAppHandlers(state: any) {
   };
 
   const handleNavigateToActivity = (tab: "saved" | "boards" | "calendar") => {
-    setCurrentPage("activity");
+    setCurrentPage("likes");
     setActivityNavigation({ activeTab: tab });
   };
 
@@ -710,7 +712,7 @@ export function useAppHandlers(state: any) {
     board: any,
     discussionTab: string = "discussion"
   ) => {
-    setCurrentPage("activity");
+    setCurrentPage("likes");
     setActivityNavigation({
       selectedBoard: board,
       activeTab: "boards",

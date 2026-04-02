@@ -40,7 +40,6 @@ interface AggregatedPrefs {
   location: { lat: number; lng: number } | null;
   dateOption: string;
   timeSlot: string | null;
-  exactTime: string | null;
 }
 
 function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
@@ -58,7 +57,6 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
       location: null,
       dateOption: 'now',
       timeSlot: null,
-      exactTime: null,
     };
   }
 
@@ -137,14 +135,6 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     ? majorityVote(timeSlotValues, timeSlotValues[0])
     : null;
 
-  // Exact time: earliest among non-null values
-  const exactTimeValues = rows
-    .map((r: any) => r.exact_time)
-    .filter((v: any): v is string => v != null && v !== '');
-  const exactTime = exactTimeValues.length > 0
-    ? exactTimeValues.sort()[0]
-    : null;
-
   return {
     categories: Array.from(categorySet),
     intents: Array.from(intentSet),
@@ -158,7 +148,6 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     location,
     dateOption,
     timeSlot,
-    exactTime,
   };
 }
 
@@ -177,7 +166,6 @@ async function computePreferencesHash(prefs: AggregatedPrefs): Promise<string> {
     location: prefs.location,
     dateOption: prefs.dateOption,
     timeSlot: prefs.timeSlot,
-    exactTime: prefs.exactTime,
   });
 
   const encoder = new TextEncoder();
@@ -204,7 +192,12 @@ serve(async (req: Request) => {
       });
     }
 
-    const { sessionId, batchSeed = 0 } = body;
+    const { sessionId, batchSeed = 0, excludeCardIds: rawExcludeCardIds = [] } = body;
+
+    // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
+    const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
+      ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
+      : [];
 
     if (!sessionId) {
       return new Response(
@@ -383,10 +376,10 @@ serve(async (req: Request) => {
             datetimePref: aggregated.datetimePref,
             dateOption: aggregated.dateOption,
             timeSlot: aggregated.timeSlot,
-            exactTime: aggregated.exactTime,
             batchSeed,
             limit: 20,
             priceTiers: aggregated.priceTiers,
+            excludeCardIds,
           }),
         });
         if (!resp.ok) {

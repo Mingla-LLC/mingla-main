@@ -60,7 +60,7 @@ serve(async (req: Request) => {
     );
 
     // Post-filter: remove pool cards below Fine Dining price floor
-    const minTier = CATEGORY_MIN_PRICE_TIER['Fine Dining'];
+    const minTier = CATEGORY_MIN_PRICE_TIER['fine_dining'];
     const cards = minTier
       ? poolResult.cards.filter((c: any) => slugMeetsMinimum(c.priceTier, minTier))
       : poolResult.cards;

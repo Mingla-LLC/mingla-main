@@ -1,9 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serveCuratedCardsFromPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { GLOBAL_EXCLUDED_PLACE_TYPES, isChildVenueName } from '../_shared/categoryPlaceTypes.ts';
-import { getIncludedTypes, getExcludedPrimaryTypes, SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
-import { googleLevelToTierSlug, tierMeetsMinimum } from '../_shared/priceTiers.ts';
+import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
+import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -24,50 +23,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 let supabaseAdmin: ReturnType<typeof createClient>;
 
-const GLOBAL_EXCLUDED = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
-
-// DB-DRIVEN EXCLUSION CHECK (Block 6 — hardened 2026-03-22)
-// Reads category_type_exclusions table instead of hardcoded lists.
-// Prevents stops with excluded types from entering curated cards.
-// Cache is per-invocation only (Deno isolate lifetime). Each edge function call starts fresh.
-const _categoryExclusionCache: Map<string, Set<string>> = new Map();
-
-async function getCategoryExcludedTypes(categorySlug: string): Promise<Set<string>> {
-  if (_categoryExclusionCache.has(categorySlug)) {
-    return _categoryExclusionCache.get(categorySlug)!;
-  }
-  const { data } = await supabaseAdmin
-    .from('category_type_exclusions')
-    .select('excluded_type')
-    .eq('category_slug', categorySlug);
-  const types = new Set((data ?? []).map((r: any) => r.excluded_type));
-  _categoryExclusionCache.set(categorySlug, types);
-  return types;
-}
-
-// Build Google type → slug lookup from seedingCategories
-const GOOGLE_TYPE_TO_SLUG: Record<string, string> = {};
-for (const cat of Object.values(SEEDING_CATEGORY_MAP)) {
-  for (const type of cat.includedTypes) {
-    // First category to claim a type wins (order matters for overlapping types)
-    if (!GOOGLE_TYPE_TO_SLUG[type]) {
-      GOOGLE_TYPE_TO_SLUG[type] = cat.id;
-    }
-  }
-}
-// Override overlapping types to match backfill logic
-// These types appear in multiple categories — assign to their primary category
-GOOGLE_TYPE_TO_SLUG['grocery_store'] = 'groceries';
-GOOGLE_TYPE_TO_SLUG['supermarket'] = 'groceries';
-GOOGLE_TYPE_TO_SLUG['wine_bar'] = 'drink';
-GOOGLE_TYPE_TO_SLUG['lounge_bar'] = 'drink';
-GOOGLE_TYPE_TO_SLUG['bistro'] = 'casual_eats';
-GOOGLE_TYPE_TO_SLUG['italian_restaurant'] = 'casual_eats';
-GOOGLE_TYPE_TO_SLUG['seafood_restaurant'] = 'casual_eats';
-
-function googleTypeToSlug(googleType: string): string {
-  return GOOGLE_TYPE_TO_SLUG[googleType] || 'casual_eats'; // safe fallback
-}
+// (Type exclusion code removed — AI validation is the sole quality gate.
+//  Single cards are already filtered at generation time.)
 
 // ── Session preference aggregation (for collaboration mode) ────────────────
 
@@ -147,38 +104,8 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
   };
 }
 
-// ── Stop duration estimates ────────────────────────────────────────────────
-
-const STOP_DURATION_MINUTES: Record<string, number> = {
-  park: 60, botanical_garden: 60, hiking_area: 90, beach: 90,
-  zoo: 120, national_park: 90, state_park: 90, garden: 45,
-  coffee_shop: 30, tea_house: 30, brunch_restaurant: 60, diner: 45,
-  bar: 60, pub: 60, wine_bar: 60, cocktail_bar: 60,
-  beer_garden: 75, brewery: 60, brewpub: 60, lounge_bar: 60,
-  restaurant: 60, seafood_restaurant: 60, pizza_restaurant: 45,
-  thai_restaurant: 60, japanese_restaurant: 60, ramen_restaurant: 45,
-  korean_restaurant: 60, vietnamese_restaurant: 60, mexican_restaurant: 60,
-  american_restaurant: 60, mediterranean_restaurant: 60, italian_restaurant: 75,
-  french_restaurant: 90, greek_restaurant: 75, steak_house: 90,
-  fine_dining_restaurant: 90,
-  movie_theater: 150, art_gallery: 60, museum: 90, art_museum: 90,
-  performing_arts_theater: 120, concert_hall: 120, opera_house: 150,
-  philharmonic_hall: 120, amphitheatre: 120, comedy_club: 90,
-  bowling_alley: 60, miniature_golf_course: 45, karaoke: 90,
-  video_arcade: 60, amusement_center: 60, amusement_park: 180,
-  go_karting_venue: 60, paintball_center: 90,
-  cultural_center: 60, history_museum: 90, cultural_landmark: 45,
-  sculpture: 30, art_studio: 60,
-  spa: 90, massage_spa: 90, sauna: 60, yoga_studio: 60,
-  cafe: 30, bakery: 20, book_store: 30, dessert_shop: 25,
-  ice_cream_shop: 20, juice_shop: 15, donut_shop: 15,
-  breakfast_restaurant: 45, bistro: 75,
-  grocery_store: 30, supermarket: 30, florist: 15,
-  picnic_ground: 120, city_park: 60,
-  scenic_spot: 45, nature_preserve: 90, observation_deck: 30,
-  tourist_attraction: 60,
-};
-const DEFAULT_STOP_DURATION = 45;
+// (Old STOP_DURATION_MINUTES by Google type removed — replaced by
+//  CATEGORY_DURATION_MINUTES in buildCardStop, keyed by Mingla category)
 
 // ── Declarative Experience Type Definitions ────────────────────────────────
 
@@ -347,61 +274,49 @@ for (const et of EXPERIENCE_TYPES) {
   TAGLINES_BY_TYPE[et.id] = et.taglines;
 }
 
-// ── Place Pool Query ───────────────────────────────────────────────────────
+// ── Single Card Query (curated cards built from singles) ──────────────────
 
-async function queryPlacePool(
+async function fetchSinglesForCategory(
   categoryId: string,
   centerLat: number,
   centerLng: number,
   radiusMeters: number,
   limit: number = 50,
 ): Promise<any[]> {
-  const includedTypes = getIncludedTypes(categoryId);
-  if (includedTypes.length === 0) return [];
-  const excludedPrimary = getExcludedPrimaryTypes(categoryId);
-
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
   const { data, error } = await supabaseAdmin
-    .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes')
+    .from('card_pool')
+    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
     .eq('is_active', true)
+    .eq('card_type', 'single')
+    .contains('categories', [categoryId])
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
     .gte('lng', centerLng - lngDelta)
     .lte('lng', centerLng + lngDelta)
-    .overlaps('types', includedTypes)
     .order('rating', { ascending: false })
     .limit(limit);
 
   if (error || !data) return [];
 
-  // Fetch DB-driven exclusions for this category
-  const dbExcludedTypes = await getCategoryExcludedTypes(categoryId);
-
-  return data.filter((p: any) => {
-    if (!p.stored_photo_urls?.length) return false;
-    // RELIABILITY: Check the FULL types[] array against exclusion lists, not just
-    // primary_type. A gym with primary_type='community_center' and types=['gym',
-    // 'community_center'] would pass a primary_type-only check. This was the cause
-    // of gyms appearing as curated experience stops.
-    // See Architecture Constitution Principle 13.
-    if (p.primary_type && excludedPrimary.includes(p.primary_type)) return false;
-    if (p.types?.some((t: string) => excludedPrimary.includes(t))) return false;
-    if (p.primary_type && GLOBAL_EXCLUDED.has(p.primary_type)) return false;
-    if (p.types?.some((t: string) => GLOBAL_EXCLUDED.has(t))) return false;
-    // DB-driven exclusions: check full types array, not just primary_type
-    if (p.types?.some((t: string) => dbExcludedTypes.has(t))) return false;
-    if (isChildVenueName(p.name || '')) return false;
-    return true;
-  });
+  // Only keep cards with images (should always be true, but safety net)
+  return data.filter((card: any) => card.images?.length > 0 || card.image_url);
 }
 
 // ── Build stop from place_pool row ─────────────────────────────────────────
 
-function buildPoolStop(
-  place: any,
+// Duration map by Mingla category (replaces STOP_DURATION_MINUTES keyed by Google type)
+const CATEGORY_DURATION_MINUTES: Record<string, number> = {
+  casual_eats: 60, fine_dining: 90, drink: 60, first_meet: 45,
+  nature_views: 60, picnic_park: 75, watch: 120, live_performance: 120,
+  creative_arts: 90, play: 90, wellness: 90, flowers: 15, groceries: 20,
+};
+const CATEGORY_DEFAULT_DURATION = 60;
+
+function buildCardStop(
+  card: any,
   stopNumber: number,
   totalStops: number,
   role: string,
@@ -412,9 +327,8 @@ function buildPoolStop(
   travelMode: string,
   opts?: { optional?: boolean; dismissible?: boolean },
 ): any {
-  const lat = place.lat ?? 0;
-  const lng = place.lng ?? 0;
-  const placeType = place.primary_type || 'place';
+  const lat = card.lat ?? 0;
+  const lng = card.lng ?? 0;
 
   const distFromUser = haversineKm(userLat, userLng, lat, lng);
   const travelFromUser = estimateTravelMinutes(distFromUser, travelMode);
@@ -432,28 +346,28 @@ function buildPoolStop(
       : ['Start Here', 'Then', 'Then', 'End With'];
   const stopLabel = stopLabels[Math.min(stopNumber - 1, stopLabels.length - 1)] || 'Explore';
 
-  const priceTier = place.price_tier || googleLevelToTierSlug(place.price_level);
-
   return {
     stopNumber,
     stopLabel,
     role,
-    placeId: place.google_place_id || '',
-    placePoolId: place.id || '',
-    placeName: place.name || 'Unknown Place',
-    placeType,
-    address: place.address || '',
-    rating: place.rating ?? 0,
-    reviewCount: place.review_count ?? 0,
-    imageUrl: place.stored_photo_urls?.[0] || null,
-    imageUrls: (place.stored_photo_urls || []).slice(0, 5),
-    priceLevelLabel: priceTier,
-    priceMin: place.price_min ?? 0,
-    priceMax: place.price_max ?? 0,
-    priceTier,
-    openingHours: place.opening_hours || {},
+    placeId: card.google_place_id || '',
+    placePoolId: card.place_pool_id || '',
+    cardPoolId: card.id,
+    placeName: card.title || 'Unknown Place',
+    placeType: card.category || 'place',
+    address: card.address || '',
+    rating: card.rating ?? 0,
+    reviewCount: card.review_count ?? 0,
+    imageUrl: card.image_url || card.images?.[0] || null,
+    imageUrls: card.images || (card.image_url ? [card.image_url] : []),
+    priceLevelLabel: card.price_tiers?.[0] || card.price_tier || 'chill',
+    priceMin: card.price_min ?? 0,
+    priceMax: card.price_max ?? 0,
+    priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
+    priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
+    openingHours: card.opening_hours || {},
     isOpenNow: true,
-    website: place.website || null,
+    website: card.website || null,
     lat,
     lng,
     distanceFromUserKm: Math.round(distFromUser * 100) / 100,
@@ -461,12 +375,13 @@ function buildPoolStop(
     travelTimeFromPreviousStopMin: travelFromPrev !== null ? Math.round(travelFromPrev) : null,
     travelModeFromPreviousStop: stopNumber > 1 ? travelMode : null,
     aiDescription: '',
-    estimatedDurationMinutes: STOP_DURATION_MINUTES[placeType] || DEFAULT_STOP_DURATION,
+    estimatedDurationMinutes: CATEGORY_DURATION_MINUTES[card.category] || CATEGORY_DEFAULT_DURATION,
     ...(opts?.optional ? { optional: true } : {}),
     ...(opts?.dismissible ? { dismissible: true } : {}),
-    cityId: place.city_id || null,
-    city: place.city || null,
-    country: place.country || null,
+    cityId: card.city_id || null,
+    city: card.city || null,
+    country: card.country || null,
+    aiCategories: card.ai_categories || card.categories || [],
   };
 }
 
@@ -489,11 +404,8 @@ function buildCardFromStops(
   const totalDuration = mainStops.reduce((sum, s) => sum + s.estimatedDurationMinutes, 0)
     + mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
 
-  // Derive category slug from first main stop's Google place type so mobile
-  // can render category-colored pins instead of gray fallback.
-  const category = mainStops[0]?.placeType
-    ? googleTypeToSlug(mainStops[0].placeType)
-    : 'casual_eats';
+  // Derive category from first main stop's AI categories
+  const category = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'casual_eats';
 
   return {
     id: `curated_${experienceType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -552,7 +464,7 @@ async function generateCardsForType(
     const anchorCategoryId = typeDef.combos[0][anchorStopIdx];
 
     // Fetch anchor places near user
-    categoryPlaces[anchorCategoryId] = await queryPlacePool(anchorCategoryId, lat, lng, clampedRadius);
+    categoryPlaces[anchorCategoryId] = await fetchSinglesForCategory(anchorCategoryId, lat, lng, clampedRadius);
     console.log(`[generateCardsForType:${typeDef.id}] anchor(${anchorCategoryId}): ${categoryPlaces[anchorCategoryId].length} places`);
 
     // Other categories will be fetched per-card near the anchor
@@ -560,7 +472,7 @@ async function generateCardsForType(
     // Standard: fetch all categories near user in parallel
     await Promise.all(
       [...allCategoryIds].map(async (catId) => {
-        categoryPlaces[catId] = await queryPlacePool(catId, lat, lng, clampedRadius);
+        categoryPlaces[catId] = await fetchSinglesForCategory(catId, lat, lng, clampedRadius);
         console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
       })
     );
@@ -607,7 +519,7 @@ async function generateCardsForType(
           if (i === anchorStopIdx) continue;
           const catId = combo[i];
           if (!categoryPlaces[`${catId}_near_${anchor.google_place_id}`]) {
-            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await queryPlacePool(catId, anchorLat, anchorLng, 3000, 20);
+            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchSinglesForCategory(catId, anchorLat, anchorLng, 3000, 20);
           }
         }
 
@@ -617,7 +529,7 @@ async function generateCardsForType(
           const catId = combo[i];
 
           if (i === anchorStopIdx) {
-            const stop = buildPoolStop(
+            const stop = buildCardStop(
               anchor, stops.length + 1, typeDef.stops.length, stopDef.role,
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
@@ -640,7 +552,7 @@ async function generateCardsForType(
             if (!place) continue;
 
             comboUsedIds.add(place.google_place_id);
-            const stop = buildPoolStop(
+            const stop = buildCardStop(
               place, stops.length + 1, typeDef.stops.length, stopDef.role,
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
@@ -660,9 +572,10 @@ async function generateCardsForType(
         const available = (categoryPlaces[catId] || []).filter(p => {
           if (comboUsedIds.has(p.google_place_id)) return false;
           if (!stopDef.optional && p.price_min > perStopBudget) return false;
-          // Fine Dining price floor
-          if (catId === 'fine_dining' && !tierMeetsMinimum(googleLevelToTierSlug(p.price_level), 'bougie') && p.price_tier !== 'bougie' && p.price_tier !== 'baller') {
-            // Allow if price_tier is already set correctly, otherwise check price_level
+          // Fine Dining price floor — check highest tier in array meets minimum
+          const bestTier = p.price_tiers?.length ? p.price_tiers[p.price_tiers.length - 1] : p.price_tier;
+          if (catId === 'fine_dining' && bestTier && !slugMeetsMinimum(bestTier, 'bougie')) {
+            return false;
           }
           return true;
         });
@@ -686,7 +599,7 @@ async function generateCardsForType(
         }
 
         comboUsedIds.add(place.google_place_id);
-        const stop = buildPoolStop(
+        const stop = buildCardStop(
           place, stops.length + 1, typeDef.stops.length, stopDef.role,
           lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
           travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
@@ -1215,22 +1128,25 @@ serve(async (req) => {
             const mainStops = stops.filter((s: any) => !s.optional);
             const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
             const stopPlacePoolIds = stops.map((s: any) => s.placePoolId).filter(Boolean);
+            const stopCardPoolIds = stops.map((s: any) => s.cardPoolId).filter(Boolean);
             const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
 
-            // Resolve category slug and city_id from first main stop
-            const stopCategorySlug = mainStops[0]?.placeType
-              ? googleTypeToSlug(mainStops[0].placeType)
-              : 'casual_eats';
+            // Category from single cards' AI categories
+            const stopCategorySlug = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'casual_eats';
+            const stopCategories = [...new Set(mainStops.flatMap((s: any) => s.aiCategories || []))];
             const stopCityId = mainStops[0]?.cityId || null;
 
             return {
               row: {
                 card_type: 'curated' as const,
                 place_pool_id: null,
-                google_place_id: mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                google_place_id: stopCardPoolIds.length > 0
+                  ? `curated-${[...stopCardPoolIds].sort().join('-')}`
+                  : mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 title: card.title || `${experienceType} Experience`,
                 category: stopCategorySlug,
-                categories: mainStops.map((s: any) => googleTypeToSlug(s.placeType || 'restaurant')),
+                categories: stopCategories,
+                ai_approved: true,
                 description: card.tagline || '',
                 highlights: [],
                 image_url: mainStops[0]?.imageUrl || null,
@@ -1243,6 +1159,7 @@ serve(async (req) => {
                 price_min: card.totalPriceMin || 0,
                 price_max: card.totalPriceMax || 0,
                 price_tier: mainStops[0]?.priceTier || 'comfy',
+                price_tiers: mainStops[0]?.priceTiers || (mainStops[0]?.priceTier ? [mainStops[0].priceTier] : ['comfy']),
                 opening_hours: null,
                 website: null,
                 popularity_score: popularityScore,
@@ -1263,6 +1180,7 @@ serve(async (req) => {
               },
               stopPlacePoolIds,
               stopGooglePlaceIds,
+              stopCardPoolIds,
             };
           });
 
@@ -1289,6 +1207,7 @@ serve(async (req) => {
                     place_pool_id: entry.stopPlacePoolIds[i],
                     google_place_id: entry.stopGooglePlaceIds[i] || '',
                     stop_order: i,
+                    stop_card_pool_id: entry.stopCardPoolIds?.[i] || null,
                   });
                 }
               }

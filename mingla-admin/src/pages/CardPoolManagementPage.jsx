@@ -1,20 +1,22 @@
 /**
- * CARD POOL MANAGEMENT PAGE (Block 5 — hardened 2026-03-21)
+ * CARD POOL MANAGEMENT PAGE (Block 5 — redesigned 2026-03-31)
  *
- * Full rewrite: UUID-based → TEXT-based. Zero seeding_cities dependencies.
- * Uses V2 RPCs: admin_card_pool_intelligence, admin_pool_category_health,
- * admin_country_overview, admin_country_city_overview.
+ * Full rewrite: all metrics now card-centric (from card_pool, not place_pool).
+ * Uses V3 RPCs: admin_card_pool_intelligence, admin_card_category_health,
+ * admin_card_city_overview, admin_detect_duplicate_curated_cards,
+ * admin_card_country_overview.
  *
- * Navigation: Breadcrumb (All Countries → Country → City) matching PoolIntelligencePage.
- * Tabs: Overview, Browse, Generate, Card Health.
+ * Navigation: Breadcrumb (All Countries → Country → City) with drill-down
+ * directly from Overview tab.
+ * Tabs: Overview, Browse Cards, Generate Cards.
  *
- * Must never happen: referencing seeding_cities, seeding_tiles, or UUID-param RPCs.
+ * Card Health tab removed — absorbed into Overview.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  CreditCard, Camera, AlertTriangle, Eye, EyeOff, Clock, Play, Layers,
-  CheckCircle,
+  CreditCard, Camera, AlertTriangle, Eye, Play, Layers,
+  CheckCircle, Copy,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -34,7 +36,6 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "browse", label: "Browse Cards" },
   { id: "generate", label: "Generate Cards" },
-  { id: "health", label: "Card Health" },
 ];
 
 const CATEGORY_LABELS = {
@@ -99,7 +100,7 @@ function ErrorBanner({ error, onRetry }) {
   );
 }
 
-// ── CountryFilterBar (breadcrumb nav, matching PoolIntelligencePage) ─────────
+// ── CountryFilterBar (breadcrumb nav) ────────────────────────────────────────
 
 function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
   const items = [
@@ -135,9 +136,14 @@ function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCo
 
 // ── Tab 1: Overview ─────────────────────────────────────────────────────────
 
-function OverviewTab({ selectedCountry, selectedCity }) {
+function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+  const { addToast } = useToast();
   const [data, setData] = useState(null);
   const [catHealth, setCatHealth] = useState([]);
+  const [drilldownRows, setDrilldownRows] = useState([]);
+  const [orphanedCards, setOrphanedCards] = useState([]);
+  const [duplicates, setDuplicates] = useState([]);
+  const [deactivating, setDeactivating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
@@ -151,15 +157,60 @@ function OverviewTab({ selectedCountry, selectedCity }) {
     if (selectedCountry) params.p_country = selectedCountry;
     if (selectedCity) params.p_city = selectedCity;
 
-    Promise.all([
+    const promises = [
       supabase.rpc("admin_card_pool_intelligence", params),
-      supabase.rpc("admin_pool_category_health", params),
-    ]).then(([intRes, catRes]) => {
+      supabase.rpc("admin_card_category_health", params),
+    ];
+
+    // Drill-down data: country list (global) or city list (country level)
+    if (!selectedCity) {
+      if (selectedCountry) {
+        promises.push(supabase.rpc("admin_card_city_overview", { p_country: selectedCountry }));
+      } else {
+        promises.push(supabase.rpc("admin_card_country_overview"));
+      }
+    }
+
+    // City-level: fetch orphaned cards + duplicates
+    if (selectedCity) {
+      promises.push(
+        supabase.from("card_pool")
+          .select("id, title, card_type, category, place_pool_id, place_pool!left(is_active)")
+          .eq("is_active", true)
+          .eq("city", selectedCity)
+          .eq("card_type", "single")
+          .or("place_pool_id.is.null,place_pool.is_active.eq.false,place_pool.id.is.null")
+          .limit(50)
+      );
+      promises.push(
+        supabase.rpc("admin_detect_duplicate_curated_cards", { p_country: selectedCountry, p_city: selectedCity })
+      );
+    }
+
+    Promise.all(promises).then((results) => {
       if (!mountedRef.current) return;
+
+      const [intRes, catRes] = results;
       if (intRes.error) { setError(intRes.error.message); setLoading(false); return; }
       if (catRes.error) { setError(catRes.error.message); setLoading(false); return; }
+
       setData(Array.isArray(intRes.data) ? intRes.data[0] : intRes.data);
       setCatHealth(catRes.data || []);
+
+      if (!selectedCity && results[2]) {
+        setDrilldownRows(results[2].data || []);
+      } else {
+        setDrilldownRows([]);
+      }
+
+      if (selectedCity) {
+        setOrphanedCards(results[2]?.data || []);
+        setDuplicates(results[3]?.data || []);
+      } else {
+        setOrphanedCards([]);
+        setDuplicates([]);
+      }
+
       setLoading(false);
     });
   }, [selectedCountry, selectedCity]);
@@ -196,15 +247,109 @@ function OverviewTab({ selectedCountry, selectedCity }) {
 
   const servedPct = data.active_cards > 0 ? Math.round((data.total_served / data.active_cards) * 100) : 0;
 
-  // Category health table
+  // Card-centric category health columns
   const catColumns = [
     { key: "category", label: "Category", sortable: true, render: (_, r) => categoryDot(r.category) },
-    { key: "active_places", label: "Active Places", sortable: true },
-    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => pctBadge(r.photo_pct || 0) },
-    { key: "total_cards", label: "Total Cards", sortable: true },
-    { key: "places_needing_cards", label: "Places Needing Cards", sortable: true },
+    { key: "active_cards", label: "Active Cards", sortable: true },
+    { key: "single_cards", label: "Single", sortable: true },
+    { key: "curated_cards", label: "Curated", sortable: true },
+    { key: "card_image_pct", label: "Image %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
+    { key: "total_served", label: "Served", sortable: true },
+    { key: "never_served", label: "Never Served", sortable: true },
+    { key: "orphaned_cards", label: "Orphaned", sortable: true },
     { key: "health", label: "Health", render: (_, r) => healthBadge(r.health) },
   ];
+
+  // Drill-down columns (country or city level)
+  const isCountryLevel = !!selectedCountry && !selectedCity;
+  const isGlobalLevel = !selectedCountry;
+
+  const countryDrillColumns = [
+    {
+      key: "country", label: "Country", sortable: true,
+      render: (_, r) => (
+        <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+          {r.country}
+        </button>
+      ),
+    },
+    { key: "active_cards", label: "Active Cards", sortable: true },
+    { key: "single_cards", label: "Single", sortable: true },
+    { key: "curated_cards", label: "Curated", sortable: true },
+    { key: "card_image_pct", label: "Image %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
+    { key: "served_pct", label: "Served %", sortable: true, render: (_, r) => pctBadge(r.served_pct || 0) },
+    { key: "never_served", label: "Never Served", sortable: true },
+    { key: "orphaned_cards", label: "Orphaned", sortable: true },
+    { key: "categories_covered", label: "Categories", sortable: true, render: (_, r) => `${r.categories_covered || 0}/13` },
+  ];
+
+  const cityDrillColumns = [
+    {
+      key: "city_name", label: "City", sortable: true,
+      render: (_, r) => (
+        <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+          {r.city_name}
+        </button>
+      ),
+    },
+    { key: "active_cards", label: "Active Cards", sortable: true },
+    { key: "single_cards", label: "Single", sortable: true },
+    { key: "curated_cards", label: "Curated", sortable: true },
+    { key: "card_image_pct", label: "Image %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
+    { key: "served_pct", label: "Served %", sortable: true, render: (_, r) => pctBadge(r.served_pct || 0) },
+    { key: "never_served", label: "Never Served", sortable: true },
+    { key: "orphaned_cards", label: "Orphaned", sortable: true },
+    { key: "categories_covered", label: "Categories", sortable: true, render: (_, r) => `${r.categories_covered || 0}/13` },
+  ];
+
+  // Orphaned cards columns
+  const orphanedColumns = [
+    { key: "title", label: "Title" },
+    { key: "card_type", label: "Type", render: (_, r) => <Badge variant="default">{r.card_type}</Badge> },
+    { key: "category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.category] || r.category || "—" },
+    { key: "actions", label: "", render: (_, r) => (
+      <Button size="sm" variant="danger" onClick={async () => {
+        const { error: err } = await supabase.from("card_pool")
+          .update({ is_active: false })
+          .eq("id", r.id);
+        if (err) addToast({ variant: "error", title: "Deactivation failed", description: err.message });
+        else { addToast({ variant: "success", title: `"${r.title}" deactivated` }); fetchData(); }
+      }}>Deactivate</Button>
+    )},
+  ];
+
+  // Group duplicates by duplicate_group
+  const dupeGroups = {};
+  for (const d of duplicates) {
+    if (!dupeGroups[d.duplicate_group]) dupeGroups[d.duplicate_group] = [];
+    dupeGroups[d.duplicate_group].push(d);
+  }
+
+  const deactivateDuplicates = async () => {
+    setDeactivating(true);
+    const idsToDeactivate = [];
+    for (const group of Object.values(dupeGroups)) {
+      // Keep the first (highest served_count — already sorted by RPC), deactivate the rest
+      for (let i = 1; i < group.length; i++) {
+        if (group[i].is_active) idsToDeactivate.push(group[i].card_id);
+      }
+    }
+    if (idsToDeactivate.length === 0) {
+      addToast({ variant: "info", title: "No active duplicates to deactivate" });
+      setDeactivating(false);
+      return;
+    }
+    const { error: err } = await supabase.from("card_pool")
+      .update({ is_active: false })
+      .in("id", idsToDeactivate);
+    if (err) {
+      addToast({ variant: "error", title: "Deactivation failed", description: err.message });
+    } else {
+      addToast({ variant: "success", title: `${idsToDeactivate.length} duplicate cards deactivated` });
+      fetchData();
+    }
+    setDeactivating(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -235,6 +380,21 @@ function OverviewTab({ selectedCountry, selectedCity }) {
         </SectionCard>
       )}
 
+      {/* Drill-down: Country breakdown (global) or City breakdown (country level) */}
+      {isGlobalLevel && drilldownRows.length > 0 && (
+        <SectionCard title="Country Breakdown" subtitle={`${drilldownRows.length} countries`}>
+          <DataTable columns={countryDrillColumns} rows={drilldownRows} loading={false}
+            emptyMessage="No countries found" emptyIcon={Layers} />
+        </SectionCard>
+      )}
+
+      {isCountryLevel && drilldownRows.length > 0 && (
+        <SectionCard title="City Breakdown" subtitle={`${drilldownRows.length} cities in ${selectedCountry}`}>
+          <DataTable columns={cityDrillColumns} rows={drilldownRows} loading={false}
+            emptyMessage="No cities found" emptyIcon={Layers} />
+        </SectionCard>
+      )}
+
       <SectionCard title="Category Health" subtitle={`${catHealth.length} categories`}>
         <DataTable columns={catColumns} rows={catHealth} loading={false}
           emptyMessage="No category data" emptyIcon={Layers} />
@@ -256,6 +416,49 @@ function OverviewTab({ selectedCountry, selectedCity }) {
           </div>
         </div>
       </SectionCard>
+
+      {/* Orphaned cards (city level only) */}
+      {selectedCity && orphanedCards.length > 0 && (
+        <SectionCard title={`Orphaned Cards (${orphanedCards.length})`} subtitle="Active single cards whose parent place is inactive or missing">
+          <DataTable columns={orphanedColumns} rows={orphanedCards} loading={false}
+            emptyMessage="No orphaned cards" emptyIcon={CheckCircle} />
+        </SectionCard>
+      )}
+
+      {/* Duplicate curated cards (city level only) */}
+      {selectedCity && Object.keys(dupeGroups).length > 0 && (
+        <SectionCard title={`Duplicate Curated Cards (${Object.keys(dupeGroups).length} groups)`}
+          subtitle="Cards sharing the same set of stops">
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button variant="danger" icon={Copy} loading={deactivating} disabled={deactivating}
+                onClick={deactivateDuplicates}>
+                Deactivate Duplicates
+              </Button>
+            </div>
+            {Object.entries(dupeGroups).map(([groupId, cards]) => (
+              <div key={groupId} className="border border-[var(--gray-200)] rounded-lg p-4 space-y-2">
+                <div className="text-xs font-medium text-[var(--color-text-tertiary)]">Group {groupId} · {cards.length} cards · {cards[0]?.stop_count || "?"} stops</div>
+                {cards.map((c, i) => (
+                  <div key={c.card_id} className={`flex items-center justify-between text-sm py-1.5 ${i === 0 ? "bg-[var(--color-success-50)] rounded px-2" : ""}`}>
+                    <div className="flex items-center gap-3">
+                      {i === 0 && <Badge variant="success">Keep</Badge>}
+                      {i !== 0 && <Badge variant="error">Remove</Badge>}
+                      <span className="font-medium">{c.title || "Untitled"}</span>
+                      {c.experience_type && <span className="text-[var(--color-text-tertiary)]">({c.experience_type})</span>}
+                    </div>
+                    <div className="flex items-center gap-4 text-[var(--color-text-secondary)]">
+                      <span>Served: {c.served_count || 0}</span>
+                      <span>{c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</span>
+                      <Badge variant={c.is_active ? "success" : "error"}>{c.is_active ? "Active" : "Inactive"}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -272,7 +475,7 @@ function CardDetailModal({ card, open, onClose, onToggleActive }) {
     setStopsLoading(true);
     setStopsError(null);
     supabase.from("card_pool_stops")
-      .select("*, place_pool(name, address)")
+      .select("*, place_pool(name, address, stored_photo_urls, seeding_category, rating)")
       .eq("card_pool_id", card.id)
       .order("stop_order")
       .then(({ data, error }) => {
@@ -285,41 +488,125 @@ function CardDetailModal({ card, open, onClose, onToggleActive }) {
   if (!card) return null;
 
   const images = card.images || (card.image_url ? [card.image_url] : []);
+  const highlights = Array.isArray(card.highlights) ? card.highlights : [];
+  const shoppingList = Array.isArray(card.shopping_list) ? card.shopping_list : [];
 
   return (
     <Modal open={open} onClose={onClose} title={card.title || "Card Detail"} size="lg">
       <ModalBody>
         <div className="space-y-6">
-          {/* Photo gallery */}
-          {images.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {images.map((url, i) => (
-                <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0" />
-              ))}
-            </div>
-          )}
-          {images.length === 0 && (
-            <div className="text-sm text-[var(--color-text-tertiary)]">No images</div>
-          )}
 
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            <div><span className="text-[var(--color-text-secondary)]">Title:</span> <span className="font-medium">{card.title}</span></div>
-            <div><span className="text-[var(--color-text-secondary)]">Type:</span> <Badge variant={card.card_type === "curated" ? "brand" : "default"}>{card.card_type}</Badge></div>
-            <div><span className="text-[var(--color-text-secondary)]">Category:</span> {CATEGORY_LABELS[card.category] || card.category || (card.categories?.[0] ? CATEGORY_LABELS[card.categories[0]] || card.categories[0] : "—")}</div>
-            <div><span className="text-[var(--color-text-secondary)]">Status:</span> <Badge variant={card.is_active ? "success" : "error"}>{card.is_active ? "Active" : "Inactive"}</Badge></div>
-            <div><span className="text-[var(--color-text-secondary)]">City:</span> {card.city || "—"}</div>
-            <div><span className="text-[var(--color-text-secondary)]">Country:</span> {card.country || "—"}</div>
-            <div><span className="text-[var(--color-text-secondary)]">Lat/Lng:</span> {card.lat && card.lng ? `${card.lat}, ${card.lng}` : "—"}</div>
-            <div><span className="text-[var(--color-text-secondary)]">Created:</span> {card.created_at ? new Date(card.created_at).toLocaleDateString() : "—"}</div>
-            <div><span className="text-[var(--color-text-secondary)]">Served:</span> {card.served_count || 0} times</div>
-            <div><span className="text-[var(--color-text-secondary)]">Place Pool ID:</span> {card.place_pool_id || "—"}</div>
+          {/* Section: Card Identity */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Card Identity</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">Title:</span> <span className="font-medium">{card.title}</span></div>
+              <div><span className="text-[var(--color-text-secondary)]">Type:</span> <Badge variant={card.card_type === "curated" ? "brand" : "default"}>{card.card_type}</Badge></div>
+              <div><span className="text-[var(--color-text-secondary)]">Category:</span> {CATEGORY_LABELS[card.category] || card.category || (card.categories?.[0] ? CATEGORY_LABELS[card.categories[0]] || card.categories[0] : "—")}</div>
+              {card.experience_type && (
+                <div><span className="text-[var(--color-text-secondary)]">Experience Type:</span> <Badge variant="brand">{card.experience_type}</Badge></div>
+              )}
+              <div><span className="text-[var(--color-text-secondary)]">Status:</span> <Badge variant={card.is_active ? "success" : "error"}>{card.is_active ? "Active" : "Inactive"}</Badge></div>
+              {card.google_place_id && (
+                <div><span className="text-[var(--color-text-secondary)]">Google Place ID:</span> <span className="text-xs font-mono break-all">{card.google_place_id}</span></div>
+              )}
+            </div>
           </div>
 
-          {/* Curated stops */}
+          {/* Section: Content */}
+          {(card.description || card.tagline || card.teaser_text || highlights.length > 0 || shoppingList.length > 0) && (
+            <div>
+              <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Content</h4>
+              <div className="space-y-2 text-sm">
+                {card.description && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)]">Description:</span>
+                    <p className="mt-1 text-[var(--color-text-primary)]">{card.description}</p>
+                  </div>
+                )}
+                {card.tagline && (
+                  <div><span className="text-[var(--color-text-secondary)]">Tagline:</span> <span className="italic">{card.tagline}</span></div>
+                )}
+                {card.teaser_text && (
+                  <div><span className="text-[var(--color-text-secondary)]">Teaser:</span> {card.teaser_text}</div>
+                )}
+                {highlights.length > 0 && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)]">Highlights:</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {highlights.map((h, i) => <Badge key={i} variant="default">{h}</Badge>)}
+                    </div>
+                  </div>
+                )}
+                {shoppingList.length > 0 && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)]">Shopping List:</span>
+                    <ul className="list-disc list-inside mt-1 text-[var(--color-text-primary)]">
+                      {shoppingList.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Photos */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
+              Photos {images.length > 0 && <Badge variant="default">{images.length} photos</Badge>}
+            </h4>
+            {images.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {images.map((url, i) => (
+                  <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0" />
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-[var(--color-text-tertiary)]">No images</div>
+            )}
+          </div>
+
+          {/* Section: Location & Pricing */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Location & Pricing</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">City:</span> {card.city || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Country:</span> {card.country || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Lat/Lng:</span> {card.lat && card.lng ? `${card.lat}, ${card.lng}` : "—"}</div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Price Range:</span>{" "}
+                {card.price_min != null || card.price_max != null
+                  ? `$${card.price_min ?? "?"} – $${card.price_max ?? "?"}`
+                  : "—"}
+              </div>
+              {card.estimated_duration_minutes && (
+                <div><span className="text-[var(--color-text-secondary)]">Duration:</span> {card.estimated_duration_minutes} minutes</div>
+              )}
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Rating:</span>{" "}
+                {card.rating != null ? `${card.rating}/5` : "—"}
+                {card.review_count != null && card.review_count > 0 && ` (${card.review_count} reviews)`}
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Serving & Scoring */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Serving & Scoring</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">Served:</span> {card.served_count || 0} times</div>
+              <div><span className="text-[var(--color-text-secondary)]">Last Served:</span> {card.last_served_at ? new Date(card.last_served_at).toLocaleDateString() : "Never"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Base Match Score:</span> {card.base_match_score ?? "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Popularity Score:</span> {card.popularity_score ?? "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Created:</span> {card.created_at ? new Date(card.created_at).toLocaleDateString() : "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Place Pool ID:</span> {card.place_pool_id || "—"}</div>
+            </div>
+          </div>
+
+          {/* Section: Stops (curated only) */}
           {card.card_type === "curated" && (
             <div>
-              <h4 className="text-sm font-semibold mb-2">Stops</h4>
+              <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Stops</h4>
               {stopsLoading && <Spinner size="sm" />}
               {stopsError && <div className="text-sm text-[var(--color-error-600)]">{stopsError}</div>}
               {!stopsLoading && !stopsError && stops.length === 0 && (
@@ -327,17 +614,27 @@ function CardDetailModal({ card, open, onClose, onToggleActive }) {
               )}
               {stops.length > 0 && (
                 <div className="space-y-2">
-                  {stops.map((s, i) => (
-                    <div key={s.id || i} className="flex items-center gap-3 text-sm py-1.5 border-b border-[var(--gray-100)] last:border-0">
-                      <span className="w-6 h-6 rounded-full bg-[var(--color-brand-50)] text-[var(--color-brand-500)] flex items-center justify-center text-xs font-semibold shrink-0">
-                        {s.stop_order}
-                      </span>
-                      <div>
-                        <div className="font-medium">{s.place_pool?.name || `Stop ${s.stop_order}`}</div>
-                        {s.place_pool?.address && <div className="text-[var(--color-text-tertiary)] text-xs">{s.place_pool.address}</div>}
+                  {stops.map((s, i) => {
+                    const stopPhoto = s.place_pool?.stored_photo_urls?.[0];
+                    return (
+                      <div key={s.id || i} className="flex items-center gap-3 text-sm py-1.5 border-b border-[var(--gray-100)] last:border-0">
+                        <span className="w-6 h-6 rounded-full bg-[var(--color-brand-50)] text-[var(--color-brand-500)] flex items-center justify-center text-xs font-semibold shrink-0">
+                          {s.stop_order}
+                        </span>
+                        {stopPhoto && (
+                          <img src={stopPhoto} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <div className="font-medium">{s.place_pool?.name || `Stop ${s.stop_order}`}</div>
+                          <div className="flex items-center gap-2 text-[var(--color-text-tertiary)] text-xs">
+                            {s.place_pool?.address && <span>{s.place_pool.address}</span>}
+                            {s.place_pool?.seeding_category && <Badge variant="default">{CATEGORY_LABELS[s.place_pool.seeding_category] || s.place_pool.seeding_category}</Badge>}
+                            {s.place_pool?.rating && <span>★ {s.place_pool.rating}</span>}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -372,7 +669,14 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
     setLoading(true);
 
     let q = supabase.from("card_pool")
-      .select("id, title, card_type, category, categories, image_url, images, is_active, served_count, created_at, city, country, place_pool_id, lat, lng", { count: "exact" });
+      .select(`
+        id, title, card_type, category, categories, image_url, images,
+        is_active, served_count, last_served_at, created_at, city, country,
+        place_pool_id, lat, lng, description, highlights, experience_type,
+        tagline, price_min, price_max, estimated_duration_minutes, rating,
+        review_count, base_match_score, popularity_score, teaser_text,
+        shopping_list, google_place_id
+      `, { count: "exact" });
 
     if (selectedCity) q = q.eq("city", selectedCity);
     else if (selectedCountry) q = q.eq("country", selectedCountry);
@@ -408,7 +712,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
 
   const toggleActive = async (card) => {
     const { error } = await supabase.from("card_pool")
-      .update({ is_active: !card.is_active, updated_at: new Date().toISOString() })
+      .update({ is_active: !card.is_active })
       .eq("id", card.id);
     if (error) {
       addToast({ variant: "error", title: "Update failed", description: error.message });
@@ -424,7 +728,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   const bulkUpdateActive = async (isActive) => {
     const ids = [...selectedIds];
     const { error } = await supabase.from("card_pool")
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .update({ is_active: isActive })
       .in("id", ids);
     if (error) {
       addToast({ variant: "error", title: "Bulk update failed", description: error.message });
@@ -534,7 +838,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
 
 // ── Tab 3: Generate Cards ───────────────────────────────────────────────────
 
-function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
+function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefresh }) {
   const { addToast } = useToast();
   const [bbox, setBbox] = useState(null);
   const [bboxLoading, setBboxLoading] = useState(false);
@@ -545,6 +849,8 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   const [selectedCat, setSelectedCat] = useState("");
   const [selectedExpType, setSelectedExpType] = useState("adventurous");
   const [dryRun, setDryRun] = useState(false);
+  const [cityRows, setCityRows] = useState([]);
+  const [cityLoading, setCityLoading] = useState(false);
   const mountedRef = useRef(true);
 
   // Compute bounding box when city is selected
@@ -582,6 +888,17 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
       });
 
     return () => { mountedRef.current = false; };
+  }, [selectedCountry, selectedCity]);
+
+  // Fetch city list when country is selected but no city
+  useEffect(() => {
+    if (!selectedCountry || selectedCity) { setCityRows([]); return; }
+    setCityLoading(true);
+    supabase.rpc("admin_card_city_overview", { p_country: selectedCountry })
+      .then(({ data }) => {
+        if (mountedRef.current) setCityRows(data || []);
+        setCityLoading(false);
+      });
   }, [selectedCountry, selectedCity]);
 
   const generateSingle = async () => {
@@ -632,9 +949,40 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
     }
   };
 
+  // No city selected — show city picker or message
   if (!selectedCity) {
-    return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a country and city to generate cards.</div>;
+    const cityPickerColumns = [
+      {
+        key: "city_name", label: "City", sortable: true,
+        render: (_, r) => (
+          <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+            {r.city_name}
+          </button>
+        ),
+      },
+      { key: "active_cards", label: "Active Cards", sortable: true },
+      { key: "single_cards", label: "Single", sortable: true },
+      { key: "curated_cards", label: "Curated", sortable: true },
+      { key: "card_image_pct", label: "Image %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
+      { key: "never_served", label: "Never Served", sortable: true },
+    ];
+
+    return (
+      <SectionCard title="Select a City" subtitle="Card generation requires a specific city for bounding box computation.">
+        {selectedCountry ? (
+          cityLoading
+            ? <div className="flex items-center justify-center py-8 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Loading cities...</span></div>
+            : <DataTable columns={cityPickerColumns} rows={cityRows} loading={false}
+                emptyMessage="No cities found for this country" emptyIcon={Layers} />
+        ) : (
+          <div className="text-sm text-[var(--color-text-secondary)] py-4">
+            Select a country first using the breadcrumb navigation above.
+          </div>
+        )}
+      </SectionCard>
+    );
   }
+
   if (bboxLoading) {
     return <div className="flex items-center justify-center py-12 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Computing city bounds...</span></div>;
   }
@@ -751,199 +1099,6 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   );
 }
 
-// ── Tab 4: Card Health ──────────────────────────────────────────────────────
-
-function CardHealthTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
-  const { addToast } = useToast();
-  const [data, setData] = useState(null);
-  const [catHealth, setCatHealth] = useState([]);
-  const [orphanedCards, setOrphanedCards] = useState([]);
-  const [crossCityRows, setCrossCityRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const mountedRef = useRef(true);
-
-  const fetchData = useCallback(() => {
-    mountedRef.current = true;
-    setLoading(true);
-    setError(null);
-
-    const params = {};
-    if (selectedCountry) params.p_country = selectedCountry;
-    if (selectedCity) params.p_city = selectedCity;
-
-    const promises = [
-      supabase.rpc("admin_card_pool_intelligence", params),
-      supabase.rpc("admin_pool_category_health", params),
-    ];
-
-    // If no city selected, fetch cross-city data
-    if (!selectedCity) {
-      if (selectedCountry) {
-        promises.push(supabase.rpc("admin_country_city_overview", { p_country: selectedCountry }));
-      } else {
-        promises.push(supabase.rpc("admin_country_overview"));
-      }
-    }
-
-    // If city selected, fetch orphaned cards list
-    if (selectedCity) {
-      promises.push(
-        supabase.from("card_pool")
-          .select("id, title, card_type, category, place_pool_id, place_pool!left(is_active)")
-          .eq("is_active", true)
-          .eq("city", selectedCity)
-          .eq("card_type", "single")
-          .or("place_pool_id.is.null,place_pool.is_active.eq.false")
-          .limit(50)
-      );
-    }
-
-    Promise.all(promises).then((results) => {
-      if (!mountedRef.current) return;
-
-      const [intRes, catRes, thirdRes] = results;
-      if (intRes.error) { setError(intRes.error.message); setLoading(false); return; }
-      if (catRes.error) { setError(catRes.error.message); setLoading(false); return; }
-
-      setData(Array.isArray(intRes.data) ? intRes.data[0] : intRes.data);
-      setCatHealth(catRes.data || []);
-
-      if (!selectedCity && thirdRes) {
-        setCrossCityRows(thirdRes.data || []);
-      }
-      if (selectedCity && thirdRes) {
-        setOrphanedCards(thirdRes.data || []);
-      }
-
-      setLoading(false);
-    });
-  }, [selectedCountry, selectedCity]);
-
-  useEffect(() => {
-    fetchData();
-    return () => { mountedRef.current = false; };
-  }, [fetchData]);
-
-  if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading card health data...</div>;
-  if (error) return <ErrorBanner error={error} onRetry={fetchData} />;
-  if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No card health data available.</div>;
-
-  // Cross-city comparison when no city selected
-  if (!selectedCity) {
-    const isCountryLevel = !!selectedCountry;
-    const crossColumns = isCountryLevel
-      ? [
-        {
-          key: "city_name", label: "City", sortable: true,
-          render: (_, r) => (
-            <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
-              {r.city_name}
-            </button>
-          ),
-        },
-        { key: "active_places", label: "Active Places", sortable: true },
-        { key: "card_image_pct", label: "Card Photo %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
-        { key: "total_cards", label: "Cards", sortable: true },
-        { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
-      ]
-      : [
-        {
-          key: "country", label: "Country", sortable: true,
-          render: (_, r) => (
-            <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
-              {r.country}
-            </button>
-          ),
-        },
-        { key: "active_places", label: "Active Places", sortable: true },
-        { key: "card_image_pct", label: "Card Photo %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
-        { key: "total_cards", label: "Cards", sortable: true },
-        { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
-      ];
-
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-3 gap-4">
-          <StatCard icon={AlertTriangle} label="Orphaned Cards" value={data.orphaned_cards}
-            trend={data.orphaned_cards === 0 ? "Clean" : "Needs Fix"} trendUp={data.orphaned_cards === 0} />
-          <StatCard icon={Clock} label="Stale Cards" value={data.stale_cards}
-            trend={data.stale_cards === 0 ? "Fresh" : "Needs Refresh"} trendUp={data.stale_cards === 0} />
-          <StatCard icon={EyeOff} label="Never Served" value={data.never_served}
-            trend={data.active_cards > 0 ? `${Math.round((data.never_served / data.active_cards) * 100)}% of active` : "—"}
-            trendUp={data.never_served < data.active_cards * 0.2} />
-        </div>
-
-        <SectionCard title="Cross-City Comparison" subtitle={`${crossCityRows.length} ${isCountryLevel ? "cities" : "countries"}`}>
-          <DataTable columns={crossColumns} rows={crossCityRows} loading={false}
-            emptyMessage="No data available" emptyIcon={Layers} />
-        </SectionCard>
-      </div>
-    );
-  }
-
-  // City-level health view
-  const deactivateOrphaned = async (card) => {
-    const { error: err } = await supabase.from("card_pool")
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq("id", card.id);
-    if (err) addToast({ variant: "error", title: "Deactivation failed", description: err.message });
-    else { addToast({ variant: "success", title: `"${card.title}" deactivated` }); fetchData(); }
-  };
-
-  const orphanedColumns = [
-    { key: "title", label: "Title" },
-    { key: "card_type", label: "Type", render: (_, r) => <Badge variant="default">{r.card_type}</Badge> },
-    { key: "category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.category] || r.category || "—" },
-    { key: "actions", label: "", render: (_, r) => (
-      <Button size="sm" variant="danger" onClick={() => deactivateOrphaned(r)}>Deactivate</Button>
-    )},
-  ];
-
-  const gapRows = catHealth.filter((r) => (r.places_needing_cards || 0) > 0);
-  const gapColumns = [
-    { key: "category", label: "Category", render: (_, r) => categoryDot(r.category) },
-    { key: "active_places", label: "Active Places" },
-    { key: "total_cards", label: "Total Cards" },
-    { key: "places_needing_cards", label: "Places Needing Cards" },
-    { key: "health", label: "Health", render: (_, r) => healthBadge(r.health) },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard icon={AlertTriangle} label="Orphaned Cards" value={data.orphaned_cards}
-          trend={data.orphaned_cards === 0 ? "Clean" : "Needs Fix"} trendUp={data.orphaned_cards === 0} />
-        <StatCard icon={Clock} label="Stale Cards" value={data.stale_cards}
-          trend={data.stale_cards === 0 ? "Fresh" : "Needs Refresh"} trendUp={data.stale_cards === 0} />
-        <StatCard icon={EyeOff} label="Never Served" value={data.never_served}
-          trend={data.active_cards > 0 ? `${Math.round((data.never_served / data.active_cards) * 100)}% of active` : "—"}
-          trendUp={data.never_served < data.active_cards * 0.2} />
-      </div>
-
-      {orphanedCards.length > 0 && (
-        <SectionCard title={`Orphaned Cards (${orphanedCards.length})`} subtitle="Active single cards whose parent place is inactive or missing">
-          <DataTable columns={orphanedColumns} rows={orphanedCards} loading={false}
-            emptyMessage="No orphaned cards" emptyIcon={CheckCircle} />
-        </SectionCard>
-      )}
-
-      {gapRows.length > 0 && (
-        <SectionCard title="Category Gaps" subtitle="Categories with places that need cards">
-          <DataTable columns={gapColumns} rows={gapRows} loading={false}
-            emptyMessage="All categories covered" emptyIcon={CheckCircle} />
-        </SectionCard>
-      )}
-
-      {orphanedCards.length === 0 && gapRows.length === 0 && (
-        <div className="text-center py-8 text-[var(--color-text-tertiary)]">
-          No health issues found for {selectedCity}. All cards are healthy.
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export function CardPoolManagementPage() {
@@ -959,7 +1114,7 @@ export function CardPoolManagementPage() {
   // Load country list for breadcrumb dropdown
   useEffect(() => {
     mountedRef.current = true;
-    supabase.rpc("admin_country_overview").then(({ data }) => {
+    supabase.rpc("admin_card_country_overview").then(({ data }) => {
       if (!mountedRef.current) return;
       if (data) setCountries(data.map((r) => r.country));
     });
@@ -1006,17 +1161,15 @@ export function CardPoolManagementPage() {
 
       <div className="mt-4" key={refreshKey}>
         {activeTab === "overview" && (
-          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            onSelectCountry={selectCountry} onSelectCity={selectCity} />
         )}
         {activeTab === "browse" && (
           <BrowseCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
         )}
         {activeTab === "generate" && (
-          <GenerateCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
-        )}
-        {activeTab === "health" && (
-          <CardHealthTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            onSelectCountry={selectCountry} onSelectCity={(city) => { setSelectedCity(city); setActiveTab("overview"); }} />
+          <GenerateCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            onSelectCity={selectCity} onRefresh={refresh} />
         )}
       </div>
     </div>

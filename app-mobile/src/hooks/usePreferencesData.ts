@@ -1,17 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
-import { PreferencesService } from "../services/preferencesService";
-import { offlineService } from "../services/offlineService";
-import { useBoardSession } from "./useBoardSession";
+import { useQueryClient } from '@tanstack/react-query';
+import { PreferencesService } from '../services/preferencesService';
+import { useBoardSession } from './useBoardSession';
+import type { UserPreferences } from '../services/experiencesService';
 
 /**
- * Hook for efficiently loading and managing preferences data
- * Separates data loading from UI rendering to improve modal open performance
- * 
- * Performance optimizations:
- * - Lazy loads data on mount only when visible
- * - Caches loaded data to avoid refetches
- * - Loads from offline cache first
- * - Handles both solo and collaboration modes
+ * Hook for efficiently loading and managing preferences data.
+ *
+ * Solo mode reads from the React Query cache synchronously — zero network
+ * calls, zero shimmer on every open. The cache is populated by
+ * useUserPreferences on app start. Only the very first open (empty cache)
+ * triggers a prefetch.
+ *
+ * Collab mode delegates to useBoardSession (unchanged).
  */
 export const usePreferencesData = (
   userId: string | undefined,
@@ -19,81 +19,44 @@ export const usePreferencesData = (
   shouldLoad: boolean = true
 ) => {
   const isCollaborationMode = !!sessionId;
-  
-  // Collaboration mode - load from board session
+  const queryClient = useQueryClient();
+
+  // Collaboration mode — unchanged (useBoardSession already caches)
   const {
     preferences: boardPreferences,
     updatePreferences: updateBoardPreferences,
     loading: loadingBoardPreferences,
   } = useBoardSession(sessionId);
 
-  // Solo mode - load from preferences service
-  const [soloPreferences, setSoloPreferences] = useState<any>(null);
-  const [loadingSoloPreferences, setLoadingSoloPreferences] = useState<boolean>(shouldLoad);
-  const [error, setError] = useState<Error | null>(null);
+  // Solo mode — read from React Query cache (same cache useUserPreferences writes to)
+  const cachedPrefs = queryClient.getQueryData<UserPreferences>(
+    ['userPreferences', userId]
+  );
 
-  const loadSoloPreferences = useCallback(async () => {
-    if (!userId || isCollaborationMode) {
-      setLoadingSoloPreferences(false);
-      return;
-    }
+  // Only loading if cache is empty AND we need data
+  const isLoadingSolo = !isCollaborationMode && shouldLoad && !cachedPrefs && !!userId;
 
-    try {
-      setLoadingSoloPreferences(true);
-      setError(null);
+  // If cache is empty on first open, trigger a fetch
+  // (this is the ONLY time a network call happens)
+  if (isLoadingSolo && userId) {
+    queryClient.prefetchQuery({
+      queryKey: ['userPreferences', userId],
+      queryFn: () => PreferencesService.getUserPreferences(userId),
+      staleTime: Infinity,
+    });
+  }
 
-      // Try offline cache first for instant feedback
-      try {
-        const cachedPrefs = await offlineService.getOfflineUserPreferences();
-        if (cachedPrefs) {
-          setSoloPreferences(cachedPrefs);
-          // Load fresh data in background
-          return; // But continue to fetch fresh
-        }
-      } catch (err) {
-        // Cache miss, continue to database
-      }
-
-      // Load from database
-      const prefs = await PreferencesService.getUserPreferences(userId);
-      if (prefs) {
-        setSoloPreferences(prefs);
-        // Cache for next time
-        await offlineService.cacheUserPreferences(prefs);
-      }
-    } catch (err) {
-      console.error("Error loading solo preferences:", err);
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setSoloPreferences(null);
-    } finally {
-      setLoadingSoloPreferences(false);
-    }
-  }, [userId, isCollaborationMode]);
-
-  // Load preferences only when visible and enabled
-  useEffect(() => {
-    if (!shouldLoad) {
-      setLoadingSoloPreferences(false);
-      return;
-    }
-
-    if (isCollaborationMode) {
-      // Board preferences are loaded by useBoardSession hook
-      return;
-    }
-
-    loadSoloPreferences();
-  }, [shouldLoad, isCollaborationMode, userId, loadSoloPreferences]);
-
-  const isLoading = isCollaborationMode ? loadingBoardPreferences : loadingSoloPreferences;
-  const preferences = isCollaborationMode ? boardPreferences : soloPreferences;
+  const isLoading = isCollaborationMode ? loadingBoardPreferences : isLoadingSolo;
+  const preferences = isCollaborationMode ? boardPreferences : cachedPrefs;
 
   return {
-    preferences,
+    preferences: preferences ?? null,
     isLoading,
-    error,
+    error: null,
     isCollaborationMode,
     updateBoardPreferences,
-    refetch: loadSoloPreferences,
+    refetch: () => {
+      queryClient.invalidateQueries({ queryKey: ['userPreferences', userId] });
+    },
   };
 };

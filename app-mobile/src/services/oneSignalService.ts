@@ -15,6 +15,7 @@ const RETRY_DELAY_MS = 3000
 
 let _initialized = false
 let _initAttempts = 0
+let _loginComplete = false
 
 /**
  * Initialize the OneSignal SDK. Call once at app startup before any other
@@ -92,6 +93,7 @@ export async function loginAndSubscribe(userId: string): Promise<void> {
     // Even if OS permission is denied, calling optIn is safe — OneSignal
     // will deliver once permission is later granted in system settings.
     await OneSignal.User.pushSubscription.optIn()
+    _loginComplete = true
     if (__DEV__) logger.push('subscription opted in')
   } catch (e) {
     console.warn('[OneSignal] loginAndSubscribe failed:', e)
@@ -104,11 +106,37 @@ export async function loginAndSubscribe(userId: string): Promise<void> {
  */
 export function logoutOneSignal(): void {
   if (!_initialized) return
+  _loginComplete = false
   try {
     OneSignal.logout()
     if (__DEV__) logger.push('logout')
   } catch (e) {
     console.warn('[OneSignal] logout failed:', e)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Badge management
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Safely clear all OneSignal notifications and reset the iOS badge to 0.
+ *
+ * Guards:
+ *   1. SDK must be initialised (`_initialized`)
+ *   2. Login sequence must have completed (`_loginComplete`)
+ *   3. Entire call is wrapped in try/catch to prevent native ObjC exceptions
+ *      from propagating through the TurboModule bridge → std::terminate → SIGABRT
+ *
+ * This is the ONLY safe way to call OneSignal.Notifications.clearAll().
+ * Consumers must NEVER import OneSignal directly.
+ */
+export function clearNotificationBadge(): void {
+  if (!_initialized || !_loginComplete) return
+  try {
+    OneSignal.Notifications.clearAll()
+  } catch (e) {
+    console.warn('[OneSignal] clearAll failed:', e)
   }
 }
 

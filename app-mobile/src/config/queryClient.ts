@@ -42,6 +42,20 @@ let auth401ResetTimer: ReturnType<typeof setTimeout> | null = null;
 let auth401GracePeriod = false;
 let auth401GraceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Registered full sign-out handler. AppStateManager calls setSignOutHandler()
+// on mount so the 401 handler can trigger a complete cleanup (SDK resets,
+// AsyncStorage sweep, React Query clear) instead of raw supabase.auth.signOut().
+let _registeredSignOutHandler: (() => Promise<void>) | null = null;
+
+/**
+ * Register the full sign-out handler from AppStateManager.
+ * Breaks the circular dependency: queryClient can't import AppStateManager,
+ * but AppStateManager can register its handleSignOut here at mount time.
+ */
+export function setSignOutHandler(handler: () => Promise<void>): void {
+  _registeredSignOutHandler = handler;
+}
+
 /**
  * Reset the 401 counter. Called by useForegroundRefresh at the start of
  * every resume so that transient 401s from focusManager-triggered refetches
@@ -95,10 +109,19 @@ function handlePotentialAuthError(error: Error): void {
       // Show message BEFORE sign-out so user knows what happened
       Alert.alert("Session Expired", "Your session has expired. Please sign in again.");
 
-      // Lazy require to avoid circular dependency (queryClient ↔ supabase)
-      const { supabase } = require('../services/supabase');
-      // Small delay so alert is visible before navigation
-      setTimeout(() => supabase.auth.signOut(), 1000);
+      // Use the registered full sign-out handler (from AppStateManager) so that
+      // SDK cleanup, AsyncStorage sweep, and React Query clear all execute.
+      // Falls back to raw supabase.auth.signOut() only if handler not yet registered.
+      setTimeout(() => {
+        if (_registeredSignOutHandler) {
+          _registeredSignOutHandler().catch((e) =>
+            console.error('[AUTH] Full sign-out failed:', e)
+          );
+        } else {
+          const { supabase } = require('../services/supabase');
+          supabase.auth.signOut();
+        }
+      }, 1000);
     }
   } else {
     // Any non-auth error breaks the consecutive chain

@@ -65,8 +65,9 @@ export function generateUsernameFromName(name: string): string {
 }
 
 /**
- * Checks if a username is available in the database
- * Returns true if available, false if taken
+ * Checks if a username is available in the database.
+ * Uses the `is_username_available` RPC (SECURITY DEFINER) which returns
+ * a boolean without exposing any profile rows.
  */
 export async function checkUsernameAvailability(
   username: string
@@ -75,66 +76,25 @@ export async function checkUsernameAvailability(
     return false;
   }
 
-  try {
-    const sanitized = sanitizeUsername(username);
-    if (sanitized.length < 3) {
-      return false; // Too short
-    }
+  const sanitized = sanitizeUsername(username);
+  if (sanitized.length < 3) {
+    return false;
+  }
 
-    // Direct query to check username availability
-    // Query for exact match (sanitized username is already lowercase)
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("username", sanitized)
-      .not("username", "is", null)
-      .limit(1);
+  try {
+    const { data, error } = await supabase.rpc("is_username_available", {
+      p_username: sanitized,
+    });
 
     if (error) {
-      console.error("Error checking username availability:", error);
-      
-      // If RLS blocks the query, fetch all usernames as fallback
-      // This requires the RLS policy to allow SELECT on profiles
-      try {
-        const { data: allUsernames, error: allError } = await supabase
-          .from("profiles")
-          .select("username")
-          .not("username", "is", null);
-
-        if (allError) {
-          console.error("Error in fallback username check:", allError);
-          // On error, assume available to not block user flow
-          return true;
-        }
-
-        if (allUsernames) {
-          // Check if any username matches case-insensitively
-          const usernameExists = allUsernames.some(
-            (profile) =>
-              profile.username &&
-              profile.username.toLowerCase().trim() === sanitized.toLowerCase().trim()
-          );
-          
-          return !usernameExists;
-        }
-      } catch (fallbackError) {
-        console.error("Exception in fallback username check:", fallbackError);
-      }
-      
-      // If all methods fail, assume available to not block user flow
+      console.error("[usernameUtils] is_username_available RPC error:", error);
+      // On error, assume available to not block user flow
       return true;
     }
 
-    // If exact match found, username is taken
-    if (data && data.length > 0) {
-      return false;
-    }
-
-    // Username is available (no exact match found)
-    return true;
+    return data === true;
   } catch (error) {
-    console.error("Exception checking username availability:", error);
-    // On exception, assume it's available
+    console.error("[usernameUtils] checkUsernameAvailability exception:", error);
     return true;
   }
 }

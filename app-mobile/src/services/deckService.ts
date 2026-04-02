@@ -40,9 +40,9 @@ export interface DeckParams {
   datetimePref?: string;
   dateOption?: string;
   timeSlot?: string | null;
-  exactTime?: string | null;
   batchSeed?: number;
   limit?: number;
+  excludeCardIds?: string[];
 }
 
 export interface DeckResponse {
@@ -283,9 +283,9 @@ class DeckService {
                 datetimePref: params.datetimePref,
                 dateOption: params.dateOption,
                 timeSlot: params.timeSlot,
-                exactTime: params.exactTime,
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
+                excludeCardIds: params.excludeCardIds,
               },
             }),
             timeoutPromise,

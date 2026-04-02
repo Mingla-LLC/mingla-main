@@ -1,33 +1,39 @@
+/**
+ * PLACE POOL MANAGEMENT PAGE (redesigned 2026-03-31)
+ *
+ * Pool data visible at any scope (global/country/city) without seeding city
+ * registration. Seeding preserved as a sub-feature for registered cities.
+ *
+ * Uses new RPCs: admin_place_pool_overview, admin_place_country_overview,
+ * admin_place_city_overview, admin_place_category_breakdown.
+ *
+ * Tabs: Overview, Browse Pool, Map View, [Seeding], Photo Management, Stale Review.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
-  Download, ImageOff, Eye, Edit3, DollarSign,
+  Download, ImageOff, Eye, Edit3, DollarSign, Layers,
   Square, SkipForward, XCircle, Loader, RotateCcw, Zap,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { Tabs } from "../components/ui/Tabs";
 import { Button } from "../components/ui/Button";
-import { SectionCard, StatCard } from "../components/ui/Card";
+import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Input, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
+import { Breadcrumbs } from "../components/ui/Breadcrumbs";
+import { Spinner } from "../components/ui/Spinner";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SUB_TABS = [
-  { id: "seed", label: "Seed & Import" },
-  { id: "map", label: "Map View" },
-  { id: "browse", label: "Browse Pool" },
-  { id: "photos", label: "Photo Management" },
-  { id: "ai", label: "AI Validation" },
-  { id: "stale", label: "Stale Review" },
-  { id: "stats", label: "Stats & Analytics" },
-];
+// Tabs are computed dynamically in the main page component based on registration state
 
 const CATEGORY_COLORS = {
   nature_views: "#22c55e", first_meet: "#f97316", picnic_park: "#84cc16",
@@ -92,73 +98,704 @@ function pctColor(pct) {
   return "error";
 }
 
-// ── City Selector ────────────────────────────────────────────────────────────
+// ── CountryFilterBar (breadcrumb nav) ────────────────────────────────────────
 
-function CitySelector({ cities, selectedCity, onSelect, onAddCity, disabled }) {
-  // cities may include both registered (have id from seeding_cities) and unregistered (synthetic id)
-  const registered = cities.filter((c) => !c._unregistered);
-  const unregistered = cities.filter((c) => c._unregistered);
+function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
+  const items = [
+    { label: "All Countries", onClick: () => { onClearCountry(); } },
+    ...(selectedCountry ? [
+      selectedCity
+        ? { label: selectedCountry, onClick: () => { onClearCity(); } }
+        : { label: selectedCountry },
+    ] : []),
+    ...(selectedCity ? [{ label: selectedCity }] : []),
+  ];
 
   return (
-    <div className="flex items-center gap-3 mb-4">
-      <select
-        className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-        value={selectedCity?.id || selectedCity?._key || ""}
-        disabled={disabled}
-        onChange={(e) => {
-          if (!onSelect) return;
-          const city = cities.find((c) => (c.id || c._key) === e.target.value);
-          onSelect(city || null);
-        }}
-      >
-        <option value="">All Cities</option>
-        {registered.length > 0 && (
-          <optgroup label="Registered Cities">
-            {registered.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}, {c.country} — {c.status}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {unregistered.length > 0 && (
-          <optgroup label="Unregistered (in pool, needs setup)">
-            {unregistered.map((c) => (
-              <option key={c._key} value={c._key}>
-                {c.name}, {c.country} — {c.placeCount} places, no tiles
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
-      <Button icon={Plus} size="sm" onClick={onAddCity} disabled={disabled}>Add City</Button>
+    <div className="flex items-center gap-3 mb-2">
+      <Breadcrumbs items={items} />
+      {!selectedCountry && countries.length > 0 && (
+        <select
+          className="ml-auto rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
+          value=""
+          onChange={(e) => { if (e.target.value) onSelectCountry(e.target.value); }}
+        >
+          <option value="">Jump to country...</option>
+          {countries.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      )}
     </div>
   );
 }
 
-// ── City Summary Bar ─────────────────────────────────────────────────────────
+// ── OverviewTab ─────────────────────────────────────────────────────────────
 
-function CitySummaryBar({ stats, spendTotal }) {
-  if (!stats) return null;
-  const total = stats.total_places || 0;
-  const withPhotos = stats.with_photos || 0;
-  const photoPct = total > 0 ? Math.round((withPhotos / total) * 100) : 0;
-  const stale = stats.stale_count || 0;
-  const freshPct = total > 0 ? Math.round(((total - stale) / total) * 100) : 0;
+function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+  const { addToast } = useToast();
+  const [data, setData] = useState(null);
+  const [drilldownRows, setDrilldownRows] = useState([]);
+  const [catBreakdown, setCatBreakdown] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [activeJob, setActiveJob] = useState(null); // persisted job row
+  const mountedRef = useRef(true);
+  const jobLoopRef = useRef(false); // prevents duplicate loops
+  const jobCancelledRef = useRef(false); // separate signal to stop the job loop
+
+  const fetchData = useCallback(() => {
+    mountedRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    const params = {};
+    if (selectedCountry) params.p_country = selectedCountry;
+    if (selectedCity) params.p_city = selectedCity;
+
+    const promises = [
+      supabase.rpc("admin_place_pool_overview", params),
+      supabase.rpc("admin_place_category_breakdown", params),
+    ];
+
+    if (!selectedCity) {
+      if (selectedCountry) {
+        promises.push(supabase.rpc("admin_place_city_overview", { p_country: selectedCountry }));
+      } else {
+        promises.push(supabase.rpc("admin_place_country_overview"));
+      }
+    }
+
+    Promise.all(promises).then((results) => {
+      if (!mountedRef.current) return;
+      const [overviewRes, catRes, drillRes] = results;
+      if (overviewRes.error) { setError(overviewRes.error.message); setLoading(false); return; }
+      const row = Array.isArray(overviewRes.data) ? overviewRes.data[0] : overviewRes.data;
+      setData(row);
+      setCatBreakdown(catRes.data || []);
+      setDrilldownRows(drillRes?.data || []);
+      setLoading(false);
+    });
+  }, [selectedCountry, selectedCity]);
+
+  // ── Job-driven validation loop (persists across page refreshes) ──────────
+  const runJobLoop = async (job, isResume = false) => {
+    // If a loop is already running, stop the OLD one first
+    if (jobLoopRef.current) {
+      jobCancelledRef.current = true;
+      // Wait a tick for the old loop to exit
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    jobLoopRef.current = true;
+    jobCancelledRef.current = false;
+    setActiveJob(job);
+    console.log(`[AI Validation] Starting ${isResume ? "resumed" : "new"} job ${job.id}`);
+
+    let { id: jobId, processed, approved, rejected, failed, continuation_token: token } = job;
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (jobCancelledRef.current) break;
+
+        // Start the edge function call (don't await yet)
+        const fnPromise = supabase.functions.invoke("ai-validate-places", {
+          body: {
+            jobId,
+            limit: 25,
+            revalidate: job.revalidate,
+            ...(token ? { afterCreatedAt: token } : {}),
+            ...(job.country_filter ? { countryFilter: job.country_filter } : {}),
+            ...(job.city_filter ? { cityFilter: job.city_filter } : {}),
+          },
+        });
+
+        // Poll the job row every 3s while the edge function is running
+        let fnDone = false;
+        let fnResult = null;
+        fnPromise.then((r) => { fnResult = r; fnDone = true; });
+
+        while (!fnDone && !jobCancelledRef.current) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const { data: polled } = await supabase
+            .from("ai_validation_jobs")
+            .select("processed, approved, rejected, failed")
+            .eq("id", jobId)
+            .single();
+          if (polled) {
+            setActiveJob((prev) => ({ ...prev, ...polled }));
+          }
+        }
+
+        if (jobCancelledRef.current) break;
+
+        const resp = fnResult;
+        if (resp.error) {
+          const errMsg = resp.error?.message || resp.error?.context?.statusText || JSON.stringify(resp.error);
+          throw new Error(errMsg);
+        }
+
+        const r = typeof resp.data === "string" ? JSON.parse(resp.data) : resp.data;
+        if (!r || typeof r.processed !== "number") {
+          throw new Error("Unexpected response: " + JSON.stringify(r));
+        }
+
+        processed += r.processed;
+        approved += r.approved;
+        rejected += r.rejected;
+        failed += r.failed;
+        token = r.continuation_token;
+
+        const done = r.processed === 0 || !r.continuation_token;
+        const updatedJob = {
+          processed, approved, rejected, failed,
+          continuation_token: token,
+          status: done ? "completed" : "running",
+          updated_at: new Date().toISOString(),
+        };
+        await supabase.from("ai_validation_jobs").update(updatedJob).eq("id", jobId);
+        setActiveJob((prev) => ({ ...prev, ...updatedJob }));
+
+        if (done) {
+          addToast({
+            variant: "success",
+            title: `${job.revalidate ? "Revalidated" : "Validated"} ${processed} places`,
+            description: `${approved} approved, ${rejected} rejected, ${failed} failed`,
+          });
+          fetchData();
+          break;
+        }
+      }
+    } catch (err) {
+      console.error("Job loop error:", err);
+      await supabase.from("ai_validation_jobs").update({
+        status: "failed", error_message: String(err?.message || err), updated_at: new Date().toISOString(),
+      }).eq("id", jobId);
+      setActiveJob(null);
+      addToast({
+        variant: "error",
+        title: `Validation stopped after ${processed} places`,
+        description: String(err?.message || err),
+      });
+      fetchData();
+    } finally {
+      jobLoopRef.current = false;
+    }
+  };
+
+  const startJob = async (revalidate) => {
+    const totalPlaces = data?.active_places || 0;
+    const { data: job, error: insertErr } = await supabase.from("ai_validation_jobs").insert({
+      revalidate,
+      total_places: totalPlaces,
+      country_filter: selectedCountry || null,
+      city_filter: selectedCity || null,
+    }).select().single();
+    if (insertErr) {
+      addToast({ variant: "error", title: "Failed to create job", description: insertErr.message });
+      return;
+    }
+    runJobLoop(job);
+  };
+
+  const cancelJob = async () => {
+    if (!activeJob) return;
+    jobCancelledRef.current = true;
+    await supabase.from("ai_validation_jobs").update({
+      status: "cancelled", updated_at: new Date().toISOString(),
+    }).eq("id", activeJob.id);
+    setActiveJob(null);
+    jobLoopRef.current = false;
+    addToast({ variant: "info", title: "Validation cancelled" });
+    fetchData();
+  };
+
+  // Check for active job on mount (resume after page refresh)
+  useEffect(() => {
+    supabase.from("ai_validation_jobs")
+      .select("*")
+      .eq("status", "running")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data: jobs }) => {
+        if (jobs && jobs.length > 0) {
+          const job = jobs[0];
+          const matchesScope =
+            (job.country_filter || null) === (selectedCountry || null) &&
+            (job.city_filter || null) === (selectedCity || null);
+          if (matchesScope) runJobLoop(job, true);
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    return () => { mountedRef.current = false; };
+  }, [fetchData]);
+
+  if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading pool data...</div>;
+  if (error) return <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg">{error}</div>;
+  if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No pool data available.</div>;
+
+  const scope = selectedCity
+    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
+    : selectedCountry ? <strong>{selectedCountry}</strong> : "global pool";
+
+  const aiPct = data.active_places > 0 ? Math.round((data.ai_validated_count / data.active_places) * 100) : 0;
+
+  const isGlobal = !selectedCountry;
+  const isCountryLevel = !!selectedCountry && !selectedCity;
+
+  // Drill-down columns
+  const countryDrillColumns = [
+    { key: "country", label: "Country", sortable: true, render: (_, r) => (
+      <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.country}</button>
+    )},
+    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
+    { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
+    { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
+    { key: "city_count", label: "Cities", sortable: true },
+  ];
+
+  const cityDrillColumns = [
+    { key: "city_name", label: "City", sortable: true, render: (_, r) => (
+      <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.city_name}</button>
+    )},
+    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
+    { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
+    { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
+    { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
+  ];
+
+  const catColumns = [
+    { key: "category", label: "Category", sortable: true, render: (_, r) => (
+      <div className="flex items-center gap-2">
+        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[r.category] || "#6b7280" }} />
+        {CATEGORY_LABELS[r.category] || r.category || "Uncategorized"}
+      </div>
+    )},
+    { key: "place_count", label: "Places", sortable: true },
+    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
+    { key: "ai_validated", label: "AI Validated", sortable: true },
+    { key: "ai_approved_count", label: "Approved", sortable: true },
+    { key: "ai_rejected_count", label: "Rejected", sortable: true },
+    { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
+  ];
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-6">
-      <StatCard icon={Globe} label="Total Places" value={total} />
-      <StatCard icon={Camera} label="Photo Coverage" value={`${photoPct}%`}
-        trend={pctColor(photoPct) === "success" ? "Good" : pctColor(photoPct) === "warning" ? "Fair" : "Low"}
-        trendUp={photoPct >= 80} />
-      <StatCard icon={Clock} label="Freshness" value={`${freshPct}%`}
-        trend={freshPct >= 80 ? "Fresh" : freshPct >= 50 ? "Aging" : "Stale"}
-        trendUp={freshPct >= 80} />
-      <StatCard icon={DollarSign} label="Seeding Spend" value={formatCost(spendTotal)}
-        trend={`of ${formatCost(HARD_CAP_USD)} cap`}
-        trendUp={spendTotal <= HARD_CAP_USD * 0.8} />
+    <div className="space-y-6">
+      <p className="text-sm text-[var(--color-text-secondary)]">Showing {scope}</p>
+
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={Globe} label="Active Places" value={data.active_places} />
+        <StatCard icon={Camera} label="Photo Coverage" value={`${data.photo_pct}%`}
+          trend={data.photo_pct >= 80 ? "Good" : data.photo_pct >= 50 ? "Fair" : "Low"} trendUp={data.photo_pct >= 80} />
+        <StatCard icon={Eye} label="AI Validated" value={`${aiPct}%`}
+          trend={`${data.ai_validated_count} of ${data.active_places}`} trendUp={aiPct >= 50} />
+        <StatCard icon={AlertTriangle} label="Uncategorized" value={data.without_seeding_category}
+          trend={data.without_seeding_category === 0 ? "Clean" : "Needs Fix"} trendUp={data.without_seeding_category === 0} />
+      </div>
+
+      {/* AI Validation Summary + Run buttons */}
+      {(data.ai_pending_count > 0 || data.ai_validated_count > 0) && (
+        <SectionCard title="AI Validation Summary">
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            <StatCard label="Validated" value={data.ai_validated_count} />
+            <StatCard label="Approved" value={data.ai_approved_count} />
+            <StatCard label="Rejected" value={data.ai_rejected_count} />
+            <StatCard label="Pending" value={data.ai_pending_count} />
+          </div>
+
+          {/* Active job progress bar */}
+          {activeJob && (
+            <div className="mb-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  {activeJob.revalidate ? "Revalidating" : "Validating"} places...
+                </span>
+                <span className="font-medium">
+                  {activeJob.processed} / {activeJob.total_places}
+                  {activeJob.total_places > 0 && ` (${Math.round((activeJob.processed / activeJob.total_places) * 100)}%)`}
+                </span>
+              </div>
+              <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2.5">
+                <div
+                  className="bg-[var(--color-brand-500)] h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${activeJob.total_places > 0 ? Math.round((activeJob.processed / activeJob.total_places) * 100) : 0}%` }}
+                />
+              </div>
+              <div className="flex gap-4 text-xs text-[var(--color-text-tertiary)]">
+                <span>{activeJob.approved} approved</span>
+                <span>{activeJob.rejected} rejected</span>
+                <span>{activeJob.failed} failed</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 items-center">
+            {data.ai_pending_count > 0 && !activeJob && (
+              <Button icon={Zap} variant="primary" size="sm" loading={validating}
+                onClick={async () => {
+                  setValidating(true);
+                  try {
+                    const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
+                      body: {
+                        limit: 25,
+                        ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
+                        ...(selectedCity ? { cityFilter: selectedCity } : {}),
+                      },
+                    });
+                    if (fnErr) throw new Error(fnErr.message);
+                    const r = typeof result === "string" ? JSON.parse(result) : result;
+                    addToast({
+                      variant: "success",
+                      title: `Validated ${r.processed} places`,
+                      description: `${r.approved} approved, ${r.rejected} rejected, ${r.failed} failed`,
+                    });
+                    fetchData();
+                  } catch (err) {
+                    addToast({ variant: "error", title: "Validation failed", description: err.message });
+                  } finally {
+                    setValidating(false);
+                  }
+                }}>
+                Validate {Math.min(data.ai_pending_count, 25)} Pending Places
+              </Button>
+            )}
+            {!activeJob && (
+              <Button icon={RefreshCw} variant="ghost" size="sm" disabled={validating}
+                onClick={() => {
+                  if (!confirm(`Revalidate ALL ${data.active_places} places with AI? This will re-run validation on every place, including ones already validated.`)) return;
+                  startJob(true);
+                }}>
+                Revalidate All Places
+              </Button>
+            )}
+            {activeJob && (
+              <Button icon={XCircle} variant="ghost" size="sm" onClick={cancelJob}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Drill-down tables */}
+      {isGlobal && drilldownRows.length > 0 && (
+        <SectionCard title="Country Breakdown" subtitle={`${drilldownRows.length} countries`}>
+          <DataTable columns={countryDrillColumns} rows={drilldownRows} loading={false}
+            emptyMessage="No countries found" emptyIcon={Layers} />
+        </SectionCard>
+      )}
+
+      {isCountryLevel && drilldownRows.length > 0 && (
+        <SectionCard title="City Breakdown" subtitle={`${drilldownRows.length} cities in ${selectedCountry}`}>
+          <DataTable columns={cityDrillColumns} rows={drilldownRows} loading={false}
+            emptyMessage="No cities found" emptyIcon={Layers} />
+        </SectionCard>
+      )}
+
+      {/* Category breakdown */}
+      <SectionCard title="Category Breakdown" subtitle={`${catBreakdown.length} categories`}>
+        <DataTable columns={catColumns} rows={catBreakdown} loading={false}
+          emptyMessage="No category data" emptyIcon={Layers} />
+      </SectionCard>
     </div>
+  );
+}
+
+// ── Place Detail Modal ──────────────────────────────────────────────────────
+
+function PlaceDetailModal({ place, open, onClose, onSave }) {
+  const { addToast } = useToast();
+  const [aiCard, setAiCard] = useState(null);
+  const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: "", price_tiers: [], seeding_category: "", is_active: true,
+    ai_approved: null, ai_primary_identity: "", ai_categories: [], ai_reason: "", ai_confidence: null,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !place) return;
+    setEditForm({
+      name: place.name || "",
+      price_tiers: place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []),
+      seeding_category: place.seeding_category || "",
+      is_active: place.is_active,
+      ai_approved: place.ai_approved,
+      ai_primary_identity: place.ai_primary_identity || "",
+      ai_categories: place.ai_categories || [],
+      ai_reason: place.ai_reason || "",
+      ai_confidence: place.ai_confidence,
+    });
+    // Fetch AI card data
+    supabase.from("card_pool")
+      .select("ai_approved, ai_reason, ai_categories, ai_validated_at, categories, original_categories")
+      .eq("place_pool_id", place.id)
+      .eq("card_type", "single")
+      .eq("is_active", true)
+      .order("ai_validated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setAiCard(data));
+  }, [open, place]);
+
+  if (!place) return null;
+
+  const photos = place.stored_photo_urls || [];
+  const types = place.types || [];
+  const aiCats = place.ai_categories?.length > 0 ? place.ai_categories : aiCard?.ai_categories || [];
+  const hasConflict = place.seeding_category && aiCats.length > 0 && place.seeding_category !== aiCats[0];
+
+  const aiStatusBadge = () => {
+    const approved = place.ai_approved ?? aiCard?.ai_approved;
+    if (approved === true) return <Badge variant="success">Approved</Badge>;
+    if (approved === false) return <Badge variant="error">Rejected</Badge>;
+    return <Badge variant="outline">Pending</Badge>;
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    // Save basic fields via RPC (handles cascade to card_pool)
+    const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
+      p_place_id: place.id,
+      p_name: editForm.name || null,
+      p_price_tier: editForm.price_tiers?.[0] || null,
+      p_price_tiers: editForm.price_tiers || [],
+      p_seeding_category: editForm.seeding_category || null,
+      p_is_active: editForm.is_active,
+    });
+    if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
+
+    // Save AI fields directly
+    const { error: aiErr } = await supabase.from("place_pool").update({
+      ai_approved: editForm.ai_approved,
+      ai_primary_identity: editForm.ai_primary_identity || null,
+      ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
+      ai_reason: editForm.ai_reason || null,
+      ai_confidence: editForm.ai_confidence,
+      ai_validated_at: new Date().toISOString(),
+    }).eq("id", place.id);
+    if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
+
+    addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
+    setSaving(false);
+  };
+
+  const relativeTime = (dateStr) => {
+    if (!dateStr) return "Never";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    if (days < 30) return `${days} days ago`;
+    return `${Math.floor(days / 30)} months ago`;
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={place.name || "Place Detail"} size="lg">
+      <ModalBody>
+        <div className="space-y-6">
+          {/* Identity */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Identity</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">Name:</span> <span className="font-medium">{place.name}</span></div>
+              <div><span className="text-[var(--color-text-secondary)]">Address:</span> {place.address || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">City:</span> {place.city || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Country:</span> {place.country || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Lat/Lng:</span> {place.lat && place.lng ? `${place.lat}, ${place.lng}` : "—"}</div>
+              {place.google_place_id && <div><span className="text-[var(--color-text-secondary)]">Google Place ID:</span> <span className="text-xs font-mono break-all">{place.google_place_id}</span></div>}
+              {place.website && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Website:</span> <a href={place.website} target="_blank" rel="noopener noreferrer" className="text-[var(--color-brand-500)] hover:underline">{place.website}</a></div>}
+            </div>
+          </div>
+
+          {/* Photos */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
+              Photos {photos.length > 0 ? <Badge variant="default">{photos.length} photos</Badge> : <Badge variant="error">No photos</Badge>}
+            </h4>
+            {photos.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {photos.map((url, i) => (
+                  <img key={i} src={url} alt="" className="w-32 h-32 rounded-lg object-cover shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setExpandedPhoto(url)} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-[var(--color-text-tertiary)]">No stored photos</div>
+            )}
+            {expandedPhoto && (
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center" style={{ zIndex: 9999 }}
+                onClick={(e) => { if (e.target === e.currentTarget) setExpandedPhoto(null); }}>
+                <button className="absolute top-4 right-4 text-white/70 hover:text-white text-3xl cursor-pointer" onClick={() => setExpandedPhoto(null)}>&times;</button>
+                {photos.length > 1 && (
+                  <button className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl cursor-pointer px-2"
+                    onClick={() => { const idx = photos.indexOf(expandedPhoto); setExpandedPhoto(photos[(idx - 1 + photos.length) % photos.length]); }}>&lsaquo;</button>
+                )}
+                <img src={expandedPhoto} alt="" className="max-w-[85vw] max-h-[85vh] rounded-lg object-contain" />
+                {photos.length > 1 && (
+                  <button className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl cursor-pointer px-2"
+                    onClick={() => { const idx = photos.indexOf(expandedPhoto); setExpandedPhoto(photos[(idx + 1) % photos.length]); }}>&rsaquo;</button>
+                )}
+                <div className="absolute bottom-4 text-white/60 text-sm">{photos.indexOf(expandedPhoto) + 1} / {photos.length}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Classification */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Classification</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--color-text-secondary)]">Google Category:</span>
+                {place.seeding_category ? (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[place.seeding_category] }}>
+                    {CATEGORY_LABELS[place.seeding_category] || place.seeding_category}
+                  </span>
+                ) : <Badge variant="error">None</Badge>}
+              </div>
+              {types.length > 0 && (
+                <div>
+                  <span className="text-[var(--color-text-secondary)]">Google Types:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {types.map((t, i) => <Badge key={i} variant={t === place.primary_type ? "brand" : "default"}>{t}</Badge>)}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--color-text-secondary)]">AI Category:</span>
+                {aiCats.length > 0 ? (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[aiCats[0]] || "#6b7280" }}>
+                    {CATEGORY_LABELS[aiCats[0]] || aiCats[0]}
+                  </span>
+                ) : <Badge variant="outline">Not validated</Badge>}
+                {hasConflict && <Badge variant="warning">Conflict</Badge>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--color-text-secondary)]">AI Status:</span> {aiStatusBadge()}
+              </div>
+              {aiCard?.ai_reason && aiCard?.ai_approved === false && (
+                <div><span className="text-[var(--color-text-secondary)]">AI Reason:</span> <span className="text-[var(--color-error-600)]">{aiCard.ai_reason}</span></div>
+              )}
+            </div>
+          </div>
+
+          {/* Quality */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Quality</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">Rating:</span> {place.rating ? `★ ${place.rating}` : "—"} {place.review_count > 0 && `(${place.review_count} reviews)`}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Price Tiers:</span> {(() => { const tiers = place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []); return tiers.length > 0 ? tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>) : "—"; })()}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Price Level:</span> {place.price_level || "—"}</div>
+              {place.editorial_summary && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Editorial:</span> {place.editorial_summary}</div>}
+            </div>
+          </div>
+
+          {/* Data Freshness */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Data Freshness</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[var(--color-text-secondary)]">First Fetched:</span> {place.first_fetched_at ? new Date(place.first_fetched_at).toLocaleDateString() : "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Last Refreshed:</span> {place.last_detail_refresh ? `${new Date(place.last_detail_refresh).toLocaleDateString()} (${relativeTime(place.last_detail_refresh)})` : "Never"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Refresh Failures:</span> {place.refresh_failures || 0}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Fetched Via:</span> {place.fetched_via || "—"}</div>
+            </div>
+          </div>
+
+          {/* Edit Controls */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Edit</h4>
+            <div className="space-y-3">
+              <Input label="Name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)]">Price Tiers (select all that apply)</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {PRICE_TIERS.map((t) => (
+                    <button key={t} type="button"
+                      className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                        editForm.price_tiers.includes(t)
+                          ? "bg-[var(--color-brand-500)] text-white border-transparent"
+                          : "text-[var(--color-text-secondary)] border-[var(--gray-300)] bg-[var(--color-background-primary)] hover:border-[var(--color-brand-500)]"
+                      }`}
+                      onClick={() => setEditForm((f) => ({
+                        ...f,
+                        price_tiers: f.price_tiers.includes(t)
+                          ? f.price_tiers.filter((x) => x !== t)
+                          : [...f.price_tiers, t],
+                      }))}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-secondary)]">Seeding Category</label>
+                  <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                    value={editForm.seeding_category} onChange={(e) => setEditForm((f) => ({ ...f, seeding_category: e.target.value }))}>
+                    <option value="">None</option>
+                    {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                  </select>
+                </div>
+              </div>
+              <Toggle label="Active" checked={editForm.is_active} onChange={(val) => setEditForm((f) => ({ ...f, is_active: val }))} />
+            </div>
+          </div>
+
+          {/* AI Override Controls */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">AI Classification Override</h4>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
+                  <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                    value={editForm.ai_approved === null ? "" : editForm.ai_approved ? "true" : "false"}
+                    onChange={(e) => setEditForm((f) => ({ ...f, ai_approved: e.target.value === "" ? null : e.target.value === "true" }))}>
+                    <option value="">Pending</option>
+                    <option value="true">Approved</option>
+                    <option value="false">Rejected</option>
+                  </select>
+                </div>
+                <Input label="Primary Identity" value={editForm.ai_primary_identity} placeholder="e.g. restaurant, spa, museum"
+                  onChange={(e) => setEditForm((f) => ({ ...f, ai_primary_identity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)]">AI Categories (select all that apply)</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {ALL_CATEGORIES.map((c) => (
+                    <button key={c} type="button"
+                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                        editForm.ai_categories.includes(c)
+                          ? "text-white border-transparent"
+                          : "text-[var(--color-text-secondary)] border-[var(--gray-300)] bg-[var(--color-background-primary)] hover:border-[var(--color-brand-500)]"
+                      }`}
+                      style={editForm.ai_categories.includes(c) ? { backgroundColor: CATEGORY_COLORS[c] || "#6b7280" } : {}}
+                      onClick={() => setEditForm((f) => ({
+                        ...f,
+                        ai_categories: f.ai_categories.includes(c)
+                          ? f.ai_categories.filter((x) => x !== c)
+                          : [...f.ai_categories, c],
+                      }))}>
+                      {CATEGORY_LABELS[c] || c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Input label="AI Reason" value={editForm.ai_reason} placeholder="Why this classification"
+                onChange={(e) => setEditForm((f) => ({ ...f, ai_reason: e.target.value }))} />
+            </div>
+          </div>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" loading={saving} onClick={handleSave}>Save</Button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -670,12 +1307,6 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
             await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
             onRefresh();
           }} disabled={!!activeRun}>Regenerate</Button>
-          {city.status === "draft" && onDeleteCity && !activeRun && (
-            <Button size="sm" variant="secondary" className="text-[var(--color-error-700)]"
-              onClick={() => { if (confirm(`Delete draft city "${city.name}"? This removes the city and its tiles. Places in the pool are not affected.`)) onDeleteCity(city); }}>
-              Delete Draft
-            </Button>
-          )}
         </div>}>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Coverage: {city.coverage_radius_km}km radius · Spacing: {Math.round(city.tile_radius_m * 1.4)}m
@@ -1086,36 +1717,66 @@ const TILE_STATUS_STYLES = {
   error: { color: "#ef4444", fillOpacity: 0.08, weight: 2, dashArray: "4 2" },
 };
 
-function MapTab({ city, tiles, places, seedingOps }) {
+function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingOps }) {
   const [visibleCats, setVisibleCats] = useState(new Set(ALL_CATEGORIES));
+  const [places, setPlaces] = useState([]);
+  const [mapLoading, setMapLoading] = useState(false);
+  const mountedRef = useRef(true);
 
-  if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to view the map.</div>;
+  useEffect(() => {
+    mountedRef.current = true;
+    if (!selectedCountry) { setPlaces([]); return; }
+    setMapLoading(true);
+    let q = supabase.from("place_pool")
+      .select("id, name, lat, lng, rating, seeding_category, is_active, stored_photo_urls")
+      .eq("is_active", true);
+    if (selectedCity) q = q.eq("city", selectedCity).eq("country", selectedCountry);
+    else q = q.eq("country", selectedCountry);
+    q.limit(2000).then(({ data }) => {
+      if (mountedRef.current) { setPlaces(data || []); setMapLoading(false); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [selectedCountry, selectedCity]);
 
-  const center = [city.center_lat, city.center_lng];
+  if (!selectedCountry) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a country to view the map.</div>;
+  if (mapLoading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading map data...</div>;
+  if (places.length === 0) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No places found to display.</div>;
+
+  // Compute center from places average
+  const validPlaces = places.filter((p) => p.lat && p.lng);
+  const center = registeredCity
+    ? [registeredCity.center_lat, registeredCity.center_lng]
+    : validPlaces.length > 0
+      ? [validPlaces.reduce((s, p) => s + p.lat, 0) / validPlaces.length, validPlaces.reduce((s, p) => s + p.lng, 0) / validPlaces.length]
+      : [0, 0];
+
   const filteredPlaces = places.filter((p) => visibleCats.has(p.seeding_category));
+  const showTiles = registeredCity && tiles.length > 0;
 
-  // Pre-compute places near each tile (within tile radius) for status + gap detection
-  const tileData = tiles.map((t) => {
+  // Pre-compute tile data if registered
+  const tileData = showTiles ? tiles.map((t) => {
     const nearbyPlaces = places.filter((p) => {
       const dLat = (p.lat - t.center_lat) * 111320;
       const dLng = (p.lng - t.center_lng) * 111320 * Math.cos((t.center_lat * Math.PI) / 180);
       return Math.sqrt(dLat * dLat + dLng * dLng) <= t.radius_m;
     });
     const status = getTileStatus(t, seedingOps || [], nearbyPlaces);
-    // Coverage gap: <5 places in any visible category
     const hasGap = nearbyPlaces.length > 0 && nearbyPlaces.length < 5;
     return { ...t, status, nearbyCount: nearbyPlaces.length, hasGap };
-  });
+  }) : [];
 
   return (
     <div className="space-y-4">
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-[var(--color-text-secondary)]">
-        <span><span className="inline-block w-3 h-3 rounded-full bg-[#9ca3af] mr-1" />Unseeded</span>
-        <span><span className="inline-block w-3 h-3 rounded-full bg-[#60a5fa] mr-1" />Partial</span>
-        <span><span className="inline-block w-3 h-3 rounded-full bg-[#22c55e] mr-1" />Fully Seeded</span>
-        <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#ef4444] mr-1" />Errors</span>
-        <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#f59e0b] mr-1" />Coverage Gap (&lt;5 places)</span>
+        {showTiles && <>
+          <span><span className="inline-block w-3 h-3 rounded-full bg-[#9ca3af] mr-1" />Unseeded</span>
+          <span><span className="inline-block w-3 h-3 rounded-full bg-[#60a5fa] mr-1" />Partial</span>
+          <span><span className="inline-block w-3 h-3 rounded-full bg-[#22c55e] mr-1" />Fully Seeded</span>
+          <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#ef4444] mr-1" />Errors</span>
+          <span><span className="inline-block w-3 h-3 rounded-full border-2 border-[#f59e0b] mr-1" />Coverage Gap (&lt;5 places)</span>
+        </>}
+        <span className="ml-auto">{places.length} places</span>
       </div>
 
       {/* Category filter pills */}
@@ -1134,16 +1795,18 @@ function MapTab({ city, tiles, places, seedingOps }) {
       </div>
 
       <div className="rounded-lg overflow-hidden border border-[var(--gray-200)]" style={{ height: 600 }}>
-        <MapContainer center={center} zoom={12} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
-          <RecenterMap center={center} zoom={12} />
+        <MapContainer center={center} zoom={selectedCity ? 12 : 8} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+          <RecenterMap center={center} zoom={selectedCity ? 12 : 8} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; OpenStreetMap contributors' />
 
-          {/* City boundary */}
-          <Circle center={center} radius={city.coverage_radius_km * 1000}
-            pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
+          {/* City boundary (registered cities only) */}
+          {registeredCity && (
+            <Circle center={[registeredCity.center_lat, registeredCity.center_lng]} radius={registeredCity.coverage_radius_km * 1000}
+              pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
+          )}
 
-          {/* Tile circles with status coloring */}
+          {/* Tile circles with status coloring (registered cities only) */}
           {tileData.map((t) => (
             <Circle key={t.id} center={[t.center_lat, t.center_lng]} radius={t.radius_m}
               pathOptions={TILE_STATUS_STYLES[t.status] || TILE_STATUS_STYLES.unseeded}>
@@ -1151,7 +1814,7 @@ function MapTab({ city, tiles, places, seedingOps }) {
             </Circle>
           ))}
 
-          {/* Coverage gap warning circles (orange dashed outline) */}
+          {/* Coverage gap warning circles */}
           {tileData.filter((t) => t.hasGap && t.status !== "unseeded").map((t) => (
             <Circle key={`gap-${t.id}`} center={[t.center_lat, t.center_lng]} radius={t.radius_m}
               pathOptions={{ color: "#f59e0b", fillOpacity: 0, weight: 2, dashArray: "6 3" }} />
@@ -1179,78 +1842,89 @@ function MapTab({ city, tiles, places, seedingOps }) {
 
 // ── Tab 3: Browse Pool ───────────────────────────────────────────────────────
 
-function BrowseTab({ city, onRefresh }) {
+function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
   const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", minRating: "", nameSearch: "" });
-  const [editPlace, setEditPlace] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", price_tier: "", is_active: true });
-  const [saving, setSaving] = useState(false);
+  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", aiStatus: "", nameSearch: "" });
+  const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
   const fetchPlaces = useCallback(async () => {
     setLoading(true);
     let q = supabase.from("place_pool").select("*", { count: "exact" });
-    if (city) q = q.eq("city_id", city.id);
-    if (filters.category) q = q.eq("seeding_category", filters.category);
+    if (selectedCity) q = q.eq("city", selectedCity);
+    else if (selectedCountry) q = q.eq("country", selectedCountry);
+    if (filters.category) q = q.contains("ai_categories", [filters.category]);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
     if (filters.photoStatus === "has") q = q.not("stored_photo_urls", "is", null);
     else if (filters.photoStatus === "missing") q = q.or("stored_photo_urls.is.null,stored_photo_urls.eq.{}");
-    if (filters.priceTier) q = q.eq("price_tier", filters.priceTier);
+    if (filters.priceTier === "missing") q = q.or("price_tiers.is.null,price_tiers.eq.{}");
+    else if (filters.priceTier) q = q.contains("price_tiers", [filters.priceTier]);
+    if (filters.priceLevel === "missing") q = q.is("price_level", null);
+    else if (filters.priceLevel) q = q.eq("price_level", filters.priceLevel);
     if (filters.minRating) q = q.gte("rating", parseFloat(filters.minRating));
+    if (filters.aiStatus === "validated") q = q.eq("ai_approved", true);
+    else if (filters.aiStatus === "rejected") q = q.eq("ai_approved", false);
+    else if (filters.aiStatus === "pending") q = q.is("ai_approved", null);
     if (filters.nameSearch) q = q.ilike("name", `%${filters.nameSearch}%`);
     q = q.order("created_at", { ascending: false })
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     const { data, count, error } = await q;
-    if (!error) { setPlaces(data || []); setTotal(count || 0); }
+    if (error) { addToast({ variant: "error", title: "Failed to load places", description: error.message }); }
+    else { setPlaces(data || []); setTotal(count || 0); }
     setLoading(false);
-  }, [city, filters, page]);
+  }, [selectedCountry, selectedCity, filters, page, addToast]);
 
   useEffect(() => { fetchPlaces(); }, [fetchPlaces]);
+  useEffect(() => { setPage(0); }, [selectedCountry, selectedCity]);
 
-  const openEdit = (place) => {
-    setEditPlace(place);
-    setEditForm({ name: place.name, price_tier: place.price_tier || "", is_active: place.is_active });
-  };
-
-  const saveEdit = async () => {
-    setSaving(true);
-    const { error } = await supabase.rpc("admin_edit_place", {
-      p_place_id: editPlace.id,
-      p_name: editForm.name || null,
-      p_price_tier: editForm.price_tier || null,
-      p_is_active: editForm.is_active,
-    });
-    if (error) addToast({ variant: "error", title: "Save failed", description: error.message });
-    else { addToast({ variant: "success", title: "Place updated" }); setEditPlace(null); fetchPlaces(); onRefresh(); }
-    setSaving(false);
+  const relativeTime = (dateStr) => {
+    if (!dateStr) return "—";
+    const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+    if (days === 0) return "Today";
+    if (days < 30) return `${days}d ago`;
+    return `${Math.floor(days / 30)}mo ago`;
   };
 
   const columns = [
-    { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => openEdit(r)}>{r.name}</button> },
-    { key: "seeding_category", label: "Category", render: (_, r) => r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]}</span> : "—" },
+    { key: "name", label: "Name", sortable: true, render: (_, r) => <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left" onClick={() => setDetailPlace(r)}>{r.name}</button> },
+    { key: "ai_categories", label: "Category", render: (_, r) => {
+      const cats = r.ai_categories || [];
+      if (cats.length === 0) return r.seeding_category ? <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] }}>{CATEGORY_LABELS[r.seeding_category]} <span className="ml-1 opacity-60">(seed)</span></span> : "—";
+      return <div className="flex flex-wrap gap-1">{cats.map((c) => <span key={c} className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: CATEGORY_COLORS[c] || "#6b7280" }}>{CATEGORY_LABELS[c] || c}</span>)}</div>;
+    }},
+    { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[160px] truncate block">{r.address || "—"}</span> },
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
-    { key: "price_tier", label: "Price", render: (_, r) => r.price_tier ? <Badge variant="outline">{r.price_tier}</Badge> : "—" },
+    { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
+    { key: "price_tiers", label: "Price", render: (_, r) => {
+      const tiers = r.price_tiers?.length ? r.price_tiers : (r.price_tier ? [r.price_tier] : []);
+      return tiers.length > 0 ? <div className="flex gap-0.5">{tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>)}</div> : "—";
+    }},
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;
       return <Badge variant={n > 0 ? "success" : "error"}>{n}</Badge>;
     }},
+    { key: "ai_approved", label: "AI Status", render: (_, r) => {
+      if (r.ai_approved === true) return <Badge variant="success">Approved</Badge>;
+      if (r.ai_approved === false) return <Badge variant="error">Rejected</Badge>;
+      return <Badge variant="outline">Pending</Badge>;
+    }},
+    { key: "last_detail_refresh", label: "Refreshed", render: (_, r) => relativeTime(r.last_detail_refresh) },
     { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
-    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} onClick={() => openEdit(r)} /> },
+    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={Edit3} onClick={() => setDetailPlace(r)} /> },
   ];
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex flex-wrap gap-2 items-end">
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Category</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(1); }}>
+            value={filters.category} onChange={(e) => { setFilters((f) => ({ ...f, category: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
           </select>
@@ -1258,7 +1932,7 @@ function BrowseTab({ city, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Status</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1); }}>
+            value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -1267,29 +1941,53 @@ function BrowseTab({ city, onRefresh }) {
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Photos</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.photoStatus} onChange={(e) => { setFilters((f) => ({ ...f, photoStatus: e.target.value })); setPage(1); }}>
+            value={filters.photoStatus} onChange={(e) => { setFilters((f) => ({ ...f, photoStatus: e.target.value })); setPage(0); }}>
             <option value="">All</option>
             <option value="has">Has Photos</option>
             <option value="missing">Missing Photos</option>
           </select>
         </div>
         <div>
+          <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
+          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+            value={filters.aiStatus} onChange={(e) => { setFilters((f) => ({ ...f, aiStatus: e.target.value })); setPage(0); }}>
+            <option value="">All</option>
+            <option value="validated">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Price Tier</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.priceTier} onChange={(e) => { setFilters((f) => ({ ...f, priceTier: e.target.value })); setPage(1); }}>
+            value={filters.priceTier} onChange={(e) => { setFilters((f) => ({ ...f, priceTier: e.target.value })); setPage(0); }}>
             <option value="">All</option>
+            <option value="missing">Missing</option>
             {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-[var(--color-text-secondary)]">Price Level</label>
+          <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+            value={filters.priceLevel} onChange={(e) => { setFilters((f) => ({ ...f, priceLevel: e.target.value })); setPage(0); }}>
+            <option value="">All</option>
+            <option value="missing">Missing</option>
+            <option value="PRICE_LEVEL_FREE">Free</option>
+            <option value="PRICE_LEVEL_INEXPENSIVE">Inexpensive</option>
+            <option value="PRICE_LEVEL_MODERATE">Moderate</option>
+            <option value="PRICE_LEVEL_EXPENSIVE">Expensive</option>
+            <option value="PRICE_LEVEL_VERY_EXPENSIVE">Very Expensive</option>
           </select>
         </div>
         <div>
           <label className="text-xs text-[var(--color-text-secondary)]">Min Rating</label>
           <input type="number" min="0" max="5" step="0.5" placeholder="e.g. 4.0"
             className="block mt-1 w-20 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(1); }} />
+            value={filters.minRating} onChange={(e) => { setFilters((f) => ({ ...f, minRating: e.target.value })); setPage(0); }} />
         </div>
         <div className="flex-1 min-w-[200px]">
           <Input label="Search" value={filters.nameSearch} placeholder="Place name..."
-            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(1); }} />
+            onChange={(e) => { setFilters((f) => ({ ...f, nameSearch: e.target.value })); setPage(0); }} />
         </div>
       </div>
 
@@ -1297,34 +1995,14 @@ function BrowseTab({ city, onRefresh }) {
         emptyMessage="No places found" emptyIcon={Globe}
         pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
 
-      {/* Edit Modal */}
-      <Modal open={!!editPlace} onClose={() => setEditPlace(null)} title={`Edit: ${editPlace?.name || ""}`} size="sm">
-        <ModalBody>
-          <div className="space-y-3">
-            <Input label="Name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
-            <div>
-              <label className="text-xs text-[var(--color-text-secondary)]">Price Tier</label>
-              <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-                value={editForm.price_tier} onChange={(e) => setEditForm((f) => ({ ...f, price_tier: e.target.value }))}>
-                <option value="">None</option>
-                {PRICE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <Toggle label="Active" checked={editForm.is_active} onChange={(val) => setEditForm((f) => ({ ...f, is_active: val }))} />
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setEditPlace(null)}>Cancel</Button>
-          <Button variant="primary" loading={saving} onClick={saveEdit}>Save</Button>
-        </ModalFooter>
-      </Modal>
+      <PlaceDetailModal place={detailPlace} open={!!detailPlace} onClose={() => setDetailPlace(null)} onSave={() => { fetchPlaces(); if (onRefresh) onRefresh(); }} />
     </div>
   );
 }
 
 // ── Tab 4: Photo Management ──────────────────────────────────────────────────
 
-function PhotoTab({ city, stats, tiles }) {
+function PhotoTab({ selectedCountry, selectedCity }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -1340,29 +2018,29 @@ function PhotoTab({ city, stats, tiles }) {
   const stopRef = useRef(false);
   const pollRef = useRef(null);
 
-  // Query actual DB counts via SQL RPC — single source of truth, city-scoped
+  // Query actual DB counts via new text-based RPC
   const fetchCounts = async () => {
-    if (!city) return;
+    if (!selectedCity) return;
     try {
-      const { data } = await supabase.rpc("admin_city_place_stats", { p_city_id: city.id });
-
+      const { data } = await supabase.rpc("admin_place_photo_stats", {
+        p_country: selectedCountry,
+        p_city: selectedCity,
+      });
       if (mountedRef.current && data) {
-        const total = (data.total_places || 0) + (data.inactive_places || 0);
-        const withP = data.with_photos || 0;
-        const withoutP = data.without_photos || 0;
-        setTotalPlaces(data.total_places || 0);
-        setWithPhotos(withP);
-        setMissingCount(withoutP);
+        const row = Array.isArray(data) ? data[0] : data;
+        setTotalPlaces(Number(row.total_places) || 0);
+        setWithPhotos(Number(row.with_photos) || 0);
+        setMissingCount(Number(row.without_photos) || 0);
       }
     } catch { /* ignore */ }
   };
 
   // Initial load
   useEffect(() => {
-    if (!city) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
+    if (!selectedCity) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
     setLoading(true);
     fetchCounts().then(() => { if (mountedRef.current) setLoading(false); });
-  }, [city]);
+  }, [selectedCountry, selectedCity]);
 
   // Poll DB every 5s while downloading — gives real-time progress within a batch
   useEffect(() => {
@@ -1436,7 +2114,7 @@ function PhotoTab({ city, stats, tiles }) {
   const downloaded = initialMissing != null && missingCount != null ? Math.max(0, initialMissing - missingCount) : totalSucceeded;
   const progressPct = initialMissing > 0 ? Math.min(100, Math.round((downloaded / initialMissing) * 100)) : 0;
 
-  if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
+  if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>;
 
   return (
     <div className="space-y-6">
@@ -1530,8 +2208,12 @@ function PhotoTab({ city, stats, tiles }) {
   );
 }
 
-// ── Tab 5: AI Validation ─────────────────────────────────────────────────────
+// ── AI Validation tab removed — absorbed into Overview stats + Browse modal ──
 
+// (AI_STATUS_OPTIONS and AIValidationTab removed — functionality moved to
+//  Overview tab AI summary + PlaceDetailModal per-place AI status)
+
+const _AI_VALIDATION_REMOVED = true; // marker for git diff clarity
 const AI_STATUS_OPTIONS = [
   { value: "", label: "All" },
   { value: "approved", label: "Approved" },
@@ -1932,21 +2614,22 @@ function AIValidationTab() {
 
 // ── Tab 6: Stale Review ──────────────────────────────────────────────────────
 
-function StaleTab({ city }) {
+function StaleTab({ selectedCountry, selectedCity }) {
   const { addToast } = useToast();
   const [stale, setStale] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    let q = supabase.from("place_pool").select("id, name, rating, seeding_category, last_detail_refresh, refresh_failures")
+    let q = supabase.from("place_pool").select("id, name, rating, seeding_category, city, country, last_detail_refresh, refresh_failures")
       .eq("is_active", true)
       .lt("last_detail_refresh", new Date(Date.now() - 7 * 86400000).toISOString())
       .order("last_detail_refresh", { ascending: true })
       .limit(100);
-    if (city) q = q.eq("city_id", city.id);
+    if (selectedCity) q = q.eq("city", selectedCity);
+    else if (selectedCountry) q = q.eq("country", selectedCountry);
     q.then(({ data }) => { setStale(data || []); setLoading(false); });
-  }, [city]);
+  }, [selectedCountry, selectedCity]);
 
   const refreshPlace = async (placeId) => {
     const { error } = await supabase.functions.invoke("admin-refresh-places", {
@@ -2247,6 +2930,110 @@ function StatsTab({ city, stats, refreshKey }) {
   );
 }
 
+// ── SeedingTab (merged Seed & Import + Stats & Analytics) ───────────────────
+
+function SeedingTab({ registeredCity, tiles, stats, seedingOps, refreshKey, onRefresh, onDeleteCity, onSeedingChange }) {
+  if (!registeredCity) return null;
+
+  return (
+    <div className="space-y-8">
+      <SeedTab city={registeredCity} tiles={tiles} onRefresh={onRefresh} onDeleteCity={onDeleteCity} onSeedingChange={onSeedingChange} />
+      <div className="border-t border-[var(--gray-200)] pt-6">
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">Stats & Analytics</h3>
+        <StatsTab city={registeredCity} stats={stats} refreshKey={refreshKey} />
+      </div>
+    </div>
+  );
+}
+
+// ── Seeding Tab Wrapper (self-contained city selector) ──────────────────────
+
+function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKey, onRefresh, onDeleteCity, onSeedingChange, onAddCity }) {
+  const [cities, setCities] = useState([]);
+  const [selectedSeedCity, setSelectedSeedCity] = useState(registeredCity);
+  const [seedTiles, setSeedTiles] = useState(tiles || []);
+  const [seedStats, setSeedStats] = useState(stats);
+  const [seedOps, setSeedOps] = useState(seedingOps || []);
+  const [loadingCity, setLoadingCity] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // Load all seeding cities
+  useEffect(() => {
+    supabase.from("seeding_cities").select("*").order("name")
+      .then(({ data }) => { if (mountedRef.current) setCities(data || []); });
+  }, [refreshKey]);
+
+  // Sync with parent if registeredCity matches
+  useEffect(() => {
+    if (registeredCity) {
+      setSelectedSeedCity(registeredCity);
+      setSeedTiles(tiles || []);
+      setSeedStats(stats);
+      setSeedOps(seedingOps || []);
+    }
+  }, [registeredCity, tiles, stats, seedingOps]);
+
+  // When user picks a city from the dropdown, load its data
+  const handleSelectCity = useCallback((city, isRefresh = false) => {
+    setSelectedSeedCity(city);
+    if (!city) { setSeedTiles([]); setSeedStats(null); setSeedOps([]); return; }
+    // Only show loading spinner on initial selection, NOT on refresh during seeding
+    if (!isRefresh) setLoadingCity(true);
+
+    Promise.all([
+      supabase.from("seeding_tiles").select("*").eq("city_id", city.id).order("tile_index"),
+      supabase.rpc("admin_city_place_stats", { p_city_id: city.id }),
+      supabase.from("seeding_operations").select("*").eq("city_id", city.id).order("created_at", { ascending: false }).limit(50),
+    ]).then(([tilesRes, statsRes, opsRes]) => {
+      if (!mountedRef.current) return;
+      setSeedTiles(tilesRes.data || []);
+      setSeedStats(statsRes.data);
+      setSeedOps(opsRes.data || []);
+      setLoadingCity(false);
+    });
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <select
+          className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
+          value={selectedSeedCity?.id || ""}
+          onChange={(e) => {
+            const city = cities.find((c) => c.id === e.target.value);
+            handleSelectCity(city || null);
+          }}
+        >
+          <option value="">Select a seeding city...</option>
+          {cities.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}, {c.country} — {c.status}</option>
+          ))}
+        </select>
+        <Button icon={Plus} size="sm" onClick={onAddCity}>Add City</Button>
+      </div>
+
+      {loadingCity && <div className="text-center py-8 text-[var(--color-text-secondary)]">Loading city data...</div>}
+
+      {!loadingCity && selectedSeedCity && (
+        <SeedingTab
+          registeredCity={selectedSeedCity} tiles={seedTiles} stats={seedStats}
+          seedingOps={seedOps} refreshKey={refreshKey} onRefresh={() => handleSelectCity(selectedSeedCity, true)}
+          onDeleteCity={(city) => { onDeleteCity(city); setSelectedSeedCity(null); }}
+          onSeedingChange={onSeedingChange}
+        />
+      )}
+
+      {!loadingCity && !selectedSeedCity && (
+        <div className="text-center py-12 text-[var(--color-text-tertiary)]">
+          Select a city above to manage seeding, or add a new city.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export function PlacePoolManagementPage({ onTabChange }) {
@@ -2257,158 +3044,112 @@ export function PlacePoolManagementPage({ onTabChange }) {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const [activeTab, setActiveTab] = useState("seed");
-  const [seedingActive, setSeedingActive] = useState(false);
-  const [cities, setCities] = useState([]);
+  // Breadcrumb navigation state
+  const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedCity, setSelectedCity] = useState(null);
+  const [countries, setCountries] = useState([]);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState("overview");
+  const [seedingActive, setSeedingActive] = useState(false);
+
+  // Seeding state (loaded when registered city is selected)
+  const [registeredCity, setRegisteredCity] = useState(null); // seeding_cities row
   const [tiles, setTiles] = useState([]);
-  const [places, setPlaces] = useState([]); // for map
   const [stats, setStats] = useState(null);
-  const [spendTotal, setSpendTotal] = useState(0);
   const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [registering, setRegistering] = useState(false);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load ALL cities — registered (seeding_cities) + unregistered (place_pool orphans)
+  // Load country list on mount
   useEffect(() => {
-    (async () => {
-      // 1. Registered cities
-      const { data: registered } = await supabase
-        .from("seeding_cities").select("*").order("name");
-
-      // 2. Unregistered: distinct city+country from place_pool where city_id IS NULL
-      const { data: orphanRows } = await supabase
-        .from("place_pool")
-        .select("city, country, lat, lng")
-        .is("city_id", null)
-        .not("city", "is", null)
-        .limit(2000);
-
-      // Deduplicate orphans by city+country, compute avg coordinates
-      const registeredNames = new Set(
-        (registered || []).map((c) => `${c.name}|${c.country}`)
-      );
-      const groups = {};
-      for (const o of (orphanRows || [])) {
-        if (!o.city) continue;
-        const key = `${o.city}|${o.country || ""}`;
-        // Skip if already registered under this name+country
-        if (registeredNames.has(key)) continue;
-        if (!groups[key]) groups[key] = { city: o.city, country: o.country || "Unknown", lats: [], lngs: [], count: 0 };
-        groups[key].lats.push(o.lat);
-        groups[key].lngs.push(o.lng);
-        groups[key].count++;
-      }
-
-      const unregistered = Object.values(groups).map((g) => ({
-        _unregistered: true,
-        _key: `orphan_${g.city}_${g.country}`,
-        name: g.city,
-        country: g.country,
-        center_lat: g.lats.reduce((s, v) => s + v, 0) / g.lats.length,
-        center_lng: g.lngs.reduce((s, v) => s + v, 0) / g.lngs.length,
-        placeCount: g.count,
-      }));
-
-      if (mountedRef.current) {
-        setCities([...(registered || []), ...unregistered]);
-      }
-    })();
+    supabase.rpc("admin_place_country_overview").then(({ data }) => {
+      if (mountedRef.current && data) setCountries(data.map((r) => r.country));
+    });
   }, [refreshKey]);
 
-  // Register an unregistered city — insert into seeding_cities, generate tiles, link places
-  const registerCity = async (orphan) => {
-    setRegistering(true);
-    try {
-      const { data: newCity, error: insertErr } = await supabase.from("seeding_cities").insert({
-        google_place_id: `pool_${orphan.name}_${Date.now()}`,
-        name: orphan.name,
-        country: orphan.country || "Unknown",
-        center_lat: orphan.center_lat,
-        center_lng: orphan.center_lng,
-        coverage_radius_km: 10,
-        tile_radius_m: 1500,
-        status: "seeded", // already has places
-      }).select().single();
-      if (insertErr) throw insertErr;
+  const selectCountry = useCallback((country) => {
+    setSelectedCountry(country);
+    setSelectedCity(null);
+    setRegisteredCity(null);
+  }, []);
 
-      // Generate tiles
-      await supabase.functions.invoke("admin-seed-places", {
-        body: { action: "generate_tiles", cityId: newCity.id },
-      });
+  const selectCity = useCallback((cityName) => {
+    setSelectedCity(cityName);
+  }, []);
 
-      // Link orphaned places — NULL country needs .is() not .eq() (SQL NULL = NULL is false)
-      let linkQuery = supabase.from("place_pool")
-        .update({ city_id: newCity.id })
-        .is("city_id", null)
-        .eq("city", orphan.name);
-      if (orphan.country && orphan.country !== "Unknown") {
-        linkQuery = linkQuery.eq("country", orphan.country);
-      } else {
-        linkQuery = linkQuery.or("country.is.null,country.eq.Unknown");
-      }
-      const { error: linkErr } = await linkQuery;
-      if (linkErr) throw new Error(`Tiles created but place linking failed: ${linkErr.message}`);
+  const clearCountry = useCallback(() => {
+    setSelectedCountry(null);
+    setSelectedCity(null);
+    setRegisteredCity(null);
+  }, []);
 
-      addToast({ variant: "success", title: `Registered ${orphan.name}`, description: `${orphan.placeCount} places linked, tiles generated` });
-      setSelectedCity(newCity);
-      refresh();
-    } catch (err) {
-      addToast({ variant: "error", title: "Registration failed", description: err.message });
-    } finally {
-      setRegistering(false);
-    }
-  };
+  const clearCity = useCallback(() => {
+    setSelectedCity(null);
+    setRegisteredCity(null);
+  }, []);
 
-  const isRegistered = selectedCity && !selectedCity._unregistered;
-
-  // Load tiles when registered city selected
+  // Check if selected city is registered in seeding_cities
   useEffect(() => {
-    if (!isRegistered) { setTiles([]); return; }
-    supabase.from("seeding_tiles").select("*").eq("city_id", selectedCity.id).order("tile_index")
-      .then(({ data }) => { if (mountedRef.current) setTiles(data || []); });
-  }, [selectedCity, refreshKey, isRegistered]);
+    if (!selectedCity || !selectedCountry) { setRegisteredCity(null); setTiles([]); setStats(null); setSeedingOps([]); return; }
 
-  // Load places for map
-  useEffect(() => {
-    if (!isRegistered) { setPlaces([]); return; }
-    supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, seeding_category, is_active, stored_photo_urls")
-      .eq("city_id", selectedCity.id)
-      .limit(2000)
-      .then(({ data }) => { if (mountedRef.current) setPlaces(data || []); });
-  }, [selectedCity, refreshKey, isRegistered]);
-
-  // Load stats + seeding ops
-  useEffect(() => {
-    if (!isRegistered) { setStats(null); setSpendTotal(0); setSeedingOps([]); return; }
-    supabase.rpc("admin_city_place_stats", { p_city_id: selectedCity.id })
-      .then(({ data }) => { if (mountedRef.current) setStats(data); });
-    supabase.from("seeding_operations").select("*").eq("city_id", selectedCity.id)
+    supabase.from("seeding_cities").select("*")
+      .eq("name", selectedCity).eq("country", selectedCountry)
+      .maybeSingle()
       .then(({ data }) => {
         if (!mountedRef.current) return;
-        setSeedingOps(data || []);
-        setSpendTotal((data || []).reduce((s, r) => s + (r.estimated_cost_usd || 0), 0));
+        setRegisteredCity(data || null);
+
+        if (data) {
+          // Load tiles
+          supabase.from("seeding_tiles").select("*").eq("city_id", data.id).order("tile_index")
+            .then(({ data: t }) => { if (mountedRef.current) setTiles(t || []); });
+          // Load stats
+          supabase.rpc("admin_city_place_stats", { p_city_id: data.id })
+            .then(({ data: s }) => { if (mountedRef.current) setStats(s); });
+          // Load seeding ops
+          supabase.from("seeding_operations").select("*").eq("city_id", data.id)
+            .then(({ data: ops }) => { if (mountedRef.current) setSeedingOps(ops || []); });
+        } else {
+          setTiles([]);
+          setStats(null);
+          setSeedingOps([]);
+        }
       });
-  }, [selectedCity, refreshKey, isRegistered]);
+  }, [selectedCity, selectedCountry, refreshKey]);
+
+  const isCityRegistered = !!registeredCity;
+
+  // Dynamic tabs — Seeding always visible (has its own city selector inside)
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "browse", label: "Browse Pool" },
+    { id: "map", label: "Map View" },
+    { id: "seeding", label: "Seeding" },
+    { id: "photos", label: "Photo Management" },
+    { id: "stale", label: "Stale Review" },
+  ];
+
+  // Reset to valid tab when tabs change
+  useEffect(() => {
+    if (!tabs.find((t) => t.id === activeTab)) setActiveTab("overview");
+  }, [tabs, activeTab]);
 
   const handleAddCity = (city) => {
-    setCities((prev) => [...prev, city]);
-    setSelectedCity(city);
     refresh();
+    // Select the new city
+    setSelectedCountry(city.country);
+    setSelectedCity(city.name);
   };
 
   const handleDeleteCity = async (city) => {
     try {
-      // Cascade: seeding_tiles and seeding_operations have ON DELETE CASCADE
       const { error } = await supabase.from("seeding_cities").delete().eq("id", city.id);
       if (error) throw error;
-      // Unlink any places that referenced this city (FK is ON DELETE SET NULL)
       addToast({ variant: "success", title: `Deleted draft "${city.name}"` });
-      setSelectedCity(null);
+      setRegisteredCity(null);
       refresh();
     } catch (err) {
       addToast({ variant: "error", title: "Delete failed", description: err.message });
@@ -2417,47 +3158,50 @@ export function PlacePoolManagementPage({ onTabChange }) {
 
   return (
     <div className="space-y-4 py-6">
-      <CitySelector cities={cities} selectedCity={selectedCity}
-        onSelect={setSelectedCity}
-        onAddCity={() => setAddCityOpen(true)}
-        disabled={seedingActive} />
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
+          <p className="text-sm text-[var(--color-text-secondary)]">Browse, manage, and seed places across all cities.</p>
+        </div>
+      </div>
 
-      {/* Unregistered city — show registration panel instead of normal tabs */}
-      {selectedCity?._unregistered && (
-        <SectionCard title={`${selectedCity.name}, ${selectedCity.country}`}
-          subtitle={`${selectedCity.placeCount} places in pool — not yet registered for seeding`}>
-          <div className="space-y-3">
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              This city has places in the pool but no tile grid or seeding configuration.
-              Register it to enable augmentation, coverage tracking, and photo management.
-            </p>
-            <div className="text-sm text-[var(--color-text-secondary)]">
-              Center: {selectedCity.center_lat.toFixed(4)}, {selectedCity.center_lng.toFixed(4)} (computed from place average)
-            </div>
-            <Button variant="primary" icon={Plus} loading={registering}
-              onClick={() => registerCity(selectedCity)}>
-              Register &amp; Generate Tiles
-            </Button>
-          </div>
-        </SectionCard>
-      )}
+      <CountryFilterBar
+        selectedCountry={selectedCountry}
+        selectedCity={selectedCity}
+        countries={countries}
+        onSelectCountry={selectCountry}
+        onClearCountry={clearCountry}
+        onClearCity={clearCity}
+      />
 
-      {/* Registered city — normal flow */}
-      {isRegistered && <CitySummaryBar stats={stats} spendTotal={spendTotal} />}
-      {(isRegistered || !selectedCity) && (
-        <>
-          <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />
-          <div className="mt-4">
-            {activeTab === "seed" && <SeedTab city={isRegistered ? selectedCity : null} tiles={tiles} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive} />}
-            {activeTab === "map" && <MapTab city={isRegistered ? selectedCity : null} tiles={tiles} places={places} seedingOps={seedingOps} />}
-            {activeTab === "browse" && <BrowseTab city={isRegistered ? selectedCity : null} onRefresh={refresh} />}
-            {activeTab === "photos" && <PhotoTab city={isRegistered ? selectedCity : null} stats={stats} tiles={tiles} />}
-            {activeTab === "ai" && <AIValidationTab />}
-            {activeTab === "stale" && <StaleTab city={isRegistered ? selectedCity : null} />}
-            {activeTab === "stats" && <StatsTab city={isRegistered ? selectedCity : null} stats={stats} refreshKey={refreshKey} />}
-          </div>
-        </>
-      )}
+      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+
+      <div className="mt-4" key={refreshKey}>
+        {activeTab === "overview" && (
+          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            onSelectCountry={selectCountry} onSelectCity={selectCity} />
+        )}
+        {activeTab === "browse" && (
+          <BrowseTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
+        )}
+        {activeTab === "map" && (
+          <MapTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
+        )}
+        {activeTab === "seeding" && (
+          <SeedingTabWrapper
+            registeredCity={registeredCity} tiles={tiles} stats={stats} seedingOps={seedingOps}
+            refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive}
+            onAddCity={() => setAddCityOpen(true)}
+          />
+        )}
+        {activeTab === "photos" && (
+          <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
+        {activeTab === "stale" && (
+          <StaleTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        )}
+      </div>
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />
     </div>

@@ -46,6 +46,8 @@ import CustomHolidayModal from "./CustomHolidayModal";
 import { STANDARD_HOLIDAYS, DEFAULT_PERSON_SECTIONS } from "../constants/holidays";
 import { DiscoverMap } from "./map/DiscoverMap";
 import { useSavedCards } from "../hooks/useSavedCards";
+import { savedCardsService } from "../services/savedCardsService";
+import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchPersonHeroCards } from '../services/personHeroCardsService';
@@ -448,6 +450,7 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 }
 
 interface DiscoverScreenProps {
+  isTabVisible?: boolean;
   onAddFriend?: () => void;
   /** Open Chats tab and start/open DM with this user (paired friend on map). */
   onOpenChatWithUser?: (userId: string) => void;
@@ -734,6 +737,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 };
 
 export default function DiscoverScreen({
+  isTabVisible = true,
   onAddFriend,
   onOpenChatWithUser,
   onViewFriendProfile,
@@ -3588,7 +3592,7 @@ export default function DiscoverScreen({
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
-                  paused={!isMapShowing}
+                  paused={!isMapShowing || !isTabVisible}
                   activePairedUserIds={activePairedUserIds}
                   pendingFocusCardId={deepLinkParams?.cardId ?? null}
                   onFocusCardHandled={onDeepLinkHandled}
@@ -3868,13 +3872,24 @@ export default function DiscoverScreen({
         visible={isExpandedModalVisible}
         card={selectedCardForExpansion}
         onClose={handleCloseExpandedModal}
-        onSave={async () => {
-          // Handle save if needed
+        onSave={async (card) => {
+          if (!user) return;
+          try {
+            await savedCardsService.saveCard(user.id, card, "solo");
+            prefetchQueryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            handleCloseExpandedModal();
+          } catch (error: any) {
+            if (error?.code === "23505") {
+              handleCloseExpandedModal();
+            }
+            throw error;
+          }
         }}
         onShare={(card) => {
-          // Handle share if needed
+          // Share not implemented for paired person view
         }}
-        isSaved={false}
+        isSaved={mapSavedCardIds.has(selectedCardForExpansion?.id ?? "")}
         currentMode="solo"
         accountPreferences={accountPreferences}
       />

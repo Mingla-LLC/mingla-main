@@ -4,7 +4,7 @@ import { realtimeService } from './realtimeService';
 export interface BoardMessage {
   id: string;
   session_id: string;
-  user_id: string;
+  user_id: string | null;
   content: string;
   mentions?: string[];
   reply_to_id?: string;
@@ -37,7 +37,7 @@ export interface CardMessage {
   id: string;
   session_id: string;
   saved_card_id: string;
-  user_id: string;
+  user_id: string | null;
   content: string;
   mentions?: string[];
   reply_to_id?: string;
@@ -96,29 +96,28 @@ export class BoardMessageService {
         return { data: [], error: null };
       }
 
-      // Get unique user IDs from messages
-      const userIds = [...new Set(messages.map(m => m.user_id))];
+      // Get unique user IDs from messages (filter out null for deleted users)
+      const userIds = [...new Set(messages.map(m => m.user_id).filter(Boolean))] as string[];
 
       // Fetch profiles separately
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, first_name, last_name, avatar_url')
-        .in('id', userIds);
+      let profileMap = new Map<string, any>();
+      if (userIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
+          .in('id', userIds);
 
-      if (profilesError) {
-        console.warn('Error fetching profiles:', profilesError);
-        // Continue without profiles if there's an error
+        if (profilesError) {
+          console.warn('Error fetching profiles:', profilesError);
+        }
+
+        profileMap = new Map((profiles || []).map(p => [p.id, p]));
       }
 
-      // Create a map of user_id to profile
-      const profileMap = new Map(
-        (profiles || []).map(p => [p.id, p])
-      );
-
-      // Merge messages with profiles
+      // Merge messages with profiles (null user_id = deleted user)
       const messagesWithProfiles = messages.map(message => ({
         ...message,
-        profiles: profileMap.get(message.user_id) || null,
+        profiles: message.user_id ? profileMap.get(message.user_id) || null : null,
       }));
 
       // Load read receipts and reactions for messages
@@ -435,29 +434,28 @@ export class BoardMessageService {
         return { data: [], error: null };
       }
 
-      // Get unique user IDs from messages
-      const userIds = [...new Set(messages.map(m => m.user_id))];
+      // Get unique user IDs from messages (filter out null for deleted users)
+      const userIds = [...new Set(messages.map(m => m.user_id).filter(Boolean))] as string[];
 
       // Fetch profiles separately
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, first_name, last_name, avatar_url')
-        .in('id', userIds);
+      let profileMap = new Map<string, any>();
+      if (userIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, first_name, last_name, avatar_url')
+          .in('id', userIds);
 
-      if (profilesError) {
-        console.warn('Error fetching profiles:', profilesError);
-        // Continue without profiles if there's an error
+        if (profilesError) {
+          console.warn('Error fetching profiles:', profilesError);
+        }
+
+        profileMap = new Map((profiles || []).map(p => [p.id, p]));
       }
 
-      // Create a map of user_id to profile
-      const profileMap = new Map(
-        (profiles || []).map(p => [p.id, p])
-      );
-
-      // Merge messages with profiles
+      // Merge messages with profiles (null user_id = deleted user)
       const messagesWithProfiles = messages.map(message => ({
         ...message,
-        profiles: profileMap.get(message.user_id) || null,
+        profiles: message.user_id ? profileMap.get(message.user_id) || null : null,
       }));
 
       // Load read receipts
