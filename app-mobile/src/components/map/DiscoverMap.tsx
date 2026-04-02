@@ -73,6 +73,15 @@ export function DiscoverMap({
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
 
+  const handleViewProfile = useCallback(
+    (userId: string) => {
+      setSelectedPerson(null);
+      personSheetRef.current?.close();
+      onPersonProfile?.(userId);
+    },
+    [onPersonProfile],
+  );
+
   useEffect(() => {
     if (centerTrigger && centerTrigger > 0 && userLocation && mapRef.current) {
       mapRef.current.animateToRegion(
@@ -416,7 +425,7 @@ export function DiscoverMap({
         onMessage={(userId) => onPersonMessage?.(userId)}
         onInviteToSession={(userId) => onPersonInvite?.(userId)}
         onViewPairedCards={(userId) => onPersonCards?.(userId)}
-        onViewProfile={(userId) => onPersonProfile?.(userId)}
+        onViewProfile={handleViewProfile}
         onAddFriend={handleAddFriendFromMap}
         onBlock={handleBlockFromMap}
         onReport={handleReportFromMap}

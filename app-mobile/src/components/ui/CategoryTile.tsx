@@ -27,8 +27,11 @@ interface CategoryTileProps {
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-// 48 = spacing.lg (24) * 2 horizontal padding, 16 = 2 * spacing.sm (8) gaps for 3 columns
-const TILE_WIDTH = (SCREEN_WIDTH - 48 - 16) / 3;
+// OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. One gap between 2 columns (spacing.sm).
+const ONBOARDING_CONTENT_PADDING_X = 48;
+const CATEGORY_COLUMN_GAP = spacing.sm;
+const TILE_WIDTH =
+  (SCREEN_WIDTH - ONBOARDING_CONTENT_PADDING_X - CATEGORY_COLUMN_GAP) / 2;
 const TILE_HEIGHT = 96;
 
 export const CategoryTile: React.FC<CategoryTileProps> = ({

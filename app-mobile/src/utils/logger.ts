@@ -97,6 +97,12 @@ export const logger = {
     logAndCrumb('TAP', 'tap', label, data);
   },
 
+  /** Non-fatal issues — console.warn + breadcrumb (no dump). */
+  warn(message: string, data?: Record<string, unknown>) {
+    console.warn(`[WARN] ${message}${fmt(data)}`);
+    breadcrumbs.add('action', `warn: ${message}`, data);
+  },
+
   error(message: string, data?: Record<string, unknown>) {
     console.error(`[ERROR] ${message}${fmt(data)}`);
     breadcrumbs.add('error', message, data);

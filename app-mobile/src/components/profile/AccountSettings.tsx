@@ -31,19 +31,14 @@ import type { NotificationPreferences } from "../../services/smartNotificationSe
 import { CountryPickerModal } from "../onboarding/CountryPickerModal";
 import { getCountryByCode } from "../../constants/countries";
 import { getCurrencyByCountryCode, getMeasurementSystem } from "../../services/countryCurrencyService";
+import { GENDER_OPTIONS, GENDER_DISPLAY_LABELS } from "../../types/onboarding";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- Gender & Language options ---
-const GENDER_OPTIONS = [
-  "Woman",
-  "Man",
-  "Non-binary",
-  "Prefer not to say",
-] as const;
+// --- Language options (gender uses canonical DB values from onboarding types) ---
 
 const LANGUAGE_OPTIONS = [
   { code: "en", name: "English" },
@@ -549,7 +544,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                     <ActivityIndicator size="small" color="#eb7825" />
                   ) : (
                     <Text style={[styles.rowValue, !gender && styles.rowPlaceholder]}>
-                      {gender || "How do you identify?"}
+                      {gender
+                        ? GENDER_DISPLAY_LABELS[gender] ?? gender
+                        : "How do you identify?"}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
@@ -813,7 +810,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 activeOpacity={0.7}
               >
                 <Text style={[styles.pickerOptionText, gender === option && styles.pickerOptionSelected]}>
-                  {option}
+                  {GENDER_DISPLAY_LABELS[option]}
                 </Text>
                 {gender === option && <Icon name="checkmark" size={20} color="#eb7825" />}
               </TouchableOpacity>

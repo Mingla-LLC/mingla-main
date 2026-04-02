@@ -452,6 +452,12 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
   onAddFriend?: () => void;
+  /** Open Chats tab and start/open DM with this user (paired friend on map). */
+  onOpenChatWithUser?: (userId: string) => void;
+  /** Full-screen friend profile (same as Connections → view profile). */
+  onViewFriendProfile?: (userId: string) => void;
+  /** App-root paywall (e.g. index.tsx); when set, pairing gates call this instead of local paywall only. */
+  onUpgradePress?: () => void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -733,6 +739,9 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 export default function DiscoverScreen({
   isTabVisible = true,
   onAddFriend,
+  onOpenChatWithUser,
+  onViewFriendProfile,
+  onUpgradePress,
   accountPreferences,
   preferencesRefreshKey,
   deepLinkParams,
@@ -3312,7 +3321,8 @@ export default function DiscoverScreen({
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     if (!canAccess('pairing')) {
                       setPaywallFeature('pairing');
-                      setShowPaywall(true);
+                      if (onUpgradePress) onUpgradePress();
+                      else setShowPaywall(true);
                       return;
                     }
                     setIsPairModalVisible(true);
@@ -3564,8 +3574,11 @@ export default function DiscoverScreen({
                     }
                   }}
                   onPersonMessage={(userId) => {
-                    // Navigate to chat with this user via pill selection
-                    const pill = pairingPills.find(p => p.pairedUserId === userId);
+                    if (onOpenChatWithUser) {
+                      onOpenChatWithUser(userId);
+                      return;
+                    }
+                    const pill = pairingPills.find((p) => p.pairedUserId === userId);
                     if (pill) setSelectedPillId(pill.id);
                   }}
                   onPersonInvite={() => {}}
@@ -3574,7 +3587,7 @@ export default function DiscoverScreen({
                     const pill = pairingPills.find(p => p.pairedUserId === userId);
                     if (pill) setSelectedPillId(pill.id);
                   }}
-                  onPersonProfile={() => {}}
+                  onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
                   accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
                   userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
                   isLoading={recommendationsLoading}
@@ -3622,7 +3635,8 @@ export default function DiscoverScreen({
                         style={styles.frozenPairingBanner}
                         onPress={() => {
                           setPaywallFeature('pairing');
-                          setShowPaywall(true);
+                          if (onUpgradePress) onUpgradePress();
+                          else setShowPaywall(true);
                         }}
                       >
                         <Icon name="lock-closed" size={16} color="#F59E0B" />

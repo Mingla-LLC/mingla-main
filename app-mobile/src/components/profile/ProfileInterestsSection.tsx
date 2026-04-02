@@ -12,6 +12,8 @@ interface ProfileInterestsSectionProps {
   categories: string[];
   isOwnProfile: boolean;
   onEditPress?: () => void;
+  /** Overrides default header ("Your Interests" / "Interests"). */
+  sectionTitle?: string;
 }
 
 const STAGGER_DELAY = 30;
@@ -22,8 +24,10 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   categories,
   isOwnProfile,
   onEditPress,
+  sectionTitle,
 }) => {
   const hasInterests = intents.length > 0 || categories.length > 0;
+  const headerTitle = sectionTitle ?? (isOwnProfile ? 'Your Interests' : 'Interests');
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
   const categoryData = allCategories.filter((c) => categories.includes(c.name));
   const totalPills = intentData.length + categoryData.length;
@@ -61,12 +65,21 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
     Animated.parallel(animations).start();
   }, [intentsKey, categoriesKey, totalPills]);
 
-  if (!hasInterests && !isOwnProfile) return null;
+  if (!hasInterests && !isOwnProfile) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>{headerTitle}</Text>
+        </View>
+        <Text style={styles.friendInterestsEmpty}>Not shared</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Your Interests</Text>
+        <Text style={styles.title}>{headerTitle}</Text>
         {isOwnProfile && (
           <TrackedTouchableOpacity
             logComponent="ProfileInterestsSection"
@@ -153,6 +166,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 14,
   },
   title: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  friendInterestsEmpty: {
+    fontSize: 15,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
   editButton: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center',

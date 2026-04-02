@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { s, vs } from '../../utils/responsive';
-import ProfileHeroSection from './ProfileHeroSection';
+import { getCountryByCode } from '../../constants/countries';
 import ProfileInterestsSection from './ProfileInterestsSection';
-import ProfileStatsRow from './ProfileStatsRow';
+import type { SubscriptionTier } from '../../types/subscription';
 
-// ── Types ───────────────────────────────────────────────────────────────────
+const TIER_LABEL: Record<SubscriptionTier, string> = {
+  free: 'Free',
+  pro: 'Pro',
+  elite: 'Elite',
+};
 
 interface ViewFriendProfileScreenProps {
   userId: string;
@@ -23,7 +26,16 @@ interface ViewFriendProfileScreenProps {
   onMessage?: (userId: string) => void;
 }
 
-// ── Component ───────────────────────────────────────────────────────────────
+function displayName(
+  first: string | null,
+  last: string | null,
+  username: string | null,
+): string {
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  if (full) return full;
+  if (username) return `@${username.replace(/^@/, '')}`;
+  return 'Friend';
+}
 
 const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   userId,
@@ -31,20 +43,6 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   onMessage,
 }) => {
   const { data: profile, isLoading, isError } = useFriendProfile(userId);
-
-  const handleRemoveFriend = () => {
-    if (!profile) return;
-    Alert.alert(
-      'Remove Friend',
-      `Are you sure you want to remove ${profile.first_name || 'this person'} as a friend?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => {
-          Alert.alert('Coming Soon', 'Friend removal from profile will be available in a future update.');
-        } },
-      ],
-    );
-  };
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -84,36 +82,45 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
     );
   }
 
-  const hasInterests = profile.intents.length > 0 || profile.categories.length > 0;
+  const name = displayName(profile.first_name, profile.last_name, profile.username);
+  const phoneLine = profile.phone?.trim() ? profile.phone : 'Not shared';
+  const countryName = profile.country
+    ? getCountryByCode(profile.country)?.name ?? profile.country
+    : null;
+  const locationLine = countryName ?? 'Not shared';
+  const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
 
   return (
     <View style={styles.container}>
       {renderHeader()}
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ProfileHeroSection
-          isOwnProfile={false}
-          firstName={profile.first_name}
-          lastName={profile.last_name}
-          username={profile.username}
-          avatarUrl={profile.avatar_url}
-          bio={profile.bio}
-        />
+        <Text style={styles.name}>{name}</Text>
 
-        {hasInterests && (
+        <View style={styles.infoBlock}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Phone</Text>
+            <Text style={styles.infoValue}>{phoneLine}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Location</Text>
+            <Text style={styles.infoValue}>{locationLine}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Level</Text>
+            <Text style={styles.infoValue}>{levelLine}</Text>
+          </View>
+        </View>
+
+        <View style={styles.interestsWrap}>
           <ProfileInterestsSection
             intents={profile.intents}
             categories={profile.categories}
             isOwnProfile={false}
+            sectionTitle="Interests"
           />
-        )}
+        </View>
 
-        <ProfileStatsRow
-          savedCount={profile.savedCount}
-          connectionsCount={profile.connectionsCount}
-          boardsCount={profile.boardsCount}
-        />
-
-        {onMessage && (
+        {onMessage ? (
           <TouchableOpacity
             style={styles.messageButton}
             onPress={() => onMessage(userId)}
@@ -121,19 +128,13 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           >
             <Text style={styles.messageText}>Message</Text>
           </TouchableOpacity>
-        )}
-
-        <TouchableOpacity onPress={handleRemoveFriend} style={styles.removeWrap}>
-          <Text style={styles.removeText}>Remove Friend</Text>
-        </TouchableOpacity>
+        ) : null}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
     </View>
   );
 };
-
-// ── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
@@ -148,6 +149,39 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: s(18), fontWeight: '700', color: '#111827', textAlign: 'center' },
   headerSpacer: { width: s(24) },
   scroll: { flex: 1 },
+  name: {
+    fontSize: s(26),
+    fontWeight: '700',
+    color: '#111827',
+    paddingHorizontal: s(24),
+    marginBottom: vs(20),
+  },
+  infoBlock: {
+    paddingHorizontal: s(24),
+    gap: vs(16),
+    marginBottom: vs(8),
+  },
+  infoRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: vs(12),
+  },
+  infoLabel: {
+    fontSize: s(12),
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: vs(4),
+  },
+  infoValue: {
+    fontSize: s(16),
+    fontWeight: '500',
+    color: '#111827',
+  },
+  interestsWrap: {
+    marginTop: vs(8),
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(32) },
   errorTitle: { fontSize: s(18), fontWeight: '700', color: '#111827', textAlign: 'center' },
   errorBody: {
@@ -174,8 +208,6 @@ const styles = StyleSheet.create({
     marginTop: vs(24),
   },
   messageText: { fontSize: s(16), fontWeight: '700', color: '#ffffff' },
-  removeWrap: { alignItems: 'center', marginTop: vs(16) },
-  removeText: { fontSize: s(15), color: '#ef4444', fontWeight: '600' },
   bottomPadding: { height: vs(48) },
 });
 

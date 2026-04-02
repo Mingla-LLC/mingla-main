@@ -88,6 +88,9 @@ import {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
+/** Intent vibe cards: two columns with gap 6, horizontal padding 24+24 from OnboardingShell */
+const INTENT_CARD_WIDTH = (SCREEN_WIDTH - 48 - 6) / 2
+
 function formatBirthdayDisplay(date: Date): string {
   const day = date.getDate().toString().padStart(2, '0')
   const month = (date.getMonth() + 1).toString().padStart(2, '0')
@@ -2229,6 +2232,7 @@ const OnboardingFlow = ({
                 <Animated.View
                   key={intent.id}
                   style={{
+                    width: INTENT_CARD_WIDTH,
                     opacity: intentAnims[idx].opacity,
                     transform: [{ scale: intentAnims[idx].scale }],
                   }}
@@ -2559,7 +2563,7 @@ const OnboardingFlow = ({
 
     if (subStep === 'categories') {
       return (
-        <View>
+        <View style={styles.categoryStepRoot}>
           <Text style={styles.headline}>What kind of places do you love?</Text>
           <Text style={styles.body}>Pick up to 3 that match your vibe.</Text>
           <View style={styles.categoryGrid}>
@@ -3206,11 +3210,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
+    alignItems: 'stretch',
     gap: 6,
     marginTop: spacing.md,
   },
   intentCard: {
-    width: (SCREEN_WIDTH - 48 - 6) / 2,
+    width: '100%',
+    flex: 1,
+    // Floor height so short copy (e.g. Romantic) matches taller cards; flex fills row with stretch
+    minHeight: 136,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
@@ -3218,6 +3226,7 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
     backgroundColor: colors.background.primary,
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   intentLabel: {
     ...typography.sm,
@@ -3239,10 +3248,16 @@ const styles = StyleSheet.create({
   intentDescSelected: {
     color: colors.text.inverse,
   },
-  // ─── Category Grid ───
+  // ─── Category Grid (2 columns, full width — CategoryTile width matches this gap math) ───
+  categoryStepRoot: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
   categoryGrid: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: spacing.sm,
     marginTop: spacing.lg,
   },
