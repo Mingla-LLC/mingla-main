@@ -4,6 +4,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import BottomSheet from '@gorhom/bottom-sheet';
@@ -196,15 +197,32 @@ export function DiscoverMap({
     setSelectedPerson(null);
     personSheetRef.current?.close();
     setSelectedCard(card);
-    bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
   const handlePersonPinPress = useCallback((person: NearbyPerson) => {
     setSelectedCard(null);
     bottomSheetRef.current?.close();
     setSelectedPerson(person);
-    personSheetRef.current?.snapToIndex(0);
   }, []);
+
+  // Open sheets after React commits selection. Calling snapToIndex in the marker
+  // onPress handler runs before state updates, so @gorhom/bottom-sheet often
+  // ignored the first snap (modal only appeared after several taps).
+  useEffect(() => {
+    if (!selectedPerson) return;
+    const id = InteractionManager.runAfterInteractions(() => {
+      personSheetRef.current?.snapToIndex(0);
+    });
+    return () => id.cancel();
+  }, [selectedPerson?.userId]);
+
+  useEffect(() => {
+    if (!selectedCard) return;
+    const id = InteractionManager.runAfterInteractions(() => {
+      bottomSheetRef.current?.snapToIndex(0);
+    });
+    return () => id.cancel();
+  }, [selectedCard?.id]);
 
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -323,7 +341,6 @@ export function DiscoverMap({
     setSelectedPerson(null);
     personSheetRef.current?.close();
     setSelectedCard(targetCard);
-    bottomSheetRef.current?.snapToIndex(0);
 
     if (targetCard.lat != null && targetCard.lng != null) {
       mapRef.current?.animateToRegion(

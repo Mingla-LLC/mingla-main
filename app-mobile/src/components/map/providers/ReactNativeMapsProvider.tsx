@@ -90,6 +90,9 @@ export function ReactNativeMapsProvider({
       clusterColor="#eb7825"
       radius={50}
       maxZoom={16}
+      // iOS defaults to LayoutAnimation on every region settle — markers relayout and
+      // taps on people pins are often lost until the animation finishes.
+      animationEnabled={false}
     >
       <UrlTile
         urlTemplate="https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
@@ -144,7 +147,9 @@ export function ReactNativeMapsProvider({
           anchor={{ x: 0.5, y: 0.35 }}
           cluster={false}
         >
-          <PersonPinContent person={person} />
+          <View style={styles.personMarkerTouchTarget} collapsable={false}>
+            <PersonPinContent person={person} />
+          </View>
         </Marker>
       ))}
     </ClusteredMapView>
@@ -185,5 +190,12 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  /** Widen hit area so taps register while the map is still settling. */
+  personMarkerTouchTarget: {
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
 });
