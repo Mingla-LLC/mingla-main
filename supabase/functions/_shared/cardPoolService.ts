@@ -179,7 +179,7 @@ async function queryPoolCards(
   });
 
   if (error) {
-    console.error('[card-pool] SQL query error:', error);
+    console.error(`[cardPoolService] query_pool_cards RPC FAILED: ${error.message} (code: ${error.code}, hint: ${error.hint ?? 'none'}, details: ${error.details ?? 'none'})`);
     return { poolCards: [], totalUnseenCount: 0 };
   }
 

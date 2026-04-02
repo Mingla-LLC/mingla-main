@@ -132,8 +132,6 @@ export const RecommendationsProvider: React.FC<
   const hasStartedRef = useRef(false);
   // Accumulated cards from all pages (flat array, not per-batch)
   const accumulatedCardsRef = useRef<Recommendation[]>([]);
-  // Counter that increments when session-served IDs change — triggers excludeCardIds memo recomputation
-  const [servedIdsVersion, setServedIdsVersion] = useState(0);
   // Guard: prevents stale batchSeed from firing a query during pref-change reset.
   // Set to false when reset starts, true after batchSeed has been confirmed 0.
   const [batchSeedReady, setBatchSeedReady] = useState(true);
@@ -184,14 +182,12 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
-    // Session-served IDs — cards already delivered in earlier pages this session.
-    // servedIdsVersion triggers recomputation when new cards are accumulated.
-    for (const id of sessionServedIdsRef.current) {
-      ids.add(id);
-    }
+    // NOTE: Session-served IDs are NOT included here. Cross-page dedup is handled
+    // by the server-side impression system which has a rotation fallback. Including
+    // session-served IDs in p_exclude_place_ids (hard filter, no rotation) causes
+    // 0 cards after swiping through a small pool.
     return Array.from(ids);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedCards, calendarEntries, servedIdsVersion]);
+  }, [savedCards, calendarEntries]);
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
@@ -519,6 +515,17 @@ export const RecommendationsProvider: React.FC<
     }
   }, [batchSeed, batchSeedReady]);
 
+  // Safety timeout: if batchSeedReady stays false for 3s, force it true.
+  // Prevents permanent deck freeze if the reset effect doesn't fire.
+  useEffect(() => {
+    if (batchSeedReady) return;
+    const timer = setTimeout(() => {
+      console.warn('[RecommendationsContext] batchSeedReady safety timeout — forcing true after 3s');
+      setBatchSeedReady(true);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [batchSeedReady]);
+
   // ── Dismissed card callbacks ─────────────────────────────────────────────
   const addDismissedCard = useCallback((card: Recommendation) => {
     setDismissedCards(prev => {
@@ -580,7 +587,6 @@ export const RecommendationsProvider: React.FC<
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
-      setServedIdsVersion(0);
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
@@ -726,10 +732,6 @@ export const RecommendationsProvider: React.FC<
           // Deduplicate against already-served cards in this session
           const dedupedCards = deckCards.filter(c => !sessionServedIdsRef.current.has(c.id));
           for (const c of dedupedCards) sessionServedIdsRef.current.add(c.id);
-          if (dedupedCards.length > 0) {
-            setServedIdsVersion(v => v + 1); // Trigger excludeCardIds recomputation
-          }
-
           if (dedupedCards.length === 0 && batchSeed > 0 && deckHasMore && isDeckBatchLoaded) {
             // All cards on this page are duplicates, fetch succeeded, server says more exist.
             // Skip to next page. (If deckHasMore is false or fetch errored, stop.)
@@ -806,7 +808,6 @@ export const RecommendationsProvider: React.FC<
       accumulatedCardsRef.current = [];
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
-      setServedIdsVersion(0);
 
       // Clear deck session state — each mode starts fresh
       const { resetDeckHistory } = useAppStore.getState();
