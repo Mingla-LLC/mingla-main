@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-03-31
+> Last updated: 2026-04-02
 
 ## Surface Coverage
 
@@ -8,7 +8,7 @@
 |---------|-------|---|---|---|---|---|-------------|---------|------------|
 | Auth & Session | 7 | 2 | 4 | 1 | 0 | 0 | 0% | 0% | Partial |
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Discovery / Explore | 52 | 35 | 7 | 0 | 0 | 10 | 19% | 0% | Strong |
+| Discovery / Explore | 53 | 36 | 7 | 0 | 0 | 10 | 19% | 0% | Strong |
 | Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
@@ -35,7 +35,7 @@
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **286** | **87** | **24** | **2** | **2** | **171** | **60%** | **0%** | **Weak** |
+| **TOTAL** | **287** | **88** | **24** | **2** | **2** | **171** | **60%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 

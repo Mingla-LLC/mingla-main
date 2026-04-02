@@ -129,6 +129,7 @@ export const RecommendationsProvider: React.FC<
   // Cleared on preference change and mode switch. Catches the prefetch race
   // condition where page 2 starts before page 1's impressions are committed.
   const sessionServedIdsRef = useRef<Set<string>>(new Set());
+  const consecutiveSkipCountRef = useRef(0);
   const hasStartedRef = useRef(false);
   // Accumulated cards from all pages (flat array, not per-batch)
   const accumulatedCardsRef = useRef<Recommendation[]>([]);
@@ -594,6 +595,7 @@ export const RecommendationsProvider: React.FC<
       // Reset warm pool so it re-fires with new preferences
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
+      consecutiveSkipCountRef.current = 0;
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
     }
@@ -734,16 +736,27 @@ export const RecommendationsProvider: React.FC<
           for (const c of dedupedCards) sessionServedIdsRef.current.add(c.id);
           if (dedupedCards.length === 0 && batchSeed > 0 && deckHasMore && isDeckBatchLoaded) {
             // All cards on this page are duplicates, fetch succeeded, server says more exist.
-            // Skip to next page. (If deckHasMore is false or fetch errored, stop.)
-            setBatchSeed(prev => prev + 1);
-            prefetchFiredRef.current = false;
+            const consecutiveSkips = consecutiveSkipCountRef.current + 1;
+            consecutiveSkipCountRef.current = consecutiveSkips;
+            if (consecutiveSkips >= 3) {
+              // Circuit breaker: 3 consecutive all-duplicate pages means something is wrong
+              console.warn('[deck] Circuit breaker: 3 consecutive duplicate pages, declaring exhausted');
+              setIsExhausted(true);
+              setHasMoreCards(false);
+            } else {
+              // Skip to next page. (If deckHasMore is false or fetch errored, stop.)
+              setBatchSeed(prev => prev + 1);
+              prefetchFiredRef.current = false;
+            }
             // Don't overwrite accumulatedCardsRef — keep existing cards visible
           } else if (batchSeed === 0) {
             // First page: replace (fresh session or pref change)
+            consecutiveSkipCountRef.current = 0;
             accumulatedCardsRef.current = dedupedCards.length > 0 ? dedupedCards : deckCards;
             setRecommendations(accumulatedCardsRef.current);
           } else {
             // Subsequent pages: append new unique cards
+            consecutiveSkipCountRef.current = 0;
             accumulatedCardsRef.current = [...accumulatedCardsRef.current, ...dedupedCards];
             setRecommendations(accumulatedCardsRef.current);
           }
@@ -808,6 +821,7 @@ export const RecommendationsProvider: React.FC<
       accumulatedCardsRef.current = [];
       warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
+      consecutiveSkipCountRef.current = 0;
 
       // Clear deck session state — each mode starts fresh
       const { resetDeckHistory } = useAppStore.getState();

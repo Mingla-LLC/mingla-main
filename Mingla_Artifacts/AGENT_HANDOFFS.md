@@ -1,7 +1,7 @@
 # Agent Handoffs
 
-> Last updated: 2026-03-31
-> Total: 0 active | 24 completed
+> Last updated: 2026-04-02
+> Total: 0 active | 27 completed
 
 ## Active Dispatches
 
@@ -37,6 +37,9 @@
 | AH-022 | ORCH-0209/0240 (State Persistence) | Tester | 2026-03-31 | QA_STATE_PERSISTENCE_REPORT.md | CONDITIONAL PASS |
 | AH-023 | ORCH-0209/0240 (State Persistence) | Implementor (rework) | 2026-03-31 | IMPLEMENTATION_STATE_PERSISTENCE_REWORK_REPORT.md | APPROVED |
 | AH-024 | ORCH-0209/0240/0270/0271 (State Persistence) | Tester (retest) | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md | PASS |
+| AH-025 | ORCH-0272 (Cross-Page Dedup) | Investigator | 2026-04-01 | INVESTIGATION_ORCH_0272_CROSS_PAGE_DEDUP.md | APPROVED |
+| AH-026 | ORCH-0272 (Cross-Page Dedup) | Implementor | 2026-04-01 | IMPLEMENTATION_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | APPROVED |
+| AH-027 | ORCH-0272 (Cross-Page Dedup) | Tester | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | PASS |
 
 ## Historical (Pre-Orchestrator)
 
