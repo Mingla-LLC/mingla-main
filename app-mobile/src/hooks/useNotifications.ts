@@ -5,7 +5,7 @@
  * Uses React Query for fetching/caching and Supabase Realtime for live updates.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import * as Haptics from 'expo-haptics';
 import { OneSignal } from 'react-native-onesignal';
@@ -27,6 +27,14 @@ export interface ServerNotification {
   push_sent: boolean;
   created_at: string;
   expires_at: string | null;
+}
+
+export interface UseNotificationsOptions {
+  /**
+   * Runs after a collaboration invite is accepted or declined from notification actions.
+   * Use this to refresh the home pill bar (it does not follow React Query alone).
+   */
+  onCollaborationInviteResolved?: () => void | Promise<void>;
 }
 
 export interface UseNotificationsReturn {
@@ -74,6 +82,82 @@ export const notificationKeys = {
   unreadCount: (userId: string) => ['notifications', 'unread', userId] as const,
 };
 
+const COLLABORATION_INVITE_NOTIFICATION_TYPE = 'collaboration_invite_received';
+
+/**
+ * Deletes in-app notification rows for a collaboration invite after the user
+ * accepted or declined via another surface (e.g. home session pill), so the
+ * modal does not keep showing Join / Decline.
+ */
+export async function dismissCollaborationInviteNotifications(
+  userId: string,
+  queryClient: QueryClient,
+  opts: { sessionId: string; inviteId?: string }
+): Promise<void> {
+  const key = notificationKeys.all(userId);
+  const list = queryClient.getQueryData<ServerNotification[]>(key) ?? [];
+  const matching = list.filter((n) => {
+    if (n.type !== COLLABORATION_INVITE_NOTIFICATION_TYPE) return false;
+    const d = (n.data || {}) as Record<string, unknown>;
+    const related = String(n.related_id ?? '');
+    const dataSession = String(d.sessionId ?? '');
+    const dataInvite = String(d.inviteId ?? '');
+    if (opts.inviteId && (related === opts.inviteId || dataInvite === opts.inviteId)) return true;
+    if (opts.sessionId && (related === opts.sessionId || dataSession === opts.sessionId)) return true;
+    return false;
+  });
+
+  let ids = matching.map((m) => m.id);
+
+  if (ids.length === 0) {
+    const orParts: string[] = [];
+    if (opts.inviteId) orParts.push(`related_id.eq.${opts.inviteId}`);
+    if (opts.sessionId) orParts.push(`related_id.eq.${opts.sessionId}`);
+    if (orParts.length === 0) return;
+
+    const { data: fromDb, error: fetchErr } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('type', COLLABORATION_INVITE_NOTIFICATION_TYPE)
+      .or(orParts.join(','));
+
+    if (fetchErr) {
+      console.warn('[useNotifications] dismissCollaborationInviteNotifications fetch:', fetchErr.message);
+      await queryClient.invalidateQueries({ queryKey: key });
+      return;
+    }
+    ids = (fromDb ?? []).map((r) => r.id);
+    if (ids.length === 0 && opts.sessionId) {
+      const { data: byDataSession, error: dsErr } = await supabase
+        .from('notifications')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('type', COLLABORATION_INVITE_NOTIFICATION_TYPE)
+        .filter('data->>sessionId', 'eq', opts.sessionId);
+      if (dsErr) {
+        console.warn('[useNotifications] dismissCollaborationInviteNotifications data filter:', dsErr.message);
+        await queryClient.invalidateQueries({ queryKey: key });
+        return;
+      }
+      ids = (byDataSession ?? []).map((r) => r.id);
+    }
+  }
+
+  if (ids.length === 0) return;
+  const { error } = await supabase.from('notifications').delete().in('id', ids);
+  if (error) {
+    console.warn('[useNotifications] dismissCollaborationInviteNotifications:', error.message);
+    await queryClient.invalidateQueries({ queryKey: key });
+    return;
+  }
+
+  queryClient.setQueryData<ServerNotification[]>(
+    key,
+    (old = []) => old.filter((n) => !ids.includes(n.id))
+  );
+}
+
 // ── Fetch functions ──────────────────────────────────────────────────────────
 
 async function fetchNotifications(
@@ -104,11 +188,16 @@ async function fetchNotifications(
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useNotifications(userId: string | undefined): UseNotificationsReturn {
+export function useNotifications(
+  userId: string | undefined,
+  options?: UseNotificationsOptions
+): UseNotificationsReturn {
   const queryClient = useQueryClient();
   const [hasMore, setHasMore] = useState(true);
   const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const onCollaborationInviteResolvedRef = useRef(options?.onCollaborationInviteResolved);
+  onCollaborationInviteResolvedRef.current = options?.onCollaborationInviteResolved;
 
   // ── Main query ──
   const {
@@ -468,6 +557,10 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
         // Invalidate all session-related caches so the pill bar and board views refresh
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
         queryClient.invalidateQueries({ queryKey: ['boards'] });
+        const onResolved = onCollaborationInviteResolvedRef.current;
+        if (onResolved) {
+          await Promise.resolve(onResolved());
+        }
         await deleteNotification(notificationId);
       } catch (err) {
         console.error('[useNotifications] acceptCollaborationInvite error:', err);
@@ -491,6 +584,10 @@ export function useNotifications(userId: string | undefined): UseNotificationsRe
         }
 
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
+        const onResolved = onCollaborationInviteResolvedRef.current;
+        if (onResolved) {
+          await Promise.resolve(onResolved());
+        }
         await deleteNotification(notificationId);
       } catch (err) {
         console.error('[useNotifications] declineCollaborationInvite error:', err);

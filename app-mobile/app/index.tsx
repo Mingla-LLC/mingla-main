@@ -82,7 +82,10 @@ import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useSocialRealtime } from "../src/hooks/useSocialRealtime";
 import * as friendsService from "../src/services/friendsService";
 import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService";
-import type { ServerNotification } from "../src/hooks/useNotifications";
+import {
+  dismissCollaborationInviteNotifications,
+  type ServerNotification,
+} from "../src/hooks/useNotifications";
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -993,6 +996,11 @@ function AppContent() {
     if (options?.showLoading) {
       setIsLoadingBoards(true);
     }
+    // Always clear board-session dedupe before fetching. Realtime-driven refreshes
+    // call refreshAllSessions() without showLoading; if we skipped invalidation,
+    // fetchUserBoardSessions could return a stale list for up to 5s (e.g. after
+    // accepting a collab invite from the notification modal).
+    BoardSessionService.invalidateBoardSessionCache();
     try {
       // Fetch all session types in parallel for better performance
       const [activeBoards, createdResult, invitedResult] = await Promise.all([
@@ -1314,6 +1322,11 @@ function AppContent() {
         return;
       }
 
+      await dismissCollaborationInviteNotifications(user.id, queryClient, {
+        sessionId: result.sessionId,
+        inviteId: result.inviteId || undefined,
+      });
+
       // Refresh all sessions so the pill bar reflects the new active session
       await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${result.sessionName}" successfully!`);
@@ -1333,6 +1346,13 @@ function AppContent() {
       if (!result.success) {
         toastManager.error(result.error ?? 'Failed to decline invite.');
         return;
+      }
+
+      if (result.sessionId) {
+        await dismissCollaborationInviteNotifications(user.id, queryClient, {
+          sessionId: result.sessionId,
+          inviteId: result.inviteId,
+        });
       }
 
       // Refresh all sessions so the pill bar removes the declined invite

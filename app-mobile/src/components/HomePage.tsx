@@ -129,7 +129,9 @@ export default function HomePage({
     acceptLinkRequest,
     declineLinkRequest,
     pendingActions,
-  } = useNotifications(userId);
+  } = useNotifications(userId, {
+    onCollaborationInviteResolved: onSessionStateChanged,
+  });
 
   const noop = useMemo(() => () => {}, []);
 
