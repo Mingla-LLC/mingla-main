@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Text,
   View,
@@ -438,6 +438,7 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
 
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -1398,55 +1399,79 @@ export default function SwipeableCards({
     onCardLike(card);
   }, [onCardLike]);
 
+  const recommendationToExpanded = useCallback((card: Recommendation): ExpandedCardData => {
+    if ((card as any).cardType === 'curated') {
+      return card as unknown as ExpandedCardData;
+    }
+    return {
+      id: card.id,
+      placeId: card.placeId ?? card.id,
+      title: card.title,
+      category: card.category,
+      categoryIcon: card.categoryIcon,
+      description: card.description,
+      fullDescription: card.fullDescription || card.description,
+      image: card.image,
+      images: card.images?.length ? card.images : [card.image].filter(Boolean),
+      rating: card.rating ?? 0,
+      reviewCount: card.reviewCount ?? 0,
+      priceRange: card.priceRange || 'Free',
+      distance: card.distance || '',
+      travelTime: card.travelTime || '',
+      address: card.address,
+      openingHours: card.openingHours,
+      highlights: card.highlights || [],
+      tags: card.tags || [],
+      matchScore: card.matchScore,
+      matchFactors: card.matchFactors,
+      socialStats: card.socialStats,
+      location:
+        card.lat != null && card.lng != null
+          ? { lat: card.lat, lng: card.lng }
+          : userLocation
+          ? { lat: userLocation.lat, lng: userLocation.lng }
+          : undefined,
+      selectedDateTime: userPreferences?.datetime_pref
+        ? new Date(userPreferences.datetime_pref)
+        : new Date(),
+      tip: card.tip ?? undefined,
+      strollData: card.strollData,
+      website: card.website ?? undefined,
+      phone: card.phone ?? undefined,
+    };
+  }, [userLocation, userPreferences]);
+
   const handleDismissedCardPress = useCallback((card: Recommendation) => {
+    // Find this card's index in the reversed session list (most recent first)
+    const reversedCards = [...sessionSwipedCards].reverse();
+    const idx = reversedCards.findIndex(c => c.id === card.id);
+    setReviewIndex(idx >= 0 ? idx : 0);
+
     setDismissedSheetVisible(false);
-    // Small delay to avoid modal animation conflict
     setTimeout(() => {
-      // Transform the card to ExpandedCardData and open modal
-      if ((card as any).cardType === 'curated') {
-        setSelectedCardForExpansion(card as unknown as ExpandedCardData);
-      } else {
-        const expandedCardData: ExpandedCardData = {
-          id: card.id,
-          placeId: card.placeId ?? card.id,
-          title: card.title,
-          category: card.category,
-          categoryIcon: card.categoryIcon,
-          description: card.description,
-          fullDescription: card.fullDescription || card.description,
-          image: card.image,
-          images: card.images?.length ? card.images : [card.image].filter(Boolean),
-          rating: card.rating ?? 0,
-          reviewCount: card.reviewCount ?? 0,
-          priceRange: card.priceRange || 'Free',
-          distance: card.distance || '',
-          travelTime: card.travelTime || '',
-          address: card.address,
-          openingHours: card.openingHours,
-          highlights: card.highlights || [],
-          tags: card.tags || [],
-          matchScore: card.matchScore,
-          matchFactors: card.matchFactors,
-          socialStats: card.socialStats,
-          location:
-            card.lat != null && card.lng != null
-              ? { lat: card.lat, lng: card.lng }
-              : userLocation
-              ? { lat: userLocation.lat, lng: userLocation.lng }
-              : undefined,
-          selectedDateTime: userPreferences?.datetime_pref
-            ? new Date(userPreferences.datetime_pref)
-            : new Date(),
-          tip: card.tip ?? undefined,
-          strollData: card.strollData,
-          website: card.website ?? undefined,
-          phone: card.phone ?? undefined,
-        };
-        setSelectedCardForExpansion(expandedCardData);
-      }
+      setSelectedCardForExpansion(recommendationToExpanded(card));
       setIsExpandedModalVisible(true);
     }, 300);
-  }, [userLocation, userPreferences]);
+  }, [sessionSwipedCards, recommendationToExpanded]);
+
+  // Review navigation: cycle through sessionSwipedCards (reversed = most recent first)
+  const reviewCards = useMemo(() => [...sessionSwipedCards].reverse(), [sessionSwipedCards]);
+
+  const handleReviewNext = useCallback(() => {
+    const nextIdx = reviewIndex + 1;
+    if (nextIdx < reviewCards.length) {
+      setReviewIndex(nextIdx);
+      setSelectedCardForExpansion(recommendationToExpanded(reviewCards[nextIdx]));
+    }
+  }, [reviewIndex, reviewCards, recommendationToExpanded]);
+
+  const handleReviewPrevious = useCallback(() => {
+    const prevIdx = reviewIndex - 1;
+    if (prevIdx >= 0) {
+      setReviewIndex(prevIdx);
+      setSelectedCardForExpansion(recommendationToExpanded(reviewCards[prevIdx]));
+    }
+  }, [reviewIndex, reviewCards, recommendationToExpanded]);
 
   const handleViewCardsAgain = async () => {
     // Clear local state
@@ -1509,43 +1534,92 @@ export default function SwipeableCards({
     case 'EMPTY':
     case 'EXHAUSTED':
       return (
-        <View style={styles.emptyDeckContainer}>
-          <View style={styles.emptyDeckContent}>
-            <View style={styles.emptyDeckIconCircle}>
-              <Icon name="earth-outline" size={24} color="#eb7825" />
-            </View>
-            <Text style={styles.emptyDeckTitle}>
-              You've seen everything available
-            </Text>
-            <Text style={styles.emptyDeckSubtitle}>
-              Shift your vibe to unlock new spots, or look back at what you've been through.
-            </Text>
+        <>
+          <View style={styles.emptyDeckContainer}>
+            <View style={styles.emptyDeckContent}>
+              <View style={styles.emptyDeckIconCircle}>
+                <Icon name="earth-outline" size={24} color="#eb7825" />
+              </View>
+              <Text style={styles.emptyDeckTitle}>
+                You've seen everything available
+              </Text>
+              <Text style={styles.emptyDeckSubtitle}>
+                Shift your vibe to unlock new spots, or look back at what you've been through.
+              </Text>
 
-            <View style={styles.emptyDeckActions}>
-              <TouchableOpacity
-                style={styles.emptyDeckButton}
-                onPress={handleOpenPreferences}
-                activeOpacity={0.7}
-              >
-                <Icon name="options-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.emptyDeckButtonText}>Shift preferences</Text>
-              </TouchableOpacity>
-
-              {sessionSwipedCards.length > 0 && (
+              <View style={styles.emptyDeckActions}>
                 <TouchableOpacity
-                  style={styles.emptyDeckOutlineButton}
-                  onPress={() => setDismissedSheetVisible(true)}
+                  style={styles.emptyDeckButton}
+                  onPress={handleOpenPreferences}
                   activeOpacity={0.7}
                 >
-                  <Icon name="time-outline" size={16} color="#eb7825" />
-                  <Text style={styles.emptyDeckOutlineButtonText}>
-                    Review all cards
-                  </Text>
+                  <Icon name="options-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyDeckButtonText}>Shift preferences</Text>
                 </TouchableOpacity>
-              )}
+
+                {sessionSwipedCards.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.emptyDeckOutlineButton}
+                    onPress={() => setDismissedSheetVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="time-outline" size={16} color="#eb7825" />
+                    <Text style={styles.emptyDeckOutlineButtonText}>
+                      Review all cards
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
-        </View>
+          <DismissedCardsSheet
+            visible={dismissedSheetVisible}
+            onClose={() => setDismissedSheetVisible(false)}
+            dismissedCards={dismissedCards}
+            sessionSwipedCards={sessionSwipedCards}
+            onSave={handleSaveDismissedCard}
+            onCardPress={handleDismissedCardPress}
+          />
+          <ExpandedCardModal
+            visible={isExpandedModalVisible}
+            card={selectedCardForExpansion}
+            onClose={handleCloseExpandedModal}
+            isSaved={
+              selectedCardForExpansion
+                ? savedCards.some(
+                    (savedCard) =>
+                      savedCard?.id === selectedCardForExpansion.id ||
+                      savedCard === selectedCardForExpansion.id
+                  )
+                : false
+            }
+            currentMode={currentMode}
+            onSave={async (card) => {
+              try {
+                onCardLike?.(card);
+                handleCloseExpandedModal();
+              } catch (error: any) {
+                if (error?.code === "23505") {
+                  handleCloseExpandedModal();
+                }
+                throw error;
+              }
+            }}
+            onPurchase={(card, bookingOption) => {
+              onPurchaseComplete?.(card, bookingOption);
+              handleCloseExpandedModal();
+            }}
+            onShare={(card) => {
+              onShareCard?.(card);
+            }}
+            userPreferences={userPreferences}
+            accountPreferences={accountPreferences}
+            onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
+            onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
+            navigationIndex={reviewIndex}
+            navigationTotal={reviewCards.length}
+          />
+        </>
       );
 
     case 'LOADED':

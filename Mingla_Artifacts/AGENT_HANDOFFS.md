@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-02
-> Total: 0 active | 27 completed
+> Total: 0 active | 35 completed
 
 ## Active Dispatches
 
@@ -40,6 +40,14 @@
 | AH-025 | ORCH-0272 (Cross-Page Dedup) | Investigator | 2026-04-01 | INVESTIGATION_ORCH_0272_CROSS_PAGE_DEDUP.md | APPROVED |
 | AH-026 | ORCH-0272 (Cross-Page Dedup) | Implementor | 2026-04-01 | IMPLEMENTATION_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | APPROVED |
 | AH-027 | ORCH-0272 (Cross-Page Dedup) | Tester | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md | PASS |
+| AH-028 | ORCH-0273 (place→card sync) | Implementor | 2026-04-02 | IMPLEMENTATION_PLACE_POOL_CARD_POOL_SYNC_REPORT.md | APPROVED |
+| AH-029 | ORCH-0273 (place→card sync) | Tester | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md | PASS |
+| AH-030 | ORCH-0274 (Photo backfill) | Investigator | 2026-04-02 | INVESTIGATION_PHOTO_BACKFILL_PIPELINE.md | APPROVED |
+| AH-031 | ORCH-0274 (Photo backfill) | Spec Writer | 2026-04-02 | SPEC_PHOTO_BACKFILL_JOB_SYSTEM.md | APPROVED |
+| AH-032 | ORCH-0274 (Photo backfill P1) | Implementor | 2026-04-02 | IMPLEMENTATION_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md | APPROVED |
+| AH-033 | ORCH-0274 (Photo backfill P1) | Tester | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md | CONDITIONAL PASS (P0 fixed) |
+| AH-034 | ORCH-0274 (Photo backfill P2) | Implementor | 2026-04-02 | IMPLEMENTATION_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md | APPROVED |
+| AH-035 | ORCH-0274 (Photo backfill P2) | Tester | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md | PASS |
 
 ## Historical (Pre-Orchestrator)
 

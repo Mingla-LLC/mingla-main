@@ -14,10 +14,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Globe, Search, Camera, Clock, Plus, RefreshCw, Play,
+  Globe, Search, Camera, Clock, Plus, RefreshCw, Play, Pause,
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign, Layers,
-  Square, SkipForward, XCircle, Loader, RotateCcw, Zap,
+  Square, SkipForward, XCircle, Loader, RotateCcw, Zap, MinusCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -2002,23 +2002,44 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
 
 // ── Tab 4: Photo Management ──────────────────────────────────────────────────
 
-function PhotoTab({ selectedCountry, selectedCity }) {
+function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
+  // Photo stats
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [totalPlaces, setTotalPlaces] = useState(null);   // total active places
-  const [withPhotos, setWithPhotos] = useState(null);      // places that have stored photos
-  const [missingCount, setMissingCount] = useState(null);  // places needing backfill
-  const [initialMissing, setInitialMissing] = useState(null);
-  const [totalSucceeded, setTotalSucceeded] = useState(0);
-  const [totalFailed, setTotalFailed] = useState(0);
-  const stopRef = useRef(false);
-  const pollRef = useRef(null);
+  const [totalPlaces, setTotalPlaces] = useState(null);
+  const [withPhotos, setWithPhotos] = useState(null);
+  const [missingCount, setMissingCount] = useState(null);
 
-  // Query actual DB counts via new text-based RPC
+  // Job system state
+  const [activeRun, setActiveRun] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [runningBatch, setRunningBatch] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [expandedBatch, setExpandedBatch] = useState(null);
+  const stopAutoRef = useRef(false);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  const invoke = async (body) => {
+    const { data, error } = await supabase.functions.invoke("backfill-place-photos", { body });
+    if (error) throw new Error(error.message || "Edge function error");
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
+  const refreshActiveRuns = async () => {
+    try {
+      const data = await invoke({ action: "active_runs" });
+      if (onActiveRunsChange) onActiveRunsChange(data.runs || []);
+    } catch { /* ignore */ }
+  };
+
+  // ── Photo stats ──────────────────────────────────────────────────────────
+
   const fetchCounts = async () => {
     if (!selectedCity) return;
     try {
@@ -2035,175 +2056,432 @@ function PhotoTab({ selectedCountry, selectedCity }) {
     } catch { /* ignore */ }
   };
 
-  // Initial load
+  // ── Hydration: load active run on mount / city change ────────────────────
+
   useEffect(() => {
-    if (!selectedCity) { setTotalPlaces(null); setWithPhotos(null); setMissingCount(null); return; }
+    if (!selectedCity) {
+      setTotalPlaces(null); setWithPhotos(null); setMissingCount(null);
+      setActiveRun(null); setBatches([]);
+      return;
+    }
     setLoading(true);
-    fetchCounts().then(() => { if (mountedRef.current) setLoading(false); });
+    let cancelled = false;
+
+    (async () => {
+      await fetchCounts();
+      try {
+        const data = await invoke({ action: "active_runs" });
+        if (cancelled) return;
+        if (onActiveRunsChange) onActiveRunsChange(data.runs || []);
+        const match = (data.runs || []).find(
+          (r) => r.run.city === selectedCity && r.run.country === selectedCountry
+        );
+        if (match) {
+          const status = await invoke({ action: "run_status", runId: match.run.id });
+          if (!cancelled) {
+            setActiveRun(status.run);
+            setBatches(status.batches || []);
+          }
+        } else {
+          if (!cancelled) { setActiveRun(null); setBatches([]); }
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => { cancelled = true; };
   }, [selectedCountry, selectedCity]);
 
-  // Poll DB every 5s while downloading — gives real-time progress within a batch
-  useEffect(() => {
-    if (downloading) {
-      pollRef.current = setInterval(() => { fetchCounts(); }, 5000);
-    } else {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [downloading]);
+  // ── Create run ───────────────────────────────────────────────────────────
 
-  const startDownload = async () => {
-    if (downloading) return;
-    stopRef.current = false;
-    setDownloading(true);
-    setTotalSucceeded(0);
-    setTotalFailed(0);
-    if (initialMissing == null) setInitialMissing(missingCount);
-
-    // Log attempt (non-blocking)
+  const handleCreateRun = async () => {
+    setCreating(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from("admin_backfill_log").insert({
-        operation_type: "photo_backfill",
-        triggered_by: user?.id,
-        total_places: missingCount,
-        estimated_cost_usd: missingCount * 5 * 0.007,
+      const data = await invoke({
+        action: "create_run",
+        city: selectedCity,
+        country: selectedCountry,
       });
+
+      if (data.status === "nothing_to_do") {
+        addToast({ variant: "info", title: `All places in ${selectedCity} already have photos` });
+        setCreating(false);
+        return;
+      }
+      if (data.status === "already_active") {
+        const status = await invoke({ action: "run_status", runId: data.runId });
+        setActiveRun(status.run);
+        setBatches(status.batches || []);
+        setCreating(false);
+        await refreshActiveRuns();
+        return;
+      }
+
+      // Run created — load it
+      const status = await invoke({ action: "run_status", runId: data.runId });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+      addToast({
+        variant: "success",
+        title: "Photo download run created",
+        description: `${data.totalPlaces} places, ${data.totalBatches} batches, est. ${formatCost(data.estimatedCostUsd)}`,
+      });
+    } catch (err) {
+      addToast({ variant: "error", title: "Failed to create run", description: err.message });
+    }
+    setCreating(false);
+  };
+
+  // ── Run Next Batch ───────────────────────────────────────────────────────
+
+  const handleRunNext = async () => {
+    if (!activeRun || runningBatch) return;
+    setRunningBatch(true);
+    try {
+      const data = await invoke({ action: "run_next_batch", runId: activeRun.id });
+      if (data.done) {
+        addToast({ variant: "success", title: "All batches complete!" });
+      }
+      // Refresh full state
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+    } catch (err) {
+      addToast({ variant: "error", title: "Batch failed", description: err.message });
+    }
+    setRunningBatch(false);
+    await fetchCounts();
+  };
+
+  // ── Run All (auto-advance) ───────────────────────────────────────────────
+
+  const handleRunAll = async () => {
+    if (!activeRun) return;
+    setAutoRunning(true);
+    stopAutoRef.current = false;
+
+    // Ensure run is in 'running' state
+    try {
+      if (activeRun.status === "paused") {
+        await invoke({ action: "resume_run", runId: activeRun.id });
+      }
     } catch { /* ignore */ }
 
-    let runSucceeded = 0;
-    let runFailed = 0;
-
-    while (!stopRef.current && mountedRef.current) {
+    while (!stopAutoRef.current && mountedRef.current) {
       try {
-        const { data, error } = await supabase.functions.invoke("backfill-place-photos", {
-          body: { batchSize: 50 },
-        });
+        setRunningBatch(true);
+        const data = await invoke({ action: "run_next_batch", runId: activeRun.id });
+        setRunningBatch(false);
 
-        if (error) break;
-        if (data?.error) break;
-
-        runSucceeded += data.succeeded || 0;
-        runFailed += data.failed || 0;
-
+        // Refresh state
+        const status = await invoke({ action: "run_status", runId: activeRun.id });
         if (mountedRef.current) {
-          setTotalSucceeded(runSucceeded);
-          setTotalFailed(runFailed);
+          setActiveRun(status.run);
+          setBatches(status.batches || []);
         }
 
-        if ((data.processed || 0) === 0 || (data.remaining || 0) === 0) break;
-      } catch { break; }
+        if (data.done) {
+          addToast({ variant: "success", title: "All batches complete!" });
+          break;
+        }
+        if (stopAutoRef.current) {
+          addToast({ variant: "info", title: "Auto-run paused" });
+          break;
+        }
+
+        // Small delay for UI rerender
+        await new Promise((r) => setTimeout(r, 500));
+      } catch (err) {
+        setRunningBatch(false);
+        try { await invoke({ action: "pause_run", runId: activeRun.id }); } catch { /* ignore */ }
+        addToast({ variant: "error", title: "Batch failed — auto-run paused", description: err.message });
+        // Refresh state
+        try {
+          const status = await invoke({ action: "run_status", runId: activeRun.id });
+          if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
+        } catch { /* ignore */ }
+        break;
+      }
     }
 
-    if (mountedRef.current) {
-      setDownloading(false);
-      setInitialMissing(null);
-      await fetchCounts();
-      addToast({
-        variant: runFailed > 0 && runSucceeded === 0 ? "error" : runFailed > 0 ? "warning" : "success",
-        title: stopRef.current ? "Photo download paused" : "Photo download complete",
-        description: `${runSucceeded} succeeded, ${runFailed} failed`,
-      });
+    setAutoRunning(false);
+    setRunningBatch(false);
+    await refreshActiveRuns();
+    await fetchCounts();
+  };
+
+  // ── Pause ────────────────────────────────────────────────────────────────
+
+  const handlePause = async () => {
+    stopAutoRef.current = true;
+    try {
+      await invoke({ action: "pause_run", runId: activeRun.id });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+    } catch (err) {
+      addToast({ variant: "error", title: "Pause failed", description: err.message });
     }
   };
 
-  const stopDownload = () => { stopRef.current = true; };
+  // ── Cancel ───────────────────────────────────────────────────────────────
+
+  const handleCancel = async () => {
+    stopAutoRef.current = true;
+    try {
+      await invoke({ action: "cancel_run", runId: activeRun.id });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+      addToast({ variant: "info", title: "Run cancelled" });
+    } catch (err) {
+      addToast({ variant: "error", title: "Cancel failed", description: err.message });
+    }
+  };
+
+  // ── Retry batch ──────────────────────────────────────────────────────────
+
+  const handleRetryBatch = async (batchId) => {
+    setRunningBatch(true);
+    try {
+      await invoke({ action: "retry_batch", runId: activeRun.id, batchId });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+      addToast({ variant: "success", title: "Batch retried" });
+    } catch (err) {
+      addToast({ variant: "error", title: "Retry failed", description: err.message });
+    }
+    setRunningBatch(false);
+    await fetchCounts();
+  };
+
+  // ── Skip batch ───────────────────────────────────────────────────────────
+
+  const handleSkipBatch = async (batchId) => {
+    try {
+      await invoke({ action: "skip_batch", runId: activeRun.id, batchId });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run);
+      setBatches(status.batches || []);
+      await refreshActiveRuns();
+    } catch (err) {
+      addToast({ variant: "error", title: "Skip failed", description: err.message });
+    }
+  };
+
+  // ── Dismiss ──────────────────────────────────────────────────────────────
+
+  const handleDismiss = () => {
+    setActiveRun(null);
+    setBatches([]);
+    fetchCounts();
+  };
+
+  // ── Derived values ───────────────────────────────────────────────────────
 
   const photoPct = totalPlaces > 0 ? Math.round(((withPhotos ?? 0) / totalPlaces) * 100) : 0;
-  const estimatedCost = (missingCount || 0) * 5 * 0.007;
-  const downloaded = initialMissing != null && missingCount != null ? Math.max(0, initialMissing - missingCount) : totalSucceeded;
-  const progressPct = initialMissing > 0 ? Math.min(100, Math.round((downloaded / initialMissing) * 100)) : 0;
 
   if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>;
 
+  // ── Run progress values ──────────────────────────────────────────────────
+
+  const runProgressPct = activeRun && activeRun.total_batches > 0
+    ? Math.round(((activeRun.completed_batches + activeRun.failed_batches + activeRun.skipped_batches) / activeRun.total_batches) * 100)
+    : 0;
+
+  const isTerminal = activeRun && ["completed", "cancelled", "failed"].includes(activeRun.status);
+  const canRunNext = activeRun && !isTerminal && !runningBatch && !autoRunning;
+  const canRunAll = activeRun && !isTerminal && !autoRunning;
+  const canPause = autoRunning;
+  const canCancel = activeRun && !isTerminal;
+
+  const statusColors = {
+    ready: "bg-blue-100 text-blue-800",
+    running: "bg-green-100 text-green-800",
+    paused: "bg-yellow-100 text-yellow-800",
+    completed: "bg-green-100 text-green-800",
+    cancelled: "bg-gray-100 text-gray-600",
+    failed: "bg-red-100 text-red-800",
+  };
+
   return (
     <div className="space-y-6">
-      {/* Stats — live-updating from DB */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <StatCard icon={Camera} label="With Photos" value={withPhotos ?? "—"} />
         <StatCard icon={ImageOff} label="Without Photos" value={missingCount ?? "—"} />
         <StatCard icon={Eye} label="Coverage" value={totalPlaces ? `${photoPct}%` : "—"} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
       </div>
 
-      {/* Download Section */}
-      <SectionCard title="Download Photos"
-        subtitle="Fetches photos from Google for places that have references but no stored images">
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-secondary)]">
+          <Loader className="w-4 h-4 animate-spin" /> Loading photo status...
+        </div>
+      ) : !activeRun ? (
+        /* ── Phase 1: No active run ──────────────────────────────────── */
+        <SectionCard title="Download Photos"
+          subtitle="Fetches photos from Google for places that have references but no stored images">
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-secondary)]">
-            <Loader className="w-4 h-4 animate-spin" /> Checking for places without photos...
-          </div>
-        ) : missingCount === 0 && !downloading ? (
-          <div className="py-4">
-            <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
-              <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
-            </div>
-            {totalSucceeded > 0 && (
-              <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
-                Last run: {totalSucceeded} succeeded, {totalFailed} failed
+          {missingCount === 0 ? (
+            <div className="py-4">
+              <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
+                <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
               </div>
-            )}
-            <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={fetchCounts}>
-              Re-check
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Status / info */}
-            <div className="rounded-lg p-4 bg-[var(--gray-50)]">
-              <div className="text-sm space-y-2">
-                <div><strong>{missingCount}</strong> places still need photos.</div>
-                <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost(estimatedCost)}</strong></div>
-                <div className="text-xs text-[var(--color-text-secondary)]">
-                  Downloads 50 places per batch. Stats update every 5 seconds from the database — you can leave and come back anytime.
+              <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={fetchCounts}>
+                Re-check
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg p-4 bg-[var(--gray-50)]">
+                <div className="text-sm space-y-2">
+                  <div><strong>{missingCount}</strong> places need photos.</div>
+                  <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost((missingCount || 0) * 0.035)}</strong></div>
+                  {(missingCount || 0) * 0.035 > 50 && (
+                    <div className="flex items-center gap-1 text-amber-700">
+                      <AlertTriangle className="w-4 h-4" /> Estimated cost exceeds $50.
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              {!downloading ? (
-                <Button variant="primary" icon={Download} onClick={startDownload}>
-                  Download All Photos ({missingCount} places)
+              <div className="flex gap-2">
+                <Button variant="primary" icon={Download} onClick={handleCreateRun} disabled={creating}>
+                  {creating ? "Creating..." : `Start Photo Download (${missingCount} places)`}
                 </Button>
-              ) : (
-                <Button variant="secondary" icon={XCircle} onClick={stopDownload}>
-                  Stop Download
-                </Button>
-              )}
-              {!downloading && (
                 <Button variant="secondary" icon={RefreshCw} onClick={fetchCounts} size="sm">
                   Re-check
                 </Button>
-              )}
-            </div>
-
-            {/* Progress — shows during and after download */}
-            {(downloading || totalSucceeded > 0 || totalFailed > 0) && (
-              <div className="space-y-3">
-                {/* Progress bar */}
-                {initialMissing > 0 && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
-                      <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-500"
-                        style={{ width: `${progressPct}%` }} />
-                    </div>
-                    <span className="text-sm font-medium w-20 text-right">{progressPct}%</span>
-                  </div>
-                )}
-
-                {/* Counters */}
-                <div className="flex gap-4 text-sm">
-                  {downloading && <span className="flex items-center gap-1 text-[var(--color-brand-600)]"><Loader className="w-3.5 h-3.5 animate-spin" /> Running...</span>}
-                  <span className="text-[var(--color-success-700)]">{totalSucceeded} downloaded</span>
-                  {totalFailed > 0 && <span className="text-[var(--color-error-700)]">{totalFailed} failed</span>}
-                  <span className="text-[var(--color-text-secondary)]">{missingCount} remaining</span>
-                </div>
               </div>
-            )}
-          </div>
-        )}
-      </SectionCard>
+            </div>
+          )}
+        </SectionCard>
+      ) : (
+        /* ── Phase 2: Active run ─────────────────────────────────────── */
+        <div className="space-y-4">
+          {/* Run header card */}
+          <SectionCard title={`Photo Download: ${activeRun.city}, ${activeRun.country}`}
+            badge={<span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[activeRun.status] || ""}`}>{activeRun.status}</span>}>
+
+            <div className="space-y-4">
+              {/* Stats row */}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                <span>{activeRun.completed_batches + activeRun.failed_batches + activeRun.skipped_batches}/{activeRun.total_batches} batches</span>
+                <span className="text-[var(--color-success-700)]">{activeRun.total_succeeded} succeeded</span>
+                {activeRun.total_failed > 0 && <span className="text-[var(--color-error-700)]">{activeRun.total_failed} failed</span>}
+                {activeRun.total_skipped > 0 && <span className="text-[var(--color-text-secondary)]">{activeRun.total_skipped} skipped</span>}
+                <span>Cost: {formatCost(activeRun.actual_cost_usd)} / {formatCost(activeRun.estimated_cost_usd)}</span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-500"
+                    style={{ width: `${runProgressPct}%` }} />
+                </div>
+                <span className="text-sm font-medium w-12 text-right">{runProgressPct}%</span>
+              </div>
+
+              {/* Control buttons */}
+              <div className="flex gap-2">
+                {isTerminal ? (
+                  <Button variant="secondary" onClick={handleDismiss}>Dismiss</Button>
+                ) : autoRunning ? (
+                  <>
+                    <Button variant="secondary" icon={Pause} onClick={handlePause}>Pause</Button>
+                    <Button variant="secondary" icon={XCircle} onClick={handleCancel}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="primary" icon={Play} onClick={handleRunNext} disabled={!canRunNext}>
+                      {runningBatch ? "Running..." : "Run Next"}
+                    </Button>
+                    <Button variant="secondary" icon={Zap} onClick={handleRunAll} disabled={!canRunAll}>
+                      Run All
+                    </Button>
+                    <Button variant="secondary" icon={XCircle} onClick={handleCancel} disabled={!canCancel}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Batch list */}
+          <SectionCard title="Batches" subtitle={`${batches.length} total`}>
+            <div className="divide-y divide-[var(--color-border)]">
+              {batches.map((b) => {
+                const isExpanded = expandedBatch === b.id;
+                const hasFailed = b.failed_places && b.failed_places.length > 0;
+
+                return (
+                  <div key={b.id} className="py-2">
+                    <div className="flex items-center gap-3 text-sm">
+                      {/* Status icon */}
+                      {b.status === "pending" && <span className="w-4 h-4 rounded-full bg-gray-300 inline-block" />}
+                      {b.status === "running" && <Loader className="w-4 h-4 animate-spin text-[var(--color-brand-600)]" />}
+                      {b.status === "completed" && <CheckCircle className="w-4 h-4 text-[var(--color-success-700)]" />}
+                      {b.status === "failed" && <XCircle className="w-4 h-4 text-[var(--color-error-700)]" />}
+                      {b.status === "skipped" && <MinusCircle className="w-4 h-4 text-gray-400" />}
+
+                      {/* Batch info */}
+                      <span className="font-medium">Batch {b.batch_index + 1}</span>
+
+                      {b.status === "pending" && <span className="text-[var(--color-text-secondary)]">{b.place_count} places</span>}
+                      {b.status === "running" && <span className="text-[var(--color-brand-600)]">processing...</span>}
+                      {b.status === "completed" && (
+                        <span className="text-[var(--color-text-secondary)]">
+                          {b.succeeded} succeeded{b.failed > 0 ? `, ${b.failed} failed` : ""}{b.skipped > 0 ? `, ${b.skipped} skipped` : ""}
+                        </span>
+                      )}
+                      {b.status === "failed" && <span className="text-[var(--color-error-700)]">all {b.place_count} failed</span>}
+                      {b.status === "skipped" && <span className="text-gray-400">skipped</span>}
+
+                      {/* Action buttons for failed batches */}
+                      {b.status === "failed" && !isTerminal && (
+                        <div className="ml-auto flex gap-1">
+                          <Button size="xs" variant="secondary" icon={RotateCcw} onClick={() => handleRetryBatch(b.id)} disabled={runningBatch}>
+                            Retry
+                          </Button>
+                          <Button size="xs" variant="secondary" icon={SkipForward} onClick={() => handleSkipBatch(b.id)}>
+                            Skip
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Expand toggle for batches with failure details */}
+                      {hasFailed && b.status !== "pending" && (
+                        <button className="ml-auto p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                          onClick={() => setExpandedBatch(isExpanded ? null : b.id)}>
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Expanded failure details */}
+                    {isExpanded && hasFailed && (
+                      <div className="mt-2 ml-7 space-y-1">
+                        {b.failed_places.map((fp, i) => (
+                          <div key={i} className="text-xs text-[var(--color-error-700)] bg-red-50 rounded px-2 py-1">
+                            <span className="font-mono">{fp.googlePlaceId || fp.placePoolId}</span>
+                            {fp.error && <span className="ml-2 text-[var(--color-text-secondary)]">— {fp.error}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        </div>
+      )}
     </div>
   );
 }
@@ -3061,6 +3339,9 @@ export function PlacePoolManagementPage({ onTabChange }) {
   const [addCityOpen, setAddCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Photo backfill job status bar state
+  const [activePhotoRuns, setActivePhotoRuns] = useState([]);
+
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // Load country list on mount
@@ -3069,6 +3350,15 @@ export function PlacePoolManagementPage({ onTabChange }) {
       if (mountedRef.current && data) setCountries(data.map((r) => r.country));
     });
   }, [refreshKey]);
+
+  // Hydrate photo backfill active runs on mount
+  useEffect(() => {
+    supabase.functions.invoke("backfill-place-photos", { body: { action: "active_runs" } })
+      .then(({ data }) => {
+        if (mountedRef.current && data?.runs) setActivePhotoRuns(data.runs);
+      })
+      .catch(() => {});
+  }, []);
 
   const selectCountry = useCallback((country) => {
     setSelectedCountry(country);
@@ -3174,6 +3464,31 @@ export function PlacePoolManagementPage({ onTabChange }) {
         onClearCity={clearCity}
       />
 
+      {/* Photo backfill job status bar — visible across all tabs */}
+      {activePhotoRuns.length > 0 && (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--gray-50)] p-3 space-y-2">
+          {activePhotoRuns.map(({ run, batchSummary }) => {
+            const done = run.completed_batches + run.failed_batches + run.skipped_batches;
+            const pct = run.total_batches > 0 ? Math.round((done / run.total_batches) * 100) : 0;
+            return (
+              <div key={run.id} className="flex items-center gap-3 text-sm">
+                <Camera className="w-4 h-4 text-[var(--color-brand-600)]" />
+                <button className="font-medium hover:underline text-[var(--color-brand-600)]"
+                  onClick={() => { setSelectedCountry(run.country); setSelectedCity(run.city); setActiveTab("photos"); }}>
+                  {run.city}, {run.country}
+                </button>
+                <span className="text-[var(--color-text-secondary)]">— {run.status}</span>
+                <span className="text-[var(--color-text-secondary)]">{done}/{run.total_batches} batches</span>
+                <span className="font-medium">{pct}%</span>
+                <div className="flex-1 bg-[var(--gray-100)] rounded-full h-2 overflow-hidden max-w-[120px]">
+                  <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
       <div className="mt-4" key={refreshKey}>
@@ -3196,7 +3511,8 @@ export function PlacePoolManagementPage({ onTabChange }) {
           />
         )}
         {activeTab === "photos" && (
-          <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+          <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity}
+            onActiveRunsChange={setActivePhotoRuns} />
         )}
         {activeTab === "stale" && (
           <StaleTab selectedCountry={selectedCountry} selectedCity={selectedCity} />

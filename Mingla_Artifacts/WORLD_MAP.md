@@ -12,7 +12,7 @@
 |---------|--------|-----------|-------|---------------|----------|
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
 | Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 9F) | 11 | Weak |
-| Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (36A, 5B, 0C, 12F) | 53 | Strong |
+| Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
 | Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Strong (6A, 2B, 3F) | 11 | Partial |
@@ -147,6 +147,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0267 | Travel time not enforced in deck | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — hard filter added, out-of-range cards excluded |
 | ORCH-0268 | NULL price tier passthrough | Discovery | S2 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — NULL price_level now filtered before deck assembly |
 | ORCH-0272 | Cross-page dedup — pages return same 20 cards + UI freeze | Discovery | S0 | bug | closed | A | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md — ON CONFLICT predicate fixed, error throw + circuit breaker added. Migration applied live. 7/7 tests PASS. |
+| ORCH-0273 | place_pool → card_pool data drift (13+ fields stale) | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md — Unified sync trigger, 16 fields + curated composites. Old website trigger replaced. 10/10 PASS. P3: redundant city/country trigger (cleanup). |
+| ORCH-0274 | Photo backfill pipeline broken — no city filter, timeouts, no job tracking | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md + QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md — Full job system: 2 tables, 9 actions, city-scoped batches, auto-advance, persist across reloads. P1 13/13 + P2 10/10 PASS. |
 
 ### Section 4: Collaboration Sessions
 
