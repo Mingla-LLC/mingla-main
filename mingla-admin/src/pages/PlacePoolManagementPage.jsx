@@ -91,6 +91,7 @@ function RecenterMap({ center, zoom }) {
 }
 
 function formatCost(n) { return `$${(n || 0).toFixed(2)}`; }
+function formatCount(n) { return Number(n || 0).toLocaleString(); }
 
 function pctColor(pct) {
   if (pct >= 80) return "success";
@@ -2012,6 +2013,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
   const [totalPlaces, setTotalPlaces] = useState(null);
   const [withPhotos, setWithPhotos] = useState(null);
   const [missingCount, setMissingCount] = useState(null);
+  const [previewSummary, setPreviewSummary] = useState(null);
 
   // Job system state
   const [activeRun, setActiveRun] = useState(null);
@@ -2038,6 +2040,16 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     } catch { /* ignore */ }
   };
 
+  const formatPreviewBreakdown = (analysis) => {
+    if (!analysis) return "";
+    const parts = [];
+    if (analysis.blockedByAiApproval > 0) parts.push(`${formatCount(analysis.blockedByAiApproval)} not AI-approved`);
+    if (analysis.blockedByMissingPhotoMetadata > 0) parts.push(`${formatCount(analysis.blockedByMissingPhotoMetadata)} missing Google photo refs`);
+    if (analysis.blockedByMissingGooglePlaceId > 0) parts.push(`${formatCount(analysis.blockedByMissingGooglePlaceId)} missing Google place IDs`);
+    if (analysis.failedPlaces > 0) parts.push(`${formatCount(analysis.failedPlaces)} previously failed`);
+    return parts.join(", ");
+  };
+
   // ── Photo stats ──────────────────────────────────────────────────────────
 
   const fetchCounts = async () => {
@@ -2056,11 +2068,30 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     } catch { /* ignore */ }
   };
 
+  const fetchPreview = async () => {
+    if (!selectedCity) return;
+    try {
+      const data = await invoke({
+        action: "preview_run",
+        city: selectedCity,
+        country: selectedCountry,
+      });
+      if (mountedRef.current) setPreviewSummary(data.analysis || null);
+    } catch {
+      if (mountedRef.current) setPreviewSummary(null);
+    }
+  };
+
+  const refreshPhotoState = async () => {
+    await Promise.all([fetchCounts(), fetchPreview()]);
+  };
+
   // ── Hydration: load active run on mount / city change ────────────────────
 
   useEffect(() => {
     if (!selectedCity) {
       setTotalPlaces(null); setWithPhotos(null); setMissingCount(null);
+      setPreviewSummary(null);
       setActiveRun(null); setBatches([]);
       return;
     }
@@ -2068,7 +2099,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     let cancelled = false;
 
     (async () => {
-      await fetchCounts();
+      await refreshPhotoState();
       try {
         const data = await invoke({ action: "active_runs" });
         if (cancelled) return;
@@ -2104,7 +2135,17 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
       });
 
       if (data.status === "nothing_to_do") {
-        addToast({ variant: "info", title: `All places in ${selectedCity} already have photos` });
+        const blockedDescription = formatPreviewBreakdown(data.analysis);
+        addToast({
+          variant: "info",
+          title: data.analysis?.withoutStoredPhotos > 0
+            ? `No downloadable photo candidates in ${selectedCity}`
+            : `All places in ${selectedCity} already have photos`,
+          description: data.analysis?.withoutStoredPhotos > 0
+            ? `${formatCount(data.analysis.withoutStoredPhotos)} places still lack stored photos. ${blockedDescription || "They are currently blocked from download."}`
+            : undefined,
+        });
+        await refreshPhotoState();
         setCreating(false);
         return;
       }
@@ -2114,6 +2155,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
         setBatches(status.batches || []);
         setCreating(false);
         await refreshActiveRuns();
+        await refreshPhotoState();
         return;
       }
 
@@ -2127,6 +2169,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
         title: "Photo download run created",
         description: `${data.totalPlaces} places, ${data.totalBatches} batches, est. ${formatCost(data.estimatedCostUsd)}`,
       });
+      await refreshPhotoState();
     } catch (err) {
       addToast({ variant: "error", title: "Failed to create run", description: err.message });
     }
@@ -2152,7 +2195,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
       addToast({ variant: "error", title: "Batch failed", description: err.message });
     }
     setRunningBatch(false);
-    await fetchCounts();
+    await refreshPhotoState();
   };
 
   // ── Run All (auto-advance) ───────────────────────────────────────────────
@@ -2181,6 +2224,8 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
           setActiveRun(status.run);
           setBatches(status.batches || []);
         }
+        // Live-update photo stat cards
+        fetchCounts();
 
         if (data.done) {
           addToast({ variant: "success", title: "All batches complete!" });
@@ -2209,7 +2254,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     setAutoRunning(false);
     setRunningBatch(false);
     await refreshActiveRuns();
-    await fetchCounts();
+    await refreshPhotoState();
   };
 
   // ── Pause ────────────────────────────────────────────────────────────────
@@ -2258,7 +2303,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
       addToast({ variant: "error", title: "Retry failed", description: err.message });
     }
     setRunningBatch(false);
-    await fetchCounts();
+    await refreshPhotoState();
   };
 
   // ── Skip batch ───────────────────────────────────────────────────────────
@@ -2280,12 +2325,17 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
   const handleDismiss = () => {
     setActiveRun(null);
     setBatches([]);
-    fetchCounts();
+    refreshPhotoState();
   };
 
   // ── Derived values ───────────────────────────────────────────────────────
 
   const photoPct = totalPlaces > 0 ? Math.round(((withPhotos ?? 0) / totalPlaces) * 100) : 0;
+  const downloadableCount = previewSummary?.eligiblePlaces ?? null;
+  const blockedCount = previewSummary
+    ? Math.max((previewSummary.withoutStoredPhotos ?? 0) - (previewSummary.eligiblePlaces ?? 0), 0)
+    : 0;
+  const previewBreakdown = formatPreviewBreakdown(previewSummary);
 
   if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>;
 
@@ -2313,10 +2363,20 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Row 1: Health overview */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={Layers} label="Total Places" value={totalPlaces ?? "—"} />
         <StatCard icon={Camera} label="With Photos" value={withPhotos ?? "—"} />
         <StatCard icon={ImageOff} label="Without Photos" value={missingCount ?? "—"} />
         <StatCard icon={Eye} label="Coverage" value={totalPlaces ? `${photoPct}%` : "—"} trend={photoPct >= 80 ? "Good" : photoPct >= 50 ? "Fair" : "Low"} trendUp={photoPct >= 80} />
+      </div>
+
+      {/* Row 2: Pipeline breakdown — why places are blocked */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={Download} label="Downloadable Now" value={previewSummary ? formatCount(previewSummary.eligiblePlaces) : "—"} />
+        <StatCard icon={AlertTriangle} label="Not AI Approved" value={previewSummary ? formatCount(previewSummary.blockedByAiApproval) : "—"} />
+        <StatCard icon={ImageOff} label="No Photo Refs" value={previewSummary ? formatCount(previewSummary.blockedByMissingPhotoMetadata) : "—"} />
+        <StatCard icon={XCircle} label="Previously Failed" value={previewSummary ? formatCount(previewSummary.failedPlaces) : "—"} />
       </div>
 
       {loading ? (
@@ -2333,7 +2393,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
               <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
                 <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
               </div>
-              <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={fetchCounts}>
+              <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={refreshPhotoState}>
                 Re-check
               </Button>
             </div>
@@ -2341,9 +2401,20 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
             <div className="space-y-4">
               <div className="rounded-lg p-4 bg-[var(--gray-50)]">
                 <div className="text-sm space-y-2">
-                  <div><strong>{missingCount}</strong> places need photos.</div>
-                  <div>Up to 5 photos per place. Estimated cost: <strong>{formatCost((missingCount || 0) * 0.035)}</strong></div>
-                  {(missingCount || 0) * 0.035 > 50 && (
+                  <div><strong>{formatCount(missingCount)}</strong> active places are missing stored photos.</div>
+                  {downloadableCount !== null && (
+                    <div><strong>{formatCount(downloadableCount)}</strong> can be downloaded right now.</div>
+                  )}
+                  {blockedCount > 0 && (
+                    <div className="text-[var(--color-text-secondary)]">
+                      {formatCount(blockedCount)} missing-photo places are currently blocked.
+                      {previewBreakdown ? ` ${previewBreakdown}.` : ""}
+                    </div>
+                  )}
+                  <div>
+                    Up to 5 photos per place. Estimated cost: <strong>{formatCost(((downloadableCount ?? missingCount) || 0) * 0.035)}</strong>
+                  </div>
+                  {((downloadableCount ?? missingCount) || 0) * 0.035 > 50 && (
                     <div className="flex items-center gap-1 text-amber-700">
                       <AlertTriangle className="w-4 h-4" /> Estimated cost exceeds $50.
                     </div>
@@ -2351,10 +2422,12 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="primary" icon={Download} onClick={handleCreateRun} disabled={creating}>
-                  {creating ? "Creating..." : `Start Photo Download (${missingCount} places)`}
-                </Button>
-                <Button variant="secondary" icon={RefreshCw} onClick={fetchCounts} size="sm">
+                {(downloadableCount === null || downloadableCount > 0) && (
+                  <Button variant="primary" icon={Download} onClick={handleCreateRun} disabled={creating}>
+                    {creating ? "Creating..." : `Start Photo Download (${formatCount(downloadableCount ?? missingCount)} places)`}
+                  </Button>
+                )}
+                <Button variant="secondary" icon={RefreshCw} onClick={refreshPhotoState} size="sm">
                   Re-check
                 </Button>
               </div>
