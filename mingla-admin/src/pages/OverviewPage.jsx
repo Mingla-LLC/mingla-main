@@ -114,10 +114,17 @@ function useAlerts() {
   useEffect(() => {
     async function fetch() {
       try {
+        const nowIso = new Date().toISOString();
+        const expiringSoonIso = new Date(Date.now() + 3 * DAY_MS).toISOString();
         const [reportsRes, cachesRes, overridesRes] = await Promise.all([
           supabase.from("user_reports").select("*", { count: "exact", head: true }).eq("status", "pending"),
           supabase.from("curated_places_cache").select("*", { count: "exact", head: true }).lt("created_at", new Date(Date.now() - 7 * DAY_MS).toISOString()),
-          supabase.from("admin_subscription_overrides").select("*", { count: "exact", head: true }).eq("is_active", true).lt("expires_at", new Date(Date.now() + 3 * DAY_MS).toISOString()),
+          supabase.from("admin_subscription_overrides")
+            .select("*", { count: "exact", head: true })
+            .is("revoked_at", null)
+            .lte("starts_at", nowIso)
+            .gt("expires_at", nowIso)
+            .lte("expires_at", expiringSoonIso),
         ]);
         if (!mountedRef.current) return;
         setAlerts({

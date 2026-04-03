@@ -38,7 +38,7 @@ const EXCLUSION_KEYWORDS: Record<string, string[]> = {
   medical: ["hospital","clinic","dentist","doctor","pharmacy","chiropractor","physiotherapy","veterinary","optometrist","urgent care"],
   government: ["dmv","courthouse","post office","police station","embassy","city hall","fire station"],
   education: ["school","daycare","preschool","tutoring","university campus"],
-  grooming: ["threading","waxing studio","lash extension","microblading","permanent makeup","nail salon","hair salon","barber","kosmetikstudio","institut de beauté","beauty parlour","tanning studio","brow bar","beauty salon"],
+  grooming: ["threading","waxing studio","lash extension","microblading","permanent makeup","nail salon","hair salon","barber","kosmetikstudio","institut de beauté","beauty parlour","tanning studio","brow bar","beauty salon","beauty lounge","beauty world","beauty bar","med spa","medspa","aesthetics spa","aesthetic clinic","beauty studio"],
   fitness: ["gym","fitness center","crossfit","yoga studio","pilates","martial arts dojo","boxing gym"],
   kids: ["kids play","children's","indoor playground","kidz","chuck e. cheese","kidzone","enfants","kinder","bambini","infantil","splash pad","soft play"],
   utilitarian: ["gas station","car wash","laundromat","storage unit","parking garage","auto repair","car dealership"],
@@ -59,36 +59,97 @@ const SOCIAL_DOMAINS = [
 
 const SYSTEM_PROMPT = `You classify places for Mingla, a dating app, into 13 categories.
 
-CATEGORIES (* = must have candidate_website):
+CATEGORIES (* = must have candidate_website to qualify):
 flowers, *fine_dining, nature_views, first_meet, drink, casual_eats, *watch, *live_performance, *creative_arts, *play, *wellness, picnic_park, groceries
 
-RULES:
+CORE RULES:
 - Determine what this place PRIMARILY IS first (restaurant, museum, bar, park, etc.)
 - Only assign categories where the match is OBVIOUS. Default is zero categories.
 - A museum with a cafe is creative_arts, NOT casual_eats.
 - A park with a kiosk is nature_views+picnic_park, NOT drink.
+- If a place fits a category, ASSIGN it. Do not reject places that clearly match a category definition.
 
-FINE_DINING: Chef-led, upscale, anniversary-worthy, great ambience. Being a chain does NOT disqualify — quality is the only test. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass.
-CASUAL_EATS: Real sit-down restaurants including chain restaurants. NO fast food/counter-service chains.
-WELLNESS: Spas, saunas, hammams, massage, resorts, float tanks. NO salons, NO beauty parlours, NO nail/hair/waxing.
-WATCH: Real cinemas with screens and scheduled movies. NO film production companies, NO festival offices.
-PLAY: Active fun for adults. NO kids-only venues, NO gyms, NO gambling halls (exception: upscale casinos).
-LIVE_PERFORMANCE: Stage + performers + audience. NO production companies, NO booking agencies, NO dance studios.
-NATURE_VIEWS: Scenic outdoor spots. Parks also get picnic_park if they have grass for a blanket.
-CREATIVE_ARTS: Museums, galleries, cultural centers. Aquarium → creative_arts + play.
+CATEGORY DEFINITIONS:
 
-REJECT if: kids-only, fast food chain, closed permanently, not a venue, personal grooming, fitness, gambling hall.
+FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. When genuinely uncertain, default to casual_eats.
+
+CASUAL_EATS: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → casual_eats + drink.
+
+DRINK: Bars, cocktail bars, wine bars, breweries, beer gardens, pubs, speakeasies, rooftop bars, nightclubs, hookah bars, wineries. If the primary draw is drinks and social atmosphere, it's drink.
+
+FIRST_MEET: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars. Any casual low-pressure spot for a 45-minute conversation.
+
+WATCH: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. NO film production companies, NO festival offices. If it shows movies to audiences, it's watch.
+
+PLAY: Active fun for adults — bowling, arcades, escape rooms (indoor AND outdoor), go-karts, laser tag, karaoke, mini golf, axe throwing, TopGolf/golf simulators, trampoline parks (adult-friendly), VR experiences, rock climbing, kayaking, skydiving, scavenger hunts, outdoor adventure games. NO kids-only venues, NO gyms, NO gambling halls (exception: upscale casinos like Bellagio).
+
+LIVE_PERFORMANCE: Stage + scheduled performers + audience — concert halls, theaters, opera houses, comedy clubs, jazz clubs, live music venues, amphitheaters. NO production companies, NO booking agencies, NO dance studios.
+
+CREATIVE_ARTS: Museums (all types), art galleries, cultural centers with exhibits, sculpture parks, immersive art (teamLab, Meow Wolf), pottery/paint-and-sip studios open to public, planetariums, aquariums, visitable castles/landmarks. Aquarium → creative_arts + play.
+
+WELLNESS: Spas (full-service day spas), saunas, hammams, massage studios, hot springs, float tanks, thermal baths, Korean spas, wellness retreats, resort hotels with spa facilities. NO salons, NO beauty parlours, NO nail/hair/waxing/lash studios, NO med spas (medical aesthetics), NO beauty lounges. CRITICAL: if the name contains "beauty", "aesthetics", "makeup", "cosmetic", "lash", "brow", "nail", "hair", "waxing", or "threading" → it is NOT wellness, it is personal grooming → REJECT entirely. A place called "Beauty Spa" or "Aesthetics Spa" is a salon, not a spa.
+
+NATURE_VIEWS: Parks, trails, beaches, botanical gardens, scenic viewpoints, observation decks, waterfronts, bridges, harbors, nature preserves. Parks with grass also get picnic_park.
+
+PICNIC_PARK: Parks with open lawns where you can lay a blanket. Almost always paired with nature_views.
+
+GROCERIES: Grocery stores, supermarkets, specialty food stores, gourmet markets, butcher shops, cheese shops. Places where you buy food to take home or for a picnic.
+
+FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed floral departments (like Whole Foods) qualify for BOTH flowers and groceries.
+
+REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing), fitness (gyms/yoga), gambling halls, production companies, booking agencies.
+
+RECLASSIFY (d:"reclassify"): If a place is in the WRONG category but fits a DIFFERENT valid category, use d:"reclassify" and provide the correct categories in c:[]. Example: a beauty salon classified as "wellness" → reclassify with c:[] (reject from wellness, fits no other category). A restaurant classified as "watch" → reclassify with c:["casual_eats"]. A hotel with a notable bar classified as "wellness" → reclassify with c:["drink"]. Always check if the place fits ANY category before fully rejecting.
+
+IMPORTANT — do NOT reject places that match ANY valid category. Libraries, hotels, and horse complexes may not fit, but grocery stores, nightclubs, bakeries, food halls, cinemas, and pottery studios DO fit their respective categories.
 
 *categories need candidate_website to be non-null. If candidate_website is null for a *category, do not assign that category.
 
-If has_opening_hours is false AND the place is NOT a park/trail/beach/outdoor venue, flag confidence as "medium" or lower.
+If has_opening_hours is false AND the place is NOT a park/trail/beach/outdoor venue, set confidence to "medium" or lower.
+
+WORKED EXAMPLES (learn the pattern):
+
+Example 1: "Whole Foods Market" type:grocery_store → {"d":"accept","c":["groceries","flowers"],"pi":"grocery store","w":false,"r":"Grocery store with staffed floral department","f":"high"}
+
+Example 2: "TopGolf" type:restaurant → {"d":"accept","c":["play","casual_eats"],"pi":"golf entertainment venue","w":true,"r":"Interactive golf simulator with restaurant — play + casual_eats","f":"high"}
+
+Example 3: "AMC Southpoint 17" type:movie_theater → {"d":"accept","c":["watch"],"pi":"movie theater","w":true,"r":"Real cinema chain with multiple screens","f":"high"}
+
+Example 4: "Barcelona Wine Bar" type:wine_bar → {"d":"accept","c":["casual_eats","drink"],"pi":"tapas wine bar","w":true,"r":"Tapas wine bar — casual_eats + drink, not fine_dining","f":"high"}
+
+Example 5: "Morgan Street Food Hall" type:food_court → {"d":"accept","c":["casual_eats"],"pi":"food hall","w":true,"r":"Food hall with multiple vendors — casual_eats","f":"high"}
+
+Example 6: "KidZania" type:amusement_center → {"d":"reject","c":[],"pi":"children's entertainment center","w":true,"r":"Kids-only venue — reject","f":"high"}
+
+Example 7: "Legends Nightclub" type:night_club → {"d":"accept","c":["drink"],"pi":"nightclub","w":true,"r":"Nightclub — primary draw is drinks and social atmosphere","f":"high"}
+
+Example 8: "Paris Baguette" type:bakery → {"d":"accept","c":["first_meet"],"pi":"bakery cafe","w":true,"r":"Bakery with seating — good first_meet spot","f":"high"}
+
+Example 9: "Living Kiln Studio" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"pottery studio","w":true,"r":"Pottery studio open to public — creative_arts","f":"high"}
+
+Example 10: "Planet Fitness" type:gym → {"d":"reject","c":[],"pi":"gym","w":true,"r":"Fitness center — reject","f":"high"}
+
+Example 11: "The Umstead Hotel and Spa" type:resort_hotel → {"d":"accept","c":["wellness"],"pi":"resort hotel with spa","w":true,"r":"Resort with notable spa facilities — wellness","f":"high"}
+
+Example 13: "Beauty Blinks Aesthetics/Spa" type:spa → {"d":"reject","c":[],"pi":"beauty salon","w":true,"r":"Beauty/aesthetics in name = personal grooming, not wellness — reject","f":"high"}
+
+Example 14: "DAZZLNSBEAUTYLOUNGE" type:spa → {"d":"reject","c":[],"pi":"beauty lounge","w":true,"r":"Beauty lounge = personal grooming — reject","f":"high"}
+
+Example 15: "U2 UNIQUE MED SPA" type:spa → {"d":"reject","c":[],"pi":"medical aesthetics clinic","w":true,"r":"Med spa = medical aesthetics, not relaxation wellness — reject","f":"high"}
+
+Example 16: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
+
+Example 12: "Urban Air Trampoline Park" type:amusement_center → Consider carefully: if it has adult sessions and date-night events, it's play. If it's primarily for kids birthday parties, reject.
+
+Example 17: "Soho Beach House" type:hotel → {"d":"accept","c":["drink","wellness"],"pi":"members club with pool bar and spa","w":true,"r":"Upscale beach club/hotel with bar, pool, and spa — drink + wellness","f":"medium"}
+Note: Private/members clubs with bars, pools, restaurants, or spas still qualify for their respective categories. The membership model doesn't disqualify the venue.
 
 Return ONLY valid JSON.`;
 
 const CLASSIFICATION_SCHEMA = {
   type: "object",
   properties: {
-    d: { type: "string", enum: ["accept", "reject"] },
+    d: { type: "string", enum: ["accept", "reject", "reclassify"] },
     c: { type: "array", items: { type: "string" } },
     pi: { type: "string" },
     w: { type: "boolean" },
@@ -166,38 +227,59 @@ interface ClassResult {
   output_tokens: number;
 }
 
+async function withRetry<T>(fn: () => Promise<T>, retries = 1, delay = 3000): Promise<T> {
+  try { return await fn(); }
+  catch (err) {
+    const msg = (err as Error).message || "";
+    if (retries <= 0 || msg.includes("429") || msg.includes("quota") || msg.includes("exceeded")) throw err;
+    await sleep(delay);
+    return withRetry(fn, retries - 1, delay);
+  }
+}
+
+// IMPORTANT: These token rates are for gpt-4o-mini. Update if model changes.
 async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassResult> {
-  const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
-  const res = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      input: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: JSON.stringify(factSheet) },
-      ],
-      text: {
-        format: { type: "json_schema", name: "place_classification", schema: CLASSIFICATION_SCHEMA, strict: true },
-      },
-    }),
+  return withRetry(async () => {
+    const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: JSON.stringify(factSheet) },
+        ],
+        text: {
+          format: { type: "json_schema", name: "place_classification", schema: CLASSIFICATION_SCHEMA, strict: true },
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      if (res.status === 429 || errText.includes("quota") || errText.includes("exceeded")) {
+        throw new Error(`QUOTA_EXCEEDED: OpenAI quota exceeded (${res.status}). Top up credits and retry.`);
+      }
+      throw new Error(`OpenAI ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json();
+    const outputText = data.output?.find((o: any) => o.type === "message")
+      ?.content?.find((c: any) => c.type === "output_text")?.text;
+    if (!outputText) throw new Error("No text output from GPT response");
+    const parsed = JSON.parse(outputText);
+    return {
+      decision: parsed.d,
+      categories: parsed.c,
+      primary_identity: parsed.pi,
+      website_verified: parsed.w,
+      reason: parsed.r,
+      confidence: parsed.f,
+      input_tokens: data.usage?.input_tokens || 0,
+      output_tokens: data.usage?.output_tokens || 0,
+    };
   });
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const outputText = data.output?.find((o: any) => o.type === "message")
-    ?.content?.find((c: any) => c.type === "output_text")?.text;
-  if (!outputText) throw new Error("No text output from GPT response");
-  const parsed = JSON.parse(outputText);
-  return {
-    decision: parsed.d,
-    categories: parsed.c,
-    primary_identity: parsed.pi,
-    website_verified: parsed.w,
-    reason: parsed.r,
-    confidence: parsed.f,
-    input_tokens: data.usage?.input_tokens || 0,
-    output_tokens: data.usage?.output_tokens || 0,
-  };
 }
 
 // ── Deterministic Pre-Filter ─────────────────────────────────────────────────
@@ -304,13 +386,17 @@ async function processPlace(place: any): Promise<PlaceResult> {
     const result = await classifyPlace(factSheet);
     gptCost = (result.input_tokens * 0.00000015) + (result.output_tokens * 0.0000006);
 
-    const decision = result.decision === "accept"
-      ? (JSON.stringify(result.categories.sort()) !== JSON.stringify([...(place.ai_categories || [])].sort()) ? "reclassify" : "accept")
-      : "reject";
+    let decision = result.decision;
+    if (decision === "accept") {
+      // Check if categories changed — if so, it's a reclassify
+      const oldCats = [...(place.ai_categories || [])].sort().join(",");
+      const newCats = [...result.categories].sort().join(",");
+      if (oldCats !== newCats && oldCats.length > 0) decision = "reclassify";
+    }
 
     return {
       decision,
-      categories: result.decision === "accept" ? result.categories : [],
+      categories: decision === "reject" ? [] : result.categories,
       primary_identity: result.primary_identity,
       confidence: result.confidence,
       reason: `Pipeline v1: ${result.reason}`,
@@ -321,6 +407,8 @@ async function processPlace(place: any): Promise<PlaceResult> {
       cost_usd: serperCost + gptCost,
     };
   } catch (err) {
+    // Propagate quota errors so the batch handler can return 402
+    if ((err as Error).message?.includes("QUOTA_EXCEEDED")) throw err;
     console.error(`GPT failed for ${place.id}: ${(err as Error).message}`);
     return {
       decision: "accept",
@@ -589,7 +677,22 @@ async function handleRunBatch(body: any): Promise<Response> {
     try {
       result = await processPlace(place);
     } catch (err) {
-      console.error(`Process failed for ${placeId}: ${(err as Error).message}`);
+      const msg = (err as Error).message || "";
+      // Quota exceeded: save progress, return 402 immediately
+      if (msg.includes("QUOTA_EXCEEDED")) {
+        await db.from("ai_validation_batches").update({
+          status: "failed", error_message: msg, completed_at: new Date().toISOString(),
+        }).eq("id", nextBatch.id);
+        await db.from("ai_validation_jobs").update({
+          status: "paused", error_message: "Auto-paused: OpenAI quota exceeded",
+        }).eq("id", runId);
+        return json({
+          error: "OpenAI quota exceeded. Top up credits and retry.",
+          code: "QUOTA_EXCEEDED",
+          places_processed: accepted + rejected + reclassified + failedPlaces,
+        }, 402);
+      }
+      console.error(`Process failed for ${placeId}: ${msg}`);
       failedPlaces++;
       continue;
     }

@@ -20,7 +20,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -576,9 +576,24 @@ async function searchPlace(name, address) {
 async function stage4WebsiteCheck(places, searchCache) {
   console.log('\n── Stage 4: Website Extraction & Verification ──');
 
+  // Load website cache
+  const WEBSITE_CACHE_PATH = resolve(OUTPUTS_DIR, 'pipeline_website_cache.jsonl');
+  const websiteCache = new Map();
+  if (existsSync(WEBSITE_CACHE_PATH)) {
+    const lines = readFileSync(WEBSITE_CACHE_PATH, 'utf-8').split('\n').filter(Boolean);
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.url) websiteCache.set(entry.url, entry.result);
+      } catch { /* skip */ }
+    }
+  }
+  console.log(`  Website cache: ${websiteCache.size} entries loaded`);
+
   const results = new Map();
   const BATCH_SIZE = 50;
   let checked = 0;
+  let cacheHits = 0;
 
   for (let i = 0; i < places.length; i += BATCH_SIZE) {
     const batch = places.slice(i, i + BATCH_SIZE);
@@ -589,11 +604,20 @@ async function stage4WebsiteCheck(places, searchCache) {
 
       let websiteResolves = false;
       if (ownedDomain) {
-        try {
-          const check = await verifyWebsite(ownedDomain.url);
-          websiteResolves = check.resolves;
-        } catch {
-          websiteResolves = false;
+        // Check cache first
+        if (websiteCache.has(ownedDomain.url)) {
+          websiteResolves = websiteCache.get(ownedDomain.url);
+          cacheHits++;
+        } else {
+          try {
+            const check = await verifyWebsite(ownedDomain.url);
+            websiteResolves = check.resolves;
+          } catch {
+            websiteResolves = false;
+          }
+          // Cache the result
+          websiteCache.set(ownedDomain.url, websiteResolves);
+          appendFileSync(WEBSITE_CACHE_PATH, JSON.stringify({ url: ownedDomain.url, result: websiteResolves }) + '\n');
         }
       }
 
@@ -607,7 +631,7 @@ async function stage4WebsiteCheck(places, searchCache) {
     checked += batch.length;
 
     if (checked % 1000 === 0 && checked > 0) {
-      console.log(`  Website checked: ${checked}/${places.length}`);
+      console.log(`  Website checked: ${checked}/${places.length} (${cacheHits} cache hits)`);
     }
   }
 
@@ -615,6 +639,7 @@ async function stage4WebsiteCheck(places, searchCache) {
   const resolved = [...results.values()].filter(r => r.ownedDomain?.resolves).length;
   console.log(`  With owned domain: ${withDomain}`);
   console.log(`  Domain resolves: ${resolved}`);
+  console.log(`  Cache hits: ${cacheHits}`);
 
   return results;
 }
@@ -643,8 +668,8 @@ async function verifyWebsite(url) {
 
 // ── Stage 5: GPT-5.4-mini Classification ────────────────────────────────────
 
-async function stage5Classify(places, webResults, openai) {
-  console.log('\n── Stage 5: GPT-5.4-mini Classification ──');
+async function stage5Classify(places, webResults, openai, supabase, opts) {
+  console.log('\n── Stage 5: GPT Classification + Incremental DB Write ──');
 
   const classified = [];
   const BATCH_SIZE = 25;
@@ -652,6 +677,10 @@ async function stage5Classify(places, webResults, openai) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let processed = 0;
+  let dbWritten = 0;
+  let dbErrors = 0;
+  const failurePath = resolve(OUTPUTS_DIR, 'pipeline_failures.jsonl');
+  const checkpointPath = resolve(OUTPUTS_DIR, 'pipeline_checkpoint.json');
 
   for (let i = 0; i < places.length; i += BATCH_SIZE) {
     const batch = places.slice(i, i + BATCH_SIZE);
@@ -680,6 +709,19 @@ async function stage5Classify(places, webResults, openai) {
           };
         } catch (err) {
           console.error(`  GPT failed for ${place.id} (${place.name}): ${err.message}`);
+          // CRITICAL: Exit immediately on quota/billing errors — do NOT retry
+          if (err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('billing') || err.message?.includes('exceeded')) {
+            console.error(`\n  FATAL: OpenAI quota exceeded after ${processed} places classified, ${dbWritten} written to DB.`);
+            console.error('  Top up your OpenAI account, then run with --resume to continue.\n');
+            saveCheckpoint(checkpointPath, {
+              lastProcessedId: places[Math.max(0, i - 1)]?.id || place.id,
+              timestamp: new Date().toISOString(),
+              totalProcessed: processed,
+              dbWritten,
+              reason: 'quota_exceeded',
+            });
+            process.exit(1);
+          }
           return {
             ...place,
             _verdict: 'error',
@@ -695,12 +737,51 @@ async function stage5Classify(places, webResults, openai) {
 
       const chunkResults = await Promise.all(promises);
       classified.push(...chunkResults);
+
+      // INCREMENTAL DB WRITE — write each chunk immediately so nothing is lost
+      if (!opts.dryRun) {
+        for (const result of chunkResults) {
+          if (result._verdict === 'error') {
+            appendJsonl(failurePath, { id: result.id, name: result.name, error: result._error });
+            dbErrors++;
+            continue;
+          }
+          const confidenceNum = result._confidence === 'high' ? 0.95
+            : result._confidence === 'medium' ? 0.7 : 0.4;
+          try {
+            const { error } = await supabase.from('place_pool').update({
+              ai_approved: result._verdict === 'accept' || (result._verdict === 'reclassify' && result._categories?.length > 0),
+              ai_categories: result._categories || [],
+              ai_primary_identity: result._primaryIdentity || result.primary_type || 'unknown',
+              ai_confidence: confidenceNum,
+              ai_reason: result._reason,
+              ai_web_evidence: (result._evidence || '').slice(0, 500),
+              ai_validated_at: new Date().toISOString(),
+            }).eq('id', result.id);
+            if (error) throw error;
+            dbWritten++;
+          } catch (err) {
+            console.error(`  DB write failed for ${result.id}: ${err.message}`);
+            appendJsonl(failurePath, { id: result.id, name: result.name, error: err.message });
+            dbErrors++;
+          }
+        }
+      }
     }
 
     processed += batch.length;
     if (i + BATCH_SIZE < places.length) {
       await sleep(200);
     }
+
+    // Save checkpoint every batch
+    saveCheckpoint(checkpointPath, {
+      lastProcessedId: places[i + batch.length - 1]?.id,
+      timestamp: new Date().toISOString(),
+      totalProcessed: processed,
+      dbWritten,
+      reason: 'in_progress',
+    });
 
     if (processed % 1000 === 0 && processed > 0) {
       const costEstimate = (totalInputTokens * 0.00000015 + totalOutputTokens * 0.0000006).toFixed(4);
@@ -713,7 +794,8 @@ async function stage5Classify(places, webResults, openai) {
   console.log(`  Total tokens — in: ${totalInputTokens}, out: ${totalOutputTokens}`);
   console.log(`  Estimated GPT cost: $${costEstimate}`);
 
-  return { classified, gptCost: parseFloat(costEstimate), totalInputTokens, totalOutputTokens };
+  console.log(`  DB writes during classification: ${dbWritten} written, ${dbErrors} errors`);
+  return { classified, gptCost: parseFloat(costEstimate), totalInputTokens, totalOutputTokens, dbWritten, dbErrors };
 }
 
 function buildFactSheet(place, searchResults, ownedDomain) {
@@ -735,7 +817,7 @@ function buildFactSheet(place, searchResults, ownedDomain) {
 
 async function classifyPlace(openai, factSheet) {
   const response = await openai.responses.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     input: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: JSON.stringify(factSheet) },
@@ -899,6 +981,24 @@ Low confidence: ${lowConfPath} (${lowConf.length} places)
   return summary;
 }
 
+// ── Lock File ────────────────────────────────────────────────────────────────
+
+const LOCK_FILE = resolve(OUTPUTS_DIR, 'pipeline.lock');
+
+function acquireLock() {
+  if (existsSync(LOCK_FILE)) {
+    const lock = JSON.parse(readFileSync(LOCK_FILE, 'utf-8'));
+    console.error(`Pipeline already running (PID ${lock.pid}, started ${lock.started}).`);
+    console.error('If the previous run crashed, delete outputs/pipeline.lock and retry.');
+    process.exit(1);
+  }
+  writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, started: new Date().toISOString() }));
+}
+
+function releaseLock() {
+  try { unlinkSync(LOCK_FILE); } catch { /* ignore if already removed */ }
+}
+
 // ── Main Pipeline ────────────────────────────────────────────────────────────
 
 async function main() {
@@ -906,6 +1006,11 @@ async function main() {
   requireEnv();
 
   if (!existsSync(OUTPUTS_DIR)) mkdirSync(OUTPUTS_DIR, { recursive: true });
+
+  acquireLock();
+  process.on('exit', releaseLock);
+  process.on('SIGINT', () => { releaseLock(); process.exit(1); });
+  process.on('SIGTERM', () => { releaseLock(); process.exit(1); });
 
   console.log('Mingla Place Verification Pipeline v1');
   console.log('=====================================');
@@ -954,7 +1059,7 @@ async function main() {
 
   // Stage 5: Classify
   const { classified, gptCost, totalInputTokens, totalOutputTokens } =
-    await stage5Classify(stage2.passed, webResults, openai);
+    await stage5Classify(stage2.passed, webResults, openai, supabase, opts);
 
   // Combine all results
   const allResults = [
@@ -964,8 +1069,9 @@ async function main() {
     ...classified,
   ];
 
-  // Stage 6: Write to DB
-  const writeStats = await stage6WriteDB(supabase, allResults, opts);
+  // Stage 6: Write Stage 2 deterministic results to DB (GPT results already written incrementally in Stage 5)
+  const stage2Results_all = [...stage2.rejected, ...stage2.downgraded, ...stage2.upscaled];
+  const writeStats = await stage6WriteDB(supabase, stage2Results_all, opts);
 
   // Save checkpoint
   if (allResults.length > 0) {
