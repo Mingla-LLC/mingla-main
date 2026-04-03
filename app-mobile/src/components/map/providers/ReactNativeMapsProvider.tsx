@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, Platform, UIManager, Pressable } from 'react-native';
 import { Marker, UrlTile } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import { Icon } from '../../ui/Icon';
@@ -141,15 +141,23 @@ export function ReactNativeMapsProvider({
         <Marker
           key={`person-${person.userId}`}
           coordinate={coordinate}
-          onPress={() => onPersonPress(person)}
           tracksViewChanges={false}
           zIndex={zIndex}
           anchor={{ x: 0.5, y: 0.35 }}
           cluster={false}
+          tappable
         >
-          <View style={styles.personMarkerTouchTarget} collapsable={false}>
-            <PersonPinContent person={person} />
-          </View>
+          <Pressable
+            onPress={() => onPersonPress(person)}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${person.displayName}`}
+            style={styles.personMarkerTouchTarget}
+          >
+            <View collapsable={false} pointerEvents="box-none">
+              <PersonPinContent person={person} />
+            </View>
+          </Pressable>
         </Marker>
       ))}
     </ClusteredMapView>

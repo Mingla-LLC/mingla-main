@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import {
   Text,
   View,
@@ -210,6 +210,10 @@ export default function ConnectionsPageRefactored({
   const broadcastSeenIds = useRef(new Set<string>());
   // Tracks the most-recently selected chat — used to discard stale background block-check results
   const latestSelectedChatRef = useRef<string | null>(null);
+  const conversationsForOpenDmRef = useRef(conversations);
+  conversationsForOpenDmRef.current = conversations;
+  const dbFriendsForOpenDmRef = useRef(dbFriends);
+  dbFriendsForOpenDmRef.current = dbFriends;
 
   // ── Network state ──────────────────────────────────────
   const { isConnected, isInternetReachable } = useNetworkMonitor();
@@ -823,99 +827,126 @@ export default function ConnectionsPageRefactored({
         });
     };
 
-    withTimeout(
-      messagingService.getOrCreateDirectConversation(currentUserId, friendUserId),
-      8000,
-      'getOrCreateConversation'
-    )
-      .then(({ conversation, error: convError }) => {
-        if (latestSelectedChatRef.current !== capturedFriendId) return;
+    try {
+      const { conversation, error: convError } = await withTimeout(
+        messagingService.getOrCreateDirectConversation(currentUserId, friendUserId),
+        8000,
+        'getOrCreateConversation'
+      );
 
-        if (convError || !conversation) {
-          // Network call failed — try cached conversation fallback
-          tryOpenFromCache().then((found) => {
-            if (!found && latestSelectedChatRef.current === capturedFriendId) {
-              showMutationError(
-                convError || new Error('Failed to create conversation'),
-                'starting conversation',
-                showToast
-              );
-              setShowMessageInterface(false);
-              setActiveChat(null);
-            }
-          });
-          return;
+      if (latestSelectedChatRef.current !== capturedFriendId) return;
+
+      if (convError || !conversation) {
+        const found = await tryOpenFromCache();
+        if (!found && latestSelectedChatRef.current === capturedFriendId) {
+          showMutationError(
+            convError || new Error('Failed to create conversation'),
+            'starting conversation',
+            showToast
+          );
+          setShowMessageInterface(false);
+          setActiveChat(null);
         }
+        return;
+      }
 
-        setCurrentConversationId(conversation.id);
-        loadMessagesInBackground(conversation.id);
-        setupRealtimeSubscription(conversation.id, currentUserId);
-      })
-      .catch((e) => {
-        if (latestSelectedChatRef.current !== capturedFriendId) return;
+      setCurrentConversationId(conversation.id);
+      loadMessagesInBackground(conversation.id);
+      setupRealtimeSubscription(conversation.id, currentUserId);
+    } catch (e) {
+      if (latestSelectedChatRef.current !== capturedFriendId) return;
 
-        // Total failure — try cached conversation fallback
-        tryOpenFromCache().then((found) => {
-          if (!found && latestSelectedChatRef.current === capturedFriendId) {
-            showMutationError(e, 'starting conversation', showToast);
-            setShowMessageInterface(false);
-            setActiveChat(null);
-          }
-        });
-      });
+      const found = await tryOpenFromCache();
+      if (!found && latestSelectedChatRef.current === capturedFriendId) {
+        showMutationError(e, 'starting conversation', showToast);
+        setShowMessageInterface(false);
+        setActiveChat(null);
+      }
+    }
   };
 
   // ── Open DM from external navigation (Discover map "Message") ────────────
-  const pendingDmConsumedRef = useRef<string | null>(null);
-  useEffect(() => {
+  // Show MessageInterface on the same frame as the tab switch — otherwise users briefly
+  // see the Chats list before the async open effect runs.
+  useLayoutEffect(() => {
     if (!openDirectMessageWithUserId || !user?.id) {
-      pendingDmConsumedRef.current = null;
       return;
     }
 
     const targetId = openDirectMessageWithUserId;
-    if (pendingDmConsumedRef.current === targetId) {
+
+    if (showMessageInterface && activeChat?.id === targetId) {
       return;
     }
-    pendingDmConsumedRef.current = targetId;
+
+    const friend = dbFriendsForOpenDmRef.current.find(
+      (f) => (f.friend_user_id || f.id) === targetId
+    );
+    const displayName = friend ? getDisplayName(friend) : "Chat";
+
+    setShowMessageInterface(true);
+    setActiveChat({
+      id: targetId,
+      name: displayName,
+      username: friend?.username || "user",
+      avatar: friend?.avatar_url,
+      status: "offline",
+      isOnline: false,
+    });
+    latestSelectedChatRef.current = targetId;
+    setMessages([]);
+    setCurrentConversationId(null);
+  }, [openDirectMessageWithUserId, user?.id, showMessageInterface, activeChat?.id]);
+
+  // handlePickFriend awaits getOrCreate; we only clear the pending id after that completes.
+  // Refs keep latest conversations/dbFriends without re-running this effect when lists update
+  // (which would abort in-flight work and skip onOpenDirectMessageHandled).
+  useEffect(() => {
+    if (!openDirectMessageWithUserId || !user?.id) {
+      return;
+    }
+
+    const targetId = openDirectMessageWithUserId;
+    let active = true;
 
     void (async () => {
       try {
-        const existing = conversations.find((c) =>
+        const convs = conversationsForOpenDmRef.current;
+        const friends = dbFriendsForOpenDmRef.current;
+        const existing = convs.find((c) =>
           c.participants.some((p) => p.id === targetId)
         );
         if (existing) {
           await handleSelectConversation(existing);
-        } else {
-          const friend = dbFriends.find(
-            (f) => (f.friend_user_id || f.id) === targetId
-          );
-          if (friend) {
-            await handlePickFriend(friend);
-          } else {
-            await handlePickFriend({
-              id: targetId,
-              user_id: user.id,
-              friend_user_id: targetId,
-              username: "user",
-              status: "accepted",
-              created_at: new Date().toISOString(),
-            } as UseFriend);
-          }
+          return;
         }
+        const friend = friends.find(
+          (f) => (f.friend_user_id || f.id) === targetId
+        );
+        if (friend) {
+          await handlePickFriend(friend);
+          return;
+        }
+        await handlePickFriend({
+          id: targetId,
+          user_id: user.id,
+          friend_user_id: targetId,
+          username: 'user',
+          status: 'accepted',
+          created_at: new Date().toISOString(),
+        } as UseFriend);
       } finally {
-        onOpenDirectMessageHandled?.();
+        if (active) {
+          onOpenDirectMessageHandled?.();
+        }
       }
     })();
-    // Intentionally omit handleSelectConversation / handlePickFriend — consume once per pending id
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    openDirectMessageWithUserId,
-    user?.id,
-    conversations,
-    dbFriends,
-    onOpenDirectMessageHandled,
-  ]);
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once per pending id; lists read from refs
+  }, [openDirectMessageWithUserId, user?.id, onOpenDirectMessageHandled]);
 
   // ── Mark conversation as read (messages + local state) ──
   // Called after messages are loaded — uses the actual loaded messages,
@@ -1531,7 +1562,8 @@ export default function ConnectionsPageRefactored({
   };
 
   // ── Error state ──────────────────────────────────────────
-  if (error && conversations.length === 0) {
+  // Skip when opening a DM from the map so the conversation UI shows immediately.
+  if (error && conversations.length === 0 && !(showMessageInterface && activeChat)) {
     return (
       <>
         <View style={styles.container}>

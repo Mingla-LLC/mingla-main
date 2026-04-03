@@ -6,8 +6,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../ui/Icon';
+import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { s, vs } from '../../utils/responsive';
 import { getCountryByCode } from '../../constants/countries';
@@ -18,6 +22,15 @@ const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: 'Free',
   pro: 'Pro',
   elite: 'Elite',
+};
+
+const TIER_BADGE_STYLES: Record<
+  SubscriptionTier,
+  { bg: string; text: string; border: string }
+> = {
+  free: { bg: '#f3f4f6', text: '#4b5563', border: '#e5e7eb' },
+  pro: { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
+  elite: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
 };
 
 interface ViewFriendProfileScreenProps {
@@ -37,29 +50,82 @@ function displayName(
   return 'Friend';
 }
 
+function getInitials(first: string | null, last: string | null, username: string | null): string {
+  const f = first?.charAt(0)?.toUpperCase() ?? '';
+  const l = last?.charAt(0)?.toUpperCase() ?? '';
+  if (f || l) return `${f}${l}`;
+  const u = username?.charAt(0)?.toUpperCase();
+  return u || '?';
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  muted,
+  rightSlot,
+}: {
+  icon: React.ComponentProps<typeof Icon>['name'];
+  label: string;
+  value?: string;
+  muted?: boolean;
+  rightSlot?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.infoIconCircle}>
+        <Icon name={icon} size={s(20)} color="#eb7825" />
+      </View>
+      <View style={styles.infoRowText}>
+        <Text style={styles.infoRowLabel}>{label}</Text>
+        {rightSlot ?? (
+          <Text style={[styles.infoRowValue, muted && styles.infoRowValueMuted]} numberOfLines={2}>
+            {value}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   userId,
   onBack,
   onMessage,
 }) => {
+  const insets = useSafeAreaInsets();
   const { data: profile, isLoading, isError } = useFriendProfile(userId);
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Icon name="arrow-back" size={s(24)} color="#111827" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>Profile</Text>
-      <View style={styles.headerSpacer} />
-    </View>
+  const headerTop = insets.top + vs(8);
+
+  const renderBack = () => (
+    <TouchableOpacity
+      onPress={onBack}
+      style={[styles.backButton, { top: headerTop }]}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel="Go back"
+    >
+      <View style={styles.backButtonInner}>
+        <Icon name="arrow-back" size={s(22)} color="#111827" />
+      </View>
+    </TouchableOpacity>
   );
 
   if (isLoading) {
     return (
       <View style={styles.container}>
-        {renderHeader()}
+        <View style={styles.heroWrap}>
+          <LinearGradient
+            colors={['#fef3e2', '#fef9f3', '#ffffff']}
+            locations={[0, 0.45, 1]}
+            style={{ width: '100%', height: vs(200) + insets.top }}
+          />
+          {renderBack()}
+        </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#eb7825" />
+          <Text style={styles.loadingHint}>Loading profile…</Text>
         </View>
       </View>
     );
@@ -68,14 +134,24 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   if (isError || !profile) {
     return (
       <View style={styles.container}>
-        {renderHeader()}
+        <View style={styles.heroWrap}>
+          <LinearGradient
+            colors={['#fef3e2', '#fef9f3', '#ffffff']}
+            locations={[0, 0.45, 1]}
+            style={{ width: '100%', height: vs(160) + insets.top }}
+          />
+          {renderBack()}
+        </View>
         <View style={styles.centered}>
-          <Text style={styles.errorTitle}>This profile isn't available</Text>
+          <View style={styles.errorIconWrap}>
+            <Icon name="person-outline" size={s(40)} color="#d1d5db" />
+          </View>
+          <Text style={styles.errorTitle}>This profile isn&apos;t available</Text>
           <Text style={styles.errorBody}>
-            This person's profile may be private, or you may not be connected.
+            This person&apos;s profile may be private, or you may not be connected.
           </Text>
-          <TouchableOpacity style={styles.goBackButton} onPress={onBack} activeOpacity={0.8}>
-            <Text style={styles.goBackText}>Go Back</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={onBack} activeOpacity={0.85}>
+            <Text style={styles.primaryButtonText}>Go back</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -83,32 +159,91 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   }
 
   const name = displayName(profile.first_name, profile.last_name, profile.username);
+  const usernameDisplay = profile.username
+    ? `@${profile.username.replace(/^@/, '')}`
+    : null;
   const phoneLine = profile.phone?.trim() ? profile.phone : 'Not shared';
   const countryName = profile.country
     ? getCountryByCode(profile.country)?.name ?? profile.country
     : null;
   const locationLine = countryName ?? 'Not shared';
   const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
+  const tierBadge = TIER_BADGE_STYLES[profile.tier] ?? TIER_BADGE_STYLES.free;
+  const phoneMuted = phoneLine === 'Not shared';
+  const locationMuted = locationLine === 'Not shared';
 
   return (
     <View style={styles.container}>
-      {renderHeader()}
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.name}>{name}</Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroWrap}>
+          <LinearGradient
+            colors={['#fef3e2', '#fef9f3', '#ffffff']}
+            locations={[0, 0.35, 1]}
+            style={{ width: '100%', height: vs(152) + insets.top }}
+          />
+          {renderBack()}
 
-        <View style={styles.infoBlock}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Phone</Text>
-            <Text style={styles.infoValue}>{phoneLine}</Text>
+          <View style={[styles.avatarBlock, { marginTop: -vs(54) }]}>
+            <View style={styles.avatarRing}>
+              {profile.avatar_url ? (
+                <ImageWithFallback source={{ uri: profile.avatar_url }} style={styles.avatar} />
+              ) : (
+                <LinearGradient
+                  colors={['#eb7825', '#f5a623']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatar}
+                >
+                  <Text style={styles.avatarInitials}>
+                    {getInitials(profile.first_name, profile.last_name, profile.username)}
+                  </Text>
+                </LinearGradient>
+              )}
+            </View>
+            <Text style={styles.displayName}>{name}</Text>
+            {usernameDisplay ? (
+              <Text style={styles.usernameLine}>{usernameDisplay}</Text>
+            ) : null}
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Location</Text>
-            <Text style={styles.infoValue}>{locationLine}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Level</Text>
-            <Text style={styles.infoValue}>{levelLine}</Text>
-          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardSectionLabel}>About</Text>
+          <InfoRow
+            icon="call-outline"
+            label="Phone"
+            value={phoneLine}
+            muted={phoneMuted}
+          />
+          <View style={styles.rowDivider} />
+          <InfoRow
+            icon="map-pin"
+            label="Location"
+            value={locationLine}
+            muted={locationMuted}
+          />
+          <View style={styles.rowDivider} />
+          <InfoRow
+            icon="sparkles-outline"
+            label="Mingla level"
+            rightSlot={
+              <View
+                style={[
+                  styles.tierPill,
+                  {
+                    backgroundColor: tierBadge.bg,
+                    borderColor: tierBadge.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.tierPillText, { color: tierBadge.text }]}>{levelLine}</Text>
+              </View>
+            }
+          />
         </View>
 
         <View style={styles.interestsWrap}>
@@ -124,91 +259,247 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           <TouchableOpacity
             style={styles.messageButton}
             onPress={() => onMessage(userId)}
-            activeOpacity={0.8}
+            activeOpacity={0.88}
           >
+            <Icon name="chatbubble-outline" size={s(20)} color="#ffffff" />
             <Text style={styles.messageText}>Message</Text>
           </TouchableOpacity>
         ) : null}
 
-        <View style={styles.bottomPadding} />
+        <View style={{ height: vs(40) + insets.bottom }} />
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffff' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: vs(48),
-    paddingHorizontal: s(24),
-    paddingBottom: vs(12),
-    backgroundColor: '#ffffff',
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  heroWrap: {
+    width: '100%',
+    position: 'relative',
   },
-  headerTitle: { flex: 1, fontSize: s(18), fontWeight: '700', color: '#111827', textAlign: 'center' },
-  headerSpacer: { width: s(24) },
+  backButton: {
+    position: 'absolute',
+    left: s(16),
+    zIndex: 2,
+  },
+  backButtonInner: {
+    width: s(42),
+    height: s(42),
+    borderRadius: s(21),
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: { elevation: 2 },
+    }),
+  },
   scroll: { flex: 1 },
-  name: {
+  scrollContent: { paddingBottom: vs(8) },
+  avatarBlock: {
+    alignItems: 'center',
+    paddingHorizontal: s(24),
+    marginBottom: vs(8),
+  },
+  avatarRing: {
+    padding: s(4),
+    borderRadius: s(60),
+    backgroundColor: '#ffffff',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  avatar: {
+    width: s(104),
+    height: s(104),
+    borderRadius: s(52),
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarInitials: {
+    fontSize: s(36),
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  displayName: {
+    marginTop: vs(14),
     fontSize: s(26),
     fontWeight: '700',
     color: '#111827',
-    paddingHorizontal: s(24),
-    marginBottom: vs(20),
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  infoBlock: {
-    paddingHorizontal: s(24),
-    gap: vs(16),
-    marginBottom: vs(8),
+  usernameLine: {
+    marginTop: vs(4),
+    fontSize: s(15),
+    fontWeight: '500',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  card: {
+    marginHorizontal: s(20),
+    marginTop: vs(12),
+    backgroundColor: '#ffffff',
+    borderRadius: s(20),
+    paddingHorizontal: s(18),
+    paddingTop: vs(18),
+    paddingBottom: vs(10),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#e5e7eb',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  cardSectionLabel: {
+    fontSize: s(13),
+    fontWeight: '700',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: vs(14),
   },
   infoRow: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
-    paddingBottom: vs(12),
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: vs(12),
   },
-  infoLabel: {
+  infoIconCircle: {
+    width: s(44),
+    height: s(44),
+    borderRadius: s(22),
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: s(14),
+  },
+  infoRowText: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: s(44),
+    paddingTop: vs(2),
+  },
+  infoRowLabel: {
     fontSize: s(12),
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#9ca3af',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginBottom: vs(4),
   },
-  infoValue: {
+  infoRowValue: {
     fontSize: s(16),
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#111827',
+    lineHeight: s(22),
+  },
+  infoRowValueMuted: {
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
+  rowDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#f3f4f6',
+    marginLeft: s(44) + s(14),
+  },
+  tierPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: s(12),
+    paddingVertical: vs(6),
+    borderRadius: s(999),
+    borderWidth: 1,
+  },
+  tierPillText: {
+    fontSize: s(14),
+    fontWeight: '700',
   },
   interestsWrap: {
-    marginTop: vs(8),
+    marginTop: vs(22),
   },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(32) },
-  errorTitle: { fontSize: s(18), fontWeight: '700', color: '#111827', textAlign: 'center' },
-  errorBody: {
-    fontSize: s(14),
-    color: '#6b7280',
-    textAlign: 'center',
-    marginTop: vs(8),
-    lineHeight: s(20),
-  },
-  goBackButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: s(12),
-    paddingVertical: vs(14),
-    paddingHorizontal: s(40),
-    marginTop: vs(24),
-  },
-  goBackText: { fontSize: s(16), fontWeight: '700', color: '#ffffff' },
   messageButton: {
-    backgroundColor: '#eb7825',
-    borderRadius: s(12),
-    paddingVertical: vs(16),
-    marginHorizontal: s(24),
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: vs(24),
+    justifyContent: 'center',
+    gap: s(10),
+    backgroundColor: '#eb7825',
+    borderRadius: s(16),
+    paddingVertical: vs(16),
+    marginHorizontal: s(20),
+    marginTop: vs(28),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#eb7825',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
   },
   messageText: { fontSize: s(16), fontWeight: '700', color: '#ffffff' },
-  bottomPadding: { height: vs(48) },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: s(32),
+    paddingTop: vs(24),
+  },
+  loadingHint: {
+    marginTop: vs(14),
+    fontSize: s(15),
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  errorIconWrap: {
+    width: s(88),
+    height: s(88),
+    borderRadius: s(44),
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: vs(16),
+  },
+  errorTitle: {
+    fontSize: s(19),
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  errorBody: {
+    fontSize: s(15),
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: vs(10),
+    lineHeight: s(22),
+    maxWidth: s(300),
+  },
+  primaryButton: {
+    backgroundColor: '#eb7825',
+    borderRadius: s(14),
+    paddingVertical: vs(14),
+    paddingHorizontal: s(36),
+    marginTop: vs(28),
+  },
+  primaryButtonText: { fontSize: s(16), fontWeight: '700', color: '#ffffff' },
 });
 
 export default ViewFriendProfileScreen;
