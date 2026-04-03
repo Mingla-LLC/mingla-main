@@ -15,7 +15,7 @@ import {
   toSlug,
 } from './categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
-import { downloadAndStorePhotos, resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
+import { resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -301,13 +301,6 @@ export async function upsertPlaceToPool(
       .eq('google_place_id', googlePlaceId)
       .maybeSingle();
     return existing?.id || null;
-  }
-
-  // Fire-and-forget: download photos to Supabase Storage (never blocks card serving)
-  if (photos.length > 0 && apiKey) {
-    downloadAndStorePhotos(supabaseAdmin, googlePlaceId, photos, apiKey)
-      .catch((err) => console.error(`[card-pool] Photo download failed for ${googlePlaceId}:`,
-        err instanceof Error ? err.message : String(err)));
   }
 
   return data?.id || null;
