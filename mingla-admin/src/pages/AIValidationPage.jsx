@@ -7,7 +7,7 @@ import {
   UtensilsCrossed, Wine, Coffee, Flower2, Eye, Music, Palette, TreePine,
   Gamepad2, Heart, ShoppingBag, MapPin, Sparkles, Clock,
 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { StatCard, SectionCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
@@ -51,7 +51,6 @@ function timeAgo(ts) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export function AIValidationPage() {
-  const { supabase } = useAuth();
   const toast = useToast();
   const [tab, setTab] = useState("dashboard");
   const [overview, setOverview] = useState(null);
@@ -70,7 +69,7 @@ export function AIValidationPage() {
     if (error) throw new Error(error.message || "Edge function error");
     if (data?.error) throw new Error(data.error);
     return data;
-  }, [supabase]);
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -89,16 +88,23 @@ export function AIValidationPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   // Check edge function availability
   useEffect(() => {
-    invoke({ action: "preview", scope: "unvalidated" })
-      .then(() => setEdgeFnAvailable(true))
-      .catch(() => setEdgeFnAvailable(false));
-  }, [invoke]);
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("ai-verify-pipeline", {
+          body: { action: "preview", scope: "unvalidated" }
+        });
+        setEdgeFnAvailable(!error && !data?.error);
+      } catch {
+        setEdgeFnAvailable(false);
+      }
+    })();
+  }, []);
 
   const navigateToResults = (jobId, category) => {
     setSelectedJobId(jobId);
@@ -146,7 +152,7 @@ export function AIValidationPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1280px] mx-auto">
+    <div className="py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-[var(--color-brand-50)] flex items-center justify-center">
@@ -162,7 +168,7 @@ export function AIValidationPage() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard icon={Globe} label="Active Places" value={fmt(overview?.total_active)} />
         <StatCard icon={ShieldCheck} label="Validated" value={`${fmt(overview?.validated)} (${pct(overview?.validated, overview?.total_active)}%)`} />
         <StatCard icon={ShieldAlert} label="Unvalidated" value={fmt(overview?.unvalidated)} className="border-l-4 border-l-[var(--color-warning-500)]" />
@@ -206,7 +212,7 @@ function DashboardTab({ catHealth, recentRuns, overview, onNavigate, onSwitchTab
 
       {/* Category Health Grid */}
       <SectionCard title="Category Health" subtitle="Validation coverage per category">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {catHealth.map((cat) => {
             const Icon = CAT_ICONS[cat.category] || Globe;
             const pctVal = Number(cat.pct_validated || 0);
@@ -309,7 +315,7 @@ function PipelineTab({ invoke, edgeFnAvailable, toast, onRefresh, onSwitchTab })
     (async () => {
       try {
         // Check recent runs for active one
-        const { data } = await invoke.__supabase?.rpc?.("admin_ai_recent_runs", { p_limit: 1 }) || {};
+        const { data } = await supabase.rpc("admin_ai_recent_runs", { p_limit: 1 });
         // Fallback: no active run detection on mount
       } catch { /* ignore */ }
     })();
@@ -621,11 +627,53 @@ function ResultsTab({ invoke, jobId, categoryFilter, toast }) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [overrideModal, setOverrideModal] = useState(null);
+  const [directMode, setDirectMode] = useState(false);
   const PAGE_SIZE = 50;
+
+  const loadResultsDirect = useCallback(async () => {
+    // Fallback: query place_pool directly when ai_validation_results is empty
+    let query = supabase
+      .from("place_pool")
+      .select("id, name, address, primary_type, ai_approved, ai_categories, ai_primary_identity, ai_confidence, ai_reason, ai_web_evidence, ai_validated_at, city, country", { count: "exact" })
+      .eq("is_active", true)
+      .not("ai_validated_at", "is", null)
+      .order("ai_validated_at", { ascending: false });
+
+    if (decision === "accept") query = query.eq("ai_approved", true);
+    if (decision === "reject") query = query.eq("ai_approved", false);
+    if (category) query = query.contains("ai_categories", [category]);
+    if (confidence === "low") query = query.lt("ai_confidence", 0.5);
+    if (confidence === "medium") query = query.gte("ai_confidence", 0.5).lt("ai_confidence", 0.85);
+    if (confidence === "high") query = query.gte("ai_confidence", 0.85);
+    if (search) query = query.ilike("name", `%${search}%`);
+
+    query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+
+    // Map place_pool rows to results format
+    const mapped = (data || []).map(p => ({
+      id: p.id,
+      place_id: p.id,
+      place_name: p.name,
+      decision: p.ai_approved ? "accept" : "reject",
+      previous_categories: p.ai_categories || [],
+      new_categories: p.ai_categories || [],
+      primary_identity: p.ai_primary_identity || p.primary_type,
+      confidence: p.ai_confidence >= 0.85 ? "high" : p.ai_confidence >= 0.5 ? "medium" : "low",
+      reason: p.ai_reason || "",
+      evidence: p.ai_web_evidence || "",
+      city: p.city,
+      country: p.country,
+    }));
+    return { results: mapped, total_count: count || 0 };
+  }, [decision, category, confidence, search, page]);
 
   const loadResults = useCallback(async () => {
     setLoading(true);
     try {
+      // Try edge function first
       const data = await invoke({
         action: "get_results",
         job_id: jobId || undefined,
@@ -636,14 +684,31 @@ function ResultsTab({ invoke, jobId, categoryFilter, toast }) {
         page: page + 1,
         page_size: PAGE_SIZE,
       });
-      setResults(data.results || []);
-      setTotalCount(data.total_count || 0);
-    } catch (err) {
-      toast.error(err.message);
+      if ((data.results || []).length === 0 && !jobId && !decision && !category && !search) {
+        // No results from edge function — fall back to direct place_pool query
+        const directData = await loadResultsDirect();
+        setResults(directData.results);
+        setTotalCount(directData.total_count);
+        setDirectMode(true);
+      } else {
+        setResults(data.results || []);
+        setTotalCount(data.total_count || 0);
+        setDirectMode(false);
+      }
+    } catch {
+      // Edge function failed — fall back to direct query
+      try {
+        const directData = await loadResultsDirect();
+        setResults(directData.results);
+        setTotalCount(directData.total_count);
+        setDirectMode(true);
+      } catch (err2) {
+        toast.error(err2.message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [invoke, jobId, decision, category, confidence, search, page, toast]);
+  }, [invoke, jobId, decision, category, confidence, search, page, toast, loadResultsDirect]);
 
   useEffect(() => { loadResults(); }, [loadResults]);
 
@@ -802,18 +867,74 @@ function ReviewTab({ invoke, toast }) {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
+  const loadQueueDirect = useCallback(async () => {
+    // Fallback: query place_pool directly for low-confidence places
+    const PAGE_SIZE = 20;
+    let query = supabase
+      .from("place_pool")
+      .select("id, name, address, primary_type, ai_approved, ai_categories, ai_primary_identity, ai_confidence, ai_reason, ai_web_evidence, city, country", { count: "exact" })
+      .eq("is_active", true)
+      .not("ai_validated_at", "is", null);
+
+    if (filter === "low_confidence") {
+      query = query.lt("ai_confidence", 0.5);
+    } else {
+      // "all" — show anything with low confidence
+      query = query.lt("ai_confidence", 0.7);
+    }
+
+    query = query.order("ai_confidence", { ascending: true }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+    const { data, count } = await query;
+    const lowCount = count || 0;
+
+    const mapped = (data || []).map(p => ({
+      id: p.id,
+      place_id: p.id,
+      place_name: p.name,
+      decision: p.ai_approved ? "accept" : "reject",
+      previous_categories: p.ai_categories || [],
+      new_categories: p.ai_categories || [],
+      primary_identity: p.ai_primary_identity || p.primary_type,
+      confidence: p.ai_confidence >= 0.85 ? "high" : p.ai_confidence >= 0.5 ? "medium" : "low",
+      reason: p.ai_reason || "",
+      city: p.city,
+      country: p.country,
+    }));
+
+    return {
+      items: mapped,
+      low_confidence: lowCount,
+      reclassified: 0,
+      overridden: 0,
+      total_count: lowCount,
+    };
+  }, [filter, page]);
+
   const loadQueue = useCallback(async () => {
     setLoading(true);
     try {
       const data = await invoke({ action: "review_queue", filter, page, page_size: 20 });
-      setItems(data.items || []);
-      setStats({ low_confidence: data.low_confidence, reclassified: data.reclassified, overridden: data.overridden, total_count: data.total_count });
-    } catch (err) {
-      toast.error(err.message);
+      if ((data.items || []).length === 0 && filter === "all") {
+        const directData = await loadQueueDirect();
+        setItems(directData.items);
+        setStats(directData);
+      } else {
+        setItems(data.items || []);
+        setStats({ low_confidence: data.low_confidence, reclassified: data.reclassified, overridden: data.overridden, total_count: data.total_count });
+      }
+    } catch {
+      try {
+        const directData = await loadQueueDirect();
+        setItems(directData.items);
+        setStats(directData);
+      } catch (err2) {
+        toast.error(err2.message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [invoke, filter, page, toast]);
+  }, [invoke, filter, page, toast, loadQueueDirect]);
 
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
@@ -925,7 +1046,7 @@ function HistoryTab({ supabase, onSelectRun }) {
       setRuns(data || []);
       setLoading(false);
     })();
-  }, [supabase]);
+  }, []);
 
   const columns = [
     { key: "created_at", label: "Date", width: "160px", sortable: true, render: (v) => timeAgo(v) },
