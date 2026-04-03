@@ -130,6 +130,7 @@ export const NAV_GROUPS = [
     label: "Intelligence",
     items: [
       { id: "analytics", label: "Analytics", icon: "BarChart3" },
+      { id: "ai-validation", label: "AI Validation", icon: "Brain" },
     ],
   },
   {

@@ -22,6 +22,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
+import { AIValidationPage } from "./pages/AIValidationPage";
 
 const PAGES = {
   overview: OverviewPage,
@@ -38,6 +39,7 @@ const PAGES = {
   email: EmailPage,
   admin: AdminPage,
   settings: SettingsPage,
+  "ai-validation": AIValidationPage,
 };
 
 function getTabFromHash() {
