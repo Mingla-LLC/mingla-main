@@ -60,6 +60,7 @@ function parseArgs() {
     skipSearch: false,
     resume: false,
     random: false,
+    revalidate: false,
     offset: 0,
     output: resolve(OUTPUTS_DIR, 'pipeline_results.jsonl'),
   };
@@ -74,6 +75,7 @@ function parseArgs() {
       case '--skip-search': opts.skipSearch = true; break;
       case '--resume': opts.resume = true; break;
       case '--random': opts.random = true; break;
+      case '--revalidate': opts.revalidate = true; break;
       case '--offset': opts.offset = parseInt(args[++i], 10); break;
       case '--output': opts.output = resolve(args[++i]); break;
       default:
@@ -329,8 +331,13 @@ async function stage1Export(supabase, opts) {
     .from('place_pool')
     .select('id, name, address, primary_type, types, rating, review_count, price_level, website, editorial_summary, ai_categories, ai_approved, opening_hours, city, country')
     .eq('is_active', true)
-    .eq('ai_approved', true)
     .order('created_at', { ascending: true });
+
+  // Default: only process places not yet validated by the pipeline
+  // Use --revalidate to re-process everything
+  if (!opts.revalidate) {
+    query = query.is('ai_validated_at', null);
+  }
 
   if (opts.category) {
     query = query.contains('ai_categories', [opts.category]);
@@ -356,9 +363,13 @@ async function stage1Export(supabase, opts) {
       .from('place_pool')
       .select('id, name, address, primary_type, types, rating, review_count, price_level, website, editorial_summary, ai_categories, ai_approved, opening_hours, city, country')
       .eq('is_active', true)
-      .eq('ai_approved', true)
       .order('created_at', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
+
+    // Default: only unvalidated places. --revalidate to re-do everything.
+    if (!opts.revalidate) {
+      pageQuery = pageQuery.is('ai_validated_at', null);
+    }
 
     if (opts.category) pageQuery = pageQuery.contains('ai_categories', [opts.category]);
     if (opts.country) pageQuery = pageQuery.ilike('country', `%${opts.country}%`);
