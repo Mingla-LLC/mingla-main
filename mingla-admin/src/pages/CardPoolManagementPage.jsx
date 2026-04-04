@@ -839,6 +839,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
 // ── Tab 3: Generate Cards (v2 — batch system) ──────────────────────────────
 
 const POLL_INTERVAL_MS = 2000;
+const MAX_POLLS = 300; // 10 minutes at 2s interval — safety limit
 
 function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefresh }) {
   const { addToast } = useToast();
@@ -897,12 +898,22 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
   }, [selectedCity]);
 
   // Poll run status via RPC (fast, cheap, already has auth)
+  const pollCountRef = useRef(0);
   useEffect(() => {
     if (!runId) { clearInterval(pollRef.current); return; }
+    pollCountRef.current = 0;
     const poll = async () => {
+      pollCountRef.current++;
+      if (pollCountRef.current > MAX_POLLS) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check status." });
+        return;
+      }
       const { data, error } = await supabase.rpc("admin_card_generation_status", { p_run_id: runId });
       if (!mountedRef.current) return;
-      if (error || !data || data.length === 0) return;
+      if (error) { console.warn("[CardPool] Poll error:", error.message); return; }
+      if (!data || data.length === 0) return;
       const run = data[0];
       setRunStatus(run);
       if (run.status !== "running") {
