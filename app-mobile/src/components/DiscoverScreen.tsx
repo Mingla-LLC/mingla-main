@@ -1177,6 +1177,23 @@ export default function DiscoverScreen({
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
 
+  /** Stable reference — inline `{ lat, lng }` on every DiscoverScreen re-render forced DiscoverMap → ClusteredMapView to rebuild SuperCluster and remount markers (flicker while panning). */
+  const discoverMapUserLocation = useMemo(() => {
+    if (deviceGpsLat != null && deviceGpsLng != null) {
+      return { latitude: deviceGpsLat, longitude: deviceGpsLng };
+    }
+    if (fallbackLat != null && fallbackLng != null) {
+      return { latitude: fallbackLat, longitude: fallbackLng };
+    }
+    return null;
+  }, [deviceGpsLat, deviceGpsLng, fallbackLat, fallbackLng]);
+
+  const defaultDiscoverMapAccountPrefs = useMemo(
+    () => ({ currency: 'USD' as const, measurementSystem: 'metric' as const }),
+    [],
+  );
+  const discoverMapAccountPreferences = accountPreferences ?? defaultDiscoverMapAccountPrefs;
+
   // Note: Saved people migration removed — replaced by pairing system
 
   // Save custom holidays to AsyncStorage
@@ -3588,8 +3605,8 @@ export default function DiscoverScreen({
                     if (pill) setSelectedPillId(pill.id);
                   }}
                   onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
-                  accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
-                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
+                  accountPreferences={discoverMapAccountPreferences}
+                  userLocation={discoverMapUserLocation}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
                   paused={!isMapShowing || !isTabVisible}

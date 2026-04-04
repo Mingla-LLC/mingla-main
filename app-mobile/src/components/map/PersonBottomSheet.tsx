@@ -77,12 +77,14 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                     <Text style={styles.actionText}>Message</Text>
                   </BlurView>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionWrapper} onPress={() => onInviteToSession(person.userId)} activeOpacity={0.7}>
-                  <BlurView intensity={40} tint="light" style={styles.blurButton}>
-                    <Icon name="people-outline" size={18} color="#111" />
-                    <Text style={styles.actionText}>Invite</Text>
-                  </BlurView>
-                </TouchableOpacity>
+                {person.relationship !== 'paired' && (
+                  <TouchableOpacity style={styles.actionWrapper} onPress={() => onInviteToSession(person.userId)} activeOpacity={0.7}>
+                    <BlurView intensity={40} tint="light" style={styles.blurButton}>
+                      <Icon name="people-outline" size={18} color="#111" />
+                      <Text style={styles.actionText}>Invite</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                )}
                 {person.relationship === 'paired' && (
                   <TouchableOpacity style={styles.actionWrapper} onPress={() => onViewPairedCards(person.userId)} activeOpacity={0.7}>
                     <BlurView intensity={40} tint="light" style={styles.blurButton}>

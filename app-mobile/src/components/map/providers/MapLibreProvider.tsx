@@ -308,11 +308,13 @@ const PersonMarker = React.memo(function PersonMarker({
       isSelected={isSelected}
     >
       <Pressable
-        hitSlop={8}
+        hitSlop={20}
         onPress={handlePress}
         style={isSelected ? styles.selectedPersonMarker : undefined}
       >
-        <PersonPinContent person={person} />
+        <View collapsable={false} style={styles.personMarkerTouchTarget}>
+          <PersonPinContent person={person} />
+        </View>
       </Pressable>
     </MarkerView>
   );
@@ -817,6 +819,12 @@ const styles = StyleSheet.create({
   },
   selectedPersonMarker: {
     transform: [{ scale: 1.04 }],
+  },
+  personMarkerTouchTarget: {
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   routeStopMarker: {
     width: 24,

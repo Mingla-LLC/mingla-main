@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, Platform, UIManager, Pressable } from 'react-native';
 import { Marker, UrlTile } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import { Icon } from '../../ui/Icon';
@@ -90,6 +90,9 @@ export function ReactNativeMapsProvider({
       clusterColor="#eb7825"
       radius={50}
       maxZoom={16}
+      // iOS defaults to LayoutAnimation on every region settle — markers relayout and
+      // taps on people pins are often lost until the animation finishes.
+      animationEnabled={false}
     >
       <UrlTile
         urlTemplate="https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
@@ -138,13 +141,23 @@ export function ReactNativeMapsProvider({
         <Marker
           key={`person-${person.userId}`}
           coordinate={coordinate}
-          onPress={() => onPersonPress(person)}
           tracksViewChanges={false}
           zIndex={zIndex}
           anchor={{ x: 0.5, y: 0.35 }}
           cluster={false}
+          tappable
         >
-          <PersonPinContent person={person} />
+          <Pressable
+            onPress={() => onPersonPress(person)}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${person.displayName}`}
+            style={styles.personMarkerTouchTarget}
+          >
+            <View collapsable={false} pointerEvents="box-none">
+              <PersonPinContent person={person} />
+            </View>
+          </Pressable>
         </Marker>
       ))}
     </ClusteredMapView>
@@ -185,5 +198,12 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  /** Widen hit area so taps register while the map is still settling. */
+  personMarkerTouchTarget: {
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
 });
