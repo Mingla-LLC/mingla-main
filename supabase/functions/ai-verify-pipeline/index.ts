@@ -99,6 +99,8 @@ FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed fl
 
 REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing), fitness (gyms/yoga), gambling halls, production companies, booking agencies.
 
+NEVER reject a place for having a low rating. A bar with 3.2 stars is still a bar. A restaurant with 2.8 stars is still a restaurant. Ratings measure quality, not category fitness. If it fits a category, ACCEPT it regardless of rating.
+
 RECLASSIFY (d:"reclassify"): If a place is in the WRONG category but fits a DIFFERENT valid category, use d:"reclassify" and provide the correct categories in c:[]. Example: a beauty salon classified as "wellness" → reclassify with c:[] (reject from wellness, fits no other category). A restaurant classified as "watch" → reclassify with c:["casual_eats"]. A hotel with a notable bar classified as "wellness" → reclassify with c:["drink"]. Always check if the place fits ANY category before fully rejecting.
 
 IMPORTANT — do NOT reject places that match ANY valid category. Libraries, hotels, and horse complexes may not fit, but grocery stores, nightclubs, bakeries, food halls, cinemas, and pottery studios DO fit their respective categories.
