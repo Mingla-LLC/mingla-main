@@ -42,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_card_gen_runs_city_status
 -- RLS: admin-only access
 ALTER TABLE public.card_generation_runs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admin read card_generation_runs" ON public.card_generation_runs;
 CREATE POLICY "Admin read card_generation_runs"
   ON public.card_generation_runs FOR SELECT
   USING (EXISTS (
@@ -49,6 +50,7 @@ CREATE POLICY "Admin read card_generation_runs"
     WHERE email = auth.email() AND status = 'active'
   ));
 
+DROP POLICY IF EXISTS "Admin insert card_generation_runs" ON public.card_generation_runs;
 CREATE POLICY "Admin insert card_generation_runs"
   ON public.card_generation_runs FOR INSERT
   WITH CHECK (EXISTS (
@@ -57,6 +59,7 @@ CREATE POLICY "Admin insert card_generation_runs"
   ));
 
 -- Service role needs full access for edge function updates
+DROP POLICY IF EXISTS "Service role full access card_generation_runs" ON public.card_generation_runs;
 CREATE POLICY "Service role full access card_generation_runs"
   ON public.card_generation_runs FOR ALL
   USING (auth.role() = 'service_role');
