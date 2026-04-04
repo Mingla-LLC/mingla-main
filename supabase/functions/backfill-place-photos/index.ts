@@ -266,22 +266,35 @@ async function loadCityPlacesForRun(
   city: string,
   country: string,
 ): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
-  const { data: places, error: placesErr } = await db
-    .from('place_pool')
-    .select('id, google_place_id, photos, stored_photo_urls, ai_approved')
-    .eq('is_active', true)
-    .eq('city', city)
-    .eq('country', country)
-    .order('created_at', { ascending: true })
-    .limit(10000);
+  // PostgREST caps results at 1000 rows (project default). Paginate to get all.
+  const PAGE_SIZE = 1000;
+  const allPlaces: CityPlaceRow[] = [];
+  let offset = 0;
 
-  if (placesErr) {
-    console.error('[backfill-place-photos] city run query error:', placesErr);
-    throw new Error(placesErr.message);
+  while (true) {
+    const { data: page, error: pageErr } = await db
+      .from('place_pool')
+      .select('id, google_place_id, photos, stored_photo_urls, ai_approved')
+      .eq('is_active', true)
+      .eq('city', city)
+      .eq('country', country)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (pageErr) {
+      console.error('[backfill-place-photos] city run query error:', pageErr);
+      throw new Error(pageErr.message);
+    }
+
+    const rows = (page ?? []) as CityPlaceRow[];
+    allPlaces.push(...rows);
+
+    if (rows.length < PAGE_SIZE) break; // last page
+    offset += PAGE_SIZE;
   }
 
-  const preview = buildRunPreview((places ?? []) as CityPlaceRow[]);
-  return { places: (places ?? []) as CityPlaceRow[], ...preview };
+  const preview = buildRunPreview(allPlaces);
+  return { places: allPlaces, ...preview };
 }
 
 async function handlePreviewRun(

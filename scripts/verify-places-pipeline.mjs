@@ -179,8 +179,13 @@ const CLASSIFICATION_SCHEMA = {
 
 const SYSTEM_PROMPT = `You classify places for Mingla, a dating app, into 13 categories.
 
-CATEGORIES (* = must have candidate_website to qualify):
-flowers, *fine_dining, nature_views, first_meet, drink, casual_eats, *watch, *live_performance, *creative_arts, *play, *wellness, picnic_park, groceries
+CATEGORIES:
+flowers, fine_dining, nature_views, first_meet, drink, casual_eats, watch, live_performance, creative_arts, play, wellness, picnic_park, groceries
+
+WEBSITE RULE — ONLY these 6 categories require candidate_website to be non-null:
+fine_dining, watch, live_performance, creative_arts, play, wellness
+
+The other 7 categories do NOT need a website: flowers, nature_views, first_meet, drink, casual_eats, picnic_park, groceries. A coffee shop, bar, restaurant, park, or ice cream shop with NO website is perfectly fine — ACCEPT them if they match the category.
 
 CORE RULES:
 - Determine what this place PRIMARILY IS first (restaurant, museum, bar, park, etc.)
@@ -223,7 +228,7 @@ RECLASSIFY (d:"reclassify"): If a place is in the WRONG category but fits a DIFF
 
 IMPORTANT — do NOT reject places that match ANY valid category. Libraries, hotels, and horse complexes may not fit, but grocery stores, nightclubs, bakeries, food halls, cinemas, and pottery studios DO fit their respective categories.
 
-*categories need candidate_website to be non-null. If candidate_website is null for a *category, do not assign that category.
+REMINDER: Only these 6 categories need candidate_website: fine_dining, watch, live_performance, creative_arts, play, wellness. All other categories (flowers, nature_views, first_meet, drink, casual_eats, picnic_park, groceries) do NOT need a website. Never reject a coffee shop, bar, restaurant, or park for lacking a website.
 
 If has_opening_hours is false AND the place is NOT a park/trail/beach/outdoor venue, set confidence to "medium" or lower.
 
