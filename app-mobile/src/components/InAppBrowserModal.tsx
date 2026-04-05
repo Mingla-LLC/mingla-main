@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Modal,
   View,
@@ -7,12 +7,11 @@ import {
   ActivityIndicator,
   StyleSheet,
   Dimensions,
-  Linking,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Icon } from './ui/Icon';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface InAppBrowserModalProps {
   visible: boolean;
@@ -27,13 +26,45 @@ export default function InAppBrowserModal({
   title,
   onClose,
 }: InAppBrowserModalProps) {
+  const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  const [currentTitle, setCurrentTitle] = useState(title);
 
-  const handleWebViewError = useCallback(() => {
-    // WebView failed (e.g. iOS ATS blocking HTTP) — fall back to system browser
-    Linking.openURL(url).catch(() => {});
-    onClose();
-  }, [url, onClose]);
+  const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
+    setCanGoBack(navState.canGoBack);
+    setCanGoForward(navState.canGoForward);
+    if (navState.title && navState.title.length > 0 && navState.title !== navState.url) {
+      setCurrentTitle(navState.title);
+    }
+  }, []);
+
+  // Keep all navigation inside the WebView — never open external browser
+  const handleShouldStartLoad = useCallback(() => {
+    return true;
+  }, []);
+
+  const handleError = useCallback(() => {
+    // Show error state instead of falling back to external browser
+    setLoading(false);
+  }, []);
+
+  const goBack = useCallback(() => {
+    webViewRef.current?.goBack();
+  }, []);
+
+  const goForward = useCallback(() => {
+    webViewRef.current?.goForward();
+  }, []);
+
+  // Reset state when modal opens with a new URL
+  const handleShow = useCallback(() => {
+    setLoading(true);
+    setCanGoBack(false);
+    setCanGoForward(false);
+    setCurrentTitle(title);
+  }, [title]);
 
   return (
     <Modal
@@ -41,6 +72,7 @@ export default function InAppBrowserModal({
       animationType="fade"
       transparent={true}
       onRequestClose={onClose}
+      onShow={handleShow}
     >
       <View style={styles.overlay}>
         <TouchableOpacity
@@ -52,11 +84,39 @@ export default function InAppBrowserModal({
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {title}
+              {currentTitle || title}
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7}>
               <Icon name="close" size={20} color="#ffffff" />
             </TouchableOpacity>
+          </View>
+
+          {/* Navigation bar — back / forward */}
+          <View style={styles.navBar}>
+            <TouchableOpacity
+              onPress={goBack}
+              disabled={!canGoBack}
+              style={[styles.navButton, !canGoBack && styles.navButtonDisabled]}
+              activeOpacity={0.7}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+            >
+              <Icon name="chevron-back" size={20} color={canGoBack ? '#111827' : '#d1d5db'} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={goForward}
+              disabled={!canGoForward}
+              style={[styles.navButton, !canGoForward && styles.navButtonDisabled]}
+              activeOpacity={0.7}
+              accessibilityLabel="Go forward"
+              accessibilityRole="button"
+            >
+              <Icon name="chevron-forward" size={20} color={canGoForward ? '#111827' : '#d1d5db'} />
+            </TouchableOpacity>
+            <View style={styles.navUrlContainer}>
+              <Icon name="lock-closed" size={11} color="#9ca3af" />
+              <Text style={styles.navUrlText} numberOfLines={1}>{url}</Text>
+            </View>
           </View>
 
           {/* WebView */}
@@ -67,15 +127,20 @@ export default function InAppBrowserModal({
               </View>
             )}
             <WebView
+              ref={webViewRef}
               source={{ uri: url }}
               style={styles.webview}
               onLoadStart={() => setLoading(true)}
               onLoadEnd={() => setLoading(false)}
-              onError={handleWebViewError}
-              onHttpError={(syntheticEvent) => {
-                const { statusCode } = syntheticEvent.nativeEvent;
-                if (statusCode >= 400) handleWebViewError();
-              }}
+              onNavigationStateChange={handleNavigationStateChange}
+              onShouldStartLoadWithRequest={handleShouldStartLoad}
+              onError={handleError}
+              onHttpError={handleError}
+              setSupportMultipleWindows={false}
+              javaScriptCanOpenWindowsAutomatically={false}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction
+              startInLoadingState
             />
           </View>
         </View>
@@ -135,6 +200,44 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#f9fafb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    gap: 4,
+  },
+  navButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonDisabled: {
+    opacity: 0.4,
+  },
+  navUrlContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 4,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  navUrlText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#9ca3af',
   },
   webviewContainer: {
     flex: 1,

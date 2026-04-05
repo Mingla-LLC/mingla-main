@@ -18,6 +18,7 @@ import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
+import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { weatherService, WeatherData } from "../services/weatherService";
@@ -37,6 +38,7 @@ import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import { StopImageGallery } from "./expandedCard/StopImageGallery";
+import { ImageLightbox } from "./ImageLightbox";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
@@ -165,6 +167,19 @@ const curatedStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
     marginBottom: 2,
+  },
+  roleSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  descriptionPreview: {
+    fontSize: 13,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    color: '#9ca3af',
+    marginBottom: 6,
   },
   placeType: {
     fontSize: 12,
@@ -359,6 +374,40 @@ const curatedStyles = StyleSheet.create({
   optionalLabel: {
     color: '#9ca3af',
   },
+  todayHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff7ed',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
+  todayHoursText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9a3412',
+    flex: 1,
+  },
+  expandToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(235,120,37,0.3)',
+    backgroundColor: 'rgba(235,120,37,0.06)',
+    marginTop: 4,
+  },
+  expandToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
 });
 
 /** Private component — renders the multi-stop plan for a curated experience */
@@ -452,6 +501,9 @@ function MultiStopPlanView({
   const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
+  const [lightbox, setLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
+    visible: false, images: [], initialIndex: 0,
+  });
 
   // Stagger entry animations
   const stopAnims = useRef(stops.map(() => new Animated.Value(0))).current;
@@ -559,12 +611,8 @@ function MultiStopPlanView({
 
               {/* Stop card */}
               <View style={[curatedStyles.stopCard, isOptional && curatedStyles.optionalStopCard]}>
-                {/* Tappable header row */}
-                <TouchableOpacity
-                  style={curatedStyles.stopHeaderRow}
-                  onPress={() => toggleStop(stop.stopNumber)}
-                  activeOpacity={0.7}
-                >
+                {/* Header row */}
+                <View style={curatedStyles.stopHeaderRow}>
                   <View style={curatedStyles.stopLabelRow}>
                     <View style={[curatedStyles.stopNumberBadge, isOptional && curatedStyles.optionalBadge]}>
                       {isOptional ? (
@@ -593,14 +641,16 @@ function MultiStopPlanView({
                         )}
                       </View>
                       <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
+                      {stop.role ? (
+                        <Text style={curatedStyles.roleSubtitle} numberOfLines={1}>
+                          {stop.optional
+                            ? (stop.role === 'Flowers' ? 'Pick up flowers' : stop.role === 'Groceries' ? 'Grab groceries' : stop.role)
+                            : `Your ${stop.role.toLowerCase()} stop`}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
-                  <Icon
-                    name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
-                    size={18}
-                    color="#9ca3af"
-                  />
-                </TouchableOpacity>
+                </View>
 
                 {/* Always-visible: scrollable image gallery + quick meta */}
                 {(stop.imageUrls?.length || stop.imageUrl) ? (
@@ -610,7 +660,20 @@ function MultiStopPlanView({
                         ? stop.imageUrls
                         : [stop.imageUrl].filter(Boolean)
                     }
+                    onImagePress={(index) => setLightbox({
+                      visible: true,
+                      images: stop.imageUrls && stop.imageUrls.length > 0
+                        ? stop.imageUrls
+                        : [stop.imageUrl].filter(Boolean),
+                      initialIndex: index,
+                    })}
                   />
+                ) : null}
+
+                {stop.aiDescription && !isExpanded ? (
+                  <Text style={curatedStyles.descriptionPreview} numberOfLines={2} ellipsizeMode="tail">
+                    {stop.aiDescription}
+                  </Text>
                 ) : null}
 
                 <Text style={curatedStyles.placeType} numberOfLines={1}>
@@ -624,14 +687,46 @@ function MultiStopPlanView({
                       <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
                     </View>
                   )}
-                  {stop.priceLevelLabel ? (
-                    <>
-                      <Text style={curatedStyles.stopMetaDot}>·</Text>
-                      <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
-                    </>
-                  ) : null}
+                  {(() => {
+                    const tier = stop.priceTier as PriceTierSlug | undefined;
+                    const tierData = tier ? TIER_BY_SLUG[tier] : undefined;
+                    if (!tier && !stop.priceLevelLabel) return null;
+                    const tierColor = tierData?.color ?? '#6b7280';
+                    return (
+                      <>
+                        <Text style={curatedStyles.stopMetaDot}>·</Text>
+                        <Text style={[curatedStyles.stopMetaText, { color: tierColor, fontWeight: '600' }]}>
+                          {tierData ? tierLabel(tier!) : stop.priceLevelLabel}
+                        </Text>
+                        {tierData ? (
+                          <>
+                            <Text style={[curatedStyles.stopMetaDot, { color: tierColor }]}>·</Text>
+                            <Text style={[curatedStyles.stopMetaText, { color: tierColor }]}>
+                              {tierRangeLabel(tier!)}
+                            </Text>
+                          </>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <StopOpenBadge openingHours={stop.openingHours} />
                 </View>
+
+                {/* Today's hours — always visible */}
+                {(() => {
+                  const weekdayLines = extractWeekdayText(stop.openingHours);
+                  if (!weekdayLines || weekdayLines.length === 0) return null;
+                  const todayLine = weekdayLines.find(line => line.startsWith(todayName));
+                  if (!todayLine) return null;
+                  return (
+                    <View style={curatedStyles.todayHoursRow}>
+                      <Icon name="time-outline" size={12} color="#ea580c" />
+                      <Text style={curatedStyles.todayHoursText} numberOfLines={1}>
+                        {todayLine}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 {/* Policies & Reservations — only when website exists */}
                 {stop.website ? (
@@ -647,6 +742,24 @@ function MultiStopPlanView({
                     <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
                   </TouchableOpacity>
                 ) : null}
+
+                {/* Expand / collapse toggle — prominent button, below policies */}
+                <TouchableOpacity
+                  style={curatedStyles.expandToggle}
+                  onPress={() => toggleStop(stop.stopNumber)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={isExpanded ? 'Collapse stop details' : 'Expand stop details'}
+                  accessibilityRole="button"
+                >
+                  <Text style={curatedStyles.expandToggleText}>
+                    {isExpanded ? 'Less Details' : 'More Details'}
+                  </Text>
+                  <Icon
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color="#eb7825"
+                  />
+                </TouchableOpacity>
 
                 {/* Opening Hours — visible when expanded */}
                 {isExpanded && (() => {
@@ -744,6 +857,14 @@ function MultiStopPlanView({
         url={browserUrl ?? ''}
         title={browserTitle}
         onClose={() => setBrowserUrl(null)}
+      />
+
+      {/* Full-screen image lightbox */}
+      <ImageLightbox
+        visible={lightbox.visible}
+        images={lightbox.images}
+        initialIndex={lightbox.initialIndex}
+        onClose={() => setLightbox(prev => ({ ...prev, visible: false }))}
       />
     </View>
   );

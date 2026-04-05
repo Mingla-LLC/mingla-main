@@ -184,6 +184,11 @@ export function extractWeekdayText(
       return obj.weekday_text as string[];
     }
 
+    // Google Places v1 API format (camelCase)
+    if (Array.isArray(obj.weekdayDescriptions) && obj.weekdayDescriptions.length > 0) {
+      return obj.weekdayDescriptions as string[];
+    }
+
     if ('lines' in obj && Array.isArray(obj.lines) && obj.lines.length > 0) {
       const lines = obj.lines as string[];
       if (typeof lines[0] === 'string' && hasDayPrefix(lines[0])) {
