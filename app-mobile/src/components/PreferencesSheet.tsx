@@ -366,6 +366,14 @@ export default function PreferencesSheet({
       if (!gpsFlag && (loadedPreferences).custom_location) {
         setSearchLocation((loadedPreferences).custom_location);
         setUseLocation("search");
+        // Restore saved coordinates so they persist through re-saves
+        // without requiring the user to re-select the address.
+        if ((loadedPreferences).custom_lat != null && (loadedPreferences).custom_lng != null) {
+          setSelectedCoords({
+            lat: (loadedPreferences).custom_lat,
+            lng: (loadedPreferences).custom_lng,
+          });
+        }
       }
 
       setInitialPreferences({

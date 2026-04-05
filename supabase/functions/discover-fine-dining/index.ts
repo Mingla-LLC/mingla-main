@@ -1,8 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serveCardsFromPipeline } from '../_shared/cardPoolService.ts';
-import { CATEGORY_MIN_PRICE_TIER } from '../_shared/categoryPlaceTypes.ts';
-import { slugMeetsMinimum } from '../_shared/priceTiers.ts';
+// CATEGORY_MIN_PRICE_TIER removed — AI validation is the sole quality gate for category membership.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,14 +58,10 @@ serve(async (req: Request) => {
       GOOGLE_PLACES_API_KEY,
     );
 
-    // Post-filter: remove pool cards below Fine Dining price floor
-    const minTier = CATEGORY_MIN_PRICE_TIER['fine_dining'];
-    const cards = minTier
-      ? poolResult.cards.filter((c: any) => slugMeetsMinimum(c.priceTier, minTier))
-      : poolResult.cards;
+    const cards = poolResult.cards;
 
     const elapsed = Date.now() - t0;
-    console.log(`[discover-fine-dining] Served ${cards.length} cards in ${elapsed}ms (filtered ${poolResult.cards.length - cards.length} below price floor)`);
+    console.log(`[discover-fine-dining] Served ${cards.length} cards in ${elapsed}ms`);
 
     return new Response(JSON.stringify({
       cards,

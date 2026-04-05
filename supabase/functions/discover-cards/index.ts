@@ -284,8 +284,9 @@ function filterByDateTime(
       return hourInRanges(targetHourStart, parsed);
     }
 
-    // No hours and not always-open → EXCLUDE
-    return false;
+    // No opening hours data AND not an always-open type → INCLUDE (assumed possibly open).
+    // Consistent with the "now" path — same policy for all date options.
+    return true;
   });
 }
 
