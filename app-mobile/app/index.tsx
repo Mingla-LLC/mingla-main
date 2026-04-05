@@ -2080,6 +2080,13 @@ function AppContent() {
                                 onAddFriend={() => {
                                   setCurrentPage("connections");
                                 }}
+                                onOpenChatWithUser={(friendUserId) => {
+                                  setPendingOpenDmUserId(friendUserId);
+                                  setCurrentPage("connections");
+                                }}
+                                onViewFriendProfile={(friendUserId) =>
+                                  setViewingFriendProfileId(friendUserId)
+                                }
                                 onUpgradePress={() => setShowPaywall(true)}
                                 accountPreferences={{
                                   currency: accountPreferences?.currency || "USD",
@@ -2117,6 +2124,8 @@ function AppContent() {
                                 onUnreadCountChange={setTotalUnreadMessages}
                                 onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
                                 onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
+                                openDirectMessageWithUserId={pendingOpenDmUserId}
+                                onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
                               />
                             </View>
                             <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>

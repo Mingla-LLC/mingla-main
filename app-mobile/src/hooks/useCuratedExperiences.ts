@@ -64,7 +64,7 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
         limit: 20,
         skipDescriptions: true,
       }),
-    staleTime: 30 * 60 * 1000,    // 30 minutes
+    staleTime: Infinity,            // Curated routes only refresh on preference change (query key changes). Same rationale as deck cards.
     gcTime: 2 * 60 * 60 * 1000,   // 2 hours
     enabled: enabled && location !== null,
     retry: 2,

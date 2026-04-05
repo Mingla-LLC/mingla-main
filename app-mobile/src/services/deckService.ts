@@ -335,7 +335,7 @@ class DeckService {
       return Promise.all(
         curatedPills.map(async (pill): Promise<Recommendation[]> => {
           try {
-            const curatedLimit = Math.ceil(limit * (1 / pills.length));
+            const curatedLimit = limit; // Give curated the same limit as categories — interleave balances them
             const cards = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,

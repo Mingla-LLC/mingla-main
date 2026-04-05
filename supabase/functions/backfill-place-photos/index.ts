@@ -59,6 +59,8 @@ serve(async (req: Request) => {
 
     // ── Action dispatch ───────────────────────────────────────────────────
     switch (body.action) {
+      case 'preview_run':
+        return handlePreviewRun(supabaseAdmin, body);
       case 'create_run':
         return handleCreateRun(supabaseAdmin, body, user.id);
       case 'run_next_batch':
@@ -177,6 +179,152 @@ async function handleLegacy(
 
 // ── create_run ────────────────────────────────────────────────────────────
 
+interface CityPlaceRow {
+  id: string;
+  google_place_id?: string | null;
+  photos?: unknown;
+  stored_photo_urls?: string[] | null;
+  ai_approved?: boolean | null;
+}
+
+interface RunPreviewAnalysis {
+  totalPlaces: number;
+  approvedPlaces: number;
+  withRealPhotos: number;
+  withoutStoredPhotos: number;
+  failedPlaces: number;
+  eligiblePlaces: number;
+  blockedByAiApproval: number;
+  blockedByMissingPhotoMetadata: number;
+  blockedByMissingGooglePlaceId: number;
+}
+
+function getStoredPhotoState(urls: string[] | null | undefined): 'missing' | 'failed' | 'real' {
+  if (!Array.isArray(urls) || urls.length === 0) return 'missing';
+
+  const nonEmptyUrls = urls
+    .filter((url): url is string => typeof url === 'string')
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+
+  if (nonEmptyUrls.length === 0) return 'missing';
+  if (nonEmptyUrls.length === 1 && nonEmptyUrls[0] === '__backfill_failed__') return 'failed';
+  return 'real';
+}
+
+function buildRunPreview(places: CityPlaceRow[]) {
+  const analysis: RunPreviewAnalysis = {
+    totalPlaces: places.length,
+    approvedPlaces: 0,
+    withRealPhotos: 0,
+    withoutStoredPhotos: 0,
+    failedPlaces: 0,
+    eligiblePlaces: 0,
+    blockedByAiApproval: 0,
+    blockedByMissingPhotoMetadata: 0,
+    blockedByMissingGooglePlaceId: 0,
+  };
+  const eligiblePlaces: CityPlaceRow[] = [];
+
+  for (const place of places) {
+    if (place.ai_approved === true) analysis.approvedPlaces++;
+
+    const storedState = getStoredPhotoState(place.stored_photo_urls);
+    if (storedState === 'real') {
+      analysis.withRealPhotos++;
+      continue;
+    }
+
+    analysis.withoutStoredPhotos++;
+    if (storedState === 'failed') analysis.failedPlaces++;
+
+    if (place.ai_approved !== true) {
+      analysis.blockedByAiApproval++;
+      continue;
+    }
+
+    if (!place.google_place_id) {
+      analysis.blockedByMissingGooglePlaceId++;
+      continue;
+    }
+
+    const photos = Array.isArray(place.photos) ? place.photos : [];
+    if (photos.length === 0) {
+      analysis.blockedByMissingPhotoMetadata++;
+      continue;
+    }
+
+    eligiblePlaces.push(place);
+  }
+
+  analysis.eligiblePlaces = eligiblePlaces.length;
+  return { analysis, eligiblePlaces };
+}
+
+async function loadCityPlacesForRun(
+  db: ReturnType<typeof createClient>,
+  city: string,
+  country: string,
+): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
+  // PostgREST caps results at 1000 rows (project default). Paginate to get all.
+  const PAGE_SIZE = 1000;
+  const allPlaces: CityPlaceRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data: page, error: pageErr } = await db
+      .from('place_pool')
+      .select('id, google_place_id, photos, stored_photo_urls, ai_approved')
+      .eq('is_active', true)
+      .eq('city', city)
+      .eq('country', country)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (pageErr) {
+      console.error('[backfill-place-photos] city run query error:', pageErr);
+      throw new Error(pageErr.message);
+    }
+
+    const rows = (page ?? []) as CityPlaceRow[];
+    allPlaces.push(...rows);
+
+    if (rows.length < PAGE_SIZE) break; // last page
+    offset += PAGE_SIZE;
+  }
+
+  const preview = buildRunPreview(allPlaces);
+  return { places: allPlaces, ...preview };
+}
+
+async function handlePreviewRun(
+  db: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const city = body.city as string;
+  const country = body.country as string;
+  if (!city || !country) return json({ error: 'city and country required' }, 400);
+
+  const batchSize = Math.min(Math.max(Number(body.batchSize) || 10, 1), 20);
+
+  try {
+    const { analysis } = await loadCityPlacesForRun(db, city, country);
+    const totalBatches = Math.ceil(analysis.eligiblePlaces / batchSize);
+    const estimatedCostUsd = +(analysis.eligiblePlaces * COST_PER_PLACE).toFixed(4);
+
+    return json({
+      status: analysis.eligiblePlaces > 0 ? 'ready' : 'nothing_to_do',
+      batchSize,
+      totalPlaces: analysis.eligiblePlaces,
+      totalBatches,
+      estimatedCostUsd,
+      analysis,
+    });
+  } catch (err) {
+    return json({ error: err instanceof Error ? err.message : 'Failed to preview run' }, 500);
+  }
+}
+
 async function handleCreateRun(
   db: ReturnType<typeof createClient>,
   body: Record<string, unknown>,
@@ -202,37 +350,18 @@ async function handleCreateRun(
     return json({ status: 'already_active', runId: existing.id });
   }
 
-  // Query places needing photos for this city
-  const { data: places, error: placesErr } = await db
-    .from('place_pool')
-    .select('id, google_place_id, photos, stored_photo_urls')
-    .eq('is_active', true)
-    .eq('city', city)
-    .eq('country', country)
-    .not('photos', 'is', null)
-    .order('created_at', { ascending: true });
-
-  if (placesErr) {
-    console.error('[backfill-place-photos] create_run query error:', placesErr);
-    return json({ error: placesErr.message }, 500);
+  let eligiblePlaces: CityPlaceRow[] = [];
+  let analysis: RunPreviewAnalysis;
+  try {
+    const preview = await loadCityPlacesForRun(db, city, country);
+    eligiblePlaces = preview.eligiblePlaces;
+    analysis = preview.analysis;
+  } catch (err) {
+    return json({ error: err instanceof Error ? err.message : 'Failed to load run candidates' }, 500);
   }
 
-  // Filter in JS for reliability (PostgREST array comparisons are fragile)
-  const eligiblePlaces = (places ?? []).filter((p: { photos?: unknown; stored_photo_urls?: string[] | null }) => {
-    // Must have photo metadata
-    const photos = Array.isArray(p.photos) ? p.photos : [];
-    if (photos.length === 0) return false;
-    // Must NOT already have stored photos
-    const urls = p.stored_photo_urls;
-    if (!urls || urls.length === 0) return true;
-    // Skip __backfill_failed__ places
-    if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
-    // Already has real photos
-    return false;
-  });
-
   if (eligiblePlaces.length === 0) {
-    return json({ status: 'nothing_to_do', totalPlaces: 0 });
+    return json({ status: 'nothing_to_do', totalPlaces: 0, analysis });
   }
 
   const totalPlaces = eligiblePlaces.length;
@@ -290,6 +419,7 @@ async function handleCreateRun(
     totalBatches,
     estimatedCostUsd,
     status: 'ready',
+    analysis,
   });
 }
 
@@ -476,16 +606,17 @@ async function processBatch(
     const placeId = batch.place_pool_ids[i];
 
     try {
-      // Load place — check if it still needs photos
+      // Load place — check if it still needs photos and is AI-approved
       const { data: place } = await db
         .from('place_pool')
         .select('id, google_place_id, photos, stored_photo_urls')
         .eq('id', placeId)
         .eq('is_active', true)
+        .eq('ai_approved', true)
         .maybeSingle();
 
       if (!place) {
-        // Place deleted or deactivated since run creation
+        // Place deleted, deactivated, or not AI-approved since run creation
         skipped++;
         continue;
       }

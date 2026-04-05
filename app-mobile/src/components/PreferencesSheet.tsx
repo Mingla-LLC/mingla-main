@@ -366,6 +366,14 @@ export default function PreferencesSheet({
       if (!gpsFlag && (loadedPreferences).custom_location) {
         setSearchLocation((loadedPreferences).custom_location);
         setUseLocation("search");
+        // Restore saved coordinates so they persist through re-saves
+        // without requiring the user to re-select the address.
+        if ((loadedPreferences).custom_lat != null && (loadedPreferences).custom_lng != null) {
+          setSelectedCoords({
+            lat: (loadedPreferences).custom_lat,
+            lng: (loadedPreferences).custom_lng,
+          });
+        }
       }
 
       setInitialPreferences({
@@ -527,7 +535,7 @@ export default function PreferencesSheet({
   const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
     if (isSelectingSuggestion.current) return;
     isSelectingSuggestion.current = true;
-    setSearchLocation(suggestion.displayName);
+    setSearchLocation(suggestion.fullAddress || suggestion.displayName);
     setShowSuggestions(false);
     setIsInputFocused(false);
 

@@ -321,7 +321,7 @@ Mingla/
 ### Discovery and Serving
 - `discover-cards` -- Pool-only card serving with 5-factor scoring
 - `discover-experiences` -- Daily curated experience serving
-- `discover-casual-eats`, `discover-creative-arts`, `discover-drink`, `discover-fine-dining`, `discover-first-meet`, `discover-nature`, `discover-picnic-park`, `discover-play`, `discover-watch`, `discover-wellness` -- Per-category discover functions
+- ~~Per-category discover functions~~ — Removed. `discover-cards` handles all categories in a single unified call.
 - `get-personalized-cards` -- Personalized card recommendations
 - `get-holiday-cards` -- Holiday-themed card serving
 - `get-person-hero-cards` -- Hero cards for paired people view

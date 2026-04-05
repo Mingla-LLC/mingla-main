@@ -1,10 +1,17 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+} from 'react';
 import {
   View,
   StyleSheet,
   ActivityIndicator,
   Alert,
-  InteractionManager,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import BottomSheet from '@gorhom/bottom-sheet';
@@ -73,6 +80,8 @@ export function DiscoverMap({
   const bottomSheetRef = useRef<BottomSheet>(null);
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
+  /** Bumped on every person pin tap so useLayoutEffect re-runs even when React bails out of setSelectedPerson (same object ref). */
+  const [personSheetOpenGen, bumpPersonSheetOpenGen] = useReducer((n: number) => n + 1, 0);
 
   const handleViewProfile = useCallback(
     (userId: string) => {
@@ -81,6 +90,15 @@ export function DiscoverMap({
       onPersonProfile?.(userId);
     },
     [onPersonProfile],
+  );
+
+  const handlePersonMessage = useCallback(
+    (userId: string) => {
+      setSelectedPerson(null);
+      personSheetRef.current?.close();
+      onPersonMessage?.(userId);
+    },
+    [onPersonMessage],
   );
 
   useEffect(() => {
@@ -203,25 +221,32 @@ export function DiscoverMap({
     setSelectedCard(null);
     bottomSheetRef.current?.close();
     setSelectedPerson(person);
+    bumpPersonSheetOpenGen();
   }, []);
 
-  // Open sheets after React commits selection. Calling snapToIndex in the marker
-  // onPress handler runs before state updates, so @gorhom/bottom-sheet often
-  // ignored the first snap (modal only appeared after several taps).
-  useEffect(() => {
+  // Snap after layout so PersonBottomSheet has `person` content. Must re-run on every
+  // tap (personSheetOpenGen): re-tapping the same friend reuses the same NearbyPerson
+  // reference, so setSelectedPerson can bail out and skip effects otherwise.
+  useLayoutEffect(() => {
     if (!selectedPerson) return;
-    const id = InteractionManager.runAfterInteractions(() => {
-      personSheetRef.current?.snapToIndex(0);
-    });
-    return () => id.cancel();
-  }, [selectedPerson?.userId]);
 
-  useEffect(() => {
+    const snap = () => personSheetRef.current?.snapToIndex(0);
+    snap();
+
+    const t1 = setTimeout(snap, 32);
+    const t2 = setTimeout(snap, 120);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [selectedPerson?.userId, personSheetOpenGen]);
+
+  useLayoutEffect(() => {
     if (!selectedCard) return;
-    const id = InteractionManager.runAfterInteractions(() => {
+    const id = requestAnimationFrame(() => {
       bottomSheetRef.current?.snapToIndex(0);
     });
-    return () => id.cancel();
+    return () => cancelAnimationFrame(id);
   }, [selectedCard?.id]);
 
   const user = useAppStore((s) => s.user);
@@ -439,7 +464,7 @@ export function DiscoverMap({
         ref={personSheetRef}
         person={selectedPerson}
         onClose={() => setSelectedPerson(null)}
-        onMessage={(userId) => onPersonMessage?.(userId)}
+        onMessage={handlePersonMessage}
         onInviteToSession={(userId) => onPersonInvite?.(userId)}
         onViewPairedCards={(userId) => onPersonCards?.(userId)}
         onViewProfile={handleViewProfile}

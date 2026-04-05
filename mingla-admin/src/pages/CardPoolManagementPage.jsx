@@ -16,7 +16,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   CreditCard, Camera, AlertTriangle, Eye, Play, Layers,
-  CheckCircle, Copy,
+  CheckCircle, Copy, StopCircle, Zap, XCircle, BarChart3,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -836,120 +836,154 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   );
 }
 
-// ── Tab 3: Generate Cards ───────────────────────────────────────────────────
+// ── Tab 3: Generate Cards (v2 — batch system) ──────────────────────────────
+
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLLS = 300; // 10 minutes at 2s interval — safety limit
 
 function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefresh }) {
   const { addToast } = useToast();
-  const [bbox, setBbox] = useState(null);
-  const [bboxLoading, setBboxLoading] = useState(false);
-  const [bboxError, setBboxError] = useState(null);
-  const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState(null);
-  const [resultType, setResultType] = useState(null); // "single" | "curated"
-  const [selectedCat, setSelectedCat] = useState("");
-  const [selectedExpType, setSelectedExpType] = useState("adventurous");
-  const [dryRun, setDryRun] = useState(false);
+
+  // City picker state
   const [cityRows, setCityRows] = useState([]);
   const [cityLoading, setCityLoading] = useState(false);
-  const mountedRef = useRef(true);
 
-  // Compute bounding box when city is selected
+  // Run state
+  const [runId, setRunId] = useState(null);
+  const [runStatus, setRunStatus] = useState(null); // full run object from polling
+  const [starting, setStarting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  // Last completed run (for showing results after completion)
+  const [lastRun, setLastRun] = useState(null);
+  const mountedRef = useRef(true);
+  const pollRef = useRef(null);
+
+  // Fetch city list from place_pool
   useEffect(() => {
     mountedRef.current = true;
-    if (!selectedCity || !selectedCountry) { setBbox(null); setBboxError(null); return; }
-
-    setBboxLoading(true);
-    setBboxError(null);
-
-    supabase.from("place_pool")
-      .select("lat, lng")
-      .eq("country", selectedCountry)
-      .eq("city", selectedCity)
-      .eq("is_active", true)
+    if (!selectedCountry || selectedCity) { setCityRows([]); return; }
+    setCityLoading(true);
+    supabase.rpc("admin_place_pool_city_list", { p_country: selectedCountry })
       .then(({ data, error }) => {
         if (!mountedRef.current) return;
-        if (error) { setBboxError(error.message); setBboxLoading(false); return; }
-        if (!data?.length) { setBbox(null); setBboxError("no_places"); setBboxLoading(false); return; }
-
-        const lats = data.map((p) => p.lat).filter(Boolean);
-        const lngs = data.map((p) => p.lng).filter(Boolean);
-        if (lats.length === 0) { setBbox(null); setBboxError("no_places"); setBboxLoading(false); return; }
-
-        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-        const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-        const centerLat = (minLat + maxLat) / 2;
-        const centerLng = (minLng + maxLng) / 2;
-        const latSpan = (maxLat - minLat) * 111320;
-        const lngSpan = (maxLng - minLng) * 111320 * Math.cos(centerLat * Math.PI / 180);
-        const radiusMeters = Math.max(latSpan, lngSpan) / 2 + 500;
-
-        setBbox({ location: { lat: centerLat, lng: centerLng }, radiusMeters: Math.max(radiusMeters, 1500) });
-        setBboxLoading(false);
+        if (error) {
+          addToast({ variant: "error", title: "Failed to load cities", description: error.message });
+          setCityRows([]);
+        } else {
+          setCityRows(data || []);
+        }
+        setCityLoading(false);
       });
-
     return () => { mountedRef.current = false; };
   }, [selectedCountry, selectedCity]);
 
-  // Fetch city list when country is selected but no city
+  // Check for active run when city changes
   useEffect(() => {
-    if (!selectedCountry || selectedCity) { setCityRows([]); return; }
-    setCityLoading(true);
-    supabase.rpc("admin_card_city_overview", { p_country: selectedCountry })
-      .then(({ data }) => {
-        if (mountedRef.current) setCityRows(data || []);
-        setCityLoading(false);
+    if (!selectedCity) { setRunId(null); setRunStatus(null); return; }
+    supabase.rpc("admin_card_generation_active", { p_city: selectedCity })
+      .then(({ data, error }) => {
+        if (!mountedRef.current) return;
+        if (error) {
+          console.warn("Failed to check active runs:", error.message);
+          return;
+        }
+        if (data && data.length > 0) {
+          setRunId(data[0].id);
+          setRunStatus(data[0]);
+        } else {
+          setRunId(null);
+          setRunStatus(null);
+        }
       });
-  }, [selectedCountry, selectedCity]);
+  }, [selectedCity]);
 
-  const generateSingle = async () => {
-    if (!bbox) return;
-    setGenerating(true);
-    setResult(null);
-    setResultType("single");
+  // Poll run status via RPC (fast, cheap, already has auth)
+  const pollCountRef = useRef(0);
+  useEffect(() => {
+    if (!runId) { clearInterval(pollRef.current); return; }
+    pollCountRef.current = 0;
+    const poll = async () => {
+      pollCountRef.current++;
+      if (pollCountRef.current > MAX_POLLS) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check status." });
+        return;
+      }
+      const { data, error } = await supabase.rpc("admin_card_generation_status", { p_run_id: runId });
+      if (!mountedRef.current) return;
+      if (error) { console.warn("[CardPool] Poll error:", error.message); return; }
+      if (!data || data.length === 0) return;
+      const run = data[0];
+      setRunStatus(run);
+      if (run.status !== "running") {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setLastRun(run);
+        if (run.status === "completed") {
+          addToast({ variant: "success", title: `Generated ${run.total_created} cards for ${selectedCity}` });
+        } else if (run.status === "cancelled") {
+          addToast({ variant: "info", title: "Generation cancelled", description: `Created ${run.total_created} cards before cancellation.` });
+        } else if (run.status === "failed") {
+          addToast({ variant: "error", title: "Generation failed", description: run.error_message || "Unknown error" });
+        }
+        if (onRefresh) onRefresh();
+      }
+    };
+    poll();
+    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(pollRef.current);
+  }, [runId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { mountedRef.current = false; clearInterval(pollRef.current); };
+  }, []);
+
+  // ── Actions ─────────────────────────────────────────────────────────────
+  const startGeneration = async () => {
+    setStarting(true);
+    setLastRun(null);
     try {
-      const body = {
-        location: bbox.location,
-        radiusMeters: bbox.radiusMeters,
-        ...(selectedCat ? { categories: [selectedCat] } : {}),
-        dryRun,
-      };
-      const { data, error } = await supabase.functions.invoke("generate-single-cards", { body });
+      const { data, error } = await supabase.functions.invoke("generate-single-cards", {
+        body: { action: "generate_all", city: selectedCity, country: selectedCountry },
+      });
       if (error) throw new Error(error.message);
-      setResult(data);
-      addToast({ variant: "success", title: dryRun ? "Dry run complete" : "Single card generation complete" });
-      if (!dryRun && onRefresh) onRefresh();
+      if (data?.error) {
+        // Handle concurrency guard (409) — pick up existing run
+        if (data.existingRunId) {
+          setRunId(data.existingRunId);
+          addToast({ variant: "info", title: "Generation already running", description: "Resuming progress tracking for existing job." });
+          return;
+        }
+        throw new Error(data.error);
+      }
+      if (data?.runId) {
+        setRunId(data.runId);
+        addToast({ variant: "success", title: "Card generation started" });
+      }
     } catch (err) {
-      addToast({ variant: "error", title: "Generation failed", description: err.message });
+      addToast({ variant: "error", title: "Failed to start generation", description: err.message });
     } finally {
-      setGenerating(false);
+      setStarting(false);
     }
   };
 
-  const generateCurated = async () => {
-    if (!bbox) return;
-    setGenerating(true);
-    setResult(null);
-    setResultType("curated");
+  const cancelGeneration = async () => {
+    if (!runId) return;
+    setCancelling(true);
     try {
-      const body = {
-        location: bbox.location,
-        experienceType: selectedExpType || "adventurous",
-        skipDescriptions: false,
-        limit: 20,
-      };
-      const { data, error } = await supabase.functions.invoke("generate-curated-experiences", { body });
-      if (error) throw new Error(error.message);
-      setResult(data);
-      addToast({ variant: "success", title: "Curated experience generation complete" });
-      if (onRefresh) onRefresh();
+      await supabase.functions.invoke("generate-single-cards", {
+        body: { action: "cancel_run", runId },
+      });
     } catch (err) {
-      addToast({ variant: "error", title: "Generation failed", description: err.message });
+      addToast({ variant: "error", title: "Failed to cancel", description: err.message });
     } finally {
-      setGenerating(false);
+      setCancelling(false);
     }
   };
 
-  // No city selected — show city picker or message
+  // ── City picker (no city selected) ──────────────────────────────────────
   if (!selectedCity) {
     const cityPickerColumns = [
       {
@@ -960,15 +994,21 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
           </button>
         ),
       },
-      { key: "active_cards", label: "Active Cards", sortable: true },
-      { key: "single_cards", label: "Single", sortable: true },
-      { key: "curated_cards", label: "Curated", sortable: true },
-      { key: "card_image_pct", label: "Image %", sortable: true, render: (_, r) => pctBadge(r.card_image_pct || 0) },
-      { key: "never_served", label: "Never Served", sortable: true },
+      { key: "approved_places", label: "Approved Places", sortable: true },
+      { key: "with_photos", label: "With Photos", sortable: true },
+      { key: "existing_cards", label: "Existing Cards", sortable: true },
+      {
+        key: "ready_to_generate", label: "Ready to Generate", sortable: true,
+        render: (_, r) => (
+          <span className={r.ready_to_generate > 0 ? "font-semibold text-[var(--color-success-600)]" : "text-[var(--color-text-tertiary)]"}>
+            {r.ready_to_generate}
+          </span>
+        ),
+      },
     ];
 
     return (
-      <SectionCard title="Select a City" subtitle="Card generation requires a specific city for bounding box computation.">
+      <SectionCard title="Select a City" subtitle="Choose a city to generate single cards for all eligible places.">
         {selectedCountry ? (
           cityLoading
             ? <div className="flex items-center justify-center py-8 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Loading cities...</span></div>
@@ -983,118 +1023,154 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
     );
   }
 
-  if (bboxLoading) {
-    return <div className="flex items-center justify-center py-12 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Computing city bounds...</span></div>;
-  }
-  if (bboxError === "no_places") {
-    return <div className="text-center py-12 text-[var(--color-text-secondary)]">No active places found in {selectedCity}. Seed places first via the Place Pool page.</div>;
-  }
-  if (bboxError) {
-    return <ErrorBanner error={bboxError} />;
-  }
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const isRunning = runStatus?.status === "running";
+  const pct = runStatus && runStatus.total_categories > 0
+    ? Math.round((runStatus.completed_categories / runStatus.total_categories) * 100)
+    : 0;
 
-  // Format single card results as table
-  const renderResults = () => {
-    if (!result) return null;
-
-    if (resultType === "single") {
-      const catBreakdown = result.categories || result.results || [];
-      const resultRows = Array.isArray(catBreakdown)
-        ? catBreakdown.map((r) => ({
-          _key: r.category || r.name,
-          category: CATEGORY_LABELS[r.category] || r.category || r.name || "—",
-          created: r.created || r.count || 0,
-          skipped: r.skipped || 0,
-          reason: r.skippedReasons?.join(", ") || r.reason || "—",
-        }))
-        : Object.entries(catBreakdown).map(([slug, stats]) => ({
-          _key: slug,
-          category: CATEGORY_LABELS[slug] || slug,
-          created: stats.created || stats.count || 0,
-          skipped: stats.skipped || 0,
-          reason: stats.skippedReasons?.join(", ") || "—",
-        }));
-
-      const totalCreated = resultRows.reduce((s, r) => s + r.created, 0);
-      const resultColumns = [
-        { key: "category", label: "Category" },
-        { key: "created", label: "Created" },
-        { key: "skipped", label: "Skipped" },
-        { key: "reason", label: "Reason" },
-      ];
-
-      return (
-        <SectionCard title="Generation Results"
-          subtitle={dryRun ? "Dry Run — No cards were created. Preview:" : `Generated ${totalCreated} single cards`}>
-          <DataTable columns={resultColumns} rows={resultRows} loading={false} emptyMessage="No results" />
-        </SectionCard>
-      );
-    }
-
-    if (resultType === "curated") {
-      const experiences = result.experiences || result.cards || result.results || [];
-      const titles = Array.isArray(experiences) ? experiences.map((e) => e.title || e.name || "Untitled") : [];
-
-      return (
-        <SectionCard title="Generation Results"
-          subtitle={`Generated ${titles.length} curated experiences (type: ${selectedExpType})`}>
-          {titles.length > 0 ? (
-            <ul className="space-y-1 text-sm">
-              {titles.map((t, i) => (
-                <li key={i} className="flex items-center gap-2 py-1">
-                  <CheckCircle className="w-4 h-4 text-[var(--color-success-500)] shrink-0" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-sm text-[var(--color-text-tertiary)]">No experiences returned. Check edge function logs.</div>
-          )}
-        </SectionCard>
-      );
-    }
-
-    return null;
+  // Build category results table from run data
+  const buildResultRows = (run) => {
+    if (!run?.category_results) return [];
+    return Object.entries(run.category_results).map(([slug, stats]) => ({
+      _key: slug,
+      category: CATEGORY_LABELS[slug] || slug,
+      created: stats.created || 0,
+      skipped: stats.skipped || 0,
+      eligible: stats.eligible || 0,
+    }));
   };
+
+  const resultColumns = [
+    { key: "category", label: "Category" },
+    { key: "eligible", label: "Eligible" },
+    {
+      key: "created", label: "Created",
+      render: (_, r) => <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span>,
+    },
+    { key: "skipped", label: "Skipped" },
+  ];
+
+  // ── Render ──────────────────────────────────────────────────────────────
+  const displayRun = isRunning ? runStatus : lastRun;
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Single Card Generation" subtitle={`Generate cards for ${selectedCity}`}>
-        <div className="flex items-end gap-3 flex-wrap">
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Category (optional)</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={selectedCat} onChange={(e) => setSelectedCat(e.target.value)}>
-              <option value="">All Categories</option>
-              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
+      {/* ── Progress Card (while running) ── */}
+      {isRunning && runStatus && (
+        <div className="bg-[var(--color-success-50)] border border-[var(--color-success-200)] rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[var(--color-success-600)] animate-pulse" />
+              <span className="text-sm font-semibold text-[var(--color-success-700)]">
+                Generating cards for {selectedCity}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" icon={StopCircle} loading={cancelling} onClick={cancelGeneration}>
+              Cancel
+            </Button>
           </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="dryrun" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} className="rounded" />
-            <label htmlFor="dryrun" className="text-sm text-[var(--color-text-secondary)] cursor-pointer">Dry Run</label>
-          </div>
-          <Button icon={Play} loading={generating} disabled={generating} onClick={generateSingle}>
-            Generate Single Cards
-          </Button>
-        </div>
-      </SectionCard>
 
-      <SectionCard title="Curated Experience Generation" subtitle="Multi-stop itinerary cards">
-        <div className="flex items-end gap-3 flex-wrap">
-          <div>
-            <label className="text-xs text-[var(--color-text-secondary)]">Experience Type</label>
-            <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-              value={selectedExpType} onChange={(e) => setSelectedExpType(e.target.value)}>
-              {EXPERIENCE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-            </select>
+          {/* Progress bar */}
+          <div className="w-full bg-[var(--color-success-100)] rounded-full h-2.5">
+            <div
+              className="bg-[var(--color-success-500)] h-2.5 rounded-full transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
           </div>
-          <Button icon={Play} loading={generating} disabled={generating} onClick={generateCurated}>
-            Generate Curated Experiences
-          </Button>
-        </div>
-      </SectionCard>
 
-      {renderResults()}
+          <div className="flex items-center justify-between text-xs text-[var(--color-success-700)]">
+            <span>
+              Category {runStatus.completed_categories} / {runStatus.total_categories}
+              {runStatus.current_category && (
+                <span className="ml-1 text-[var(--color-text-secondary)]">
+                  — processing {CATEGORY_LABELS[runStatus.current_category] || runStatus.current_category}
+                </span>
+              )}
+            </span>
+            <span>{pct}%</span>
+          </div>
+
+          {/* Running totals */}
+          <div className="grid grid-cols-4 gap-3 pt-1">
+            <div className="text-center">
+              <div className="text-lg font-bold text-[var(--color-success-700)]">{runStatus.total_created}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Created</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_duplicate}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Duplicates</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_no_photos}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_child_venue}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Excluded</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Start Generation Card (when idle) ── */}
+      {!isRunning && (
+        <SectionCard
+          title={`Generate All Cards — ${selectedCity}`}
+          subtitle="Creates single cards for every eligible place (approved, with photos, not already carded) across all 13 categories."
+        >
+          <div className="flex items-center gap-4">
+            <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
+              Generate All Cards
+            </Button>
+            <span className="text-xs text-[var(--color-text-tertiary)]">
+              No API cost — reads from place pool only
+            </span>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── Results (completed/cancelled run) ── */}
+      {displayRun && !isRunning && (
+        <SectionCard
+          title="Generation Results"
+          subtitle={
+            displayRun.status === "completed"
+              ? `Completed — Created ${displayRun.total_created} cards, skipped ${displayRun.total_skipped}`
+              : displayRun.status === "cancelled"
+              ? `Cancelled at category ${displayRun.completed_categories}/${displayRun.total_categories} — Created ${displayRun.total_created} cards`
+              : `Failed — ${displayRun.error_message || "Unknown error"}`
+          }
+        >
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="bg-[var(--color-success-50)] rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-[var(--color-success-700)]">{displayRun.total_created}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Cards Created</div>
+            </div>
+            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+              <div className="text-xl font-bold">{displayRun.skipped_duplicate}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Already Existed</div>
+            </div>
+            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+              <div className="text-xl font-bold">{displayRun.skipped_no_photos}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+            </div>
+            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+              <div className="text-xl font-bold">{displayRun.skipped_child_venue}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">Excluded Venues</div>
+            </div>
+          </div>
+
+          {/* Per-category breakdown */}
+          <DataTable
+            columns={resultColumns}
+            rows={buildResultRows(displayRun)}
+            loading={false}
+            emptyMessage="No category data"
+          />
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -1108,15 +1184,26 @@ export function CardPoolManagementPage() {
   const [countries, setCountries] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const mountedRef = useRef(true);
+  const { addToast } = useToast();
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load country list for breadcrumb dropdown
+  // Load country list from both card_pool and place_pool (so new seeded cities appear)
   useEffect(() => {
     mountedRef.current = true;
-    supabase.rpc("admin_card_country_overview").then(({ data }) => {
+    Promise.all([
+      supabase.rpc("admin_card_country_overview"),
+      supabase.rpc("admin_place_pool_country_list"),
+    ]).then(([cardRes, placeRes]) => {
       if (!mountedRef.current) return;
-      if (data) setCountries(data.map((r) => r.country));
+      if (cardRes.error && placeRes.error) {
+        addToast({ variant: "error", title: "Failed to load countries", description: cardRes.error.message });
+        return;
+      }
+      const cardCountries = (cardRes.data || []).map((r) => r.country);
+      const placeCountries = (placeRes.data || []).map((r) => r.country);
+      const merged = [...new Set([...cardCountries, ...placeCountries])].sort();
+      setCountries(merged);
     });
     return () => { mountedRef.current = false; };
   }, []);

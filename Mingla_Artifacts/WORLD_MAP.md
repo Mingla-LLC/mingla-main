@@ -147,6 +147,21 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0267 | Travel time not enforced in deck | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — hard filter added, out-of-range cards excluded |
 | ORCH-0268 | NULL price tier passthrough | Discovery | S2 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — NULL price_level now filtered before deck assembly |
 | ORCH-0272 | Cross-page dedup — pages return same 20 cards + UI freeze | Discovery | S0 | bug | closed | A | 2026-04-02 | QA_ORCH_0272_CROSS_PAGE_DEDUP_REPORT.md — ON CONFLICT predicate fixed, error throw + circuit breaker added. Migration applied live. 7/7 tests PASS. |
+| ORCH-0301 | Swiped cards reappear in same session — duplicate cards in deck | Discovery | S1 | bug | spec-ready | F | — | FORENSIC_MASTER_REPORT.md — SwipeableCards.tsx:938 clears removedCards on batch append. Effect can't distinguish append from replacement. |
+| ORCH-0302 | Exact address not persisting in preferences sheet — truncated to short form | Discovery | S1 | bug | spec-ready | F | — | FORENSIC_MASTER_REPORT.md — PreferencesSheet.tsx:530 saves suggestion.displayName (short) instead of suggestion.fullAddress. |
+| ORCH-0303 | Under 10 cards then exhausted despite large pool | Discovery | S1 | bug | spec-ready | F | — | FORENSIC_MASTER_REPORT.md — limit:20 hardcoded in 3 places + datetime filter kills 60%+ evening cards + curated gets disproportionately small allocation. |
+| ORCH-0304 | GPS location stuck on old city (Raleigh) — staleTime:Infinity + undefined refreshKey | Discovery | S0 | bug | spec-ready | F | — | FORENSIC_MASTER_REPORT.md — 3 compounding failures: staleTime:Infinity, undefined refreshKey in DiscoverScreen, one-shot GPS never resets. |
+| ORCH-0305 | Card Pool page doesn't show AI-approved cards (64 fine dining Raleigh approved but not visible) | Admin | S1 | bug | open | F | — | User report 2026-04-04 — AI-categorized and approved places not appearing in card pool UI |
+| ORCH-0306 | Cannot generate single cards for entire batch of available cards | Admin | S1 | bug | open | F | — | User report 2026-04-04 — generate cards button doesn't process all available cards |
+| ORCH-0307 | Card generation has no progress feedback — no batch count, no live stats, just success message | Admin | S1 | ux | open | F | — | User report 2026-04-04 — unlike seeding/photo download which show live progress, card gen is fire-and-forget |
+| ORCH-0308 | Pair request acceptance not updating in real-time for SENDER | Pairing | S1 | bug | open | F | — | User report 2026-04-04 — sender sends request, receiver accepts, sender's UI doesn't update. Realtime subscription exists but may not fire (RPC bypass, user_a/user_b ordering, or WebSocket disconnect). |
+| ORCH-0309 | 921 cards had wrong categories — generated before AI recategorized, never updated | Discovery | S0 | data-integrity | closed | A | 2026-04-05 | SQL fix applied live: synced all card_pool.categories with place_pool.ai_categories. Structural fix: generate-single-cards now syncs categories on duplicate detection instead of just skipping. |
+| ORCH-0310 | 724 AI-approved places globally have zero cards generated | Discovery | S1 | missing-feature | open | F | — | DB evidence: LEFT JOIN card_pool on place_pool_id shows 724 approved+active places with no card_pool entry. Blocked by ORCH-0305/0306. |
+| ORCH-0311 | custom_lat/custom_lng NULL in DB despite custom location being set | Discovery | S1 | bug | open | F | — | DB evidence: preferences row has custom_location string but custom_lat=null, custom_lng=null. Fire-and-forget save not persisting coordinates. |
+| ORCH-0312 | query_pool_cards RPC times out on cold call for large result sets (Baltimore 1335 cards) | Discovery | S1 | performance | open | F | — | Log evidence: "canceling statement due to statement timeout" + discover-cards ERROR 12008ms for Baltimore bbox. |
+| ORCH-0313 | Timezone double-application in datetime filter — picks wrong day for scheduled dates | Discovery | S0 | bug | closed | A | 2026-04-05 | datetimePref already encodes local midnight as UTC. Edge function applied longitude offset (-5h) on top, pushing midnight April 6 (Monday) back to April 5 23:00 (Sunday). Most fine dining closed Sunday → 5 cards instead of 14+. Fixed: extract day directly from datetimePref without offset. |
+| ORCH-0314 | Admin card pool dashboard shows counts by seeding_category not card_pool.categories — misleading | Admin | S2 | ux | open | F | — | Dashboard shows 32 fine dining for Raleigh but only 20 have fine_dining in card_pool.categories. Rest were AI-recategorized to casual_eats etc. |
+| ORCH-0315 | Hidden CATEGORY_MIN_PRICE_TIER floor kills AI-approved fine dining cards with low price tiers | Discovery | S1 | architecture-flaw | closed | A | 2026-04-05 | scorePoolCards had a bougie price floor for fine_dining. 4 AI-approved cards (Brodeto, M Sushi, Omakase, The Pit) permanently invisible because price_tier was chill/comfy. Removed — AI is the sole quality gate. |
 | ORCH-0273 | place_pool → card_pool data drift (13+ fields stale) | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md — Unified sync trigger, 16 fields + curated composites. Old website trigger replaced. 10/10 PASS. P3: redundant city/country trigger (cleanup). |
 | ORCH-0274 | Photo backfill pipeline broken — no city filter, timeouts, no job tracking | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md + QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md — Full job system: 2 tables, 9 actions, city-scoped batches, auto-advance, persist across reloads. P1 13/13 + P2 10/10 PASS. |
 
@@ -387,6 +402,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0210 | Memory pressure on large lists | State | S3 | unaudited | open | F | — | — |
 | ORCH-0270 | Tab switching loading spinners | State | S1 | bug | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — SP-01 root cause, always-mounted tabs |
 | ORCH-0271 | PreferencesSheet loading shimmer on every open | State | S2 | bug | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — opens from cache |
+| ORCH-0300 | App doesn't feel alive — content freshness architecture flaw | State | S1 | architecture-flaw | spec-ready | F | — | FORENSIC_MASTER_REPORT.md — Content excluded from foreground refresh based on false "expensive API" assumption. All 3 content edge functions read from our DB, zero external calls. |
 
 ### Cross-Cutting: Chat Responsiveness
 
@@ -509,7 +525,9 @@ See COVERAGE_MAP.md for detailed grade distribution.
 
 | ID | Issue | Investigator | Started | Last Update | Status |
 |----|-------|-------------|---------|-------------|--------|
-| — | No active investigations | — | — | — | — |
+| ORCH-0300 | App freshness architecture — content stale times, missing content realtime, foreground refresh gaps | Forensics | 2026-04-04 | 2026-04-04 | Dispatched |
+| ORCH-0301–0304 | 4 deck bugs — duplicate cards, address not persisting, sparse deck, GPS location stale | Forensics | 2026-04-04 | 2026-04-04 | Dispatched |
+| ORCH-0305–0307 | 3 admin card pool issues — browse visibility, generation skip transparency, progress feedback | Forensics | 2026-04-04 | 2026-04-04 | Dispatched |
 
 ---
 

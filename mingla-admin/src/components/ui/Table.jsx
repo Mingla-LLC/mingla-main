@@ -20,6 +20,7 @@ export function DataTable({
   onSelect,
   onSelectAll,
   getRowId = (row) => row.id,
+  rowClassName,
 }) {
   const [internalSortKey, setInternalSortKey] = useState(null);
   const [internalSortDir, setInternalSortDir] = useState("asc");
@@ -180,6 +181,7 @@ export function DataTable({
                       "hover:bg-[var(--table-row-hover)] transition-colors duration-150",
                       striped && i % 2 === 1 ? "bg-[var(--table-stripe)]" : "",
                       isSelected ? "bg-orange-50/50 dark:bg-orange-950/20" : "",
+                      typeof rowClassName === "function" ? rowClassName(row) : "",
                     ].join(" ")}
                   >
                     {selectable && (

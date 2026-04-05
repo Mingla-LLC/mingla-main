@@ -332,15 +332,6 @@ export const VISIBLE_CATEGORY_NAMES = ALL_CATEGORY_NAMES.filter(
   c => !HIDDEN_CATEGORIES.has(c)
 );
 
-// ── Per-category minimum price tier ───────────────────────────────────────────
-// Categories listed here require places to meet a minimum Google price level.
-// Places with null/unknown priceLevel are excluded from these categories.
-import type { PriceTierSlug } from './priceTiers.ts';
-
-export const CATEGORY_MIN_PRICE_TIER: Partial<Record<string, PriceTierSlug>> = {
-  'fine_dining': 'bougie', // Only PRICE_LEVEL_EXPENSIVE ($150–$300) and above
-};
-
 // ── Per-category search strategy override ─────────────────────────────────────
 // Categories listed here use Text Search instead of Nearby Search.
 // Text Search finds places by concept/intent rather than rigid type tags,

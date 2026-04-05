@@ -697,8 +697,10 @@ export function SubscriptionManagementPage() {
               {historyData.map((entry) => (
                 <div
                   key={entry.id}
-                  className="p-3 rounded-lg border"
+                  className="p-3 rounded-lg"
                   style={{
+                    borderStyle: "solid",
+                    borderWidth: 1,
                     borderColor: entry.is_active ? "var(--color-brand-500)" : "var(--color-border)",
                     backgroundColor: entry.is_active ? "var(--color-brand-50, #fff7ed)" : "var(--color-background-secondary)",
                   }}

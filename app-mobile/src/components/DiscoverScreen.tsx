@@ -13,6 +13,7 @@ import {
   Animated,
   ActivityIndicator,
   Alert,
+  AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "./ui/Icon";
@@ -1104,7 +1105,7 @@ export default function DiscoverScreen({
   }, [preferencesRefreshKey]);
 
   // Fallback: saved location preference (only used if device GPS is unavailable)
-  const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
+  const { data: userLocationData } = useUserLocation(user?.id, "solo", preferencesRefreshKey);
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
 
@@ -1173,9 +1174,40 @@ export default function DiscoverScreen({
     resolveLocation();
   }, [fallbackLat, fallbackLng]);
 
+  // Reset the one-shot GPS flag on foreground resume so GPS re-fires after the
+  // user has been away (e.g., flew to a new city). The next render cycle will
+  // re-enter the effect above with deviceGpsFetchedRef.current === false.
+  useEffect(() => {
+    let lastState = AppState.currentState;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (lastState === 'background' && nextState === 'active') {
+        deviceGpsFetchedRef.current = false;
+      }
+      lastState = nextState;
+    });
+    return () => sub.remove();
+  }, []);
+
   // locationLat/locationLng now come from device GPS (not saved preference)
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
+
+  /** Stable reference — inline `{ lat, lng }` on every DiscoverScreen re-render forced DiscoverMap → ClusteredMapView to rebuild SuperCluster and remount markers (flicker while panning). */
+  const discoverMapUserLocation = useMemo(() => {
+    if (deviceGpsLat != null && deviceGpsLng != null) {
+      return { latitude: deviceGpsLat, longitude: deviceGpsLng };
+    }
+    if (fallbackLat != null && fallbackLng != null) {
+      return { latitude: fallbackLat, longitude: fallbackLng };
+    }
+    return null;
+  }, [deviceGpsLat, deviceGpsLng, fallbackLat, fallbackLng]);
+
+  const defaultDiscoverMapAccountPrefs = useMemo(
+    () => ({ currency: 'USD' as const, measurementSystem: 'metric' as const }),
+    [],
+  );
+  const discoverMapAccountPreferences = accountPreferences ?? defaultDiscoverMapAccountPrefs;
 
   // Note: Saved people migration removed — replaced by pairing system
 
@@ -3588,8 +3620,8 @@ export default function DiscoverScreen({
                     if (pill) setSelectedPillId(pill.id);
                   }}
                   onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
-                  accountPreferences={accountPreferences ?? { currency: 'USD', measurementSystem: 'metric' }}
-                  userLocation={deviceGpsLat && deviceGpsLng ? { latitude: deviceGpsLat, longitude: deviceGpsLng } : fallbackLat && fallbackLng ? { latitude: fallbackLat, longitude: fallbackLng } : null}
+                  accountPreferences={discoverMapAccountPreferences}
+                  userLocation={discoverMapUserLocation}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
                   paused={!isMapShowing || !isTabVisible}

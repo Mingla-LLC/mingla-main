@@ -88,9 +88,9 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       deckService.fetchDeck({
         ...restParams,
         location: location!,
-        limit: 20,
+        limit: 200,
       }),
-    staleTime: 30 * 60 * 1000,     // 30 minutes
+    staleTime: Infinity,            // Deck only refreshes on explicit preference change (query key changes). Never auto-refetch — deck is an active swipe session, not a feed.
     gcTime: 2 * 60 * 60 * 1000,    // 2 hours
     enabled: isEnabled,
     retry: 1,

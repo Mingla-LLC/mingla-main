@@ -921,11 +921,15 @@ export default function SwipeableCards({
     refreshKey,
   ]);
 
-  // Clear removedCards when the batch changes (Generate Another 20)
+  // Detect full deck replacement vs batch append.
+  // Only clear removedCards when the FIRST 5 card IDs change (full replacement).
+  // When new cards are appended to the end (batch 2+), the first 5 IDs stay the
+  // same — the user keeps their swipe progress.
+  // Preference/mode change resets are already handled at line ~798.
   useEffect(() => {
     if (!recommendations || recommendations.length === 0) return;
 
-    const batchKey = recommendations
+    const newFirstIds = recommendations
       .slice(0, 5)
       .map((r) => r.id)
       .sort()
@@ -933,13 +937,17 @@ export default function SwipeableCards({
 
     if (
       previousBatchIdsRef.current !== "" &&
-      previousBatchIdsRef.current !== batchKey
+      previousBatchIdsRef.current !== newFirstIds
     ) {
+      // The first 5 cards changed — this is a full deck replacement (e.g. external
+      // reset not caught by the preference/mode handler). Clear swipe state.
       setRemovedCards(new Set());
       setCurrentCardIndex(0);
     }
+    // If only the array length grew but firstIds stayed the same, this is a batch
+    // append — do NOT clear removedCards or reset currentCardIndex.
 
-    previousBatchIdsRef.current = batchKey;
+    previousBatchIdsRef.current = newFirstIds;
   }, [recommendations]);
 
   // PanResponder for swipe gestures
