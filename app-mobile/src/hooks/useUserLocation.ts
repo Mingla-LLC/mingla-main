@@ -148,11 +148,13 @@ export const useUserLocation = (
     enabled: true,
     staleTime: useGpsFlag ? 5 * 60 * 1000 : Infinity, // GPS: 5 min (re-resolve on city change); custom: never (address doesn't change)
     gcTime: 24 * 60 * 60 * 1000,
-    // GPS mode: don't carry forward stale custom location as placeholder.
-    // Let location be null momentarily until GPS resolves with correct coords.
-    // Custom mode: carry forward previous data for instant display.
-    placeholderData: useGpsFlag ? undefined : (previousData) => previousData,
-    initialData: useGpsFlag ? undefined : (cachedLocationSync ?? undefined),
+    // Never use placeholderData or initialData for location queries.
+    // These carry forward STALE coordinates from previous location modes,
+    // causing the deck to fire with wrong-city coordinates.
+    // The queryFn resolves in <50ms for custom mode (reads from params)
+    // and ~1-3s for GPS mode — brief null is acceptable.
+    placeholderData: undefined,
+    initialData: undefined,
   });
 
   // Persist resolved location to AsyncStorage for instant startup on next launch
