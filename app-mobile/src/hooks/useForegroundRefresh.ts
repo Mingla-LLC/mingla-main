@@ -11,10 +11,9 @@ import { phoneInviteKeys } from './usePhoneInvite';
 import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
 
-// Query key prefixes for lightweight/critical queries that should refresh on resume.
-// Expensive queries (deck-cards, curated-experiences, discover-experiences) are
-// intentionally EXCLUDED — they involve paid API calls and use their own staleTime.
-// personCardKeys intentionally excluded — uses staleTime: Infinity (no auto-refresh).
+// Query key prefixes for critical queries that should refresh on resume.
+// Content queries are included — they read from card_pool/place_pool (our DB), not
+// external APIs. personCardKeys intentionally excluded — uses staleTime: Infinity.
 const CRITICAL_QUERY_KEYS = [
   friendsKeys.all,                // friends list, requests, blocked, muted
   boardKeys.all,                  // collaboration boards
@@ -24,6 +23,12 @@ const CRITICAL_QUERY_KEYS = [
   subscriptionKeys.all,           // subscription status
   ['calendarEntries'],            // calendar entries
   ['userPreferences'],            // user preferences
+  ['deck-cards'],                 // swipe deck cards
+  ['curated-experiences'],        // curated multi-stop experiences
+  ['discover-experiences'],       // discover grid experiences
+  ['session-deck'],               // collaboration session deck
+  ['map-cards-singles'],          // map view single cards
+  ['map-cards-curated'],          // map view curated cards
 ] as const;
 
 const DEBOUNCE_MS = 500;

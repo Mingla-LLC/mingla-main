@@ -146,7 +146,7 @@ export const useUserLocation = (
     queryKey: ['userLocation', userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag],
     queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag),
     enabled: true,
-    staleTime: Infinity,
+    staleTime: useGpsFlag ? 5 * 60 * 1000 : Infinity, // GPS: 5 min (re-resolve on city change); custom: never (address doesn't change)
     gcTime: 24 * 60 * 60 * 1000,
     placeholderData: (previousData) => previousData,
     initialData: cachedLocationSync ?? undefined,

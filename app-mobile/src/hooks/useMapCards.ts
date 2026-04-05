@@ -124,7 +124,7 @@ export function useMapCards(
       return singles;
     },
     enabled: !!user?.id && !!location,
-    staleTime: 30 * 60_000,
+    staleTime: 2 * 60_000,  // 2 minutes — content reads from our DB
     gcTime: 60 * 60_000,
   });
 
@@ -172,7 +172,7 @@ export function useMapCards(
       return cards;
     },
     enabled: !!user?.id && !!location,
-    staleTime: 30 * 60_000,
+    staleTime: 2 * 60_000,  // 2 minutes — content reads from our DB
     gcTime: 60 * 60_000,
   });
 

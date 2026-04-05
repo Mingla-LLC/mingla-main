@@ -217,7 +217,9 @@ export const useAuthSimple = () => {
       if (event === 'TOKEN_REFRESHED') {
         const { queryClient, resetAuth401Counter } = require('../config/queryClient');
         resetAuth401Counter();
-        queryClient.invalidateQueries();
+        queryClient.invalidateQueries({
+          predicate: (query) => query.state.status === 'error',
+        });
         // Fresh JWT — warm edge functions before invalidated queries refetch
         supabase.functions.invoke('keep-warm').catch(() => {});
       }

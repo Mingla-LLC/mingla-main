@@ -102,7 +102,7 @@ export const useDiscoverQuery = (params: UseDiscoverQueryParams) => {
       return fetchDiscoverExperiences(userLocation, radius);
     },
     enabled: enabled && !!userLocation,
-    staleTime: 60 * 60 * 1000, // 1 hour - data stays fresh for 1 hour
+    staleTime: 2 * 60 * 1000, // 2 minutes — content reads from our DB, not external APIs
     gcTime: 24 * 60 * 60 * 1000, // 24 hours - keep in cache for 24 hours
     refetchOnMount: false, // Don't refetch when component mounts if data exists
     placeholderData: (previousData) => previousData,

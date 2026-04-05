@@ -98,11 +98,22 @@ export function PhotoPoolManagementPage() {
   const { addToast } = useToast();
   const { session } = useAuth();
 
-  // Dashboard data
-  const [overview, setOverview] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Summary data (loaded on mount — stat cards + cost alert)
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState(null);
   const [setupNeeded, setSetupNeeded] = useState(false);
+
+  // Per-tab lazy-loaded data
+  const [missingPlaces, setMissingPlaces] = useState(null);
+  const [missingTotal, setMissingTotal] = useState(0);
+  const [missingLoading, setMissingLoading] = useState(false);
+  const [tabCategories, setTabCategories] = useState(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [locationBuckets, setLocationBuckets] = useState(null);
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [refreshHealth, setRefreshHealth] = useState(null);
+  const [refreshLoading, setRefreshLoading] = useState(false);
 
   // Active tab
   const [activeTab, setActiveTab] = useState("health");
@@ -149,32 +160,118 @@ export function PhotoPoolManagementPage() {
     };
   }, []);
 
-  // ─── Fetch Overview ──────────────────────────────────────────────────────────
+  // ─── Fetch Summary (stat cards + cost alert — always on mount) ────────────
 
-  const fetchOverview = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
     try {
-      const { data, error: rpcErr } = await supabase.rpc("admin_pool_stats_overview");
+      const { data, error: rpcErr } = await supabase.rpc("admin_photo_pool_summary");
       if (rpcErr) {
         if (rpcErr.code === "PGRST202") { setSetupNeeded(true); return; }
         throw rpcErr;
       }
       if (!mountedRef.current) return;
-      setOverview(data);
+      setSummary(data);
       setSetupNeeded(false);
     } catch (err) {
-      console.error("[PhotoPool] overview error:", err);
+      console.error("[PhotoPool] summary error:", err);
       if (mountedRef.current) {
-        setError(err.message);
+        setSummaryError(err.message);
         addToast({ variant: "error", title: "Failed to load pool stats", description: err.message });
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) setSummaryLoading(false);
     }
   }, [addToast]);
 
-  useEffect(() => { fetchOverview(); }, [fetchOverview]);
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
+
+  // ─── Per-tab fetchers (lazy-loaded on first tab visit) ──────────────────────
+
+  const fetchMissingPlaces = useCallback(async () => {
+    setMissingLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("admin_photo_pool_missing_places", { p_limit: 200, p_offset: 0 });
+      if (rpcErr) throw rpcErr;
+      if (!mountedRef.current) return;
+      setMissingPlaces(data?.rows || []);
+      setMissingTotal(data?.total_missing || 0);
+    } catch (err) {
+      console.error("[PhotoPool] missing places error:", err);
+      addToast({ variant: "error", title: "Failed to load missing places", description: err.message });
+    } finally {
+      if (mountedRef.current) setMissingLoading(false);
+    }
+  }, [addToast]);
+
+  const fetchTabCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("admin_photo_pool_categories");
+      if (rpcErr) throw rpcErr;
+      if (!mountedRef.current) return;
+      setTabCategories(data || []);
+    } catch (err) {
+      console.error("[PhotoPool] categories error:", err);
+      addToast({ variant: "error", title: "Failed to load categories", description: err.message });
+    } finally {
+      if (mountedRef.current) setCategoriesLoading(false);
+    }
+  }, [addToast]);
+
+  const fetchLocations = useCallback(async () => {
+    setLocationsLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("admin_photo_pool_locations");
+      if (rpcErr) throw rpcErr;
+      if (!mountedRef.current) return;
+      setLocationBuckets(data || []);
+    } catch (err) {
+      console.error("[PhotoPool] locations error:", err);
+      addToast({ variant: "error", title: "Failed to load locations", description: err.message });
+    } finally {
+      if (mountedRef.current) setLocationsLoading(false);
+    }
+  }, [addToast]);
+
+  const fetchRefreshHealth = useCallback(async () => {
+    setRefreshLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("admin_photo_pool_refresh_health");
+      if (rpcErr) throw rpcErr;
+      if (!mountedRef.current) return;
+      setRefreshHealth(data || {});
+    } catch (err) {
+      console.error("[PhotoPool] refresh health error:", err);
+      addToast({ variant: "error", title: "Failed to load refresh stats", description: err.message });
+    } finally {
+      if (mountedRef.current) setRefreshLoading(false);
+    }
+  }, [addToast]);
+
+  // ─── Tab-triggered lazy loading ─────────────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab === "health" && !missingPlaces && !missingLoading) fetchMissingPlaces();
+    if (activeTab === "categories" && !tabCategories && !categoriesLoading) fetchTabCategories();
+    if (activeTab === "locations" && !locationBuckets && !locationsLoading) fetchLocations();
+    if (activeTab === "refresh" && !refreshHealth && !refreshLoading) fetchRefreshHealth();
+  }, [activeTab]);
+
+  // ─── Refresh All (header button) ───────────────────────────────────────────
+
+  const refreshAll = useCallback(() => {
+    setMissingPlaces(null);
+    setTabCategories(null);
+    setLocationBuckets(null);
+    setRefreshHealth(null);
+    fetchSummary();
+    if (activeTab === "health") fetchMissingPlaces();
+    if (activeTab === "categories") fetchTabCategories();
+    if (activeTab === "locations") fetchLocations();
+    if (activeTab === "refresh") fetchRefreshHealth();
+  }, [activeTab, fetchSummary, fetchMissingPlaces, fetchTabCategories, fetchLocations, fetchRefreshHealth]);
 
   // ─── Fetch Category Detail ───────────────────────────────────────────────────
 
@@ -313,7 +410,7 @@ export function PhotoPoolManagementPage() {
   // ─── Place Refresh ──────────────────────────────────────────────────────────
 
   const openRefreshConfirm = (mode) => {
-    const rh = overview?.refresh_health || {};
+    const rh = refreshHealth || {};
     const count = mode === "recently_served" ? rh.recently_served_and_stale : rh.stale_7d;
     const cost = mode === "recently_served" ? rh.refresh_cost_recently_served_usd : rh.refresh_cost_all_stale_usd;
     setRefreshConfirm({ mode, count: count ?? 0, cost: cost ?? 0 });
@@ -380,7 +477,7 @@ export function PhotoPoolManagementPage() {
             title: `Backfill ${data.status}`,
             description: `${data.success_count} succeeded, ${data.failure_count} failed`,
           });
-          fetchOverview();
+          refreshAll();
           if (activeTab === "log") fetchLog();
         } else if (pollCount >= MAX_POLLS) {
           clearInterval(pollTimerRef.current);
@@ -427,7 +524,7 @@ export function PhotoPoolManagementPage() {
 --   admin_backfill_weekly_costs() RPC`}
               </pre>
             </div>
-            <Button variant="primary" onClick={() => { setSetupNeeded(false); fetchOverview(); }}>
+            <Button variant="primary" onClick={() => { setSetupNeeded(false); refreshAll(); }}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
             </Button>
@@ -439,12 +536,8 @@ export function PhotoPoolManagementPage() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
-  const ph = overview?.photo_health || {};
-  const categories = overview?.categories || [];
-  const locationBuckets = overview?.location_buckets || [];
-  const costMonitor = overview?.cost_monitor || {};
-  const missingPlaces = overview?.missing_places || [];
-  const refreshHealth = overview?.refresh_health || {};
+  const ph = summary?.photo_health || {};
+  const costMonitor = summary?.cost_monitor || {};
 
   return (
     <div className="space-y-6">
@@ -454,15 +547,15 @@ export function PhotoPoolManagementPage() {
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Photos</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-1">Monitor photo storage, pool coverage, and backfill operations</p>
         </div>
-        <Button variant="secondary" onClick={fetchOverview} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+        <Button variant="secondary" onClick={refreshAll} disabled={summaryLoading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${summaryLoading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {loading ? (
+        {summaryLoading ? (
           Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
@@ -476,7 +569,7 @@ export function PhotoPoolManagementPage() {
       </div>
 
       {/* Cost Alert */}
-      {!loading && costMonitor.is_over_threshold && (
+      {!summaryLoading && costMonitor.is_over_threshold && (
         <AlertCard variant="error" title="Cost Alert">
           Projected monthly cost ({formatCurrency(costMonitor.estimated_monthly_cost_usd)}) exceeds the alert threshold ({formatCurrency(costMonitor.alert_threshold_monthly_usd)}).
           Consider running a photo backfill to reduce Google API costs from on-demand photo fetching.
@@ -536,30 +629,31 @@ export function PhotoPoolManagementPage() {
       </div>
 
       {/* Tab Content */}
-      {error && !loading ? (
+      {summaryError && !summaryLoading ? (
         <SectionCard>
           <div className="text-center py-12">
             <AlertTriangle className="h-8 w-8 text-[var(--color-error-500)] mx-auto mb-3" />
-            <p className="text-[var(--color-text-secondary)] mb-3">{error}</p>
-            <Button variant="secondary" onClick={fetchOverview}>Retry</Button>
+            <p className="text-[var(--color-text-secondary)] mb-3">{summaryError}</p>
+            <Button variant="secondary" onClick={fetchSummary}>Retry</Button>
           </div>
         </SectionCard>
       ) : (
         <>
           {activeTab === "health" && (
             <HealthSection
-              missingPlaces={missingPlaces}
+              missingPlaces={missingPlaces || []}
+              missingTotal={missingTotal}
               selectedPlaces={selectedPlaces}
               setSelectedPlaces={setSelectedPlaces}
               onBackfillSelected={() => triggerBackfill("selected", [...selectedPlaces])}
               onBackfillAll={() => triggerBackfill("all_missing")}
               backfillRunning={backfillRunning}
-              loading={loading}
+              loading={missingLoading}
             />
           )}
           {activeTab === "categories" && (
             <CategoriesSection
-              categories={categories}
+              categories={tabCategories || []}
               selectedCategory={selectedCategory}
               setSelectedCategory={setSelectedCategory}
               categoryDetail={categoryDetail}
@@ -568,23 +662,23 @@ export function PhotoPoolManagementPage() {
                 setFillTarget({ category: cat, lat: lat ?? "", lng: lng ?? "", radius_m: 5000, max_results: 60 });
                 setFillModal(true);
               }}
-              loading={loading}
+              loading={categoriesLoading}
             />
           )}
           {activeTab === "locations" && (
-            <LocationsSection locationBuckets={locationBuckets} loading={loading} />
+            <LocationsSection locationBuckets={locationBuckets || []} loading={locationsLoading} />
           )}
           {activeTab === "refresh" && (
             <RefreshSection
-              refreshHealth={refreshHealth}
+              refreshHealth={refreshHealth || {}}
               onRefreshRecentlyServed={() => openRefreshConfirm("recently_served")}
               onRefreshAllStale={() => openRefreshConfirm("all_stale")}
               backfillRunning={backfillRunning}
-              loading={loading}
+              loading={refreshLoading}
             />
           )}
           {activeTab === "costs" && (
-            <CostsSection costMonitor={costMonitor} weeklyCosts={weeklyCosts} loading={loading} />
+            <CostsSection costMonitor={costMonitor} weeklyCosts={weeklyCosts} loading={summaryLoading} />
           )}
           {activeTab === "log" && (
             <LogSection
@@ -722,7 +816,7 @@ export function PhotoPoolManagementPage() {
 // Section 1: Photo Health
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function HealthSection({ missingPlaces, selectedPlaces, setSelectedPlaces, onBackfillSelected, onBackfillAll, backfillRunning, loading }) {
+function HealthSection({ missingPlaces, missingTotal, selectedPlaces, setSelectedPlaces, onBackfillSelected, onBackfillAll, backfillRunning, loading }) {
   const allSelected = missingPlaces.length > 0 && selectedPlaces.size === missingPlaces.length;
 
   const togglePlace = (id) => {
@@ -767,23 +861,9 @@ function HealthSection({ missingPlaces, selectedPlaces, setSelectedPlaces, onBac
     { key: "name", label: "Place Name" },
     { key: "primary_type", label: "Type" },
     {
-      key: "photo_refs_count",
-      label: "Photo Refs",
-      render: (val) => <Badge variant="info">{val}</Badge>,
-    },
-    {
       key: "card_count",
       label: "Cards",
       render: (val) => val || 0,
-    },
-    {
-      key: "total_impressions",
-      label: "Impressions",
-      render: (val) => (
-        <span className={val > 0 ? "font-semibold text-[var(--color-warning-700)]" : ""}>
-          {val || 0}
-        </span>
-      ),
     },
     {
       key: "google_place_id",
@@ -799,7 +879,7 @@ function HealthSection({ missingPlaces, selectedPlaces, setSelectedPlaces, onBac
   return (
     <SectionCard
       title="Places Missing Stored Photos"
-      subtitle={`${missingPlaces.length} places (sorted by impression cost)`}
+      subtitle={`${missingTotal.toLocaleString()} places missing photos (showing ${missingPlaces.length})`}
       action={
         <div className="flex gap-2">
           <Button

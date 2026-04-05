@@ -88,9 +88,9 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       deckService.fetchDeck({
         ...restParams,
         location: location!,
-        limit: 20,
+        limit: 200,
       }),
-    staleTime: 30 * 60 * 1000,     // 30 minutes
+    staleTime: 30 * 1000,           // 30 seconds — content reads from our DB, not external APIs
     gcTime: 2 * 60 * 60 * 1000,    // 2 hours
     enabled: isEnabled,
     retry: 1,

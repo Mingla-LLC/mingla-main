@@ -527,7 +527,7 @@ export default function PreferencesSheet({
   const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
     if (isSelectingSuggestion.current) return;
     isSelectingSuggestion.current = true;
-    setSearchLocation(suggestion.displayName);
+    setSearchLocation(suggestion.fullAddress || suggestion.displayName);
     setShowSuggestions(false);
     setIsInputFocused(false);
 

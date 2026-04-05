@@ -13,6 +13,7 @@ import {
   Animated,
   ActivityIndicator,
   Alert,
+  AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "./ui/Icon";
@@ -1104,7 +1105,7 @@ export default function DiscoverScreen({
   }, [preferencesRefreshKey]);
 
   // Fallback: saved location preference (only used if device GPS is unavailable)
-  const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
+  const { data: userLocationData } = useUserLocation(user?.id, "solo", preferencesRefreshKey);
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
 
@@ -1172,6 +1173,20 @@ export default function DiscoverScreen({
 
     resolveLocation();
   }, [fallbackLat, fallbackLng]);
+
+  // Reset the one-shot GPS flag on foreground resume so GPS re-fires after the
+  // user has been away (e.g., flew to a new city). The next render cycle will
+  // re-enter the effect above with deviceGpsFetchedRef.current === false.
+  useEffect(() => {
+    let lastState = AppState.currentState;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (lastState === 'background' && nextState === 'active') {
+        deviceGpsFetchedRef.current = false;
+      }
+      lastState = nextState;
+    });
+    return () => sub.remove();
+  }, []);
 
   // locationLat/locationLng now come from device GPS (not saved preference)
   const locationLat = deviceGpsLat;
