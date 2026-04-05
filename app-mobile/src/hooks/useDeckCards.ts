@@ -90,7 +90,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         location: location!,
         limit: 200,
       }),
-    staleTime: 30 * 1000,           // 30 seconds — content reads from our DB, not external APIs
+    staleTime: Infinity,            // Deck only refreshes on explicit preference change (query key changes). Never auto-refetch — deck is an active swipe session, not a feed.
     gcTime: 2 * 60 * 60 * 1000,    // 2 hours
     enabled: isEnabled,
     retry: 1,

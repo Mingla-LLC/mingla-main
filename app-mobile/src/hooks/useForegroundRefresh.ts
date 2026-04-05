@@ -12,8 +12,10 @@ import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
 
 // Query key prefixes for critical queries that should refresh on resume.
-// Content queries are included — they read from card_pool/place_pool (our DB), not
-// external APIs. personCardKeys intentionally excluded — uses staleTime: Infinity.
+// Deck/curated/session-deck are EXCLUDED — they are active swipe sessions that
+// only refresh on explicit preference change (query key changes). Force-invalidating
+// them on resume causes mid-session deck resets.
+// Discover/map content IS included — these are passive browsing views, not swipe sessions.
 const CRITICAL_QUERY_KEYS = [
   friendsKeys.all,                // friends list, requests, blocked, muted
   boardKeys.all,                  // collaboration boards
@@ -23,10 +25,7 @@ const CRITICAL_QUERY_KEYS = [
   subscriptionKeys.all,           // subscription status
   ['calendarEntries'],            // calendar entries
   ['userPreferences'],            // user preferences
-  ['deck-cards'],                 // swipe deck cards
-  ['curated-experiences'],        // curated multi-stop experiences
   ['discover-experiences'],       // discover grid experiences
-  ['session-deck'],               // collaboration session deck
   ['map-cards-singles'],          // map view single cards
   ['map-cards-curated'],          // map view curated cards
 ] as const;
