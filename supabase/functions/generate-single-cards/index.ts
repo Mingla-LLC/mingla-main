@@ -86,9 +86,10 @@ async function processCategory(
   city: string,
   country: string,
   existingSet: Set<string>,
-): Promise<{ created: number; skipped: number; eligible: number; skippedNoPhotos: number; skippedDuplicate: number; skippedChildVenue: number }> {
+  existingCategoryMap: Map<string, string[]>,
+): Promise<{ created: number; skipped: number; eligible: number; skippedNoPhotos: number; skippedDuplicate: number; skippedChildVenue: number; updatedCategories: number }> {
   const slug = categoryToSlug(category);
-  let created = 0, skipped = 0, skippedNoPhotos = 0, skippedDuplicate = 0, skippedChildVenue = 0, eligible = 0;
+  let created = 0, skipped = 0, skippedNoPhotos = 0, skippedDuplicate = 0, skippedChildVenue = 0, eligible = 0, updatedCategories = 0;
   let offset = 0;
   let hasMore = true;
 
@@ -121,6 +122,24 @@ async function processCategory(
         skipped++; skippedChildVenue++; continue;
       }
       if (existingSet.has(place.google_place_id)) {
+        // Card already exists — but check if categories need updating
+        const aiCategories = place.ai_categories?.length > 0 ? place.ai_categories : [slug];
+        const existingCategories = existingCategoryMap.get(place.google_place_id);
+        if (existingCategories && JSON.stringify(existingCategories.sort()) !== JSON.stringify(aiCategories.sort())) {
+          // Categories changed since card was generated — sync them
+          const { error: updateErr } = await supabaseAdmin
+            .from('card_pool')
+            .update({ categories: aiCategories, category: aiCategories[0], updated_at: new Date().toISOString() })
+            .eq('google_place_id', place.google_place_id)
+            .eq('card_type', 'single')
+            .eq('is_active', true);
+          if (!updateErr) {
+            updatedCategories++;
+            existingCategoryMap.set(place.google_place_id, aiCategories);
+          } else {
+            console.warn(`[generate-single-cards] Category update failed for ${place.google_place_id}:`, updateErr.message);
+          }
+        }
         skipped++; skippedDuplicate++; continue;
       }
 
@@ -170,7 +189,7 @@ async function processCategory(
     offset += BATCH_SIZE;
   }
 
-  return { created, skipped, eligible, skippedNoPhotos, skippedDuplicate, skippedChildVenue };
+  return { created, skipped, eligible, skippedNoPhotos, skippedDuplicate, skippedChildVenue, updatedCategories };
 }
 
 // ── Background processor (runs after response is sent) ──────────────────────
@@ -179,19 +198,24 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
   const categories = ALL_CATEGORY_NAMES;
 
   try {
-    // Pre-fetch existing card IDs for this city
+    // Pre-fetch existing card IDs + categories for this city (needed for category sync)
     const { data: existingCards } = await supabaseAdmin
       .from('card_pool')
-      .select('google_place_id')
+      .select('google_place_id, categories')
       .eq('city', city)
+      .eq('card_type', 'single')
       .eq('is_active', true);
 
     const existingSet = new Set(
       (existingCards || []).map((c: any) => c.google_place_id).filter(Boolean)
     );
+    const existingCategoryMap = new Map<string, string[]>(
+      (existingCards || []).filter((c: any) => c.google_place_id).map((c: any) => [c.google_place_id, c.categories || []])
+    );
 
     let totalCreated = 0, totalSkipped = 0, totalSkippedNoPhotos = 0;
     let totalSkippedDuplicate = 0, totalSkippedChildVenue = 0, totalEligible = 0;
+    let totalUpdatedCategories = 0;
     const categoryResults: Record<string, any> = {};
 
     for (let i = 0; i < categories.length; i++) {
@@ -217,12 +241,13 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
         .eq('id', runId);
 
       try {
-        const result = await processCategory(supabaseAdmin, category, city, country, existingSet);
+        const result = await processCategory(supabaseAdmin, category, city, country, existingSet, existingCategoryMap);
 
         categoryResults[slug] = {
           created: result.created,
           skipped: result.skipped,
           eligible: result.eligible,
+          updatedCategories: result.updatedCategories,
         };
 
         totalCreated += result.created;
@@ -231,6 +256,7 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
         totalSkippedDuplicate += result.skippedDuplicate;
         totalSkippedChildVenue += result.skippedChildVenue;
         totalEligible += result.eligible;
+        totalUpdatedCategories += result.updatedCategories;
 
         // Update progress
         await supabaseAdmin
@@ -272,7 +298,7 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
       })
       .eq('id', runId);
 
-    console.log(`[generate-single-cards] Run ${runId} ${finalStatus}: created=${totalCreated}, skipped=${totalSkipped}`);
+    console.log(`[generate-single-cards] Run ${runId} ${finalStatus}: created=${totalCreated}, skipped=${totalSkipped}, categoriesUpdated=${totalUpdatedCategories}`);
   } catch (err) {
     console.error(`[generate-single-cards] Run ${runId} FATAL:`, err);
     await supabaseAdmin
