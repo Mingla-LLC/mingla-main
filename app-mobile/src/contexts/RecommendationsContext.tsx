@@ -124,6 +124,19 @@ export const RecommendationsProvider: React.FC<
   const [hasMoreCards, setHasMoreCards] = useState(true);
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
+
+  // Persist exhaustion state so "That's a Wrap" survives app restart.
+  // Scoped per user+mode. Resets on preference change (refreshKey change).
+  const exhaustionKey = `deck_exhausted_${user?.id}_${currentMode}`;
+  useEffect(() => {
+    AsyncStorage.getItem(exhaustionKey).then(val => {
+      if (val === 'true') setIsExhausted(true);
+    }).catch(() => {});
+  }, [exhaustionKey]);
+  useEffect(() => {
+    AsyncStorage.setItem(exhaustionKey, isExhausted ? 'true' : 'false').catch(() => {});
+  }, [isExhausted, exhaustionKey]);
+
   const prefetchFiredRef = useRef(false);
   // Session-scoped dedup: tracks all card IDs served in the current session.
   // Cleared on preference change and mode switch. Catches the prefetch race
