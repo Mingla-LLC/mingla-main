@@ -5,10 +5,10 @@ import {
 } from '../_shared/cardPoolService.ts';
 import {
   resolveCategories,
-  CATEGORY_MIN_PRICE_TIER,
+  // CATEGORY_MIN_PRICE_TIER removed — AI validation is the sole quality gate
   HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
-import { slugMeetsMinimum, PriceTierSlug } from '../_shared/priceTiers.ts';
+import { PriceTierSlug } from '../_shared/priceTiers.ts';
 import { scoreCards } from '../_shared/scoringService.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -209,18 +209,39 @@ function filterByDateTime(
   }
 
   return places.filter(place => {
-    // Compute place-local target time
-    const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
-    const baseDate = datetimePref ? new Date(datetimePref) : new Date();
-    const localMs = baseDate.getTime() + offsetMin * 60 * 1000;
-    const localDate = new Date(localMs);
-    const targetDay = localDate.getUTCDay();
-
+    // Compute the target day and hour for hours filtering.
+    // When datetimePref is provided, the client already encoded local midnight as UTC
+    // (e.g., Monday midnight EDT → "2026-04-06T04:00:00.000Z"). Applying a longitude-based
+    // offset on top of that double-converts and pushes midnight back to the previous day.
+    // Fix: extract day directly from datetimePref (represents the user's chosen date).
+    // For "today"/"now" without datetimePref, use place-local time from server UTC.
+    let targetDay: number;
     let targetHourStart: number;
+
+    if (datetimePref) {
+      // Client sent a specific date — trust it. Extract day from the UTC representation.
+      // The date in UTC is the user's intended date (off by a few hours at most, but
+      // the day-of-week is correct for the user's timezone when sent near midnight).
+      const prefDate = new Date(datetimePref);
+      // Use the date portion at noon UTC to avoid midnight boundary issues
+      const noonUtc = new Date(prefDate.getUTCFullYear(), prefDate.getUTCMonth(), prefDate.getUTCDate(), 12, 0, 0);
+      targetDay = noonUtc.getDay();
+    } else {
+      // No specific date — use current time in place's local timezone
+      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
+      const localMs = Date.now() + offsetMin * 60 * 1000;
+      const localDate = new Date(localMs);
+      targetDay = localDate.getUTCDay();
+    }
+
     if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
       targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
+    } else if (datetimePref) {
+      targetHourStart = new Date(datetimePref).getUTCHours();
     } else {
-      targetHourStart = localDate.getUTCHours();
+      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
+      const localMs = Date.now() + offsetMin * 60 * 1000;
+      targetHourStart = new Date(localMs).getUTCHours();
     }
 
     // Always-open place types
@@ -498,13 +519,11 @@ serve(async (req: Request) => {
     // ── Helper: re-score pool-served cards against CURRENT user's preferences ─
     function scorePoolCards(cards: any[]): any[] {
       if (!cards.length) return cards;
-      // Filter out stale pool cards that don't meet their category's price floor
-      const qualified = cards.filter(c => {
-        const minTier = CATEGORY_MIN_PRICE_TIER[c.category];
-        if (!minTier) return true;
-        return slugMeetsMinimum(c.priceTier, minTier);
-      });
-      const scored = scoreCards(qualified, { categories, priceTiers: priceTiers || [] });
+      // AI validation is the sole quality gate for category membership.
+      // No per-category price floor — if AI approved a place as fine_dining,
+      // trust the AI regardless of price tier. User's price tier selection
+      // (via preferences) is the only price filter that applies.
+      const scored = scoreCards(cards, { categories, priceTiers: priceTiers || [] });
       scored.sort((a, b) => b.matchScore - a.matchScore);
       return scored.map(s => ({
         ...s.card,
