@@ -5,7 +5,6 @@ import {
 } from '../_shared/cardPoolService.ts';
 import {
   resolveCategories,
-  // CATEGORY_MIN_PRICE_TIER removed — AI validation is the sole quality gate
   HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
 import { PriceTierSlug } from '../_shared/priceTiers.ts';
