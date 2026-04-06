@@ -2187,9 +2187,7 @@ function AppContent() {
                                 savedExperiences={savedCards?.length || 0}
                                 boardsCount={boardsSessions?.length || 0}
                                 notificationsEnabled={notificationsEnabled}
-                                onNotificationsToggle={(enabled: boolean) =>
-                                  console.log("Toggle notifications:", enabled)
-                                }
+                                onNotificationsToggle={handlers.handleNotificationsToggle}
                                 userIdentity={userIdentity}
                               />
                             </View>
