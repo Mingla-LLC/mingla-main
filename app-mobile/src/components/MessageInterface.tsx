@@ -24,7 +24,6 @@ import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
-import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble } from "./chat/MessageBubble";
@@ -33,10 +32,15 @@ import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage } from "../services/messagingService";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
+import { useAppLayout } from "../hooks/useAppLayout";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+/** Lowers the composer vs raw keyboard math (still clears keyboard on most devices). */
+const COMPOSER_KEYBOARD_LIFT_TRIM_PX = 130;
+
+/** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
+const INPUT_AREA_VERTICAL_PADDING = 6;
 
 interface Message {
   id: string;
@@ -144,7 +148,7 @@ export default function MessageInterface({
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  const insets = useSafeAreaInsets();
+  const { bottomNavTotalHeight } = useAppLayout();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
   const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
@@ -153,17 +157,56 @@ export default function MessageInterface({
 
   // Animated keyboard height (for smooth input bar transitions)
   const animatedKeyboardHeight = useRef(new Animated.Value(0)).current;
+  /** IMEs often re-fire keyboard show with a smaller frame once typing starts; keep lift stable. */
+  const keyboardHeightMaxWhileOpenRef = useRef(0);
+  /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
+  const prevComposerLiftRef = useRef(0);
   useEffect(() => {
-    // On iOS, keyboard height includes safe area — subtract it
-    const adjustedHeight = Platform.OS === "ios"
-      ? Math.max(0, keyboardHeight - insets.bottom)
-      : keyboardHeight;
-    Animated.timing(animatedKeyboardHeight, {
-      toValue: adjustedHeight,
-      duration: Platform.OS === "ios" ? 250 : 220,
-      useNativeDriver: false,
-    }).start();
-  }, [keyboardHeight, insets.bottom]);
+    // Keyboard height is screen-based; the composer already sits above the bottom tab.
+    // Using the full keyboard height as marginBottom double-counts the tab strip (~64px+)
+    // and lifts the bar too high. Only the part of the keyboard that overlaps content
+    // above the tab needs to be offset.
+    //
+    // Android: softwareKeyboardLayoutMode "pan" — same manual lift (see app.json).
+    if (keyboardHeight <= 0) {
+      keyboardHeightMaxWhileOpenRef.current = 0;
+    } else {
+      keyboardHeightMaxWhileOpenRef.current = Math.max(
+        keyboardHeightMaxWhileOpenRef.current,
+        keyboardHeight
+      );
+    }
+    const effectiveKeyboardHeight =
+      keyboardHeight <= 0 ? 0 : keyboardHeightMaxWhileOpenRef.current;
+    const penetrationAboveTab = Math.max(0, effectiveKeyboardHeight - bottomNavTotalHeight);
+    const adjustedHeight = Math.max(0, penetrationAboveTab - COMPOSER_KEYBOARD_LIFT_TRIM_PX);
+    const prevLift = prevComposerLiftRef.current;
+    prevComposerLiftRef.current = adjustedHeight;
+
+    if (Platform.OS === "android") {
+      if (adjustedHeight === 0) {
+        Animated.timing(animatedKeyboardHeight, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: false,
+        }).start();
+      } else if (prevLift === 0) {
+        Animated.timing(animatedKeyboardHeight, {
+          toValue: adjustedHeight,
+          duration: 220,
+          useNativeDriver: false,
+        }).start();
+      } else {
+        animatedKeyboardHeight.setValue(adjustedHeight);
+      }
+    } else {
+      Animated.timing(animatedKeyboardHeight, {
+        toValue: adjustedHeight,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [keyboardHeight, bottomNavTotalHeight]);
 
   // ── Fallback broadcastSeenIds ref if not provided ─────────
   const localBroadcastSeenIds = useRef(new Set<string>());
@@ -769,10 +812,9 @@ export default function MessageInterface({
         style={[
           styles.inputArea,
           {
-            paddingBottom: keyboardVisible ? 0 : insets.bottom,
-            // iOS: keyboard doesn't resize the window — push input up manually
-            // Android: adjustResize shrinks the window — no margin needed
-            marginBottom: Platform.OS === 'ios' ? animatedKeyboardHeight : 0,
+            // Match padding below the row to padding above (inputArea.paddingTop / border).
+            paddingBottom: keyboardVisible ? 0 : INPUT_AREA_VERTICAL_PADDING,
+            marginBottom: animatedKeyboardHeight,
           },
         ]}
       >
@@ -1438,7 +1480,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
     paddingHorizontal: 12,
-    paddingTop: 6,
+    paddingTop: INPUT_AREA_VERTICAL_PADDING,
     paddingBottom: 0,
     backgroundColor: "white",
   },
