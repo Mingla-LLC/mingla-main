@@ -1,7 +1,7 @@
 # Master Bug List
 
-> Last updated: 2026-04-02
-> Total: 289 | Open: 131 | Closed: 91 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-06
+> Total: 294 | Open: 131 | Closed: 96 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -30,9 +30,12 @@
 
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
+| ORCH-0066 | Collab mode parity (Phase 1 CLOSED — 5 sub-issues fixed, ORCH-0316 remains for Phase 2) | Collaboration | architecture-flaw | Closed → B |
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
+| ORCH-0317 | Collab time_slot + normalizer (CLOSED) | Collaboration | bug | Closed → A |
+| ORCH-0318 | Travel aggregation UNION (CLOSED) | Collaboration | bug | Closed → A |
 
 ### S1-High (Degrades Critical Flow)
 
@@ -40,6 +43,9 @@
 |----|-------|---------|---------------|--------|
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |
 | ORCH-0009 | GPS requirement enforcement | Onboarding | unaudited | Tracker |
+| ORCH-0316 | Preference sheet duplication — Phase 2 (investigated, not yet fixed) | Collaboration | architecture-flaw | Open |
+| ORCH-0319 | Location fallback divergence (CLOSED) | Collaboration | bug | Closed → A |
+| ORCH-0320 | Legacy time_of_day / time_slot (CLOSED) | Collaboration | bug | Closed → A |
 | ORCH-0011 | Resume after interruption | Onboarding | unaudited | Tracker |
 | ORCH-0014 | Intent selection step | Onboarding | unaudited | Tracker |
 | ORCH-0017 | Consent step | Onboarding | unaudited | Tracker |

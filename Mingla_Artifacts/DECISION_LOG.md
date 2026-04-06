@@ -1,6 +1,6 @@
 # Decision Log
 
-> Last updated: 2026-03-30
+> Last updated: 2026-04-06
 
 | ID | Date | Decision | Context | Alternatives Rejected | Tradeoff Accepted | Exit Condition |
 |----|------|---------|---------|----------------------|-------------------|----------------|
@@ -11,3 +11,7 @@
 | DEC-005 | 2026-03-23 | Service error contract deferred — TRANSITIONAL logging instead | ~60+ call sites need ServiceResult<T>. Too much blast radius now. | Fix all 60+ sites immediately | Silent failures still possible in ~4 services | Next hardening cycle |
 | DEC-006 | 2026-03-24 | Remove invalidateQueries from preference save — use prefsHash matching | invalidateQueries caused race condition with batch fetch | Keep invalidation with delay/debounce | Slightly more complex batch validation logic | Permanent |
 | DEC-007 | 2026-03-25 | Constitution principles (14 rules) locked into README | Prevent regression of hard-won fixes | Informal guidelines without enforcement | Protective comments in code may slow development | Permanent — can add, not remove |
+| DEC-008 | 2026-04-06 | Collab aggregation = UNION for all preferences | User directive: everything combined, widest possible set | Median (balanced), MIN (most restrictive) | May show more results than any individual user wanted — acceptable for collab | Permanent |
+| DEC-009 | 2026-04-06 | Travel mode: widest radius for card search, each user sees their own mode's travel time in UI | Radius = Math.max of all constraint values using most permissive mode for query | Majority vote on mode | Server queries with driving radius even if one user walks — more cards, user sees their own travel time | Permanent |
+| DEC-010 | 2026-04-06 | Time slots: UNION array — show places open during ANY selected slot | If one picks Dinner and one picks Brunch, show places open for either | Majority vote (current), ignore time filtering | More results but all match at least one participant's preference | Permanent |
+| DEC-011 | 2026-04-06 | Date option: UNION — show cards available at ANY selected date/time window | If one says "Now" and one says "This Weekend", show both windows | Most future wins, majority vote | Broader card set, no participant's date preference is ignored | Permanent |

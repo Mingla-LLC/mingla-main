@@ -39,9 +39,11 @@ interface AggregatedPrefs {
   datetimePref: string | null;
   location: { lat: number; lng: number } | null;
   dateOption: string;
-  timeSlot: string | null;
+  timeSlots: string[];
 }
 
+// UNION AGGREGATION (DEC-008 through DEC-011): All strategies use union/max/most-permissive.
+// Never use median, min, or majority-vote for collab aggregation.
 function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
   if (rows.length === 0) {
     return {
@@ -56,7 +58,7 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
       datetimePref: null,
       location: null,
       dateOption: 'now',
-      timeSlot: null,
+      timeSlots: [],
     };
   }
 
@@ -88,20 +90,16 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
   const budgetMin = Math.min(...rows.map((r: any) => r.budget_min ?? 0));
   const budgetMax = Math.max(...rows.map((r: any) => r.budget_max ?? 1000));
 
-  // Travel mode: majority vote
-  const travelMode = majorityVote(
-    rows.map((r: any) => r.travel_mode || 'walking'),
-    'walking'
-  );
+  // Travel mode: most permissive for widest card search radius (DEC-009)
+  const MODE_RANK: Record<string, number> = { walking: 1, biking: 2, transit: 3, driving: 4 };
+  const travelMode = rows
+    .map((r: any) => r.travel_mode || 'walking')
+    .sort((a: string, b: string) => (MODE_RANK[b] ?? 0) - (MODE_RANK[a] ?? 0))[0] || 'walking';
 
-  // Travel constraint value: median
-  const constraintValues = rows
-    .map((r: any) => r.travel_constraint_value ?? 30)
-    .sort((a: number, b: number) => a - b);
-  const mid = Math.floor(constraintValues.length / 2);
-  const travelConstraintValue = constraintValues.length % 2 === 0
-    ? Math.round((constraintValues[mid - 1] + constraintValues[mid]) / 2)
-    : constraintValues[mid];
+  // Travel constraint: widest radius (DEC-008 — UNION = Math.max)
+  const travelConstraintValue = Math.max(
+    ...rows.map((r: any) => r.travel_constraint_value ?? 30)
+  );
 
   // Datetime: earliest
   const datetimes = rows
@@ -121,19 +119,19 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     location = { lat: avgLat, lng: avgLng };
   }
 
-  // Date option: majority vote
-  const dateOption = majorityVote(
-    rows.map((r: any) => r.date_option || 'now'),
-    'now'
-  );
+  // Date option: most permissive window (DEC-011 — UNION)
+  const DATE_RANK: Record<string, number> = {
+    'now': 1, 'today': 2, 'this-weekend': 3, 'this weekend': 3, 'pick-a-date': 4,
+  };
+  const dateOption = rows
+    .map((r: any) => r.date_option || 'now')
+    .sort((a: string, b: string) => (DATE_RANK[b] ?? 0) - (DATE_RANK[a] ?? 0))[0] || 'now';
 
-  // Time slot: majority vote among non-null values
+  // Time slots: UNION of all selected (DEC-010)
   const timeSlotValues = rows
     .map((r: any) => r.time_slot || r.time_of_day)
     .filter((v: any): v is string => v != null);
-  const timeSlot = timeSlotValues.length > 0
-    ? majorityVote(timeSlotValues, timeSlotValues[0])
-    : null;
+  const timeSlots = [...new Set(timeSlotValues)];
 
   return {
     categories: Array.from(categorySet),
@@ -147,7 +145,7 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     datetimePref: datetimes.length > 0 ? datetimes[0] : null,
     location,
     dateOption,
-    timeSlot,
+    timeSlots,
   };
 }
 
@@ -165,7 +163,7 @@ async function computePreferencesHash(prefs: AggregatedPrefs): Promise<string> {
     datetimePref: prefs.datetimePref,
     location: prefs.location,
     dateOption: prefs.dateOption,
-    timeSlot: prefs.timeSlot,
+    timeSlots: [...prefs.timeSlots].sort(),
   });
 
   const encoder = new TextEncoder();
@@ -375,7 +373,7 @@ serve(async (req: Request) => {
             travelConstraintValue: aggregated.travelConstraintValue,
             datetimePref: aggregated.datetimePref,
             dateOption: aggregated.dateOption,
-            timeSlot: aggregated.timeSlot,
+            timeSlots: aggregated.timeSlots,
             batchSeed,
             limit: 20,
             priceTiers: aggregated.priceTiers,

@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-02
+> Last updated: 2026-04-06
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -142,7 +142,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0063 | Empty pool state | Discovery | S2 | quality-gap | verified | B | 2026-03-20 | HTTP 200 with empty array |
 | ORCH-0064 | Preferences → deck pipeline | Discovery | S0 | architecture-flaw | closed | A | 2026-03-24 | Commit 79d0905b |
 | ORCH-0065 | Solo mode | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — core contract verified, deck deterministic |
-| ORCH-0066 | Collab mode parity | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — collab verified as part of SC-09, parity confirmed |
+| ORCH-0066 | Collab mode parity | Discovery | S0 | architecture-flaw | closed | B | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Phase 1 PASS (14/14 tests). Save/load parity fixed, UNION aggregation, timeSlots array. ORCH-0316 (sheet duplication) remains open for Phase 2. |
 | ORCH-0266 | Double pagination — card pool unreachable | Discovery | S0 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — duplicate .range() removed, all 200 pool cards reachable |
 | ORCH-0267 | Travel time not enforced in deck | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — hard filter added, out-of-range cards excluded |
 | ORCH-0268 | NULL price tier passthrough | Discovery | S2 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — NULL price_level now filtered before deck assembly |
@@ -178,6 +178,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0073 | Voting mechanics | Collaboration | S1 | unaudited | open | F | — | — |
 | ORCH-0074 | Session end / results | Collaboration | S2 | unaudited | open | F | — | — |
 | ORCH-0075 | Concurrent mutation safety | Collaboration | S1 | unaudited | open | F | — | — |
+| ORCH-0316 | Preference sheet duplication — two separate 1366/1753-line components with no shared logic | Collaboration | S1 | architecture-flaw | investigated | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md — Confirmed: CollabPrefs renders inline, doesn't use shared PreferencesSections. Category order differs. Phase 2 fix. Parent: ORCH-0066. |
+| ORCH-0317 | Collab time_slot missing from PreferencesSheet save + normalizer doesn't clear time_of_day | Collaboration | S0 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — time_slot added to save payload, normalizer clears both fields on "now". 14/14 PASS. |
+| ORCH-0318 | Travel constraint aggregation MEDIAN → Math.max (UNION) | Collaboration | S0 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Math.max replaces median. MODE_RANK for travel mode. DATE_RANK for date option. timeSlots UNION array. 14/14 PASS. |
+| ORCH-0319 | custom_lat/lng missing from PreferencesSheet collab save + load | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Coordinates added to save, structured use_gps_location loading, coords restored on load. 14/14 PASS. |
+| ORCH-0320 | Legacy time_of_day / time_slot — collab load reads time_slot||time_of_day | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Prefers time_slot, falls back to time_of_day. Both written on save. 14/14 PASS. |
+| ORCH-0321 | PreferencesSheet collab load restores date_option with kebab + legacy compat | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — KEBAB_TO_DATE_OPTION map handles both formats. 14/14 PASS. |
+| ORCH-0322 | RLS policy gap — board_session_preferences has no INSERT policy for non-creator participants | Collaboration | S1 | security | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Finding 8 — Original migration only has SELECT + UPDATE (creator only). Needs separate investigation. |
+| ORCH-0323 | generate-curated-experiences standalone aggregation stale — MIN, no time_slot, legacy location parse | Collaboration | S2 | design-debt | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Findings 9+10 — Not used in deck flow but will break if called with session_id. |
 
 ### Section 5: Social / Friends
 

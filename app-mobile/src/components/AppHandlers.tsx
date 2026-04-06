@@ -847,33 +847,38 @@ export function useAppHandlers(state: any) {
       }
     } else {
       // In solo mode, check general saved cards in database
-      try {
-        const { data: existingCard, error: checkError } = await supabase
-          .from("saved_card")
-          .select("id")
-          .eq("profile_id", user.id)
-          .eq("experience_id", card.id)
-          .maybeSingle();
+      // Skip duplicate check for curated cards — they can be modified (stop replacements)
+      // and the upsert on onConflict will correctly overwrite with the updated version
+      const isCuratedCard = (card as any).cardType === 'curated';
+      if (!isCuratedCard) {
+        try {
+          const { data: existingCard, error: checkError } = await supabase
+            .from("saved_card")
+            .select("id")
+            .eq("profile_id", user.id)
+            .eq("experience_id", card.id)
+            .maybeSingle();
 
-        if (existingCard && !checkError) {
-          // Card already exists
-          if (Platform.OS === "android") {
-            ToastAndroid.show(
-              `${card.title} is already in your saved experiences`,
-              ToastAndroid.SHORT
-            );
-          } else {
-            Alert.alert(
-              "Already saved",
-              `${card.title} is already in your saved experiences.`
-            );
+          if (existingCard && !checkError) {
+            // Card already exists
+            if (Platform.OS === "android") {
+              ToastAndroid.show(
+                `${card.title} is already in your saved experiences`,
+                ToastAndroid.SHORT
+              );
+            } else {
+              Alert.alert(
+                "Already saved",
+                `${card.title} is already in your saved experiences.`
+              );
+            }
+            return true;
           }
-          return true;
+        } catch (error) {
+          // Error checking (continue with save)
+          console.error("Error checking existing saved card:", error);
+          // Continue with save even if check fails
         }
-      } catch (error) {
-        // Error checking (continue with save)
-        console.error("Error checking existing saved card:", error);
-        // Continue with save even if check fails
       }
     }
 

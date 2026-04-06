@@ -126,6 +126,26 @@ const timeSlots = [
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight" | "anytime";
 
+// Kebab-case mapping for date_option DB persistence (standardized format)
+const DATE_OPTION_TO_KEBAB: Record<string, string> = {
+  'now': 'now',
+  'today': 'today',
+  'this weekend': 'this-weekend',
+  'pick a date': 'pick-a-date',
+};
+
+// Reverse mapping for loading date_option from DB (handles both kebab and legacy formats)
+const KEBAB_TO_DATE_OPTION: Record<string, DateOption> = {
+  'now': 'Now',
+  'today': 'Today',
+  'this-weekend': 'This Weekend',
+  'this weekend': 'This Weekend',
+  'pick-a-date': 'Pick a Date',
+  'pick a date': 'Pick a Date',
+  'weekend': 'This Weekend',
+  'custom': 'Pick a Date',
+};
+
 export default function PreferencesSheet({
   visible,
   onClose,
@@ -273,10 +293,17 @@ export default function PreferencesSheet({
       if ((loadedPreferences).travel_constraint_value !== undefined) {
         setConstraintValue((loadedPreferences).travel_constraint_value);
       }
-      if ((loadedPreferences).time_of_day) {
-        const timeSlot = (loadedPreferences).time_of_day;
-        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(timeSlot)) {
-          setSelectedTimeSlot(timeSlot as TimeSlot);
+      // Load date_option — handle both kebab-case and legacy lowercase (ORCH-0321)
+      let loadedDateOption: DateOption = "Now";
+      if ((loadedPreferences).date_option) {
+        loadedDateOption = (KEBAB_TO_DATE_OPTION[(loadedPreferences).date_option] || 'Now') as DateOption;
+        setSelectedDateOption(loadedDateOption);
+      }
+      // Prefer time_slot (parity with solo), fall back to time_of_day (legacy) — ORCH-0320
+      const loadedTimeSlot = (loadedPreferences).time_slot || (loadedPreferences).time_of_day;
+      if (loadedTimeSlot) {
+        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(loadedTimeSlot)) {
+          setSelectedTimeSlot(loadedTimeSlot as TimeSlot);
         }
       }
       if ((loadedPreferences).datetime_pref) {
@@ -285,11 +312,30 @@ export default function PreferencesSheet({
           setSelectedDate(date);
         }
       }
-      if ((loadedPreferences).location) {
+      // Load location: prefer structured use_gps_location flag, fall back to heuristic (ORCH-0319)
+      if (typeof (loadedPreferences).use_gps_location === 'boolean') {
+        const isGps = (loadedPreferences).use_gps_location;
+        setUseGpsLocation(isGps);
+        setUseLocation(isGps ? 'gps' : 'search');
+        if (!isGps && (loadedPreferences).custom_location) {
+          setSearchLocation((loadedPreferences).custom_location);
+        } else if ((loadedPreferences).location) {
+          setSearchLocation((loadedPreferences).location);
+        }
+      } else if ((loadedPreferences).location) {
+        // Legacy fallback: guess from location format
         const savedLocation = (loadedPreferences).location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
-        setUseLocation(isCoordinates ? "gps" : "search");
+        setUseLocation(isCoordinates ? 'gps' : 'search');
+        setUseGpsLocation(isCoordinates);
+      }
+      // Restore saved coordinates (ORCH-0319)
+      if ((loadedPreferences).custom_lat != null && (loadedPreferences).custom_lng != null) {
+        setSelectedCoords({
+          lat: (loadedPreferences).custom_lat,
+          lng: (loadedPreferences).custom_lng,
+        });
       }
 
       setInitialPreferences({
@@ -300,15 +346,15 @@ export default function PreferencesSheet({
         budgetMin: (loadedPreferences).budget_min || 0,
         budgetMax: (loadedPreferences).budget_max || 200,
         selectedCategories: collabCats,
-        selectedDateOption: "Now",
-        selectedTimeSlot: (loadedPreferences).time_of_day || null,
+        selectedDateOption: loadedDateOption,
+        selectedTimeSlot: loadedTimeSlot || null,
         selectedDate: (loadedPreferences).datetime_pref
           ? new Date((loadedPreferences).datetime_pref)
           : null,
         travelMode: (loadedPreferences).travel_mode || "walking",
         constraintType: 'time' as const,
         constraintValue: (loadedPreferences).travel_constraint_value || 30,
-        searchLocation: (loadedPreferences).location || "",
+        searchLocation: (loadedPreferences).custom_location || (loadedPreferences).location || "",
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
@@ -774,6 +820,8 @@ export default function PreferencesSheet({
     (async () => {
       try {
         if (isCollaborationMode) {
+          // PARITY: This payload must include ALL fields that CollaborationPreferences.tsx saves.
+          // Missing fields = silent data loss. See ORCH-0066 for the investigation that caught this.
           const rawDbPrefs: any = {
             categories: finalCategories,
             intents: finalIntents,
@@ -785,10 +833,15 @@ export default function PreferencesSheet({
             travel_constraint_value:
               typeof constraintValue === "number" ? constraintValue : 30,
             time_of_day: selectedTimeSlot || null,
+            time_slot: selectedTimeSlot || null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
-            date_option: selectedDateOption?.toLowerCase() || null,
+            date_option: selectedDateOption
+              ? DATE_OPTION_TO_KEBAB[selectedDateOption.toLowerCase()] || selectedDateOption.toLowerCase()
+              : null,
             use_gps_location: useGpsLocation,
             custom_location: customLocationValue,
+            custom_lat: selectedCoords?.lat ?? null,
+            custom_lng: selectedCoords?.lng ?? null,
           };
 
           const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
