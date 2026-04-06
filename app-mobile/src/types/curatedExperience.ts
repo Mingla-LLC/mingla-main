@@ -29,6 +29,7 @@ export interface CuratedStop {
   optional?: boolean;
   dismissible?: boolean;
   role?: string;
+  comboCategory?: string;  // Mingla category slug from the combo that selected this stop (e.g., 'fine_dining')
 }
 
 export interface CuratedExperienceCard {

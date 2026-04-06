@@ -325,7 +325,7 @@ function buildCardStop(
   prevLat: number | null,
   prevLng: number | null,
   travelMode: string,
-  opts?: { optional?: boolean; dismissible?: boolean },
+  opts?: { optional?: boolean; dismissible?: boolean; comboCategory?: string },
 ): any {
   const lat = card.lat ?? 0;
   const lng = card.lng ?? 0;
@@ -382,6 +382,7 @@ function buildCardStop(
     city: card.city || null,
     country: card.country || null,
     aiCategories: card.ai_categories || card.categories || [],
+    ...(opts?.comboCategory ? { comboCategory: opts.comboCategory } : {}),
   };
 }
 
@@ -532,7 +533,7 @@ async function generateCardsForType(
             const stop = buildCardStop(
               anchor, stops.length + 1, typeDef.stops.length, stopDef.role,
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
+              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
             stops.push(stop);
             prevLat = anchor.lat;
@@ -555,7 +556,7 @@ async function generateCardsForType(
             const stop = buildCardStop(
               place, stops.length + 1, typeDef.stops.length, stopDef.role,
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
+              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
             stops.push(stop);
             prevLat = place.lat;
@@ -602,7 +603,7 @@ async function generateCardsForType(
         const stop = buildCardStop(
           place, stops.length + 1, typeDef.stops.length, stopDef.role,
           lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-          travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible },
+          travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
         );
         stops.push(stop);
         prevLat = place.lat;
