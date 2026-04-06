@@ -17,6 +17,7 @@ export interface NearbyPerson {
   sharedTiers: string[];
   canSendFriendRequest: boolean;
   mapFriendRequestsRemaining: number;
+  isSeed: boolean;
 }
 
 export function useNearbyPeople(

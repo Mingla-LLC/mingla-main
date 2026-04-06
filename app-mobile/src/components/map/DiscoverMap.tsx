@@ -281,6 +281,14 @@ export function DiscoverMap({
   const handleAddFriendFromMap = useCallback(
     async (userId: string) => {
       try {
+        // Seed users don't have auth.users rows — skip DB insert to avoid FK violation (DEC-013)
+        const person = nearbyPeople.find(p => p.userId === userId);
+        if (person?.isSeed) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+          return;
+        }
+
         await supabase
           .from('friend_requests')
           .upsert(
@@ -293,7 +301,7 @@ export function DiscoverMap({
         Alert.alert('Error', 'Could not send friend request. Try again later.');
       }
     },
-    [user, queryClient],
+    [user, queryClient, nearbyPeople],
   );
 
   const handleBlockFromMap = useCallback(

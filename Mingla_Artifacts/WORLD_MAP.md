@@ -268,7 +268,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0328 | Hidden flaw: get-nearby-people defaults visibility to "off" instead of schema default "friends" | Map | S1 | bug | closed | A | 2026-04-06 | Fixed: default changed to "friends" in get-nearby-people:42. |
 | ORCH-0329 | Visibility filtering fixed — TARGET-based filter + friends_of_friends implemented | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — 11/11 PASS. Switch statement checks TARGET's level. FoF single query. Bidirectional check removed (DEC-012). |
 | ORCH-0330 | Visibility dropdown fixed — optimistic update + rollback + toast on error | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — onMutate instant cache, onError rollback + toast. |
-| ORCH-0327 | Stranger generation — seed mock profiles globally across world map | Map | S1 | missing-feature | open | F | — | User wants strangers randomly + spatially distributed worldwide. Seeded mock profiles with names/photos. |
+| ORCH-0327 | Stranger seeding — global grid, DiceBear avatars, friend request interception, updated categories | Map | S1 | missing-feature | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 14/14 PASS. Code ready. Seed NOT yet run — deploy first, then call seed_global_grid. |
+| ORCH-0331 | Admin dashboard seed filter — all profile queries now exclude is_seed=true | Admin | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 8 admin queries fixed (T-11 through T-14 PASS). |
 
 ### Section 10: Direct Messaging & Chat
 

@@ -48,25 +48,22 @@ function useStatCounts() {
         await Promise.all(
           STAT_CARDS.map(async (card) => {
             try {
-              // Total count
-              const { count, error: queryError } = await supabase
-                .from(card.table)
-                .select("*", { count: "exact", head: true });
+              // Total count (exclude seed profiles from analytics)
+              let totalQuery = supabase.from(card.table).select("*", { count: "exact", head: true });
+              if (card.table === "profiles") totalQuery = totalQuery.eq("is_seed", false);
+              const { count, error: queryError } = await totalQuery;
               if (queryError) throw queryError;
               results[card.table] = count ?? 0;
 
               // Last 7 days
-              const { count: recent7 } = await supabase
-                .from(card.table)
-                .select("*", { count: "exact", head: true })
-                .gte("created_at", sevenDaysAgo);
+              let recent7Query = supabase.from(card.table).select("*", { count: "exact", head: true }).gte("created_at", sevenDaysAgo);
+              if (card.table === "profiles") recent7Query = recent7Query.eq("is_seed", false);
+              const { count: recent7 } = await recent7Query;
 
               // Previous 7 days (7-14 days ago)
-              const { count: prev7 } = await supabase
-                .from(card.table)
-                .select("*", { count: "exact", head: true })
-                .gte("created_at", fourteenDaysAgo)
-                .lt("created_at", sevenDaysAgo);
+              let prev7Query = supabase.from(card.table).select("*", { count: "exact", head: true }).gte("created_at", fourteenDaysAgo).lt("created_at", sevenDaysAgo);
+              if (card.table === "profiles") prev7Query = prev7Query.eq("is_seed", false);
+              const { count: prev7 } = await prev7Query;
 
               const r7 = recent7 ?? 0;
               const p7 = prev7 ?? 0;

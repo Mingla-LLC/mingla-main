@@ -142,7 +142,7 @@ serve(async (req) => {
     // Fetch profiles
     const { data: profiles } = await adminClient
       .from("profiles")
-      .select("id, display_name, first_name, last_name, avatar_url")
+      .select("id, display_name, first_name, last_name, avatar_url, is_seed")
       .in("id", visibleUserIds);
 
     const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
@@ -248,6 +248,7 @@ serve(async (req) => {
           sharedTiers: tasteMatch?.sharedTiers ?? [],
           canSendFriendRequest: relationship === "stranger" && mapFriendRequestsToday < 10,
           mapFriendRequestsRemaining: Math.max(0, 10 - mapFriendRequestsToday),
+          isSeed: profile?.is_seed ?? false,
         };
       });
 
