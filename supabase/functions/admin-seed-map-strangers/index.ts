@@ -183,52 +183,23 @@ async function seedAroundPoint(
       ? new Date(Date.now() + 4 * 60 * 60 * 1000)
       : null;
 
-    // INSERT profile
-    const { error: profileErr } = await adminClient.from("profiles").insert({
+    // Single table insert — no auth.users dependency
+    const { error } = await adminClient.from("seed_map_presence").insert({
       id,
       display_name: person.displayName,
       first_name: person.firstName,
       avatar_url: `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(person.firstName)}_${id.slice(0,8)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
-      has_completed_onboarding: true,
-      is_seed: true,
-    });
-    if (profileErr) {
-      console.error(`[seed] profile insert failed for ${person.displayName}:`, profileErr);
-      continue;
-    }
-
-    // INSERT user_map_settings
-    const { error: mapErr } = await adminClient
-      .from("user_map_settings")
-      .insert({
-        user_id: id,
-        visibility_level: "everyone",
-        approximate_lat: approxLat,
-        approximate_lng: approxLng,
-        real_lat: approxLat,
-        real_lng: approxLng,
-        last_active_at: lastActive.toISOString(),
-        activity_status: status,
-        activity_status_expires_at: statusExpiry?.toISOString() || null,
-      });
-    if (mapErr) {
-      console.error(`[seed] map_settings insert failed for ${person.displayName}:`, mapErr);
-      // Clean up orphaned profile
-      await adminClient.from("profiles").delete().eq("id", id);
-      continue;
-    }
-
-    // INSERT preferences
-    const { error: prefErr } = await adminClient.from("preferences").insert({
-      profile_id: id,
+      approximate_lat: approxLat,
+      approximate_lng: approxLng,
+      last_active_at: lastActive.toISOString(),
+      activity_status: status,
+      activity_status_expires_at: statusExpiry?.toISOString() || null,
       categories,
       price_tiers: priceTiers,
       intents,
     });
-    if (prefErr) {
-      console.error(`[seed] preferences insert failed for ${person.displayName}:`, prefErr);
-      // Clean up — CASCADE from profiles will handle map_settings
-      await adminClient.from("profiles").delete().eq("id", id);
+    if (error) {
+      console.error(`[seed] insert failed for ${person.displayName}:`, error);
       continue;
     }
 
@@ -242,16 +213,15 @@ async function seedAroundPoint(
 
 async function cleanup(adminClient: SupabaseClient) {
   const { data, error } = await adminClient
-    .from("profiles")
+    .from("seed_map_presence")
     .delete()
-    .eq("is_seed", true)
+    .neq("id", "00000000-0000-0000-0000-000000000000")
     .select("id");
 
   if (error) {
     throw new Error(`Cleanup failed: ${error.message}`);
   }
 
-  // CASCADE handles user_map_settings, preferences, friend_requests, etc.
   return { deleted: data?.length || 0 };
 }
 
@@ -354,46 +324,27 @@ async function seedGlobalGrid(
     for (let i = 0; i < batch.length; i += 500) {
       const chunk = batch.slice(i, i + 500);
 
-      const profiles = chunk.map(({ id, person }) => ({
-        id,
-        display_name: person.displayName,
-        first_name: person.firstName,
-        avatar_url: `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(person.firstName)}_${id.slice(0,8)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
-        has_completed_onboarding: true,
-        is_seed: true,
-      }));
-
-      const mapSettings = chunk.map(({ id, lat: cLat, lng: cLng }) => {
+      // Single table insert — no auth.users dependency
+      const rows = chunk.map(({ id, person, lat: cLat, lng: cLng }) => {
         const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
         return {
-          user_id: id,
-          visibility_level: "everyone",
+          id,
+          display_name: person.displayName,
+          first_name: person.firstName,
+          avatar_url: `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(person.firstName)}_${id.slice(0,8)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
           approximate_lat: cLat + (Math.random() - 0.5) * 0.005,
           approximate_lng: cLng + (Math.random() - 0.5) * 0.005,
-          real_lat: cLat,
-          real_lng: cLng,
           last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
           activity_status: status,
           activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
+          categories: pickRandom(ALL_CATEGORIES, 2, 4),
+          price_tiers: pickRandom(ALL_TIERS, 1, 3),
+          intents: pickRandom(ALL_INTENTS, 1, 2),
         };
       });
 
-      const preferences = chunk.map(({ id }) => ({
-        profile_id: id,
-        categories: pickRandom(ALL_CATEGORIES, 2, 4),
-        price_tiers: pickRandom(ALL_TIERS, 1, 3),
-        intents: pickRandom(ALL_INTENTS, 1, 2),
-      }));
-
-      const [pRes, mRes, prRes] = await Promise.all([
-        adminClient.from("profiles").insert(profiles),
-        adminClient.from("user_map_settings").insert(mapSettings),
-        adminClient.from("preferences").insert(preferences),
-      ]);
-
-      if (pRes.error) console.error(`[grid] profiles batch error:`, pRes.error.message);
-      if (mRes.error) console.error(`[grid] map_settings batch error:`, mRes.error.message);
-      if (prRes.error) console.error(`[grid] preferences batch error:`, prRes.error.message);
+      const { error } = await adminClient.from("seed_map_presence").insert(rows);
+      if (error) console.error(`[grid] batch error:`, error.message);
 
       totalCreated += chunk.length;
     }
@@ -470,10 +421,14 @@ serve(async (req) => {
 
       case "seed_global_grid": {
         const { latMin = -60, latMax = 70 } = body.latRange || {};
-        // Cleanup existing seeds first for idempotency
-        const { deleted } = await cleanup(adminClient);
+        const skipCleanup = body.skipCleanup === true;
+        let deleted = 0;
+        if (!skipCleanup) {
+          const cleanupResult = await cleanup(adminClient);
+          deleted = cleanupResult.deleted;
+        }
         const result = await seedGlobalGrid(adminClient, latMin, latMax);
-        return json({ action: "seed_global_grid", previouslyDeleted: deleted, ...result });
+        return json({ action: "seed_global_grid", previouslyDeleted: deleted, skippedCleanup: skipCleanup, ...result });
       }
 
       case "cleanup": {

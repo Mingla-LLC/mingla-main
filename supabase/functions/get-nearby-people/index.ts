@@ -6,6 +6,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Inline taste match for seed strangers (mirrors compute_taste_match RPC) ──
+
+function jaccard(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const v of setA) if (setB.has(v)) intersection++;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function computeInlineTasteMatch(
+  reqCats: string[], reqTiers: string[], reqIntents: string[],
+  seedCats: string[], seedTiers: string[], seedIntents: string[],
+): { matchPct: number; sharedCategories: string[]; sharedTiers: string[] } {
+  const score = (
+    jaccard(reqCats, seedCats) * 0.5 +
+    jaccard(reqTiers, seedTiers) * 0.3 +
+    jaccard(reqIntents, seedIntents) * 0.2
+  ) * 100;
+  return {
+    matchPct: Math.round(score),
+    sharedCategories: reqCats.filter(c => seedCats.includes(c)),
+    sharedTiers: reqTiers.filter(t => seedTiers.includes(t)),
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -73,6 +101,16 @@ serve(async (req) => {
     const blockedIds = new Set((blocks || []).flatMap((b: any) => [b.blocked_user_id, b.blocker_id]));
     blockedIds.delete(user.id);
 
+    // Fetch requester's preferences for inline seed taste matching
+    const { data: requesterPrefs } = await adminClient
+      .from("preferences")
+      .select("categories, price_tiers, intents")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    const reqCats: string[] = requesterPrefs?.categories || [];
+    const reqTiers: string[] = requesterPrefs?.price_tiers || [];
+    const reqIntents: string[] = requesterPrefs?.intents || [];
+
     // Bounding box query
     const latDelta = radiusKm / 111.32;
     const lngDelta = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
@@ -87,7 +125,17 @@ serve(async (req) => {
       .gte("approximate_lng", lng - lngDelta)
       .lte("approximate_lng", lng + lngDelta);
 
-    if (!nearbySettings || nearbySettings.length === 0) {
+    // Query seed strangers from standalone table (no auth dependency)
+    const { data: seedPeople } = await adminClient
+      .from("seed_map_presence")
+      .select("id, display_name, first_name, avatar_url, approximate_lat, approximate_lng, activity_status, activity_status_expires_at, last_active_at, categories, price_tiers, intents")
+      .gte("approximate_lat", lat - latDelta)
+      .lte("approximate_lat", lat + latDelta)
+      .gte("approximate_lng", lng - lngDelta)
+      .lte("approximate_lng", lng + lngDelta)
+      .limit(40);
+
+    if ((!nearbySettings || nearbySettings.length === 0) && (!seedPeople || seedPeople.length === 0)) {
       return new Response(JSON.stringify([]), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -133,12 +181,11 @@ serve(async (req) => {
       relationshipMap.set(s.user_id, relationship);
     }
 
-    if (visibleUserIds.length === 0) {
-      return new Response(JSON.stringify([]), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Skip real-user processing if none visible, but still return seeds below
+    let result: any[] = [];
+    let mapFriendRequestsToday = 0;
 
+    if (visibleUserIds.length > 0) {
     // Fetch profiles
     const { data: profiles } = await adminClient
       .from("profiles")
@@ -211,7 +258,6 @@ serve(async (req) => {
     }
 
     // Rate limit check for map friend requests
-    let mapFriendRequestsToday = 0;
     if (strangerIds.length > 0) {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { count } = await adminClient
@@ -224,7 +270,7 @@ serve(async (req) => {
     }
 
     // Build response (NEVER include real_lat/lng)
-    const result = nearbySettings
+    result = nearbySettings
       .filter((s: any) => visibleUserIds.includes(s.user_id))
       .map((s: any) => {
         const profile = profileMap.get(s.user_id);
@@ -251,8 +297,39 @@ serve(async (req) => {
           isSeed: profile?.is_seed ?? false,
         };
       });
+    } // end if (visibleUserIds.length > 0)
 
-    return new Response(JSON.stringify(result), {
+    // Build seed stranger entries with inline taste match
+    const now2 = new Date();
+    const seedResult = (seedPeople || []).map((s: any) => {
+      const status = s.activity_status_expires_at && new Date(s.activity_status_expires_at) < now2
+        ? null : s.activity_status;
+      const taste = computeInlineTasteMatch(
+        reqCats, reqTiers, reqIntents,
+        s.categories || [], s.price_tiers || [], s.intents || [],
+      );
+      return {
+        userId: s.id,
+        displayName: s.display_name || s.first_name || "Someone",
+        firstName: s.first_name || null,
+        avatarUrl: s.avatar_url || null,
+        approximateLat: s.approximate_lat,
+        approximateLng: s.approximate_lng,
+        activityStatus: status,
+        lastActiveAt: s.last_active_at,
+        relationship: "stranger" as const,
+        tasteMatchPct: taste.matchPct,
+        sharedCategories: taste.sharedCategories,
+        sharedTiers: taste.sharedTiers,
+        canSendFriendRequest: mapFriendRequestsToday < 10,
+        mapFriendRequestsRemaining: Math.max(0, 10 - mapFriendRequestsToday),
+        isSeed: true,
+      };
+    });
+
+    const combined = [...result, ...seedResult];
+
+    return new Response(JSON.stringify(combined), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
