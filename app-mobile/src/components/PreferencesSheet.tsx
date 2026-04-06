@@ -820,8 +820,8 @@ export default function PreferencesSheet({
     (async () => {
       try {
         if (isCollaborationMode) {
-          // PARITY: This payload must include ALL fields that CollaborationPreferences.tsx saves.
-          // Missing fields = silent data loss. See ORCH-0066 for the investigation that caught this.
+          // PARITY: This is the SOLE preference sheet for both solo and collab modes.
+          // CollaborationPreferences.tsx was deleted (ORCH-0316) — this file is the single source of truth.
           const rawDbPrefs: any = {
             categories: finalCategories,
             intents: finalIntents,

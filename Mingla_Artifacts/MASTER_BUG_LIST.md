@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-06
-> Total: 294 | Open: 131 | Closed: 96 | Verified (B grade): 21 | Deferred: 1
+> Total: 294 | Open: 130 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -43,7 +43,7 @@
 |----|-------|---------|---------------|--------|
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |
 | ORCH-0009 | GPS requirement enforcement | Onboarding | unaudited | Tracker |
-| ORCH-0316 | Preference sheet duplication — Phase 2 (investigated, not yet fixed) | Collaboration | architecture-flaw | Open |
+| ORCH-0316 | Dead CollaborationPreferences.tsx deleted (CLOSED) | Collaboration | architecture-flaw | Closed → A |
 | ORCH-0319 | Location fallback divergence (CLOSED) | Collaboration | bug | Closed → A |
 | ORCH-0320 | Legacy time_of_day / time_slot (CLOSED) | Collaboration | bug | Closed → A |
 | ORCH-0011 | Resume after interruption | Onboarding | unaudited | Tracker |
