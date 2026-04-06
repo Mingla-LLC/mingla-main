@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
+import { toastManager } from '../components/ui/Toast';
 
 export interface MapSettings {
   visibility_level: 'off' | 'paired' | 'friends' | 'friends_of_friends' | 'everyone';
@@ -48,11 +49,33 @@ export function useMapSettings() {
         .upsert({ user_id: user!.id, ...updates, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       if (error) throw error;
     },
+    onMutate: async (updates) => {
+      await queryClient.cancelQueries({ queryKey: ['map-settings', user?.id] });
+      const previous = queryClient.getQueryData<MapSettings>(['map-settings', user?.id]);
+      queryClient.setQueryData<MapSettings>(['map-settings', user?.id], (old) => {
+        const defaults: MapSettings = {
+          visibility_level: 'friends',
+          show_saved_places: false,
+          show_scheduled_places: false,
+          activity_status: null,
+          discovery_radius_km: 5,
+          time_delay_enabled: false,
+          go_dark_until: null,
+          activity_status_expires_at: null,
+        };
+        return { ...(old || defaults), ...updates };
+      });
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['map-settings', user?.id] });
     },
-    onError: (err: Error) => {
+    onError: (err: Error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['map-settings', user?.id], context.previous);
+      }
       console.warn('[useMapSettings] Update failed:', err.message);
+      toastManager.error("Couldn't update your setting. Try again.", 3000);
     },
   });
 

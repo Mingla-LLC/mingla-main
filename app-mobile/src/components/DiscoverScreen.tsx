@@ -89,6 +89,8 @@ interface CustomHoliday {
 }
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
+import { computeTravelInfo } from "../utils/travelTime";
+import { getCategoryIcon } from "../utils/categoryUtils";
 import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG } from '../constants/priceTiers';
 
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
@@ -752,6 +754,9 @@ export default function DiscoverScreen({
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  // Navigation state for scrolling between expanded cards (e.g., paired saves list)
+  const expandedCardListRef = useRef<ExpandedCardData[]>([]);
+  const [expandedCardIndex, setExpandedCardIndex] = useState<number | null>(null);
   
   // Entrance animation values
   const featuredCardOpacity = useRef(new Animated.Value(0)).current;
@@ -830,6 +835,7 @@ export default function DiscoverScreen({
 
   // Pairing selector
   const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
+  const [autoOpenSaves, setAutoOpenSaves] = useState(false);
   // Person experiences removed — replaced by pairing system
 
   // Expanded holidays state (track which holiday dropdowns are open)
@@ -2482,6 +2488,8 @@ export default function DiscoverScreen({
   const handleCloseExpandedModal = () => {
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
+    expandedCardListRef.current = [];
+    setExpandedCardIndex(null);
   };
 
   // Night Out Filter Modal handlers
@@ -3486,8 +3494,66 @@ export default function DiscoverScreen({
                   onArchiveHoliday={handlePersonArchiveHoliday}
                   onUnarchiveHoliday={handlePersonUnarchiveHoliday}
                   onCardPress={handlePersonCardPress}
+                  onSaveCardPress={(cardData, index, allCardData) => {
+                    // Build ExpandedCardData from raw cardData — preserves ALL fields
+                    const viewerLat = personViewLocation.latitude;
+                    const viewerLng = personViewLocation.longitude;
+                    const buildExpanded = (cd: Record<string, any>): ExpandedCardData => {
+                      const placeLat = cd.lat ?? cd.location?.lat;
+                      const placeLng = cd.lng ?? cd.location?.lng;
+                      // Personalize travel time/distance to the VIEWING user
+                      const travel = (placeLat && placeLng && viewerLat && viewerLng)
+                        ? computeTravelInfo(viewerLat, viewerLng, placeLat, placeLng, userTravelMode || 'walking')
+                        : { travelTime: '', distance: '' };
+                      return {
+                        id: cd.id || '',
+                        placeId: cd.placeId || cd.googlePlaceId || cd.id || '',
+                        title: cd.title || '',
+                        category: cd.category || '',
+                        categoryIcon: cd.categoryIcon || getCategoryIcon(cd.category) || 'leaf-outline',
+                        description: cd.description || '',
+                        fullDescription: cd.fullDescription || cd.description || '',
+                        image: cd.image || cd.images?.[0] || '',
+                        images: cd.images || (cd.image ? [cd.image] : []),
+                        rating: cd.rating ?? 0,
+                        reviewCount: cd.reviewCount ?? 0,
+                        priceRange: cd.priceRange || '',
+                        distance: travel.distance,
+                        travelTime: travel.travelTime,
+                        address: cd.address || '',
+                        openingHours: cd.openingHours || null,
+                        website: cd.website || undefined,
+                        phone: cd.phone || undefined,
+                        location: (placeLat && placeLng) ? { lat: placeLat, lng: placeLng } : undefined,
+                        highlights: cd.highlights || [],
+                        tags: cd.tags || [],
+                        matchScore: cd.matchScore ?? 0,
+                        matchFactors: cd.matchFactors || { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+                        socialStats: cd.socialStats || { views: 0, likes: 0, saves: 0, shares: 0 },
+                        selectedDateTime: new Date(),
+                        priceTier: cd.priceTier,
+                        ...(cd.cardType === 'curated' ? {
+                          cardType: 'curated' as const,
+                          stops: cd.stops,
+                          tagline: cd.tagline,
+                          totalPriceMin: cd.totalPriceMin,
+                          totalPriceMax: cd.totalPriceMax,
+                          estimatedDurationMinutes: cd.estimatedDurationMinutes,
+                          experienceType: cd.experienceType,
+                          shoppingList: cd.shoppingList,
+                        } : {}),
+                      } as ExpandedCardData;
+                    };
+                    const allExpanded = allCardData.map(buildExpanded);
+                    expandedCardListRef.current = allExpanded;
+                    setExpandedCardIndex(index);
+                    setSelectedCardForExpansion(allExpanded[index]);
+                    setIsExpandedModalVisible(true);
+                  }}
                   onDeleteCustomDay={handleConfirmDeleteCustomHoliday}
                   travelMode={userTravelMode}
+                  autoOpenSaves={autoOpenSaves}
+                  onAutoOpenSavesConsumed={() => setAutoOpenSaves(false)}
                 />
               )}
 
@@ -3615,16 +3681,18 @@ export default function DiscoverScreen({
                   }}
                   onPersonInvite={() => {}}
                   onPersonCards={(userId) => {
-                    // Open PersonHolidayView by selecting the paired person's pill
                     const pill = pairingPills.find(p => p.pairedUserId === userId);
-                    if (pill) setSelectedPillId(pill.id);
+                    if (pill) {
+                      setSelectedPillId(pill.id);
+                      setAutoOpenSaves(true);
+                    }
                   }}
                   onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
                   accountPreferences={discoverMapAccountPreferences}
                   userLocation={discoverMapUserLocation}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
-                  paused={!isMapShowing || !isTabVisible}
+                  paused={!isTabVisible}
                   activePairedUserIds={activePairedUserIds}
                   pendingFocusCardId={deepLinkParams?.cardId ?? null}
                   onFocusCardHandled={onDeepLinkHandled}
@@ -3924,6 +3992,18 @@ export default function DiscoverScreen({
         isSaved={mapSavedCardIds.has(selectedCardForExpansion?.id ?? "")}
         currentMode="solo"
         accountPreferences={accountPreferences}
+        navigationIndex={expandedCardIndex ?? undefined}
+        navigationTotal={expandedCardListRef.current.length > 1 ? expandedCardListRef.current.length : undefined}
+        onNavigateNext={expandedCardIndex != null && expandedCardIndex < expandedCardListRef.current.length - 1 ? () => {
+          const next = expandedCardIndex + 1;
+          setExpandedCardIndex(next);
+          setSelectedCardForExpansion(expandedCardListRef.current[next]);
+        } : undefined}
+        onNavigatePrevious={expandedCardIndex != null && expandedCardIndex > 0 ? () => {
+          const prev = expandedCardIndex - 1;
+          setExpandedCardIndex(prev);
+          setSelectedCardForExpansion(expandedCardListRef.current[prev]);
+        } : undefined}
       />
 
       {/* Pair Request Modal */}
@@ -4225,10 +4305,13 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   mapHidden: {
-    width: 1,
-    height: 1,
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     opacity: 0,
-    overflow: 'hidden' as const,
+    pointerEvents: 'none' as const,
   },
   floatingPillBar: {
     position: 'absolute',

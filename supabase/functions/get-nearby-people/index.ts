@@ -32,15 +32,6 @@ serve(async (req) => {
     const { lat, lng, radiusKm = 15 } = await req.json();
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Bidirectional visibility: fetch requester's own visibility level.
-    // You must be visible to see strangers — no lurking.
-    const { data: requesterSettings } = await adminClient
-      .from("user_map_settings")
-      .select("visibility_level")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const requesterVisibility = requesterSettings?.visibility_level || "off";
-
     // Get requester's friends + paired people
     const [friendsResult, pairingsResult] = await Promise.all([
       adminClient.from("friends")
@@ -56,6 +47,23 @@ serve(async (req) => {
     const pairedIds = new Set((pairingsResult.data || []).flatMap((p: any) =>
       [p.user_a_id, p.user_b_id].filter((id: string) => id !== user.id)
     ));
+
+    // Friends-of-friends (single query — used for friends_of_friends visibility level)
+    const friendIdArray = Array.from(friendIds);
+    const friendOfFriendIds = new Set<string>();
+    if (friendIdArray.length > 0) {
+      const { data: fofRows } = await adminClient
+        .from("friends")
+        .select("friend_user_id")
+        .in("user_id", friendIdArray)
+        .eq("status", "accepted");
+      for (const row of (fofRows || [])) {
+        // Exclude self and direct friends (already covered by isFriend)
+        if (row.friend_user_id !== user.id && !friendIds.has(row.friend_user_id)) {
+          friendOfFriendIds.add(row.friend_user_id);
+        }
+      }
+    }
 
     // Get blocked users (bidirectional)
     const { data: blocks } = await adminClient
@@ -85,7 +93,9 @@ serve(async (req) => {
       });
     }
 
-    // Filter by visibility + relationship + go_dark + blocks
+    // VISIBILITY = who sees the TARGET (DEC-012).
+    // The requester's own visibility does NOT restrict what they can see.
+    // Never re-add a requesterVisibility check here — it was removed as a bug fix (ORCH-0329).
     const now = new Date();
     const visibleUserIds: string[] = [];
     const relationshipMap = new Map<string, "paired" | "friend" | "stranger">();
@@ -93,17 +103,34 @@ serve(async (req) => {
     for (const s of nearbySettings) {
       if (s.go_dark_until && new Date(s.go_dark_until) > now) continue;
       if (blockedIds.has(s.user_id)) continue;
+
       const isPaired = pairedIds.has(s.user_id);
       const isFriend = friendIds.has(s.user_id);
-      if (s.visibility_level === "paired" && !isPaired) continue;
-      if (s.visibility_level === "friends" && !isFriend && !isPaired) continue;
+      const isFoF = friendOfFriendIds.has(s.user_id);
 
-      // Bidirectional: strangers can only see each other if BOTH are set to 'everyone'
-      const isStranger = !isPaired && !isFriend;
-      if (isStranger && requesterVisibility !== "everyone") continue;
+      // Check: does the TARGET's visibility allow the REQUESTER to see them?
+      let visible = false;
+      switch (s.visibility_level) {
+        case "everyone":
+          visible = true;
+          break;
+        case "friends_of_friends":
+          visible = isPaired || isFriend || isFoF;
+          break;
+        case "friends":
+          visible = isPaired || isFriend;
+          break;
+        case "paired":
+          visible = isPaired;
+          break;
+        // "off" already filtered by the DB query (.neq("visibility_level", "off"))
+      }
+
+      if (!visible) continue;
 
       visibleUserIds.push(s.user_id);
-      relationshipMap.set(s.user_id, isPaired ? "paired" : isFriend ? "friend" : "stranger");
+      const relationship = isPaired ? "paired" : isFriend ? "friend" : "stranger";
+      relationshipMap.set(s.user_id, relationship);
     }
 
     if (visibleUserIds.length === 0) {

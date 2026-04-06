@@ -262,6 +262,13 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0124 | Activity status picker | Map | S3 | unaudited | open | F | — | — |
 | ORCH-0125 | Map cards hook | Map | S2 | unaudited | open | F | — | — |
 | ORCH-0126 | Discover map integration | Map | S1 | unaudited | open | F | — | — |
+| ORCH-0324 | User marker disappears from map — map shrunk to 1px when person pill active | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — mapHidden: 1x1px confuses react-native-maps marker rendering. paused=true disables nearby-people query. |
+| ORCH-0325 | Map centering broken — animateToRegion races with 1px→fullscreen layout transition | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — Both state updates in same tick; animation fires before map expands. |
+| ORCH-0326 | Mock strangers invisible — bidirectional "everyone" visibility required + code defaults to "off" | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — get-nearby-people:103 requires requester visibility="everyone". Code defaults to "off" (line 42) contradicting schema default "friends". |
+| ORCH-0328 | Hidden flaw: get-nearby-people defaults visibility to "off" instead of schema default "friends" | Map | S1 | bug | closed | A | 2026-04-06 | Fixed: default changed to "friends" in get-nearby-people:42. |
+| ORCH-0329 | Visibility filtering fixed — TARGET-based filter + friends_of_friends implemented | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — 11/11 PASS. Switch statement checks TARGET's level. FoF single query. Bidirectional check removed (DEC-012). |
+| ORCH-0330 | Visibility dropdown fixed — optimistic update + rollback + toast on error | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — onMutate instant cache, onError rollback + toast. |
+| ORCH-0327 | Stranger generation — seed mock profiles globally across world map | Map | S1 | missing-feature | open | F | — | User wants strangers randomly + spatially distributed worldwide. Seeded mock profiles with names/photos. |
 
 ### Section 10: Direct Messaging & Chat
 

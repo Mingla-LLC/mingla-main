@@ -103,15 +103,19 @@ export function DiscoverMap({
 
   useEffect(() => {
     if (centerTrigger && centerTrigger > 0 && userLocation && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        },
-        500,
-      );
+      // Delay centering to ensure map is fully laid out after visibility transition
+      const timer = setTimeout(() => {
+        mapRef.current?.animateToRegion(
+          {
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          },
+          500,
+        );
+      }, 150);
+      return () => clearTimeout(timer);
     }
   }, [centerTrigger, userLocation]);
 

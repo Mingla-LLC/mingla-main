@@ -9,6 +9,7 @@ export interface PairedSave {
   priceTier: string | null;
   rating: number;
   savedAt: string;
+  cardData?: Record<string, unknown>;
 }
 
 export interface FetchPairedSavesParams {
