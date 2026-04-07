@@ -34,6 +34,8 @@ function computeInlineTasteMatch(
   };
 }
 
+const FUNCTION_VERSION = "2026-04-06-v3-seed-table";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -328,6 +330,7 @@ serve(async (req) => {
     });
 
     const combined = [...result, ...seedResult];
+    console.log(`[get-nearby-people] v=${FUNCTION_VERSION} real=${result.length} seeds=${seedResult.length} total=${combined.length}`);
 
     return new Response(JSON.stringify(combined), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

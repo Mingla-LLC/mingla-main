@@ -212,17 +212,24 @@ async function seedAroundPoint(
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 
 async function cleanup(adminClient: SupabaseClient) {
-  const { data, error } = await adminClient
+  // Count first
+  const { count } = await adminClient
     .from("seed_map_presence")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000")
-    .select("id");
+    .select("*", { count: "exact", head: true });
+  const total = count || 0;
 
-  if (error) {
-    throw new Error(`Cleanup failed: ${error.message}`);
+  if (total > 0) {
+    // Delete in lat bands to avoid timeout on 1M+ row single delete
+    for (let lat = -90; lat < 90; lat += 10) {
+      await adminClient
+        .from("seed_map_presence")
+        .delete()
+        .gte("approximate_lat", lat)
+        .lt("approximate_lat", lat + 10);
+    }
   }
 
-  return { deleted: data?.length || 0 };
+  return { deleted: total };
 }
 
 // ── Seed Around All Users ───────────────────────────────────────────────────
@@ -321,8 +328,8 @@ async function seedGlobalGrid(
     }
 
     // Insert batch in chunks of 500
-    for (let i = 0; i < batch.length; i += 500) {
-      const chunk = batch.slice(i, i + 500);
+    for (let i = 0; i < batch.length; i += 5000) {
+      const chunk = batch.slice(i, i + 5000);
 
       // Single table insert — no auth.users dependency
       const rows = chunk.map(({ id, person, lat: cLat, lng: cLng }) => {
@@ -431,6 +438,78 @@ serve(async (req) => {
         return json({ action: "seed_global_grid", previouslyDeleted: deleted, skippedCleanup: skipCleanup, ...result });
       }
 
+      case "seed_cities": {
+        const { peoplePerTile = 4 } = body;
+
+        // Fetch all seeding tiles with city info
+        const { data: tiles, error: tilesErr } = await adminClient
+          .from("seeding_tiles")
+          .select("id, city_id, tile_index, center_lat, center_lng, radius_m");
+
+        if (tilesErr) throw new Error(`Failed to fetch tiles: ${tilesErr.message}`);
+        if (!tiles || tiles.length === 0) {
+          return json({ action: "seed_cities", error: "No seeding tiles found" }, 400);
+        }
+
+        // Cleanup existing seeds
+        const { deleted } = await cleanup(adminClient);
+
+        // Generate 3-5 strangers per tile, batch insert all at once
+        const allRows: any[] = [];
+        for (const tile of tiles) {
+          const count = peoplePerTile + Math.floor(Math.random() * 3) - 1; // ±1 variance
+          const radiusKm = (tile.radius_m || 1500) / 1000;
+
+          for (let j = 0; j < Math.max(count, 2); j++) {
+            const person = FAKE_PEOPLE[Math.floor(Math.random() * FAKE_PEOPLE.length)];
+            const id = crypto.randomUUID();
+            const angle = Math.random() * 2 * Math.PI;
+            const dist = Math.random() * radiusKm;
+            const latOff = (dist / 111.32) * Math.cos(angle);
+            const lngOff = (dist / (111.32 * Math.cos((tile.center_lat * Math.PI) / 180))) * Math.sin(angle);
+
+            const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
+            allRows.push({
+              id,
+              display_name: person.displayName,
+              first_name: person.firstName,
+              avatar_url: `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(person.firstName)}_${id.slice(0,8)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
+              approximate_lat: tile.center_lat + latOff,
+              approximate_lng: tile.center_lng + lngOff,
+              last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
+              activity_status: status,
+              activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
+              categories: pickRandom(ALL_CATEGORIES, 2, 4),
+              price_tiers: pickRandom(ALL_TIERS, 1, 3),
+              intents: pickRandom(ALL_INTENTS, 1, 2),
+            });
+          }
+        }
+
+        // Batch insert in chunks of 5000
+        let totalCreated = 0;
+        for (let i = 0; i < allRows.length; i += 5000) {
+          const chunk = allRows.slice(i, i + 5000);
+          const { error } = await adminClient.from("seed_map_presence").insert(chunk);
+          if (error) {
+            console.error(`[seed_cities] batch error:`, error.message);
+          } else {
+            totalCreated += chunk.length;
+          }
+        }
+
+        // Get distinct city count
+        const cityIds = new Set(tiles.map(t => t.city_id));
+
+        return json({
+          action: "seed_cities",
+          tiles: tiles.length,
+          cities: cityIds.size,
+          totalCreated,
+          previouslyDeleted: deleted,
+        });
+      }
+
       case "cleanup": {
         const result = await cleanup(adminClient);
         return json({ action: "cleanup", ...result });
@@ -439,7 +518,7 @@ serve(async (req) => {
       default:
         return json(
           {
-            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, seed_global_grid, cleanup`,
+            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, seed_global_grid, seed_cities, cleanup`,
           },
           400
         );

@@ -35,13 +35,20 @@ export function SeedPage() {
   const [strangerProgress, setStrangerProgress] = useState(null); // { currentBand, totalBands, totalCreated }
 
   const LAT_BANDS = [
-    { latMin: -60, latMax: -30, label: "Southern (-60 to -30)" },
-    { latMin: -30, latMax: 0, label: "Equatorial South (-30 to 0)" },
-    { latMin: 0, latMax: 15, label: "Equatorial North (0 to 15)" },
-    { latMin: 15, latMax: 30, label: "Tropics (15 to 30)" },
-    { latMin: 30, latMax: 45, label: "Temperate South (30 to 45)" },
-    { latMin: 45, latMax: 60, label: "Temperate North (45 to 60)" },
-    { latMin: 60, latMax: 70, label: "Northern (60 to 70)" },
+    { latMin: -60, latMax: -40, label: "Far South (-60 to -40)" },
+    { latMin: -40, latMax: -20, label: "South (-40 to -20)" },
+    { latMin: -20, latMax: -5, label: "Equatorial S (-20 to -5)" },
+    { latMin: -5, latMax: 10, label: "Equatorial N (-5 to 10)" },
+    { latMin: 10, latMax: 20, label: "Tropics S (10 to 20)" },
+    { latMin: 20, latMax: 30, label: "Tropics N (20 to 30)" },
+    { latMin: 30, latMax: 35, label: "Temperate 1 (30 to 35)" },
+    { latMin: 35, latMax: 40, label: "Temperate 2 (35 to 40)" },
+    { latMin: 40, latMax: 45, label: "Temperate 3 (40 to 45)" },
+    { latMin: 45, latMax: 50, label: "Temperate 4 (45 to 50)" },
+    { latMin: 50, latMax: 55, label: "Northern 1 (50 to 55)" },
+    { latMin: 55, latMax: 60, label: "Northern 2 (55 to 60)" },
+    { latMin: 60, latMax: 65, label: "Far North 1 (60 to 65)" },
+    { latMin: 65, latMax: 70, label: "Far North 2 (65 to 70)" },
   ];
 
   const runStrangerAction = useCallback(async (action) => {
@@ -50,7 +57,17 @@ export function SeedPage() {
     setStrangerProgress(null);
 
     try {
-      if (action === "cleanup") {
+      if (action === "seed_cities") {
+        setStrangerProgress({ currentBand: 0, totalBands: 1, totalCreated: 0, status: "Seeding cities from place pool..." });
+        const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
+          body: { action: "seed_cities" },
+        });
+        if (error) throw error;
+        setStrangerProgress(null);
+        setStrangerResult({ ok: true, message: `Created ${data?.totalCreated ?? 0} strangers across ${data?.cities ?? 0} cities` });
+        addToast({ variant: "success", title: `Seeded ${data?.totalCreated ?? 0} strangers in ${data?.cities ?? 0} cities` });
+        logAdminAction("seed.stranger_cities", "map_strangers", "seed_cities", data);
+      } else if (action === "cleanup") {
         const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
           body: { action: "cleanup" },
         });
@@ -74,11 +91,9 @@ export function SeedPage() {
             body: { action: "seed_global_grid", latRange: { latMin: band.latMin, latMax: band.latMax }, skipCleanup: true },
           });
           if (error) {
-            const errMsg = typeof error === 'object' && error.context
-              ? await error.context.text().catch(() => error.message)
-              : error.message || String(error);
+            const errMsg = error?.message || String(error);
             console.error(`[SeedPage] Band ${band.label} failed:`, errMsg);
-            setStrangerProgress(prev => prev ? { ...prev, status: `Band ${band.label} failed: ${errMsg}` } : prev);
+            setStrangerProgress(prev => prev ? { ...prev, status: `Band ${band.label} failed — continuing...` } : prev);
             continue;
           }
           totalCreated += data?.totalCreated ?? 0;
@@ -245,9 +260,19 @@ export function SeedPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Button
             variant="primary"
+            icon={MapPin}
+            loading={strangerAction === "seed_cities"}
+            disabled={!!strangerAction}
+            onClick={() => setConfirmModal({ type: "stranger", action: "seed_cities", label: "Seed Cities (3-5 per seeded city)" })}
+            className="w-full"
+          >
+            Seed Cities
+          </Button>
+          <Button
+            variant="secondary"
             icon={Globe}
             loading={strangerAction === "seed_global"}
             disabled={!!strangerAction}
