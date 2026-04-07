@@ -36,9 +36,6 @@ import { useAppLayout } from "../hooks/useAppLayout";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-/** Lowers the composer vs raw keyboard math (still clears keyboard on most devices). */
-const COMPOSER_KEYBOARD_LIFT_TRIM_PX = 130;
-
 /** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
 const INPUT_AREA_VERTICAL_PADDING = 6;
 
@@ -162,12 +159,10 @@ export default function MessageInterface({
   /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
   const prevComposerLiftRef = useRef(0);
   useEffect(() => {
-    // Keyboard height is screen-based; the composer already sits above the bottom tab.
-    // Using the full keyboard height as marginBottom double-counts the tab strip (~64px+)
-    // and lifts the bar too high. Only the part of the keyboard that overlaps content
-    // above the tab needs to be offset.
-    //
-    // Android: softwareKeyboardLayoutMode "pan" — same manual lift (see app.json).
+    // The keyboard height is measured from the screen bottom. The input bar sits above
+    // the bottom nav, so only the portion of the keyboard that extends above the bottom
+    // nav ("penetrationAboveTab") needs to be offset. bottomNavTotalHeight already
+    // accounts for content height + safe area, preventing any double-counting.
     if (keyboardHeight <= 0) {
       keyboardHeightMaxWhileOpenRef.current = 0;
     } else {
@@ -179,7 +174,7 @@ export default function MessageInterface({
     const effectiveKeyboardHeight =
       keyboardHeight <= 0 ? 0 : keyboardHeightMaxWhileOpenRef.current;
     const penetrationAboveTab = Math.max(0, effectiveKeyboardHeight - bottomNavTotalHeight);
-    const adjustedHeight = Math.max(0, penetrationAboveTab - COMPOSER_KEYBOARD_LIFT_TRIM_PX);
+    const adjustedHeight = penetrationAboveTab;
     const prevLift = prevComposerLiftRef.current;
     prevComposerLiftRef.current = adjustedHeight;
 
