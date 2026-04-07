@@ -1438,7 +1438,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
   return (
     <div className="space-y-6">
       {/* Tile Summary */}
-      <SectionCard title="Tile Grid" subtitle={`${tiles.length} tiles · ${city.tile_radius_m}m radius`}
+      <SectionCard title="Tile Grid" subtitle={`${tiles.length} tiles${city.bbox_sw_lat ? ' in bounding box' : ''} · ${city.tile_radius_m}m tile radius`}
         action={<div className="flex gap-2">
           <Button size="sm" icon={RefreshCw} variant="secondary" onClick={async () => {
             await supabase.functions.invoke("admin-seed-places", { body: { action: "generate_tiles", cityId: city.id } });
@@ -2263,7 +2263,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
         if (cancelled) return;
         if (onActiveRunsChange) onActiveRunsChange(data.runs || []);
         const match = (data.runs || []).find(
-          (r) => r.run.city === selectedCity && r.run.country === selectedCountry
+          (r) => r.run.city === cityTextName && r.run.country === countryTextName
         );
         if (match) {
           const status = await invoke({ action: "run_status", runId: match.run.id });
