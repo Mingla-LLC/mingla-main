@@ -80,7 +80,7 @@ function guessCategory(place) {
 
 const PRICE_TIERS = ["chill", "comfy", "bougie", "lavish"];
 
-const HARD_CAP_USD = 70;
+const HARD_CAP_USD = 500;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -800,127 +800,195 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   );
 }
 
-// ── Add City Modal ───────────────────────────────────────────────────────────
+// ── Add City Modal (Bounding Box Model) ─────────────────────────────────────
+
+const TILE_RADIUS_OPTIONS = [
+  { value: "1500", label: "1500m", desc: "Fine" },
+  { value: "2000", label: "2000m", desc: "Standard" },
+  { value: "2500", label: "2500m", desc: "Coarse" },
+];
 
 function AddCityModal({ open, onClose, onSave }) {
-  const [form, setForm] = useState({ name: "", country: "", countryCode: "", googlePlaceId: "", lat: "", lng: "", radius: "10", tileRadius: "1500" });
+  const [query, setQuery] = useState("");
+  const [tileRadius, setTileRadius] = useState("1500");
+  const [geocodeResult, setGeocodeResult] = useState(null);
+  const [overlap, setOverlap] = useState([]);
+  const [geocoding, setGeocoding] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [selected, setSelected] = useState(false);
-  const debounceRef = useRef(null);
+  const [error, setError] = useState(null);
 
-  // Google Places Autocomplete via edge function
-  const searchCity = useCallback(async (query) => {
-    if (query.length < 3) { setSuggestions([]); return; }
+  const handleGeocode = useCallback(async () => {
+    if (!query.trim() || query.trim().length < 2) return;
+    setGeocoding(true);
+    setGeocodeResult(null);
+    setOverlap([]);
+    setError(null);
     try {
-      const { data } = await supabase.functions.invoke("admin-place-search", {
-        body: { action: "search", textQuery: query, maxResults: 5 },
+      const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
+        body: { action: "geocode_city", query: query.trim() },
       });
-      setSuggestions(data?.places || []);
-    } catch { setSuggestions([]); }
-  }, []);
+      if (fnErr) throw fnErr;
+      if (data?.error) throw new Error(data.error);
+      setGeocodeResult(data);
 
-  const handleNameChange = (val) => {
-    setForm((f) => ({ ...f, name: val }));
-    if (selected) setSelected(false);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchCity(val), 400);
-  };
+      // Check for overlap with existing cities
+      const { data: overlapData } = await supabase.rpc("check_city_bbox_overlap", {
+        p_sw_lat: data.viewport.swLat,
+        p_sw_lng: data.viewport.swLng,
+        p_ne_lat: data.viewport.neLat,
+        p_ne_lng: data.viewport.neLng,
+      });
+      setOverlap(overlapData || []);
+    } catch (err) {
+      setError(err.message || "Geocoding failed");
+    } finally {
+      setGeocoding(false);
+    }
+  }, [query]);
 
-  const selectSuggestion = (place) => {
-    setForm((f) => ({
-      ...f,
-      name: place.name,
-      country: place.country || (place.address || "").split(",").pop()?.trim() || "",
-      countryCode: place.countryCode || "",
-      googlePlaceId: place.googlePlaceId,
-      lat: String(place.lat),
-      lng: String(place.lng),
-    }));
-    setSuggestions([]);
-    setSelected(true);
-  };
+  const isValid = geocodeResult && overlap.length === 0 && tileRadius;
 
-  const latNum = parseFloat(form.lat);
-  const lngNum = parseFloat(form.lng);
-  const radiusNum = parseFloat(form.radius);
-  const tileRadiusNum = parseInt(form.tileRadius);
-  const isValid =
-    form.name.trim() &&
-    form.country.trim() &&
-    !isNaN(latNum) && latNum >= -90 && latNum <= 90 &&
-    !isNaN(lngNum) && lngNum >= -180 && lngNum <= 180 &&
-    !isNaN(radiusNum) && radiusNum > 0 &&
-    !isNaN(tileRadiusNum) && tileRadiusNum > 0;
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
+    if (!geocodeResult || !isValid) return;
     setSaving(true);
+    const vp = geocodeResult.viewport;
+    const tileRadiusNum = parseInt(tileRadius);
+
     try {
-      const { data: city, error } = await supabase.from("seeding_cities").insert({
-        google_place_id: form.googlePlaceId || `manual_${Date.now()}`,
-        name: form.name,
-        country: form.country,
-        country_code: form.countryCode || null,
-        center_lat: latNum,
-        center_lng: lngNum,
-        coverage_radius_km: radiusNum,
+      const { data: city, error: insertErr } = await supabase.from("seeding_cities").insert({
+        google_place_id: `geocoded_${geocodeResult.center.lat}_${geocodeResult.center.lng}`,
+        name: geocodeResult.cityName,
+        country: geocodeResult.country,
+        country_code: geocodeResult.countryCode,
+        center_lat: geocodeResult.center.lat,
+        center_lng: geocodeResult.center.lng,
+        bbox_sw_lat: vp.swLat,
+        bbox_sw_lng: vp.swLng,
+        bbox_ne_lat: vp.neLat,
+        bbox_ne_lng: vp.neLng,
+        coverage_radius_km: 0,
         tile_radius_m: tileRadiusNum,
       }).select().single();
-      if (error) throw error;
+      if (insertErr) throw insertErr;
 
-      // Auto-generate tiles
+      // Auto-generate tiles from bounding box
       await supabase.functions.invoke("admin-seed-places", {
         body: { action: "generate_tiles", cityId: city.id },
       });
 
       onSave(city);
       onClose();
-      setForm({ name: "", country: "", countryCode: "", googlePlaceId: "", lat: "", lng: "", radius: "10", tileRadius: "1500" });
-      setSelected(false);
+      setQuery("");
+      setGeocodeResult(null);
+      setOverlap([]);
+      setTileRadius("1500");
+      setError(null);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (msg.includes("duplicate") || msg.includes("unique")) {
-        alert("This city already exists in your pool. Select it from the dropdown instead.");
+        setError("This city already exists. Select it from the dropdown instead.");
       } else {
-        alert(err.message);
+        setError(err.message);
       }
     } finally {
       setSaving(false);
     }
-  };
+  }, [geocodeResult, isValid, tileRadius, onSave, onClose]);
+
+  // Get tile estimate for selected radius
+  const selectedEstimate = geocodeResult?.tileEstimates?.[`atRadius${tileRadius}`] || null;
 
   return (
     <Modal open={open} onClose={onClose} title="Add City" size="md">
       <ModalBody>
-        <div className="space-y-3 relative">
-          <Input label="City Name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} />
-          {suggestions.length > 0 && (
-            <div className="absolute z-10 top-16 left-0 right-0 bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-              {suggestions.map((s, i) => (
-                <button key={i} className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--gray-100)] cursor-pointer"
-                  onClick={() => selectSuggestion(s)}>
-                  {s.name} — {s.address}
-                </button>
-              ))}
+        <div className="space-y-4">
+          {/* City search */}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input label="City Name" placeholder="e.g. Raleigh, NC" value={query}
+                onChange={(e) => { setQuery(e.target.value); setGeocodeResult(null); setOverlap([]); setError(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleGeocode(); }}
+              />
+            </div>
+            <div className="pt-6">
+              <Button variant="secondary" icon={Search} loading={geocoding} onClick={handleGeocode}
+                disabled={!query.trim() || query.trim().length < 2}>
+                Search
+              </Button>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-start gap-2 text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] rounded-lg p-3">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} disabled={selected} />
-            <Input label="Country Code" value={form.countryCode} onChange={(e) => setForm((f) => ({ ...f, countryCode: e.target.value }))} disabled={selected && !!form.countryCode} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Center Lat" type="number" value={form.lat} onChange={(e) => setForm((f) => ({ ...f, lat: e.target.value }))} disabled={selected} />
-            <Input label="Center Lng" type="number" value={form.lng} onChange={(e) => setForm((f) => ({ ...f, lng: e.target.value }))} disabled={selected} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Coverage Radius (km)" type="number" value={form.radius} onChange={(e) => setForm((f) => ({ ...f, radius: e.target.value }))} />
-            <Input label="Tile Radius (m)" type="number" value={form.tileRadius} onChange={(e) => setForm((f) => ({ ...f, tileRadius: e.target.value }))} />
-          </div>
+
+          {/* Geocode result */}
+          {geocodeResult && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--gray-200)] p-3 space-y-1">
+                <p className="text-sm font-semibold text-[var(--color-text-primary)]">{geocodeResult.cityName}</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">{geocodeResult.formattedAddress}</p>
+                <p className="text-xs text-[var(--color-text-tertiary)]">
+                  Country: {geocodeResult.country} ({geocodeResult.countryCode}) · {geocodeResult.tileEstimates.extentLatKm} km × {geocodeResult.tileEstimates.extentLngKm} km · ~{geocodeResult.tileEstimates.areaKm2.toLocaleString()} km²
+                </p>
+              </div>
+
+              {/* Overlap warning */}
+              {overlap.length > 0 && (
+                <div className="flex items-start gap-2 text-sm text-[var(--color-warning-700)] bg-[var(--color-warning-50)] rounded-lg p-3">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Overlaps with: {overlap.map((c) => `${c.name} (${c.country})`).join(", ")}. Cannot register duplicate city.</span>
+                </div>
+              )}
+
+              {/* Tile radius picker */}
+              <div>
+                <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-2">Tile Radius (search granularity)</p>
+                <div className="flex gap-2">
+                  {TILE_RADIUS_OPTIONS.map((opt) => {
+                    const est = geocodeResult.tileEstimates[`atRadius${opt.value}`];
+                    const active = tileRadius === opt.value;
+                    return (
+                      <button key={opt.value} onClick={() => setTileRadius(opt.value)}
+                        className={[
+                          "flex-1 rounded-lg border p-2.5 text-left transition-all cursor-pointer",
+                          active
+                            ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
+                            : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
+                        ].join(" ")}
+                      >
+                        <p className={`text-sm font-semibold ${active ? "text-[var(--color-brand-700)]" : "text-[var(--color-text-primary)]"}`}>{opt.label}</p>
+                        <p className="text-xs text-[var(--color-text-tertiary)]">{opt.desc}</p>
+                        {est && (
+                          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+                            {est.tiles} tiles · ${est.searchCostUsd}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Selected estimate summary */}
+              {selectedEstimate && (
+                <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--gray-50)] rounded-lg p-2.5">
+                  {selectedEstimate.tiles} tiles × 13 categories = {selectedEstimate.apiCalls.toLocaleString()} API calls · Estimated search cost: ${selectedEstimate.searchCostUsd}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!isValid}>Save & Generate Tiles</Button>
+        <Button variant="primary" loading={saving} onClick={handleSave} disabled={!isValid}>
+          Save & Generate Tiles
+        </Button>
       </ModalFooter>
     </Modal>
   );

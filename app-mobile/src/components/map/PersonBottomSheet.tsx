@@ -57,8 +57,8 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 </View>
               </View>
 
-              {/* Taste match section — strangers only */}
-              {person.relationship === 'stranger' && person.tasteMatchPct != null && (
+              {/* Taste match section — strangers only, hidden for seeds */}
+              {person.relationship === 'stranger' && !person.isSeed && person.tasteMatchPct != null && (
                 <View style={styles.tasteMatchSection}>
                   <Text style={styles.matchPctLarge}>{person.tasteMatchPct}%</Text>
                   <Text style={styles.matchLabel}>taste match</Text>
@@ -70,6 +70,8 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 </View>
               )}
 
+              {/* Action buttons — Message, Invite, Profile hidden for seeds */}
+              {!person.isSeed && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionWrapper} onPress={() => onMessage(person.userId)} activeOpacity={0.7}>
                   <BlurView intensity={40} tint="light" style={styles.blurButton}>
@@ -100,6 +102,7 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                   </BlurView>
                 </TouchableOpacity>
               </View>
+              )}
 
               {/* Stranger: Add Friend + Block/Report */}
               {person.relationship === 'stranger' && (

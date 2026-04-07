@@ -11,10 +11,10 @@ import {
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
-// Ten actions:
+// Eleven actions:
 //   Legacy:
-//     1. generate_tiles  — compute tile grid from city center + radius
-//     2. preview_cost    — calculate cost estimate, enforce $70 hard cap
+//     1. generate_tiles  — compute tile grid from city bounding box
+//     2. preview_cost    — calculate cost estimate
 //     3. seed            — execute seeding per tile × category via Nearby Search (legacy)
 //     4. coverage_check  — per-category place counts for augmentation intelligence
 //   Sequential batch seeding:
@@ -24,6 +24,8 @@ import {
 //     8. skip_batch      — skip one pending batch without running it
 //     9. cancel_run      — stop a run, mark remaining pending batches as skipped
 //    10. run_status      — load full run state for UI hydration on page load
+//   City registration:
+//    11. geocode_city    — geocode a city name → returns center + viewport bbox + tile estimates
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -52,7 +54,7 @@ const FIELD_MASK = [
 
 const COST_PER_NEARBY_SEARCH = 0.032;
 const COST_PER_PHOTO = 0.007;
-const HARD_CAP_USD = 70;
+const HARD_CAP_USD = 500;
 const EXPECTED_UNIQUE_PLACES_PER_TILE = 10; // conservative estimate for photo cost
 const PHOTOS_PER_PLACE = 5;
 const TILE_DELAY_MS = 100;
@@ -96,59 +98,89 @@ interface TileData {
   col_idx: number;
 }
 
+// BBOX MODEL (2026-04): Cities are defined by their Google Geocoding viewport
+// bounding box, NOT by a center point + radius. The bbox_sw/ne columns on
+// seeding_cities are the source of truth. coverage_radius_km is deprecated.
+// See: outputs/SPEC_CITY_SEEDING_BOUNDING_BOX.md
 function generateTileGrid(
-  centerLat: number,
-  centerLng: number,
-  coverageRadiusKm: number,
+  swLat: number,
+  swLng: number,
+  neLat: number,
+  neLng: number,
   tileRadiusM: number,
 ): TileData[] {
-  const coverageRadiusM = coverageRadiusKm * 1000;
   const spacingM = tileRadiusM * 1.4;
 
-  // Convert to degrees (approximate)
+  // Convert to degrees (approximate, using center latitude)
   const metersPerDegreeLat = 111320;
+  const centerLat = (swLat + neLat) / 2;
   const metersPerDegreeLng =
     111320 * Math.cos((centerLat * Math.PI) / 180);
 
   const spacingLat = spacingM / metersPerDegreeLat;
   const spacingLng = spacingM / metersPerDegreeLng;
 
-  const boundLat = coverageRadiusM / metersPerDegreeLat;
-  const boundLng = coverageRadiusM / metersPerDegreeLng;
-
-  const minLat = centerLat - boundLat;
-  const maxLat = centerLat + boundLat;
-  const minLng = centerLng - boundLng;
-  const maxLng = centerLng + boundLng;
-
   const tiles: TileData[] = [];
   let tileIndex = 0;
   let rowIdx = 0;
 
-  for (let lat = minLat; lat <= maxLat; lat += spacingLat) {
+  for (let lat = swLat; lat <= neLat; lat += spacingLat) {
     let colIdx = 0;
-    for (let lng = minLng; lng <= maxLng; lng += spacingLng) {
-      // Filter out tiles outside coverage circle
-      const dLat = (lat - centerLat) * metersPerDegreeLat;
-      const dLng = (lng - centerLng) * metersPerDegreeLng;
-      const distM = Math.sqrt(dLat * dLat + dLng * dLng);
-
-      if (distM <= coverageRadiusM) {
-        tiles.push({
-          tile_index: tileIndex++,
-          center_lat: lat,
-          center_lng: lng,
-          radius_m: tileRadiusM,
-          row_idx: rowIdx,
-          col_idx: colIdx,
-        });
-      }
+    for (let lng = swLng; lng <= neLng; lng += spacingLng) {
+      tiles.push({
+        tile_index: tileIndex++,
+        center_lat: lat,
+        center_lng: lng,
+        radius_m: tileRadiusM,
+        row_idx: rowIdx,
+        col_idx: colIdx,
+      });
       colIdx++;
     }
     rowIdx++;
   }
 
   return tiles;
+}
+
+// ── Tile Estimate Calculator (pure math, no DB) ────────────────────────────
+
+function calculateTileEstimates(
+  swLat: number, swLng: number, neLat: number, neLng: number,
+) {
+  const metersPerDegreeLat = 111320;
+  const centerLat = (swLat + neLat) / 2;
+  const metersPerDegreeLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
+
+  const extentLatKm = (neLat - swLat) * metersPerDegreeLat / 1000;
+  const extentLngKm = (neLng - swLng) * metersPerDegreeLng / 1000;
+  const areaKm2 = extentLatKm * extentLngKm;
+
+  function countTiles(tileRadiusM: number): { tiles: number; apiCalls: number; searchCostUsd: number } {
+    const spacingM = tileRadiusM * 1.4;
+    const spacingLat = spacingM / metersPerDegreeLat;
+    const spacingLng = spacingM / metersPerDegreeLng;
+
+    let tiles = 0;
+    for (let lat = swLat; lat <= neLat; lat += spacingLat) {
+      for (let lng = swLng; lng <= neLng; lng += spacingLng) {
+        tiles++;
+      }
+    }
+
+    const apiCalls = tiles * ALL_SEEDING_CATEGORY_IDS.length;
+    const searchCostUsd = Math.round(apiCalls * COST_PER_NEARBY_SEARCH * 100) / 100;
+    return { tiles, apiCalls, searchCostUsd };
+  }
+
+  return {
+    atRadius1500: countTiles(1500),
+    atRadius2000: countTiles(2000),
+    atRadius2500: countTiles(2500),
+    extentLatKm: Math.round(extentLatKm * 10) / 10,
+    extentLngKm: Math.round(extentLngKm * 10) / 10,
+    areaKm2: Math.round(areaKm2),
+  };
 }
 
 // ── Google Place → place_pool row (selective fields for upsert) ─────────────
@@ -290,34 +322,45 @@ async function handleGenerateTiles(body: any, supabase: any) {
     .single();
   if (cityErr || !city) throw new Error(`City not found: ${cityId}`);
 
-  // Generate tile grid
+  // Use bounding box (bbox model)
+  if (!city.bbox_sw_lat || !city.bbox_ne_lat) {
+    throw new Error("City has no bounding box. Re-register with geocoding.");
+  }
+
   const tiles = generateTileGrid(
-    city.center_lat,
-    city.center_lng,
-    city.coverage_radius_km,
+    city.bbox_sw_lat,
+    city.bbox_sw_lng,
+    city.bbox_ne_lat,
+    city.bbox_ne_lng,
     city.tile_radius_m,
   );
 
   // Delete existing tiles for regeneration
   await supabase.from("seeding_tiles").delete().eq("city_id", cityId);
 
-  // Insert new tiles
-  const tileRows = tiles.map((t) => ({
-    city_id: cityId,
-    ...t,
-  }));
+  // Insert new tiles — chunk if >500 rows (large cities)
+  const CHUNK_SIZE = 500;
+  const allInserted: Record<string, unknown>[] = [];
 
-  const { data: inserted, error: insertErr } = await supabase
-    .from("seeding_tiles")
-    .insert(tileRows)
-    .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx");
+  for (let i = 0; i < tiles.length; i += CHUNK_SIZE) {
+    const chunk = tiles.slice(i, i + CHUNK_SIZE).map((t) => ({
+      city_id: cityId,
+      ...t,
+    }));
 
-  if (insertErr) throw new Error(`Failed to insert tiles: ${insertErr.message}`);
+    const { data: inserted, error: insertErr } = await supabase
+      .from("seeding_tiles")
+      .insert(chunk)
+      .select("id, tile_index, center_lat, center_lng, radius_m, row_idx, col_idx");
+
+    if (insertErr) throw new Error(`Failed to insert tiles (chunk ${Math.floor(i / CHUNK_SIZE) + 1}): ${insertErr.message}`);
+    allInserted.push(...(inserted || []));
+  }
 
   return {
     cityId,
-    tileCount: inserted.length,
-    tiles: inserted.map((t: Record<string, unknown>) => ({
+    tileCount: allInserted.length,
+    tiles: allInserted.map((t) => ({
       id: t.id,
       tileIndex: t.tile_index,
       centerLat: t.center_lat,
@@ -960,15 +1003,10 @@ async function handleCreateRun(body: any, supabase: any) {
 
   const totalBatches = tiles.length * validConfigs.length;
 
-  // Check $70 cap
+  // Calculate estimated cost (returned in response — admin acknowledges before proceeding)
   const estimatedSearchCost = totalBatches * COST_PER_NEARBY_SEARCH;
   const estimatedPhotoCost = tiles.length * EXPECTED_UNIQUE_PLACES_PER_TILE * PHOTOS_PER_PLACE * COST_PER_PHOTO;
   const estimatedTotalCost = estimatedSearchCost + estimatedPhotoCost;
-  if (estimatedTotalCost > HARD_CAP_USD) {
-    throw new Error(
-      `Estimated cost $${estimatedTotalCost.toFixed(2)} exceeds $${HARD_CAP_USD} cap. Reduce tiles, radius, or categories.`
-    );
-  }
 
   // Check for existing active run (includes preparing and ready states)
   const { data: existingRuns } = await supabase
@@ -2000,6 +2038,80 @@ async function handleRunStatus(body: any, supabase: any) {
   };
 }
 
+// ── Action: geocode_city ────────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function handleGeocodeCity(body: any) {
+  const { query } = body;
+  if (!query || typeof query !== "string" || query.trim().length < 2) {
+    throw new Error("query is required (min 2 characters)");
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${
+    encodeURIComponent(query.trim())
+  }&key=${GOOGLE_API_KEY}`;
+
+  const res = await timeoutFetch(url, { method: "GET" }, API_TIMEOUT_MS);
+  if (!res.ok) {
+    throw new Error(`Geocoding API HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+
+  if (data.status !== "OK" || !data.results || data.results.length === 0) {
+    throw new Error(
+      data.status === "REQUEST_DENIED"
+        ? "Geocoding API not enabled. Enable it in Google Cloud Console."
+        : `Geocoding failed: ${data.status} — ${data.error_message || "no results"}`
+    );
+  }
+
+  const result = data.results[0];
+  const geo = result.geometry;
+
+  // Extract country and country code from address_components
+  let country = "";
+  let countryCode = "";
+  let cityName = "";
+  for (const comp of (result.address_components || [])) {
+    if (comp.types?.includes("country")) {
+      country = comp.long_name || "";
+      countryCode = comp.short_name || "";
+    }
+    if (comp.types?.includes("locality")) {
+      cityName = comp.long_name || "";
+    }
+  }
+
+  // Fallback city name: first part of formatted_address
+  if (!cityName) {
+    cityName = (result.formatted_address || query).split(",")[0].trim();
+  }
+
+  return {
+    cityName,
+    country,
+    countryCode,
+    formattedAddress: result.formatted_address || "",
+    center: {
+      lat: geo.location.lat,
+      lng: geo.location.lng,
+    },
+    viewport: {
+      swLat: geo.viewport.southwest.lat,
+      swLng: geo.viewport.southwest.lng,
+      neLat: geo.viewport.northeast.lat,
+      neLng: geo.viewport.northeast.lng,
+    },
+    tileEstimates: calculateTileEstimates(
+      geo.viewport.southwest.lat,
+      geo.viewport.southwest.lng,
+      geo.viewport.northeast.lat,
+      geo.viewport.northeast.lng,
+    ),
+  };
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -2040,6 +2152,8 @@ serve(async (req) => {
     const body = await req.json();
 
     switch (body.action) {
+      case "geocode_city":
+        return json(await handleGeocodeCity(body));
       case "generate_tiles":
         return json(await handleGenerateTiles(body, supabase));
       case "preview_cost":
