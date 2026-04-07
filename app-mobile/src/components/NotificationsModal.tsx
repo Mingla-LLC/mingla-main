@@ -595,12 +595,13 @@ export default function NotificationsModal({
             </View>
           </View>
 
-          {/* Filter Tabs */}
+          {/* Filter Tabs — fixed vertical size; flexShrink:0 so list never compresses them */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterTabsContainer}
             style={styles.filterTabsScroll}
+            nestedScrollEnabled
           >
             {FILTER_TABS.map((tab) => (
               <TouchableOpacity
@@ -624,61 +625,64 @@ export default function NotificationsModal({
             ))}
           </ScrollView>
 
-          {/* Content */}
-          {isLoading ? (
-            renderSkeleton()
-          ) : isError ? (
-            <View style={styles.errorState}>
-              <Icon name="alert-circle-outline" size={48} color={colors.gray[300]} />
-              <Text style={styles.errorTitle}>Something went wrong</Text>
-              <Text style={styles.errorSubtext}>
-                Couldn't load notifications.
-              </Text>
-              <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-                <Text style={styles.retryButtonText}>Try Again</Text>
-              </TouchableOpacity>
-            </View>
-          ) : filteredNotifications.length === 0 && !isOffline ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconCircle}>
-                <Icon
-                  name="notifications-outline"
-                  size={40}
-                  color={colors.gray[300]}
+          {/* Content — flex:1 + minHeight:0 so SectionList scrolls inside sheet without stealing filter height */}
+          <View style={styles.sheetMainBody}>
+            {isLoading ? (
+              renderSkeleton()
+            ) : isError ? (
+              <View style={styles.errorState}>
+                <Icon name="alert-circle-outline" size={48} color={colors.gray[300]} />
+                <Text style={styles.errorTitle}>Something went wrong</Text>
+                <Text style={styles.errorSubtext}>
+                  Couldn't load notifications.
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+                  <Text style={styles.retryButtonText}>Try Again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : filteredNotifications.length === 0 && !isOffline ? (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconCircle}>
+                  <Icon
+                    name="notifications-outline"
+                    size={40}
+                    color={colors.gray[300]}
+                  />
+                </View>
+                <Text style={styles.emptyStateTitle}>You're all caught up</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  New activity will show up here.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.notificationsListColumn}>
+                {isOffline && (
+                  <View style={styles.offlineBanner}>
+                    <Icon name="cloud-offline-outline" size={14} color="#6B7280" />
+                    <Text style={styles.offlineBannerText}>
+                      You're offline — showing cached notifications
+                    </Text>
+                  </View>
+                )}
+                <SectionList
+                  style={styles.sectionList}
+                  sections={sections}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderNotification}
+                  renderSectionHeader={renderSectionHeader}
+                  stickySectionHeadersEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.listContent}
+                  onEndReached={() => {
+                    if (hasMore) onLoadMore?.();
+                  }}
+                  onEndReachedThreshold={0.3}
+                  refreshing={false}
+                  onRefresh={onRefresh}
                 />
               </View>
-              <Text style={styles.emptyStateTitle}>You're all caught up</Text>
-              <Text style={styles.emptyStateSubtext}>
-                New activity will show up here.
-              </Text>
-            </View>
-          ) : (
-            <>
-              {isOffline && (
-                <View style={styles.offlineBanner}>
-                  <Icon name="cloud-offline-outline" size={14} color="#6B7280" />
-                  <Text style={styles.offlineBannerText}>
-                    You're offline — showing cached notifications
-                  </Text>
-                </View>
-              )}
-              <SectionList
-                sections={sections}
-                keyExtractor={(item) => item.id}
-                renderItem={renderNotification}
-                renderSectionHeader={renderSectionHeader}
-                stickySectionHeadersEnabled={false}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
-                onEndReached={() => {
-                  if (hasMore) onLoadMore?.();
-                }}
-                onEndReachedThreshold={0.3}
-                refreshing={false}
-                onRefresh={onRefresh}
-              />
-            </>
-          )}
+            )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -698,6 +702,7 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     height: SHEET_HEIGHT,
+    flexDirection: 'column',
     backgroundColor: colors.background.primary,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
@@ -756,24 +761,45 @@ const styles = StyleSheet.create({
     color: '#eb7825',
   },
 
+  sheetMainBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  sectionList: {
+    flex: 1,
+  },
+  notificationsListColumn: {
+    flex: 1,
+    minHeight: 0,
+  },
+
   // ── Filter Tabs ──
   filterTabsScroll: {
-    maxHeight: 48,
+    flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 52,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[100],
   },
   filterTabsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     gap: spacing.sm,
+    flexGrow: 0,
   },
   filterTab: {
+    minHeight: 40,
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.gray[300],
     backgroundColor: 'transparent',
+    flexShrink: 0,
   },
   filterTabActive: {
     backgroundColor: '#eb7825',
@@ -1026,6 +1052,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    flexShrink: 0,
   },
   offlineBannerText: {
     fontSize: 12,
@@ -1034,6 +1061,7 @@ const styles = StyleSheet.create({
 
   // ── Skeleton Loader ──
   skeletonContainer: {
+    flex: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: 12,

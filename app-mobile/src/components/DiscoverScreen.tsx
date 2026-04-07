@@ -2692,9 +2692,13 @@ export default function DiscoverScreen({
   const cRate = getCurrencyRate(accountPreferences?.currency);
   const cp = (usd: number) => Math.round(usd * cRate).toLocaleString();
 
+  // PRICE_TIERS already includes slug `any`; omit it here so list keys stay unique (duplicate `any` broke the filter modal).
   const priceFilterOptions: { id: PriceFilter; label: string }[] = [
     { id: "any", label: "Any Price" },
-    ...PRICE_TIERS.map(tier => ({ id: tier.slug as PriceFilter, label: `${tier.label} · ${tier.rangeLabel}` })),
+    ...PRICE_TIERS.filter((tier) => tier.slug !== "any").map((tier) => ({
+      id: tier.slug as PriceFilter,
+      label: `${tier.label} · ${tier.rangeLabel}`,
+    })),
   ];
 
   const genreFilterOptions: { id: GenreFilter; label: string }[] = [

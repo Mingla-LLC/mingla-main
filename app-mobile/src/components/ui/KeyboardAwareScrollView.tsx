@@ -57,8 +57,8 @@ const KEYBOARD_PADDING = 40;
 
 interface KeyboardAwareScrollViewProps extends ScrollViewProps {
   /**
-   * Extra bottom offset subtracted from keyboard height (e.g. for tab bars
-   * or persistent footers that sit below the scroll area). Default: 0
+   * Extra bottom offset subtracted from keyboard height (e.g. `useAppLayout().bottomNavTotalHeight`
+   * when content sits above the main tab bar). Default: 0
    */
   bottomOffset?: number;
 
@@ -83,6 +83,9 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
  *  5. Calculates exactly how much to scroll so the input's bottom edge
  *     sits KEYBOARD_PADDING pixels above the keyboard's top edge.
  *  6. Executes a smooth animated scroll.
+ *
+ * With Expo `softwareKeyboardLayoutMode: "pan"`, the window often does not shrink;
+ * bottom `contentContainerStyle` padding plus scroll-to-focused keeps inputs visible.
  *
  * Handles:
  *  - Inputs at the top, middle, and bottom of long scrollable content
