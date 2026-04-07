@@ -155,7 +155,7 @@ BEGIN
     COUNT(DISTINCT pp.ai_categories[1]) FILTER (
       WHERE pp.is_active AND pp.ai_approved = true AND pp.ai_categories IS NOT NULL AND array_length(pp.ai_categories, 1) > 0
     )::INTEGER AS category_coverage,
-    ROUND(AVG(pp.rating) FILTER (WHERE pp.is_active AND pp.ai_approved = true AND pp.rating IS NOT NULL), 1) AS avg_rating
+    ROUND((AVG(pp.rating) FILTER (WHERE pp.is_active AND pp.ai_approved = true AND pp.rating IS NOT NULL))::NUMERIC, 1) AS avg_rating
   FROM seeding_cities sc
   LEFT JOIN place_pool pp ON pp.city_id = sc.id
   WHERE sc.country_code = p_country_code
@@ -196,7 +196,7 @@ BEGIN
         / COUNT(*)
       )::INTEGER ELSE 0
     END AS photo_pct,
-    ROUND(AVG(pp.rating) FILTER (WHERE pp.rating IS NOT NULL), 1) AS avg_rating
+    ROUND((AVG(pp.rating) FILTER (WHERE pp.rating IS NOT NULL))::NUMERIC, 1) AS avg_rating
   FROM place_pool pp
   LEFT JOIN seeding_cities sc ON pp.city_id = sc.id
   WHERE pp.is_active

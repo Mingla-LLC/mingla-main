@@ -99,31 +99,79 @@ function pctColor(pct) {
   return "error";
 }
 
-// ── CountryFilterBar (breadcrumb nav) ────────────────────────────────────────
+// ── Country code → emoji flag ────────────────────────────────────────────────
 
-function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
-  const items = [
-    { label: "All Countries", onClick: () => { onClearCountry(); } },
-    ...(selectedCountry ? [
-      selectedCity
-        ? { label: selectedCountry, onClick: () => { onClearCity(); } }
-        : { label: selectedCountry },
-    ] : []),
-    ...(selectedCity ? [{ label: selectedCity }] : []),
-  ];
+function countryFlag(code) {
+  if (!code || code.length !== 2) return "🌍";
+  return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+// ── CityPicker (shared navigation) ──────────────────────────────────────────
+
+function CityPicker({ cities, scope, onScopeChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Group cities by country
+  const grouped = {};
+  for (const c of (cities || [])) {
+    const key = c.country_code || "??";
+    if (!grouped[key]) grouped[key] = { countryName: c.country_name, countryCode: key, cities: [] };
+    grouped[key].cities.push(c);
+  }
+  const groups = Object.values(grouped).sort((a, b) => a.countryName.localeCompare(b.countryName));
+
+  // Current label
+  const selectedCity = scope.cityId ? cities.find((c) => c.city_id === scope.cityId) : null;
+  const selectedCountryGroup = scope.countryCode ? groups.find((g) => g.countryCode === scope.countryCode) : null;
+  const label = selectedCity
+    ? `${countryFlag(selectedCity.country_code)} ${selectedCity.city_name}`
+    : selectedCountryGroup
+      ? `${countryFlag(selectedCountryGroup.countryCode)} ${selectedCountryGroup.countryName}`
+      : "🌍 All Cities";
 
   return (
-    <div className="flex items-center gap-3 mb-2">
-      <Breadcrumbs items={items} />
-      {!selectedCountry && countries.length > 0 && (
-        <select
-          className="ml-auto rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-          value=""
-          onChange={(e) => { if (e.target.value) onSelectCountry(e.target.value); }}
-        >
-          <option value="">Jump to country...</option>
-          {countries.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] text-sm font-medium hover:border-[var(--color-brand-500)] transition-colors cursor-pointer">
+        <span>{label}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-[9999] top-full mt-1 left-0 w-72 max-h-96 overflow-y-auto bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-lg shadow-lg">
+          {/* All Cities */}
+          <button onClick={() => { onScopeChange({ countryCode: null, cityId: null }); setOpen(false); }}
+            className={`w-full text-left px-3 py-2 text-sm font-medium hover:bg-[var(--gray-100)] cursor-pointer ${!scope.countryCode && !scope.cityId ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : ""}`}>
+            🌍 All Cities
+          </button>
+          <div className="border-t border-[var(--gray-100)]" />
+
+          {groups.map((group) => (
+            <div key={group.countryCode}>
+              {/* Country header (clickable) */}
+              <button onClick={() => { onScopeChange({ countryCode: group.countryCode, cityId: null }); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider hover:bg-[var(--gray-100)] cursor-pointer ${scope.countryCode === group.countryCode && !scope.cityId ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "text-[var(--color-text-tertiary)]"}`}>
+                {countryFlag(group.countryCode)} {group.countryName}
+              </button>
+              {/* Cities */}
+              {group.cities.map((c) => (
+                <button key={c.city_id} onClick={() => { onScopeChange({ countryCode: group.countryCode, cityId: c.city_id }); setOpen(false); }}
+                  className={`w-full text-left pl-7 pr-3 py-1.5 text-sm hover:bg-[var(--gray-100)] cursor-pointer flex justify-between ${scope.cityId === c.city_id ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)] font-medium" : ""}`}>
+                  <span>{c.city_name}</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">{(c.ai_approved_places || 0).toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -131,7 +179,16 @@ function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCo
 
 // ── OverviewTab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+function OverviewTab({ scope, onScopeChange, pickerCities }) {
+  const selectedCountry = scope.countryCode;
+  const selectedCity = scope.cityId;
+  const onSelectCountry = (cc) => onScopeChange({ countryCode: cc, cityId: null });
+  const onSelectCity = (cityId) => onScopeChange({ countryCode: scope.countryCode, cityId });
+
+  // Resolve scope to text names for edge function filters
+  const selectedCityObj = pickerCities?.find((c) => c.city_id === scope.cityId);
+  const scopeCityName = selectedCityObj?.city_name || null;
+  const scopeCountryName = selectedCityObj?.country_name || pickerCities?.find((c) => c.country_code === scope.countryCode)?.country_name || null;
   const { addToast } = useToast();
   const [data, setData] = useState(null);
   const [drilldownRows, setDrilldownRows] = useState([]);
@@ -150,8 +207,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
     setError(null);
 
     const params = {};
-    if (selectedCountry) params.p_country = selectedCountry;
-    if (selectedCity) params.p_city = selectedCity;
+    if (selectedCity) params.p_city_id = selectedCity;
+    if (selectedCountry) params.p_country_code = selectedCountry;
 
     const promises = [
       supabase.rpc("admin_place_pool_overview", params),
@@ -160,7 +217,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
 
     if (!selectedCity) {
       if (selectedCountry) {
-        promises.push(supabase.rpc("admin_place_city_overview", { p_country: selectedCountry }));
+        promises.push(supabase.rpc("admin_place_city_overview", { p_country_code: selectedCountry }));
       } else {
         promises.push(supabase.rpc("admin_place_country_overview"));
       }
@@ -170,6 +227,9 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       if (!mountedRef.current) return;
       const [overviewRes, catRes, drillRes] = results;
       if (overviewRes.error) { setError(overviewRes.error.message); setLoading(false); return; }
+      // DEBUG: log category breakdown response to diagnose empty table
+      if (catRes.error) console.error("[OverviewTab] catBreakdown RPC error:", catRes.error);
+      if (!catRes.data || catRes.data.length === 0) console.warn("[OverviewTab] catBreakdown empty. Full response:", JSON.stringify(catRes));
       const row = Array.isArray(overviewRes.data) ? overviewRes.data[0] : overviewRes.data;
       setData(row);
       setCatBreakdown(catRes.data || []);
@@ -288,8 +348,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
     const { data: job, error: insertErr } = await supabase.from("ai_validation_jobs").insert({
       revalidate,
       total_places: totalPlaces,
-      country_filter: selectedCountry || null,
-      city_filter: selectedCity || null,
+      country_filter: scopeCountryName || null,
+      city_filter: scopeCityName || null,
     }).select().single();
     if (insertErr) {
       addToast({ variant: "error", title: "Failed to create job", description: insertErr.message });
@@ -321,8 +381,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
         if (jobs && jobs.length > 0) {
           const job = jobs[0];
           const matchesScope =
-            (job.country_filter || null) === (selectedCountry || null) &&
-            (job.city_filter || null) === (selectedCity || null);
+            (job.country_filter || null) === (scopeCountryName || null) &&
+            (job.city_filter || null) === (scopeCityName || null);
           if (matchesScope) runJobLoop(job, true);
         }
       });
@@ -337,21 +397,23 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   if (error) return <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg">{error}</div>;
   if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No pool data available.</div>;
 
-  const scope = selectedCity
-    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
-    : selectedCountry ? <strong>{selectedCountry}</strong> : "global pool";
+  const scopeLabel = selectedCity
+    ? "City scope"
+    : selectedCountry ? "Country scope" : "Global pool";
 
-  const aiPct = data.active_places > 0 ? Math.round((data.ai_validated_count / data.active_places) * 100) : 0;
+  const aiPct = data.active_places > 0 ? Math.round(((data.ai_approved_places || data.ai_approved_count || 0) / data.active_places) * 100) : 0;
 
   const isGlobal = !selectedCountry;
   const isCountryLevel = !!selectedCountry && !selectedCity;
 
   // Drill-down columns
   const countryDrillColumns = [
-    { key: "country", label: "Country", sortable: true, render: (_, r) => (
-      <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.country}</button>
+    { key: "country_name", label: "Country", sortable: true, render: (_, r) => (
+      <button onClick={() => onSelectCountry(r.country_code)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+        {countryFlag(r.country_code)} {r.country_name}
+      </button>
     )},
-    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "ai_approved_places", label: "AI Approved", sortable: true, render: (_, r) => (r.ai_approved_places || 0).toLocaleString() },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
     { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
     { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
@@ -360,9 +422,9 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
 
   const cityDrillColumns = [
     { key: "city_name", label: "City", sortable: true, render: (_, r) => (
-      <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.city_name}</button>
+      <button onClick={() => onSelectCity(r.city_id)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.city_name}</button>
     )},
-    { key: "active_places", label: "Active Places", sortable: true },
+    { key: "ai_approved_places", label: "AI Approved", sortable: true, render: (_, r) => (r.ai_approved_places || 0).toLocaleString() },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
     { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
     { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
@@ -376,17 +438,14 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
         {CATEGORY_LABELS[r.category] || r.category || "Uncategorized"}
       </div>
     )},
-    { key: "place_count", label: "Places", sortable: true },
+    { key: "place_count", label: "AI Approved", sortable: true },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "ai_validated", label: "AI Validated", sortable: true },
-    { key: "ai_approved_count", label: "Approved", sortable: true },
-    { key: "ai_rejected_count", label: "Rejected", sortable: true },
     { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
   ];
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-[var(--color-text-secondary)]">Showing {scope}</p>
+      <p className="text-sm text-[var(--color-text-secondary)]">Showing {scopeLabel}</p>
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard icon={Globe} label="Active Places" value={data.active_places} />
@@ -394,8 +453,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
           trend={data.photo_pct >= 80 ? "Good" : data.photo_pct >= 50 ? "Fair" : "Low"} trendUp={data.photo_pct >= 80} />
         <StatCard icon={Eye} label="AI Validated" value={`${aiPct}%`}
           trend={`${data.ai_validated_count} of ${data.active_places}`} trendUp={aiPct >= 50} />
-        <StatCard icon={AlertTriangle} label="Uncategorized" value={data.without_seeding_category}
-          trend={data.without_seeding_category === 0 ? "Clean" : "Needs Fix"} trendUp={data.without_seeding_category === 0} />
+        <StatCard icon={Clock} label="Pending Review" value={data.ai_pending_count || 0}
+          trend={data.ai_pending_count === 0 ? "All validated" : "Needs validation"} trendUp={data.ai_pending_count === 0} />
       </div>
 
       {/* AI Validation Summary + Run buttons */}
@@ -443,8 +502,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
                     const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
                       body: {
                         limit: 25,
-                        ...(selectedCountry ? { countryFilter: selectedCountry } : {}),
-                        ...(selectedCity ? { cityFilter: selectedCity } : {}),
+                        ...(scopeCountryName ? { countryFilter: scopeCountryName } : {}),
+                        ...(scopeCityName ? { cityFilter: scopeCityName } : {}),
                       },
                     });
                     if (fnErr) throw new Error(fnErr.message);
@@ -1798,7 +1857,9 @@ const TILE_STATUS_STYLES = {
   error: { color: "#ef4444", fillOpacity: 0.08, weight: 2, dashArray: "4 2" },
 };
 
-function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingOps }) {
+function MapTab({ scope, registeredCity, tiles, seedingOps }) {
+  const selectedCountry = scope?.countryCode;
+  const selectedCity = scope?.cityId;
   const [visibleCats, setVisibleCats] = useState(new Set(ALL_CATEGORIES));
   const [places, setPlaces] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
@@ -1806,20 +1867,20 @@ function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingO
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!selectedCountry) { setPlaces([]); return; }
+    if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
     let q = supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, seeding_category, is_active, stored_photo_urls")
-      .eq("is_active", true);
-    if (selectedCity) q = q.eq("city", selectedCity).eq("country", selectedCountry);
-    else q = q.eq("country", selectedCountry);
-    q.limit(2000).then(({ data }) => {
+      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, ai_approved")
+      .eq("is_active", true)
+      .eq("ai_approved", true)
+      .eq("city_id", selectedCity);
+    q.limit(3000).then(({ data }) => {
       if (mountedRef.current) { setPlaces(data || []); setMapLoading(false); }
     });
     return () => { mountedRef.current = false; };
   }, [selectedCountry, selectedCity]);
 
-  if (!selectedCountry) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a country to view the map.</div>;
+  if (!selectedCity) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city from the picker above to view the map.</div>;
   if (mapLoading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading map data...</div>;
   if (places.length === 0) return <div className="text-center py-12 text-[var(--color-text-secondary)]">No places found to display.</div>;
 
@@ -1831,7 +1892,7 @@ function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingO
       ? [validPlaces.reduce((s, p) => s + p.lat, 0) / validPlaces.length, validPlaces.reduce((s, p) => s + p.lng, 0) / validPlaces.length]
       : [0, 0];
 
-  const filteredPlaces = places.filter((p) => visibleCats.has(p.seeding_category));
+  const filteredPlaces = places.filter((p) => visibleCats.has(p.ai_categories?.[0] || p.seeding_category));
   const showTiles = registeredCity && tiles.length > 0;
 
   // Pre-compute tile data if registered
@@ -1926,7 +1987,9 @@ function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingO
 
 // ── Tab 3: Browse Pool ───────────────────────────────────────────────────────
 
-function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
+function BrowseTab({ scope, onRefresh }) {
+  const selectedCountry = scope?.countryCode;
+  const selectedCity = scope?.cityId;
   const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
@@ -1938,9 +2001,17 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
 
   const fetchPlaces = useCallback(async () => {
     setLoading(true);
+
+    // For country scope, load city IDs first then filter
+    let countryCityIds = null;
+    if (selectedCountry && !selectedCity) {
+      const { data: cityRows } = await supabase.from("seeding_cities").select("id").eq("country_code", selectedCountry);
+      countryCityIds = (cityRows || []).map((r) => r.id);
+    }
+
     let q = supabase.from("place_pool").select("*", { count: "exact" });
-    if (selectedCity) q = q.eq("city", selectedCity);
-    else if (selectedCountry) q = q.eq("country", selectedCountry);
+    if (selectedCity) q = q.eq("city_id", selectedCity);
+    else if (countryCityIds && countryCityIds.length > 0) q = q.in("city_id", countryCityIds);
     if (filters.category) q = q.contains("ai_categories", [filters.category]);
     if (filters.status === "active") q = q.eq("is_active", true);
     else if (filters.status === "inactive") q = q.eq("is_active", false);
@@ -2086,7 +2157,12 @@ function BrowseTab({ selectedCountry, selectedCity, onRefresh }) {
 
 // ── Tab 4: Photo Management ──────────────────────────────────────────────────
 
-function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
+function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
+  const selectedCountry = scope?.countryCode;
+  const selectedCity = scope?.cityId;
+  // Text names for edge function calls (backfill-place-photos expects text, not UUID)
+  const cityTextName = regCity?.name || null;
+  const countryTextName = regCity?.country || null;
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -2139,8 +2215,7 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     if (!selectedCity) return;
     try {
       const { data } = await supabase.rpc("admin_place_photo_stats", {
-        p_country: selectedCountry,
-        p_city: selectedCity,
+        p_city_id: selectedCity,
       });
       if (mountedRef.current && data) {
         const row = Array.isArray(data) ? data[0] : data;
@@ -2156,8 +2231,8 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     try {
       const data = await invoke({
         action: "preview_run",
-        city: selectedCity,
-        country: selectedCountry,
+        city: cityTextName,
+        country: countryTextName,
       });
       if (mountedRef.current) setPreviewSummary(data.analysis || null);
     } catch {
@@ -2213,8 +2288,8 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
     try {
       const data = await invoke({
         action: "create_run",
-        city: selectedCity,
-        country: selectedCountry,
+        city: cityTextName,
+        country: countryTextName,
       });
 
       if (data.status === "nothing_to_do") {
@@ -2643,47 +2718,6 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
 }
 
 
-// ── Tab 6: Stale Review ──────────────────────────────────────────────────────
-
-function StaleTab({ selectedCountry, selectedCity }) {
-  const { addToast } = useToast();
-  const [stale, setStale] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    let q = supabase.from("place_pool").select("id, name, rating, seeding_category, city, country, last_detail_refresh, refresh_failures")
-      .eq("is_active", true)
-      .lt("last_detail_refresh", new Date(Date.now() - 7 * 86400000).toISOString())
-      .order("last_detail_refresh", { ascending: true })
-      .limit(100);
-    if (selectedCity) q = q.eq("city", selectedCity);
-    else if (selectedCountry) q = q.eq("country", selectedCountry);
-    q.then(({ data }) => { setStale(data || []); setLoading(false); });
-  }, [selectedCountry, selectedCity]);
-
-  const refreshPlace = async (placeId) => {
-    const { error } = await supabase.functions.invoke("admin-refresh-places", {
-      body: { action: "refresh_single", placePoolId: placeId },
-    });
-    if (error) addToast({ variant: "error", title: "Refresh failed" });
-    else addToast({ variant: "success", title: "Place refreshed" });
-  };
-
-  const columns = [
-    { key: "name", label: "Name", sortable: true },
-    { key: "seeding_category", label: "Category", render: (_, r) => CATEGORY_LABELS[r.seeding_category] || "—" },
-    { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
-    { key: "last_detail_refresh", label: "Last Refresh", sortable: true, render: (_, r) => new Date(r.last_detail_refresh).toLocaleDateString() },
-    { key: "refresh_failures", label: "Failures", render: (_, r) => r.refresh_failures || 0 },
-    { key: "actions", label: "", render: (_, r) => <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => refreshPlace(r.id)}>Refresh</Button> },
-  ];
-
-  return (
-    <DataTable columns={columns} rows={stale} loading={loading}
-      emptyMessage="No stale places" emptyIcon={CheckCircle} />
-  );
-}
 
 // ── Tab 6: Stats & Analytics ─────────────────────────────────────────────────
 
@@ -2977,90 +3011,123 @@ function SeedingTab({ registeredCity, tiles, stats, seedingOps, refreshKey, onRe
   );
 }
 
-// ── Seeding Tab Wrapper (self-contained city selector) ──────────────────────
 
-function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKey, onRefresh, onDeleteCity, onSeedingChange, onAddCity }) {
-  const [cities, setCities] = useState([]);
-  const [selectedSeedCity, setSelectedSeedCity] = useState(registeredCity);
-  const [seedTiles, setSeedTiles] = useState(tiles || []);
-  const [seedStats, setSeedStats] = useState(stats);
-  const [seedOps, setSeedOps] = useState(seedingOps || []);
-  const [loadingCity, setLoadingCity] = useState(false);
-  const mountedRef = useRef(true);
+// ── RejectedTab ─────────────────────────────────────────────────────────────
 
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+function RejectedTab({ scope, onRefresh }) {
+  const { addToast } = useToast();
+  const [places, setPlaces] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [approveModal, setApproveModal] = useState(null);
+  const [selectedCat, setSelectedCat] = useState("");
+  const [detailPlace, setDetailPlace] = useState(null);
+  const PAGE_SIZE = 20;
 
-  // Load all seeding cities
-  useEffect(() => {
-    supabase.from("seeding_cities").select("*").order("name")
-      .then(({ data }) => { if (mountedRef.current) setCities(data || []); });
-  }, [refreshKey]);
+  const fetchRejected = useCallback(async () => {
+    setLoading(true);
+    let q = supabase.from("place_pool")
+      .select("*", { count: "exact" })
+      .eq("is_active", true)
+      .eq("ai_approved", false);
+    if (scope.cityId) q = q.eq("city_id", scope.cityId);
+    q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    const { data, count } = await q;
+    setPlaces(data || []);
+    setTotal(count || 0);
+    setLoading(false);
+  }, [scope.cityId, page]);
 
-  // Sync with parent if registeredCity matches
-  useEffect(() => {
-    if (registeredCity) {
-      setSelectedSeedCity(registeredCity);
-      setSeedTiles(tiles || []);
-      setSeedStats(stats);
-      setSeedOps(seedingOps || []);
-    }
-  }, [registeredCity, tiles, stats, seedingOps]);
+  useEffect(() => { fetchRejected(); }, [fetchRejected]);
+  useEffect(() => { setPage(0); }, [scope.cityId]);
 
-  // When user picks a city from the dropdown, load its data
-  const handleSelectCity = useCallback((city, isRefresh = false) => {
-    setSelectedSeedCity(city);
-    if (!city) { setSeedTiles([]); setSeedStats(null); setSeedOps([]); return; }
-    // Only show loading spinner on initial selection, NOT on refresh during seeding
-    if (!isRefresh) setLoadingCity(true);
+  const handleApprove = async () => {
+    if (!approveModal || !selectedCat) return;
+    const { error } = await supabase.from("place_pool").update({
+      ai_approved: true,
+      ai_categories: [selectedCat],
+      ai_validated_at: new Date().toISOString(),
+    }).eq("id", approveModal.id);
+    if (error) { addToast({ variant: "error", title: "Approve failed", description: error.message }); return; }
+    addToast({ variant: "success", title: `Approved "${approveModal.name}"` });
+    setApproveModal(null);
+    setSelectedCat("");
+    fetchRejected();
+    if (onRefresh) onRefresh();
+  };
 
-    Promise.all([
-      supabase.from("seeding_tiles").select("*").eq("city_id", city.id).order("tile_index"),
-      supabase.rpc("admin_city_place_stats", { p_city_id: city.id }),
-      supabase.from("seeding_operations").select("*").eq("city_id", city.id).order("created_at", { ascending: false }).limit(50),
-    ]).then(([tilesRes, statsRes, opsRes]) => {
-      if (!mountedRef.current) return;
-      setSeedTiles(tilesRes.data || []);
-      setSeedStats(statsRes.data);
-      setSeedOps(opsRes.data || []);
-      setLoadingCity(false);
-    });
-  }, []);
+  const handleDelete = async (place) => {
+    if (!confirm(`Delete "${place.name}"? This sets it to inactive.`)) return;
+    const { error } = await supabase.from("place_pool").update({ is_active: false }).eq("id", place.id);
+    if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); return; }
+    addToast({ variant: "success", title: `Deleted "${place.name}"` });
+    fetchRejected();
+    if (onRefresh) onRefresh();
+  };
+
+  const columns = [
+    { key: "name", label: "Name", sortable: true, render: (_, r) => (
+      <button className="text-[var(--color-brand-500)] hover:underline cursor-pointer text-left min-w-[200px]"
+        onClick={() => setDetailPlace(r)}>{r.name}</button>
+    )},
+    { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[250px] truncate block">{r.address || "—"}</span> },
+    { key: "ai_reason", label: "AI Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.ai_reason || "—"}</span> },
+    { key: "seeding_category", label: "Discovered Via", render: (_, r) => r.seeding_category ? (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] || "#6b7280" }}>
+        {CATEGORY_LABELS[r.seeding_category] || r.seeding_category}
+      </span>
+    ) : "—" },
+    { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
+    { key: "actions", label: "", render: (_, r) => (
+      <div className="flex gap-1">
+        <button onClick={() => { setApproveModal(r); setSelectedCat(""); }}
+          className="p-1 rounded hover:bg-green-100 text-green-600 cursor-pointer" title="Override → Approve">
+          <CheckCircle className="w-4 h-4" />
+        </button>
+        <button onClick={() => handleDelete(r)}
+          className="p-1 rounded hover:bg-red-100 text-red-500 cursor-pointer" title="Delete (deactivate)">
+          <XCircle className="w-4 h-4" />
+        </button>
+      </div>
+    )},
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <select
-          className="flex-1 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-          value={selectedSeedCity?.id || ""}
-          onChange={(e) => {
-            const city = cities.find((c) => c.id === e.target.value);
-            handleSelectCity(city || null);
-          }}
-        >
-          <option value="">Select a seeding city...</option>
-          {cities.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}, {c.country} — {c.status}</option>
-          ))}
-        </select>
-        <Button icon={Plus} size="sm" onClick={onAddCity}>Add City</Button>
+        <StatCard icon={AlertTriangle} label="Total Rejected" value={total} />
       </div>
 
-      {loadingCity && <div className="text-center py-8 text-[var(--color-text-secondary)]">Loading city data...</div>}
+      <DataTable columns={columns} rows={places} loading={loading}
+        emptyMessage="No rejected places" emptyIcon={CheckCircle}
+        pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
 
-      {!loadingCity && selectedSeedCity && (
-        <SeedingTab
-          registeredCity={selectedSeedCity} tiles={seedTiles} stats={seedStats}
-          seedingOps={seedOps} refreshKey={refreshKey} onRefresh={() => handleSelectCity(selectedSeedCity, true)}
-          onDeleteCity={(city) => { onDeleteCity(city); setSelectedSeedCity(null); }}
-          onSeedingChange={onSeedingChange}
-        />
-      )}
+      {/* Approve modal */}
+      <Modal open={!!approveModal} onClose={() => setApproveModal(null)} title={`Approve "${approveModal?.name || ""}"`} size="sm">
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)] mb-3">Pick a category for this place:</p>
+          <div className="flex flex-wrap gap-2">
+            {ALL_CATEGORIES.map((c) => (
+              <button key={c} onClick={() => setSelectedCat(c)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                  selectedCat === c ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
+                }`}
+                style={selectedCat === c ? { backgroundColor: CATEGORY_COLORS[c] } : {}}>
+                {CATEGORY_LABELS[c]}
+              </button>
+            ))}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setApproveModal(null)}>Cancel</Button>
+          <Button variant="primary" onClick={handleApprove} disabled={!selectedCat}>Approve</Button>
+        </ModalFooter>
+      </Modal>
 
-      {!loadingCity && !selectedSeedCity && (
-        <div className="text-center py-12 text-[var(--color-text-tertiary)]">
-          Select a city above to manage seeding, or add a new city.
-        </div>
-      )}
+      {/* Place detail modal — reuses the same modal as Browse tab */}
+      <PlaceDetailModal place={detailPlace} open={!!detailPlace}
+        onClose={() => setDetailPlace(null)} onSave={() => { fetchRejected(); if (onRefresh) onRefresh(); }} />
     </div>
   );
 }
@@ -3070,129 +3137,97 @@ function SeedingTabWrapper({ registeredCity, tiles, stats, seedingOps, refreshKe
 export function PlacePoolManagementPage({ onTabChange }) {
   const mountedRef = useRef(true);
   const { addToast } = useToast();
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
-  // Breadcrumb navigation state
-  const [selectedCountry, setSelectedCountry] = useState(null);
-  const [selectedCity, setSelectedCity] = useState(null);
-  const [countries, setCountries] = useState([]);
+  // ── Scope-based navigation (replaces old text-based country/city selection) ──
+  const [scope, setScope] = useState({ countryCode: null, cityId: null });
+  const [pickerCities, setPickerCities] = useState([]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState("overview");
   const [seedingActive, setSeedingActive] = useState(false);
 
-  // Seeding state (loaded when registered city is selected)
-  const [registeredCity, setRegisteredCity] = useState(null); // seeding_cities row
+  // Seeding state (loaded when a city is selected)
+  const [registeredCity, setRegisteredCity] = useState(null);
   const [tiles, setTiles] = useState([]);
   const [stats, setStats] = useState(null);
   const [seedingOps, setSeedingOps] = useState([]);
   const [addCityOpen, setAddCityOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Photo backfill job status bar state
+  // Photo backfill job status bar
   const [activePhotoRuns, setActivePhotoRuns] = useState([]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load country list on mount
+  // Load city picker data
   useEffect(() => {
-    supabase.rpc("admin_place_country_overview").then(({ data }) => {
-      if (mountedRef.current && data) setCountries(data.map((r) => r.country));
+    supabase.rpc("admin_city_picker_data").then(({ data }) => {
+      if (mountedRef.current && data) setPickerCities(data);
     });
   }, [refreshKey]);
 
   // Hydrate photo backfill active runs on mount
   useEffect(() => {
     supabase.functions.invoke("backfill-place-photos", { body: { action: "active_runs" } })
-      .then(({ data }) => {
-        if (mountedRef.current && data?.runs) setActivePhotoRuns(data.runs);
-      })
+      .then(({ data }) => { if (mountedRef.current && data?.runs) setActivePhotoRuns(data.runs); })
       .catch(() => {});
   }, []);
 
-  const selectCountry = useCallback((country) => {
-    setSelectedCountry(country);
-    setSelectedCity(null);
-    setRegisteredCity(null);
-  }, []);
-
-  const selectCity = useCallback((cityName) => {
-    setSelectedCity(cityName);
-  }, []);
-
-  const clearCountry = useCallback(() => {
-    setSelectedCountry(null);
-    setSelectedCity(null);
-    setRegisteredCity(null);
-  }, []);
-
-  const clearCity = useCallback(() => {
-    setSelectedCity(null);
-    setRegisteredCity(null);
-  }, []);
-
-  // Check if selected city is registered in seeding_cities
+  // Load city data when a city is selected via scope
   useEffect(() => {
-    if (!selectedCity || !selectedCountry) { setRegisteredCity(null); setTiles([]); setStats(null); setSeedingOps([]); return; }
+    if (!scope.cityId) { setRegisteredCity(null); setTiles([]); setStats(null); setSeedingOps([]); return; }
 
-    supabase.from("seeding_cities").select("*")
-      .eq("name", selectedCity).eq("country", selectedCountry)
-      .maybeSingle()
+    supabase.from("seeding_cities").select("*").eq("id", scope.cityId).single()
       .then(({ data }) => {
         if (!mountedRef.current) return;
         setRegisteredCity(data || null);
-
         if (data) {
-          // Load tiles
           supabase.from("seeding_tiles").select("*").eq("city_id", data.id).order("tile_index")
             .then(({ data: t }) => { if (mountedRef.current) setTiles(t || []); });
-          // Load stats
           supabase.rpc("admin_city_place_stats", { p_city_id: data.id })
             .then(({ data: s }) => { if (mountedRef.current) setStats(s); });
-          // Load seeding ops
-          supabase.from("seeding_operations").select("*").eq("city_id", data.id)
+          supabase.from("seeding_operations").select("*").eq("city_id", data.id).order("created_at", { ascending: false }).limit(50)
             .then(({ data: ops }) => { if (mountedRef.current) setSeedingOps(ops || []); });
-        } else {
-          setTiles([]);
-          setStats(null);
-          setSeedingOps([]);
         }
       });
-  }, [selectedCity, selectedCountry, refreshKey]);
+  }, [scope.cityId, refreshKey]);
 
-  const isCityRegistered = !!registeredCity;
+  // Scope label for subtitle
+  const scopeLabel = (() => {
+    if (scope.cityId) {
+      const c = pickerCities.find((x) => x.city_id === scope.cityId);
+      return c ? `${c.city_name}, ${c.country_name}` : "";
+    }
+    if (scope.countryCode) {
+      const g = pickerCities.find((x) => x.country_code === scope.countryCode);
+      return g ? g.country_name : "";
+    }
+    return `${pickerCities.length} cities`;
+  })();
 
-  // Dynamic tabs — Seeding always visible (has its own city selector inside)
+  const totalApproved = pickerCities.reduce((s, c) => s + (c.ai_approved_places || 0), 0);
+
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "browse", label: "Browse Pool" },
     { id: "map", label: "Map View" },
     { id: "seeding", label: "Seeding" },
-    { id: "photos", label: "Photo Management" },
-    { id: "stale", label: "Stale Review" },
+    { id: "photos", label: "Photos" },
+    { id: "rejected", label: "Rejected" },
   ];
-
-  // Reset to valid tab when tabs change
-  useEffect(() => {
-    if (!tabs.find((t) => t.id === activeTab)) setActiveTab("overview");
-  }, [tabs, activeTab]);
 
   const handleAddCity = (city) => {
     refresh();
-    // Select the new city
-    setSelectedCountry(city.country);
-    setSelectedCity(city.name);
+    setScope({ countryCode: city.country_code || null, cityId: city.id });
   };
 
   const handleDeleteCity = async (city) => {
     try {
       const { error } = await supabase.from("seeding_cities").delete().eq("id", city.id);
       if (error) throw error;
-      addToast({ variant: "success", title: `Deleted draft "${city.name}"` });
-      setRegisteredCity(null);
+      addToast({ variant: "success", title: `Deleted "${city.name}"` });
+      setScope({ countryCode: scope.countryCode, cityId: null });
       refresh();
     } catch (err) {
       addToast({ variant: "error", title: "Delete failed", description: err.message });
@@ -3202,20 +3237,17 @@ export function PlacePoolManagementPage({ onTabChange }) {
   return (
     <div className="space-y-4 py-6">
       <div className="flex items-center justify-between mb-2">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
-          <p className="text-sm text-[var(--color-text-secondary)]">Browse, manage, and seed places across all cities.</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
+            <p className="text-sm text-[var(--color-text-secondary)]">{scopeLabel} · {totalApproved.toLocaleString()} AI-approved places</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
+          <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
         </div>
       </div>
-
-      <CountryFilterBar
-        selectedCountry={selectedCountry}
-        selectedCity={selectedCity}
-        countries={countries}
-        onSelectCountry={selectCountry}
-        onClearCountry={clearCountry}
-        onClearCity={clearCity}
-      />
 
       {/* Photo backfill job status bar — visible across all tabs */}
       {activePhotoRuns.length > 0 && (
@@ -3226,10 +3258,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
             return (
               <div key={run.id} className="flex items-center gap-3 text-sm">
                 <Camera className="w-4 h-4 text-[var(--color-brand-600)]" />
-                <button className="font-medium hover:underline text-[var(--color-brand-600)]"
-                  onClick={() => { setSelectedCountry(run.country); setSelectedCity(run.city); setActiveTab("photos"); }}>
-                  {run.city}, {run.country}
-                </button>
+                <span className="font-medium text-[var(--color-brand-600)]">{run.city}, {run.country}</span>
                 <span className="text-[var(--color-text-secondary)]">— {run.status}</span>
                 <span className="text-[var(--color-text-secondary)]">{done}/{run.total_batches} batches</span>
                 <span className="font-medium">{pct}%</span>
@@ -3246,29 +3275,36 @@ export function PlacePoolManagementPage({ onTabChange }) {
 
       <div className="mt-4" key={refreshKey}>
         {activeTab === "overview" && (
-          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            onSelectCountry={selectCountry} onSelectCity={selectCity} />
+          <OverviewTab scope={scope} onScopeChange={setScope} pickerCities={pickerCities} />
         )}
         {activeTab === "browse" && (
-          <BrowseTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
+          <BrowseTab scope={scope} onRefresh={refresh} />
         )}
         {activeTab === "map" && (
-          <MapTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
+          <MapTab scope={scope} registeredCity={registeredCity} tiles={tiles} seedingOps={seedingOps} />
         )}
         {activeTab === "seeding" && (
-          <SeedingTabWrapper
-            registeredCity={registeredCity} tiles={tiles} stats={stats} seedingOps={seedingOps}
-            refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive}
-            onAddCity={() => setAddCityOpen(true)}
-          />
+          scope.cityId && registeredCity ? (
+            <SeedingTab
+              registeredCity={registeredCity} tiles={tiles} stats={stats} seedingOps={seedingOps}
+              refreshKey={refreshKey} onRefresh={refresh} onDeleteCity={handleDeleteCity} onSeedingChange={setSeedingActive}
+            />
+          ) : (
+            <div className="text-center py-12 text-[var(--color-text-secondary)]">
+              Select a city to manage seeding, or add a new one.
+              <div className="mt-3"><Button icon={Plus} onClick={() => setAddCityOpen(true)}>Add City</Button></div>
+            </div>
+          )
         )}
         {activeTab === "photos" && (
-          <PhotoTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            onActiveRunsChange={setActivePhotoRuns} />
+          scope.cityId ? (
+            <PhotoTab scope={scope} registeredCity={registeredCity} onActiveRunsChange={setActivePhotoRuns} />
+          ) : (
+            <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>
+          )
         )}
-        {activeTab === "stale" && (
-          <StaleTab selectedCountry={selectedCountry} selectedCity={selectedCity} />
+        {activeTab === "rejected" && (
+          <RejectedTab scope={scope} onRefresh={refresh} />
         )}
       </div>
 
