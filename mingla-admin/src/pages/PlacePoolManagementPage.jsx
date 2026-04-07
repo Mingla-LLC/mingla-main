@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MapContainer, TileLayer, CircleMarker, Circle, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Circle, Rectangle, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   Globe, Search, Camera, Clock, Plus, RefreshCw, Play, Pause,
@@ -1333,7 +1333,16 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
         body: {
           action: "search",
           textQuery: adHocQuery,
-          ...(city && { lat: city.center_lat, lng: city.center_lng, radius: city.coverage_radius_km * 1000 }),
+          ...(city && {
+            lat: city.center_lat,
+            lng: city.center_lng,
+            radius: city.bbox_sw_lat && city.bbox_ne_lat
+              ? Math.round(Math.sqrt(
+                  Math.pow((city.bbox_ne_lat - city.bbox_sw_lat) * 111320, 2) +
+                  Math.pow((city.bbox_ne_lng - city.bbox_sw_lng) * 111320 * Math.cos((city.center_lat * Math.PI) / 180), 2)
+                ) / 2)
+              : (city.coverage_radius_km || 10) * 1000,
+          }),
         },
       });
       const places = data?.places || [];
@@ -1347,7 +1356,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
 
   const pushToPool = async (places, category) => {
     const { error } = await supabase.functions.invoke("admin-place-search", {
-      body: { action: "push", places, seedingCategory: category || null },
+      body: { action: "push", places, seedingCategory: category || null, cityId: city?.id || null },
     });
     if (error) addToast({ variant: "error", title: "Push failed" });
     else { addToast({ variant: "success", title: `Pushed ${places.length} place(s)` }); onRefresh(); }
@@ -1378,7 +1387,10 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
           }} disabled={!!activeRun}>Regenerate</Button>
         </div>}>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Coverage: {city.coverage_radius_km}km radius · Spacing: {Math.round(city.tile_radius_m * 1.4)}m
+          {city.bbox_sw_lat && city.bbox_ne_lat
+            ? `Bbox: ${((city.bbox_ne_lat - city.bbox_sw_lat) * 111.32).toFixed(1)}km × ${((city.bbox_ne_lng - city.bbox_sw_lng) * 111.32 * Math.cos((city.center_lat * Math.PI) / 180)).toFixed(1)}km`
+            : `Coverage: ${city.coverage_radius_km}km radius`
+          } · Spacing: {Math.round(city.tile_radius_m * 1.4)}m
         </p>
       </SectionCard>
 
@@ -1869,11 +1881,14 @@ function MapTab({ selectedCountry, selectedCity, registeredCity, tiles, seedingO
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; OpenStreetMap contributors' />
 
-          {/* City boundary (registered cities only) */}
-          {registeredCity && (
+          {/* City boundary (registered cities only) — bbox rectangle for new model, circle fallback for legacy */}
+          {registeredCity && registeredCity.bbox_sw_lat && registeredCity.bbox_ne_lat ? (
+            <Rectangle bounds={[[registeredCity.bbox_sw_lat, registeredCity.bbox_sw_lng], [registeredCity.bbox_ne_lat, registeredCity.bbox_ne_lng]]}
+              pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
+          ) : registeredCity && registeredCity.coverage_radius_km > 0 ? (
             <Circle center={[registeredCity.center_lat, registeredCity.center_lng]} radius={registeredCity.coverage_radius_km * 1000}
               pathOptions={{ color: "#6b7280", dashArray: "8 4", fillOpacity: 0.03, weight: 2 }} />
-          )}
+          ) : null}
 
           {/* Tile circles with status coloring (registered cities only) */}
           {tileData.map((t) => (
@@ -2627,409 +2642,6 @@ function PhotoTab({ selectedCountry, selectedCity, onActiveRunsChange }) {
   );
 }
 
-// ── AI Validation tab removed — absorbed into Overview stats + Browse modal ──
-
-// (AI_STATUS_OPTIONS and AIValidationTab removed — functionality moved to
-//  Overview tab AI summary + PlaceDetailModal per-place AI status)
-
-const _AI_VALIDATION_REMOVED = true; // marker for git diff clarity
-const AI_STATUS_OPTIONS = [
-  { value: "", label: "All" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-  { value: "pending", label: "Pending" },
-  { value: "override_approved", label: "Override (Approved)" },
-  { value: "override_rejected", label: "Override (Rejected)" },
-];
-
-function AIValidationTab() {
-  const { addToast } = useToast();
-  // Note: removed mounted.current pattern — broken in React 18 StrictMode dev mode.
-  // React 18 silently no-ops setState on unmounted components.
-
-  // ── Run Validation state ──
-  const [runCategory, setRunCategory] = useState("");
-  const [runLimit, setRunLimit] = useState(25);
-  const [dryRun, setDryRun] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [runResults, setRunResults] = useState(null);
-  const [progress, setProgress] = useState(null);
-
-  // ── Browser state ──
-  const [cards, setCards] = useState([]);
-  const [browserTotal, setBrowserTotal] = useState(0);
-  const [browserPage, setBrowserPage] = useState(1);
-  const [browserLoading, setBrowserLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [catFilter, setCatFilter] = useState("");
-  const BROWSER_PAGE_SIZE = 20;
-
-  // ── Validation stats ──
-  const [stats, setStats] = useState(null);
-
-  const fetchStats = useCallback(async () => {
-    const [totalRes, approvedRes, rejectedRes, pendingRes, overriddenRes] = await Promise.all([
-      supabase.from("card_pool").select("id", { count: "exact", head: true })
-        .eq("is_active", true).eq("card_type", "single"),
-      supabase.from("card_pool").select("id", { count: "exact", head: true })
-        .eq("is_active", true).eq("card_type", "single").eq("ai_approved", true).is("ai_override", null),
-      supabase.from("card_pool").select("id", { count: "exact", head: true })
-        .eq("is_active", true).eq("card_type", "single").eq("ai_approved", false).is("ai_override", null),
-      supabase.from("card_pool").select("id", { count: "exact", head: true })
-        .eq("is_active", true).eq("card_type", "single").is("ai_approved", null),
-      supabase.from("card_pool").select("id", { count: "exact", head: true })
-        .eq("is_active", true).eq("card_type", "single").not("ai_override", "is", null),
-    ]);
-    setStats({
-      total: totalRes.count ?? 0,
-      approved: approvedRes.count ?? 0,
-      rejected: rejectedRes.count ?? 0,
-      pending: pendingRes.count ?? 0,
-      overridden: overriddenRes.count ?? 0,
-      validated: (approvedRes.count ?? 0) + (rejectedRes.count ?? 0) + (overriddenRes.count ?? 0),
-    });
-  }, []);
-
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-
-  // ── Restore last run from localStorage ──
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("ai_validation_last_run");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-          setRunResults(parsed);
-        } else {
-          localStorage.removeItem("ai_validation_last_run");
-        }
-      }
-    } catch { /* ignore parse errors */ }
-  }, []);
-
-  // ── Run AI Validation (micro-batch loop) ──
-  const handleRunValidation = async () => {
-    setRunning(true);
-    setRunResults(null);
-    setProgress({ processed: 0, approved: 0, rejected: 0, failed: 0, total: runLimit });
-
-    let afterCreatedAt = null;
-    let totalProcessed = 0;
-    let totalApproved = 0;
-    let totalRejected = 0;
-    let totalFailed = 0;
-    let totalCategoriesChanged = 0;
-    let totalCost = 0;
-    const allRejectedExamples = [];
-    const allRecategorizedExamples = [];
-    const MICRO_BATCH = 5;
-
-    try {
-      while (totalProcessed < runLimit) {
-        const batchLimit = Math.min(MICRO_BATCH, runLimit - totalProcessed);
-        const body = { limit: batchLimit, dryRun };
-        if (runCategory) body.categorySlug = runCategory;
-        if (afterCreatedAt) body.afterCreatedAt = afterCreatedAt;
-
-        const { data: rawData, error } = await supabase.functions.invoke("ai-validate-cards", { body });
-        if (error) throw error;
-        const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
-        totalProcessed += data.processed;
-        totalApproved += data.approved;
-        totalRejected += data.rejected;
-        totalFailed += data.failed || 0;
-        totalCategoriesChanged += data.categoriesChanged || 0;
-        totalCost += data.costUsd || 0;
-        if (data.rejectedExamples) allRejectedExamples.push(...data.rejectedExamples);
-        if (data.recategorizedExamples) allRecategorizedExamples.push(...data.recategorizedExamples);
-
-        setProgress({
-          processed: totalProcessed,
-          approved: totalApproved,
-          rejected: totalRejected,
-          failed: totalFailed,
-          total: runLimit,
-        });
-
-        afterCreatedAt = data.continuation_token;
-        if (data.processed < batchLimit || !data.continuation_token) break;
-      }
-
-      const finalResults = {
-        processed: totalProcessed,
-        approved: totalApproved,
-        rejected: totalRejected,
-        failed: totalFailed,
-        categoriesChanged: totalCategoriesChanged,
-        costUsd: Math.round(totalCost * 100) / 100,
-        rejectedExamples: allRejectedExamples.slice(0, 10),
-        recategorizedExamples: allRecategorizedExamples.slice(0, 10),
-        dryRun,
-        timestamp: Date.now(),
-      };
-      setRunResults(finalResults);
-      localStorage.setItem("ai_validation_last_run", JSON.stringify(finalResults));
-      addToast({ variant: "success", title: `Validated ${totalProcessed} cards` });
-      fetchCards();
-      fetchStats();
-    } catch (err) {
-      addToast({ variant: "error", title: "Validation failed", description: err.message });
-    } finally {
-      setRunning(false);
-      setProgress(null);
-    }
-  };
-
-  // ── Fetch cards with AI status ──
-  const fetchCards = useCallback(async () => {
-    setBrowserLoading(true);
-    let q = supabase.from("card_pool")
-      .select(`
-        id, categories, original_categories, ai_approved, ai_reason,
-        ai_categories, ai_validated_at, ai_override, card_type,
-        place_pool ( name, address )
-      `, { count: "exact" })
-      .eq("is_active", true)
-      .eq("card_type", "single")
-      .order("ai_validated_at", { ascending: false, nullsFirst: false });
-
-    // Status filter
-    if (statusFilter === "approved") { q = q.eq("ai_approved", true).is("ai_override", null); }
-    else if (statusFilter === "rejected") { q = q.eq("ai_approved", false).is("ai_override", null); }
-    else if (statusFilter === "pending") { q = q.is("ai_approved", null); }
-    else if (statusFilter === "override_approved") { q = q.eq("ai_override", true); }
-    else if (statusFilter === "override_rejected") { q = q.eq("ai_override", false); }
-
-    if (catFilter) q = q.contains("categories", [catFilter]);
-
-    q = q.range((browserPage - 1) * BROWSER_PAGE_SIZE, browserPage * BROWSER_PAGE_SIZE - 1);
-    const { data, count, error } = await q;
-    if (error) {
-      console.error("AI browser fetch error:", error.message, error.details, error.hint);
-    }
-    if (!error) {
-      setCards(data || []);
-      setBrowserTotal(count ?? data?.length ?? 0);
-    }
-    setBrowserLoading(false);
-  }, [statusFilter, catFilter, browserPage]);
-
-  useEffect(() => { fetchCards(); }, [fetchCards]);
-
-  // ── Auto-refresh browser during validation ──
-  useEffect(() => {
-    if (!running) return;
-    const interval = setInterval(() => { fetchCards(); }, 30000);
-    return () => clearInterval(interval);
-  }, [running, fetchCards]);
-
-  // ── Override handler ──
-  const handleOverride = async (cardId, newValue) => {
-    const { error } = await supabase
-      .from("card_pool")
-      .update({ ai_override: newValue })
-      .eq("id", cardId);
-    if (error) { addToast({ variant: "error", title: "Override failed", description: error.message }); return; }
-    addToast({ variant: "success", title: newValue === null ? "Override cleared" : newValue ? "Force-approved" : "Force-rejected" });
-    fetchCards();
-    fetchStats();
-  };
-
-  const getStatusBadge = (card) => {
-    if (card.ai_override === true) return <Badge variant="info">Override: Show</Badge>;
-    if (card.ai_override === false) return <Badge variant="error">Override: Hide</Badge>;
-    if (card.ai_approved === true) return <Badge variant="success">Approved</Badge>;
-    if (card.ai_approved === false) return <Badge variant="error">Rejected</Badge>;
-    return <Badge variant="outline">Pending</Badge>;
-  };
-
-  const totalPages = Math.ceil(browserTotal / BROWSER_PAGE_SIZE);
-
-  const browserColumns = [
-    { key: "name", label: "Place", render: (_, r) => r.place_pool?.name || "—" },
-    { key: "original_categories", label: "Original", render: (_, r) => (r.original_categories || []).join(", ") || "—" },
-    { key: "ai_categories", label: "AI Categories", render: (_, r) => (r.ai_categories || []).join(", ") || "—" },
-    { key: "status", label: "Status", render: (_, r) => getStatusBadge(r) },
-    { key: "ai_reason", label: "Reason", render: (_, r) => <span className="text-xs max-w-xs truncate block" title={r.ai_reason}>{r.ai_reason || "—"}</span> },
-    { key: "ai_validated_at", label: "Validated", render: (_, r) => r.ai_validated_at ? new Date(r.ai_validated_at).toLocaleDateString() : "—" },
-    { key: "actions", label: "Override", render: (_, r) => (
-      <div className="flex gap-1">
-        <button onClick={() => handleOverride(r.id, true)} title="Force approve"
-          className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 cursor-pointer">
-          <CheckCircle className="w-4 h-4" />
-        </button>
-        <button onClick={() => handleOverride(r.id, false)} title="Force reject"
-          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 cursor-pointer">
-          <XCircle className="w-4 h-4" />
-        </button>
-        {r.ai_override !== null && (
-          <button onClick={() => handleOverride(r.id, null)} title="Clear override"
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 cursor-pointer">
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-    )},
-  ];
-
-  return (
-    <div className="space-y-6 py-6">
-      {/* ── Validation Overview ── */}
-      {stats && (
-        <SectionCard title="Validation Overview" subtitle={stats.pending > 0 ? `${stats.pending} cards need validation` : "All cards validated"}>
-          <div className="flex gap-3 flex-wrap">
-            <StatCard label="Total Cards" value={stats.total} className="flex-1 min-w-[100px]" />
-            <StatCard label="Validated" value={stats.validated} className="flex-1 min-w-[100px]" />
-            <StatCard label="Pending" value={stats.pending} className="flex-1 min-w-[100px]" />
-            <StatCard label="Approved" value={stats.approved} className="flex-1 min-w-[100px]" />
-            <StatCard label="Rejected" value={stats.rejected} className="flex-1 min-w-[100px]" />
-            <StatCard label="Overridden" value={stats.overridden} className="flex-1 min-w-[100px]" />
-          </div>
-          <div className="mt-3">
-            <div className="flex justify-between text-xs text-[var(--color-text-secondary)] mb-1">
-              <span>{stats.validated} of {stats.total} cards validated ({stats.total > 0 ? Math.round(stats.validated / stats.total * 100) : 0}%)</span>
-              <span>{stats.pending} remaining</span>
-            </div>
-            <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${stats.total > 0 ? (stats.validated / stats.total * 100) : 0}%`,
-                  background: stats.validated > 0
-                    ? `linear-gradient(to right, #22c55e ${Math.round(stats.approved / stats.validated * 100)}%, #ef4444 ${Math.round(stats.approved / stats.validated * 100)}%)`
-                    : "var(--gray-300)"
-                }}
-              />
-            </div>
-            <div className="flex gap-4 mt-1 text-xs text-[var(--color-text-muted)]">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Approved ({stats.approved})</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Rejected ({stats.rejected})</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300" /> Pending ({stats.pending})</span>
-            </div>
-          </div>
-        </SectionCard>
-      )}
-
-      {/* ── Run Validation Panel ── */}
-      <SectionCard title="Run AI Validation" subtitle="Validate cards using GPT-5.4-mini with web search">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="w-48">
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Category</label>
-            <select value={runCategory} onChange={e => setRunCategory(e.target.value)}
-              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
-              <option value="">All Categories</option>
-              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
-          </div>
-          <div className="w-28">
-            <Input label="Limit" type="number" value={runLimit} onChange={e => setRunLimit(Math.min(100, Math.max(1, parseInt(e.target.value) || 25)))} />
-          </div>
-          <Toggle label="Dry run" checked={dryRun} onChange={setDryRun} />
-          <Button variant="primary" icon={Zap} loading={running} onClick={handleRunValidation}>
-            {running ? "Validating..." : "Run AI Validation"}
-          </Button>
-        </div>
-
-        {/* Progress bar during validation */}
-        {progress && (
-          <div className="mt-4 space-y-2">
-            <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
-              <span>Processing card {progress.processed} of {progress.total}...</span>
-              <span>{progress.approved} approved · {progress.rejected} rejected · {progress.failed} failed</span>
-            </div>
-            <div className="w-full h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--color-brand-500)] rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, (progress.processed / progress.total) * 100) || 0)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Results summary */}
-        {runResults && (
-          <div className="mt-4 space-y-3">
-            <div className="flex gap-3 flex-wrap">
-              <StatCard label="Processed" value={runResults.processed} className="flex-1 min-w-[100px]" />
-              <StatCard label="Approved" value={runResults.approved} className="flex-1 min-w-[100px]" />
-              <StatCard label="Rejected" value={runResults.rejected} className="flex-1 min-w-[100px]" />
-              <StatCard label="Recategorized" value={runResults.categoriesChanged} className="flex-1 min-w-[100px]" />
-              <StatCard label="Est. Cost" value={`$${runResults.costUsd}`} className="flex-1 min-w-[100px]" />
-            </div>
-            {runResults.timestamp && (
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Last run: {new Date(runResults.timestamp).toLocaleString()}{runResults.dryRun ? " (dry run)" : ""}
-              </p>
-            )}
-            {runResults.dryRun && <p className="text-xs text-amber-500 font-medium">Dry run — no changes written to database</p>}
-
-            {runResults.rejectedExamples?.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-1">Rejected Examples</h4>
-                <DataTable columns={[
-                  { key: "name", label: "Place" },
-                  { key: "originalCategory", label: "Category" },
-                  { key: "reason", label: "Reason" },
-                ]} rows={runResults.rejectedExamples} />
-              </div>
-            )}
-
-            {runResults.recategorizedExamples?.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-1">Recategorized Examples</h4>
-                <DataTable columns={[
-                  { key: "name", label: "Place" },
-                  { key: "from", label: "From", render: (_, r) => r.from.join(", ") },
-                  { key: "to", label: "To", render: (_, r) => r.to.join(", ") },
-                  { key: "reason", label: "Reason" },
-                ]} rows={runResults.recategorizedExamples} />
-              </div>
-            )}
-          </div>
-        )}
-      </SectionCard>
-
-      {/* ── AI Status Browser ── */}
-      <SectionCard title="AI Status Browser" subtitle={`${browserTotal} cards`}>
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <div className="w-44">
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">AI Status</label>
-            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setBrowserPage(1); }}
-              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
-              {AI_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div className="w-44">
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Category</label>
-            <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setBrowserPage(1); }}
-              className="w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] rounded-lg px-3 outline-none">
-              <option value="">All</option>
-              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
-          </div>
-          <Button variant="ghost" icon={RefreshCw} onClick={fetchCards} loading={browserLoading}>Refresh</Button>
-        </div>
-
-        {browserLoading && cards.length === 0
-          ? <div className="text-center py-8 text-[var(--color-text-muted)]"><Loader className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</div>
-          : cards.length === 0
-            ? <div className="text-center py-8 text-[var(--color-text-muted)]">No cards match filters</div>
-            : <DataTable columns={browserColumns} rows={cards} />
-        }
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-[var(--color-text-muted)]">Page {browserPage} of {totalPages}</span>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" disabled={browserPage <= 1} onClick={() => setBrowserPage(p => p - 1)}>Previous</Button>
-              <Button variant="ghost" size="sm" disabled={browserPage >= totalPages} onClick={() => setBrowserPage(p => p + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
-      </SectionCard>
-    </div>
-  );
-}
 
 // ── Tab 6: Stale Review ──────────────────────────────────────────────────────
 
