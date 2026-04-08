@@ -141,7 +141,7 @@ Example 15: "U2 UNIQUE MED SPA" type:spa → {"d":"reject","c":[],"pi":"medical 
 
 Example 16: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
 
-Example 12: "Urban Air Trampoline Park" type:amusement_center → Consider carefully: if it has adult sessions and date-night events, it's play. If it's primarily for kids birthday parties, reject.
+Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject","c":[],"pi":"children's trampoline park","w":true,"r":"Primarily kids birthday parties and toddler play — reject","f":"high"}
 
 Example 17: "Soho Beach House" type:hotel → {"d":"accept","c":["drink","wellness"],"pi":"members club with pool bar and spa","w":true,"r":"Upscale beach club/hotel with bar, pool, and spa — drink + wellness","f":"medium"}
 Note: Private/members clubs with bars, pools, restaurants, or spas still qualify for their respective categories. The membership model doesn't disqualify the venue.
@@ -229,13 +229,16 @@ interface ClassResult {
   output_tokens: number;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 1, delay = 3000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 1, delayMs = 3000): Promise<T> {
   try { return await fn(); }
   catch (err) {
     const msg = (err as Error).message || "";
-    if (retries <= 0 || msg.includes("429") || msg.includes("quota") || msg.includes("exceeded")) throw err;
-    await sleep(delay);
-    return withRetry(fn, retries - 1, delay);
+    // Permanent quota exceeded — don't waste a retry
+    if (msg.includes("QUOTA_EXCEEDED")) throw err;
+    // Transient errors (including 429 rate limit) — retry if attempts remain
+    if (retries <= 0) throw err;
+    await sleep(delayMs);
+    return withRetry(fn, retries - 1, delayMs);
   }
 }
 
@@ -271,6 +274,12 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
       ?.content?.find((c: any) => c.type === "output_text")?.text;
     if (!outputText) throw new Error("No text output from GPT response");
     const parsed = JSON.parse(outputText);
+    // Filter hallucinated categories — only allow known slugs
+    const VALID_SLUGS = new Set([
+      "flowers","fine_dining","nature_views","first_meet","drink","casual_eats",
+      "watch","live_performance","creative_arts","play","wellness","picnic_park","groceries",
+    ]);
+    parsed.c = (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s));
     return {
       decision: parsed.d,
       categories: parsed.c,
@@ -411,19 +420,9 @@ async function processPlace(place: any): Promise<PlaceResult> {
   } catch (err) {
     // Propagate quota errors so the batch handler can return 402
     if ((err as Error).message?.includes("QUOTA_EXCEEDED")) throw err;
+    // Re-throw all other GPT errors — place stays ai_approved=NULL, retryable
     console.error(`GPT failed for ${place.id}: ${(err as Error).message}`);
-    return {
-      decision: "accept",
-      categories: place.ai_categories || [],
-      primary_identity: place.primary_type || "unknown",
-      confidence: "low",
-      reason: `Pipeline v1: GPT classification failed — ${(err as Error).message}`,
-      evidence: factSheet.evidence.slice(0, 500),
-      stage_resolved: 5,
-      website_verified: false,
-      search_results: searchResults,
-      cost_usd: serperCost,
-    };
+    throw err;
   }
 }
 
@@ -514,7 +513,11 @@ async function handleCreateRun(body: any, userId: string): Promise<Response> {
     .order("created_at", { ascending: true });
 
   if (scope === "unvalidated" && !body.revalidate) {
-    query = query.is("ai_validated_at", null);
+    query = query.is("ai_approved", null);
+  }
+  if (scope === "failed" && !body.revalidate) {
+    // Failed = went through pipeline but got no decision (GPT error, etc.)
+    query = query.not("ai_validated_at", "is", null).is("ai_approved", null);
   }
   if (body.category) {
     query = query.contains("ai_categories", [body.category]);
@@ -524,6 +527,9 @@ async function handleCreateRun(body: any, userId: string): Promise<Response> {
   }
   if (body.city) {
     query = query.ilike("city", `%${body.city}%`);
+  }
+  if (body.city_id) {
+    query = query.eq("city_id", body.city_id);
   }
 
   // Fetch all IDs (paginated)
