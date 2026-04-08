@@ -149,7 +149,7 @@ function cellTextColor(count) {
   return "var(--color-success-700)";
 }
 
-function CoverageHeatmap({ data, selectedCityId }) {
+function CoverageHeatmap({ data, selectedCityId, cityStats }) {
   if (!data || data.length === 0) {
     return <p className="text-sm text-[var(--color-text-tertiary)] py-4 text-center">No coverage data yet. Seed and validate cities first.</p>;
   }
@@ -160,7 +160,7 @@ function CoverageHeatmap({ data, selectedCityId }) {
     if (!cityMap[row.city_id]) {
       cityMap[row.city_id] = { city_id: row.city_id, city_name: row.city_name, country: row.country, cats: {} };
     }
-    cityMap[row.city_id].cats[row.category] = { approved: row.approved_count, unvalidated: row.unvalidated_count };
+    cityMap[row.city_id].cats[row.category] = { approved: row.approved_count };
   }
 
   let cities = Object.values(cityMap).sort((a, b) => a.city_name.localeCompare(b.city_name));
@@ -189,13 +189,15 @@ function CoverageHeatmap({ data, selectedCityId }) {
         <tbody>
           {cities.map((city) => {
             const rowTotal = CATEGORIES.reduce((sum, cat) => sum + (city.cats[cat]?.approved || 0), 0);
-            const unvalidatedTotal = CATEGORIES.reduce((sum, cat) => sum + (city.cats[cat]?.unvalidated || 0), 0);
+            // Get unvalidated count from cityStats RPC (accurate server-side data)
+            const cityStatRow = (cityStats || []).find((s) => s.city_id === city.city_id);
+            const unvalidatedCount = cityStatRow?.unvalidated || 0;
             return (
               <tr key={city.city_id} className="border-t border-[var(--gray-100)]">
                 <td className="py-1.5 px-2 font-medium text-[var(--color-text-primary)] sticky left-0 bg-[var(--color-background-primary)]">
                   {city.city_name}
-                  {unvalidatedTotal > 0 && (
-                    <span className="ml-1 text-[10px] text-[var(--color-warning-600)]">({unvalidatedTotal} pending)</span>
+                  {unvalidatedCount > 0 && (
+                    <span className="ml-1 text-[10px] text-[var(--color-warning-600)]">({unvalidatedCount.toLocaleString()} pending)</span>
                   )}
                 </td>
                 {CATEGORIES.map((cat) => {
@@ -233,17 +235,12 @@ function CoverageHeatmap({ data, selectedCityId }) {
 
 // ── Needs Attention Cards ───────────────────────────────────────────────────
 
-function NeedsAttentionCards({ coverageData, onValidateCity }) {
-  if (!coverageData || coverageData.length === 0) return null;
+function NeedsAttentionCards({ cityStats, onValidateCity }) {
+  if (!cityStats || cityStats.length === 0) return null;
 
-  // Aggregate unvalidated per city
   const cityAgg = {};
-  for (const row of coverageData) {
-    if (!cityAgg[row.city_id]) {
-      cityAgg[row.city_id] = { city_id: row.city_id, city_name: row.city_name, country: row.country, unvalidated: 0, approved: 0 };
-    }
-    cityAgg[row.city_id].unvalidated += row.unvalidated_count || 0;
-    cityAgg[row.city_id].approved += row.approved_count || 0;
+  for (const row of cityStats) {
+    cityAgg[row.city_id] = row;
   }
 
   const citiesNeedingAttention = Object.values(cityAgg)
@@ -290,7 +287,10 @@ function NeedsAttentionCards({ coverageData, onValidateCity }) {
 
 // ── Command Center Tab ──────────────────────────────────────────────────────
 
-function CommandCenterTab({ overview, coverageData, recentRuns, selectedCityId, onValidateCity }) {
+function CommandCenterTab({ overview, cityOverview, coverageData, cityStats, recentRuns, selectedCityId, onValidateCity }) {
+  // Use direct city query when city selected, global overview otherwise
+  const stats = selectedCityId && cityOverview ? cityOverview : overview;
+
   const recentRunColumns = [
     { key: "created_at", label: "Date", render: (v) => <span className="text-xs">{timeAgo(v)}</span> },
     { key: "scope", label: "Scope", render: (v, r) => (
@@ -307,22 +307,22 @@ function CommandCenterTab({ overview, coverageData, recentRuns, selectedCityId, 
     <div className="space-y-6">
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <StatCard icon={Globe} label="Active Places" value={fmt(overview?.total_active)} />
-        <StatCard icon={ShieldCheck} label="Validated" value={fmt(overview?.validated)} />
-        <StatCard icon={ShieldAlert} label="Unvalidated" value={fmt(overview?.unvalidated)}
-          className={overview?.unvalidated > 0 ? "border-l-4 border-l-[var(--color-warning-500)]" : ""} />
-        <StatCard icon={CheckCircle} label="Approved" value={fmt(overview?.approved)} />
-        <StatCard icon={XCircle} label="Rejected" value={fmt(overview?.rejected)} />
+        <StatCard icon={Globe} label="Active Places" value={fmt(stats?.total_active)} />
+        <StatCard icon={ShieldCheck} label="Validated" value={fmt(stats?.validated)} />
+        <StatCard icon={ShieldAlert} label="Unvalidated" value={fmt(stats?.unvalidated)}
+          className={stats?.unvalidated > 0 ? "border-l-4 border-l-[var(--color-warning-500)]" : ""} />
+        <StatCard icon={CheckCircle} label="Approved" value={fmt(stats?.approved)} />
+        <StatCard icon={XCircle} label="Rejected" value={fmt(stats?.rejected)} />
       </div>
 
       {/* Needs Attention */}
       <SectionCard title="Needs Attention" subtitle="Cities with unvalidated places">
-        <NeedsAttentionCards coverageData={coverageData} onValidateCity={onValidateCity} />
+        <NeedsAttentionCards cityStats={cityStats} onValidateCity={onValidateCity} />
       </SectionCard>
 
       {/* Coverage Heatmap */}
       <SectionCard title="Category Coverage" subtitle="Approved places per city × category">
-        <CoverageHeatmap data={coverageData} selectedCityId={selectedCityId} />
+        <CoverageHeatmap data={coverageData} selectedCityId={selectedCityId} cityStats={cityStats} />
       </SectionCard>
 
       {/* Recent Runs */}
@@ -370,7 +370,9 @@ export function AIValidationPage() {
 
   // Data
   const [overview, setOverview] = useState(null);
+  const [cityOverview, setCityOverview] = useState(null);
   const [coverageData, setCoverageData] = useState([]);
+  const [cityStats, setCityStats] = useState([]);
   const [recentRuns, setRecentRuns] = useState([]);
   const [cities, setCities] = useState([]);
   const [selectedCityId, setSelectedCityId] = useState(null);
@@ -379,22 +381,33 @@ export function AIValidationPage() {
     setLoading(true);
     setError(null);
     try {
-      const [{ data: ov }, { data: cov }, { data: rr }, { data: pickerCities }] = await Promise.all([
+      const [{ data: ov }, { data: cov }, { data: rr }, { data: pickerCities }, { data: cs }] = await Promise.all([
         supabase.rpc("admin_ai_validation_overview"),
         supabase.rpc("admin_ai_city_category_coverage"),
         supabase.rpc("admin_ai_recent_runs", { p_limit: 5 }),
         supabase.rpc("admin_city_picker_data"),
+        supabase.rpc("admin_ai_city_stats"),
       ]);
       setOverview(ov);
       setCoverageData(cov || []);
       setRecentRuns(rr || []);
       setCities(pickerCities || []);
+      setCityStats(cs || []);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Load city-specific stats when a city is selected (server-side RPC)
+  useEffect(() => {
+    if (!selectedCityId) { setCityOverview(null); return; }
+    (async () => {
+      const { data } = await supabase.rpc("admin_ai_city_overview", { p_city_id: selectedCityId });
+      if (data) setCityOverview(data);
+    })();
+  }, [selectedCityId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -464,7 +477,9 @@ export function AIValidationPage() {
           {tab === "command" && (
             <CommandCenterTab
               overview={overview}
+              cityOverview={cityOverview}
               coverageData={coverageData}
+              cityStats={cityStats}
               recentRuns={recentRuns}
               selectedCityId={selectedCityId}
               onValidateCity={handleValidateCity}
