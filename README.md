@@ -336,12 +336,12 @@ Mingla/
 ### Generation and AI
 - `generate-single-cards` -- Batch single card generation from place pool
 - `generate-curated-experiences` -- Multi-stop itinerary generation
-- `generate-experiences`, `generate-holiday-categories` -- Experience generation utilities
+- `generate-holiday-categories` -- Holiday category generation
 - `generate-ai-summary` -- AI place summaries
 - `generate-session-deck` -- Collaboration session deck generation
 - `ai-validate-cards` -- AI quality gate (GPT-5.4-mini with web search)
 - `ai-reason` -- AI reasoning for card decisions
-- `new-generate-experience-`, `night-out-experiences`, `holiday-experiences` -- Legacy experience generators
+- `new-generate-experience-`, `night-out-experiences`, `holiday-experiences` -- Pool-first experience generators (Google API fallback)
 
 ### Admin
 - `admin-seed-places` -- Tile-based place seeding with sequential batch approval

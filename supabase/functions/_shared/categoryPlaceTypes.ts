@@ -5,8 +5,9 @@
  *   1. CATEGORY NAMES: resolveCategory(), toSlug(), ALL_CATEGORY_NAMES, etc.
  *      Used by most edge functions for category string normalization.
  *   2. ON-DEMAND TYPE LISTS: MINGLA_CATEGORY_PLACE_TYPES, used by
- *      generate-experiences, holiday-experiences, warm-cache for direct
- *      Google Places API calls (NOT the place_pool → card_pool pipeline).
+ *      holiday-experiences, new-generate-experience-, warm-cache for
+ *      Google Places API fallback when pool coverage is thin.
+ *      Both are pool-first — they only hit Google as a fallback.
  *
  * 13 categories: 12 visible + 1 hidden (Groceries).
  *
