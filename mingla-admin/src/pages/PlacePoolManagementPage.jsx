@@ -1473,7 +1473,9 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
           const { data: runData } = await supabase
             .from("seeding_runs").select("*").eq("id", activeRun.id).single();
           setActiveRun(runData);
-          onRefresh();
+          // NOTE: do NOT call onRefresh() here — it increments refreshKey which
+          // remounts SeedTab via key={refreshKey}, killing this loop. Refresh
+          // only after the loop completes.
         }
 
         if (mountedRef.current) setRunningBatch(false);
@@ -1493,7 +1495,6 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
           const { data: runData } = await supabase
             .from("seeding_runs").select("*").eq("id", activeRun.id).single();
           setActiveRun(runData);
-          onRefresh();
           setRunningBatch(false);
         }
         break;
@@ -1503,6 +1504,7 @@ function SeedTab({ city, tiles, onRefresh, onDeleteCity, onSeedingChange }) {
     if (mountedRef.current) {
       setAutoRunning(false);
       setRunningBatch(false);
+      onRefresh(); // Refresh AFTER loop completes — safe to remount now
     }
   };
 
