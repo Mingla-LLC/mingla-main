@@ -57,6 +57,8 @@ const getDefaultPreferences = (): UserPreferences => ({
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: null,
+  use_gps_location: true,
+  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
 });
 
 interface RecommendationsContextType {
@@ -100,7 +102,6 @@ interface RecommendationsProviderProps {
   children: React.ReactNode;
   currentMode?: string;
   refreshKey?: number | string;
-  resumeCount?: number;
   /** Pre-resolved session UUID from AsyncStorage — enables instant session resolution
    *  without waiting for the full loadUserSessions() network round-trip. */
   persistedSessionId?: string | null;
@@ -112,7 +113,6 @@ export const RecommendationsProvider: React.FC<
   children,
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
-  resumeCount: propResumeCount = 0,
   persistedSessionId: propPersistedSessionId = null,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);

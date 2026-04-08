@@ -1,8 +1,13 @@
+// INVARIANT: This hook must be instantiated EXACTLY ONCE in the app (in index.tsx).
+// A duplicate in AppStateManager was removed in ORCH-0236. Do not add another.
+// Adding a second instance causes double auth refresh, double query invalidation,
+// and double Realtime reconnect attempts.
+
 import { useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { Alert, AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
-import { resetAuth401Counter, enterAuth401GracePeriod } from '../config/queryClient';
+import { resetAuth401Counter, enterAuth401GracePeriod, getSignOutHandler } from '../config/queryClient';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
 import { savedCardKeys } from './queryKeys';
@@ -12,15 +17,16 @@ import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
 
 // Query key prefixes for critical queries that should refresh on resume.
-// Deck/curated/session-deck are EXCLUDED — they are active swipe sessions that
-// only refresh on explicit preference change (query key changes). Force-invalidating
-// them on resume causes mid-session deck resets.
+// Deck/curated/session-deck EXCLUDED — active swipe sessions that only refresh on
+// explicit preference change (query key changes). Force-invalidating them on resume
+// causes mid-session deck resets.
+// Decision: user 2026-04-08, historical context: commits bb815916 → 6bb8b670.
 // Discover/map content IS included — these are passive browsing views, not swipe sessions.
 const CRITICAL_QUERY_KEYS = [
   friendsKeys.all,                // friends list, requests, blocked, muted
   boardKeys.all,                  // collaboration boards
   savedCardKeys.all,              // saved cards + saves + paired saves
-  pairingKeys.prefix,              // pairings and pair requests
+  pairingKeys.prefix,             // pairings and pair requests
   phoneInviteKeys.all,            // pending phone invites
   subscriptionKeys.all,           // subscription status
   ['calendarEntries'],            // calendar entries
@@ -32,6 +38,9 @@ const CRITICAL_QUERY_KEYS = [
 
 const DEBOUNCE_MS = 500;
 const AUTH_TIMEOUT_MS = 8000;
+const AUTH_RETRY_DELAY_MS = 3000;
+const AUTH_MAX_ATTEMPTS = 3;
+const GRACE_PERIOD_MS = 15000;
 const MIN_BACKGROUND_FOR_INVALIDATION_MS = 5000;
 const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
 
@@ -40,45 +49,43 @@ const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
  *
  * Works in tandem with focusManager (wired to AppState in queryClient.ts).
  * focusManager handles automatic stale-query refetch on every resume.
- * This hook adds force-invalidation of all critical queries, plus auth
- * refresh and WebSocket reconnection for long backgrounds (≥ 30s):
+ * This hook orchestrates the auth-first resume sequence for long backgrounds:
  *
  *   Trivial background (< 5s):
  *     - Fires onResume callback only
  *     - Skips all query invalidation (real-time handles live updates)
- *     - Avoids wasting bandwidth on quick notification checks / app switcher
  *
  *   Short background (5-30s):
  *     - Invalidates all CRITICAL_QUERY_KEYS (forces background refetch)
  *     - Fires onResume callback
- *     - Skips auth refresh + WebSocket reconnect (token valid, socket alive)
+ *     - Skips auth refresh + Realtime remount (token valid, socket alive)
  *
  *   Long background (≥ 30s):
- *     - Validates/refreshes Supabase auth session (8s timeout)
- *     - Forces Realtime WebSocket reconnection
- *     - Invalidates all CRITICAL_QUERY_KEYS
- *     - Fires onResume callback
+ *     - AUTH-FIRST: refreshes Supabase session with 3-attempt retry
+ *     - REALTIME: increments realtimeEpoch to force channel hook remount
+ *     - INVALIDATE: marks all CRITICAL_QUERY_KEYS as stale (fresh JWT)
+ *     - CALLBACK: fires onResume for non-RQ work (refreshAllSessions)
  *
- * Cached data remains visible during the refresh — no loading flash.
+ * INVARIANT I-RT-BIND-01: NEVER call supabase.realtime.disconnect() + connect().
+ * This clears channel.bindings (RealtimeChannel.js:313 teardown). Use realtimeEpoch
+ * remount instead. See INV-010 Track 2 for SDK proof.
  *
  * @param userId - Current authenticated user ID. Hook is inert when null/undefined.
  * @param onResume - Optional callback for non-React-Query work (e.g., refreshAllSessions).
- * @returns resumeCount - Increments on each resume. Consumers can observe this to
- *          re-arm safety timeouts.
+ * @returns Object with resumeCount (increments each resume) and realtimeEpoch
+ *          (increments on long-background to trigger channel remount).
  */
 export function useForegroundRefresh(
   userId: string | undefined,
   onResume?: () => void,
-): number {
+): { resumeCount: number; realtimeEpoch: number } {
   const queryClient = useQueryClient();
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const backgroundTimestampRef = useRef<number | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // useState (not useRef) because the parent must re-render to pass the new
-  // value as a prop to RecommendationsProvider.
   const [resumeCount, setResumeCount] = useState(0);
+  const [realtimeEpoch, setRealtimeEpoch] = useState(0);
 
-  // Use refs for callback to avoid re-subscribing on every render
   const onResumeRef = useRef(onResume);
   onResumeRef.current = onResume;
 
@@ -91,6 +98,10 @@ export function useForegroundRefresh(
       // Track when we enter background (for duration logging + skip logic)
       if (nextState === 'background') {
         backgroundTimestampRef.current = Date.now();
+        // Stop the Supabase auto-refresh ticker to save battery while backgrounded.
+        // iOS freezes timers anyway, but this ensures a clean restart on resume.
+        // Constraint S8: isBrowser()=false means ticker runs unconditionally without this.
+        supabase.auth.stopAutoRefresh();
       }
 
       // Only background → active is a genuine resume. iOS inactive → active
@@ -98,16 +109,18 @@ export function useForegroundRefresh(
       const wasBackground = prevState === 'background';
       const isNowActive = nextState === 'active';
 
-      // Update ref BEFORE async work (prevents double-fire if state changes during debounce)
       appStateRef.current = nextState;
 
       if (!wasBackground || !isNowActive) return;
+
+      // Restart the auto-refresh ticker immediately on foreground.
+      supabase.auth.startAutoRefresh();
 
       // Enter grace period BEFORE debounce — focusManager fires refetches
       // immediately on resume (before the 500ms debounce). With an expired JWT,
       // those refetches return 401. The grace period prevents these burst 401s
       // from triggering a false forced sign-out.
-      enterAuth401GracePeriod(3000);
+      enterAuth401GracePeriod(GRACE_PERIOD_MS);
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -120,15 +133,7 @@ export function useForegroundRefresh(
         const isShortBackground = bgDurationMs !== null && bgDurationMs < SHORT_BACKGROUND_THRESHOLD_MS;
         const isTrivialBackground = bgDurationMs !== null && bgDurationMs < MIN_BACKGROUND_FOR_INVALIDATION_MS;
 
-        // Reset the 401 counter BEFORE any queries fire. focusManager triggers
-        // refetches immediately on resume (before this debounced handler). After
-        // a long background with expired JWT, those refetches hit 401. Without
-        // this reset, 3+ simultaneous 401s would trigger forced sign-out before
-        // auth refresh below has a chance to run.
         resetAuth401Counter();
-
-        // Increment resume counter so consumers (RecommendationsContext) can
-        // detect resume events and re-arm safety timeouts.
         setResumeCount(c => c + 1);
 
         if (__DEV__) {
@@ -138,9 +143,6 @@ export function useForegroundRefresh(
         }
 
         // ── Trivial background (< 5s): skip invalidation entirely ──
-        // Quick notification check, screenshot, app switcher peek — nothing
-        // meaningful changed. Real-time subscriptions handle live updates.
-        // Still fire onResume callback (collaboration sessions may need it).
         if (isTrivialBackground) {
           if (__DEV__) {
             logger.lifecycle(`[RESUME] Trivial background (${bgLabel}) — skipping query invalidation`);
@@ -149,14 +151,26 @@ export function useForegroundRefresh(
           return;
         }
 
-        if (!isShortBackground) {
-          // ── Long background (≥ 30s): auth may have expired, sockets may be dead ──
+        // ── Short background (5-30s): invalidate queries only ──
+        if (isShortBackground) {
+          for (const key of CRITICAL_QUERY_KEYS) {
+            queryClient.invalidateQueries({ queryKey: key });
+          }
+          onResumeRef.current?.();
+          return;
+        }
 
-          // Step 1: Validate/refresh auth session with hard timeout.
-          // supabase.auth.getSession() reads stored session and triggers JWT refresh
-          // if expired. Cap at 8 seconds — if it hangs (dead socket after long background),
-          // proceed with the existing token. Supabase's auto-retry on 401 handles renewal
-          // transparently when individual queries fire.
+        // ══════════════════════════════════════════════════════════
+        // LONG BACKGROUND (≥ 30s) — Auth-first resume sequence
+        // ══════════════════════════════════════════════════════════
+
+        // Step 1: AUTH-FIRST — refresh before anything else.
+        // 3 attempts with 8s timeout each, 3s sleep between attempts.
+        // Constraint S3: getSession() blocks until refresh completes when token expired.
+        // Constraint S4: concurrent calls are safe (Deferred lock in SDK).
+        let authOk = false;
+
+        for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt++) {
           try {
             let authTimeoutId: ReturnType<typeof setTimeout>;
             const sessionPromise = supabase.auth.getSession();
@@ -166,48 +180,83 @@ export function useForegroundRefresh(
                 AUTH_TIMEOUT_MS,
               );
             });
+
             try {
               const { error } = await Promise.race([sessionPromise, timeoutPromise]);
               if (error) {
-                console.warn('[RESUME] Session refresh failed:', error.message);
+                console.warn(`[RESUME] Auth refresh attempt ${attempt} failed:`, error.message);
+              } else {
+                authOk = true;
+                if (__DEV__) logger.lifecycle(`[RESUME] Auth refresh succeeded on attempt ${attempt}`);
+                break;
               }
             } finally {
-              // Always clear the timer — prevents a dangling 8s timer when
-              // getSession() resolves before the timeout fires.
               clearTimeout(authTimeoutId!);
             }
           } catch (e: any) {
-            // Timeout or network error — proceed with existing token
-            console.warn('[RESUME] Session refresh unavailable:', e?.message ?? e);
+            console.warn(`[RESUME] Auth refresh attempt ${attempt} error:`, e?.message ?? e);
           }
 
-          // Step 2: Force Realtime WebSocket reconnection after long background.
-          // After ≥30s backgrounded, the OS may have killed the TCP connection.
-          // Supabase's internal reconnect uses exponential backoff that may not fire
-          // immediately on resume. disconnect() + connect() forces an immediate
-          // reconnection. The SDK automatically re-subscribes all existing channels.
-          try {
-            supabase.realtime.disconnect();
-            supabase.realtime.connect();
-            if (__DEV__) logger.lifecycle('[RESUME] Realtime WebSocket reconnected');
-          } catch (e) {
-            console.warn('[RESUME] Realtime reconnect failed:', e);
+          // Sleep before next attempt (except after last attempt)
+          if (!authOk && attempt < AUTH_MAX_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
           }
-          // Warm edge functions before query invalidations trigger refetches
-          supabase.functions.invoke('keep-warm').catch(() => {});
         }
 
-        // ── 5-30s and ≥30s backgrounds: invalidate critical queries + fire callback ──
-        // invalidateQueries() marks caches as stale AND triggers background refetch.
-        // Cached data stays visible — isLoading stays false when data exists in cache.
-        // For short backgrounds (5-30s) this is the only refresh mechanism; for long
-        // backgrounds it runs after auth + WebSocket reconnection above.
+        // Step 2: Check for ghost recovery if all explicit attempts failed.
+        // Constraint S6: AbortController is unreliable on React Native — the in-flight
+        // getSession() request may have succeeded after our Promise.race timeout.
+        // TOKEN_REFRESHED fires from the ghost request (Constraint S5).
+        if (!authOk) {
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session?.expires_at) {
+              const expiresMs = data.session.expires_at * 1000;
+              if (expiresMs > Date.now()) {
+                authOk = true;
+                if (__DEV__) logger.lifecycle('[RESUME] Ghost recovery detected — session is valid');
+              }
+            }
+          } catch {
+            // Session read failed — proceed to sign-out
+          }
+        }
+
+        // Step 3: If still no auth, force sign-out gracefully.
+        if (!authOk) {
+          console.error('[RESUME] All auth refresh attempts failed — forcing sign-out');
+          Alert.alert('Session Expired', 'Your session has expired. Please sign in again.');
+          const signOutHandler = getSignOutHandler();
+          if (signOutHandler) {
+            try {
+              await signOutHandler();
+            } catch (e) {
+              console.error('[RESUME] Sign-out handler failed:', e);
+            }
+          } else {
+            // Fallback: raw sign-out if handler not yet registered
+            supabase.auth.signOut().catch(() => {});
+          }
+          return;
+        }
+
+        // Step 4: REALTIME — aggressive remount (user decision 2026-04-08).
+        // Increment realtimeEpoch to force React to unmount/remount
+        // RealtimeSubscriptions component, creating fresh channels with fresh bindings.
+        // DO NOT call supabase.realtime.disconnect() + connect() — this clears
+        // channel.bindings (RealtimeChannel.js:313 teardown). I-RT-BIND-01.
+        setRealtimeEpoch(e => e + 1);
+        if (__DEV__) logger.lifecycle('[RESUME] Realtime epoch incremented — channels will remount');
+
+        // Warm edge functions before query invalidations trigger refetches
+        supabase.functions.invoke('keep-warm').catch(() => {});
+
+        // Step 5: INVALIDATE queries (now with fresh JWT).
         for (const key of CRITICAL_QUERY_KEYS) {
           queryClient.invalidateQueries({ queryKey: key });
         }
 
-        // Pre-warm preferences cache — uses staleTime: Infinity so won't
-        // auto-refetch on focus without explicit invalidation above.
+        // Pre-warm preferences cache
         queryClient.prefetchQuery({
           queryKey: ['userPreferences', userId],
           staleTime: 60_000,
@@ -215,11 +264,12 @@ export function useForegroundRefresh(
 
         if (__DEV__) {
           logger.lifecycle(
-            `[RESUME] Invalidated ${CRITICAL_QUERY_KEYS.length} query families | longBackground=${!isShortBackground}`,
+            `[RESUME] Invalidated ${CRITICAL_QUERY_KEYS.length} query families after auth-first sequence`,
           );
         }
 
-        // Fire the callback for non-React-Query refreshes (collaboration sessions, notifications)
+        // Step 6: Fire the callback for non-React-Query refreshes.
+        // refreshAllSessions() now fires AFTER auth is confirmed valid.
         onResumeRef.current?.();
       }, DEBOUNCE_MS);
     };
@@ -234,5 +284,5 @@ export function useForegroundRefresh(
     };
   }, [userId, queryClient]);
 
-  return resumeCount;
+  return { resumeCount, realtimeEpoch };
 }

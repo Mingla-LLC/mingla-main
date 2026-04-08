@@ -57,6 +57,14 @@ export function setSignOutHandler(handler: () => Promise<void>): void {
 }
 
 /**
+ * Get the registered sign-out handler. Used by useForegroundRefresh for
+ * auth retry escalation (same handler as the 401 forced sign-out path).
+ */
+export function getSignOutHandler(): (() => Promise<void>) | null {
+  return _registeredSignOutHandler;
+}
+
+/**
  * Reset the 401 counter. Called by useForegroundRefresh at the start of
  * every resume so that transient 401s from focusManager-triggered refetches
  * (which fire before auth is refreshed) don't accumulate into a forced
@@ -180,7 +188,19 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000,
       gcTime: 24 * 60 * 60 * 1000,
-      retry: 1,
+      // Auth errors (401/JWT expired): don't retry — the auth handler refreshes
+      // the token, then invalidateQueries gives the query a fresh start. Retrying
+      // with the same expired JWT is a guaranteed waste. ORCH-0338.
+      retry: (failureCount: number, error: Error): boolean => {
+        const msg = error?.message ?? '';
+        const isAuthError =
+          msg.includes('401') ||
+          msg.includes('JWT expired') ||
+          msg.includes('Invalid JWT') ||
+          msg.includes('invalid claim: missing sub claim');
+        if (isAuthError) return false;
+        return failureCount < 1;
+      },
       refetchOnReconnect: 'always',
     },
   },

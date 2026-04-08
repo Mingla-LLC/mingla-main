@@ -1,15 +1,18 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { PreferencesService } from '../services/preferencesService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { PreferencesService, type UserPreferences } from '../services/preferencesService';
 import { useBoardSession } from './useBoardSession';
-import type { UserPreferences } from '../services/experiencesService';
+
+// INVARIANT I-RESUME-01: Use useQuery (not getQueryData) so isLoading is false
+// when cache exists. getQueryData() misses transient states during background
+// refetch, causing false shimmer. See ORCH-0336 CF-6.
 
 /**
  * Hook for efficiently loading and managing preferences data.
  *
- * Solo mode reads from the React Query cache synchronously — zero network
- * calls, zero shimmer on every open. The cache is populated by
- * useUserPreferences on app start. Only the very first open (empty cache)
- * triggers a prefetch.
+ * Solo mode subscribes to the React Query cache via useQuery — isLoading
+ * is false when cached data exists (even during background refetch). The
+ * cache is populated by useUserPreferences on app start. Shimmer only
+ * shows on the very first open when no cache exists at all.
  *
  * Collab mode delegates to useBoardSession (unchanged).
  */
@@ -28,23 +31,16 @@ export const usePreferencesData = (
     loading: loadingBoardPreferences,
   } = useBoardSession(sessionId);
 
-  // Solo mode — read from React Query cache (same cache useUserPreferences writes to)
-  const cachedPrefs = queryClient.getQueryData<UserPreferences>(
-    ['userPreferences', userId]
-  );
+  // Solo mode — subscribe to the React Query observer so isLoading correctly
+  // distinguishes "no data at all" (true) from "stale data being refreshed" (false).
+  const { data: cachedPrefs, isLoading: queryIsLoading } = useQuery<UserPreferences | null>({
+    queryKey: ['userPreferences', userId],
+    queryFn: () => PreferencesService.getUserPreferences(userId!),
+    enabled: !isCollaborationMode && shouldLoad && !!userId,
+    staleTime: Infinity,
+  });
 
-  // Only loading if cache is empty AND we need data
-  const isLoadingSolo = !isCollaborationMode && shouldLoad && !cachedPrefs && !!userId;
-
-  // If cache is empty on first open, trigger a fetch
-  // (this is the ONLY time a network call happens)
-  if (isLoadingSolo && userId) {
-    queryClient.prefetchQuery({
-      queryKey: ['userPreferences', userId],
-      queryFn: () => PreferencesService.getUserPreferences(userId),
-      staleTime: Infinity,
-    });
-  }
+  const isLoadingSolo = !isCollaborationMode && queryIsLoading;
 
   const isLoading = isCollaborationMode ? loadingBoardPreferences : isLoadingSolo;
   const preferences = isCollaborationMode ? boardPreferences : cachedPrefs;

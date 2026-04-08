@@ -19,7 +19,8 @@
 
 | Rank | ID | Title | Score | Surface | Severity | Action | Rationale |
 |------|----|-------|-------|---------|----------|--------|-----------|
-| 1 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
+| 1 | ORCH-0336 | App stuck loading after long iOS background | 95 | App Lifecycle | S0 | **Investigate** | Every user who backgrounds for 1h+ hits this. Race condition between focusManager refetches and auth refresh. Production-reported. |
+| 2 | ORCH-0008 | Onboarding state machine | 83 | Onboarding | S0 | Investigate | Users can get stuck mid-onboarding. Auto-escalated S0. Completion rate unknown. |
 | 2 | ORCH-0102 | Account deletion | 80 | Profile | S0 | Investigate | Apple/Google require account deletion. App Store rejection if missing. |
 | 3 | ORCH-0250 | Avatars bucket no user-scoping | 80 | Security | S1 | Implement | Any user can overwrite another user's avatar. Identity impersonation risk. |
 | 4 | ORCH-0094 | Save/unsave experience | 78 | Saved | S1 | Investigate | Core loop step. Users can swipe but can't verify saves work. |
@@ -35,7 +36,7 @@
 
 | Category | Score Range | Count | IDs |
 |----------|-----------|-------|-----|
-| Fix Now | 70-100 | 8 | ORCH-0008, 0041, 0094, 0102, 0127, 0250, 0251, 0257 |
+| Fix Now | 70-100 | 9 | ORCH-0336, 0008, 0041, 0094, 0102, 0127, 0250, 0251, 0257 |
 | Fix Next | 50-69 | ~30 | Remaining S1 items + high S2 items |
 | Should Fix | 30-49 | ~40 | S2 items on non-critical flows |
 | Debt | 10-29 | ~30 | S3 items, cosmetic issues |

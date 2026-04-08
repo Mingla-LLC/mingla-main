@@ -35,7 +35,7 @@
 | Error Handling | Cross-cutting | ErrorBoundary.tsx, edgeFunctionError.ts | All F | 5 | Unaudited |
 | Security & Auth | Cross-cutting | RLS policies, admin auth | Mixed (1A, 1B, 1C, 2D) | 13 | Weak |
 | Deep Linking | Cross-cutting | deepLinkService.ts | Mixed (1B, 3F) | 4 | Weak |
-| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx | Mixed (2A, 9F) | 11 | Weak |
+| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx, useForegroundRefresh.ts | Mixed (2A, 10F) | 12 | Weak |
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
 | Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |

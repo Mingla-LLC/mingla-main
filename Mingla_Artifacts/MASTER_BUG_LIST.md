@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-08
-> Total: 298 | Open: 134 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
+> Total: 301 | Open: 137 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -33,6 +33,7 @@
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
 | ORCH-0066 | Collab mode parity (Phase 1 CLOSED — 5 sub-issues fixed, ORCH-0316 remains for Phase 2) | Collaboration | architecture-flaw | Closed → B |
+| ORCH-0336 | App stuck in loading after long iOS background (hours/days) | App Lifecycle | architecture-flaw | User report (production) |
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
@@ -43,6 +44,8 @@
 
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
+| ORCH-0337 | Realtime event handlers silently cleared after disconnect/connect — all live updates dead until force-close | App Lifecycle | architecture-flaw | INV-010 (SDK-proven, RealtimeChannel.js:313) |
+| ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |
 | ORCH-0009 | GPS requirement enforcement | Onboarding | unaudited | Tracker |
 | ORCH-0316 | Dead CollaborationPreferences.tsx deleted (CLOSED) | Collaboration | architecture-flaw | Closed → A |
@@ -84,7 +87,7 @@
 | ORCH-0222 | Service error contract | Error | design-debt | Tracker |
 | ORCH-0227 | Deep link service routing | DeepLink | unaudited | Tracker |
 | ORCH-0233 | Error boundary (app-wide) | Lifecycle | unaudited | Tracker |
-| ORCH-0236 | App state manager | Lifecycle | unaudited | Tracker |
+| ORCH-0236 | App state manager — duplicate useForegroundRefresh hook causes double disconnect/connect | Lifecycle | bug | INV-009 (upgraded from unaudited) |
 | ORCH-0238 | Notification system provider | Lifecycle | unaudited | Tracker |
 | ORCH-0242 | AppsFlyer integration | Analytics | unaudited | Tracker |
 

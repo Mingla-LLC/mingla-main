@@ -23,14 +23,14 @@ export const TravelLimitSection = memo(
     onFocus: () => void;
   }) => {
     const numericValue = typeof constraintValue === "number" ? constraintValue : 0;
-    const isPreset = TRAVEL_TIME_PRESETS.includes(numericValue);
+    const isPreset = (TRAVEL_TIME_PRESETS as readonly number[]).includes(numericValue);
     const [showCustom, setShowCustom] = useState(
       numericValue > 0 && !isPreset
     );
 
     useEffect(() => {
       const val = typeof constraintValue === "number" ? constraintValue : 0;
-      const preset = TRAVEL_TIME_PRESETS.includes(val);
+      const preset = (TRAVEL_TIME_PRESETS as readonly number[]).includes(val);
       if (val > 0 && !preset) {
         setShowCustom(true);
       }

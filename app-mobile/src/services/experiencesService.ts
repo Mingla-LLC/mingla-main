@@ -26,26 +26,10 @@ export interface Experience {
   updated_at: string;
 }
 
-export interface UserPreferences {
-  mode: string;
-  budget_min: number;
-  budget_max: number;
-  people_count: number;
-  categories: string[];
-  intents?: string[];
-  travel_mode: string;
-  travel_constraint_type: 'time';
-  travel_constraint_value: number;
-  datetime_pref: string | null;
-  date_option?: string | null;
-  time_slot?: string | null;
-  exact_time?: string | null;
-  custom_location?: string | null;
-  custom_lat?: number | null;
-  custom_lng?: number | null;
-  use_gps_location?: boolean;
-  experience_types?: string[];
-}
+// Canonical type — single source of truth. See types/preferences.ts (ORCH-0339).
+// Ghost field `experience_types` removed — does not exist in DB.
+import type { UserPreferences } from '../types/preferences';
+export type { UserPreferences } from '../types/preferences';
 
 export interface SaveData {
   profile_id: string;
@@ -294,7 +278,9 @@ export class ExperiencesService {
             travel_mode: 'walking',
             travel_constraint_type: 'time',
             travel_constraint_value: 30,
-            datetime_pref: new Date().toISOString()
+            datetime_pref: new Date().toISOString(),
+            use_gps_location: true,
+            price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
           };
 
           // Try to create preferences, but don't fail if there are trigger issues

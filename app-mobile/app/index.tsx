@@ -80,7 +80,7 @@ import { logger } from "../src/utils/logger";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
-import { useSocialRealtime } from "../src/hooks/useSocialRealtime";
+import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
 import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService";
 import {
@@ -749,17 +749,17 @@ function AppContent() {
     }
   }, [user?.id]);
 
-  // Centralized foreground resume: refreshes auth session, invalidates all critical
-  // React Query caches, and runs non-RQ refreshes (sessions + notifications).
-  // See useForegroundRefresh for the full list of invalidated query families.
-  const resumeCount = useForegroundRefresh(user?.id, () => {
+  // Centralized foreground resume: auth-first sequence, aggressive Realtime remount,
+  // query invalidation AFTER auth, refreshAllSessions gated on valid JWT.
+  // See useForegroundRefresh for the full resume state machine. ORCH-0336.
+  const { resumeCount, realtimeEpoch } = useForegroundRefresh(user?.id, () => {
     refreshAllSessions();
   });
 
-  // Realtime: keep friends, pairings, calendar, and messages fresh on all screens.
-  // Previously scoped to ConnectionsPage — moved to app level so data stays fresh
-  // regardless of which tab the user is viewing.
-  useSocialRealtime(user?.id);
+  // Realtime subscriptions moved to <RealtimeSubscriptions /> component below,
+  // keyed by realtimeEpoch for clean unmount/remount after long background.
+  // Duplicate useSocialRealtime call removed here (was in both AppStateManager + here).
+  // See ORCH-0336, ORCH-0337.
 
   // ── Prefetch friends list while user is idle on Home ──
   // After 3 seconds on Home, prefetch the friends list so the Connect tab
@@ -1986,12 +1986,20 @@ function AppContent() {
     profile.has_completed_onboarding === true
   ) {
     return (
+      <>
+        {/* Realtime subscriptions keyed by realtimeEpoch — on long-background resume,
+            epoch increments, React unmounts (removes old channels) and remounts
+            (fresh channels with fresh .on() bindings). ORCH-0336 / I-RT-BIND-01. */}
+        {user?.id && (
+          <React.Fragment key={realtimeEpoch}>
+            <RealtimeSubscriptions userId={user.id} />
+          </React.Fragment>
+        )}
       <ToastProvider>
         <CardsCacheProvider>
           <RecommendationsProvider
             currentMode={currentMode ?? "solo"}
             refreshKey={preferencesRefreshKey}
-            resumeCount={resumeCount}
             persistedSessionId={currentSessionId}
           >
             <MobileFeaturesProvider>
@@ -2472,6 +2480,7 @@ function AppContent() {
         </CardsCacheProvider>
         <ToastContainer />
       </ToastProvider>
+      </>
     );
   }
 }
