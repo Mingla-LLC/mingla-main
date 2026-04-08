@@ -2999,6 +2999,7 @@ function StatsTab({ city, stats, refreshKey }) {
   const [expandedRun, setExpandedRun] = useState(null);
   const [runBatches, setRunBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [aiCatBreakdown, setAiCatBreakdown] = useState([]);
 
   // Batch filters
   const [batchFilterStatus, setBatchFilterStatus] = useState("all");
@@ -3023,6 +3024,10 @@ function StatsTab({ city, stats, refreshKey }) {
       .order("created_at", { ascending: false })
       .limit(20)
       .then(({ data }) => { setRuns(data || []); setLoadingRuns(false); });
+
+    // Load AI-approved category breakdown (replaces old seeding_category stats)
+    supabase.rpc("admin_place_category_breakdown", { p_city_id: city.id })
+      .then(({ data }) => { setAiCatBreakdown(data || []); });
   }, [city, refreshKey]);
 
   const toggleRunExpand = async (runId) => {
@@ -3064,8 +3069,11 @@ function StatsTab({ city, stats, refreshKey }) {
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
-  // Category breakdown from stats
-  const byCat = stats?.by_seeding_category || {};
+  // AI-approved category breakdown (from admin_place_category_breakdown RPC)
+  const byCat = {};
+  for (const row of aiCatBreakdown) {
+    byCat[row.category] = { count: Number(row.place_count) || 0, photo_pct: row.photo_pct || 0, avg_rating: row.avg_rating };
+  }
 
   // Run status → badge variant mapping (handles new statuses)
   const runBadgeVariant = (status) => {
@@ -3106,19 +3114,20 @@ function StatsTab({ city, stats, refreshKey }) {
 
   return (
     <div className="space-y-6">
-      {/* Category breakdown */}
-      <SectionCard title="Places by Category">
+      {/* Category breakdown — AI-approved only */}
+      <SectionCard title="AI-Approved Places by Category">
         <div className="space-y-2">
           {ALL_CATEGORIES.map((catId) => {
-            const data = byCat[catId] || { count: 0, with_photos: 0 };
+            const data = byCat[catId] || { count: 0, photo_pct: 0 };
+            const maxCount = Math.max(...Object.values(byCat).map((d) => d.count || 0), 1);
             return (
               <div key={catId} className="flex items-center gap-3">
                 <div className="w-32 text-sm truncate" style={{ color: CATEGORY_COLORS[catId] }}>{CATEGORY_LABELS[catId]}</div>
                 <div className="flex-1 bg-[var(--gray-100)] rounded-full h-4 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${Math.min((data.count / (stats?.total_places || 1)) * 100, 100)}%`, backgroundColor: CATEGORY_COLORS[catId] }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.min((data.count / maxCount) * 100, 100)}%`, backgroundColor: CATEGORY_COLORS[catId] }} />
                 </div>
                 <div className="text-sm w-16 text-right">{data.count}</div>
-                <div className="text-xs w-20 text-right text-[var(--color-text-secondary)]">{data.with_photos} photos</div>
+                <div className="text-xs w-20 text-right text-[var(--color-text-secondary)]">{data.photo_pct}% photos</div>
               </div>
             );
           })}
@@ -3292,6 +3301,7 @@ function RejectedTab({ scope, onRefresh }) {
   const [loading, setLoading] = useState(false);
   const [approveModal, setApproveModal] = useState(null);
   const [selectedCat, setSelectedCat] = useState("");
+  const [filterCat, setFilterCat] = useState(null); // category filter for the list
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
@@ -3302,15 +3312,16 @@ function RejectedTab({ scope, onRefresh }) {
       .eq("is_active", true)
       .eq("ai_approved", false);
     if (scope.cityId) q = q.eq("city_id", scope.cityId);
+    if (filterCat) q = q.eq("seeding_category", filterCat);
     q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     const { data, count } = await q;
     setPlaces(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [scope.cityId, page]);
+  }, [scope.cityId, page, filterCat]);
 
   useEffect(() => { fetchRejected(); }, [fetchRejected]);
-  useEffect(() => { setPage(0); }, [scope.cityId]);
+  useEffect(() => { setPage(0); }, [scope.cityId, filterCat]);
 
   const handleApprove = async () => {
     if (!approveModal || !selectedCat) return;
@@ -3324,7 +3335,6 @@ function RejectedTab({ scope, onRefresh }) {
     setApproveModal(null);
     setSelectedCat("");
     fetchRejected();
-    if (onRefresh) onRefresh();
   };
 
   const handleDelete = async (place) => {
@@ -3333,7 +3343,6 @@ function RejectedTab({ scope, onRefresh }) {
     if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); return; }
     addToast({ variant: "success", title: `Deleted "${place.name}"` });
     fetchRejected();
-    if (onRefresh) onRefresh();
   };
 
   const columns = [
@@ -3369,6 +3378,25 @@ function RejectedTab({ scope, onRefresh }) {
         <StatCard icon={AlertTriangle} label="Total Rejected" value={total} />
       </div>
 
+      {/* Category filter pills */}
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => setFilterCat(null)}
+          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+            !filterCat ? "bg-[var(--color-text-primary)] text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)] hover:border-[var(--gray-400)]"
+          }`}>
+          All
+        </button>
+        {ALL_CATEGORIES.map((c) => (
+          <button key={c} onClick={() => setFilterCat(filterCat === c ? null : c)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+              filterCat === c ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)] hover:border-[var(--gray-400)]"
+            }`}
+            style={filterCat === c ? { backgroundColor: CATEGORY_COLORS[c] } : {}}>
+            {CATEGORY_LABELS[c]}
+          </button>
+        ))}
+      </div>
+
       <DataTable columns={columns} rows={places} loading={loading}
         emptyMessage="No rejected places" emptyIcon={CheckCircle}
         pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
@@ -3397,7 +3425,7 @@ function RejectedTab({ scope, onRefresh }) {
 
       {/* Place detail modal — reuses the same modal as Browse tab */}
       <PlaceDetailModal place={detailPlace} open={!!detailPlace}
-        onClose={() => setDetailPlace(null)} onSave={() => { fetchRejected(); if (onRefresh) onRefresh(); }} />
+        onClose={() => setDetailPlace(null)} onSave={() => { fetchRejected(); }} />
     </div>
   );
 }
