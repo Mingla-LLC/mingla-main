@@ -195,11 +195,7 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
   const [catBreakdown, setCatBreakdown] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [validating, setValidating] = useState(false);
-  const [activeJob, setActiveJob] = useState(null); // persisted job row
   const mountedRef = useRef(true);
-  const jobLoopRef = useRef(false); // prevents duplicate loops
-  const jobCancelledRef = useRef(false); // separate signal to stop the job loop
 
   const fetchData = useCallback(() => {
     mountedRef.current = true;
@@ -237,156 +233,6 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
       setLoading(false);
     });
   }, [selectedCountry, selectedCity]);
-
-  // ── Job-driven validation loop (persists across page refreshes) ──────────
-  const runJobLoop = async (job, isResume = false) => {
-    // If a loop is already running, stop the OLD one first
-    if (jobLoopRef.current) {
-      jobCancelledRef.current = true;
-      // Wait a tick for the old loop to exit
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    jobLoopRef.current = true;
-    jobCancelledRef.current = false;
-    setActiveJob(job);
-    console.log(`[AI Validation] Starting ${isResume ? "resumed" : "new"} job ${job.id}`);
-
-    let { id: jobId, processed, approved, rejected, failed, continuation_token: token } = job;
-
-    try {
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (jobCancelledRef.current) break;
-
-        // Start the edge function call (don't await yet)
-        const fnPromise = supabase.functions.invoke("ai-validate-places", {
-          body: {
-            jobId,
-            limit: 25,
-            revalidate: job.revalidate,
-            ...(token ? { afterCreatedAt: token } : {}),
-            ...(job.country_filter ? { countryFilter: job.country_filter } : {}),
-            ...(job.city_filter ? { cityFilter: job.city_filter } : {}),
-          },
-        });
-
-        // Poll the job row every 3s while the edge function is running
-        let fnDone = false;
-        let fnResult = null;
-        fnPromise.then((r) => { fnResult = r; fnDone = true; });
-
-        while (!fnDone && !jobCancelledRef.current) {
-          await new Promise((r) => setTimeout(r, 3000));
-          const { data: polled } = await supabase
-            .from("ai_validation_jobs")
-            .select("processed, approved, rejected, failed")
-            .eq("id", jobId)
-            .single();
-          if (polled) {
-            setActiveJob((prev) => ({ ...prev, ...polled }));
-          }
-        }
-
-        if (jobCancelledRef.current) break;
-
-        const resp = fnResult;
-        if (resp.error) {
-          const errMsg = resp.error?.message || resp.error?.context?.statusText || JSON.stringify(resp.error);
-          throw new Error(errMsg);
-        }
-
-        const r = typeof resp.data === "string" ? JSON.parse(resp.data) : resp.data;
-        if (!r || typeof r.processed !== "number") {
-          throw new Error("Unexpected response: " + JSON.stringify(r));
-        }
-
-        processed += r.processed;
-        approved += r.approved;
-        rejected += r.rejected;
-        failed += r.failed;
-        token = r.continuation_token;
-
-        const done = r.processed === 0 || !r.continuation_token;
-        const updatedJob = {
-          processed, approved, rejected, failed,
-          continuation_token: token,
-          status: done ? "completed" : "running",
-          updated_at: new Date().toISOString(),
-        };
-        await supabase.from("ai_validation_jobs").update(updatedJob).eq("id", jobId);
-        setActiveJob((prev) => ({ ...prev, ...updatedJob }));
-
-        if (done) {
-          addToast({
-            variant: "success",
-            title: `${job.revalidate ? "Revalidated" : "Validated"} ${processed} places`,
-            description: `${approved} approved, ${rejected} rejected, ${failed} failed`,
-          });
-          fetchData();
-          break;
-        }
-      }
-    } catch (err) {
-      console.error("Job loop error:", err);
-      await supabase.from("ai_validation_jobs").update({
-        status: "failed", error_message: String(err?.message || err), updated_at: new Date().toISOString(),
-      }).eq("id", jobId);
-      setActiveJob(null);
-      addToast({
-        variant: "error",
-        title: `Validation stopped after ${processed} places`,
-        description: String(err?.message || err),
-      });
-      fetchData();
-    } finally {
-      jobLoopRef.current = false;
-    }
-  };
-
-  const startJob = async (revalidate) => {
-    const totalPlaces = data?.active_places || 0;
-    const { data: job, error: insertErr } = await supabase.from("ai_validation_jobs").insert({
-      revalidate,
-      total_places: totalPlaces,
-      country_filter: scopeCountryName || null,
-      city_filter: scopeCityName || null,
-    }).select().single();
-    if (insertErr) {
-      addToast({ variant: "error", title: "Failed to create job", description: insertErr.message });
-      return;
-    }
-    runJobLoop(job);
-  };
-
-  const cancelJob = async () => {
-    if (!activeJob) return;
-    jobCancelledRef.current = true;
-    await supabase.from("ai_validation_jobs").update({
-      status: "cancelled", updated_at: new Date().toISOString(),
-    }).eq("id", activeJob.id);
-    setActiveJob(null);
-    jobLoopRef.current = false;
-    addToast({ variant: "info", title: "Validation cancelled" });
-    fetchData();
-  };
-
-  // Check for active job on mount (resume after page refresh)
-  useEffect(() => {
-    supabase.from("ai_validation_jobs")
-      .select("*")
-      .eq("status", "running")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .then(({ data: jobs }) => {
-        if (jobs && jobs.length > 0) {
-          const job = jobs[0];
-          const matchesScope =
-            (job.country_filter || null) === (scopeCountryName || null) &&
-            (job.city_filter || null) === (scopeCityName || null);
-          if (matchesScope) runJobLoop(job, true);
-        }
-      });
-  }, []);
 
   useEffect(() => {
     fetchData();
@@ -457,86 +303,14 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
           trend={data.ai_pending_count === 0 ? "All validated" : "Needs validation"} trendUp={data.ai_pending_count === 0} />
       </div>
 
-      {/* AI Validation Summary + Run buttons */}
+      {/* AI Validation stats (read-only — validation runs via AI Validation page) */}
       {(data.ai_pending_count > 0 || data.ai_validated_count > 0) && (
         <SectionCard title="AI Validation Summary">
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-4 gap-4">
             <StatCard label="Validated" value={data.ai_validated_count} />
             <StatCard label="Approved" value={data.ai_approved_count} />
             <StatCard label="Rejected" value={data.ai_rejected_count} />
             <StatCard label="Pending" value={data.ai_pending_count} />
-          </div>
-
-          {/* Active job progress bar */}
-          {activeJob && (
-            <div className="mb-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-[var(--color-text-secondary)]">
-                  {activeJob.revalidate ? "Revalidating" : "Validating"} places...
-                </span>
-                <span className="font-medium">
-                  {activeJob.processed} / {activeJob.total_places}
-                  {activeJob.total_places > 0 && ` (${Math.round((activeJob.processed / activeJob.total_places) * 100)}%)`}
-                </span>
-              </div>
-              <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2.5">
-                <div
-                  className="bg-[var(--color-brand-500)] h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: `${activeJob.total_places > 0 ? Math.round((activeJob.processed / activeJob.total_places) * 100) : 0}%` }}
-                />
-              </div>
-              <div className="flex gap-4 text-xs text-[var(--color-text-tertiary)]">
-                <span>{activeJob.approved} approved</span>
-                <span>{activeJob.rejected} rejected</span>
-                <span>{activeJob.failed} failed</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 items-center">
-            {data.ai_pending_count > 0 && !activeJob && (
-              <Button icon={Zap} variant="primary" size="sm" loading={validating}
-                onClick={async () => {
-                  setValidating(true);
-                  try {
-                    const { data: result, error: fnErr } = await supabase.functions.invoke("ai-validate-places", {
-                      body: {
-                        limit: 25,
-                        ...(scopeCountryName ? { countryFilter: scopeCountryName } : {}),
-                        ...(scopeCityName ? { cityFilter: scopeCityName } : {}),
-                      },
-                    });
-                    if (fnErr) throw new Error(fnErr.message);
-                    const r = typeof result === "string" ? JSON.parse(result) : result;
-                    addToast({
-                      variant: "success",
-                      title: `Validated ${r.processed} places`,
-                      description: `${r.approved} approved, ${r.rejected} rejected, ${r.failed} failed`,
-                    });
-                    fetchData();
-                  } catch (err) {
-                    addToast({ variant: "error", title: "Validation failed", description: err.message });
-                  } finally {
-                    setValidating(false);
-                  }
-                }}>
-                Validate {Math.min(data.ai_pending_count, 25)} Pending Places
-              </Button>
-            )}
-            {!activeJob && (
-              <Button icon={RefreshCw} variant="ghost" size="sm" disabled={validating}
-                onClick={() => {
-                  if (!confirm(`Revalidate ALL ${data.active_places} places with AI? This will re-run validation on every place, including ones already validated.`)) return;
-                  startJob(true);
-                }}>
-                Revalidate All Places
-              </Button>
-            )}
-            {activeJob && (
-              <Button icon={XCircle} variant="ghost" size="sm" onClick={cancelJob}>
-                Cancel
-              </Button>
-            )}
           </div>
         </SectionCard>
       )}

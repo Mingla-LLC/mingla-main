@@ -4,7 +4,7 @@
  * 13 category configs with includedTypes and excludedPrimaryTypes.
  * Used by admin-seed-places to populate place_pool via Google Nearby Search.
  *
- * NOT the category classification system — AI validation (ai-validate-places)
+ * NOT the category classification system — AI validation (ai-verify-pipeline)
  * independently classifies each place into Mingla categories using natural
  * language criteria, regardless of these type lists.
  *
