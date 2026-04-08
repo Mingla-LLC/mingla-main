@@ -1,17 +1,19 @@
 # Master Bug List
 
-> Last updated: 2026-04-06
-> Total: 294 | Open: 130 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-08
+> Total: 298 | Open: 134 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
-| Open (F grade, unaudited) | 123 | 43% |
+| Open (F grade, unaudited) | 123 | 41% |
 | Open (F grade, known bug) | 7 | 2% |
+| Open (F grade, missing-feature) | 2 | <1% |
+| Open (F grade, quality-gap) | 2 | <1% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 88 | 31% |
-| Verified (B grade) | 16 | 6% |
+| Closed (A grade) | 88 | 30% |
+| Verified (B grade) | 16 | 5% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
 
@@ -85,6 +87,15 @@
 | ORCH-0236 | App state manager | Lifecycle | unaudited | Tracker |
 | ORCH-0238 | Notification system provider | Lifecycle | unaudited | Tracker |
 | ORCH-0242 | AppsFlyer integration | Analytics | unaudited | Tracker |
+
+### Admin Panel (Place Pool Management)
+
+| ID | Title | Surface | Classification | Source |
+|----|-------|---------|---------------|--------|
+| ORCH-0332 | Admin cannot update existing city bbox — self-overlap block | Admin | missing-feature | Previous session |
+| ORCH-0333 | Admin cannot change tile radius on seeded city | Admin | missing-feature | Previous session |
+| ORCH-0334 | Photo tab stale London run (180/351 batches) | Admin | bug | Previous session |
+| ORCH-0335 | Photo stats only count AI-approved — behavior change | Admin | quality-gap | Previous session |
 
 ### New from Wave 1b (Payments Investigation)
 

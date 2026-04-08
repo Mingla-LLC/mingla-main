@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-06
+> Last updated: 2026-04-08
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -39,6 +39,7 @@
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
 | Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |
+| Admin Panel | Admin | PlacePoolManagementPage.jsx, admin-seed-places | Mixed (1A, 4F) | 5 | Weak |
 
 ---
 
@@ -395,6 +396,15 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
 | ORCH-0198 | Booking service | Booking | S2 | unaudited | open | F | — | — |
 | ORCH-0199 | Enhanced favorites | Booking | S3 | unaudited | open | F | — | — |
+
+### Section 19: Admin Panel (Place Pool Management)
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0332 | Admin cannot update existing city bbox — overlap check blocks self | Admin | S2 | missing-feature | investigated | F | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md — Backend ready (p_exclude_id exists, RLS allows UPDATE, generate_tiles works). Pure UI work. CASCADE risk guarded by activeRun check. |
+| ORCH-0333 | Admin cannot change tile radius on already-seeded city | Admin | S2 | missing-feature | investigated | F | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md — TILE_RADIUS_OPTIONS exists. SeedTab needs picker + save-before-regenerate. No backend changes. |
+| ORCH-0334 | Photo tab shows stale London run (180/351 batches) — old run has dead references | Admin | S3 | bug | open | F | — | Previous session: old photo backfill run data from pre-bbox migration. May need cancel/dismiss action. |
+| ORCH-0335 | admin_place_photo_stats only counts AI-approved places — correct per spec but changed from before | Admin | S3 | quality-gap | open | F | — | Spec decision: photo stats scoped to AI-approved. Stats look different from pre-spec totals. Not a bug — document and close. |
 
 ### Cross-Cutting: Network & Offline
 
