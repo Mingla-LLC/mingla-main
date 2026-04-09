@@ -9,6 +9,7 @@
 DROP FUNCTION IF EXISTS public.admin_card_pool_intelligence(TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.admin_card_category_health(TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.admin_card_city_overview(TEXT);
+DROP FUNCTION IF EXISTS public.admin_card_country_overview();
 DROP FUNCTION IF EXISTS public.admin_detect_duplicate_curated_cards(TEXT, TEXT);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
