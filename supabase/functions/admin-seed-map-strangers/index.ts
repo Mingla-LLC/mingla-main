@@ -212,24 +212,10 @@ async function seedAroundPoint(
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 
 async function cleanup(adminClient: SupabaseClient) {
-  // Count first
-  const { count } = await adminClient
-    .from("seed_map_presence")
-    .select("*", { count: "exact", head: true });
-  const total = count || 0;
-
-  if (total > 0) {
-    // Delete in lat bands to avoid timeout on 1M+ row single delete
-    for (let lat = -90; lat < 90; lat += 10) {
-      await adminClient
-        .from("seed_map_presence")
-        .delete()
-        .gte("approximate_lat", lat)
-        .lt("approximate_lat", lat + 10);
-    }
-  }
-
-  return { deleted: total };
+  // TRUNCATE via RPC — instant regardless of row count. See ORCH-0347B.
+  const { data, error } = await adminClient.rpc("truncate_seed_map_presence");
+  if (error) throw new Error(`Cleanup failed: ${error.message}`);
+  return { deleted: (data as any)?.deleted ?? 0 };
 }
 
 // ── Seed Around All Users ───────────────────────────────────────────────────
@@ -439,34 +425,48 @@ serve(async (req) => {
       }
 
       case "seed_cities": {
-        const { peoplePerTile = 4 } = body;
-
-        // Fetch all seeding tiles with city info
-        const { data: tiles, error: tilesErr } = await adminClient
-          .from("seeding_tiles")
-          .select("id, city_id, tile_index, center_lat, center_lng, radius_m");
-
-        if (tilesErr) throw new Error(`Failed to fetch tiles: ${tilesErr.message}`);
-        if (!tiles || tiles.length === 0) {
-          return json({ action: "seed_cities", error: "No seeding tiles found" }, 400);
-        }
-
-        // Cleanup existing seeds
+        // Cleanup existing seeds first
         const { deleted } = await cleanup(adminClient);
 
-        // Generate 3-5 strangers per tile, batch insert all at once
-        const allRows: any[] = [];
-        for (const tile of tiles) {
-          const count = peoplePerTile + Math.floor(Math.random() * 3) - 1; // ±1 variance
-          const radiusKm = (tile.radius_m || 1500) / 1000;
+        // Get cities that are seeded or launched
+        const { data: cities, error: citiesErr } = await adminClient
+          .from("seeding_cities")
+          .select("id, name, country, center_lat, center_lng, coverage_radius_km")
+          .in("status", ["seeded", "launched"]);
 
-          for (let j = 0; j < Math.max(count, 2); j++) {
+        if (citiesErr) throw new Error(`Failed to fetch cities: ${citiesErr.message}`);
+        if (!cities || cities.length === 0) {
+          return json({ action: "seed_cities", error: "No seeded/launched cities found" }, 400);
+        }
+
+        // Get place count per city via RPC — density scales with pool size. See ORCH-0347B.
+        const { data: countData, error: countErr } = await adminClient.rpc("get_place_count_per_city");
+        const cityPlaceCounts: Record<string, number> = {};
+        if (!countErr && countData) {
+          for (const row of countData as { city_id: string; place_count: number }[]) {
+            cityPlaceCounts[row.city_id] = Number(row.place_count);
+          }
+        }
+
+        // Generate strangers per city — only cities with places in pool
+        const allRows: any[] = [];
+        let citiesSeeded = 0;
+
+        for (const city of cities) {
+          const placeCount = cityPlaceCounts[city.id] || 0;
+          if (placeCount === 0) continue; // Skip cities with no places
+
+          // Density: 3-10 strangers per city, ~1 per 10 places
+          const strangerCount = Math.max(3, Math.min(10, Math.ceil(placeCount / 10)));
+          const radiusKm = city.coverage_radius_km || 10;
+
+          for (let j = 0; j < strangerCount; j++) {
             const person = FAKE_PEOPLE[Math.floor(Math.random() * FAKE_PEOPLE.length)];
             const id = crypto.randomUUID();
             const angle = Math.random() * 2 * Math.PI;
             const dist = Math.random() * radiusKm;
             const latOff = (dist / 111.32) * Math.cos(angle);
-            const lngOff = (dist / (111.32 * Math.cos((tile.center_lat * Math.PI) / 180))) * Math.sin(angle);
+            const lngOff = (dist / (111.32 * Math.cos((city.center_lat * Math.PI) / 180))) * Math.sin(angle);
 
             const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
             allRows.push({
@@ -474,8 +474,8 @@ serve(async (req) => {
               display_name: person.displayName,
               first_name: person.firstName,
               avatar_url: null,
-              approximate_lat: tile.center_lat + latOff,
-              approximate_lng: tile.center_lng + lngOff,
+              approximate_lat: city.center_lat + latOff,
+              approximate_lng: city.center_lng + lngOff,
               last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
               activity_status: status,
               activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
@@ -484,6 +484,7 @@ serve(async (req) => {
               intents: pickRandom(ALL_INTENTS, 1, 2),
             });
           }
+          citiesSeeded++;
         }
 
         // Batch insert in chunks of 5000
@@ -498,13 +499,10 @@ serve(async (req) => {
           }
         }
 
-        // Get distinct city count
-        const cityIds = new Set(tiles.map(t => t.city_id));
-
         return json({
           action: "seed_cities",
-          tiles: tiles.length,
-          cities: cityIds.size,
+          citiesTotal: cities.length,
+          citiesWithPlaces: citiesSeeded,
           totalCreated,
           previouslyDeleted: deleted,
         });
