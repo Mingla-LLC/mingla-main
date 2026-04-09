@@ -879,13 +879,19 @@ function BrowseCardsTab({ scope, pickerCities, onRefresh }) {
   );
 }
 
-// ── Tab 3: Generate Cards (v2 — batch system) ──────────────────────────────
+// ── Tab 3: Generate Cards (v3 — intelligent + live feed) ────────────────────
 
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS = 300; // 10 minutes at 2s interval — safety limit
+const MAX_POLLS = 300;
+const ALL_SLUGS = Object.keys(CATEGORY_LABELS);
 
 function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
   const { addToast } = useToast();
+
+  // Preview / intelligence state
+  const [previewData, setPreviewData] = useState(null); // { categories: [...], totals: {...} }
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [runHistory, setRunHistory] = useState([]);
 
   // Run state
   const [runId, setRunId] = useState(null);
@@ -898,27 +904,106 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
 
   const selectedCityObj = scope.cityId ? pickerCities.find(c => c.city_id === scope.cityId) : null;
 
-  // Check for active run when city changes
+  // ── Preview data fetching ──────────────────────────────────────────────
+  const fetchPreview = useCallback(async () => {
+    if (!scope.cityId) return;
+    setPreviewLoading(true);
+    try {
+      // Query A: approved places by category (limit above PostgREST default of 1000)
+      const { data: places } = await supabase
+        .from("place_pool")
+        .select("ai_categories, stored_photo_urls, id")
+        .eq("city_id", scope.cityId)
+        .eq("is_active", true)
+        .eq("ai_approved", true)
+        .not("ai_categories", "is", null)
+        .limit(10000);
+
+      // Query B: existing single cards (limit above PostgREST default of 1000)
+      const { data: cards } = await supabase
+        .from("card_pool")
+        .select("category, place_pool_id")
+        .eq("city_id", scope.cityId)
+        .eq("is_active", true)
+        .eq("card_type", "single")
+        .limit(10000);
+
+      // Query C: run history
+      const { data: history } = await supabase
+        .from("card_generation_runs")
+        .select("id, status, total_created, total_skipped, total_eligible, started_at, completed_at")
+        .eq("city", selectedCityObj?.city_name)
+        .order("started_at", { ascending: false })
+        .limit(5);
+
+      if (!mountedRef.current) return;
+
+      const existingPlaceIds = new Set((cards || []).map(c => c.place_pool_id).filter(Boolean));
+      const cardsByCategory = {};
+      for (const c of (cards || [])) {
+        cardsByCategory[c.category] = (cardsByCategory[c.category] || 0) + 1;
+      }
+
+      // Build per-category stats
+      const catStats = {};
+      for (const slug of ALL_SLUGS) catStats[slug] = { approved: 0, withPhotos: 0, existingCards: 0, ready: 0 };
+
+      for (const p of (places || [])) {
+        const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
+        const hasPhotos = p.stored_photo_urls && p.stored_photo_urls.length > 0
+          && !(p.stored_photo_urls.length === 1 && p.stored_photo_urls[0] === "__backfill_failed__");
+        const alreadyCarded = existingPlaceIds.has(p.id);
+
+        for (const slug of cats) {
+          if (!catStats[slug]) continue;
+          catStats[slug].approved++;
+          if (hasPhotos) catStats[slug].withPhotos++;
+          if (alreadyCarded) catStats[slug].existingCards++;
+          if (hasPhotos && !alreadyCarded) catStats[slug].ready++;
+        }
+      }
+
+      const categories = ALL_SLUGS.map(slug => ({ slug, ...catStats[slug] }));
+      const totalReady = categories.reduce((s, c) => s + c.ready, 0);
+      const totalApproved = (places || []).length;
+      const totalCarded = existingPlaceIds.size;
+      const totalActiveCards = (cards || []).length;
+      const coveredCount = ALL_SLUGS.filter(s => (cardsByCategory[s] || 0) > 0).length;
+
+      setPreviewData({
+        categories,
+        totals: { totalActiveCards, totalReady, totalCarded, totalApproved, coveredCount },
+      });
+      setRunHistory(history || []);
+    } catch (err) {
+      console.warn("[GenerateCards] Preview fetch failed:", err);
+      addToast({ variant: "error", title: "Failed to load generation stats", description: err.message });
+    }
+    if (mountedRef.current) setPreviewLoading(false);
+  }, [scope.cityId, selectedCityObj?.city_name]);
+
+  // ── Hydration: fetch preview + check active run on city change ─────────
   useEffect(() => {
-    if (!scope.cityId || !selectedCityObj) { setRunId(null); setRunStatus(null); return; }
+    mountedRef.current = true;
+    if (!scope.cityId || !selectedCityObj) {
+      setPreviewData(null); setRunId(null); setRunStatus(null); setLastRun(null); setRunHistory([]);
+      return;
+    }
+    fetchPreview();
     supabase.rpc("admin_card_generation_active", { p_city: selectedCityObj.city_name })
       .then(({ data, error }) => {
         if (!mountedRef.current) return;
-        if (error) {
-          console.warn("Failed to check active runs:", error.message);
-          return;
-        }
-        if (data && data.length > 0) {
+        if (!error && data && data.length > 0) {
           setRunId(data[0].id);
           setRunStatus(data[0]);
         } else {
-          setRunId(null);
-          setRunStatus(null);
+          setRunId(null); setRunStatus(null);
         }
       });
+    return () => { mountedRef.current = false; };
   }, [scope.cityId]);
 
-  // Poll run status via RPC (fast, cheap, already has auth)
+  // ── Polling ────────────────────────────────────────────────────────────
   const pollCountRef = useRef(0);
   useEffect(() => {
     if (!runId) { clearInterval(pollRef.current); return; }
@@ -926,28 +1011,22 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
     const poll = async () => {
       pollCountRef.current++;
       if (pollCountRef.current > MAX_POLLS) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check status." });
+        clearInterval(pollRef.current); pollRef.current = null;
+        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check." });
         return;
       }
       const { data, error } = await supabase.rpc("admin_card_generation_status", { p_run_id: runId });
       if (!mountedRef.current) return;
-      if (error) { console.warn("[CardPool] Poll error:", error.message); return; }
-      if (!data || data.length === 0) return;
+      if (error || !data || data.length === 0) return;
       const run = data[0];
       setRunStatus(run);
       if (run.status !== "running") {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
+        clearInterval(pollRef.current); pollRef.current = null;
         setLastRun(run);
-        if (run.status === "completed") {
-          addToast({ variant: "success", title: `Generated ${run.total_created} cards for ${selectedCityObj?.city_name || "city"}` });
-        } else if (run.status === "cancelled") {
-          addToast({ variant: "info", title: "Generation cancelled", description: `Created ${run.total_created} cards before cancellation.` });
-        } else if (run.status === "failed") {
-          addToast({ variant: "error", title: "Generation failed", description: run.error_message || "Unknown error" });
-        }
+        if (run.status === "completed") addToast({ variant: "success", title: `Generated ${run.total_created} cards for ${selectedCityObj?.city_name || "city"}` });
+        else if (run.status === "cancelled") addToast({ variant: "info", title: "Generation cancelled", description: `Created ${run.total_created} cards before cancellation.` });
+        else if (run.status === "failed") addToast({ variant: "error", title: "Generation failed", description: run.error_message || "Unknown error" });
+        fetchPreview(); // re-fetch stats after run completes
         if (onRefresh) onRefresh();
       }
     };
@@ -956,12 +1035,9 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
     return () => clearInterval(pollRef.current);
   }, [runId]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => { mountedRef.current = false; clearInterval(pollRef.current); };
-  }, []);
+  useEffect(() => { return () => { mountedRef.current = false; clearInterval(pollRef.current); }; }, []);
 
-  // ── Actions ─────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────
   const startGeneration = async () => {
     setStarting(true);
     setLastRun(null);
@@ -971,16 +1047,18 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
       });
       if (error) throw new Error(error.message);
       if (data?.error) {
-        // Handle concurrency guard (409) — pick up existing run
         if (data.existingRunId) {
           setRunId(data.existingRunId);
-          addToast({ variant: "info", title: "Generation already running", description: "Resuming progress tracking for existing job." });
+          addToast({ variant: "info", title: "Generation already running", description: "Resuming progress tracking." });
           return;
         }
         throw new Error(data.error);
       }
       if (data?.runId) {
         setRunId(data.runId);
+        // Immediate first poll — fix for progress display timing bug
+        const { data: statusData } = await supabase.rpc("admin_card_generation_status", { p_run_id: data.runId });
+        if (statusData?.[0]) setRunStatus(statusData[0]);
         addToast({ variant: "success", title: "Card generation started" });
       }
     } catch (err) {
@@ -994,9 +1072,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
     if (!runId) return;
     setCancelling(true);
     try {
-      await supabase.functions.invoke("generate-single-cards", {
-        body: { action: "cancel_run", runId },
-      });
+      await supabase.functions.invoke("generate-single-cards", { body: { action: "cancel_run", runId } });
     } catch (err) {
       addToast({ variant: "error", title: "Failed to cancel", description: err.message });
     } finally {
@@ -1004,163 +1080,275 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
     }
   };
 
-  // ── No city selected — prompt to pick one ──────────────────────────────
+  const handleRunAgain = () => { setLastRun(null); setRunId(null); setRunStatus(null); fetchPreview(); };
+
+  // ── NO_CITY state ──────────────────────────────────────────────────────
   if (!scope.cityId) {
     return (
-      <SectionCard title="Select a City" subtitle="Choose a city from the picker above to generate single cards for all eligible places.">
-        <div className="text-sm text-[var(--color-text-secondary)] py-4">
-          Use the city picker dropdown to select a city.
+      <SectionCard title="Generate Cards" subtitle="Select a city from the picker above to generate single cards.">
+        <div className="flex items-center gap-3 py-6 text-[var(--color-text-secondary)]">
+          <CreditCard className="w-8 h-8 opacity-30" />
+          <span className="text-sm">Choose a city to see generation stats and create cards for eligible places.</span>
         </div>
       </SectionCard>
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Derived state ──────────────────────────────────────────────────────
   const isRunning = runStatus?.status === "running";
   const pct = runStatus && runStatus.total_categories > 0
-    ? Math.round((runStatus.completed_categories / runStatus.total_categories) * 100)
-    : 0;
+    ? Math.round((runStatus.completed_categories / runStatus.total_categories) * 100) : 0;
+  const totals = previewData?.totals || {};
+  const displayRun = lastRun || (runStatus?.status && runStatus.status !== "running" ? runStatus : null);
 
-  // Build category results table from run data
-  const buildResultRows = (run) => {
-    if (!run?.category_results) return [];
-    return Object.entries(run.category_results).map(([slug, stats]) => ({
-      _key: slug,
-      category: CATEGORY_LABELS[slug] || slug,
-      created: stats.created || 0,
-      skipped: stats.skipped || 0,
-      eligible: stats.eligible || 0,
-    }));
-  };
+  // ── Category feed rows (for RUNNING state) ─────────────────────────────
+  const categoryFeedRows = ALL_SLUGS.map(slug => {
+    const result = runStatus?.category_results?.[slug];
+    const isCurrent = runStatus?.current_category === slug;
+    return {
+      slug,
+      status: result ? "done" : isCurrent ? "active" : "pending",
+      eligible: result?.eligible ?? null,
+      created: result?.created ?? null,
+      skipped: result?.skipped ?? null,
+    };
+  });
 
-  const resultColumns = [
-    { key: "category", label: "Category" },
-    { key: "eligible", label: "Eligible" },
-    {
-      key: "created", label: "Created",
-      render: (_, r) => <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span>,
+  const categoryFeedColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "status", label: "Status", render: (_, r) =>
+      r.status === "done" ? <Badge variant="success">Done</Badge>
+        : r.status === "active" ? <Badge variant="brand">Processing</Badge>
+        : <Badge variant="default">Pending</Badge>
     },
-    { key: "skipped", label: "Skipped" },
+    { key: "eligible", label: "Eligible", render: (_, r) => r.eligible ?? "—" },
+    { key: "created", label: "Created", render: (_, r) => r.created != null
+      ? <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span>
+      : "—"
+    },
+    { key: "skipped", label: "Skipped", render: (_, r) => r.skipped ?? "—" },
   ];
 
-  // ── Render ──────────────────────────────────────────────────────────────
-  const displayRun = isRunning ? runStatus : lastRun;
+  // ── Category readiness columns (for IDLE state) ────────────────────────
+  const readinessColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "approved", label: "Approved", sortable: true },
+    { key: "withPhotos", label: "With Photos", sortable: true },
+    { key: "existingCards", label: "Existing Cards", sortable: true },
+    { key: "ready", label: "Ready", sortable: true, render: (_, r) =>
+      <span className={r.ready > 0 ? "font-semibold text-[var(--color-success-600)]" : "text-[var(--color-text-tertiary)]"}>{r.ready}</span>
+    },
+  ];
+
+  // ── Run history columns ────────────────────────────────────────────────
+  const historyColumns = [
+    { key: "started_at", label: "Date", render: (_, r) => r.started_at ? new Date(r.started_at).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—" },
+    { key: "status", label: "Status", render: (_, r) =>
+      <Badge variant={r.status === "completed" ? "success" : r.status === "cancelled" ? "warning" : r.status === "failed" ? "error" : "default"}>
+        {r.status === "completed" ? "Done" : r.status === "cancelled" ? "Cancelled" : r.status === "failed" ? "Failed" : r.status}
+      </Badge>
+    },
+    { key: "total_created", label: "Created", sortable: true },
+    { key: "total_skipped", label: "Skipped", sortable: true },
+    { key: "duration", label: "Duration", render: (_, r) => {
+      if (!r.started_at || !r.completed_at) return "—";
+      const s = Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000);
+      return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+    }},
+  ];
+
+  // ── Result columns (for COMPLETED state) ───────────────────────────────
+  const resultColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "eligible", label: "Eligible" },
+    { key: "created", label: "Created", render: (_, r) => <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span> },
+    { key: "skipped", label: "Skipped" },
+  ];
+  const buildResultRows = (run) => {
+    if (!run?.category_results) return [];
+    return ALL_SLUGS.map(slug => {
+      const stats = run.category_results[slug];
+      return { slug, eligible: stats?.eligible || 0, created: stats?.created || 0, skipped: stats?.skipped || 0 };
+    }).filter(r => r.eligible > 0);
+  };
+
+  // ── LOADING state ──────────────────────────────────────────────────────
+  if (previewLoading && !previewData) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard icon={CreditCard} label="Active Cards" value="—" />
+          <StatCard icon={Zap} label="Ready to Generate" value="—" />
+          <StatCard icon={CheckCircle} label="Already Carded" value="—" />
+          <StatCard icon={BarChart3} label="Category Coverage" value="—" />
+        </div>
+        <div className="flex items-center justify-center gap-3 py-8">
+          <Spinner size="md" />
+          <span className="text-sm text-[var(--color-text-secondary)]">Loading generation stats...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* ── Progress Card (while running) ── */}
+      {/* ── Row 1: Stats overview ── */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={CreditCard} label="Active Cards" value={totals.totalActiveCards ?? "—"}
+          trend={`${totals.totalReady || 0} ready to generate`} trendUp={(totals.totalReady || 0) === 0} />
+        <StatCard icon={Zap} label="Ready to Generate" value={totals.totalReady ?? "—"}
+          trend={totals.totalReady > 0 ? "Action needed" : "Up to date"} trendUp={(totals.totalReady || 0) === 0} />
+        <StatCard icon={CheckCircle} label="Already Carded" value={totals.totalCarded ?? "—"} />
+        <StatCard icon={BarChart3} label="Category Coverage" value={totals.coveredCount != null ? `${totals.coveredCount}/13` : "—"}
+          trend={totals.coveredCount >= 13 ? "Good" : "Gaps"} trendUp={totals.coveredCount >= 13} />
+      </div>
+
+      {/* ── RUNNING: Progress card + live category feed ── */}
       {isRunning && runStatus && (
-        <div className="bg-[var(--color-success-50)] border border-[var(--color-success-200)] rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[var(--color-success-600)] animate-pulse" />
-              <span className="text-sm font-semibold text-[var(--color-success-700)]">
-                Generating cards for {selectedCityObj?.city_name || "city"}
-              </span>
-            </div>
-            <Button variant="outline" size="sm" icon={StopCircle} loading={cancelling} onClick={cancelGeneration}>
-              Cancel
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-full bg-[var(--color-success-100)] rounded-full h-2.5">
-            <div
-              className="bg-[var(--color-success-500)] h-2.5 rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-[var(--color-success-700)]">
-            <span>
-              Category {runStatus.completed_categories} / {runStatus.total_categories}
-              {runStatus.current_category && (
-                <span className="ml-1 text-[var(--color-text-secondary)]">
-                  — processing {CATEGORY_LABELS[runStatus.current_category] || runStatus.current_category}
+        <>
+          <div className="bg-[var(--color-brand-50)] border border-[var(--color-brand-200)] rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-[var(--color-brand-600)] animate-pulse" />
+                <span className="text-sm font-semibold text-[var(--color-brand-700)]">
+                  Generating cards for {selectedCityObj?.city_name || "city"}
                 </span>
-              )}
-            </span>
-            <span>{pct}%</span>
+              </div>
+              <Button variant="outline" size="sm" icon={StopCircle} loading={cancelling} onClick={cancelGeneration}>Cancel</Button>
+            </div>
+            <div className="w-full bg-[var(--color-brand-100)] rounded-full h-2.5">
+              <div className="bg-[var(--color-brand-500)] h-2.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-xs text-[var(--color-brand-700)]">
+              <span>
+                Category {runStatus.completed_categories} / {runStatus.total_categories}
+                {runStatus.current_category && <span className="ml-1 text-[var(--color-text-secondary)]">— processing {CATEGORY_LABELS[runStatus.current_category] || runStatus.current_category}</span>}
+              </span>
+              <span>{pct}%</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3 pt-1">
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-success-700)]">{runStatus.total_created}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Created</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_duplicate}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Duplicates</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_no_photos}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_child_venue}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Excluded</div>
+              </div>
+            </div>
           </div>
-
-          {/* Running totals */}
-          <div className="grid grid-cols-4 gap-3 pt-1">
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-success-700)]">{runStatus.total_created}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Created</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_duplicate}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Duplicates</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_no_photos}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_child_venue}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Excluded</div>
-            </div>
-          </div>
-        </div>
+          <SectionCard title="Category Progress">
+            <DataTable columns={categoryFeedColumns} rows={categoryFeedRows} loading={false} emptyMessage="No category data" />
+          </SectionCard>
+        </>
       )}
 
-      {/* ── Start Generation Card (when idle) ── */}
-      {!isRunning && (
-        <SectionCard
-          title={`Generate All Cards — ${selectedCityObj?.city_name || "City"}`}
-          subtitle="Creates single cards for every eligible place (approved, with photos, not already carded) across all 13 categories."
-        >
-          <div className="flex items-center gap-4">
-            <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
-              Generate All Cards
-            </Button>
-            <span className="text-xs text-[var(--color-text-tertiary)]">
-              No API cost — reads from place pool only
-            </span>
-          </div>
-        </SectionCard>
-      )}
-
-      {/* ── Results (completed/cancelled run) ── */}
+      {/* ── COMPLETED/CANCELLED/FAILED: Results ── */}
       {displayRun && !isRunning && (
-        <SectionCard
-          title="Generation Results"
-          subtitle={
-            displayRun.status === "completed"
-              ? `Completed — Created ${displayRun.total_created} cards, skipped ${displayRun.total_skipped}`
-              : displayRun.status === "cancelled"
-              ? `Cancelled at category ${displayRun.completed_categories}/${displayRun.total_categories} — Created ${displayRun.total_created} cards`
-              : `Failed — ${displayRun.error_message || "Unknown error"}`
-          }
-        >
-          {/* Summary stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="bg-[var(--color-success-50)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-[var(--color-success-700)]">{displayRun.total_created}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Cards Created</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_duplicate}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Already Existed</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_no_photos}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_child_venue}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Excluded Venues</div>
-            </div>
-          </div>
+        <>
+          <SectionCard
+            title="Generation Results"
+            badge={
+              <Badge variant={displayRun.status === "completed" ? "success" : displayRun.status === "cancelled" ? "warning" : "error"}>
+                {displayRun.status === "completed" ? "Completed" : displayRun.status === "cancelled" ? "Cancelled" : "Failed"}
+              </Badge>
+            }
+          >
+            {displayRun.status === "failed" ? (
+              <div className="py-4">
+                <AlertCard variant="error">{displayRun.error_message || "Unknown error"}</AlertCard>
+                <div className="flex gap-2 mt-4">
+                  <Button icon={Play} onClick={handleRunAgain}>Try Again</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-[var(--color-success-50)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold text-[var(--color-success-700)]">{displayRun.total_created}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Cards Created</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_duplicate}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Already Existed</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_no_photos}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_child_venue}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Excluded Venues</div>
+                  </div>
+                </div>
+                {displayRun.completed_at && displayRun.started_at && (
+                  <div className="text-xs text-[var(--color-text-tertiary)] mb-3">
+                    Duration: {(() => { const s = Math.round((new Date(displayRun.completed_at) - new Date(displayRun.started_at)) / 1000); return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; })()}
+                  </div>
+                )}
+                <div className="flex gap-2 mb-4">
+                  <Button icon={Play} onClick={handleRunAgain}>Run Again</Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Refresh Stats</Button>
+                </div>
+                <DataTable columns={resultColumns} rows={buildResultRows(displayRun)} loading={false} emptyMessage="No category data" />
+              </>
+            )}
+          </SectionCard>
+        </>
+      )}
 
-          {/* Per-category breakdown */}
-          <DataTable
-            columns={resultColumns}
-            rows={buildResultRows(displayRun)}
-            loading={false}
-            emptyMessage="No category data"
-          />
+      {/* ── IDLE: Category readiness + action ── */}
+      {!isRunning && !displayRun && previewData && (
+        <>
+          <SectionCard title="Category Readiness" subtitle="Per-category breakdown of eligible places">
+            <DataTable columns={readinessColumns} rows={previewData.categories} loading={false} emptyMessage="No category data" />
+          </SectionCard>
+
+          <SectionCard title="Generate Cards"
+            subtitle="Creates a card for every eligible place across all 13 categories. No API cost.">
+            {totals.totalReady > 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-lg p-4 bg-[var(--gray-50)]">
+                  <div className="text-sm">
+                    <strong>{totals.totalReady}</strong> new cards can be generated. Existing cards will have their categories synced.
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
+                    Generate {totals.totalReady} Cards
+                  </Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Re-check</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
+                  <CheckCircle className="w-4 h-4" /> All eligible places already have cards. Run again to sync categories if AI re-classified.
+                </div>
+                <div className="flex gap-2">
+                  <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
+                    Sync Categories
+                  </Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Re-check</Button>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </>
+      )}
+
+      {/* ── Run History (visible in IDLE and COMPLETED states) ── */}
+      {!isRunning && runHistory.length > 0 && (
+        <SectionCard title="Run History" subtitle="Previous generation runs for this city">
+          <DataTable columns={historyColumns} rows={runHistory} loading={false} emptyMessage="No previous runs" />
         </SectionCard>
       )}
     </div>
