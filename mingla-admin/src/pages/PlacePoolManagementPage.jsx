@@ -2204,7 +2204,7 @@ function BrowseTab({ scope, onRefresh }) {
 function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
   const selectedCountry = scope?.countryCode;
   const selectedCity = scope?.cityId;
-  // Text names for edge function calls (backfill-place-photos expects text, not UUID)
+  // Text names for edge function calls (used as display labels in photo_backfill_runs)
   const cityTextName = regCity?.name || null;
   const countryTextName = regCity?.country || null;
   const { addToast } = useToast();
@@ -2275,6 +2275,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
     try {
       const data = await invoke({
         action: "preview_run",
+        cityId: selectedCity,
         city: cityTextName,
         country: countryTextName,
       });
@@ -2332,6 +2333,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
     try {
       const data = await invoke({
         action: "create_run",
+        cityId: selectedCity,
         city: cityTextName,
         country: countryTextName,
       });
