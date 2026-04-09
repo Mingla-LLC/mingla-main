@@ -65,6 +65,25 @@ const EXPERIENCE_TYPES = [
 const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
 const PAGE_SIZE = 20;
 
+// Venue name keywords that the edge function excludes (must match categoryPlaceTypes.ts)
+const EXCLUDED_VENUE_KEYWORDS = [
+  'kids', 'kidz', 'kiddo', 'kiddos', 'children', 'child',
+  'toddler', 'toddlers', 'baby', 'babies', 'bounce', 'bouncy',
+  'trampoline', 'play space', 'playspace', 'little ones',
+  'mommy', 'mommy and me', 'tot ', ' tots',
+  'preschool', 'pre-school', 'daycare', 'day care',
+  'jungle gym', 'fun zone', 'funzone', 'kidzone', 'kid zone',
+  'school', 'academy', 'institute',
+  'training center', 'learning center',
+  'university', 'college', 'seminary',
+];
+
+function isExcludedVenue(name) {
+  if (!name) return false;
+  const lower = ` ${name.toLowerCase()} `;
+  return EXCLUDED_VENUE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function healthBadge(health) {
@@ -912,7 +931,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
       // Query A: approved places by category (limit above PostgREST default of 1000)
       const { data: places } = await supabase
         .from("place_pool")
-        .select("ai_categories, stored_photo_urls, id")
+        .select("ai_categories, stored_photo_urls, id, name")
         .eq("city_id", scope.cityId)
         .eq("is_active", true)
         .eq("ai_approved", true)
@@ -950,6 +969,8 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
 
       for (const p of (places || [])) {
         const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
+        if (cats.length === 0) continue; // Skip empty categories (edge function can't match)
+        if (isExcludedVenue(p.name)) continue; // Skip excluded venues (edge function skips these)
         const hasPhotos = p.stored_photo_urls && p.stored_photo_urls.length > 0
           && !(p.stored_photo_urls.length === 1 && p.stored_photo_urls[0] === "__backfill_failed__");
         const alreadyCarded = existingPlaceIds.has(p.id);
@@ -964,7 +985,16 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
       }
 
       const categories = ALL_SLUGS.map(slug => ({ slug, ...catStats[slug] }));
-      const totalReady = categories.reduce((s, c) => s + c.ready, 0);
+      // Count distinct ready places (not category-slots) to avoid double-counting multi-category places
+      let totalReady = 0;
+      for (const p of (places || [])) {
+        const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
+        if (cats.length === 0) continue;
+        if (isExcludedVenue(p.name)) continue;
+        const hasPhotos = p.stored_photo_urls && p.stored_photo_urls.length > 0
+          && !(p.stored_photo_urls.length === 1 && p.stored_photo_urls[0] === "__backfill_failed__");
+        if (hasPhotos && !existingPlaceIds.has(p.id)) totalReady++;
+      }
       const totalApproved = (places || []).length;
       // Count from the PLACES side: how many approved places have a card?
       let totalCarded = 0;
