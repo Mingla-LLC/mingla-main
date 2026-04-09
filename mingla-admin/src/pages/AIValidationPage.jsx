@@ -12,7 +12,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain, Globe, ShieldCheck, ShieldAlert, CheckCircle, XCircle,
-  Zap, RefreshCw, Play, ChevronDown, ChevronRight, Clock,
+  Zap, RefreshCw, Play, Pause, ChevronDown, ChevronRight, Clock,
   UtensilsCrossed, Wine, Coffee, Flower2, Eye, Music, Palette, TreePine,
   Gamepad2, Heart, ShoppingBag, MapPin, Sparkles, AlertTriangle,
 } from "lucide-react";
@@ -336,14 +336,422 @@ function CommandCenterTab({ overview, cityOverview, coverageData, cityStats, rec
 
 // ── Placeholder Tabs ────────────────────────────────────────────────────────
 
-function PipelinePlaceholder() {
+// ── Pipeline Tab ────────────────────────────────────────────────────────────
+
+const SCOPE_OPTIONS = [
+  { value: "unvalidated", label: "Unvalidated only", desc: "Places not yet validated" },
+  { value: "failed", label: "Failed only", desc: "Places where GPT errored — retry" },
+  { value: "category", label: "Per category", desc: "Re-validate a specific category" },
+  { value: "all", label: "All places", desc: "Re-validate everything (expensive)" },
+];
+
+const DECISION_ICON = {
+  accept: { icon: CheckCircle, color: "text-[var(--color-success-600)]", bg: "bg-[var(--color-success-50)]" },
+  reject: { icon: XCircle, color: "text-[var(--color-error-600)]", bg: "bg-[var(--color-error-50)]" },
+  reclassify: { icon: RefreshCw, color: "text-[var(--color-info-600)]", bg: "bg-[var(--color-info-50)]" },
+};
+
+const CONF_BADGE = { high: "success", medium: "warning", low: "error" };
+
+function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitchTab }) {
+  // Config state
+  const [scope, setScope] = useState("unvalidated");
+  const [category, setCategory] = useState("");
+  const [dryRun, setDryRun] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
+
+  // Run state
+  const [activeRun, setActiveRun] = useState(null);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [runningBatch, setRunningBatch] = useState(false);
+  const [feedItems, setFeedItems] = useState([]);
+  const stopRef = useRef(false);
+  const mountedRef = useRef(true);
+  const feedPageRef = useRef(1);
+
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; stopRef.current = true; }; }, []);
+
+  // City name for display
+  const cityName = selectedCityId
+    ? (cities || []).find((c) => c.city_id === selectedCityId)?.city_name || "Selected City"
+    : null;
+
+  // Preview: auto-update on filter change
+  useEffect(() => {
+    if (!selectedCityId || !cityName) { setPreview(null); return; }
+    const t = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const data = await invoke({
+          action: "preview",
+          scope,
+          city: cityName,
+          category: scope === "category" ? category : undefined,
+          revalidate: scope === "all",
+        });
+        if (mountedRef.current) setPreview(data);
+      } catch (err) {
+        console.error("[Pipeline preview]", err);
+      } finally {
+        if (mountedRef.current) setPreviewLoading(false);
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [scope, category, selectedCityId, cityName, invoke]);
+
+  // Check for active run on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.rpc("admin_ai_recent_runs", { p_limit: 1 });
+        if (data && data.length > 0 && ["ready", "running", "paused"].includes(data[0].status)) {
+          const status = await invoke({ action: "run_status", run_id: data[0].id });
+          if (mountedRef.current && status?.run) setActiveRun(status.run);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [invoke]);
+
+  const handleStart = async () => {
+    if (!selectedCityId) { toast({ variant: "warning", title: "Select a city first" }); return; }
+    if (scope === "all" && !confirm(`Re-validate ALL places in ${cityName}? This will re-process every place.`)) return;
+    setStarting(true);
+    try {
+      const data = await invoke({
+        action: "create_run",
+        scope,
+        city_id: selectedCityId,
+        city: cityName,
+        category: scope === "category" ? category : undefined,
+        dry_run: dryRun,
+        revalidate: scope === "all",
+      });
+      if (data.status === "already_active") {
+        toast({ variant: "warning", title: "A run is already active" });
+        const status = await invoke({ action: "run_status", run_id: data.run_id });
+        if (status?.run) setActiveRun(status.run);
+        return;
+      }
+      if (data.status === "nothing_to_do") {
+        toast({ variant: "info", title: "No places to process with current filters" });
+        return;
+      }
+      toast({ variant: "success", title: `Run started — ${fmt(data.total_places)} places queued` });
+      const status = await invoke({ action: "run_status", run_id: data.run_id });
+      setActiveRun(status?.run || { ...data, status: "ready" });
+      setFeedItems([]);
+      feedPageRef.current = 1;
+      startAutoRun(data.run_id);
+    } catch (err) {
+      toast({ variant: "error", title: "Failed to start", description: err.message });
+    } finally {
+      if (mountedRef.current) setStarting(false);
+    }
+  };
+
+  const startAutoRun = async (runId) => {
+    setAutoRunning(true);
+    stopRef.current = false;
+
+    while (!stopRef.current && mountedRef.current) {
+      try {
+        setRunningBatch(true);
+        const data = await invoke({ action: "run_batch", run_id: runId });
+        if (!mountedRef.current) break;
+        setActiveRun(data.run_progress);
+
+        // Fetch batch results for live feed
+        try {
+          const results = await invoke({
+            action: "get_results",
+            job_id: runId,
+            page: feedPageRef.current,
+            page_size: 25,
+          });
+          if (results?.results?.length > 0 && mountedRef.current) {
+            setFeedItems((prev) => [...results.results, ...prev]);
+            feedPageRef.current++;
+          }
+        } catch { /* feed fetch failure is non-critical */ }
+
+        if (data.done || data.auto_paused) {
+          if (data.auto_paused) toast({ variant: "warning", title: "Run auto-paused — cost exceeded 2x estimate" });
+          else toast({ variant: "success", title: `Verification complete! ${fmt(data.run_progress?.processed)} places processed` });
+          break;
+        }
+
+        if (mountedRef.current) setRunningBatch(false);
+        await new Promise((r) => setTimeout(r, 500));
+      } catch (err) {
+        if (mountedRef.current) {
+          toast({ variant: "error", title: `Batch error: ${err.message}` });
+          try {
+            const status = await invoke({ action: "run_status", run_id: runId });
+            setActiveRun(status?.run);
+          } catch { /* ignore */ }
+        }
+        break;
+      }
+    }
+
+    if (mountedRef.current) {
+      setAutoRunning(false);
+      setRunningBatch(false);
+      onRefresh();
+    }
+  };
+
+  const handlePause = async () => {
+    stopRef.current = true;
+    try {
+      await invoke({ action: "pause_run", run_id: activeRun.id });
+      setActiveRun((r) => ({ ...r, status: "paused" }));
+      toast({ variant: "info", title: "Run paused" });
+    } catch (err) { toast({ variant: "error", title: err.message }); }
+  };
+
+  const handleResume = async () => {
+    try {
+      await invoke({ action: "resume_run", run_id: activeRun.id });
+      setActiveRun((r) => ({ ...r, status: "running" }));
+      startAutoRun(activeRun.id);
+    } catch (err) { toast({ variant: "error", title: err.message }); }
+  };
+
+  const handleStop = async () => {
+    stopRef.current = true;
+    try {
+      const data = await invoke({ action: "stop_run", run_id: activeRun.id });
+      setActiveRun(data.run_progress);
+      toast({ variant: "info", title: "Run cancelled" });
+      onRefresh();
+    } catch (err) { toast({ variant: "error", title: err.message }); }
+  };
+
+  const resetRun = () => {
+    setActiveRun(null);
+    setFeedItems([]);
+    feedPageRef.current = 1;
+  };
+
+  const isTerminal = activeRun && ["completed", "failed", "cancelled"].includes(activeRun.status);
+
+  // ── No city selected ──
+  if (!selectedCityId) {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <AlertTriangle className="w-10 h-10 mx-auto text-[var(--color-warning-500)]" />
+        <p className="text-lg font-semibold text-[var(--color-text-primary)]">Select a city to run validation</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">Use the city picker in the header, or click "Validate" on a city card in the Command Center.</p>
+      </div>
+    );
+  }
+
+  // ── Active/completed run view ──
+  if (activeRun) {
+    const progress = activeRun.total_places ? (activeRun.processed / activeRun.total_places) * 100 : 0;
+    const reviewCount = (activeRun.low_confidence || 0) + (activeRun.reclassified || 0);
+
+    return (
+      <div className="space-y-6">
+        <SectionCard
+          title={`AI Verification — ${cityName || "Run"}`}
+          subtitle={`${fmt(activeRun.total_places)} places · Est. ${cost(activeRun.estimated_cost_usd)}`}
+          badge={<Badge variant={STATUS_BADGE[activeRun.status] || "default"}>{activeRun.status}</Badge>}
+        >
+          {/* Progress bar */}
+          <div className="mb-4">
+            <div className="flex justify-between text-sm mb-1">
+              <span className="font-semibold text-[var(--color-text-primary)]">{fmt(activeRun.processed)} / {fmt(activeRun.total_places)}</span>
+              <span className="font-medium">{progress.toFixed(1)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-[var(--gray-200)]">
+              <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+            {[
+              { label: "Accepted", value: activeRun.approved, color: "success" },
+              { label: "Rejected", value: activeRun.rejected, color: "error" },
+              { label: "Reclassified", value: activeRun.reclassified, color: "info" },
+              { label: "Low Conf.", value: activeRun.low_confidence, color: "warning" },
+              { label: "Failed", value: activeRun.failed, color: "error" },
+              { label: "Cost", value: cost(activeRun.cost_usd), raw: true },
+            ].map((s) => (
+              <div key={s.label} className="bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-lg p-3 text-center">
+                <p className={`text-xl font-bold ${s.color ? `text-[var(--color-${s.color}-700)]` : "text-[var(--color-text-primary)]"}`}>
+                  {s.raw ? s.value : fmt(s.value)}
+                </p>
+                <p className="text-[11px] text-[var(--color-text-tertiary)]">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Run complete banner */}
+          {isTerminal && (
+            <AlertCard variant={activeRun.status === "completed" ? "success" : "warning"}
+              title={activeRun.status === "completed" ? "Verification complete!" : `Run ${activeRun.status}`}>
+              {fmt(activeRun.processed)} processed: {fmt(activeRun.approved)} accepted, {fmt(activeRun.rejected)} rejected, {fmt(activeRun.reclassified)} reclassified. Cost: {cost(activeRun.cost_usd)}
+            </AlertCard>
+          )}
+
+          {/* What's Next (terminal only) */}
+          {isTerminal && (
+            <div className="space-y-2 mt-4">
+              <p className="text-sm font-semibold text-[var(--color-text-secondary)]">What's next:</p>
+              {reviewCount > 0 && (
+                <Button variant="primary" className="w-full justify-start" icon={ShieldCheck}
+                  onClick={() => onSwitchTab("review")}>
+                  ① Review {fmt(reviewCount)} items needing attention
+                </Button>
+              )}
+              <Button variant="secondary" className="w-full justify-start" icon={Zap}
+                onClick={() => { window.location.hash = "#/place-pool"; }}>
+                ② Generate cards for {cityName}
+              </Button>
+              <Button variant="secondary" className="w-full justify-start" icon={Globe}
+                onClick={() => onSwitchTab("command")}>
+                ③ Check category coverage
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={resetRun}>
+                Start New Run
+              </Button>
+            </div>
+          )}
+
+          {/* Controls (non-terminal) */}
+          {!isTerminal && (
+            <div className="flex justify-end gap-3 mt-4">
+              {activeRun.status === "running" && (
+                <>
+                  <Button variant="secondary" icon={Pause} onClick={handlePause} disabled={!autoRunning}>Pause</Button>
+                  <Button variant="ghost" className="text-[var(--color-error-700)]" onClick={handleStop}>Stop Run</Button>
+                </>
+              )}
+              {activeRun.status === "paused" && (
+                <>
+                  <Button variant="primary" icon={Play} onClick={handleResume}>Resume</Button>
+                  <Button variant="ghost" className="text-[var(--color-error-700)]" onClick={handleStop}>Stop Run</Button>
+                </>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Live Feed */}
+        {feedItems.length > 0 && (
+          <SectionCard title="Live Feed" subtitle={`${feedItems.length} results`}>
+            <div className="max-h-[400px] overflow-y-auto space-y-1">
+              {feedItems.map((item, i) => {
+                const dec = DECISION_ICON[item.decision] || DECISION_ICON.accept;
+                const DecIcon = dec.icon;
+                return (
+                  <div key={item.id || i} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${dec.bg} text-sm`}>
+                    <DecIcon className={`w-4 h-4 shrink-0 ${dec.color}`} />
+                    <span className="font-medium text-[var(--color-text-primary)] min-w-[180px] truncate">{item.place_name}</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {(item.new_categories || []).map((cat) => (
+                        <span key={cat} className="px-1.5 py-0.5 text-[10px] rounded-full font-medium text-white"
+                          style={{ backgroundColor: CAT_COLORS[cat] || "#6b7280" }}>
+                          {CAT_LABELS[cat] || cat}
+                        </span>
+                      ))}
+                    </div>
+                    <Badge variant={CONF_BADGE[item.confidence] || "default"} className="ml-auto text-[10px]">
+                      {item.confidence}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        )}
+      </div>
+    );
+  }
+
+  // ── Configuration view ──
   return (
-    <div className="text-center py-16 space-y-3">
-      <Play className="w-12 h-12 mx-auto text-[var(--color-text-tertiary)]" />
-      <p className="text-lg font-semibold text-[var(--color-text-primary)]">Pipeline — Coming Soon</p>
-      <p className="text-sm text-[var(--color-text-secondary)] max-w-md mx-auto">
-        Configure and run AI validation with stage-by-stage quality gates, live progress feed, and full pipeline transparency.
-      </p>
+    <div className="space-y-6">
+      <SectionCard title={`Configure Verification — ${cityName}`}>
+        <div className="space-y-4">
+          {/* Scope */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">Scope</label>
+            <div className="grid grid-cols-2 gap-2">
+              {SCOPE_OPTIONS.map((opt) => (
+                <button key={opt.value} onClick={() => setScope(opt.value)}
+                  className={[
+                    "rounded-lg border p-3 text-left transition-all cursor-pointer",
+                    scope === opt.value
+                      ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] ring-1 ring-[var(--color-brand-500)]"
+                      : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
+                  ].join(" ")}>
+                  <p className={`text-sm font-semibold ${scope === opt.value ? "text-[var(--color-brand-700)]" : "text-[var(--color-text-primary)]"}`}>
+                    {opt.label}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-tertiary)]">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category picker (when scope = category) */}
+          {scope === "category" && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Category</label>
+              <select value={category} onChange={(e) => setCategory(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] text-sm">
+                <option value="">All categories</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Preview */}
+          <div className="bg-[var(--gray-50)] rounded-lg p-4">
+            {previewLoading ? (
+              <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]"><Spinner size="sm" /> Calculating...</div>
+            ) : preview ? (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-text-primary)]">{fmt(preview.places_to_process)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Places to process</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold font-mono text-[var(--color-text-primary)]">{cost(preview.estimated_cost_usd)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Estimated cost</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-text-primary)]">~{preview.estimated_minutes} min</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Estimated time</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--color-text-tertiary)]">Select a scope to see preview</p>
+            )}
+          </div>
+
+          {/* Dry run */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--gray-300)] text-[var(--color-brand-500)]" />
+            <span className="text-[var(--color-text-primary)]">Dry run (preview without writing)</span>
+          </label>
+
+          {/* Start */}
+          <Button variant="primary" icon={Play} onClick={handleStart}
+            disabled={starting || !preview?.places_to_process}
+            loading={starting}
+            className="w-full">
+            {starting ? "Starting..." : `Start Verification (${fmt(preview?.places_to_process || 0)} places)`}
+          </Button>
+        </div>
+      </SectionCard>
     </div>
   );
 }
@@ -376,6 +784,18 @@ export function AIValidationPage() {
   const [recentRuns, setRecentRuns] = useState([]);
   const [cities, setCities] = useState([]);
   const [selectedCityId, setSelectedCityId] = useState(null);
+
+  // Edge function invoke helper
+  const invoke = useCallback(async (body) => {
+    const { data, error: fnErr } = await supabase.functions.invoke("ai-verify-pipeline", { body });
+    if (fnErr) {
+      // Try to extract error message from response body (Supabase wraps it)
+      const msg = data?.error || fnErr.message || "Edge function error";
+      throw new Error(msg);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -485,7 +905,16 @@ export function AIValidationPage() {
               onValidateCity={handleValidateCity}
             />
           )}
-          {tab === "pipeline" && <PipelinePlaceholder />}
+          {tab === "pipeline" && (
+            <PipelineTab
+              invoke={invoke}
+              selectedCityId={selectedCityId}
+              cities={cities}
+              toast={addToast}
+              onRefresh={loadAll}
+              onSwitchTab={setTab}
+            />
+          )}
           {tab === "review" && <ReviewQueuePlaceholder />}
         </motion.div>
       </AnimatePresence>
