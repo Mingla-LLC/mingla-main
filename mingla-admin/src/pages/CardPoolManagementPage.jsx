@@ -17,6 +17,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   CreditCard, Camera, AlertTriangle, Eye, Play, Layers,
   CheckCircle, Copy, StopCircle, Zap, XCircle, BarChart3,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -26,7 +27,7 @@ import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
 import { Input } from "../components/ui/Input";
-import { Breadcrumbs } from "../components/ui/Breadcrumbs";
+
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
 
@@ -64,6 +65,25 @@ const EXPERIENCE_TYPES = [
 const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
 const PAGE_SIZE = 20;
 
+// Venue name keywords that the edge function excludes (must match categoryPlaceTypes.ts)
+const EXCLUDED_VENUE_KEYWORDS = [
+  'kids', 'kidz', 'kiddo', 'kiddos', 'children', 'child',
+  'toddler', 'toddlers', 'baby', 'babies', 'bounce', 'bouncy',
+  'trampoline', 'play space', 'playspace', 'little ones',
+  'mommy', 'mommy and me', 'tot ', ' tots',
+  'preschool', 'pre-school', 'daycare', 'day care',
+  'jungle gym', 'fun zone', 'funzone', 'kidzone', 'kid zone',
+  'school', 'academy', 'institute',
+  'training center', 'learning center',
+  'university', 'college', 'seminary',
+];
+
+function isExcludedVenue(name) {
+  if (!name) return false;
+  const lower = ` ${name.toLowerCase()} `;
+  return EXCLUDED_VENUE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function healthBadge(health) {
@@ -100,35 +120,73 @@ function ErrorBanner({ error, onRetry }) {
   );
 }
 
-// ── CountryFilterBar (breadcrumb nav) ────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCountry, onClearCountry, onClearCity }) {
-  const items = [
-    { label: "All Countries", onClick: () => { onClearCountry(); } },
-    ...(selectedCountry ? [
-      selectedCity
-        ? { label: selectedCountry, onClick: () => { onClearCity(); } }
-        : { label: selectedCountry },
-    ] : []),
-    ...(selectedCity ? [{ label: selectedCity }] : []),
-  ];
+function countryFlag(code) {
+  if (!code || code.length !== 2) return "🌍";
+  return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+// ── CityPicker (shared navigation — same pattern as Place Pool) ────────────
+
+function CityPicker({ cities, scope, onScopeChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const grouped = {};
+  for (const c of (cities || [])) {
+    const key = c.country_code || "??";
+    if (!grouped[key]) grouped[key] = { countryName: c.country_name, countryCode: key, cities: [] };
+    grouped[key].cities.push(c);
+  }
+  const groups = Object.values(grouped).sort((a, b) => a.countryName.localeCompare(b.countryName));
+
+  const selectedCity = scope.cityId ? cities.find((c) => c.city_id === scope.cityId) : null;
+  const selectedCountryGroup = scope.countryCode ? groups.find((g) => g.countryCode === scope.countryCode) : null;
+  const label = selectedCity
+    ? `${countryFlag(selectedCity.country_code)} ${selectedCity.city_name}`
+    : selectedCountryGroup
+      ? `${countryFlag(selectedCountryGroup.countryCode)} ${selectedCountryGroup.countryName}`
+      : "🌍 All Cities";
 
   return (
-    <div className="flex items-center gap-3 mb-2">
-      <Breadcrumbs items={items} />
-      {!selectedCountry && countries.length > 0 && (
-        <select
-          className="ml-auto rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-          value=""
-          onChange={(e) => {
-            if (e.target.value) onSelectCountry(e.target.value);
-          }}
-        >
-          <option value="">Jump to country...</option>
-          {countries.map((c) => (
-            <option key={c} value={c}>{c}</option>
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] text-sm font-medium hover:border-[var(--color-brand-500)] transition-colors cursor-pointer">
+        <span>{label}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-[9999] top-full mt-1 left-0 w-72 max-h-96 overflow-y-auto bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-lg shadow-lg">
+          <button onClick={() => { onScopeChange({ countryCode: null, cityId: null }); setOpen(false); }}
+            className={`w-full text-left px-3 py-2 text-sm font-medium hover:bg-[var(--gray-100)] cursor-pointer ${!scope.countryCode && !scope.cityId ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : ""}`}>
+            🌍 All Cities
+          </button>
+          <div className="border-t border-[var(--gray-100)]" />
+
+          {groups.map((group) => (
+            <div key={group.countryCode}>
+              <button onClick={() => { onScopeChange({ countryCode: group.countryCode, cityId: null }); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider hover:bg-[var(--gray-100)] cursor-pointer ${scope.countryCode === group.countryCode && !scope.cityId ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "text-[var(--color-text-tertiary)]"}`}>
+                {countryFlag(group.countryCode)} {group.countryName}
+              </button>
+              {group.cities.map((c) => (
+                <button key={c.city_id} onClick={() => { onScopeChange({ countryCode: group.countryCode, cityId: c.city_id }); setOpen(false); }}
+                  className={`w-full text-left pl-7 pr-3 py-1.5 text-sm hover:bg-[var(--gray-100)] cursor-pointer flex justify-between ${scope.cityId === c.city_id ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)] font-medium" : ""}`}>
+                  <span>{c.city_name}</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">{(c.ai_approved_places || 0).toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
           ))}
-        </select>
+        </div>
       )}
     </div>
   );
@@ -136,7 +194,7 @@ function CountryFilterBar({ selectedCountry, selectedCity, countries, onSelectCo
 
 // ── Tab 1: Overview ─────────────────────────────────────────────────────────
 
-function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectCity }) {
+function OverviewTab({ scope, onScopeChange, pickerCities }) {
   const { addToast } = useToast();
   const [data, setData] = useState(null);
   const [catHealth, setCatHealth] = useState([]);
@@ -154,8 +212,8 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
     setError(null);
 
     const params = {};
-    if (selectedCountry) params.p_country = selectedCountry;
-    if (selectedCity) params.p_city = selectedCity;
+    if (scope.cityId) params.p_city_id = scope.cityId;
+    else if (scope.countryCode) params.p_country_code = scope.countryCode;
 
     const promises = [
       supabase.rpc("admin_card_pool_intelligence", params),
@@ -163,27 +221,27 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
     ];
 
     // Drill-down data: country list (global) or city list (country level)
-    if (!selectedCity) {
-      if (selectedCountry) {
-        promises.push(supabase.rpc("admin_card_city_overview", { p_country: selectedCountry }));
+    if (!scope.cityId) {
+      if (scope.countryCode) {
+        promises.push(supabase.rpc("admin_card_city_overview", { p_country_code: scope.countryCode }));
       } else {
         promises.push(supabase.rpc("admin_card_country_overview"));
       }
     }
 
     // City-level: fetch orphaned cards + duplicates
-    if (selectedCity) {
+    if (scope.cityId) {
       promises.push(
         supabase.from("card_pool")
           .select("id, title, card_type, category, place_pool_id, place_pool!left(is_active)")
           .eq("is_active", true)
-          .eq("city", selectedCity)
+          .eq("city_id", scope.cityId)
           .eq("card_type", "single")
           .or("place_pool_id.is.null,place_pool.is_active.eq.false,place_pool.id.is.null")
           .limit(50)
       );
       promises.push(
-        supabase.rpc("admin_detect_duplicate_curated_cards", { p_country: selectedCountry, p_city: selectedCity })
+        supabase.rpc("admin_detect_duplicate_curated_cards", { p_city_id: scope.cityId })
       );
     }
 
@@ -197,13 +255,13 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       setData(Array.isArray(intRes.data) ? intRes.data[0] : intRes.data);
       setCatHealth(catRes.data || []);
 
-      if (!selectedCity && results[2]) {
+      if (!scope.cityId && results[2]) {
         setDrilldownRows(results[2].data || []);
       } else {
         setDrilldownRows([]);
       }
 
-      if (selectedCity) {
+      if (scope.cityId) {
         setOrphanedCards(results[2]?.data || []);
         setDuplicates(results[3]?.data || []);
       } else {
@@ -213,7 +271,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
 
       setLoading(false);
     });
-  }, [selectedCountry, selectedCity]);
+  }, [scope.countryCode, scope.cityId]);
 
   useEffect(() => {
     fetchData();
@@ -224,10 +282,11 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   if (error) return <ErrorBanner error={error} onRetry={fetchData} />;
   if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No card pool data available.</div>;
 
-  const scope = selectedCity
-    ? <>{selectedCountry} &gt; <strong>{selectedCity}</strong></>
-    : selectedCountry
-    ? <strong>{selectedCountry}</strong>
+  const selectedCityObj = scope.cityId ? pickerCities.find(c => c.city_id === scope.cityId) : null;
+  const scopeLabel = scope.cityId
+    ? <>{selectedCityObj?.country_name} &gt; <strong>{selectedCityObj?.city_name}</strong></>
+    : scope.countryCode
+    ? <strong>{pickerCities.find(c => c.country_code === scope.countryCode)?.country_name || scope.countryCode}</strong>
     : "global card pool metrics";
 
   // Health alerts
@@ -261,15 +320,15 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   ];
 
   // Drill-down columns (country or city level)
-  const isCountryLevel = !!selectedCountry && !selectedCity;
-  const isGlobalLevel = !selectedCountry;
+  const isCountryLevel = !!scope.countryCode && !scope.cityId;
+  const isGlobalLevel = !scope.countryCode;
 
   const countryDrillColumns = [
     {
-      key: "country", label: "Country", sortable: true,
+      key: "country_name", label: "Country", sortable: true,
       render: (_, r) => (
-        <button onClick={() => onSelectCountry(r.country)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
-          {r.country}
+        <button onClick={() => onScopeChange({ countryCode: r.country_code, cityId: null })} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+          {countryFlag(r.country_code)} {r.country_name}
         </button>
       ),
     },
@@ -287,7 +346,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
     {
       key: "city_name", label: "City", sortable: true,
       render: (_, r) => (
-        <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
+        <button onClick={() => onScopeChange({ countryCode: scope.countryCode, cityId: r.city_id })} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
           {r.city_name}
         </button>
       ),
@@ -354,7 +413,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
   return (
     <div className="space-y-6">
       <p className="text-sm text-[var(--color-text-secondary)]">
-        Showing card pool for {scope}
+        Showing card pool for {scopeLabel}
       </p>
 
       <div className="grid grid-cols-4 gap-4">
@@ -389,7 +448,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       )}
 
       {isCountryLevel && drilldownRows.length > 0 && (
-        <SectionCard title="City Breakdown" subtitle={`${drilldownRows.length} cities in ${selectedCountry}`}>
+        <SectionCard title="City Breakdown" subtitle={`${drilldownRows.length} cities`}>
           <DataTable columns={cityDrillColumns} rows={drilldownRows} loading={false}
             emptyMessage="No cities found" emptyIcon={Layers} />
         </SectionCard>
@@ -418,7 +477,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       </SectionCard>
 
       {/* Orphaned cards (city level only) */}
-      {selectedCity && orphanedCards.length > 0 && (
+      {scope.cityId && orphanedCards.length > 0 && (
         <SectionCard title={`Orphaned Cards (${orphanedCards.length})`} subtitle="Active single cards whose parent place is inactive or missing">
           <DataTable columns={orphanedColumns} rows={orphanedCards} loading={false}
             emptyMessage="No orphaned cards" emptyIcon={CheckCircle} />
@@ -426,7 +485,7 @@ function OverviewTab({ selectedCountry, selectedCity, onSelectCountry, onSelectC
       )}
 
       {/* Duplicate curated cards (city level only) */}
-      {selectedCity && Object.keys(dupeGroups).length > 0 && (
+      {scope.cityId && Object.keys(dupeGroups).length > 0 && (
         <SectionCard title={`Duplicate Curated Cards (${Object.keys(dupeGroups).length} groups)`}
           subtitle="Cards sharing the same set of stops">
           <div className="space-y-4">
@@ -653,7 +712,7 @@ function CardDetailModal({ card, open, onClose, onToggleActive }) {
 
 // ── Tab 2: Browse Cards ─────────────────────────────────────────────────────
 
-function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
+function BrowseCardsTab({ scope, pickerCities, onRefresh }) {
   const { addToast } = useToast();
   const [cards, setCards] = useState([]);
   const [total, setTotal] = useState(0);
@@ -678,8 +737,11 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
         shopping_list, google_place_id
       `, { count: "exact" });
 
-    if (selectedCity) q = q.eq("city", selectedCity);
-    else if (selectedCountry) q = q.eq("country", selectedCountry);
+    if (scope.cityId) q = q.eq("city_id", scope.cityId);
+    else if (scope.countryCode) {
+      const cityIds = (pickerCities || []).filter(c => c.country_code === scope.countryCode).map(c => c.city_id);
+      if (cityIds.length > 0) q = q.in("city_id", cityIds);
+    }
 
     if (filters.cardType) q = q.eq("card_type", filters.cardType);
     if (filters.category) q = q.contains("categories", [filters.category]);
@@ -700,7 +762,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
     setCards(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [selectedCountry, selectedCity, filters, page, addToast]);
+  }, [scope.countryCode, scope.cityId, pickerCities, filters, page, addToast]);
 
   useEffect(() => {
     fetchCards();
@@ -708,7 +770,7 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   }, [fetchCards]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [selectedCountry, selectedCity]);
+  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [scope.countryCode, scope.cityId]);
 
   const toggleActive = async (card) => {
     const { error } = await supabase.from("card_pool")
@@ -836,68 +898,146 @@ function BrowseCardsTab({ selectedCountry, selectedCity, onRefresh }) {
   );
 }
 
-// ── Tab 3: Generate Cards (v2 — batch system) ──────────────────────────────
+// ── Tab 3: Generate Cards (v3 — intelligent + live feed) ────────────────────
 
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS = 300; // 10 minutes at 2s interval — safety limit
+const MAX_POLLS = 300;
+const ALL_SLUGS = Object.keys(CATEGORY_LABELS);
 
-function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefresh }) {
+function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
   const { addToast } = useToast();
 
-  // City picker state
-  const [cityRows, setCityRows] = useState([]);
-  const [cityLoading, setCityLoading] = useState(false);
+  // Preview / intelligence state
+  const [previewData, setPreviewData] = useState(null); // { categories: [...], totals: {...} }
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [runHistory, setRunHistory] = useState([]);
 
   // Run state
   const [runId, setRunId] = useState(null);
-  const [runStatus, setRunStatus] = useState(null); // full run object from polling
+  const [runStatus, setRunStatus] = useState(null);
   const [starting, setStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  // Last completed run (for showing results after completion)
   const [lastRun, setLastRun] = useState(null);
   const mountedRef = useRef(true);
   const pollRef = useRef(null);
 
-  // Fetch city list from place_pool
+  const selectedCityObj = scope.cityId ? pickerCities.find(c => c.city_id === scope.cityId) : null;
+
+  // ── Preview data fetching ──────────────────────────────────────────────
+  const fetchPreview = useCallback(async () => {
+    if (!scope.cityId) return;
+    setPreviewLoading(true);
+    try {
+      // Query A: approved places by category (limit above PostgREST default of 1000)
+      const { data: places } = await supabase
+        .from("place_pool")
+        .select("ai_categories, stored_photo_urls, id, name")
+        .eq("city_id", scope.cityId)
+        .eq("is_active", true)
+        .eq("ai_approved", true)
+        .not("ai_categories", "is", null)
+        .limit(10000);
+
+      // Query B: existing single cards (limit above PostgREST default of 1000)
+      const { data: cards } = await supabase
+        .from("card_pool")
+        .select("category, place_pool_id")
+        .eq("city_id", scope.cityId)
+        .eq("is_active", true)
+        .eq("card_type", "single")
+        .limit(10000);
+
+      // Query C: run history
+      const { data: history } = await supabase
+        .from("card_generation_runs")
+        .select("id, status, total_created, total_skipped, total_eligible, started_at, completed_at")
+        .eq("city", selectedCityObj?.city_name)
+        .order("started_at", { ascending: false })
+        .limit(5);
+
+      if (!mountedRef.current) return;
+
+      const existingPlaceIds = new Set((cards || []).map(c => c.place_pool_id).filter(Boolean));
+      const cardsByCategory = {};
+      for (const c of (cards || [])) {
+        cardsByCategory[c.category] = (cardsByCategory[c.category] || 0) + 1;
+      }
+
+      // Build per-category stats
+      const catStats = {};
+      for (const slug of ALL_SLUGS) catStats[slug] = { approved: 0, withPhotos: 0, existingCards: 0, ready: 0 };
+
+      for (const p of (places || [])) {
+        const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
+        if (cats.length === 0) continue; // Skip empty categories (edge function can't match)
+        if (isExcludedVenue(p.name)) continue; // Skip excluded venues (edge function skips these)
+        const hasPhotos = p.stored_photo_urls && p.stored_photo_urls.length > 0
+          && !(p.stored_photo_urls.length === 1 && p.stored_photo_urls[0] === "__backfill_failed__");
+        const alreadyCarded = existingPlaceIds.has(p.id);
+
+        for (const slug of cats) {
+          if (!catStats[slug]) continue;
+          catStats[slug].approved++;
+          if (hasPhotos) catStats[slug].withPhotos++;
+          if (alreadyCarded) catStats[slug].existingCards++;
+          if (hasPhotos && !alreadyCarded) catStats[slug].ready++;
+        }
+      }
+
+      const categories = ALL_SLUGS.map(slug => ({ slug, ...catStats[slug] }));
+      // Count distinct ready places (not category-slots) to avoid double-counting multi-category places
+      let totalReady = 0;
+      for (const p of (places || [])) {
+        const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
+        if (cats.length === 0) continue;
+        if (isExcludedVenue(p.name)) continue;
+        const hasPhotos = p.stored_photo_urls && p.stored_photo_urls.length > 0
+          && !(p.stored_photo_urls.length === 1 && p.stored_photo_urls[0] === "__backfill_failed__");
+        if (hasPhotos && !existingPlaceIds.has(p.id)) totalReady++;
+      }
+      const totalApproved = (places || []).length;
+      // Count from the PLACES side: how many approved places have a card?
+      let totalCarded = 0;
+      for (const p of (places || [])) {
+        if (existingPlaceIds.has(p.id)) totalCarded++;
+      }
+      const totalActiveCards = totalCarded;
+      const coveredCount = ALL_SLUGS.filter(s => (catStats[s]?.existingCards || 0) > 0).length;
+
+      setPreviewData({
+        categories,
+        totals: { totalActiveCards, totalReady, totalCarded, totalApproved, coveredCount },
+      });
+      setRunHistory(history || []);
+    } catch (err) {
+      console.warn("[GenerateCards] Preview fetch failed:", err);
+      addToast({ variant: "error", title: "Failed to load generation stats", description: err.message });
+    }
+    if (mountedRef.current) setPreviewLoading(false);
+  }, [scope.cityId, selectedCityObj?.city_name]);
+
+  // ── Hydration: fetch preview + check active run on city change ─────────
   useEffect(() => {
     mountedRef.current = true;
-    if (!selectedCountry || selectedCity) { setCityRows([]); return; }
-    setCityLoading(true);
-    supabase.rpc("admin_place_pool_city_list", { p_country: selectedCountry })
+    if (!scope.cityId || !selectedCityObj) {
+      setPreviewData(null); setRunId(null); setRunStatus(null); setLastRun(null); setRunHistory([]);
+      return;
+    }
+    fetchPreview();
+    supabase.rpc("admin_card_generation_active", { p_city: selectedCityObj.city_name })
       .then(({ data, error }) => {
         if (!mountedRef.current) return;
-        if (error) {
-          addToast({ variant: "error", title: "Failed to load cities", description: error.message });
-          setCityRows([]);
-        } else {
-          setCityRows(data || []);
-        }
-        setCityLoading(false);
-      });
-    return () => { mountedRef.current = false; };
-  }, [selectedCountry, selectedCity]);
-
-  // Check for active run when city changes
-  useEffect(() => {
-    if (!selectedCity) { setRunId(null); setRunStatus(null); return; }
-    supabase.rpc("admin_card_generation_active", { p_city: selectedCity })
-      .then(({ data, error }) => {
-        if (!mountedRef.current) return;
-        if (error) {
-          console.warn("Failed to check active runs:", error.message);
-          return;
-        }
-        if (data && data.length > 0) {
+        if (!error && data && data.length > 0) {
           setRunId(data[0].id);
           setRunStatus(data[0]);
         } else {
-          setRunId(null);
-          setRunStatus(null);
+          setRunId(null); setRunStatus(null);
         }
       });
-  }, [selectedCity]);
+    return () => { mountedRef.current = false; };
+  }, [scope.cityId]);
 
-  // Poll run status via RPC (fast, cheap, already has auth)
+  // ── Polling ────────────────────────────────────────────────────────────
   const pollCountRef = useRef(0);
   useEffect(() => {
     if (!runId) { clearInterval(pollRef.current); return; }
@@ -905,28 +1045,22 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
     const poll = async () => {
       pollCountRef.current++;
       if (pollCountRef.current > MAX_POLLS) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check status." });
+        clearInterval(pollRef.current); pollRef.current = null;
+        addToast({ variant: "info", title: "Polling stopped", description: "Generation may still be running. Refresh to check." });
         return;
       }
       const { data, error } = await supabase.rpc("admin_card_generation_status", { p_run_id: runId });
       if (!mountedRef.current) return;
-      if (error) { console.warn("[CardPool] Poll error:", error.message); return; }
-      if (!data || data.length === 0) return;
+      if (error || !data || data.length === 0) return;
       const run = data[0];
       setRunStatus(run);
       if (run.status !== "running") {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
+        clearInterval(pollRef.current); pollRef.current = null;
         setLastRun(run);
-        if (run.status === "completed") {
-          addToast({ variant: "success", title: `Generated ${run.total_created} cards for ${selectedCity}` });
-        } else if (run.status === "cancelled") {
-          addToast({ variant: "info", title: "Generation cancelled", description: `Created ${run.total_created} cards before cancellation.` });
-        } else if (run.status === "failed") {
-          addToast({ variant: "error", title: "Generation failed", description: run.error_message || "Unknown error" });
-        }
+        if (run.status === "completed") addToast({ variant: "success", title: `Generated ${run.total_created} cards for ${selectedCityObj?.city_name || "city"}` });
+        else if (run.status === "cancelled") addToast({ variant: "info", title: "Generation cancelled", description: `Created ${run.total_created} cards before cancellation.` });
+        else if (run.status === "failed") addToast({ variant: "error", title: "Generation failed", description: run.error_message || "Unknown error" });
+        fetchPreview(); // re-fetch stats after run completes
         if (onRefresh) onRefresh();
       }
     };
@@ -935,31 +1069,30 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
     return () => clearInterval(pollRef.current);
   }, [runId]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => { mountedRef.current = false; clearInterval(pollRef.current); };
-  }, []);
+  useEffect(() => { return () => { mountedRef.current = false; clearInterval(pollRef.current); }; }, []);
 
-  // ── Actions ─────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────
   const startGeneration = async () => {
     setStarting(true);
     setLastRun(null);
     try {
       const { data, error } = await supabase.functions.invoke("generate-single-cards", {
-        body: { action: "generate_all", city: selectedCity, country: selectedCountry },
+        body: { action: "generate_all", cityId: scope.cityId, city: selectedCityObj?.city_name, country: selectedCityObj?.country_name },
       });
       if (error) throw new Error(error.message);
       if (data?.error) {
-        // Handle concurrency guard (409) — pick up existing run
         if (data.existingRunId) {
           setRunId(data.existingRunId);
-          addToast({ variant: "info", title: "Generation already running", description: "Resuming progress tracking for existing job." });
+          addToast({ variant: "info", title: "Generation already running", description: "Resuming progress tracking." });
           return;
         }
         throw new Error(data.error);
       }
       if (data?.runId) {
         setRunId(data.runId);
+        // Immediate first poll — fix for progress display timing bug
+        const { data: statusData } = await supabase.rpc("admin_card_generation_status", { p_run_id: data.runId });
+        if (statusData?.[0]) setRunStatus(statusData[0]);
         addToast({ variant: "success", title: "Card generation started" });
       }
     } catch (err) {
@@ -973,9 +1106,7 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
     if (!runId) return;
     setCancelling(true);
     try {
-      await supabase.functions.invoke("generate-single-cards", {
-        body: { action: "cancel_run", runId },
-      });
+      await supabase.functions.invoke("generate-single-cards", { body: { action: "cancel_run", runId } });
     } catch (err) {
       addToast({ variant: "error", title: "Failed to cancel", description: err.message });
     } finally {
@@ -983,192 +1114,275 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
     }
   };
 
-  // ── City picker (no city selected) ──────────────────────────────────────
-  if (!selectedCity) {
-    const cityPickerColumns = [
-      {
-        key: "city_name", label: "City", sortable: true,
-        render: (_, r) => (
-          <button onClick={() => onSelectCity(r.city_name)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
-            {r.city_name}
-          </button>
-        ),
-      },
-      { key: "approved_places", label: "Approved Places", sortable: true },
-      { key: "with_photos", label: "With Photos", sortable: true },
-      { key: "existing_cards", label: "Existing Cards", sortable: true },
-      {
-        key: "ready_to_generate", label: "Ready to Generate", sortable: true,
-        render: (_, r) => (
-          <span className={r.ready_to_generate > 0 ? "font-semibold text-[var(--color-success-600)]" : "text-[var(--color-text-tertiary)]"}>
-            {r.ready_to_generate}
-          </span>
-        ),
-      },
-    ];
+  const handleRunAgain = () => { setLastRun(null); setRunId(null); setRunStatus(null); fetchPreview(); };
 
+  // ── NO_CITY state ──────────────────────────────────────────────────────
+  if (!scope.cityId) {
     return (
-      <SectionCard title="Select a City" subtitle="Choose a city to generate single cards for all eligible places.">
-        {selectedCountry ? (
-          cityLoading
-            ? <div className="flex items-center justify-center py-8 gap-3"><Spinner size="md" /> <span className="text-sm text-[var(--color-text-secondary)]">Loading cities...</span></div>
-            : <DataTable columns={cityPickerColumns} rows={cityRows} loading={false}
-                emptyMessage="No cities found for this country" emptyIcon={Layers} />
-        ) : (
-          <div className="text-sm text-[var(--color-text-secondary)] py-4">
-            Select a country first using the breadcrumb navigation above.
-          </div>
-        )}
+      <SectionCard title="Generate Cards" subtitle="Select a city from the picker above to generate single cards.">
+        <div className="flex items-center gap-3 py-6 text-[var(--color-text-secondary)]">
+          <CreditCard className="w-8 h-8 opacity-30" />
+          <span className="text-sm">Choose a city to see generation stats and create cards for eligible places.</span>
+        </div>
       </SectionCard>
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Derived state ──────────────────────────────────────────────────────
   const isRunning = runStatus?.status === "running";
   const pct = runStatus && runStatus.total_categories > 0
-    ? Math.round((runStatus.completed_categories / runStatus.total_categories) * 100)
-    : 0;
+    ? Math.round((runStatus.completed_categories / runStatus.total_categories) * 100) : 0;
+  const totals = previewData?.totals || {};
+  const displayRun = lastRun || (runStatus?.status && runStatus.status !== "running" ? runStatus : null);
 
-  // Build category results table from run data
-  const buildResultRows = (run) => {
-    if (!run?.category_results) return [];
-    return Object.entries(run.category_results).map(([slug, stats]) => ({
-      _key: slug,
-      category: CATEGORY_LABELS[slug] || slug,
-      created: stats.created || 0,
-      skipped: stats.skipped || 0,
-      eligible: stats.eligible || 0,
-    }));
-  };
+  // ── Category feed rows (for RUNNING state) ─────────────────────────────
+  const categoryFeedRows = ALL_SLUGS.map(slug => {
+    const result = runStatus?.category_results?.[slug];
+    const isCurrent = runStatus?.current_category === slug;
+    return {
+      slug,
+      status: result ? "done" : isCurrent ? "active" : "pending",
+      eligible: result?.eligible ?? null,
+      created: result?.created ?? null,
+      skipped: result?.skipped ?? null,
+    };
+  });
 
-  const resultColumns = [
-    { key: "category", label: "Category" },
-    { key: "eligible", label: "Eligible" },
-    {
-      key: "created", label: "Created",
-      render: (_, r) => <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span>,
+  const categoryFeedColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "status", label: "Status", render: (_, r) =>
+      r.status === "done" ? <Badge variant="success">Done</Badge>
+        : r.status === "active" ? <Badge variant="brand">Processing</Badge>
+        : <Badge variant="default">Pending</Badge>
     },
-    { key: "skipped", label: "Skipped" },
+    { key: "eligible", label: "Eligible", render: (_, r) => r.eligible ?? "—" },
+    { key: "created", label: "Created", render: (_, r) => r.created != null
+      ? <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span>
+      : "—"
+    },
+    { key: "skipped", label: "Skipped", render: (_, r) => r.skipped ?? "—" },
   ];
 
-  // ── Render ──────────────────────────────────────────────────────────────
-  const displayRun = isRunning ? runStatus : lastRun;
+  // ── Category readiness columns (for IDLE state) ────────────────────────
+  const readinessColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "approved", label: "Approved", sortable: true },
+    { key: "withPhotos", label: "With Photos", sortable: true },
+    { key: "existingCards", label: "Existing Cards", sortable: true },
+    { key: "ready", label: "Ready", sortable: true, render: (_, r) =>
+      <span className={r.ready > 0 ? "font-semibold text-[var(--color-success-600)]" : "text-[var(--color-text-tertiary)]"}>{r.ready}</span>
+    },
+  ];
+
+  // ── Run history columns ────────────────────────────────────────────────
+  const historyColumns = [
+    { key: "started_at", label: "Date", render: (_, r) => r.started_at ? new Date(r.started_at).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—" },
+    { key: "status", label: "Status", render: (_, r) =>
+      <Badge variant={r.status === "completed" ? "success" : r.status === "cancelled" ? "warning" : r.status === "failed" ? "error" : "default"}>
+        {r.status === "completed" ? "Done" : r.status === "cancelled" ? "Cancelled" : r.status === "failed" ? "Failed" : r.status}
+      </Badge>
+    },
+    { key: "total_created", label: "Created", sortable: true },
+    { key: "total_skipped", label: "Skipped", sortable: true },
+    { key: "duration", label: "Duration", render: (_, r) => {
+      if (!r.started_at || !r.completed_at) return "—";
+      const s = Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000);
+      return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+    }},
+  ];
+
+  // ── Result columns (for COMPLETED state) ───────────────────────────────
+  const resultColumns = [
+    { key: "slug", label: "Category", render: (_, r) => categoryDot(r.slug) },
+    { key: "eligible", label: "Eligible" },
+    { key: "created", label: "Created", render: (_, r) => <span className={r.created > 0 ? "font-semibold text-[var(--color-success-600)]" : ""}>{r.created}</span> },
+    { key: "skipped", label: "Skipped" },
+  ];
+  const buildResultRows = (run) => {
+    if (!run?.category_results) return [];
+    return ALL_SLUGS.map(slug => {
+      const stats = run.category_results[slug];
+      return { slug, eligible: stats?.eligible || 0, created: stats?.created || 0, skipped: stats?.skipped || 0 };
+    }).filter(r => r.eligible > 0);
+  };
+
+  // ── LOADING state ──────────────────────────────────────────────────────
+  if (previewLoading && !previewData) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard icon={CreditCard} label="Active Cards" value="—" />
+          <StatCard icon={Zap} label="Ready to Generate" value="—" />
+          <StatCard icon={CheckCircle} label="Already Carded" value="—" />
+          <StatCard icon={BarChart3} label="Category Coverage" value="—" />
+        </div>
+        <div className="flex items-center justify-center gap-3 py-8">
+          <Spinner size="md" />
+          <span className="text-sm text-[var(--color-text-secondary)]">Loading generation stats...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* ── Progress Card (while running) ── */}
+      {/* ── Row 1: Stats overview ── */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={CreditCard} label="Active Cards" value={totals.totalActiveCards ?? "—"}
+          trend={`${totals.totalReady || 0} ready to generate`} trendUp={(totals.totalReady || 0) === 0} />
+        <StatCard icon={Zap} label="Ready to Generate" value={totals.totalReady ?? "—"}
+          trend={totals.totalReady > 0 ? "Action needed" : "Up to date"} trendUp={(totals.totalReady || 0) === 0} />
+        <StatCard icon={CheckCircle} label="Already Carded" value={totals.totalCarded ?? "—"} />
+        <StatCard icon={BarChart3} label="Category Coverage" value={totals.coveredCount != null ? `${totals.coveredCount}/13` : "—"}
+          trend={totals.coveredCount >= 13 ? "Good" : "Gaps"} trendUp={totals.coveredCount >= 13} />
+      </div>
+
+      {/* ── RUNNING: Progress card + live category feed ── */}
       {isRunning && runStatus && (
-        <div className="bg-[var(--color-success-50)] border border-[var(--color-success-200)] rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[var(--color-success-600)] animate-pulse" />
-              <span className="text-sm font-semibold text-[var(--color-success-700)]">
-                Generating cards for {selectedCity}
-              </span>
-            </div>
-            <Button variant="outline" size="sm" icon={StopCircle} loading={cancelling} onClick={cancelGeneration}>
-              Cancel
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-full bg-[var(--color-success-100)] rounded-full h-2.5">
-            <div
-              className="bg-[var(--color-success-500)] h-2.5 rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-[var(--color-success-700)]">
-            <span>
-              Category {runStatus.completed_categories} / {runStatus.total_categories}
-              {runStatus.current_category && (
-                <span className="ml-1 text-[var(--color-text-secondary)]">
-                  — processing {CATEGORY_LABELS[runStatus.current_category] || runStatus.current_category}
+        <>
+          <div className="bg-[var(--color-brand-50)] border border-[var(--color-brand-200)] rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-[var(--color-brand-600)] animate-pulse" />
+                <span className="text-sm font-semibold text-[var(--color-brand-700)]">
+                  Generating cards for {selectedCityObj?.city_name || "city"}
                 </span>
-              )}
-            </span>
-            <span>{pct}%</span>
+              </div>
+              <Button variant="outline" size="sm" icon={StopCircle} loading={cancelling} onClick={cancelGeneration}>Cancel</Button>
+            </div>
+            <div className="w-full bg-[var(--color-brand-100)] rounded-full h-2.5">
+              <div className="bg-[var(--color-brand-500)] h-2.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-xs text-[var(--color-brand-700)]">
+              <span>
+                Category {runStatus.completed_categories} / {runStatus.total_categories}
+                {runStatus.current_category && <span className="ml-1 text-[var(--color-text-secondary)]">— processing {CATEGORY_LABELS[runStatus.current_category] || runStatus.current_category}</span>}
+              </span>
+              <span>{pct}%</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3 pt-1">
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-success-700)]">{runStatus.total_created}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Created</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_duplicate}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Duplicates</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_no_photos}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_child_venue}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">Excluded</div>
+              </div>
+            </div>
           </div>
-
-          {/* Running totals */}
-          <div className="grid grid-cols-4 gap-3 pt-1">
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-success-700)]">{runStatus.total_created}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Created</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_duplicate}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Duplicates</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_no_photos}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-[var(--color-text-secondary)]">{runStatus.skipped_child_venue}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Excluded</div>
-            </div>
-          </div>
-        </div>
+          <SectionCard title="Category Progress">
+            <DataTable columns={categoryFeedColumns} rows={categoryFeedRows} loading={false} emptyMessage="No category data" />
+          </SectionCard>
+        </>
       )}
 
-      {/* ── Start Generation Card (when idle) ── */}
-      {!isRunning && (
-        <SectionCard
-          title={`Generate All Cards — ${selectedCity}`}
-          subtitle="Creates single cards for every eligible place (approved, with photos, not already carded) across all 13 categories."
-        >
-          <div className="flex items-center gap-4">
-            <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
-              Generate All Cards
-            </Button>
-            <span className="text-xs text-[var(--color-text-tertiary)]">
-              No API cost — reads from place pool only
-            </span>
-          </div>
-        </SectionCard>
-      )}
-
-      {/* ── Results (completed/cancelled run) ── */}
+      {/* ── COMPLETED/CANCELLED/FAILED: Results ── */}
       {displayRun && !isRunning && (
-        <SectionCard
-          title="Generation Results"
-          subtitle={
-            displayRun.status === "completed"
-              ? `Completed — Created ${displayRun.total_created} cards, skipped ${displayRun.total_skipped}`
-              : displayRun.status === "cancelled"
-              ? `Cancelled at category ${displayRun.completed_categories}/${displayRun.total_categories} — Created ${displayRun.total_created} cards`
-              : `Failed — ${displayRun.error_message || "Unknown error"}`
-          }
-        >
-          {/* Summary stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="bg-[var(--color-success-50)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-[var(--color-success-700)]">{displayRun.total_created}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Cards Created</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_duplicate}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Already Existed</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_no_photos}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
-            </div>
-            <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
-              <div className="text-xl font-bold">{displayRun.skipped_child_venue}</div>
-              <div className="text-xs text-[var(--color-text-secondary)]">Excluded Venues</div>
-            </div>
-          </div>
+        <>
+          <SectionCard
+            title="Generation Results"
+            badge={
+              <Badge variant={displayRun.status === "completed" ? "success" : displayRun.status === "cancelled" ? "warning" : "error"}>
+                {displayRun.status === "completed" ? "Completed" : displayRun.status === "cancelled" ? "Cancelled" : "Failed"}
+              </Badge>
+            }
+          >
+            {displayRun.status === "failed" ? (
+              <div className="py-4">
+                <AlertCard variant="error">{displayRun.error_message || "Unknown error"}</AlertCard>
+                <div className="flex gap-2 mt-4">
+                  <Button icon={Play} onClick={handleRunAgain}>Try Again</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-[var(--color-success-50)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold text-[var(--color-success-700)]">{displayRun.total_created}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Cards Created</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_duplicate}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Already Existed</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_no_photos}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">No Photos</div>
+                  </div>
+                  <div className="bg-[var(--color-background-secondary)] rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold">{displayRun.skipped_child_venue}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">Excluded Venues</div>
+                  </div>
+                </div>
+                {displayRun.completed_at && displayRun.started_at && (
+                  <div className="text-xs text-[var(--color-text-tertiary)] mb-3">
+                    Duration: {(() => { const s = Math.round((new Date(displayRun.completed_at) - new Date(displayRun.started_at)) / 1000); return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; })()}
+                  </div>
+                )}
+                <div className="flex gap-2 mb-4">
+                  <Button icon={Play} onClick={handleRunAgain}>Run Again</Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Refresh Stats</Button>
+                </div>
+                <DataTable columns={resultColumns} rows={buildResultRows(displayRun)} loading={false} emptyMessage="No category data" />
+              </>
+            )}
+          </SectionCard>
+        </>
+      )}
 
-          {/* Per-category breakdown */}
-          <DataTable
-            columns={resultColumns}
-            rows={buildResultRows(displayRun)}
-            loading={false}
-            emptyMessage="No category data"
-          />
+      {/* ── IDLE: Category readiness + action ── */}
+      {!isRunning && !displayRun && previewData && (
+        <>
+          <SectionCard title="Category Readiness" subtitle="Per-category breakdown of eligible places">
+            <DataTable columns={readinessColumns} rows={previewData.categories} loading={false} emptyMessage="No category data" />
+          </SectionCard>
+
+          <SectionCard title="Generate Cards"
+            subtitle="Creates a card for every eligible place across all 13 categories. No API cost.">
+            {totals.totalReady > 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-lg p-4 bg-[var(--gray-50)]">
+                  <div className="text-sm">
+                    <strong>{totals.totalReady}</strong> new cards can be generated. Existing cards will have their categories synced.
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
+                    Generate {totals.totalReady} Cards
+                  </Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Re-check</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
+                  <CheckCircle className="w-4 h-4" /> All eligible places already have cards. Run again to sync categories if AI re-classified.
+                </div>
+                <div className="flex gap-2">
+                  <Button icon={Play} loading={starting} disabled={starting} onClick={startGeneration}>
+                    Sync Categories
+                  </Button>
+                  <Button variant="secondary" onClick={fetchPreview}>Re-check</Button>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </>
+      )}
+
+      {/* ── Run History (visible in IDLE and COMPLETED states) ── */}
+      {!isRunning && runHistory.length > 0 && (
+        <SectionCard title="Run History" subtitle="Previous generation runs for this city">
+          <DataTable columns={historyColumns} rows={runHistory} loading={false} emptyMessage="No previous runs" />
         </SectionCard>
       )}
     </div>
@@ -1179,84 +1393,55 @@ function GenerateCardsTab({ selectedCountry, selectedCity, onSelectCity, onRefre
 
 export function CardPoolManagementPage() {
   const [activeTab, setActiveTab] = useState("overview");
-  const [selectedCountry, setSelectedCountry] = useState(null);
-  const [selectedCity, setSelectedCity] = useState(null);
-  const [countries, setCountries] = useState([]);
+  const [scope, setScope] = useState({ countryCode: null, cityId: null });
+  const [pickerCities, setPickerCities] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const mountedRef = useRef(true);
-  const { addToast } = useToast();
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Load country list from both card_pool and place_pool (so new seeded cities appear)
+  // Load city picker data (same RPC as Place Pool)
   useEffect(() => {
     mountedRef.current = true;
-    Promise.all([
-      supabase.rpc("admin_card_country_overview"),
-      supabase.rpc("admin_place_pool_country_list"),
-    ]).then(([cardRes, placeRes]) => {
-      if (!mountedRef.current) return;
-      if (cardRes.error && placeRes.error) {
-        addToast({ variant: "error", title: "Failed to load countries", description: cardRes.error.message });
-        return;
-      }
-      const cardCountries = (cardRes.data || []).map((r) => r.country);
-      const placeCountries = (placeRes.data || []).map((r) => r.country);
-      const merged = [...new Set([...cardCountries, ...placeCountries])].sort();
-      setCountries(merged);
+    supabase.rpc("admin_city_picker_data").then(({ data }) => {
+      if (mountedRef.current && data) setPickerCities(data);
     });
     return () => { mountedRef.current = false; };
-  }, []);
+  }, [refreshKey]);
 
-  const selectCountry = useCallback((country) => {
-    setSelectedCountry(country);
-    setSelectedCity(null);
-  }, []);
-
-  const selectCity = useCallback((cityName) => {
-    setSelectedCity(cityName);
-  }, []);
-
-  const clearCountry = useCallback(() => {
-    setSelectedCountry(null);
-    setSelectedCity(null);
-  }, []);
-
-  const clearCity = useCallback(() => {
-    setSelectedCity(null);
-  }, []);
+  const scopeLabel = (() => {
+    if (scope.cityId) {
+      const c = pickerCities.find(x => x.city_id === scope.cityId);
+      return c ? `${c.city_name}, ${c.country_name}` : "";
+    }
+    if (scope.countryCode) {
+      const g = pickerCities.find(x => x.country_code === scope.countryCode);
+      return g ? g.country_name : "";
+    }
+    return `${pickerCities.length} cities`;
+  })();
 
   return (
     <div className="space-y-4 py-6">
       <div className="flex items-center justify-between mb-2">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Card Pool Management</h2>
-          <p className="text-sm text-[var(--color-text-secondary)]">Manage, generate, and monitor card pool health across all cities.</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">{scopeLabel}</p>
         </div>
+        <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
       </div>
-
-      <CountryFilterBar
-        selectedCountry={selectedCountry}
-        selectedCity={selectedCity}
-        countries={countries}
-        onSelectCountry={selectCountry}
-        onClearCountry={clearCountry}
-        onClearCity={clearCity}
-      />
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
       <div className="mt-4" key={refreshKey}>
         {activeTab === "overview" && (
-          <OverviewTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            onSelectCountry={selectCountry} onSelectCity={selectCity} />
+          <OverviewTab scope={scope} onScopeChange={setScope} pickerCities={pickerCities} />
         )}
         {activeTab === "browse" && (
-          <BrowseCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity} onRefresh={refresh} />
+          <BrowseCardsTab scope={scope} pickerCities={pickerCities} onRefresh={refresh} />
         )}
         {activeTab === "generate" && (
-          <GenerateCardsTab selectedCountry={selectedCountry} selectedCity={selectedCity}
-            onSelectCity={selectCity} onRefresh={refresh} />
+          <GenerateCardsTab scope={scope} pickerCities={pickerCities} onScopeChange={setScope} onRefresh={refresh} />
         )}
       </div>
     </div>

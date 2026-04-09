@@ -55,6 +55,8 @@ export function useKeyboard(opts?: {
   const onShowRef = useRef(opts?.onShow);
   const onHideRef = useRef(opts?.onHide);
   const disableLayoutAnimRef = useRef(opts?.disableLayoutAnimation ?? false);
+  /** Android IME often emits spurious keyboardDidHide while typing; delay committing hide. */
+  const androidHideDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   onShowRef.current = opts?.onShow;
   onHideRef.current = opts?.onHide;
   disableLayoutAnimRef.current = opts?.disableLayoutAnimation ?? false;
@@ -67,7 +69,18 @@ export function useKeyboard(opts?: {
     const hideEvent =
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
+    const clearAndroidHideDebounce = () => {
+      if (androidHideDebounceRef.current) {
+        clearTimeout(androidHideDebounceRef.current);
+        androidHideDebounceRef.current = null;
+      }
+    };
+
     const onShow = (e: KeyboardEvent) => {
+      if (Platform.OS === "android") {
+        clearAndroidHideDebounce();
+      }
+
       const height = e.endCoordinates.height;
       heightRef.current = height;
 
@@ -88,7 +101,7 @@ export function useKeyboard(opts?: {
       onShowRef.current?.(height);
     };
 
-    const onHide = (e: KeyboardEvent) => {
+    const commitHide = (e?: KeyboardEvent) => {
       heightRef.current = 0;
 
       if (Platform.OS === "android" && !disableLayoutAnimRef.current) {
@@ -106,16 +119,36 @@ export function useKeyboard(opts?: {
       onHideRef.current?.();
     };
 
+    const onHide = (e: KeyboardEvent) => {
+      if (Platform.OS === "android") {
+        clearAndroidHideDebounce();
+        androidHideDebounceRef.current = setTimeout(() => {
+          androidHideDebounceRef.current = null;
+          commitHide(e);
+        }, 160);
+        return;
+      }
+      commitHide(e);
+    };
+
     const showSub = Keyboard.addListener(showEvent, onShow);
     const hideSub = Keyboard.addListener(hideEvent, onHide);
 
     return () => {
+      clearAndroidHideDebounce();
       showSub.remove();
       hideSub.remove();
     };
   }, []);
 
   const dismiss = useCallback(() => {
+    if (Platform.OS === "android" && androidHideDebounceRef.current) {
+      clearTimeout(androidHideDebounceRef.current);
+      androidHideDebounceRef.current = null;
+    }
+    heightRef.current = 0;
+    setKeyboardHeight(0);
+    setIsVisible(false);
     Keyboard.dismiss();
   }, []);
 

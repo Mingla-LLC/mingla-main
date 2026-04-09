@@ -39,6 +39,14 @@ interface KeyboardAwareViewProps {
  * KeyboardAwareView – drop-in wrapper that pushes content up when the
  * soft keyboard appears on **both** Android and iOS.
  *
+ * Note: If `expo.android.softwareKeyboardLayoutMode` is `"pan"` (Mingla’s default),
+ * the activity window does not resize like `adjustResize`; manual padding (this
+ * component or an animated `marginBottom` on the composer) is required on Android.
+ *
+ * When a bottom tab bar sits between your content and the keyboard, pass its total
+ * height as `bottomOffset` (or subtract it from keyboard-driven lift) so you don’t
+ * double-count that strip — see MessageInterface + `useAppLayout().bottomNavTotalHeight`.
+ *
  * Unlike the built-in KeyboardAvoidingView, this component:
  *  • Works reliably **inside modals** (a common Android pain-point).
  *  • Uses dynamic paddingBottom instead of layout behavior heuristics.

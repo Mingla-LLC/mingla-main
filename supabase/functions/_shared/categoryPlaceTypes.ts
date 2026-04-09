@@ -1,9 +1,19 @@
 /**
- * Unified Mingla Category → Google Places API (New) type mappings.
+ * Category Name Registry + On-Demand Experience Type Mappings
+ *
+ * Two responsibilities:
+ *   1. CATEGORY NAMES: resolveCategory(), toSlug(), ALL_CATEGORY_NAMES, etc.
+ *      Used by most edge functions for category string normalization.
+ *   2. ON-DEMAND TYPE LISTS: MINGLA_CATEGORY_PLACE_TYPES, used by
+ *      holiday-experiences, new-generate-experience-, warm-cache for
+ *      Google Places API fallback when pool coverage is thin.
+ *      Both are pool-first — they only hit Google as a fallback.
  *
  * 13 categories: 12 visible + 1 hidden (Groceries).
- * Use this as the SINGLE SOURCE OF TRUTH for category → place type lookups.
- * The first type in each array is the "primary" type used for pool seeding.
+ *
+ * NOTE: The type lists here are for on-demand experience generation.
+ * For admin seeding type lists (Google → place_pool), see seedingCategories.ts.
+ * These are separate systems that serve different pipeline steps.
  */
 
 // ── Primary mapping: Display Name → Google Place types ──────────────────────

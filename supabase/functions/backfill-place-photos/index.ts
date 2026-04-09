@@ -263,8 +263,7 @@ function buildRunPreview(places: CityPlaceRow[]) {
 
 async function loadCityPlacesForRun(
   db: ReturnType<typeof createClient>,
-  city: string,
-  country: string,
+  cityId: string,
 ): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
   // PostgREST caps results at 1000 rows (project default). Paginate to get all.
   const PAGE_SIZE = 1000;
@@ -276,8 +275,7 @@ async function loadCityPlacesForRun(
       .from('place_pool')
       .select('id, google_place_id, photos, stored_photo_urls, ai_approved')
       .eq('is_active', true)
-      .eq('city', city)
-      .eq('country', country)
+      .eq('city_id', cityId)
       .order('created_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
 
@@ -301,14 +299,13 @@ async function handlePreviewRun(
   db: ReturnType<typeof createClient>,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const city = body.city as string;
-  const country = body.country as string;
-  if (!city || !country) return json({ error: 'city and country required' }, 400);
+  const cityId = body.cityId as string;
+  if (!cityId) return json({ error: 'cityId required' }, 400);
 
   const batchSize = Math.min(Math.max(Number(body.batchSize) || 10, 1), 20);
 
   try {
-    const { analysis } = await loadCityPlacesForRun(db, city, country);
+    const { analysis } = await loadCityPlacesForRun(db, cityId);
     const totalBatches = Math.ceil(analysis.eligiblePlaces / batchSize);
     const estimatedCostUsd = +(analysis.eligiblePlaces * COST_PER_PLACE).toFixed(4);
 
@@ -330,13 +327,14 @@ async function handleCreateRun(
   body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
+  const cityId = body.cityId as string;
   const city = body.city as string;
   const country = body.country as string;
-  if (!city || !country) return json({ error: 'city and country required' }, 400);
+  if (!cityId || !city || !country) return json({ error: 'cityId, city and country required' }, 400);
 
   const batchSize = Math.min(Math.max(Number(body.batchSize) || 10, 1), 20);
 
-  // Check for existing active run for same city
+  // Check for existing active run for same city (text labels in photo_backfill_runs)
   const { data: existing } = await db
     .from('photo_backfill_runs')
     .select('id')
@@ -353,7 +351,7 @@ async function handleCreateRun(
   let eligiblePlaces: CityPlaceRow[] = [];
   let analysis: RunPreviewAnalysis;
   try {
-    const preview = await loadCityPlacesForRun(db, city, country);
+    const preview = await loadCityPlacesForRun(db, cityId);
     eligiblePlaces = preview.eligiblePlaces;
     analysis = preview.analysis;
   } catch (err) {

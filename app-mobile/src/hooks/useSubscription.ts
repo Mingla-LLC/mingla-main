@@ -93,11 +93,16 @@ export function useServerTier(userId: string | undefined) {
  * When the server tier is available it is authoritative (includes admin
  * overrides the client cannot see). Falls back to client tier while loading.
  */
-export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
-  const { data: customerInfo } = useCustomerInfo()
-  const { data: subscription } = useSubscription(userId)
-  const { data: serverTier } = useServerTier(userId)
+export function useEffectiveTier(userId: string | undefined): {
+  tier: SubscriptionTier;
+  isLoading: boolean;
+} {
+  const { data: customerInfo, isLoading: rcLoading } = useCustomerInfo()
+  const { data: subscription, isLoading: subLoading } = useSubscription(userId)
+  const { data: serverTier, isLoading: serverLoading } = useServerTier(userId)
   const profile = useAppStore((s) => s.profile)
+
+  const isLoading = rcLoading || subLoading || serverLoading;
 
   // Client-side tier (RevenueCat + Supabase subscriptions table)
   const clientTier = getEffectiveTier(
@@ -110,20 +115,24 @@ export function useEffectiveTier(userId: string | undefined): SubscriptionTier {
   // then paid subs, trials, and referrals in the correct order.
   // Always trust it over client-side logic when available.
   if (serverTier) {
-    return serverTier as SubscriptionTier
+    return { tier: serverTier as SubscriptionTier, isLoading: false }
   }
 
-  // Fallback to client-side tier while server query is loading
-  return clientTier
+  // Fallback to client-side tier while server query is loading.
+  // Default is 'free' — intentional security. See ORCH-0340.
+  return { tier: clientTier, isLoading }
 }
 
 /**
  * Convenience hook — returns true if the user has any elevated access (pro or elite).
  * Use this for feature gates: `if (!isUpgraded) showPaywall()`
  */
-export function useIsUpgraded(userId: string | undefined): boolean {
-  const tier = useEffectiveTier(userId)
-  return hasElevatedAccess(tier)
+export function useIsUpgraded(userId: string | undefined): {
+  isUpgraded: boolean;
+  isLoading: boolean;
+} {
+  const { tier, isLoading } = useEffectiveTier(userId)
+  return { isUpgraded: hasElevatedAccess(tier), isLoading }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +173,7 @@ const AF_TRIAL_EXPIRED_KEY = 'af_trial_expired_logged'
  */
 export function useTrialExpiryTracking(userId: string | undefined): void {
   const { data: subscription } = useSubscription(userId)
-  const tier = useEffectiveTier(userId)
+  const { tier } = useEffectiveTier(userId)
   const firedRef = useRef(false)
 
   useEffect(() => {

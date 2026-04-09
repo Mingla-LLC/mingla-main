@@ -180,7 +180,7 @@ async function handleSearch(body: any) {
 // deno-lint-ignore no-explicit-any
 async function handlePush(body: any) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { places, seedingCategory } = body;
+  const { places, seedingCategory, cityId } = body;
 
   if (!Array.isArray(places) || places.length === 0) {
     throw new Error("No places provided to push.");
@@ -195,6 +195,10 @@ async function handlePush(body: any) {
     // Apply seeding category from admin selection (or per-place override)
     if (p.seedingCategory || seedingCategory) {
       row.seeding_category = p.seedingCategory || seedingCategory;
+    }
+    // Link to canonical city if provided
+    if (cityId) {
+      row.city_id = cityId;
     }
     return row;
   });

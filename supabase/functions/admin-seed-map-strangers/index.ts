@@ -112,24 +112,17 @@ const ACTIVITY_STATUSES: (string | null)[] = [
   null,
 ];
 
+// Current 12 category slugs (must match categoryUtils.ts)
 const ALL_CATEGORIES = [
-  "Nature & Views",
-  "First Meet",
-  "Picnic Park",
-  "Drink",
-  "Casual Eats",
-  "Fine Dining",
-  "Live & Loud",
-  "Culture",
-  "Active",
-  "Sweet Tooth",
-  "Shop & Browse",
-  "Nightlife",
-  "Spa & Relax",
+  "nature", "first_meet", "picnic_park", "drink", "casual_eats",
+  "fine_dining", "watch", "live_performance", "creative_arts",
+  "play", "wellness", "flowers",
 ];
 
 const ALL_TIERS = ["chill", "comfy", "bougie", "lavish"];
-const ALL_INTENTS = ["adventurous", "romantic", "friendly", "group-fun"];
+
+// Current 6 intent slugs
+const ALL_INTENTS = ["adventurous", "first-date", "romantic", "group-fun", "picnic-dates", "take-a-stroll"];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -190,52 +183,23 @@ async function seedAroundPoint(
       ? new Date(Date.now() + 4 * 60 * 60 * 1000)
       : null;
 
-    // INSERT profile
-    const { error: profileErr } = await adminClient.from("profiles").insert({
+    // Single table insert — no auth.users dependency
+    const { error } = await adminClient.from("seed_map_presence").insert({
       id,
       display_name: person.displayName,
       first_name: person.firstName,
       avatar_url: null,
-      has_completed_onboarding: true,
-      is_seed: true,
-    });
-    if (profileErr) {
-      console.error(`[seed] profile insert failed for ${person.displayName}:`, profileErr);
-      continue;
-    }
-
-    // INSERT user_map_settings
-    const { error: mapErr } = await adminClient
-      .from("user_map_settings")
-      .insert({
-        user_id: id,
-        visibility_level: "everyone",
-        approximate_lat: approxLat,
-        approximate_lng: approxLng,
-        real_lat: approxLat,
-        real_lng: approxLng,
-        last_active_at: lastActive.toISOString(),
-        activity_status: status,
-        activity_status_expires_at: statusExpiry?.toISOString() || null,
-      });
-    if (mapErr) {
-      console.error(`[seed] map_settings insert failed for ${person.displayName}:`, mapErr);
-      // Clean up orphaned profile
-      await adminClient.from("profiles").delete().eq("id", id);
-      continue;
-    }
-
-    // INSERT preferences
-    const { error: prefErr } = await adminClient.from("preferences").insert({
-      profile_id: id,
+      approximate_lat: approxLat,
+      approximate_lng: approxLng,
+      last_active_at: lastActive.toISOString(),
+      activity_status: status,
+      activity_status_expires_at: statusExpiry?.toISOString() || null,
       categories,
       price_tiers: priceTiers,
       intents,
     });
-    if (prefErr) {
-      console.error(`[seed] preferences insert failed for ${person.displayName}:`, prefErr);
-      // Clean up — CASCADE from profiles will handle map_settings
-      await adminClient.from("profiles").delete().eq("id", id);
+    if (error) {
+      console.error(`[seed] insert failed for ${person.displayName}:`, error);
       continue;
     }
 
@@ -248,18 +212,10 @@ async function seedAroundPoint(
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 
 async function cleanup(adminClient: SupabaseClient) {
-  const { data, error } = await adminClient
-    .from("profiles")
-    .delete()
-    .eq("is_seed", true)
-    .select("id");
-
-  if (error) {
-    throw new Error(`Cleanup failed: ${error.message}`);
-  }
-
-  // CASCADE handles user_map_settings, preferences, friend_requests, etc.
-  return { deleted: data?.length || 0 };
+  // TRUNCATE via RPC — instant regardless of row count. See ORCH-0347B.
+  const { data, error } = await adminClient.rpc("truncate_seed_map_presence");
+  if (error) throw new Error(`Cleanup failed: ${error.message}`);
+  return { deleted: (data as any)?.deleted ?? 0 };
 }
 
 // ── Seed Around All Users ───────────────────────────────────────────────────
@@ -313,6 +269,86 @@ async function seedAroundAllUsers(
     realUsers: realUserLocations.length,
     previouslyDeleted: deleted,
   };
+}
+
+// ── Continental Bounding Boxes (simplified land filter) ─────────────────────
+
+const LAND_BOXES = [
+  { latMin: 15, latMax: 70, lngMin: -170, lngMax: -50 },   // North America
+  { latMin: -56, latMax: 15, lngMin: -82, lngMax: -34 },   // South America
+  { latMin: 35, latMax: 70, lngMin: -12, lngMax: 45 },     // Europe
+  { latMin: -35, latMax: 37, lngMin: -18, lngMax: 52 },    // Africa
+  { latMin: 10, latMax: 55, lngMin: 45, lngMax: 100 },     // Asia (west)
+  { latMin: 20, latMax: 55, lngMin: 100, lngMax: 145 },    // Asia (east)
+  { latMin: -10, latMax: 20, lngMin: 95, lngMax: 140 },    // Southeast Asia
+  { latMin: -47, latMax: -10, lngMin: 112, lngMax: 180 },  // Australia + NZ
+  { latMin: 6, latMax: 35, lngMin: 68, lngMax: 90 },       // India
+  { latMin: 12, latMax: 42, lngMin: 25, lngMax: 65 },      // Middle East
+  { latMin: 50, latMax: 60, lngMin: -11, lngMax: 2 },      // UK + Ireland
+  { latMin: 63, latMax: 67, lngMin: -25, lngMax: -13 },    // Iceland
+];
+
+function isOnLand(lat: number, lng: number): boolean {
+  return LAND_BOXES.some(b => lat >= b.latMin && lat <= b.latMax && lng >= b.lngMin && lng <= b.lngMax);
+}
+
+// ── Global Grid Seeding ────────────────────────────────────────────────────
+
+async function seedGlobalGrid(
+  adminClient: SupabaseClient,
+  latMin: number,
+  latMax: number,
+): Promise<{ totalCreated: number; latBandsProcessed: number }> {
+  const LAT_STEP = 0.09;  // ~10km
+  let totalCreated = 0;
+  let latBandsProcessed = 0;
+
+  for (let lat = latMin; lat <= latMax; lat += LAT_STEP) {
+    const lngStep = LAT_STEP / Math.max(Math.cos(lat * Math.PI / 180), 0.1);
+    const batch: Array<{ id: string; person: typeof FAKE_PEOPLE[0]; lat: number; lng: number }> = [];
+
+    for (let lng = -180; lng <= 180; lng += lngStep) {
+      if (!isOnLand(lat, lng)) continue;
+      const person = FAKE_PEOPLE[Math.floor(Math.random() * FAKE_PEOPLE.length)];
+      batch.push({ id: crypto.randomUUID(), person, lat, lng });
+    }
+
+    // Insert batch in chunks of 500
+    for (let i = 0; i < batch.length; i += 5000) {
+      const chunk = batch.slice(i, i + 5000);
+
+      // Single table insert — no auth.users dependency
+      const rows = chunk.map(({ id, person, lat: cLat, lng: cLng }) => {
+        const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
+        return {
+          id,
+          display_name: person.displayName,
+          first_name: person.firstName,
+          avatar_url: null,
+          approximate_lat: cLat + (Math.random() - 0.5) * 0.005,
+          approximate_lng: cLng + (Math.random() - 0.5) * 0.005,
+          last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
+          activity_status: status,
+          activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
+          categories: pickRandom(ALL_CATEGORIES, 2, 4),
+          price_tiers: pickRandom(ALL_TIERS, 1, 3),
+          intents: pickRandom(ALL_INTENTS, 1, 2),
+        };
+      });
+
+      const { error } = await adminClient.from("seed_map_presence").insert(rows);
+      if (error) console.error(`[grid] batch error:`, error.message);
+
+      totalCreated += chunk.length;
+    }
+
+    latBandsProcessed++;
+    if (latBandsProcessed % 10 === 0) {
+      console.log(`[grid] Progress: ${latBandsProcessed} lat bands, ${totalCreated} strangers created`);
+    }
+  }
+
+  return { totalCreated, latBandsProcessed };
 }
 
 // ── Main Handler ────────────────────────────────────────────────────────────
@@ -376,6 +412,102 @@ serve(async (req) => {
         return json({ action: "seed_around_all_users", ...result });
       }
 
+      case "seed_global_grid": {
+        const { latMin = -60, latMax = 70 } = body.latRange || {};
+        const skipCleanup = body.skipCleanup === true;
+        let deleted = 0;
+        if (!skipCleanup) {
+          const cleanupResult = await cleanup(adminClient);
+          deleted = cleanupResult.deleted;
+        }
+        const result = await seedGlobalGrid(adminClient, latMin, latMax);
+        return json({ action: "seed_global_grid", previouslyDeleted: deleted, skippedCleanup: skipCleanup, ...result });
+      }
+
+      case "seed_cities": {
+        // Cleanup existing seeds first
+        const { deleted } = await cleanup(adminClient);
+
+        // Get cities that are seeded or launched
+        const { data: cities, error: citiesErr } = await adminClient
+          .from("seeding_cities")
+          .select("id, name, country, center_lat, center_lng, coverage_radius_km")
+          .in("status", ["seeded", "launched"]);
+
+        if (citiesErr) throw new Error(`Failed to fetch cities: ${citiesErr.message}`);
+        if (!cities || cities.length === 0) {
+          return json({ action: "seed_cities", error: "No seeded/launched cities found" }, 400);
+        }
+
+        // Get place count per city via RPC — density scales with pool size. See ORCH-0347B.
+        const { data: countData, error: countErr } = await adminClient.rpc("get_place_count_per_city");
+        const cityPlaceCounts: Record<string, number> = {};
+        if (!countErr && countData) {
+          for (const row of countData as { city_id: string; place_count: number }[]) {
+            cityPlaceCounts[row.city_id] = Number(row.place_count);
+          }
+        }
+
+        // Generate strangers per city — only cities with places in pool
+        const allRows: any[] = [];
+        let citiesSeeded = 0;
+
+        for (const city of cities) {
+          const placeCount = cityPlaceCounts[city.id] || 0;
+          if (placeCount === 0) continue; // Skip cities with no places
+
+          // Density: 3-10 strangers per city, ~1 per 10 places
+          const strangerCount = Math.max(3, Math.min(10, Math.ceil(placeCount / 10)));
+          const radiusKm = city.coverage_radius_km || 10;
+
+          for (let j = 0; j < strangerCount; j++) {
+            const person = FAKE_PEOPLE[Math.floor(Math.random() * FAKE_PEOPLE.length)];
+            const id = crypto.randomUUID();
+            const angle = Math.random() * 2 * Math.PI;
+            const dist = Math.random() * radiusKm;
+            const latOff = (dist / 111.32) * Math.cos(angle);
+            const lngOff = (dist / (111.32 * Math.cos((city.center_lat * Math.PI) / 180))) * Math.sin(angle);
+
+            const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
+            allRows.push({
+              id,
+              display_name: person.displayName,
+              first_name: person.firstName,
+              avatar_url: null,
+              approximate_lat: city.center_lat + latOff,
+              approximate_lng: city.center_lng + lngOff,
+              last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
+              activity_status: status,
+              activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
+              categories: pickRandom(ALL_CATEGORIES, 2, 4),
+              price_tiers: pickRandom(ALL_TIERS, 1, 3),
+              intents: pickRandom(ALL_INTENTS, 1, 2),
+            });
+          }
+          citiesSeeded++;
+        }
+
+        // Batch insert in chunks of 5000
+        let totalCreated = 0;
+        for (let i = 0; i < allRows.length; i += 5000) {
+          const chunk = allRows.slice(i, i + 5000);
+          const { error } = await adminClient.from("seed_map_presence").insert(chunk);
+          if (error) {
+            console.error(`[seed_cities] batch error:`, error.message);
+          } else {
+            totalCreated += chunk.length;
+          }
+        }
+
+        return json({
+          action: "seed_cities",
+          citiesTotal: cities.length,
+          citiesWithPlaces: citiesSeeded,
+          totalCreated,
+          previouslyDeleted: deleted,
+        });
+      }
+
       case "cleanup": {
         const result = await cleanup(adminClient);
         return json({ action: "cleanup", ...result });
@@ -384,7 +516,7 @@ serve(async (req) => {
       default:
         return json(
           {
-            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, cleanup`,
+            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, seed_global_grid, seed_cities, cleanup`,
           },
           400
         );

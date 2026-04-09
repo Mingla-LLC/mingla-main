@@ -17,6 +17,7 @@ export type GatedFeature =
 
 export interface FeatureGateResult {
   tier: SubscriptionTier;
+  tierLoading: boolean;
   limits: TierLimits;
   canAccess: (feature: GatedFeature) => boolean;
   requiredTier: (feature: GatedFeature) => SubscriptionTier;
@@ -47,7 +48,7 @@ const FEATURE_TIER_MAP: Record<GatedFeature, SubscriptionTier> = {
  */
 export function useFeatureGate(): FeatureGateResult {
   const { user } = useAppStore();
-  const tier = useEffectiveTier(user?.id);
+  const { tier, isLoading: tierLoading } = useEffectiveTier(user?.id);
   const limits = getTierLimits(tier);
 
   const canAccess = useCallback(
@@ -75,5 +76,5 @@ export function useFeatureGate(): FeatureGateResult {
     [],
   );
 
-  return { tier, limits, canAccess, requiredTier };
+  return { tier, tierLoading, limits, canAccess, requiredTier };
 }

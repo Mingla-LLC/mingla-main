@@ -1,7 +1,7 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-02
-> Total: 0 active | 35 completed
+> Last updated: 2026-04-08
+> Total: 0 active | 37 completed
 
 ## Active Dispatches
 
@@ -48,6 +48,8 @@
 | AH-033 | ORCH-0274 (Photo backfill P1) | Tester | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md | CONDITIONAL PASS (P0 fixed) |
 | AH-034 | ORCH-0274 (Photo backfill P2) | Implementor | 2026-04-02 | IMPLEMENTATION_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md | APPROVED |
 | AH-035 | ORCH-0274 (Photo backfill P2) | Tester | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md | PASS |
+| AH-036 | ORCH-0332 + ORCH-0333 | Investigator | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md | APPROVED |
+| AH-037 | ORCH-0332 + ORCH-0333 | Implementor | 2026-04-08 | IMPLEMENTATION_ORCH_0332_0333_CITY_UPDATE_TILE_REGEN_REPORT.md | APPROVED |
 
 ## Historical (Pre-Orchestrator)
 

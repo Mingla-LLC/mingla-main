@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-02
+> Last updated: 2026-04-08
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -35,10 +35,11 @@
 | Error Handling | Cross-cutting | ErrorBoundary.tsx, edgeFunctionError.ts | All F | 5 | Unaudited |
 | Security & Auth | Cross-cutting | RLS policies, admin auth | Mixed (1A, 1B, 1C, 2D) | 13 | Weak |
 | Deep Linking | Cross-cutting | deepLinkService.ts | Mixed (1B, 3F) | 4 | Weak |
-| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx | Mixed (2A, 9F) | 11 | Weak |
+| App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx, useForegroundRefresh.ts | Mixed (2A, 10F) | 12 | Weak |
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
 | Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |
+| Admin Panel | Admin | PlacePoolManagementPage.jsx, admin-seed-places | Mixed (1A, 4F) | 5 | Weak |
 
 ---
 
@@ -142,7 +143,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0063 | Empty pool state | Discovery | S2 | quality-gap | verified | B | 2026-03-20 | HTTP 200 with empty array |
 | ORCH-0064 | Preferences → deck pipeline | Discovery | S0 | architecture-flaw | closed | A | 2026-03-24 | Commit 79d0905b |
 | ORCH-0065 | Solo mode | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — core contract verified, deck deterministic |
-| ORCH-0066 | Collab mode parity | Discovery | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md — collab verified as part of SC-09, parity confirmed |
+| ORCH-0066 | Collab mode parity | Discovery | S0 | architecture-flaw | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md + INVESTIGATION_UNIFY_PREFERENCE_SHEETS_REPORT.md — Phase 1: save/load parity + UNION aggregation (14/14 PASS). Phase 2: dead CollaborationPreferences.tsx deleted. All sub-issues closed. |
 | ORCH-0266 | Double pagination — card pool unreachable | Discovery | S0 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — duplicate .range() removed, all 200 pool cards reachable |
 | ORCH-0267 | Travel time not enforced in deck | Discovery | S1 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — hard filter added, out-of-range cards excluded |
 | ORCH-0268 | NULL price tier passthrough | Discovery | S2 | bug | closed | A | 2026-03-31 | QA_DETERMINISTIC_DECK_CONTRACT_REPORT.md — NULL price_level now filtered before deck assembly |
@@ -178,6 +179,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0073 | Voting mechanics | Collaboration | S1 | unaudited | open | F | — | — |
 | ORCH-0074 | Session end / results | Collaboration | S2 | unaudited | open | F | — | — |
 | ORCH-0075 | Concurrent mutation safety | Collaboration | S1 | unaudited | open | F | — | — |
+| ORCH-0316 | Dead code: CollaborationPreferences.tsx deleted (1,753 lines, zero imports) | Collaboration | S1 | architecture-flaw | closed | A | 2026-04-06 | INVESTIGATION_UNIFY_PREFERENCE_SHEETS_REPORT.md — File was never imported. PreferencesSheet already handled both modes. Deleted. Parent: ORCH-0066. |
+| ORCH-0317 | Collab time_slot missing from PreferencesSheet save + normalizer doesn't clear time_of_day | Collaboration | S0 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — time_slot added to save payload, normalizer clears both fields on "now". 14/14 PASS. |
+| ORCH-0318 | Travel constraint aggregation MEDIAN → Math.max (UNION) | Collaboration | S0 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Math.max replaces median. MODE_RANK for travel mode. DATE_RANK for date option. timeSlots UNION array. 14/14 PASS. |
+| ORCH-0319 | custom_lat/lng missing from PreferencesSheet collab save + load | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Coordinates added to save, structured use_gps_location loading, coords restored on load. 14/14 PASS. |
+| ORCH-0320 | Legacy time_of_day / time_slot — collab load reads time_slot||time_of_day | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Prefers time_slot, falls back to time_of_day. Both written on save. 14/14 PASS. |
+| ORCH-0321 | PreferencesSheet collab load restores date_option with kebab + legacy compat | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — KEBAB_TO_DATE_OPTION map handles both formats. 14/14 PASS. |
+| ORCH-0322 | RLS policy gap — board_session_preferences has no INSERT policy for non-creator participants | Collaboration | S1 | security | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Finding 8 — Original migration only has SELECT + UPDATE (creator only). Needs separate investigation. |
+| ORCH-0323 | generate-curated-experiences standalone aggregation stale — MIN, no time_slot, legacy location parse | Collaboration | S2 | design-debt | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Findings 9+10 — Not used in deck flow but will break if called with session_id. |
 
 ### Section 5: Social / Friends
 
@@ -254,6 +263,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0124 | Activity status picker | Map | S3 | unaudited | open | F | — | — |
 | ORCH-0125 | Map cards hook | Map | S2 | unaudited | open | F | — | — |
 | ORCH-0126 | Discover map integration | Map | S1 | unaudited | open | F | — | — |
+| ORCH-0324 | User marker disappears from map — map shrunk to 1px when person pill active | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — mapHidden: 1x1px confuses react-native-maps marker rendering. paused=true disables nearby-people query. |
+| ORCH-0325 | Map centering broken — animateToRegion races with 1px→fullscreen layout transition | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — Both state updates in same tick; animation fires before map expands. |
+| ORCH-0326 | Mock strangers invisible — bidirectional "everyone" visibility required + code defaults to "off" | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — get-nearby-people:103 requires requester visibility="everyone". Code defaults to "off" (line 42) contradicting schema default "friends". |
+| ORCH-0328 | Hidden flaw: get-nearby-people defaults visibility to "off" instead of schema default "friends" | Map | S1 | bug | closed | A | 2026-04-06 | Fixed: default changed to "friends" in get-nearby-people:42. |
+| ORCH-0329 | Visibility filtering fixed — TARGET-based filter + friends_of_friends implemented | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — 11/11 PASS. Switch statement checks TARGET's level. FoF single query. Bidirectional check removed (DEC-012). |
+| ORCH-0330 | Visibility dropdown fixed — optimistic update + rollback + toast on error | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — onMutate instant cache, onError rollback + toast. |
+| ORCH-0327 | Stranger seeding — global grid, DiceBear avatars, friend request interception, updated categories | Map | S1 | missing-feature | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 14/14 PASS. Code ready. Seed NOT yet run — deploy first, then call seed_global_grid. |
+| ORCH-0331 | Admin dashboard seed filter — all profile queries now exclude is_seed=true | Admin | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 8 admin queries fixed (T-11 through T-14 PASS). |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -379,6 +396,15 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
 | ORCH-0198 | Booking service | Booking | S2 | unaudited | open | F | — | — |
 | ORCH-0199 | Enhanced favorites | Booking | S3 | unaudited | open | F | — | — |
+
+### Section 19: Admin Panel (Place Pool Management)
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0332 | Admin cannot update existing city bbox — overlap check blocks self | Admin | S2 | missing-feature | investigated | F | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md — Backend ready (p_exclude_id exists, RLS allows UPDATE, generate_tiles works). Pure UI work. CASCADE risk guarded by activeRun check. |
+| ORCH-0333 | Admin cannot change tile radius on already-seeded city | Admin | S2 | missing-feature | investigated | F | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md — TILE_RADIUS_OPTIONS exists. SeedTab needs picker + save-before-regenerate. No backend changes. |
+| ORCH-0334 | Photo tab shows stale London run (180/351 batches) — old run has dead references | Admin | S3 | bug | open | F | — | Previous session: old photo backfill run data from pre-bbox migration. May need cancel/dismiss action. |
+| ORCH-0335 | admin_place_photo_stats only counts AI-approved places — correct per spec but changed from before | Admin | S3 | quality-gap | open | F | — | Spec decision: photo stats scoped to AI-approved. Stats look different from pre-spec totals. Not a bug — document and close. |
 
 ### Cross-Cutting: Network & Offline
 

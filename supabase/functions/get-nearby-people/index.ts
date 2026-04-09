@@ -6,6 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Inline taste match for seed strangers (mirrors compute_taste_match RPC) ──
+
+function jaccard(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const v of setA) if (setB.has(v)) intersection++;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function computeInlineTasteMatch(
+  reqCats: string[], reqTiers: string[], reqIntents: string[],
+  seedCats: string[], seedTiers: string[], seedIntents: string[],
+): { matchPct: number; sharedCategories: string[]; sharedTiers: string[] } {
+  const score = (
+    jaccard(reqCats, seedCats) * 0.5 +
+    jaccard(reqTiers, seedTiers) * 0.3 +
+    jaccard(reqIntents, seedIntents) * 0.2
+  ) * 100;
+  return {
+    matchPct: Math.round(score),
+    sharedCategories: reqCats.filter(c => seedCats.includes(c)),
+    sharedTiers: reqTiers.filter(t => seedTiers.includes(t)),
+  };
+}
+
+const FUNCTION_VERSION = "2026-04-06-v3-seed-table";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -32,15 +62,6 @@ serve(async (req) => {
     const { lat, lng, radiusKm = 15 } = await req.json();
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Bidirectional visibility: fetch requester's own visibility level.
-    // You must be visible to see strangers — no lurking.
-    const { data: requesterSettings } = await adminClient
-      .from("user_map_settings")
-      .select("visibility_level")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const requesterVisibility = requesterSettings?.visibility_level || "off";
-
     // Get requester's friends + paired people
     const [friendsResult, pairingsResult] = await Promise.all([
       adminClient.from("friends")
@@ -57,6 +78,23 @@ serve(async (req) => {
       [p.user_a_id, p.user_b_id].filter((id: string) => id !== user.id)
     ));
 
+    // Friends-of-friends (single query — used for friends_of_friends visibility level)
+    const friendIdArray = Array.from(friendIds);
+    const friendOfFriendIds = new Set<string>();
+    if (friendIdArray.length > 0) {
+      const { data: fofRows } = await adminClient
+        .from("friends")
+        .select("friend_user_id")
+        .in("user_id", friendIdArray)
+        .eq("status", "accepted");
+      for (const row of (fofRows || [])) {
+        // Exclude self and direct friends (already covered by isFriend)
+        if (row.friend_user_id !== user.id && !friendIds.has(row.friend_user_id)) {
+          friendOfFriendIds.add(row.friend_user_id);
+        }
+      }
+    }
+
     // Get blocked users (bidirectional)
     const { data: blocks } = await adminClient
       .from("blocked_users")
@@ -64,6 +102,16 @@ serve(async (req) => {
       .or(`blocker_id.eq.${user.id},blocked_user_id.eq.${user.id}`);
     const blockedIds = new Set((blocks || []).flatMap((b: any) => [b.blocked_user_id, b.blocker_id]));
     blockedIds.delete(user.id);
+
+    // Fetch requester's preferences for inline seed taste matching
+    const { data: requesterPrefs } = await adminClient
+      .from("preferences")
+      .select("categories, price_tiers, intents")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    const reqCats: string[] = requesterPrefs?.categories || [];
+    const reqTiers: string[] = requesterPrefs?.price_tiers || [];
+    const reqIntents: string[] = requesterPrefs?.intents || [];
 
     // Bounding box query
     const latDelta = radiusKm / 111.32;
@@ -79,13 +127,25 @@ serve(async (req) => {
       .gte("approximate_lng", lng - lngDelta)
       .lte("approximate_lng", lng + lngDelta);
 
-    if (!nearbySettings || nearbySettings.length === 0) {
+    // Query seed strangers from standalone table (no auth dependency)
+    const { data: seedPeople } = await adminClient
+      .from("seed_map_presence")
+      .select("id, display_name, first_name, avatar_url, approximate_lat, approximate_lng, activity_status, activity_status_expires_at, last_active_at, categories, price_tiers, intents")
+      .gte("approximate_lat", lat - latDelta)
+      .lte("approximate_lat", lat + latDelta)
+      .gte("approximate_lng", lng - lngDelta)
+      .lte("approximate_lng", lng + lngDelta)
+      .limit(40);
+
+    if ((!nearbySettings || nearbySettings.length === 0) && (!seedPeople || seedPeople.length === 0)) {
       return new Response(JSON.stringify([]), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Filter by visibility + relationship + go_dark + blocks
+    // VISIBILITY = who sees the TARGET (DEC-012).
+    // The requester's own visibility does NOT restrict what they can see.
+    // Never re-add a requesterVisibility check here — it was removed as a bug fix (ORCH-0329).
     const now = new Date();
     const visibleUserIds: string[] = [];
     const relationshipMap = new Map<string, "paired" | "friend" | "stranger">();
@@ -93,29 +153,45 @@ serve(async (req) => {
     for (const s of nearbySettings) {
       if (s.go_dark_until && new Date(s.go_dark_until) > now) continue;
       if (blockedIds.has(s.user_id)) continue;
+
       const isPaired = pairedIds.has(s.user_id);
       const isFriend = friendIds.has(s.user_id);
-      if (s.visibility_level === "paired" && !isPaired) continue;
-      if (s.visibility_level === "friends" && !isFriend && !isPaired) continue;
+      const isFoF = friendOfFriendIds.has(s.user_id);
 
-      // Bidirectional: strangers can only see each other if BOTH are set to 'everyone'
-      const isStranger = !isPaired && !isFriend;
-      if (isStranger && requesterVisibility !== "everyone") continue;
+      // Check: does the TARGET's visibility allow the REQUESTER to see them?
+      let visible = false;
+      switch (s.visibility_level) {
+        case "everyone":
+          visible = true;
+          break;
+        case "friends_of_friends":
+          visible = isPaired || isFriend || isFoF;
+          break;
+        case "friends":
+          visible = isPaired || isFriend;
+          break;
+        case "paired":
+          visible = isPaired;
+          break;
+        // "off" already filtered by the DB query (.neq("visibility_level", "off"))
+      }
+
+      if (!visible) continue;
 
       visibleUserIds.push(s.user_id);
-      relationshipMap.set(s.user_id, isPaired ? "paired" : isFriend ? "friend" : "stranger");
+      const relationship = isPaired ? "paired" : isFriend ? "friend" : "stranger";
+      relationshipMap.set(s.user_id, relationship);
     }
 
-    if (visibleUserIds.length === 0) {
-      return new Response(JSON.stringify([]), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Skip real-user processing if none visible, but still return seeds below
+    let result: any[] = [];
+    let mapFriendRequestsToday = 0;
 
+    if (visibleUserIds.length > 0) {
     // Fetch profiles
     const { data: profiles } = await adminClient
       .from("profiles")
-      .select("id, display_name, first_name, last_name, avatar_url")
+      .select("id, display_name, first_name, last_name, avatar_url, is_seed")
       .in("id", visibleUserIds);
 
     const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
@@ -184,7 +260,6 @@ serve(async (req) => {
     }
 
     // Rate limit check for map friend requests
-    let mapFriendRequestsToday = 0;
     if (strangerIds.length > 0) {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { count } = await adminClient
@@ -197,7 +272,7 @@ serve(async (req) => {
     }
 
     // Build response (NEVER include real_lat/lng)
-    const result = nearbySettings
+    result = nearbySettings
       .filter((s: any) => visibleUserIds.includes(s.user_id))
       .map((s: any) => {
         const profile = profileMap.get(s.user_id);
@@ -221,10 +296,43 @@ serve(async (req) => {
           sharedTiers: tasteMatch?.sharedTiers ?? [],
           canSendFriendRequest: relationship === "stranger" && mapFriendRequestsToday < 10,
           mapFriendRequestsRemaining: Math.max(0, 10 - mapFriendRequestsToday),
+          isSeed: profile?.is_seed ?? false,
         };
       });
+    } // end if (visibleUserIds.length > 0)
 
-    return new Response(JSON.stringify(result), {
+    // Build seed stranger entries with inline taste match
+    const now2 = new Date();
+    const seedResult = (seedPeople || []).map((s: any) => {
+      const status = s.activity_status_expires_at && new Date(s.activity_status_expires_at) < now2
+        ? null : s.activity_status;
+      const taste = computeInlineTasteMatch(
+        reqCats, reqTiers, reqIntents,
+        s.categories || [], s.price_tiers || [], s.intents || [],
+      );
+      return {
+        userId: s.id,
+        displayName: s.display_name || s.first_name || "Someone",
+        firstName: s.first_name || null,
+        avatarUrl: s.avatar_url || null,
+        approximateLat: s.approximate_lat,
+        approximateLng: s.approximate_lng,
+        activityStatus: status,
+        lastActiveAt: s.last_active_at,
+        relationship: "stranger" as const,
+        tasteMatchPct: taste.matchPct,
+        sharedCategories: taste.sharedCategories,
+        sharedTiers: taste.sharedTiers,
+        canSendFriendRequest: mapFriendRequestsToday < 10,
+        mapFriendRequestsRemaining: Math.max(0, 10 - mapFriendRequestsToday),
+        isSeed: true,
+      };
+    });
+
+    const combined = [...result, ...seedResult];
+    console.log(`[get-nearby-people] v=${FUNCTION_VERSION} real=${result.length} seeds=${seedResult.length} total=${combined.length}`);
+
+    return new Response(JSON.stringify(combined), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

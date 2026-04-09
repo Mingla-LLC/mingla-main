@@ -18,6 +18,7 @@ import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
+import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { weatherService, WeatherData } from "../services/weatherService";
@@ -37,11 +38,14 @@ import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import { StopImageGallery } from "./expandedCard/StopImageGallery";
+import { ImageLightbox } from "./ImageLightbox";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { PicnicShoppingList } from './PicnicShoppingList';
-import * as WebBrowser from 'expo-web-browser';
+import { useReplaceStop } from '../hooks/useReplaceStop';
+import { replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
+import * as Haptics from 'expo-haptics';
 import { colors } from "../constants/colors";
 import { SCREEN_HEIGHT } from "../utils/responsive";
 import { useIsPlaceOpen } from "../hooks/useIsPlaceOpen";
@@ -165,6 +169,19 @@ const curatedStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
     marginBottom: 2,
+  },
+  roleSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  descriptionPreview: {
+    fontSize: 13,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    color: '#9ca3af',
+    marginBottom: 6,
   },
   placeType: {
     fontSize: 12,
@@ -359,6 +376,174 @@ const curatedStyles = StyleSheet.create({
   optionalLabel: {
     color: '#9ca3af',
   },
+  todayHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff7ed',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
+  todayHoursText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9a3412',
+    flex: 1,
+  },
+  expandToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(235,120,37,0.3)',
+    backgroundColor: 'rgba(235,120,37,0.06)',
+    marginTop: 4,
+  },
+  expandToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
+  replaceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eb7825',
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  replaceButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
+  alternativesContainer: {
+    marginTop: 10,
+    paddingVertical: 8,
+  },
+  alternativesLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  alternativesScroll: {
+    gap: 10,
+  },
+  altCard: {
+    width: 140,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  altCardImage: {
+    width: 140,
+    height: 90,
+  },
+  altCardBody: {
+    padding: 8,
+    gap: 4,
+  },
+  altCardName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  altCardMeta: {
+    fontSize: 11,
+    color: '#6b7280',
+  },
+  altCardSelect: {
+    backgroundColor: '#eb7825',
+    borderRadius: 6,
+    paddingVertical: 5,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  altCardSelectText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  alternativesEmpty: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  alternativesEmptyText: {
+    fontSize: 13,
+    color: '#9ca3af',
+  },
+  alternativesError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+  },
+  alternativesErrorText: {
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
+  },
+  customizedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  customizedText: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
+  undoToast: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 100,
+  },
+  undoToastText: {
+    fontSize: 14,
+    color: '#ffffff',
+    flex: 1,
+  },
+  undoToastButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: '#eb7825',
+  },
+  undoToastButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
 });
 
 /** Private component — renders the multi-stop plan for a curated experience */
@@ -420,8 +605,12 @@ function MultiStopPlanView({
   onCardRemoved?: (cardId: string) => void;
   currencyCode?: string;
 }) {
+  // ── Local card state (mutable for stop replacements) ──────────────────────
+  const [localCard, setLocalCard] = useState<CuratedExperienceCard>(card);
+  const isCustomized = localCard !== card; // Reference equality — true after any replacement
+
   // Defensive: stops may be undefined if card data is stale or cast from ExpandedCardData
-  const stops = Array.isArray(card.stops) ? card.stops : [];
+  const stops = Array.isArray(localCard.stops) ? localCard.stops : [];
 
   const avgRating =
     stops.length > 0
@@ -430,9 +619,9 @@ function MultiStopPlanView({
 
   const effectiveCurrency = currencyCode || 'USD';
   const priceText =
-    card.totalPriceMin === 0 && card.totalPriceMax === 0
+    localCard.totalPriceMin === 0 && localCard.totalPriceMax === 0
       ? 'Free'
-      : `${formatCurrency(card.totalPriceMin, effectiveCurrency)}–${formatCurrency(card.totalPriceMax, effectiveCurrency)}`;
+      : `${formatCurrency(localCard.totalPriceMin, effectiveCurrency)}–${formatCurrency(localCard.totalPriceMax, effectiveCurrency)}`;
 
   // Total time calculation
   const totalStopMinutes = stops.reduce((s, st) => s + (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0 ? st.estimatedDurationMinutes : 45), 0);
@@ -452,6 +641,85 @@ function MultiStopPlanView({
   const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
+  const [lightbox, setLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
+    visible: false, images: [], initialIndex: 0,
+  });
+
+  // ── Stop replacement state ──────────────────────────────────────────────
+  const { alternatives, isLoading: isLoadingAlts, error: altsError, fetchAlternatives, clearAlternatives } = useReplaceStop();
+  const [replacingStopIndex, setReplacingStopIndex] = useState<number | null>(null);
+  const undoRef = useRef<{ stopIndex: number; originalStop: CuratedStop; previousCard: CuratedExperienceCard } | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleReplace = (stopIndex: number): void => {
+    const stop = stops[stopIndex];
+    // comboCategory is the Mingla slug from the combo that originally selected this stop.
+    // Set by the generator (buildCardStop). Falls back to placeType for older cards.
+    const categoryId = stop.comboCategory || stop.placeType || 'casual_eats';
+    const siblingStops = stops
+      .filter((_, i) => i !== stopIndex)
+      .map(s => ({ lat: s.lat, lng: s.lng }));
+    const excludePlaceIds = stops
+      .filter((_, i) => i !== stopIndex)
+      .map(s => s.placeId)
+      .filter(Boolean);
+
+    setReplacingStopIndex(stopIndex);
+    clearAlternatives();
+    fetchAlternatives({
+      categoryId,
+      location: { lat: userPreferences?.location?.lat ?? stops[0]?.lat ?? 0, lng: userPreferences?.location?.lng ?? stops[0]?.lng ?? 0 },
+      travelMode: userPreferences?.travel_mode || 'walking',
+      budgetMax: userPreferences?.budget_max ?? 1000,
+      excludePlaceIds,
+      siblingStops,
+      limit: 10,
+    });
+  };
+
+  const handleSelectAlternative = (alt: StopAlternative): void => {
+    if (replacingStopIndex === null) return;
+
+    // Store undo state
+    undoRef.current = {
+      stopIndex: replacingStopIndex,
+      originalStop: stops[replacingStopIndex],
+      previousCard: localCard,
+    };
+
+    const userLat = userPreferences?.location?.lat ?? stops[0]?.lat ?? 0;
+    const userLng = userPreferences?.location?.lng ?? stops[0]?.lng ?? 0;
+    const travelMode = userPreferences?.travel_mode || 'walking';
+
+    const newCard = replaceStopInCard(localCard, replacingStopIndex, alt, travelMode, userLat, userLng);
+    setLocalCard(newCard);
+    setReplacingStopIndex(null);
+    clearAlternatives();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Show undo toast
+    setShowUndo(true);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => {
+      setShowUndo(false);
+      undoRef.current = null;
+    }, 4000);
+  };
+
+  const handleUndo = (): void => {
+    if (!undoRef.current) return;
+    setLocalCard(undoRef.current.previousCard);
+    setShowUndo(false);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoRef.current = null;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const dismissAlternatives = (): void => {
+    setReplacingStopIndex(null);
+    clearAlternatives();
+  };
 
   // Stagger entry animations
   const stopAnims = useRef(stops.map(() => new Animated.Value(0))).current;
@@ -495,8 +763,14 @@ function MultiStopPlanView({
     <View style={curatedStyles.container}>
       {/* Header */}
       <View style={curatedStyles.header}>
-        <Text style={curatedStyles.title} numberOfLines={2}>{card.title}</Text>
-        <Text style={curatedStyles.tagline}>{card.tagline}</Text>
+        <Text style={curatedStyles.title} numberOfLines={2}>{localCard.title}</Text>
+        <Text style={curatedStyles.tagline}>{localCard.tagline}</Text>
+        {isCustomized && (
+          <View style={curatedStyles.customizedBadge}>
+            <Icon name="create-outline" size={12} color="#9ca3af" />
+            <Text style={curatedStyles.customizedText}>Customized</Text>
+          </View>
+        )}
         <View style={curatedStyles.summaryRow}>
           <View style={curatedStyles.summaryItem}>
             <Icon name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
@@ -516,9 +790,9 @@ function MultiStopPlanView({
       </View>
 
       {/* Shopping List — prep before journey (picnic-dates type) */}
-      {card.shoppingList && card.shoppingList.length > 0 && (
+      {localCard.shoppingList && localCard.shoppingList.length > 0 && (
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <PicnicShoppingList items={card.shoppingList} />
+          <PicnicShoppingList items={localCard.shoppingList} />
         </View>
       )}
 
@@ -559,12 +833,8 @@ function MultiStopPlanView({
 
               {/* Stop card */}
               <View style={[curatedStyles.stopCard, isOptional && curatedStyles.optionalStopCard]}>
-                {/* Tappable header row */}
-                <TouchableOpacity
-                  style={curatedStyles.stopHeaderRow}
-                  onPress={() => toggleStop(stop.stopNumber)}
-                  activeOpacity={0.7}
-                >
+                {/* Header row */}
+                <View style={curatedStyles.stopHeaderRow}>
                   <View style={curatedStyles.stopLabelRow}>
                     <View style={[curatedStyles.stopNumberBadge, isOptional && curatedStyles.optionalBadge]}>
                       {isOptional ? (
@@ -593,14 +863,16 @@ function MultiStopPlanView({
                         )}
                       </View>
                       <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
+                      {stop.role ? (
+                        <Text style={curatedStyles.roleSubtitle} numberOfLines={1}>
+                          {stop.optional
+                            ? (stop.role === 'Flowers' ? 'Pick up flowers' : stop.role === 'Groceries' ? 'Grab groceries' : stop.role)
+                            : `Your ${stop.role.toLowerCase()} stop`}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
-                  <Icon
-                    name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
-                    size={18}
-                    color="#9ca3af"
-                  />
-                </TouchableOpacity>
+                </View>
 
                 {/* Always-visible: scrollable image gallery + quick meta */}
                 {(stop.imageUrls?.length || stop.imageUrl) ? (
@@ -610,7 +882,20 @@ function MultiStopPlanView({
                         ? stop.imageUrls
                         : [stop.imageUrl].filter(Boolean)
                     }
+                    onImagePress={(index) => setLightbox({
+                      visible: true,
+                      images: stop.imageUrls && stop.imageUrls.length > 0
+                        ? stop.imageUrls
+                        : [stop.imageUrl].filter(Boolean),
+                      initialIndex: index,
+                    })}
                   />
+                ) : null}
+
+                {stop.aiDescription && !isExpanded ? (
+                  <Text style={curatedStyles.descriptionPreview} numberOfLines={2} ellipsizeMode="tail">
+                    {stop.aiDescription}
+                  </Text>
                 ) : null}
 
                 <Text style={curatedStyles.placeType} numberOfLines={1}>
@@ -624,14 +909,46 @@ function MultiStopPlanView({
                       <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
                     </View>
                   )}
-                  {stop.priceLevelLabel ? (
-                    <>
-                      <Text style={curatedStyles.stopMetaDot}>·</Text>
-                      <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
-                    </>
-                  ) : null}
+                  {(() => {
+                    const tier = stop.priceTier as PriceTierSlug | undefined;
+                    const tierData = tier ? TIER_BY_SLUG[tier] : undefined;
+                    if (!tier && !stop.priceLevelLabel) return null;
+                    const tierColor = tierData?.color ?? '#6b7280';
+                    return (
+                      <>
+                        <Text style={curatedStyles.stopMetaDot}>·</Text>
+                        <Text style={[curatedStyles.stopMetaText, { color: tierColor, fontWeight: '600' }]}>
+                          {tierData ? tierLabel(tier!) : stop.priceLevelLabel}
+                        </Text>
+                        {tierData ? (
+                          <>
+                            <Text style={[curatedStyles.stopMetaDot, { color: tierColor }]}>·</Text>
+                            <Text style={[curatedStyles.stopMetaText, { color: tierColor }]}>
+                              {tierRangeLabel(tier!)}
+                            </Text>
+                          </>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <StopOpenBadge openingHours={stop.openingHours} />
                 </View>
+
+                {/* Today's hours — always visible */}
+                {(() => {
+                  const weekdayLines = extractWeekdayText(stop.openingHours);
+                  if (!weekdayLines || weekdayLines.length === 0) return null;
+                  const todayLine = weekdayLines.find(line => line.startsWith(todayName));
+                  if (!todayLine) return null;
+                  return (
+                    <View style={curatedStyles.todayHoursRow}>
+                      <Icon name="time-outline" size={12} color="#ea580c" />
+                      <Text style={curatedStyles.todayHoursText} numberOfLines={1}>
+                        {todayLine}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 {/* Policies & Reservations — only when website exists */}
                 {stop.website ? (
@@ -647,6 +964,93 @@ function MultiStopPlanView({
                     <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
                   </TouchableOpacity>
                 ) : null}
+
+                {/* Expand / collapse toggle — prominent button, below policies */}
+                <TouchableOpacity
+                  style={curatedStyles.expandToggle}
+                  onPress={() => toggleStop(stop.stopNumber)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={isExpanded ? 'Collapse stop details' : 'Expand stop details'}
+                  accessibilityRole="button"
+                >
+                  <Text style={curatedStyles.expandToggleText}>
+                    {isExpanded ? 'Less Details' : 'More Details'}
+                  </Text>
+                  <Icon
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color="#eb7825"
+                  />
+                </TouchableOpacity>
+
+                {/* Replace button — not shown on optional/dismissible stops */}
+                {!isOptional && (
+                  <TouchableOpacity
+                    style={curatedStyles.replaceButton}
+                    onPress={() => handleReplace(originalIdx)}
+                    activeOpacity={0.7}
+                    accessibilityLabel={`Replace ${stop.placeName}`}
+                    accessibilityRole="button"
+                  >
+                    <Icon name="refresh-outline" size={14} color="#eb7825" />
+                    <Text style={curatedStyles.replaceButtonText}>Replace</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Alternatives picker — shown when replacing this stop */}
+                {replacingStopIndex === originalIdx && (
+                  <View style={curatedStyles.alternativesContainer}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={curatedStyles.alternativesLabel}>Alternatives</Text>
+                      <TouchableOpacity onPress={dismissAlternatives} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Icon name="close" size={16} color="#9ca3af" />
+                      </TouchableOpacity>
+                    </View>
+                    {isLoadingAlts && (
+                      <View style={curatedStyles.alternativesEmpty}>
+                        <ActivityIndicator size="small" color="#eb7825" />
+                        <Text style={[curatedStyles.alternativesEmptyText, { marginTop: 6 }]}>Finding alternatives...</Text>
+                      </View>
+                    )}
+                    {altsError && (
+                      <View style={curatedStyles.alternativesError}>
+                        <Text style={curatedStyles.alternativesErrorText}>Couldn't load alternatives.</Text>
+                        <TouchableOpacity onPress={() => handleReplace(originalIdx)}>
+                          <Text style={{ color: '#eb7825', fontWeight: '600', fontSize: 13 }}>Retry</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {!isLoadingAlts && !altsError && alternatives.length === 0 && (
+                      <View style={curatedStyles.alternativesEmpty}>
+                        <Text style={curatedStyles.alternativesEmptyText}>No alternatives in this area</Text>
+                      </View>
+                    )}
+                    {!isLoadingAlts && alternatives.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={curatedStyles.alternativesScroll}>
+                        {alternatives.map((alt) => (
+                          <View key={alt.placeId} style={curatedStyles.altCard}>
+                            {alt.imageUrl ? (
+                              <Image source={{ uri: alt.imageUrl }} style={curatedStyles.altCardImage} resizeMode="cover" />
+                            ) : (
+                              <View style={[curatedStyles.altCardImage, { backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' }]}>
+                                <Icon name="image-outline" size={20} color="#d1d5db" />
+                              </View>
+                            )}
+                            <View style={curatedStyles.altCardBody}>
+                              <Text style={curatedStyles.altCardName} numberOfLines={1}>{alt.placeName}</Text>
+                              <Text style={curatedStyles.altCardMeta} numberOfLines={1}>
+                                {alt.rating > 0 ? `★ ${alt.rating.toFixed(1)}` : ''}{alt.rating > 0 && alt.priceTier ? ' · ' : ''}{alt.priceTier ? alt.priceTier.charAt(0).toUpperCase() + alt.priceTier.slice(1) : ''}
+                              </Text>
+                              <TouchableOpacity style={curatedStyles.altCardSelect} onPress={() => handleSelectAlternative(alt)} activeOpacity={0.8}>
+                                <Text style={curatedStyles.altCardSelectText}>Select</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
 
                 {/* Opening Hours — visible when expanded */}
                 {isExpanded && (() => {
@@ -720,9 +1124,9 @@ function MultiStopPlanView({
         </View>
       </View>
 
-      {/* Action Buttons (Save, Schedule, Share) */}
+      {/* Action Buttons (Save, Schedule, Share) — uses localCard for persistence */}
       <ActionButtons
-        card={card as unknown as ExpandedCardData}
+        card={localCard as unknown as ExpandedCardData}
         bookingOptions={[]}
         onSave={onSave}
         onShare={onShare}
@@ -738,12 +1142,32 @@ function MultiStopPlanView({
         }}
       />
 
+      {/* Undo toast — shown for 4s after a stop replacement */}
+      {showUndo && undoRef.current && (
+        <View style={curatedStyles.undoToast}>
+          <Text style={curatedStyles.undoToastText} numberOfLines={1}>
+            Replaced {undoRef.current.originalStop.placeName}
+          </Text>
+          <TouchableOpacity style={curatedStyles.undoToastButton} onPress={handleUndo} activeOpacity={0.8}>
+            <Text style={curatedStyles.undoToastButtonText}>Undo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* In-app browser for reservations */}
       <InAppBrowserModal
         visible={browserUrl !== null}
         url={browserUrl ?? ''}
         title={browserTitle}
         onClose={() => setBrowserUrl(null)}
+      />
+
+      {/* Full-screen image lightbox */}
+      <ImageLightbox
+        visible={lightbox.visible}
+        images={lightbox.images}
+        initialIndex={lightbox.initialIndex}
+        onClose={() => setLightbox(prev => ({ ...prev, visible: false }))}
       />
     </View>
   );

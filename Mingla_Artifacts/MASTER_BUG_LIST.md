@@ -1,17 +1,19 @@
 # Master Bug List
 
-> Last updated: 2026-04-02
-> Total: 289 | Open: 131 | Closed: 91 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-08
+> Total: 301 | Open: 137 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
 | Status | Count | % |
 |--------|-------|---|
-| Open (F grade, unaudited) | 123 | 43% |
+| Open (F grade, unaudited) | 123 | 41% |
 | Open (F grade, known bug) | 7 | 2% |
+| Open (F grade, missing-feature) | 2 | <1% |
+| Open (F grade, quality-gap) | 2 | <1% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 88 | 31% |
-| Verified (B grade) | 16 | 6% |
+| Closed (A grade) | 88 | 30% |
+| Verified (B grade) | 16 | 5% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
 
@@ -30,16 +32,25 @@
 
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
+| ORCH-0066 | Collab mode parity (Phase 1 CLOSED — 5 sub-issues fixed, ORCH-0316 remains for Phase 2) | Collaboration | architecture-flaw | Closed → B |
+| ORCH-0336 | App stuck in loading after long iOS background (hours/days) | App Lifecycle | architecture-flaw | User report (production) |
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
+| ORCH-0317 | Collab time_slot + normalizer (CLOSED) | Collaboration | bug | Closed → A |
+| ORCH-0318 | Travel aggregation UNION (CLOSED) | Collaboration | bug | Closed → A |
 
 ### S1-High (Degrades Critical Flow)
 
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
+| ORCH-0337 | Realtime event handlers silently cleared after disconnect/connect — all live updates dead until force-close | App Lifecycle | architecture-flaw | INV-010 (SDK-proven, RealtimeChannel.js:313) |
+| ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |
 | ORCH-0009 | GPS requirement enforcement | Onboarding | unaudited | Tracker |
+| ORCH-0316 | Dead CollaborationPreferences.tsx deleted (CLOSED) | Collaboration | architecture-flaw | Closed → A |
+| ORCH-0319 | Location fallback divergence (CLOSED) | Collaboration | bug | Closed → A |
+| ORCH-0320 | Legacy time_of_day / time_slot (CLOSED) | Collaboration | bug | Closed → A |
 | ORCH-0011 | Resume after interruption | Onboarding | unaudited | Tracker |
 | ORCH-0014 | Intent selection step | Onboarding | unaudited | Tracker |
 | ORCH-0017 | Consent step | Onboarding | unaudited | Tracker |
@@ -76,9 +87,18 @@
 | ORCH-0222 | Service error contract | Error | design-debt | Tracker |
 | ORCH-0227 | Deep link service routing | DeepLink | unaudited | Tracker |
 | ORCH-0233 | Error boundary (app-wide) | Lifecycle | unaudited | Tracker |
-| ORCH-0236 | App state manager | Lifecycle | unaudited | Tracker |
+| ORCH-0236 | App state manager — duplicate useForegroundRefresh hook causes double disconnect/connect | Lifecycle | bug | INV-009 (upgraded from unaudited) |
 | ORCH-0238 | Notification system provider | Lifecycle | unaudited | Tracker |
 | ORCH-0242 | AppsFlyer integration | Analytics | unaudited | Tracker |
+
+### Admin Panel (Place Pool Management)
+
+| ID | Title | Surface | Classification | Source |
+|----|-------|---------|---------------|--------|
+| ORCH-0332 | Admin cannot update existing city bbox — self-overlap block | Admin | missing-feature | Previous session |
+| ORCH-0333 | Admin cannot change tile radius on seeded city | Admin | missing-feature | Previous session |
+| ORCH-0334 | Photo tab stale London run (180/351 batches) | Admin | bug | Previous session |
+| ORCH-0335 | Photo stats only count AI-approved — behavior change | Admin | quality-gap | Previous session |
 
 ### New from Wave 1b (Payments Investigation)
 

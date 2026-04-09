@@ -86,8 +86,10 @@ export const useAuthSimple = () => {
             // Profile loads in the background — no need to block navigation.
             setLoading(false);
           }
-          // Warm edge function isolates so first card load is fast.
-          // Fire-and-forget — failure is harmless, success saves 2-5s.
+          // Pre-warm edge function isolates so deck/curated calls hit warm Deno instances.
+          // keep-warm sends warmPing:true which short-circuits immediately (no business logic,
+          // no worker pool competition). Without this, first deck call hits cold isolates and
+          // takes 5-10s instead of 1-2s. See ORCH-0342.
           supabase.functions.invoke('keep-warm').catch(() => {});
 
           // Seed map location so friends can see this user on the map.
@@ -203,9 +205,16 @@ export const useAuthSimple = () => {
     initializeAuth();
 
     // Listen for auth changes
+    // INVARIANT I-AUTH-CB-01: This callback is AWAITED by the Supabase SDK's
+    // _notifyAllSubscribers() during initialization. Any `await` on a Supabase
+    // client method (supabase.from(), .rpc(), .functions.invoke(), .auth.getUser(),
+    // .auth.getSession()) will deadlock because those methods internally call
+    // getSession() which awaits initializePromise — which is waiting for THIS
+    // callback to complete. Only synchronous operations allowed here.
+    // Profile loading is handled by initializeAuth() above.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
 
       // RELIABILITY: On TOKEN_REFRESHED, invalidate ALL React Query queries so they
@@ -220,57 +229,45 @@ export const useAuthSimple = () => {
         queryClient.invalidateQueries({
           predicate: (query) => query.state.status === 'error',
         });
-        // Fresh JWT — warm edge functions before invalidated queries refetch
-        supabase.functions.invoke('keep-warm').catch(() => {});
       }
 
       if (session?.user) {
         if (mounted) {
           setAuth(session.user as User);
-          // Clear loading immediately — don't wait for profile fetch
           setLoading(false);
         }
-
-        try {
-          const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", session.user.id)
-            .single();
-
-          if (profileError) {
-            console.error("Error loading profile:", profileError);
-
-            if (profileError.code === "PGRST116") {
-              const {
-                data: { user: authUser },
-                error: userError,
-              } = await supabase.auth.getUser();
-
-              if (userError || !authUser || authUser.id !== session.user.id) {
-                await supabase.auth.signOut();
-                if (mounted) {
-                  setAuth(null);
-                  clearUserData();
-                }
-              }
-            }
-          } else if (profile) {
-            if (mounted) setProfile(profile);
+        // Profile fetch deferred via setTimeout(0) to avoid deadlock.
+        // The Supabase SDK's _notifyAllSubscribers() AWAITS this callback.
+        // A direct `await supabase.from()` here would call getSession() which
+        // awaits initializePromise — circular deadlock (see I-AUTH-CB-01 above).
+        // setTimeout(0) breaks out of the await chain: by the time the deferred
+        // function runs, _notifyAllSubscribers has already resolved this callback,
+        // initializePromise has completed, and getSession() works normally.
+        setTimeout(async () => {
+          if (!mounted) return;
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .single();
+            if (profile && mounted) setProfile(profile);
+          } catch (e) {
+            console.error("Profile load in auth callback failed:", e);
           }
-        } catch (profileError) {
-          console.error("Error loading profile:", profileError);
-        }
+        }, 0);
       } else {
-        // SIGNED_OUT — guard against multiple instances firing simultaneously
-        if (_isHandlingSignOut) return;
-        _isHandlingSignOut = true;
-        if (mounted) {
-          setAuth(null);
-          clearUserData();
+        if (event === 'SIGNED_OUT') {
+          // Guard against multiple instances firing simultaneously
+          if (_isHandlingSignOut) return;
+          _isHandlingSignOut = true;
+          if (mounted) {
+            setAuth(null);
+            clearUserData();
+          }
+          // Reset after a tick so re-login within the same session works correctly
+          setTimeout(() => { _isHandlingSignOut = false; }, 1000);
         }
-        // Reset after a tick so re-login within the same session works correctly
-        setTimeout(() => { _isHandlingSignOut = false; }, 1000);
       }
 
       if (mounted) {
@@ -500,8 +497,8 @@ export const useAuthSimple = () => {
         }
       }
 
-      // Profile loading is handled by onAuthStateChange listener.
-      // Do not fetch here — it causes double queries and double re-renders.
+      // Profile loading is handled by a deferred fetch in the onAuthStateChange
+      // callback (setTimeout(0) to avoid deadlock — see I-AUTH-CB-01).
 
       logger.auth('Google sign-in completed successfully');
       return { data: data.session, error: null };
@@ -591,9 +588,9 @@ export const useAuthSimple = () => {
         throw new Error("Failed to create session");
       }
 
-      // Profile loading is handled by onAuthStateChange listener.
+      // Profile loading is handled by a deferred fetch in the onAuthStateChange
+      // callback (setTimeout(0) to avoid deadlock — see I-AUTH-CB-01).
       // Apple name update: if Apple provided name data, fire-and-forget the update.
-      // The onAuthStateChange listener will pick up the final profile state.
       if (data.session.user && credential.fullName) {
         const updates: Record<string, string> = {};
         if (credential.fullName.givenName) {

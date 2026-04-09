@@ -156,6 +156,8 @@ const getDefaultPreferences = (): UserPreferences => ({
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: new Date().toISOString(),
+  use_gps_location: true,
+  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
 });
 
 // Recommendation interface is now imported from RecommendationsContext

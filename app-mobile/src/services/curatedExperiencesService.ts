@@ -32,9 +32,9 @@ class CuratedExperiencesService {
       body.selectedCategories = selectedCategories;
     }
 
-    // supabase.functions.invoke() has no built-in timeout. Without this guard
-    // the promise hangs indefinitely when the app goes inactive and iOS
-    // suspends the network socket. 15s matches discover-cards and warmPool.
+    // 15s timeout: generate-curated-experiences is DB-only (~1-3s warm) but Deno
+    // isolate cold start adds 4-9s on first invocation. 15s accommodates cold start.
+    // Do NOT reduce below 10s without verifying cold-start latency. See ORCH-0342.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
@@ -66,9 +66,7 @@ class CuratedExperiencesService {
   }): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // supabase.functions.invoke() has no built-in timeout. Under bad network the promise
-      // never settles, causing Promise.all(warmPromises) in deckService to hang indefinitely.
-      // Match the identical pattern used in deckService.ts for the category branch.
+      // 15s timeout: warm pool may hit cold Deno isolate. See ORCH-0342.
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           const err = new Error('generate-curated-experiences warmPool timed out after 15s');

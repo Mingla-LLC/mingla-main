@@ -8,6 +8,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 
@@ -16,6 +17,8 @@ const GALLERY_HEIGHT = 140;
 interface StopImageGalleryProps {
   /** All available image URLs for this stop */
   images: string[];
+  /** Called when an image is tapped — opens lightbox */
+  onImagePress?: (index: number) => void;
 }
 
 /**
@@ -23,7 +26,7 @@ interface StopImageGalleryProps {
  * Paginated swipe with dot indicators — no arrows (touch-first on mobile).
  * Handles: 0 images (placeholder), 1 image (static), 2+ images (scrollable).
  */
-export function StopImageGallery({ images }: StopImageGalleryProps) {
+export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -69,11 +72,13 @@ export function StopImageGallery({ images }: StopImageGalleryProps) {
   if (images.length === 1) {
     return (
       <View style={styles.container}>
-        <Image
-          source={{ uri: images[0] }}
-          style={styles.singleImage}
-          resizeMode="cover"
-        />
+        <TouchableOpacity activeOpacity={0.9} onPress={() => onImagePress?.(0)}>
+          <Image
+            source={{ uri: images[0] }}
+            style={styles.singleImage}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       </View>
     );
   }
@@ -96,7 +101,12 @@ export function StopImageGallery({ images }: StopImageGalleryProps) {
             style={styles.scrollView}
           >
             {images.map((uri, index) => (
-              <View key={`${uri}-${index}`} style={[styles.imageSlide, { width: containerWidth }]}>
+              <TouchableOpacity
+                key={`${uri}-${index}`}
+                style={[styles.imageSlide, { width: containerWidth }]}
+                activeOpacity={0.9}
+                onPress={() => onImagePress?.(index)}
+              >
                 {(index === 0 || loadedImages.has(index) || Math.abs(index - currentIndex) <= 1) ? (
                   <Image
                     source={{ uri }}
@@ -108,7 +118,7 @@ export function StopImageGallery({ images }: StopImageGalleryProps) {
                     <ActivityIndicator size="small" color="#d1d5db" />
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
 

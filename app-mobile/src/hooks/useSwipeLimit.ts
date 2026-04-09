@@ -44,7 +44,7 @@ function getNextMidnight(): Date {
  */
 export function useSwipeLimit() {
   const { user } = useAppStore();
-  const tier = useEffectiveTier(user?.id);
+  const { tier } = useEffectiveTier(user?.id);
   const limit = getSwipeLimit(tier);
   const isUnlimited = limit === -1;
 

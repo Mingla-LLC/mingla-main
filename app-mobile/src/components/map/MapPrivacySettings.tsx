@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Icon } from '../ui/Icon';
+import Toggle from '../profile/Toggle';
 import type { MapSettings } from '../../hooks/useMapSettings';
 
 const VISIBILITY_LEVELS = ['off', 'paired', 'friends', 'everyone'] as const;
@@ -24,64 +25,104 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Map Privacy</Text>
+    <View>
+      <Text style={styles.sectionTitle}>Map privacy</Text>
 
-      <TouchableOpacity style={styles.row} onPress={cycleVisibility} activeOpacity={0.7}>
-        <View style={styles.rowLeft}>
-          <Icon name="eye-outline" size={18} color="#6b7280" />
-          <View>
-            <Text style={styles.rowLabel}>Map Visibility</Text>
-            <Text style={styles.rowHint}>Who sees your approximate location</Text>
-          </View>
+      <TouchableOpacity
+        style={[styles.row, styles.rowMultiline]}
+        onPress={cycleVisibility}
+        activeOpacity={0.7}
+      >
+        <View style={styles.rowLabelWrap}>
+          <Text style={styles.rowLabel}>Map Visibility</Text>
+          <Text style={styles.rowHint}>Who sees your approximate location on the map</Text>
         </View>
         <View style={styles.rowRight}>
-          <Text style={styles.rowValue}>{VISIBILITY_LABELS[settings.visibility_level]}</Text>
+          <Text style={styles.rowValueBold}>{VISIBILITY_LABELS[settings.visibility_level]}</Text>
           <Icon name="chevron-forward" size={16} color="#9ca3af" />
         </View>
       </TouchableOpacity>
 
-      <View style={styles.row}>
-        <View style={styles.rowLeft}>
-          <Icon name="heart-outline" size={18} color="#6b7280" />
+      <View style={styles.rowDivider} />
+
+      <View style={[styles.row, styles.rowMultiline]}>
+        <View style={styles.rowLabelWrap}>
           <Text style={styles.rowLabel}>Show Saved Places</Text>
+          <Text style={styles.rowHint}>Saved pins can appear on your map presence</Text>
         </View>
-        <Switch
+        <Toggle
           value={settings.show_saved_places}
-          onValueChange={(v) => onUpdate({ show_saved_places: v })}
-          trackColor={{ true: '#eb7825', false: '#e5e7eb' }}
-          thumbColor="#FFF"
+          onToggle={() => onUpdate({ show_saved_places: !settings.show_saved_places })}
         />
       </View>
 
-      <View style={styles.row}>
-        <View style={styles.rowLeft}>
-          <Icon name="calendar-outline" size={18} color="#6b7280" />
+      <View style={styles.rowDivider} />
+
+      <View style={[styles.row, styles.rowMultiline]}>
+        <View style={styles.rowLabelWrap}>
           <Text style={styles.rowLabel}>Show Scheduled</Text>
+          <Text style={styles.rowHint}>Upcoming plans visible on the map</Text>
         </View>
-        <Switch
+        <Toggle
           value={settings.show_scheduled_places}
-          onValueChange={(v) => onUpdate({ show_scheduled_places: v })}
-          trackColor={{ true: '#eb7825', false: '#e5e7eb' }}
-          thumbColor="#FFF"
+          onToggle={() => onUpdate({ show_scheduled_places: !settings.show_scheduled_places })}
         />
       </View>
-
     </View>
   );
 }
 
+/** Matches AccountSettings accordion rows (padding, type, toggles). */
 const styles = StyleSheet.create({
-  container: { marginTop: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 10, marginLeft: 4 },
-  row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 12, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6b7280',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rowLabel: { fontSize: 15, color: '#111827' },
-  rowHint: { fontSize: 12, color: '#9ca3af', marginTop: 1 },
-  rowValue: { fontSize: 14, fontWeight: '600', color: '#eb7825' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 48,
+  },
+  rowMultiline: {
+    alignItems: 'flex-start',
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: '#f3f4f6',
+    marginHorizontal: 16,
+  },
+  rowLabelWrap: {
+    flex: 1,
+    marginRight: 16,
+  },
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  rowHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  rowValueBold: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#eb7825',
+  },
 });

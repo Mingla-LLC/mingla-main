@@ -21,10 +21,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
-import { useBoardRealtimeSync } from "../hooks/useBoardQueries";
-import { useSavesRealtimeSync } from "../hooks/useSaveQueries";
-import { useSocialRealtime } from "../hooks/useSocialRealtime";
-import { useForegroundRefresh } from "../hooks/useForegroundRefresh";
+// Realtime hooks (useBoardRealtimeSync, useSavesRealtimeSync, useSocialRealtime)
+// moved to RealtimeSubscriptions.tsx component, mounted in index.tsx with
+// key={realtimeEpoch} for clean remount on resume. See ORCH-0336.
+// useForegroundRefresh moved to index.tsx (single instance). See ORCH-0236.
 import { BoardSessionData } from "../services/boardSessionService";
 
 // Shape of pending sessions (created or invited) returned by refreshAllSessions().
@@ -222,14 +222,8 @@ export function useAppState() {
     useCalendarEntries(user?.id);
   const { unblockFriend } = useFriends();
 
-  // Set up global Realtime subscriptions for boards and saves.
-  // These replace the per-hook subscriptions that used to live inside
-  // useBoards, useEnhancedBoards, and useSaves. One subscription per table,
-  // at the app level — no component-level subscriptions that race.
-  useBoardRealtimeSync();
-  useSavesRealtimeSync();
-  useSocialRealtime(user?.id);
-  useForegroundRefresh(user?.id);
+  // Realtime hooks and useForegroundRefresh moved to index.tsx / RealtimeSubscriptions.
+  // See ORCH-0336 (duplicate hook), ORCH-0237 (binding loss), ORCH-0236 (duplicate).
 
   // Use stable empty array constants to prevent infinite loops
   const savedCards = savedCardsData ?? EMPTY_SAVED_CARDS;
