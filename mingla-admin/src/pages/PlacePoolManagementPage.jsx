@@ -2592,7 +2592,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
         <SectionCard title="Download Photos"
           subtitle="Fetches photos from Google for places that have references but no stored images">
 
-          {missingCount === 0 ? (
+          {missingCount === 0 && (downloadableCount === null || downloadableCount === 0) ? (
             <div className="py-4">
               <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
                 <CheckCircle className="w-4 h-4" /> All places have photos downloaded.
