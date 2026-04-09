@@ -966,9 +966,13 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
       const categories = ALL_SLUGS.map(slug => ({ slug, ...catStats[slug] }));
       const totalReady = categories.reduce((s, c) => s + c.ready, 0);
       const totalApproved = (places || []).length;
-      const totalCarded = existingPlaceIds.size;
-      const totalActiveCards = (cards || []).length;
-      const coveredCount = ALL_SLUGS.filter(s => (cardsByCategory[s] || 0) > 0).length;
+      // Count from the PLACES side: how many approved places have a card?
+      let totalCarded = 0;
+      for (const p of (places || [])) {
+        if (existingPlaceIds.has(p.id)) totalCarded++;
+      }
+      const totalActiveCards = totalCarded;
+      const coveredCount = ALL_SLUGS.filter(s => (catStats[s]?.existingCards || 0) > 0).length;
 
       setPreviewData({
         categories,
