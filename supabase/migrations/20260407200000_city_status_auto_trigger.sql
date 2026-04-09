@@ -17,6 +17,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_auto_city_seeded_status ON public.place_pool;
 CREATE TRIGGER trg_auto_city_seeded_status
 AFTER INSERT OR UPDATE OF city_id, is_active ON public.place_pool
 FOR EACH ROW
