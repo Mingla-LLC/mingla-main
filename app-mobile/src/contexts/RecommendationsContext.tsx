@@ -25,6 +25,7 @@ import { Recommendation } from "../types/recommendation";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
+import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { useSessionDeck } from '../hooks/useSessionDeck';
 import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
 
@@ -338,7 +339,10 @@ export const RecommendationsProvider: React.FC<
 
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
-    const cats = userPrefs?.categories ?? [];
+    // Defensive normalization: converts any display names to slugs, drops invalids.
+    // Prevents corrupted DB data from reaching the deck. See ORCH-0346.
+    const rawCats = userPrefs?.categories ?? [];
+    const cats = rawCats.length > 0 ? normalizeCategoryArray(rawCats, rawCats.length) : [];
     const ints = userPrefs?.intents ?? [];
 
     // Still loading and nothing to show yet — wait for preferences to settle.
