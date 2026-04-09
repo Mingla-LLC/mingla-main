@@ -763,10 +763,15 @@ export const RecommendationsProvider: React.FC<
             }
             // Don't overwrite accumulatedCardsRef — keep existing cards visible
           } else if (batchSeed === 0) {
-            // First page: replace (fresh session or pref change)
+            // First page: replace (fresh session or pref change).
+            // Clear sessionServedIdsRef and use the FULL deckCards — not deduped.
+            // onSinglesReady may have already added partial IDs to sessionServedIdsRef,
+            // which would strip singles from the final interleaved result. Clearing
+            // ensures the complete interleaved deck is what the user sees. See ORCH-0345.
             consecutiveSkipCountRef.current = 0;
-            accumulatedCardsRef.current = dedupedCards.length > 0 ? dedupedCards : deckCards;
-            setRecommendations(accumulatedCardsRef.current);
+            sessionServedIdsRef.current = new Set(deckCards.map(c => c.id));
+            accumulatedCardsRef.current = deckCards;
+            setRecommendations(deckCards);
           } else {
             // Subsequent pages: append new unique cards
             consecutiveSkipCountRef.current = 0;

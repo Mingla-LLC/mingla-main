@@ -232,7 +232,13 @@ class DeckService {
     return { pills, categoryFilters };
   }
 
-  async fetchDeck(params: DeckParams): Promise<DeckResponse> {
+  // onSinglesReady fires BEFORE the full result when singles resolve first.
+  // This lets the UI show cards in ~1s while curated loads in the background.
+  // Do NOT remove — users see cards in ~1s instead of waiting for curated. See ORCH-0340.
+  async fetchDeck(
+    params: DeckParams,
+    onSinglesReady?: (cards: Recommendation[]) => void,
+  ): Promise<DeckResponse> {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;
@@ -261,7 +267,9 @@ class DeckService {
         let fetchTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           // supabase.functions.invoke() does not accept an AbortSignal.
-          // Use Promise.race to enforce 15s timeout.
+          // 15s timeout: discover-cards is pool-served (~1s warm) but Deno isolate
+          // cold start adds 4-9s on first invocation. 15s accommodates cold start.
+          // Do NOT reduce below 10s without verifying cold-start latency. See ORCH-0342.
           const timeoutPromise = new Promise<never>((_, reject) => {
             fetchTimer = setTimeout(() => {
               const err = new Error('discover-cards timed out after 15s');
@@ -362,17 +370,25 @@ class DeckService {
       );
     })();
 
-    // ── Run BOTH pipelines in parallel ─────────────────────────────────
-    const [categoryResult, curatedResult] = await Promise.allSettled([
-      categoryPromise,
-      curatedPromise,
-    ]);
+    // ── Singles-first pattern: deliver partial results early ──────────
+    // Fire both in parallel but await singles FIRST so onSinglesReady can
+    // deliver partial results to the UI within ~1s. Curated settles later.
+    // Catches convert rejections to tagged objects so we can await without throwing.
+    const singlesSettled = categoryPromise
+      .then((cards): { ok: true; value: Recommendation[] } => ({ ok: true, value: cards }))
+      .catch((err): { ok: false; error: unknown } => ({ ok: false, error: err }));
 
-    // Merge category groups into one "regular" stream via round-robin
+    const curatedSettled = curatedPromise
+      .then((arrays): { ok: true; value: Recommendation[][] } => ({ ok: true, value: arrays }))
+      .catch((err): { ok: false; error: unknown } => ({ ok: false, error: err }));
+
+    // Await singles first — deliver partial results immediately
+    const singlesResult = await singlesSettled;
+
     const categoryArrays: Recommendation[][] = [];
-    if (categoryResult.status === 'fulfilled' && categoryResult.value.length > 0) {
+    if (singlesResult.ok && singlesResult.value.length > 0) {
       const byCategory: Record<string, Recommendation[]> = {};
-      for (const card of categoryResult.value) {
+      for (const card of singlesResult.value) {
         const cat = card.category || 'Other';
         if (!byCategory[cat]) byCategory[cat] = [];
         byCategory[cat].push(card);
@@ -380,21 +396,28 @@ class DeckService {
       for (const group of Object.values(byCategory)) {
         categoryArrays.push(group);
       }
+      // Deliver singles to UI immediately — user sees cards in ~1s
+      const partialStream = roundRobinInterleave(categoryArrays);
+      if (partialStream.length > 0) {
+        onSinglesReady?.(partialStream);
+      }
     }
     const regularStream = roundRobinInterleave(categoryArrays);
 
-    // Merge curated arrays into one "curated" stream via round-robin
+    // Now await curated (may already be settled)
+    const curatedResult = await curatedSettled;
+
     const curatedArrays: Recommendation[][] = [];
-    if (curatedResult.status === 'fulfilled') {
+    if (curatedResult.ok) {
       curatedArrays.push(...curatedResult.value);
     }
     const curatedStream = roundRobinInterleave(curatedArrays);
 
     // If both fetches failed, throw so React Query sees the error
-    const regularFailed = categoryResult.status === 'rejected';
-    const curatedFailed = curatedResult.status === 'rejected';
+    const regularFailed = !singlesResult.ok;
+    const curatedFailed = !curatedResult.ok;
     if (regularFailed && curatedFailed) {
-      throw (categoryResult as PromiseRejectedResult).reason || new Error('All deck fetches failed');
+      throw (singlesResult.error as Error) || new Error('All deck fetches failed');
     }
 
     // 1:1 interleave: alternate regular and curated

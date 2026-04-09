@@ -86,10 +86,11 @@ export const useAuthSimple = () => {
             // Profile loads in the background — no need to block navigation.
             setLoading(false);
           }
-          // keep-warm REMOVED from cold-start auth path — it competes with the deck's own
-          // edge function calls for Supabase worker pool slots. The deck call itself warms
-          // the isolate. Keep-warm still runs via cron (every 5 min) and on resume
-          // (useForegroundRefresh.ts:252). See ORCH-0340.
+          // Pre-warm edge function isolates so deck/curated calls hit warm Deno instances.
+          // keep-warm sends warmPing:true which short-circuits immediately (no business logic,
+          // no worker pool competition). Without this, first deck call hits cold isolates and
+          // takes 5-10s instead of 1-2s. See ORCH-0342.
+          supabase.functions.invoke('keep-warm').catch(() => {});
 
           // Seed map location so friends can see this user on the map.
           // Fire-and-forget — uses last known GPS or skips if unavailable.
