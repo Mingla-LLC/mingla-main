@@ -4,10 +4,11 @@
 // and double Realtime reconnect attempts.
 
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { AppState, AppStateStatus } from 'react-native';
+import { onlineManager, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
-import { resetAuth401Counter, enterAuth401GracePeriod, getSignOutHandler } from '../config/queryClient';
+import { resetAuth401Counter, enterAuth401GracePeriod } from '../config/queryClient';
+import { toastManager } from '../components/ui/Toast';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
 import { savedCardKeys } from './queryKeys';
@@ -165,80 +166,75 @@ export function useForegroundRefresh(
         // ══════════════════════════════════════════════════════════
 
         // Step 1: AUTH-FIRST — refresh before anything else.
-        // 3 attempts with 8s timeout each, 3s sleep between attempts.
-        // Constraint S3: getSession() blocks until refresh completes when token expired.
-        // Constraint S4: concurrent calls are safe (Deferred lock in SDK).
+        // If device is confirmed offline, skip the entire auth retry loop.
+        // No point making 3 × 8s timeout attempts against a dead network.
+        // INVARIANT I-NEVER-SIGNOUT: NEVER auto-sign-out. User directive 2026-04-08. See ORCH-0340.
         let authOk = false;
 
-        for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt++) {
-          try {
-            let authTimeoutId: ReturnType<typeof setTimeout>;
-            const sessionPromise = supabase.auth.getSession();
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              authTimeoutId = setTimeout(
-                () => reject(new Error('Auth session refresh timed out')),
-                AUTH_TIMEOUT_MS,
-              );
-            });
-
+        if (!onlineManager.isOnline()) {
+          // Offline: skip auth retry. Keep user signed in with cached data.
+          // refetchOnReconnect: 'always' will refresh queries when network returns.
+          if (__DEV__) logger.lifecycle('[RESUME] Device offline — skipping auth retry, using cached data');
+        } else {
+          // Online: attempt auth refresh with retry.
+          // 3 attempts with 8s timeout each, 3s sleep between attempts.
+          for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt++) {
             try {
-              const { error } = await Promise.race([sessionPromise, timeoutPromise]);
-              if (error) {
-                console.warn(`[RESUME] Auth refresh attempt ${attempt} failed:`, error.message);
-              } else {
-                authOk = true;
-                if (__DEV__) logger.lifecycle(`[RESUME] Auth refresh succeeded on attempt ${attempt}`);
-                break;
+              let authTimeoutId: ReturnType<typeof setTimeout>;
+              const sessionPromise = supabase.auth.getSession();
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                authTimeoutId = setTimeout(
+                  () => reject(new Error('Auth session refresh timed out')),
+                  AUTH_TIMEOUT_MS,
+                );
+              });
+
+              try {
+                const { error } = await Promise.race([sessionPromise, timeoutPromise]);
+                if (error) {
+                  console.warn(`[RESUME] Auth refresh attempt ${attempt} failed:`, error.message);
+                } else {
+                  authOk = true;
+                  if (__DEV__) logger.lifecycle(`[RESUME] Auth refresh succeeded on attempt ${attempt}`);
+                  break;
+                }
+              } finally {
+                clearTimeout(authTimeoutId!);
               }
-            } finally {
-              clearTimeout(authTimeoutId!);
+            } catch (e: any) {
+              console.warn(`[RESUME] Auth refresh attempt ${attempt} error:`, e?.message ?? e);
             }
-          } catch (e: any) {
-            console.warn(`[RESUME] Auth refresh attempt ${attempt} error:`, e?.message ?? e);
-          }
 
-          // Sleep before next attempt (except after last attempt)
-          if (!authOk && attempt < AUTH_MAX_ATTEMPTS) {
-            await new Promise(resolve => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
-          }
-        }
-
-        // Step 2: Check for ghost recovery if all explicit attempts failed.
-        // Constraint S6: AbortController is unreliable on React Native — the in-flight
-        // getSession() request may have succeeded after our Promise.race timeout.
-        // TOKEN_REFRESHED fires from the ghost request (Constraint S5).
-        if (!authOk) {
-          try {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session?.expires_at) {
-              const expiresMs = data.session.expires_at * 1000;
-              if (expiresMs > Date.now()) {
-                authOk = true;
-                if (__DEV__) logger.lifecycle('[RESUME] Ghost recovery detected — session is valid');
-              }
+            if (!authOk && attempt < AUTH_MAX_ATTEMPTS) {
+              await new Promise(resolve => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
             }
-          } catch {
-            // Session read failed — proceed to sign-out
           }
-        }
 
-        // Step 3: If still no auth, force sign-out gracefully.
-        if (!authOk) {
-          console.error('[RESUME] All auth refresh attempts failed — forcing sign-out');
-          Alert.alert('Session Expired', 'Your session has expired. Please sign in again.');
-          const signOutHandler = getSignOutHandler();
-          if (signOutHandler) {
+          // Check for ghost recovery if all explicit attempts failed.
+          if (!authOk) {
             try {
-              await signOutHandler();
-            } catch (e) {
-              console.error('[RESUME] Sign-out handler failed:', e);
+              const { data } = await supabase.auth.getSession();
+              if (data?.session?.expires_at) {
+                const expiresMs = data.session.expires_at * 1000;
+                if (expiresMs > Date.now()) {
+                  authOk = true;
+                  if (__DEV__) logger.lifecycle('[RESUME] Ghost recovery detected — session is valid');
+                }
+              }
+            } catch {
+              // Session read failed
             }
-          } else {
-            // Fallback: raw sign-out if handler not yet registered
-            supabase.auth.signOut().catch(() => {});
           }
-          return;
+
+          // Auth failed while online: show non-destructive toast, NOT sign-out.
+          // The Supabase auto-refresh ticker (30s) will keep trying in the background.
+          if (!authOk) {
+            console.warn('[RESUME] Auth refresh failed while online — showing toast');
+            toastManager.warning('Having trouble connecting. Your data may be stale.', 4000);
+          }
         }
+        // In ALL cases (offline, auth failed, auth succeeded): proceed to
+        // Realtime remount + query invalidation. Cached data stays visible.
 
         // Step 4: REALTIME — aggressive remount (user decision 2026-04-08).
         // Increment realtimeEpoch to force React to unmount/remount

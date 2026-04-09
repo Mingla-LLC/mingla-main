@@ -8,7 +8,7 @@
  * receives ready-to-use Recommendation[] directly.
  */
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import type { PriceTierSlug } from '../constants/priceTiers';
@@ -50,6 +50,7 @@ export interface UseDeckCardsResult {
 
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const { location, enabled, ...restParams } = params;
+  const queryClient = useQueryClient();
 
   const isEnabled = enabled && location !== null;
 
@@ -84,12 +85,48 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       params.batchSeed,
       (params.excludeCardIds ?? []).sort().join(','),
     ],
-    queryFn: () =>
-      deckService.fetchDeck({
-        ...restParams,
-        location: location!,
-        limit: 200,
-      }),
+    queryFn: () => {
+      // Build the query key for setQueryData (same key used by this useQuery)
+      const qk = [
+        'deck-cards',
+        roundedLat,
+        roundedLng,
+        params.categories.sort().join(','),
+        (params.intents ?? []).sort().join(','),
+        (params.priceTiers ?? []).sort().join(','),
+        params.budgetMin,
+        params.budgetMax,
+        params.travelMode,
+        params.travelConstraintType,
+        params.travelConstraintValue,
+        normalizedDatetime,
+        params.dateOption ?? 'now',
+        params.timeSlot ?? '',
+        params.batchSeed,
+        (params.excludeCardIds ?? []).sort().join(','),
+      ];
+
+      return deckService.fetchDeck(
+        {
+          ...restParams,
+          location: location!,
+          limit: 200,
+        },
+        // onSinglesReady: deliver partial results to cache immediately.
+        // User sees cards in ~1s while curated continues loading. ORCH-0340.
+        (singlesCards) => {
+          if (singlesCards.length > 0) {
+            queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
+              cards: singlesCards,
+              deckMode: prev?.deckMode ?? 'mixed',
+              activePills: prev?.activePills ?? [],
+              total: singlesCards.length,
+              hasMore: true,
+            }));
+          }
+        },
+      );
+    },
     staleTime: Infinity,            // Deck only refreshes on explicit preference change (query key changes). Never auto-refetch — deck is an active swipe session, not a feed.
     gcTime: 2 * 60 * 60 * 1000,    // 2 hours
     enabled: isEnabled,

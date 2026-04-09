@@ -352,6 +352,7 @@ const DECISION_ICON = {
 };
 
 const CONF_BADGE = { high: "success", medium: "warning", low: "error" };
+const DECISION_BADGE = { accept: "success", reclassify: "info", reject: "error" };
 
 function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitchTab }) {
   // Config state
@@ -401,14 +402,20 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
     return () => clearTimeout(t);
   }, [scope, category, selectedCityId, cityName, invoke]);
 
-  // Check for active run on mount
+  // Check for active run on mount — auto-resume if running
   useEffect(() => {
     (async () => {
       try {
         const { data } = await supabase.rpc("admin_ai_recent_runs", { p_limit: 1 });
         if (data && data.length > 0 && ["ready", "running", "paused"].includes(data[0].status)) {
           const status = await invoke({ action: "run_status", run_id: data[0].id });
-          if (mountedRef.current && status?.run) setActiveRun(status.run);
+          if (mountedRef.current && status?.run) {
+            setActiveRun(status.run);
+            // Auto-resume the loop if the run is actively running
+            if (status.run.status === "running") {
+              startAutoRun(status.run.id);
+            }
+          }
         }
       } catch { /* ignore */ }
     })();
@@ -462,17 +469,20 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
         if (!mountedRef.current) break;
         setActiveRun(data.run_progress);
 
-        // Fetch batch results for live feed
+        // Fetch latest batch results for live feed (always page 1, dedup handles overlap)
         try {
           const results = await invoke({
             action: "get_results",
             job_id: runId,
-            page: feedPageRef.current,
+            page: 1,
             page_size: 25,
           });
           if (results?.results?.length > 0 && mountedRef.current) {
-            setFeedItems((prev) => [...results.results, ...prev]);
-            feedPageRef.current++;
+            setFeedItems((prev) => {
+              const existing = new Set(prev.map((r) => r.id));
+              const newItems = (results.results || []).filter((r) => !existing.has(r.id));
+              return [...newItems, ...prev];
+            });
           }
         } catch { /* feed fetch failure is non-critical */ }
 
@@ -626,9 +636,15 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
           {/* Controls (non-terminal) */}
           {!isTerminal && (
             <div className="flex justify-end gap-3 mt-4">
-              {activeRun.status === "running" && (
+              {activeRun.status === "running" && autoRunning && (
                 <>
-                  <Button variant="secondary" icon={Pause} onClick={handlePause} disabled={!autoRunning}>Pause</Button>
+                  <Button variant="secondary" icon={Pause} onClick={handlePause}>Pause</Button>
+                  <Button variant="ghost" className="text-[var(--color-error-700)]" onClick={handleStop}>Stop Run</Button>
+                </>
+              )}
+              {activeRun.status === "running" && !autoRunning && (
+                <>
+                  <Button variant="primary" icon={Play} onClick={() => startAutoRun(activeRun.id)}>Resume Processing</Button>
                   <Button variant="ghost" className="text-[var(--color-error-700)]" onClick={handleStop}>Stop Run</Button>
                 </>
               )}
@@ -756,14 +772,351 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
   );
 }
 
-function ReviewQueuePlaceholder() {
+// ── Review Queue Tab ────────────────────────────────────────────────────────
+
+const REVIEW_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "low_confidence", label: "Low Confidence" },
+  { id: "reclassified", label: "Reclassified" },
+  { id: "overridden", label: "Overridden" },
+];
+
+function ReviewQueueTab({ invoke, toast }) {
+  const [filter, setFilter] = useState("all");
+  const [catFilter, setCatFilter] = useState("");
+  const [items, setItems] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [placeDetail, setPlaceDetail] = useState(null);
+  const [overrideDecision, setOverrideDecision] = useState("");
+  const [overrideCats, setOverrideCats] = useState(new Set());
+  const [overrideReason, setOverrideReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const PAGE_SIZE = 20;
+
+  const loadQueue = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await invoke({
+        action: "review_queue",
+        filter,
+        page: page + 1,
+        page_size: PAGE_SIZE,
+      });
+      let results = data.items || [];
+      // Client-side category filter
+      if (catFilter) {
+        results = results.filter((r) => (r.new_categories || []).includes(catFilter));
+      }
+      setItems(results);
+      setTotalCount(catFilter ? results.length : (data.total_count || 0));
+    } catch (err) {
+      toast({ variant: "error", title: "Failed to load review queue", description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [invoke, filter, catFilter, page, toast]);
+
+  useEffect(() => { loadQueue(); }, [loadQueue]);
+  useEffect(() => { setPage(0); setSelected(null); setPlaceDetail(null); }, [filter, catFilter]);
+
+  const selectItem = async (item) => {
+    setSelected(item);
+    setPlaceDetail(null);
+    setOverrideDecision("");
+    setOverrideCats(new Set(item.new_categories || []));
+    setOverrideReason("");
+    // Fetch place metadata
+    if (item.place_id) {
+      const { data } = await supabase
+        .from("place_pool")
+        .select("rating, price_level, review_count, primary_type, website")
+        .eq("id", item.place_id)
+        .single();
+      if (data) setPlaceDetail(data);
+    }
+  };
+
+  const toggleCat = (cat) => {
+    setOverrideCats((prev) => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
+  };
+
+  const handleOverride = async () => {
+    if (!selected || !overrideDecision) return;
+    setSaving(true);
+    try {
+      const cats = overrideDecision === "reject" ? [] : Array.from(overrideCats);
+      await invoke({
+        action: "override",
+        result_id: selected.id,
+        decision: overrideDecision,
+        categories: cats,
+        reason: overrideReason || null,
+      });
+      toast({ variant: "success", title: `Override saved for "${selected.place_name}"` });
+      // Move to next item
+      const currentIdx = items.findIndex((i) => i.id === selected.id);
+      const nextItem = items[currentIdx + 1] || items[currentIdx - 1] || null;
+      loadQueue();
+      if (nextItem) selectItem(nextItem); else setSelected(null);
+    } catch (err) {
+      toast({ variant: "error", title: "Override failed", description: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Empty state: no items at all
+  if (!loading && items.length === 0 && page === 0) {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <CheckCircle className="w-12 h-12 mx-auto text-[var(--color-success-500)]" />
+        <p className="text-lg font-semibold text-[var(--color-text-primary)]">
+          {filter === "all" ? "No items need review" : `No ${filter.replace(/_/g, " ")} items`}
+        </p>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          All decisions are high-confidence. Run a validation to generate review items.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="text-center py-16 space-y-3">
-      <ShieldCheck className="w-12 h-12 mx-auto text-[var(--color-text-tertiary)]" />
-      <p className="text-lg font-semibold text-[var(--color-text-primary)]">Review Queue — Coming Soon</p>
-      <p className="text-sm text-[var(--color-text-secondary)] max-w-md mx-auto">
-        Side-panel review for low-confidence decisions. See full pipeline trace, web search results, and override with one click.
-      </p>
+    <div className="flex gap-4" style={{ minHeight: "600px" }}>
+      {/* Left Panel — Item List */}
+      <div className="w-[340px] shrink-0 flex flex-col border border-[var(--gray-200)] rounded-xl bg-[var(--color-background-primary)] overflow-hidden">
+        {/* Header */}
+        <div className="px-3 pt-3 pb-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-tertiary)]">Review Queue</p>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">{totalCount} items{catFilter ? ` · ${CAT_LABELS[catFilter] || catFilter}` : ""}</p>
+        </div>
+
+        {/* Filter tabs — decision type */}
+        <div className="flex border-b border-[var(--gray-200)] px-1 pb-1 gap-1">
+          {REVIEW_FILTERS.map((f) => (
+            <button key={f.id} onClick={() => setFilter(f.id)}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
+                filter === f.id
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
+                  : "text-[var(--color-text-tertiary)] hover:bg-[var(--gray-50)]"
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Category filter */}
+        <div className="px-2 py-1.5 border-b border-[var(--gray-100)]">
+          <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)}
+            className="w-full px-2 py-1 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[12px] text-[var(--color-text-secondary)]">
+            <option value="">All Categories</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{CAT_LABELS[c] || c}</option>)}
+          </select>
+        </div>
+
+        {/* Item list */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12"><Spinner size="sm" /></div>
+          ) : (
+            items.map((item) => {
+              const dec = DECISION_ICON[item.decision] || DECISION_ICON.accept;
+              const DecIcon = dec.icon;
+              const isSelected = selected?.id === item.id;
+              const primaryCat = (item.new_categories || [])[0];
+              return (
+                <button key={item.id} onClick={() => selectItem(item)}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2.5 border-b border-[var(--gray-100)] transition-colors cursor-pointer ${
+                    isSelected
+                      ? "bg-[var(--color-brand-50)] border-l-[3px] border-l-[var(--color-brand-500)]"
+                      : "hover:bg-[var(--gray-50)]"
+                  }`}>
+                  <DecIcon className={`w-4 h-4 shrink-0 ${dec.color}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{item.place_name}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {primaryCat && (
+                        <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium text-white shrink-0"
+                          style={{ backgroundColor: CAT_COLORS[primaryCat] || "#6b7280" }}>
+                          {CAT_LABELS[primaryCat] || primaryCat}
+                        </span>
+                      )}
+                      <p className="text-[11px] text-[var(--color-text-tertiary)] truncate">{item.place_address}</p>
+                    </div>
+                  </div>
+                  <Badge variant={CONF_BADGE[item.confidence] || "default"} className="text-[10px] shrink-0">
+                    {item.confidence}
+                  </Badge>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--gray-200)] text-[11px] text-[var(--color-text-tertiary)]">
+          <span>{items.length > 0 ? `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, totalCount)}` : "0"} of {totalCount}</span>
+          <div className="flex gap-1">
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
+              className="px-2 py-1 rounded hover:bg-[var(--gray-100)] disabled:opacity-30 cursor-pointer">←</button>
+            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}
+              className="px-2 py-1 rounded hover:bg-[var(--gray-100)] disabled:opacity-30 cursor-pointer">→</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Panel — Detail */}
+      <div className="flex-1 border border-[var(--gray-200)] rounded-xl bg-[var(--color-background-primary)] overflow-hidden flex flex-col">
+        {!selected ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-[var(--color-text-tertiary)]">
+            Select a place from the list to see details
+          </div>
+        ) : (
+          <>
+            {/* Detail content — scrollable */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Identity Bar — dense, all key info */}
+              <div className="border-b border-[var(--gray-200)] pb-4">
+                <div className="flex items-start justify-between">
+                  <h3 className="text-[18px] font-semibold text-[var(--color-text-primary)]">{selected.place_name}</h3>
+                  {placeDetail && (
+                    <div className="flex items-center gap-2 text-[13px] text-[var(--color-text-secondary)] shrink-0 ml-3">
+                      {placeDetail.rating && <span>★ {placeDetail.rating}</span>}
+                      {placeDetail.price_level && <span>·</span>}
+                      {placeDetail.price_level && <span>{placeDetail.price_level === "PRICE_LEVEL_INEXPENSIVE" ? "$" : placeDetail.price_level === "PRICE_LEVEL_MODERATE" ? "$$" : placeDetail.price_level === "PRICE_LEVEL_EXPENSIVE" ? "$$$" : placeDetail.price_level === "PRICE_LEVEL_VERY_EXPENSIVE" ? "$$$$" : placeDetail.price_level}</span>}
+                      {placeDetail.review_count && <span>· {placeDetail.review_count} reviews</span>}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[13px] text-[var(--color-text-secondary)] mt-0.5">{selected.place_address}</p>
+                {placeDetail?.primary_type && (
+                  <p className="text-[11px] font-mono text-[var(--color-text-tertiary)] mt-1">{placeDetail.primary_type}</p>
+                )}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <Badge variant={DECISION_BADGE[selected.decision] || "default"}>{selected.decision}</Badge>
+                  <Badge variant={CONF_BADGE[selected.confidence] || "default"}>{selected.confidence}</Badge>
+                  {(selected.new_categories || []).map((cat) => (
+                    <span key={cat} className="px-2 py-0.5 text-[11px] rounded-full font-medium text-white"
+                      style={{ backgroundColor: CAT_COLORS[cat] || "#6b7280" }}>
+                      {CAT_LABELS[cat] || cat}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Primary Identity */}
+              {selected.primary_identity && (
+                <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-1">Primary Identity</p>
+                  <p className="text-sm text-[var(--color-text-primary)]">{selected.primary_identity}</p>
+                </div>
+              )}
+
+              {/* AI Reasoning */}
+              {selected.reason && (
+                <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-1">AI Reasoning</p>
+                  <p className="text-sm text-[var(--color-text-primary)]">{selected.reason}</p>
+                </div>
+              )}
+
+              {/* Evidence */}
+              {selected.evidence && (
+                <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-1">Web Evidence</p>
+                  <p className="text-sm text-[var(--color-text-secondary)]">{selected.evidence}</p>
+                </div>
+              )}
+
+              {/* Previous categories (if reclassified) */}
+              {selected.decision === "reclassify" && selected.previous_categories?.length > 0 && (
+                <div className="bg-[var(--color-info-50)] rounded-lg p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-info-700)] mb-1">Previous Categories</p>
+                  <div className="flex gap-1 flex-wrap">
+                    {selected.previous_categories.map((cat) => (
+                      <span key={cat} className="px-2 py-0.5 text-[11px] rounded-full font-medium bg-[var(--gray-200)] text-[var(--color-text-secondary)]">
+                        {CAT_LABELS[cat] || cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Already overridden notice */}
+              {selected.overridden && (
+                <div className="bg-[var(--color-warning-50)] rounded-lg p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-warning-700)] mb-1">Previously Overridden</p>
+                  <p className="text-sm text-[var(--color-text-primary)]">
+                    Decision: {selected.override_decision} · {selected.override_reason || "No reason given"}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Override Controls — pinned at bottom */}
+            <div className="border-t border-[var(--gray-200)] p-4 space-y-3 bg-[var(--color-background-primary)]">
+              <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Override Decision</p>
+              <div className="flex gap-2">
+                {["accept", "reject", "reclassify"].map((d) => (
+                  <button key={d} onClick={() => setOverrideDecision(d)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                      overrideDecision === d
+                        ? d === "accept" ? "bg-[var(--color-success-50)] border-[var(--color-success-500)] text-[var(--color-success-700)]"
+                        : d === "reject" ? "bg-[var(--color-error-50)] border-[var(--color-error-500)] text-[var(--color-error-700)]"
+                        : "bg-[var(--color-info-50)] border-[var(--color-info-500)] text-[var(--color-info-700)]"
+                        : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:border-[var(--gray-300)]"
+                    }`}>
+                    {d === "accept" ? "✓ Accept" : d === "reject" ? "✗ Reject" : "↔ Edit Categories"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Category pills (for accept/reclassify) */}
+              {overrideDecision && overrideDecision !== "reject" && (
+                <div>
+                  <p className="text-[11px] text-[var(--color-text-tertiary)] mb-1.5">Categories</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CATEGORIES.map((cat) => {
+                      const active = overrideCats.has(cat);
+                      return (
+                        <button key={cat} onClick={() => toggleCat(cat)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                            active ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
+                          }`}
+                          style={active ? { backgroundColor: CAT_COLORS[cat] } : {}}>
+                          {CAT_LABELS[cat] || cat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Reason */}
+              {overrideDecision && (
+                <input type="text" placeholder="Reason (optional)"
+                  value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)]" />
+              )}
+
+              {/* Save */}
+              <Button variant="primary" className="w-full" onClick={handleOverride}
+                disabled={!overrideDecision || saving}
+                loading={saving}>
+                Save Override
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -915,7 +1268,7 @@ export function AIValidationPage() {
               onSwitchTab={setTab}
             />
           )}
-          {tab === "review" && <ReviewQueuePlaceholder />}
+          {tab === "review" && <ReviewQueueTab invoke={invoke} toast={addToast} />}
         </motion.div>
       </AnimatePresence>
     </div>
