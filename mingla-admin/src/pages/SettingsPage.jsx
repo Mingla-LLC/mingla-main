@@ -518,20 +518,32 @@ function TestingToolsView() {
     }
     setResettingSingle(true);
     try {
-      const { data, error } = await supabase
+      // First verify user exists
+      const { data: user, error: findError } = await supabase
         .from("profiles")
-        .update({ coach_mark_step: 0 })
+        .select("id, coach_mark_step")
         .eq("email", userEmail.trim())
-        .select("id");
+        .maybeSingle();
 
-      if (error) {
-        addToast(error.message, "error");
-      } else if (!data || data.length === 0) {
+      if (findError) {
+        addToast(findError.message, "error");
+      } else if (!user) {
         addToast("No user found with that email", "error");
       } else {
-        addToast(`Coach mark reset for ${userEmail.trim()}`, "success");
-        logAdminAction("testing.reset_coach_mark", "profile", userEmail.trim(), { scope: "single" });
-        setUserEmail("");
+        // Always set to 0, even if already 0
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ coach_mark_step: 0 })
+          .eq("id", user.id);
+
+        if (updateError) {
+          addToast(updateError.message, "error");
+        } else {
+          const prev = user.coach_mark_step;
+          addToast(`Coach mark reset for ${userEmail.trim()}${prev === 0 ? " (was already at start)" : ` (was on step ${prev})`}`, "success");
+          logAdminAction("testing.reset_coach_mark", "profile", userEmail.trim(), { scope: "single", previous_step: prev });
+          setUserEmail("");
+        }
       }
     } catch (e) {
       addToast("Reset failed", "error");
