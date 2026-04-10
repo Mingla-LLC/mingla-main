@@ -17,7 +17,9 @@ export interface TargetRect {
 }
 
 interface ScrollTargetOffset {
+  contentX: number;
   contentY: number;
+  width: number;
   height: number;
 }
 
@@ -33,7 +35,7 @@ interface CoachMarkContextType {
   targetMeasurements: Map<number, TargetRect>;
   registerTarget: (stepId: number, rect: TargetRect) => void;
   registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
-  registerTargetScrollOffset: (stepId: number, contentY: number, height: number) => void;
+  registerTargetScrollOffset: (stepId: number, contentX: number, contentY: number, width: number, height: number) => void;
   overlayVisible: boolean;
 }
 
@@ -176,12 +178,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
       // After scroll settles, register a SYNTHETIC measurement at the known position
       setTimeout(() => {
-        // The element is now at desiredScreenY on screen (accounting for safe area)
-        // Profile page has its own header, so the content area starts after insets.top
+        // exactScreenY = contentY - scrollY + insets.top (profile page starts after safe area)
+        const exactScreenY = offset.contentY - scrollY + insets.top;
         registerTarget(step, {
-          x: 16,  // padding from left edge
-          y: desiredScreenY + insets.top,
-          width: screenWidth - 32,  // full width minus padding
+          x: offset.contentX,
+          y: exactScreenY,
+          width: offset.width,
           height: offset.height,
           radius: 12,
         });
@@ -222,8 +224,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   }, []);
 
   // ── Register scroll target offset (from onLayout in ProfilePage) ────────
-  const registerTargetScrollOffset = useCallback((stepId: number, contentY: number, height: number): void => {
-    scrollTargetOffsetsRef.current.set(stepId, { contentY, height });
+  const registerTargetScrollOffset = useCallback((stepId: number, contentX: number, contentY: number, width: number, height: number): void => {
+    scrollTargetOffsetsRef.current.set(stepId, { contentX, contentY, width, height });
   }, []);
 
   // ── Navigate and transition ─────────────────────────────────────────────

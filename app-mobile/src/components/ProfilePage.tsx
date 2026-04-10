@@ -90,14 +90,46 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  // Coach mark: register scroll ref + target offsets for steps 11-12
+  // Coach mark: register scroll ref + measure target positions for steps 11-12
   const scrollRef = useRef<any>(null);
-  const { registerScrollRef, registerTargetScrollOffset } = useCoachMarkContext();
+  const contentRef = useRef<View>(null);
+  const accountSettingsRef = useRef<View>(null);
+  const feedbackWrapperRef = useRef<View>(null);
+  const { currentStep, registerScrollRef, registerTargetScrollOffset } = useCoachMarkContext();
+  const isCoachScrollLocked = currentStep === 11 || currentStep === 12;
+
   useEffect(() => {
     if (scrollRef.current) {
       registerScrollRef('profile', scrollRef);
     }
   }, [registerScrollRef]);
+
+  // Use measureLayout to get exact positions relative to scroll content root
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (contentRef.current) {
+        if (accountSettingsRef.current) {
+          (accountSettingsRef.current as any).measureLayout(
+            contentRef.current,
+            (x: number, y: number, width: number, height: number) => {
+              registerTargetScrollOffset(11, x, y, width, height);
+            },
+            () => console.warn('[CoachMark] measureLayout failed for step 11'),
+          );
+        }
+        if (feedbackWrapperRef.current) {
+          (feedbackWrapperRef.current as any).measureLayout(
+            contentRef.current,
+            (x: number, y: number, width: number, height: number) => {
+              registerTargetScrollOffset(12, x, y, width, height);
+            },
+            () => console.warn('[CoachMark] measureLayout failed for step 12'),
+          );
+        }
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [registerTargetScrollOffset]);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -256,8 +288,8 @@ export default function ProfilePage({
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        <View style={styles.content}>
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!isCoachScrollLocked}>
+        <View style={styles.content} ref={contentRef} collapsable={false}>
           {/* 1. Hero Section — extends behind status bar */}
           <ProfileHeroSection
             isOwnProfile
@@ -315,7 +347,7 @@ export default function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <View onLayout={(e) => registerTargetScrollOffset(11, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}>
+            <View ref={accountSettingsRef} collapsable={false}>
               <SettingsRow
                 icon="shield"
                 label="Account Settings"
@@ -328,7 +360,9 @@ export default function ProfilePage({
           </View>
 
           {/* 5. Beta Feedback (conditional — only for beta testers) */}
-          <BetaFeedbackButton isTabVisible={isTabVisible} />
+          <View ref={feedbackWrapperRef} collapsable={false}>
+            <BetaFeedbackButton isTabVisible={isTabVisible} />
+          </View>
 
           {/* 6. Legal Footer */}
           <View style={styles.legalRow}>

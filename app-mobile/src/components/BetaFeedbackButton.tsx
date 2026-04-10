@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
-import { useCoachMarkContext } from '../contexts/CoachMarkContext';
 import * as Haptics from 'expo-haptics';
 import { Icon } from './ui/Icon';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
@@ -20,7 +19,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
-  const { registerTargetScrollOffset } = useCoachMarkContext();
+  // Coach mark measurement handled by ProfilePage wrapper
 
   // Stable callbacks — prevents handleClose inside BetaFeedbackModal from
   // being recreated on every parent render.
@@ -41,10 +40,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
 
   return (
     <>
-      <View
-        style={styles.container}
-        onLayout={(e) => registerTargetScrollOffset(12, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
-      >
+      <View style={styles.container}>
         <Text style={styles.sectionLabel}>BETA TESTER</Text>
 
         <TouchableOpacity
