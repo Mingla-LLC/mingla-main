@@ -1,18 +1,25 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-09
-> Total: 1 active | 37 completed
+> Total: 4 active | 43 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| AH-038 | ORCH-0348 | Implementor | 2026-04-09 | DISPATCH_IMPLEMENTOR_BETA_TESTER_AUTO_ASSIGN.md | DISPATCHED |
+| AH-040 | ORCH-0350/0351 | Investigator | 2026-04-09 | FORENSIC_ORCH-0350-0351_LEGAL_LINKS_SMS_CONSENT.md | APPROVED |
+| AH-042 | ORCH-0351 | Designer | 2026-04-09 | DESIGN_ORCH-0351_SMS_CONSENT_CHECKBOX.md | APPROVED |
+| AH-043 | ORCH-0350/0351 | Implementor | 2026-04-09 | IMPLEMENTOR_ORCH-0350-0351_LEGAL_LINKS_SMS_CONSENT.md | DISPATCHED |
+| AH-044 | ORCH-0352 | Implementor | 2026-04-09 | IMPLEMENTOR_ORCH-0352_FEEDBACK_RECORDING_FREEZE.md | APPROVED |
+| AH-046 | ORCH-0352 | Tester | 2026-04-09 | TESTER_ORCH-0352_FEEDBACK_RECORDING_FREEZE.md | READY |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-039 | ORCH-0349 | Investigator | 2026-04-09 | INVESTIGATION_ORCH-0349_NOTIFICATION_AUTO_CLEAR.md | APPROVED |
+| AH-041 | ORCH-0349 | Implementor | 2026-04-09 | IMPLEMENTATION_ORCH-0349_NOTIFICATION_AUTO_CLEAR.md | APPROVED |
+| AH-045 | ORCH-0349 | Tester | 2026-04-09 | QA_ORCH-0349_NOTIFICATION_AUTO_CLEAR.md | PASS |
 | AH-001 | ORCH-0001/4/5/6 | Investigator | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md | APPROVED |
 | AH-002 | ORCH-0004 | Implementor | 2026-03-31 | IMPLEMENTATION_ORCH-0004_SIGNOUT_CLEANUP_REPORT.md | APPROVED |
 | AH-003 | ORCH-0004 | Tester | 2026-03-31 | QA_ORCH-0004_SIGNOUT_CLEANUP_REPORT.md | CONDITIONAL PASS |
@@ -50,6 +57,8 @@
 | AH-035 | ORCH-0274 (Photo backfill P2) | Tester | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md | PASS |
 | AH-036 | ORCH-0332 + ORCH-0333 | Investigator | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md | APPROVED |
 | AH-037 | ORCH-0332 + ORCH-0333 | Implementor | 2026-04-08 | IMPLEMENTATION_ORCH_0332_0333_CITY_UPDATE_TILE_REGEN_REPORT.md | APPROVED |
+| AH-038 | ORCH-0348 | Implementor | 2026-04-09 | IMPLEMENTATION_ORCH-0348_BETA_TESTER_AUTO_ASSIGN_REPORT.md | APPROVED — migration applied, SC-1 + SC-2 verified |
+| AH-INV-011 | ORCH-0352 | Investigator | 2026-04-09 | INVESTIGATION_FEEDBACK_RECORDING_FREEZE_REPORT.md | APPROVED — 2 root causes proven, implementor next |
 
 ## Historical (Pre-Orchestrator)
 

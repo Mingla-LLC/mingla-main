@@ -158,6 +158,56 @@ export async function dismissCollaborationInviteNotifications(
   );
 }
 
+/**
+ * Dismiss notification(s) matching a specific entity by related_id and type.
+ * Call from out-of-sheet action handlers (useFriends, usePairings, etc.)
+ * after the entity is resolved, so the notification sheet updates instantly
+ * without waiting for the DB trigger's Realtime DELETE event.
+ */
+export async function dismissNotificationByEntity(
+  userId: string,
+  queryClient: QueryClient,
+  opts: { relatedId: string; type: string }
+): Promise<void> {
+  const key = notificationKeys.all(userId);
+  const list = queryClient.getQueryData<ServerNotification[]>(key) ?? [];
+
+  // Find matching notification(s) in cache
+  const matching = list.filter(
+    (n) => n.type === opts.type && n.related_id === opts.relatedId
+  );
+
+  let ids = matching.map((m) => m.id);
+
+  // If not in cache (e.g., cache stale or paginated out), query DB
+  if (ids.length === 0) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('type', opts.type)
+      .eq('related_id', opts.relatedId);
+
+    if (error || !data || data.length === 0) return;
+    ids = data.map((r) => r.id);
+  }
+
+  // Delete from DB (fire-and-forget — the DB trigger will also clean up)
+  supabase
+    .from('notifications')
+    .delete()
+    .in('id', ids)
+    .then(({ error }) => {
+      if (error) console.warn('[dismissNotificationByEntity]', error.message);
+    });
+
+  // Optimistic cache removal (instant UX)
+  queryClient.setQueryData<ServerNotification[]>(
+    key,
+    (old = []) => old.filter((n) => !ids.includes(n.id))
+  );
+}
+
 // ── Fetch functions ──────────────────────────────────────────────────────────
 
 async function fetchNotifications(
@@ -451,8 +501,9 @@ export function useNotifications(
         // Delete the notification
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] acceptFriendRequest error:', err);
-        throw err;
+        // Entity already resolved (accepted/declined elsewhere) — clear stale notification.
+        console.warn('[useNotifications] acceptFriendRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -474,8 +525,8 @@ export function useNotifications(
         queryClient.invalidateQueries({ queryKey: ['friends'] });
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] declineFriendRequest error:', err);
-        throw err;
+        console.warn('[useNotifications] declineFriendRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -509,8 +560,8 @@ export function useNotifications(
         }
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] acceptPairRequest error:', err);
-        throw err;
+        console.warn('[useNotifications] acceptPairRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -528,8 +579,8 @@ export function useNotifications(
         queryClient.invalidateQueries({ queryKey: ['pairings'] });
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] declinePairRequest error:', err);
-        throw err;
+        console.warn('[useNotifications] declinePairRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -551,7 +602,9 @@ export function useNotifications(
         const { acceptCollaborationInvite } = await import('../services/collaborationInviteService');
         const result = await acceptCollaborationInvite({ userId, inviteId });
         if (!result.success) {
-          throw new Error(result.error ?? 'Failed to accept invite');
+          // Invite already processed — still clear the stale notification
+          await deleteNotification(notificationId);
+          return;
         }
 
         // Invalidate all session-related caches so the pill bar and board views refresh
@@ -563,8 +616,8 @@ export function useNotifications(
         }
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] acceptCollaborationInvite error:', err);
-        throw err;
+        console.warn('[useNotifications] acceptCollaborationInvite: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -580,7 +633,9 @@ export function useNotifications(
         const { declineCollaborationInvite } = await import('../services/collaborationInviteService');
         const result = await declineCollaborationInvite({ userId, inviteId });
         if (!result.success) {
-          throw new Error(result.error ?? 'Failed to decline invite');
+          // Invite already processed — still clear the stale notification
+          await deleteNotification(notificationId);
+          return;
         }
 
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
@@ -590,8 +645,8 @@ export function useNotifications(
         }
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] declineCollaborationInvite error:', err);
-        throw err;
+        console.warn('[useNotifications] declineCollaborationInvite: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -616,8 +671,8 @@ export function useNotifications(
         queryClient.invalidateQueries({ queryKey: ['links'] });
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] acceptLinkRequest error:', err);
-        throw err;
+        console.warn('[useNotifications] acceptLinkRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }
@@ -639,8 +694,8 @@ export function useNotifications(
         queryClient.invalidateQueries({ queryKey: ['links'] });
         await deleteNotification(notificationId);
       } catch (err) {
-        console.error('[useNotifications] declineLinkRequest error:', err);
-        throw err;
+        console.warn('[useNotifications] declineLinkRequest: entity likely already resolved, clearing notification:', err);
+        await deleteNotification(notificationId);
       } finally {
         removePendingAction(notificationId);
       }

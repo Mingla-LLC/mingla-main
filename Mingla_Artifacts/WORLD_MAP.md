@@ -15,7 +15,7 @@
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
-| Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Strong (6A, 2B, 3F) | 11 | Partial |
+| Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Mixed (7A, 2B, 3F) | 12 | Partial |
 | Saved / Boards | Mobile | LikesPage.tsx, boardService.ts | All F | 5 | Unaudited |
 | Profile & Settings | Mobile | ProfilePage.tsx, AccountSettings.tsx | Mixed (3A, 1B, 6F) | 10 | Weak |
 | Map & Location | Mobile + Backend | DiscoverMap.tsx, get-nearby-people | All F | 16 | Unaudited |
@@ -75,7 +75,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0005 | Google Sign-In flow | Auth | S1 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — works but brittle string matching in retry logic |
 | ORCH-0006 | Apple Sign-In flow | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — clean, minor fire-and-forget name risk |
 | ORCH-0007 | Zombie auth prevention | Auth | S1 | bug | verified | B | 2026-03-23 | Commit 2a96c8f6 |
-| ORCH-0348 | Auto-assign beta tester flag on signup + backfill existing users | Auth | S2 | missing-feature | speced | F | 2026-04-09 | INVESTIGATION_BETA_TESTER_DEFAULT_REPORT.md, SPEC_BETA_TESTER_AUTO_ASSIGN.md — is_beta_tester defaults false, needs to default true + backfill. 1 migration, 0 code changes. |
+| ORCH-0348 | Auto-assign beta tester flag on signup + backfill existing users | Auth | S2 | missing-feature | closed | A | 2026-04-09 | Migration 20260409700000 applied. Column default → true, all existing rows backfilled. Verified: 0 users with false. |
 
 ### Section 2: Onboarding
 
@@ -92,6 +92,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0016 | Friends & pairing onboarding step | Onboarding | S2 | unaudited | open | F | — | — |
 | ORCH-0017 | Consent step | Onboarding | S1 | unaudited | open | F | — | — |
 | ORCH-0018 | Skip button responsiveness | Onboarding | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
+| ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | implementing | F | 2026-04-09 | INVESTIGATION + DESIGN approved. Implementor dispatched (AH-043). 9 file ops: 1 create, 2 delete, 6 modify. |
+| ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | implementing | F | 2026-04-09 | INVESTIGATION + DESIGN approved. Implementor dispatched (AH-043). Consent checkbox + text + InAppBrowserModal links. |
 
 ### Section 3: Discovery / Explore (Card Deck)
 
@@ -216,6 +218,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0091 | DM unread realtime | Notifications | S2 | bug | closed | A | 2026-03-23 | Commit ea655d36 |
 | ORCH-0092 | Notification send observability | Notifications | S2 | quality-gap | verified | B | 2026-03-23 | Commit ea655d36 |
 | ORCH-0093 | Realtime subscription lifecycle | Notifications | S1 | architecture-flaw | closed | A | 2026-03-23 | Commit ea655d36 |
+| ORCH-0349 | Acted-on notifications not auto-clearing (in-sheet + out-of-sheet) | Notifications | S1 | bug | closed | A | 2026-04-09 | QA PASS. DB trigger + graceful stale handling + out-of-sheet cleanup. Migration 20260409800000. |
 
 ### Section 7: Saved Experiences / Boards
 
@@ -243,6 +246,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0108 | Privacy controls | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0109 | Billing management | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0110 | Terms/Privacy screens | Profile | S2 | unaudited | open | F | — | — |
+| ORCH-0352 | Feedback recording error freezes profile screen — audio resource leak + modal persists across tabs | Profile | S1 | bug | testing | F | 2026-04-09 | Implementation APPROVED (AH-044). 4 files: audio cleanup, AppState guard, modal auto-close, isTabVisible threading. Tester next (AH-046). |
 
 ### Section 9: Map & Location
 
