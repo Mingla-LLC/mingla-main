@@ -23,13 +23,14 @@ export const friendProfileKeys = {
 export function useFriendProfile(userId: string | null) {
   return useQuery({
     queryKey: friendProfileKeys.detail(userId ?? ''),
-    queryFn: async (): Promise<FriendProfileData> => {
+    queryFn: async (): Promise<FriendProfileData | null> => {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, username, avatar_url, country')
         .eq('id', userId!)
-        .single();
+        .maybeSingle();
       if (profileError) throw new Error(profileError.message);
+      if (!profile) return null;
 
       const [{ data: prefs }, { data: tierRaw, error: tierError }] = await Promise.all([
         supabase.from('preferences').select('display_intents, display_categories').eq('profile_id', userId!).maybeSingle(),

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform, UIManager, Pressable } from 'react-native';
 import { Marker, UrlTile } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
@@ -39,6 +39,14 @@ export function ReactNativeMapsProvider({
     }),
     [nearbyPeople, selectedPerson?.userId, userLocation],
   );
+
+  // Allow person markers to re-render for 3s so avatar images load,
+  // then disable tracksViewChanges for performance (ORCH-0361).
+  const [peopleTrackChanges, setPeopleTrackChanges] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setPeopleTrackChanges(false), 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const visiblePlaceCards = useMemo(() => {
     const cardMap = new Map(filteredCards.map((card) => [card.id, card]));
@@ -141,7 +149,7 @@ export function ReactNativeMapsProvider({
         <Marker
           key={`person-${person.userId}`}
           coordinate={coordinate}
-          tracksViewChanges={false}
+          tracksViewChanges={peopleTrackChanges}
           zIndex={zIndex}
           anchor={{ x: 0.5, y: 0.35 }}
           cluster={false}

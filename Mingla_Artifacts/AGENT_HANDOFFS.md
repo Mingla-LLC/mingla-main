@@ -1,18 +1,21 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-10
-> Total: 1 active | 60 completed
+> Total: 0 active | 65 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| AH-057 | ORCH-0358/0362/0363/0364/0365 | Tester | 2026-04-10 | QA_ORCH-0358-0362-0363-0364-0365_WAVE1.md | Awaiting dispatch |
+| (none) | | | | | |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-059 | ORCH-0355/0359/0361 | Tester | 2026-04-10 | QA_WAVE2_ORCH-0355-0359-0361.md | PASS |
+| AH-058 | ORCH-0355/0359/0361 | Implementor | 2026-04-10 | IMPLEMENTATION_WAVE2_ORCH-0355-0359-0361.md | APPROVED |
+| AH-057 | ORCH-0358/0362/0363/0364/0365 | Tester | 2026-04-10 | QA_WAVE1_ORCH-0358-0362-0363-0364-0365.md | PASS |
 | AH-056 | ORCH-0358/0362/0363/0364/0365 | Implementor | 2026-04-10 | IMPLEMENTATION_WAVE1_ORCH-0358-0362-0363-0364-0365.md | APPROVED |
 | AH-055 | ORCH-0355/0358/0359/0361/0362/0363/0364 | Investigator | 2026-04-10 | INVESTIGATION_MAP_AND_REPORTING_ORCH-0355-0358-0359-0361-0362-0363-0364.md | APPROVED |
 | AH-040 | ORCH-0350/0351 | Investigator | 2026-04-09 | INVESTIGATION_ORCH-0350-0351_LEGAL_LINKS_SMS_CONSENT.md | APPROVED |

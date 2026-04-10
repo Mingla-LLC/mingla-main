@@ -76,16 +76,24 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 </View>
               </View>
 
+              {/* Shared interests — all relationships (when available) */}
+              {person.sharedCategories.length > 0 && (
+                <View style={styles.interestsSection}>
+                  <View style={styles.interestsPills}>
+                    {person.sharedCategories.map((cat) => (
+                      <View key={cat} style={styles.interestPill}>
+                        <Text style={styles.interestPillText}>{cat}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {/* Taste match section — strangers only, hidden for seeds */}
               {person.relationship === 'stranger' && !person.isSeed && person.tasteMatchPct != null && (
                 <View style={styles.tasteMatchSection}>
                   <Text style={styles.matchPctLarge}>{person.tasteMatchPct}%</Text>
                   <Text style={styles.matchLabel}>taste match</Text>
-                  {person.sharedCategories.length > 0 && (
-                    <Text style={styles.sharedValues}>
-                      You both enjoy {person.sharedCategories.join(', ')}
-                    </Text>
-                  )}
                 </View>
               )}
 
@@ -197,6 +205,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.03)',
   },
   actionText: { fontSize: 11, fontWeight: '600', color: '#111827' },
+  interestsSection: { marginBottom: 12 },
+  interestsPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  interestPill: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14,
+    backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa',
+  },
+  interestPillText: { fontSize: 11, fontWeight: '600', color: '#c2410c' },
   tasteMatchSection: { alignItems: 'center', paddingVertical: 12, gap: 4 },
   matchPctLarge: { fontSize: 28, fontWeight: '800', color: '#eb7825' },
   matchLabel: { fontSize: 11, color: '#6b7280', marginTop: -2 },

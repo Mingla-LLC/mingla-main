@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-10
-> Total: 305 | Open: 140 | Closed: 98 | Verified (B grade): 21 | Deferred: 1
+> Total: 306 | Open: 132 | Closed: 106 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -117,6 +117,24 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (Map Wave 2)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0355 | Generic person profile crash + bare bottom sheet | `.maybeSingle()` crash fix + shared category pills in PersonBottomSheet | 2026-04-10 | QA_WAVE2 PASS (AH-059) |
+| ORCH-0359 | Place pins no labels | Truncated name labels below every PlacePin | 2026-04-10 | QA_WAVE2 PASS (AH-059) |
+| ORCH-0361 | Avatar disappearance | 3s `tracksViewChanges` window for image loading | 2026-04-10 | QA_WAVE2 PASS (AH-059) |
+
+## Recently Closed (Map & Reporting Wave 1)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0358 | Friends-of-friends filter broken | MapPrivacySettings updated + DB CHECK constraint ALTERed | 2026-04-10 | QA_WAVE1 PASS + pg_constraint verified |
+| ORCH-0362 | Map report silent failure | ReportUserModal replaces broken inline handler | 2026-04-10 | QA_WAVE1 PASS (AH-057) |
+| ORCH-0363 | Report modal delay + double-block | Premature onBlockUser removed | 2026-04-10 | QA_WAVE1 PASS (AH-057) |
+| ORCH-0364 | Admin reports empty | RLS SELECT + UPDATE policies added (migration 20260410000002) | 2026-04-10 | QA_WAVE1 PASS (AH-057) |
+| ORCH-0365 | Phone PII exposed in friend profile | Phone removed from useFriendProfile + ViewFriendProfileScreen | 2026-04-10 | QA_WAVE1 PASS (AH-057) |
 
 ## Recently Closed (Photo Backfill Job System)
 

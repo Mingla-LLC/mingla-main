@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Icon } from '../ui/Icon';
 import { getCategoryIcon, getCategoryColor, getCategorySlug } from '../../utils/categoryUtils';
@@ -48,6 +48,10 @@ export const PlacePinContent = React.memo(function PlacePinContent({
   const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
   const isCurated = !!card.strollData;
+  const pinLabel = isCurated
+    ? (card.strollData?.anchor?.name?.split(/[→–—]/)[0]?.trim() || card.title?.split(/[→–—]/)[0]?.trim() || '')
+    : (card.title || '');
+  const truncatedLabel = pinLabel.length > 15 ? pinLabel.slice(0, 14) + '…' : pinLabel;
 
   return (
     <View style={isCurated ? styles.wrapperLarge : styles.wrapper}>
@@ -71,6 +75,9 @@ export const PlacePinContent = React.memo(function PlacePinContent({
           <Icon name="calendar" size={8} color="#3b82f6" />
         </View>
       )}
+      {truncatedLabel ? (
+        <Text style={styles.pinLabel} numberOfLines={1}>{truncatedLabel}</Text>
+      ) : null}
     </View>
   );
 });
@@ -92,8 +99,9 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
 
 const styles = StyleSheet.create({
   wrapper: {
-    width: 36,
-    height: 36,
+    width: 52,
+    height: 48,
+    alignItems: 'center',
   },
   pinOuter: {
     width: 32,
@@ -113,8 +121,9 @@ const styles = StyleSheet.create({
   },
   // Curated cards — larger pins
   wrapperLarge: {
-    width: 50,
-    height: 50,
+    width: 64,
+    height: 62,
+    alignItems: 'center',
   },
   pinOuterLarge: {
     width: 46,
@@ -156,5 +165,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#DBEAFE',
     right: -2,
     top: 20,
+  },
+  pinLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+    maxWidth: 60,
+    marginTop: 1,
   },
 });
