@@ -94,7 +94,7 @@ export default function ProfilePage({
   const scrollRef = useRef<any>(null);
   const contentRef = useRef<View>(null);
   const accountSettingsRef = useRef<View>(null);
-  const feedbackWrapperRef = useRef<View>(null);
+  const feedbackButtonRef = useRef<View>(null);
   const { currentStep, registerScrollRef, registerTargetScrollOffset } = useCoachMarkContext();
   const isCoachScrollLocked = currentStep === 11 || currentStep === 12;
 
@@ -117,8 +117,8 @@ export default function ProfilePage({
             () => console.warn('[CoachMark] measureLayout failed for step 11'),
           );
         }
-        if (feedbackWrapperRef.current) {
-          (feedbackWrapperRef.current as any).measureLayout(
+        if (feedbackButtonRef.current) {
+          (feedbackButtonRef.current as any).measureLayout(
             contentRef.current,
             (x: number, y: number, width: number, height: number) => {
               registerTargetScrollOffset(12, x, y, width, height);
@@ -360,9 +360,7 @@ export default function ProfilePage({
           </View>
 
           {/* 5. Beta Feedback (conditional — only for beta testers) */}
-          <View ref={feedbackWrapperRef} collapsable={false}>
-            <BetaFeedbackButton isTabVisible={isTabVisible} />
-          </View>
+          <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} />
 
           {/* 6. Legal Footer */}
           <View style={styles.legalRow}>

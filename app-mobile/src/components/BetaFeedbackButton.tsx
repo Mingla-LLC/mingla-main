@@ -11,11 +11,13 @@ import FeedbackHistorySheet from './FeedbackHistorySheet';
 
 interface BetaFeedbackButtonProps {
   isTabVisible?: boolean;
+  /** Ref attached to the feedback button for coach mark measurement */
+  feedbackButtonRef?: React.RefObject<any>;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonProps) {
+export default function BetaFeedbackButton({ isTabVisible, feedbackButtonRef }: BetaFeedbackButtonProps) {
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
@@ -44,6 +46,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
         <Text style={styles.sectionLabel}>BETA TESTER</Text>
 
         <TouchableOpacity
+          ref={feedbackButtonRef}
           style={styles.feedbackButton}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

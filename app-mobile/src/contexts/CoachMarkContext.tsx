@@ -178,8 +178,9 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
       // After scroll settles, register a SYNTHETIC measurement at the known position
       setTimeout(() => {
-        // exactScreenY = contentY - scrollY + insets.top (profile page starts after safe area)
-        const exactScreenY = offset.contentY - scrollY + insets.top;
+        // Profile page extends behind status bar — scroll content starts at y=0.
+        // exactScreenY = contentY - scrollY (no insets offset needed)
+        const exactScreenY = offset.contentY - scrollY;
         registerTarget(step, {
           x: offset.contentX,
           y: exactScreenY,
@@ -190,7 +191,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         setOverlayVisible(true);
       }, SCROLL_SETTLE_MS);
     }, TAB_NAVIGATE_DELAY_MS);
-  }, [screenHeight, screenWidth, insets.top, registerTarget]);
+  }, [screenHeight, screenWidth, registerTarget]);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
