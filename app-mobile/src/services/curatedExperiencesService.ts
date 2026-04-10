@@ -32,28 +32,12 @@ class CuratedExperiencesService {
       body.selectedCategories = selectedCategories;
     }
 
-    // 15s timeout: generate-curated-experiences is DB-only (~1-3s warm) but Deno
-    // isolate cold start adds 4-9s on first invocation. 15s accommodates cold start.
-    // Do NOT reduce below 10s without verifying cold-start latency. See ORCH-0342.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        const err = new Error('generate-curated-experiences timed out after 15s');
-        err.name = 'AbortError';
-        reject(err);
-      }, 15000);
-    });
-
-    try {
-      const { data, error } = await Promise.race([
-        trackedInvoke('generate-curated-experiences', { body }),
-        timeoutPromise,
-      ]);
-      if (error) throw error;
-      return (data?.cards ?? []) as CuratedExperienceCard[];
-    } finally {
-      clearTimeout(timer);
-    }
+    // Timeout handled by global fetchWithTimeout (20s) in supabase.ts.
+    // Previous 15s Promise.race wrapper was dead code — the global timeout
+    // always fired first. Removed in ORCH-0366.
+    const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
+    if (error) throw error;
+    return (data?.cards ?? []) as CuratedExperienceCard[];
   }
 
   async warmPool(params: {
@@ -64,37 +48,24 @@ class CuratedExperiencesService {
     travelConstraintType: string;
     travelConstraintValue: number;
   }): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // 15s timeout: warm pool may hit cold Deno isolate. See ORCH-0342.
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          const err = new Error('generate-curated-experiences warmPool timed out after 15s');
-          err.name = 'AbortError';
-          reject(err);
-        }, 15000);
+      // Timeout handled by global fetchWithTimeout (20s) in supabase.ts.
+      // Previous 15s Promise.race wrapper removed in ORCH-0366.
+      await trackedInvoke('generate-curated-experiences', {
+        body: {
+          experienceType: params.experienceType,
+          location: params.location,
+          budgetMax: params.budgetMax,
+          travelMode: params.travelMode,
+          travelConstraintType: params.travelConstraintType,
+          travelConstraintValue: params.travelConstraintValue,
+          warmPool: true,
+          limit: 40,
+        },
       });
-
-      await Promise.race([
-        trackedInvoke('generate-curated-experiences', {
-          body: {
-            experienceType: params.experienceType,
-            location: params.location,
-            budgetMax: params.budgetMax,
-            travelMode: params.travelMode,
-            travelConstraintType: params.travelConstraintType,
-            travelConstraintValue: params.travelConstraintValue,
-            warmPool: true,
-            limit: 40,
-          },
-        }),
-        timeoutPromise,
-      ]);
     } catch (err) {
-      // Fire and forget — don't throw. AbortError from timeout is expected under slow network.
+      // Fire and forget — don't throw. Timeout errors expected under slow network.
       console.warn('[warmPool] Failed:', err);
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

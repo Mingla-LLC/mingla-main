@@ -224,48 +224,4 @@ export const ConnectionsService = {
       return [];
     }
   },
-
-  /**
-   * Accept a friend request
-   */
-  async acceptFriendRequest(requestId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('friends')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-
-      if (error) {
-        console.error('Error accepting friend request:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Failed to accept friend request:', error);
-      return false;
-    }
-  },
-
-  /**
-   * Decline a friend request
-   */
-  async declineFriendRequest(requestId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('friends')
-        .delete()
-        .eq('id', requestId);
-
-      if (error) {
-        console.error('Error declining friend request:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Failed to decline friend request:', error);
-      return false;
-    }
-  }
 };

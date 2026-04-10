@@ -11,7 +11,7 @@
 | Surface | Domain | Key Files | Grade | Items Tracked | Coverage |
 |---------|--------|-----------|-------|---------------|----------|
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
-| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 9F) | 11 | Weak |
+| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 10F) | 12 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
@@ -95,6 +95,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0018 | Skip button responsiveness | Onboarding | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
 | ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. All legal URLs centralized in urls.ts → usemingla.com. 660 lines hardcoded text deleted. InAppBrowserModal for Profile + Paywall. |
 | ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. Checkbox + TCPA consent text. CTA gated. InAppBrowserModal links. Full accessibility. |
+| ORCH-0370 | OTP multi-channel support — add WhatsApp and voice call fallback channels via Twilio Verify | Onboarding | S2 | missing-feature | investigated | F | — | INVESTIGATION_OTP_MULTI_CHANNEL_REPORT.md — 3-file change (send-otp, otpService, OnboardingFlow). verify-otp channel-agnostic. TCPA consent update needed. WhatsApp needs Console setup. |
 
 ### Section 3: Discovery / Explore (Card Deck)
 
@@ -271,6 +272,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0124 | Activity status picker | Map | S3 | unaudited | open | F | — | — |
 | ORCH-0125 | Map cards hook | Map | S2 | unaudited | open | F | — | — |
 | ORCH-0126 | Discover map integration | Map | S1 | unaudited | open | F | — | — |
+| ORCH-0366 | Edge function timeouts — query_pool_cards optimized to lightweight count pass, timeout raised 12s→20s, dead curated timeout removed | Map | S1 | performance | implemented | F | — | IMPLEMENTATION_ORCH-0367_0366_REPORT.md — Migration 20260410000005 + timeout bump + dead code removal. Awaiting deploy + verification. |
 | ORCH-0324 | User marker disappears from map — map shrunk to 1px when person pill active | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — mapHidden: 1x1px confuses react-native-maps marker rendering. paused=true disables nearby-people query. |
 | ORCH-0325 | Map centering broken — animateToRegion races with 1px→fullscreen layout transition | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — Both state updates in same tick; animation fires before map expands. |
 | ORCH-0326 | Mock strangers invisible — bidirectional "everyone" visibility required + code defaults to "off" | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — get-nearby-people:103 requires requester visibility="everyone". Code defaults to "off" (line 42) contradicting schema default "friends". |
@@ -300,6 +302,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0133 | DM email notification | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0134 | Chat status line | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). Three banners (blocked/unfriended/deleted) with hidden input. Account deletion confirmed regression-free. |
+| ORCH-0367 | Block/friend mutual exclusion — accept_friend_request_atomic now clears blocks, on_user_blocked now cancels pending requests, stale data fixed | Chat + Social | S0 | data-integrity | implemented | F | — | IMPLEMENTATION_ORCH-0367_0366_REPORT.md — Migration 20260410000004 + dead code removed. Awaiting deploy + verification. |
 
 ### Section 11: Payments & Subscriptions
 
