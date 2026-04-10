@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-08
-> Total: 301 | Open: 137 | Closed: 97 | Verified (B grade): 21 | Deferred: 1
+> Total: 302 | Open: 137 | Closed: 98 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -46,6 +46,7 @@
 |----|-------|---------|---------------|--------|
 | ORCH-0337 | Realtime event handlers silently cleared after disconnect/connect — all live updates dead until force-close | App Lifecycle | architecture-flaw | INV-010 (SDK-proven, RealtimeChannel.js:313) |
 | ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
+| ORCH-0352 | Beta feedback modal — end-to-end defects (CLOSED) | Profile | bug | Closed → A |
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |
 | ORCH-0009 | GPS requirement enforcement | Onboarding | unaudited | Tracker |
 | ORCH-0316 | Dead CollaborationPreferences.tsx deleted (CLOSED) | Collaboration | architecture-flaw | Closed → A |

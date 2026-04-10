@@ -83,14 +83,17 @@ export default function BetaFeedbackModal({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Cleanup on close ────────────────────────────────────────────────────
 
   const resetState = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (autoStopRef.current) clearTimeout(autoStopRef.current);
+    if (successCloseRef.current) clearTimeout(successCloseRef.current);
     timerRef.current = null;
     autoStopRef.current = null;
+    successCloseRef.current = null;
 
     if (feedbackRecorder.isRecording()) {
       await feedbackRecorder.cancelRecording();
@@ -100,6 +103,10 @@ export default function BetaFeedbackModal({
       try { await playbackSound.unloadAsync(); } catch (e) { console.warn('[BetaFeedbackModal] Sound unload failed:', e); }
       setPlaybackSound(null);
     }
+
+    // Always revert audio mode, even if we weren't actively recording.
+    // Handles the case where initialize() set allowsRecordingIOS:true but recording failed.
+    await feedbackRecorder.resetAudioMode();
 
     setStep('category');
     setSelectedCategory(null);
@@ -120,15 +127,28 @@ export default function BetaFeedbackModal({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (autoStopRef.current) clearTimeout(autoStopRef.current);
+      if (successCloseRef.current) clearTimeout(successCloseRef.current);
     };
   }, []);
+
+  // Clean up when modal is hidden externally (e.g., tab switch auto-close).
+  // handleClose() normally runs resetState() before calling onClose(), but when
+  // visible becomes false through other paths (isTabVisible effect), resetState()
+  // is skipped. This catches all close paths.
+  const prevVisibleRef = useRef(visible);
+  useEffect(() => {
+    if (prevVisibleRef.current && !visible) {
+      resetState();
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, resetState]);
 
   // ── Recording Logic ─────────────────────────────────────────────────────
 
   const startRecording = async () => {
     const started = await feedbackRecorder.startRecording();
     if (!started) {
-      setErrorMessage('Could not start recording. Please check microphone permissions.');
+      setErrorMessage('Recording failed. Please try again.');
       setStep('error');
       return;
     }
@@ -282,8 +302,9 @@ export default function BetaFeedbackModal({
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep('success');
 
-      // Auto-close after 2 seconds
-      setTimeout(() => {
+      // Auto-close after 2 seconds — store ref so resetState() can cancel it
+      // if the modal is closed/reopened before the timer fires.
+      successCloseRef.current = setTimeout(() => {
         handleClose();
       }, 2000);
     } catch (error: unknown) {

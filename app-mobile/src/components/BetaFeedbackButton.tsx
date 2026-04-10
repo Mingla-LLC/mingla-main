@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Icon } from './ui/Icon';
@@ -7,12 +7,33 @@ import { useIsBetaTester } from '../hooks/useBetaFeedback';
 import BetaFeedbackModal from './BetaFeedbackModal';
 import FeedbackHistorySheet from './FeedbackHistorySheet';
 
+// ── Types ───────────────────────────────────────────────────────────────────
+
+interface BetaFeedbackButtonProps {
+  isTabVisible?: boolean;
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function BetaFeedbackButton() {
+export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonProps) {
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
+
+  // Stable callbacks — prevents handleClose inside BetaFeedbackModal from
+  // being recreated on every parent render.
+  const handleModalClose = useCallback(() => setShowFeedbackModal(false), []);
+  const handleHistoryClose = useCallback(() => setShowHistorySheet(false), []);
+
+  // Auto-close modals when the profile tab becomes invisible.
+  // React Native <Modal> creates a separate native window that isn't affected by
+  // the parent View's pointerEvents:'none', so we must dismiss explicitly.
+  useEffect(() => {
+    if (isTabVisible === false) {
+      setShowFeedbackModal(false);
+      setShowHistorySheet(false);
+    }
+  }, [isTabVisible]);
 
   if (!isBetaTester) return null;
 
@@ -45,13 +66,13 @@ export default function BetaFeedbackButton() {
 
       <BetaFeedbackModal
         visible={showFeedbackModal}
-        onClose={() => setShowFeedbackModal(false)}
+        onClose={handleModalClose}
         screenBefore="profile"
       />
 
       <FeedbackHistorySheet
         visible={showHistorySheet}
-        onClose={() => setShowHistorySheet(false)}
+        onClose={handleHistoryClose}
       />
     </>
   );

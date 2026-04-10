@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import { AppState } from 'react-native';
 import { supabase } from './supabase';
 import { extractFunctionError } from '../utils/edgeFunctionError';
 
@@ -98,14 +99,22 @@ class FeedbackRecorder {
       return false;
     }
 
-    if (!this.permissionGranted) {
-      const granted = await this.initialize();
-      if (!granted) return false;
+    // Guard: don't attempt recording if app isn't in the foreground.
+    // The mic permission dialog can briefly push the app to 'inactive',
+    // causing prepareToRecordAsync to throw.
+    if (AppState.currentState !== 'active') {
+      console.warn('[BetaFeedback] Cannot start recording — app is not in active state:', AppState.currentState);
+      return false;
     }
 
-    try {
-      const newRecording = new Audio.Recording();
+    // Always re-check permissions — user may have revoked in iOS Settings
+    // since the last recording. requestPermissionsAsync() returns instantly
+    // if already granted, so there's no UX cost.
+    const granted = await this.initialize();
+    if (!granted) return false;
 
+    const newRecording = new Audio.Recording();
+    try {
       await newRecording.prepareToRecordAsync({
         isMeteringEnabled: true,
         android: {
@@ -133,6 +142,15 @@ class FeedbackRecorder {
       return true;
     } catch (error) {
       console.error('[BetaFeedback] Error starting recording:', error);
+      // CRITICAL: Clean up the native Recording object that was created but never
+      // fully prepared. Without this, the iOS audio session leaks and stays in
+      // recording mode permanently. See INVESTIGATION_FEEDBACK_RECORDING_FREEZE.
+      try {
+        await newRecording.stopAndUnloadAsync();
+      } catch {
+        // May throw if never prepared — safe to ignore
+      }
+      await this.resetAudioMode();
       this.recording = null;
       return false;
     }
@@ -188,6 +206,17 @@ class FeedbackRecorder {
     } finally {
       this.recording = null;
       this.startTime = 0;
+    }
+  }
+
+  async resetAudioMode(): Promise<void> {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+    } catch (error) {
+      console.warn('[BetaFeedback] Failed to reset audio mode:', error);
     }
   }
 

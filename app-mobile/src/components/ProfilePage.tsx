@@ -30,14 +30,15 @@ import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import BetaFeedbackButton from "./BetaFeedbackButton";
+import InAppBrowserModal from "./InAppBrowserModal";
+import { LEGAL_URLS } from "../constants/urls";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
   onUserIdentityUpdate?: (identity: any) => Promise<void>;
   onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
   onNavigateToConnections?: () => void;
-  onNavigateToPrivacyPolicy?: () => void;
-  onNavigateToTermsOfService?: () => void;
+  isTabVisible?: boolean;
   savedExperiences?: number;
   boardsCount?: number;
   notificationsEnabled?: boolean;
@@ -56,8 +57,7 @@ export default function ProfilePage({
   onUserIdentityUpdate,
   onNavigateToActivity,
   onNavigateToConnections,
-  onNavigateToPrivacyPolicy,
-  onNavigateToTermsOfService,
+  isTabVisible,
   savedExperiences = 0,
   boardsCount = 0,
   notificationsEnabled = true,
@@ -66,6 +66,9 @@ export default function ProfilePage({
 }: ProfilePageProps) {
   useScreenLogger('profile');
   const insets = useSafeAreaInsets();
+  const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
+  const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
+  const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 
@@ -314,15 +317,23 @@ export default function ProfilePage({
           </View>
 
           {/* 5. Beta Feedback (conditional — only for beta testers) */}
-          <BetaFeedbackButton />
+          <BetaFeedbackButton isTabVisible={isTabVisible} />
 
           {/* 6. Legal Footer */}
           <View style={styles.legalRow}>
-            <TouchableOpacity onPress={onNavigateToPrivacyPolicy}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.privacyPolicy);
+              setLegalBrowserTitle('Privacy Policy');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Privacy Policy</Text>
             </TouchableOpacity>
             <Text style={styles.legalSeparator}>|</Text>
-            <TouchableOpacity onPress={onNavigateToTermsOfService}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.termsOfService);
+              setLegalBrowserTitle('Terms of Service');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Terms of Service</Text>
             </TouchableOpacity>
           </View>
@@ -361,6 +372,12 @@ export default function ProfilePage({
       <BillingSheet
         visible={showBillingSheet}
         onClose={() => setShowBillingSheet(false)}
+      />
+      <InAppBrowserModal
+        visible={legalBrowserVisible}
+        url={legalBrowserUrl}
+        title={legalBrowserTitle}
+        onClose={() => setLegalBrowserVisible(false)}
       />
     </View>
   );

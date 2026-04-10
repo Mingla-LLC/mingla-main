@@ -1,14 +1,13 @@
 # Open Investigations
 
 > Last updated: 2026-04-08
-> Total: 1 active | 8 completed (historical)
+> Total: 0 active | 11 completed (historical)
 
 ## Active Investigations
 
 | ID | Issue | Investigator | Started | Last Update | Status |
 |----|-------|-------------|---------|-------------|--------|
-| INV-009 | ORCH-0336: Long background resume failure (Pass 1) | Forensics | 2026-04-08 | 2026-04-08 | **COMPLETE** — approved |
-| INV-010 | ORCH-0336: Deep-dive — SDK internals, full UI trace, edge cases | Forensics | 2026-04-08 | 2026-04-08 | **COMPLETE** — approved, spec next |
+| (none) | | | | | |
 
 ## Completed Investigations
 
@@ -22,3 +21,6 @@
 | INV-006 | Security & Auth (Wave 2) | 2026-03-31 | INVESTIGATION_SECURITY_WAVE2.md |
 | INV-007 | Prefs→Deck Contract (PDC) | 2026-03-31 | INVESTIGATION_PREFS_DECK_CONTRACT.md |
 | INV-008 | State Persistence | 2026-03-31 | INVESTIGATION_STATE_PERSISTENCE.md |
+| INV-009 | ORCH-0336: Long background resume failure (Pass 1) | 2026-04-08 | INVESTIGATION_BACKGROUND_RESUME_REPORT.md |
+| INV-010 | ORCH-0336: Deep-dive — SDK internals, full UI trace | 2026-04-08 | INVESTIGATION_BACKGROUND_RESUME_DEEP_DIVE.md |
+| INV-011 | ORCH-0352: Feedback recording error freezes profile | 2026-04-09 | INVESTIGATION_FEEDBACK_RECORDING_FREEZE_REPORT.md |

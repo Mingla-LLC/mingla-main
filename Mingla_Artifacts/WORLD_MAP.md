@@ -92,8 +92,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0016 | Friends & pairing onboarding step | Onboarding | S2 | unaudited | open | F | — | — |
 | ORCH-0017 | Consent step | Onboarding | S1 | unaudited | open | F | — | — |
 | ORCH-0018 | Skip button responsiveness | Onboarding | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
-| ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | implementing | F | 2026-04-09 | INVESTIGATION + DESIGN approved. Implementor dispatched (AH-043). 9 file ops: 1 create, 2 delete, 6 modify. |
-| ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | implementing | F | 2026-04-09 | INVESTIGATION + DESIGN approved. Implementor dispatched (AH-043). Consent checkbox + text + InAppBrowserModal links. |
+| ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. All legal URLs centralized in urls.ts → usemingla.com. 660 lines hardcoded text deleted. InAppBrowserModal for Profile + Paywall. |
+| ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. Checkbox + TCPA consent text. CTA gated. InAppBrowserModal links. Full accessibility. |
 
 ### Section 3: Discovery / Explore (Card Deck)
 
@@ -246,7 +246,9 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0108 | Privacy controls | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0109 | Billing management | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0110 | Terms/Privacy screens | Profile | S2 | unaudited | open | F | — | — |
-| ORCH-0352 | Feedback recording error freezes profile screen — audio resource leak + modal persists across tabs | Profile | S1 | bug | testing | F | 2026-04-09 | Implementation APPROVED (AH-044). 4 files: audio cleanup, AppState guard, modal auto-close, isTabVisible threading. Tester next (AH-046). |
+| ORCH-0352 | Beta feedback modal — end-to-end defects (freeze, stale state, audio leak, icon errors, close-path gaps) | Profile | S1 | bug | closed | A | 2026-04-09 | QA PASS (AH-051). Full audit found 4 defects (missing pause icon, orphaned success timer, unstable onClose, cached permissions). All fixed in clean pass (AH-050). Prior patches preserved. 5 files changed total. |
+| ORCH-0353 | Permission storm on first landing — 4 OS dialogs fire on boot | App Lifecycle | S1 | ux | closed | A | 2026-04-09 | Device-verified PASS. Split OneSignal login/permission, removed auto location/camera/tracking from MobileFeaturesProvider, ATT wait→0. Zero dialogs on Home. |
+| ORCH-0354 | Coach mark guided tour system (10-step, cross-tab, resumable) | App Lifecycle | S1 | missing-feature | implementing | F | 2026-04-09 | Spec: SPEC_ORCH-0349_COACH_MARK_SYSTEM.md. Design: Hybrid bottom card + self-highlight. Phase 1 pending. Prerequisite ORCH-0353 complete. |
 
 ### Section 9: Map & Location
 
