@@ -116,6 +116,9 @@ serve(async (req: Request) => {
         priceTiers: (cardData.price_tiers as string[])?.length ? (cardData.price_tiers as string[]) : [(cardData.price_tier as string) || 'chill'],
         rating: (cardData.rating as number) ?? null,
         savedAt: row.created_at,
+        // Full card snapshot for expanded view — card_data stores the entire card
+        // as it was when saved, so paired person sees exactly what the saver sees
+        cardData,
       };
     });
 

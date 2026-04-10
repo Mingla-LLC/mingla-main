@@ -21,13 +21,13 @@ export function useProfileInterests(userId?: string) {
     queryFn: async (): Promise<ProfileInterests> => {
       const { data, error } = await supabase
         .from('preferences')
-        .select('intents, categories')
+        .select('display_intents, display_categories')
         .eq('profile_id', targetId)
         .single();
       if (error) throw new Error(error.message);
       return {
-        intents: data?.intents ?? [],
-        categories: data?.categories ?? [],
+        intents: data?.display_intents ?? [],
+        categories: data?.display_categories ?? [],
       };
     },
     enabled: !!targetId,
@@ -44,8 +44,8 @@ export function useUpdateProfileInterests() {
       const { error } = await supabase
         .from('preferences')
         .update({
-          intents: interests.intents,
-          categories: interests.categories,
+          display_intents: interests.intents,
+          display_categories: interests.categories,
         })
         .eq('profile_id', user!.id);
       if (error) throw new Error(error.message);

@@ -141,7 +141,7 @@ Example 15: "U2 UNIQUE MED SPA" type:spa → {"d":"reject","c":[],"pi":"medical 
 
 Example 16: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
 
-Example 12: "Urban Air Trampoline Park" type:amusement_center → Consider carefully: if it has adult sessions and date-night events, it's play. If it's primarily for kids birthday parties, reject.
+Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject","c":[],"pi":"children's trampoline park","w":true,"r":"Primarily kids birthday parties and toddler play — reject","f":"high"}
 
 Example 17: "Soho Beach House" type:hotel → {"d":"accept","c":["drink","wellness"],"pi":"members club with pool bar and spa","w":true,"r":"Upscale beach club/hotel with bar, pool, and spa — drink + wellness","f":"medium"}
 Note: Private/members clubs with bars, pools, restaurants, or spas still qualify for their respective categories. The membership model doesn't disqualify the venue.
@@ -229,13 +229,16 @@ interface ClassResult {
   output_tokens: number;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 1, delay = 3000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 1, delayMs = 3000): Promise<T> {
   try { return await fn(); }
   catch (err) {
     const msg = (err as Error).message || "";
-    if (retries <= 0 || msg.includes("429") || msg.includes("quota") || msg.includes("exceeded")) throw err;
-    await sleep(delay);
-    return withRetry(fn, retries - 1, delay);
+    // Permanent quota exceeded — don't waste a retry
+    if (msg.includes("QUOTA_EXCEEDED")) throw err;
+    // Transient errors (including 429 rate limit) — retry if attempts remain
+    if (retries <= 0) throw err;
+    await sleep(delayMs);
+    return withRetry(fn, retries - 1, delayMs);
   }
 }
 
@@ -271,6 +274,12 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
       ?.content?.find((c: any) => c.type === "output_text")?.text;
     if (!outputText) throw new Error("No text output from GPT response");
     const parsed = JSON.parse(outputText);
+    // Filter hallucinated categories — only allow known slugs
+    const VALID_SLUGS = new Set([
+      "flowers","fine_dining","nature_views","first_meet","drink","casual_eats",
+      "watch","live_performance","creative_arts","play","wellness","picnic_park","groceries",
+    ]);
+    parsed.c = (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s));
     return {
       decision: parsed.d,
       categories: parsed.c,
@@ -411,19 +420,9 @@ async function processPlace(place: any): Promise<PlaceResult> {
   } catch (err) {
     // Propagate quota errors so the batch handler can return 402
     if ((err as Error).message?.includes("QUOTA_EXCEEDED")) throw err;
+    // Re-throw all other GPT errors — place stays ai_approved=NULL, retryable
     console.error(`GPT failed for ${place.id}: ${(err as Error).message}`);
-    return {
-      decision: "accept",
-      categories: place.ai_categories || [],
-      primary_identity: place.primary_type || "unknown",
-      confidence: "low",
-      reason: `Pipeline v1: GPT classification failed — ${(err as Error).message}`,
-      evidence: factSheet.evidence.slice(0, 500),
-      stage_resolved: 5,
-      website_verified: false,
-      search_results: searchResults,
-      cost_usd: serperCost,
-    };
+    throw err;
   }
 }
 
@@ -466,77 +465,94 @@ function getDb() {
 
 async function handlePreview(body: any): Promise<Response> {
   const db = getDb();
-  const { data, error } = await db.rpc("admin_ai_validation_preview", {
-    p_scope: body.scope || "unvalidated",
-    p_category: body.category || null,
-    p_country: body.country || null,
-    p_city: body.city || null,
-    p_revalidate: body.revalidate || false,
-  });
+  const scope = body.scope || "unvalidated";
+  const revalidate = body.revalidate || false;
+
+  // Build query to count matching places (same logic as admin_ai_validation_preview RPC)
+  let query = db.from("place_pool").select("id", { count: "exact", head: true }).eq("is_active", true);
+
+  if (scope === "unvalidated" && !revalidate) {
+    query = query.is("ai_approved", null);
+  } else if (scope === "failed" && !revalidate) {
+    query = query.not("ai_validated_at", "is", null).is("ai_approved", null);
+  } else if (scope !== "all" && !revalidate) {
+    query = query.is("ai_approved", null);
+  }
+  if (body.category) query = query.contains("ai_categories", [body.category]);
+  if (body.country) query = query.ilike("country", `%${body.country}%`);
+  if (body.city) query = query.ilike("city", `%${body.city}%`);
+  if (body.city_id) query = query.eq("city_id", body.city_id);
+
+  const { count, error } = await query;
   if (error) return json({ error: error.message }, 500);
-  return json(data);
+
+  const placeCount = count || 0;
+  const estSearchCost = placeCount * 0.85 * 0.0004;
+  const estGptCost = placeCount * 0.85 * 0.0003;
+  const estTotal = (estSearchCost + estGptCost) * 1.15;
+  const estMinutes = Math.ceil(placeCount / 25) * 0.75;
+
+  return json({
+    places_to_process: placeCount,
+    estimated_cost_usd: Math.round(estTotal * 100) / 100,
+    estimated_minutes: Math.round(estMinutes),
+    breakdown: {
+      serper_cost: Math.round(estSearchCost * 10000) / 10000,
+      gpt_cost: Math.round(estGptCost * 10000) / 10000,
+      contingency_pct: 15,
+    },
+  });
 }
 
 async function handleCreateRun(body: any, userId: string): Promise<Response> {
   const db = getDb();
-
-  // Check for existing active run
-  const { data: activeRun } = await db
-    .from("ai_validation_jobs")
-    .select("id")
-    .in("status", ["ready", "running", "paused"])
-    .limit(1)
-    .maybeSingle();
-  if (activeRun) return json({ status: "already_active", run_id: activeRun.id });
-
   const scope = body.scope || "unvalidated";
   const batchSize = Math.min(body.batch_size || 25, 50);
 
-  // Get place count for cost estimate
-  const { data: previewData } = await db.rpc("admin_ai_validation_preview", {
-    p_scope: scope,
-    p_category: body.category || null,
-    p_country: body.country || null,
-    p_city: body.city || null,
-    p_revalidate: body.revalidate || false,
-  });
+  try {
+    // Check for existing active run
+    const { data: activeRun } = await db
+      .from("ai_validation_jobs")
+      .select("id")
+      .in("status", ["ready", "running", "paused"])
+      .limit(1)
+      .maybeSingle();
+    if (activeRun) return json({ status: "already_active", run_id: activeRun.id });
 
-  const estimatedCost = previewData?.estimated_cost_usd || 0;
-  const placeCount = previewData?.places_to_process || 0;
+    // Count matching places
+    let countQuery = db.from("place_pool").select("id", { count: "exact", head: true }).eq("is_active", true);
+    if (scope === "unvalidated" && !body.revalidate) countQuery = countQuery.is("ai_approved", null);
+    else if (scope === "failed" && !body.revalidate) countQuery = countQuery.not("ai_validated_at", "is", null).is("ai_approved", null);
+    else if (scope !== "all" && !body.revalidate) countQuery = countQuery.is("ai_approved", null);
+    if (body.category) countQuery = countQuery.contains("ai_categories", [body.category]);
+    if (body.city) countQuery = countQuery.ilike("city", `%${body.city}%`);
+    if (body.city_id) countQuery = countQuery.eq("city_id", body.city_id);
 
-  if (placeCount === 0) return json({ status: "nothing_to_do", total_places: 0 });
+    const { count: totalPlaces, error: countErr } = await countQuery;
+    if (countErr) return json({ error: `Count failed: ${countErr.message}` }, 500);
+    if (!totalPlaces || totalPlaces === 0) return json({ status: "nothing_to_do", total_places: 0 });
 
-  // Query matching places
-  let query = db
-    .from("place_pool")
-    .select("id")
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
+    const estCost = Math.round(totalPlaces * 0.85 * 0.0007 * 1.15 * 100) / 100;
 
-  if (scope === "unvalidated" && !body.revalidate) {
-    query = query.is("ai_validated_at", null);
-  }
-  if (body.category) {
-    query = query.contains("ai_categories", [body.category]);
-  }
-  if (body.country) {
-    query = query.ilike("country", `%${body.country}%`);
-  }
-  if (body.city) {
-    query = query.ilike("city", `%${body.city}%`);
-  }
+    // Fetch all matching place IDs (paginated)
+    const allIds: string[] = [];
+    let offset = 0;
+    while (true) {
+      let idQuery = db.from("place_pool").select("id").eq("is_active", true).order("created_at", { ascending: true });
+      if (scope === "unvalidated" && !body.revalidate) idQuery = idQuery.is("ai_approved", null);
+      else if (scope === "failed" && !body.revalidate) idQuery = idQuery.not("ai_validated_at", "is", null).is("ai_approved", null);
+      else if (scope !== "all" && !body.revalidate) idQuery = idQuery.is("ai_approved", null);
+      if (body.category) idQuery = idQuery.contains("ai_categories", [body.category]);
+      if (body.city) idQuery = idQuery.ilike("city", `%${body.city}%`);
+      if (body.city_id) idQuery = idQuery.eq("city_id", body.city_id);
+      idQuery = idQuery.range(offset, offset + 999);
 
-  // Fetch all IDs (paginated)
-  const allIds: string[] = [];
-  let from = 0;
-  const pageSize = 1000;
-  while (true) {
-    const { data: page, error: pageErr } = await query.range(from, from + pageSize - 1);
-    if (pageErr) return json({ error: pageErr.message }, 500);
-    allIds.push(...(page || []).map((p: any) => p.id));
-    if (!page || page.length < pageSize) break;
-    from += pageSize;
-  }
+      const { data: page, error: pageErr } = await idQuery;
+      if (pageErr) return json({ error: `ID fetch failed: ${pageErr.message}` }, 500);
+      allIds.push(...(page || []).map((p: any) => p.id));
+      if (!page || page.length < 1000) break;
+      offset += 1000;
+    }
 
   const totalBatches = Math.ceil(allIds.length / batchSize);
 
@@ -557,7 +573,7 @@ async function handleCreateRun(body: any, userId: string): Promise<Response> {
       dry_run: body.dry_run || false,
       batch_size: batchSize,
       total_batches: totalBatches,
-      estimated_cost_usd: estimatedCost,
+      estimated_cost_usd: estCost,
       triggered_by: userId,
     })
     .select("id")
@@ -588,8 +604,12 @@ async function handleCreateRun(body: any, userId: string): Promise<Response> {
     status: "ready",
     total_places: allIds.length,
     total_batches: totalBatches,
-    estimated_cost_usd: estimatedCost,
+    estimated_cost_usd: estCost,
   });
+  } catch (err) {
+    console.error("handleCreateRun error:", err);
+    return json({ error: `create_run failed: ${(err as Error).message}` }, 500);
+  }
 }
 
 async function handleRunBatch(body: any): Promise<Response> {
@@ -815,48 +835,142 @@ async function handleRunBatch(body: any): Promise<Response> {
 
 async function handleRunStatus(body: any): Promise<Response> {
   const db = getDb();
-  const { data, error } = await db.rpc("admin_ai_run_status", { p_job_id: body.run_id });
-  if (error) return json({ error: error.message }, 500);
-  return json(data);
+  const runId = body.run_id;
+  if (!runId) return json({ error: "Missing run_id" }, 400);
+
+  const { data: run, error: runErr } = await db
+    .from("ai_validation_jobs").select("*").eq("id", runId).single();
+  if (runErr || !run) return json({ error: "Run not found" }, 404);
+
+  const { data: batches } = await db
+    .from("ai_validation_batches")
+    .select("id, batch_index, status, place_count, accepted, rejected, reclassified, low_confidence, failed_places, started_at, completed_at, error_message")
+    .eq("run_id", runId)
+    .order("batch_index");
+
+  return json({ run, batches: batches || [] });
 }
 
 async function handleGetResults(body: any): Promise<Response> {
   const db = getDb();
-  const { data, error } = await db.rpc("admin_ai_run_results", {
-    p_job_id: body.job_id || null,
-    p_decision: body.decision || null,
-    p_category: body.category || null,
-    p_confidence: body.confidence || null,
-    p_search: body.search || null,
-    p_page: body.page || 1,
-    p_page_size: body.page_size || 50,
-  });
+  const page = body.page || 1;
+  const pageSize = body.page_size || 50;
+  const offset = (page - 1) * pageSize;
+
+  // Find job ID (use provided or latest completed)
+  let jobId = body.job_id;
+  if (!jobId) {
+    const { data: latest } = await db.from("ai_validation_jobs")
+      .select("id").eq("status", "completed").order("completed_at", { ascending: false }).limit(1).maybeSingle();
+    jobId = latest?.id;
+  }
+  if (!jobId) return json({ results: [], total_count: 0, page, page_size: pageSize });
+
+  let query = db.from("ai_validation_results")
+    .select("id, place_id, decision, previous_categories, new_categories, primary_identity, confidence, reason, evidence, stage_resolved, website_verified, overridden, override_decision, override_categories, override_reason, overridden_at, created_at", { count: "exact" })
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false });
+
+  if (body.decision) query = query.eq("decision", body.decision);
+  if (body.category) query = query.contains("new_categories", [body.category]);
+  if (body.confidence) query = query.eq("confidence", body.confidence);
+  query = query.range(offset, offset + pageSize - 1);
+
+  const { data: results, count, error } = await query;
   if (error) return json({ error: error.message }, 500);
-  return json(data);
+
+  // Fetch place names for results
+  const placeIds = (results || []).map((r: any) => r.place_id).filter(Boolean);
+  const placeNames: Record<string, { name: string; address: string }> = {};
+  if (placeIds.length > 0) {
+    const { data: places } = await db.from("place_pool").select("id, name, address").in("id", placeIds);
+    for (const p of places || []) placeNames[p.id] = { name: p.name, address: p.address };
+  }
+
+  const enriched = (results || []).map((r: any) => ({
+    ...r,
+    place_name: placeNames[r.place_id]?.name || "Unknown",
+    place_address: placeNames[r.place_id]?.address || "",
+  }));
+
+  return json({ results: enriched, total_count: count || 0, page, page_size: pageSize });
 }
 
 async function handleReviewQueue(body: any): Promise<Response> {
   const db = getDb();
-  const { data, error } = await db.rpc("admin_ai_review_queue", {
-    p_job_id: body.job_id || null,
-    p_filter: body.filter || "all",
-    p_page: body.page || 1,
-    p_page_size: body.page_size || 20,
-  });
+  const filter = body.filter || "all";
+  const page = body.page || 1;
+  const pageSize = body.page_size || 20;
+  const offset = (page - 1) * pageSize;
+
+  let jobId = body.job_id;
+  if (!jobId) {
+    const { data: latest } = await db.from("ai_validation_jobs")
+      .select("id").in("status", ["completed", "running"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    jobId = latest?.id;
+  }
+  if (!jobId) return json({ items: [], total_count: 0, low_confidence: 0, reclassified: 0, overridden: 0, page, page_size: pageSize });
+
+  let query = db.from("ai_validation_results")
+    .select("id, place_id, decision, previous_categories, new_categories, primary_identity, confidence, reason, evidence, overridden, override_decision, override_categories, override_reason, overridden_at, created_at", { count: "exact" })
+    .eq("job_id", jobId);
+
+  if (filter === "low_confidence") query = query.eq("confidence", "low").eq("overridden", false);
+  else if (filter === "reclassified") query = query.eq("decision", "reclassify").eq("overridden", false);
+  else if (filter === "overridden") query = query.eq("overridden", true);
+  else query = query.or("confidence.eq.low,decision.eq.reclassify,overridden.eq.true");
+
+  query = query.order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+  const { data: items, count, error } = await query;
   if (error) return json({ error: error.message }, 500);
-  return json(data);
+
+  // Enrich with place names
+  const placeIds = (items || []).map((r: any) => r.place_id).filter(Boolean);
+  const placeNames: Record<string, { name: string; address: string }> = {};
+  if (placeIds.length > 0) {
+    const { data: places } = await db.from("place_pool").select("id, name, address").in("id", placeIds);
+    for (const p of places || []) placeNames[p.id] = { name: p.name, address: p.address };
+  }
+
+  const enriched = (items || []).map((r: any) => ({
+    ...r,
+    place_name: placeNames[r.place_id]?.name || "Unknown",
+    place_address: placeNames[r.place_id]?.address || "",
+  }));
+
+  return json({ items: enriched, total_count: count || 0, page, page_size: pageSize });
 }
 
 async function handleOverride(body: any): Promise<Response> {
   const db = getDb();
-  const { data, error } = await db.rpc("admin_ai_override_place", {
-    p_result_id: body.result_id,
-    p_decision: body.decision,
-    p_categories: body.categories || null,
-    p_reason: body.reason || null,
-  });
-  if (error) return json({ error: error.message }, 500);
-  return json(data);
+  const resultId = body.result_id;
+  const decision = body.decision;
+  if (!resultId || !decision) return json({ error: "Missing result_id or decision" }, 400);
+  if (!["accept", "reject", "reclassify"].includes(decision)) return json({ error: "Invalid decision" }, 400);
+
+  // Get place_id from result
+  const { data: result } = await db.from("ai_validation_results").select("place_id").eq("id", resultId).single();
+  if (!result) return json({ error: "Result not found" }, 404);
+
+  // Update result
+  await db.from("ai_validation_results").update({
+    overridden: true,
+    override_decision: decision,
+    override_categories: body.categories || null,
+    override_reason: body.reason || null,
+    overridden_at: new Date().toISOString(),
+  }).eq("id", resultId);
+
+  // Update place_pool
+  const approved = decision === "accept" || (decision === "reclassify" && body.categories?.length > 0);
+  await db.from("place_pool").update({
+    ai_approved: approved,
+    ai_categories: body.categories || [],
+    ai_reason: body.reason || "Admin override",
+    ai_validated_at: new Date().toISOString(),
+  }).eq("id", result.place_id);
+
+  return json({ success: true, place_id: result.place_id });
 }
 
 async function handleStopRun(body: any): Promise<Response> {

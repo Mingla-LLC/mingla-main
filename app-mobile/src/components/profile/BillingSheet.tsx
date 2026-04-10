@@ -101,7 +101,7 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
   const user = useAppStore((s) => s.user);
   const userId = user?.id;
 
-  const effectiveTier = useEffectiveTier(userId);
+  const { tier: effectiveTier } = useEffectiveTier(userId);
   const { data: subscription, isLoading, isError, refetch } = useSubscription(userId);
   const trialDays = useTrialDaysRemaining(userId);
   const trialTotalDays = useTrialTotalDays(userId);

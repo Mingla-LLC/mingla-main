@@ -17,7 +17,7 @@ import { useAppStore } from '../store/appStore';
  */
 export function useSessionCreationGate() {
   const { user } = useAppStore();
-  const tier = useEffectiveTier(user?.id);
+  const { tier } = useEffectiveTier(user?.id);
   const maxSessions = getSessionLimit(tier);
 
   const { data } = useQuery({

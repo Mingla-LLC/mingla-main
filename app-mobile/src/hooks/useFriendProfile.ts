@@ -33,7 +33,7 @@ export function useFriendProfile(userId: string | null) {
       if (profileError) throw new Error(profileError.message);
 
       const [{ data: prefs }, { data: tierRaw, error: tierError }] = await Promise.all([
-        supabase.from('preferences').select('intents, categories').eq('profile_id', userId!).maybeSingle(),
+        supabase.from('preferences').select('display_intents, display_categories').eq('profile_id', userId!).maybeSingle(),
         supabase.rpc('get_effective_tier', { p_user_id: userId! }),
       ]);
 
@@ -51,8 +51,8 @@ export function useFriendProfile(userId: string | null) {
         phone: profile.phone ?? null,
         country: profile.country ?? null,
         tier,
-        intents: prefs?.intents ?? [],
-        categories: prefs?.categories ?? [],
+        intents: prefs?.display_intents ?? [],
+        categories: prefs?.display_categories ?? [],
       };
     },
     enabled: !!userId,

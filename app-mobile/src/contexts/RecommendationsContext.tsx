@@ -25,6 +25,7 @@ import { Recommendation } from "../types/recommendation";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
+import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { useSessionDeck } from '../hooks/useSessionDeck';
 import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
 
@@ -57,6 +58,8 @@ const getDefaultPreferences = (): UserPreferences => ({
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: null,
+  use_gps_location: true,
+  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
 });
 
 interface RecommendationsContextType {
@@ -100,7 +103,6 @@ interface RecommendationsProviderProps {
   children: React.ReactNode;
   currentMode?: string;
   refreshKey?: number | string;
-  resumeCount?: number;
   /** Pre-resolved session UUID from AsyncStorage — enables instant session resolution
    *  without waiting for the full loadUserSessions() network round-trip. */
   persistedSessionId?: string | null;
@@ -112,7 +114,6 @@ export const RecommendationsProvider: React.FC<
   children,
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
-  resumeCount: propResumeCount = 0,
   persistedSessionId: propPersistedSessionId = null,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -338,7 +339,10 @@ export const RecommendationsProvider: React.FC<
 
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
-    const cats = userPrefs?.categories ?? [];
+    // Defensive normalization: converts any display names to slugs, drops invalids.
+    // Prevents corrupted DB data from reaching the deck. See ORCH-0346.
+    const rawCats = userPrefs?.categories ?? [];
+    const cats = rawCats.length > 0 ? normalizeCategoryArray(rawCats, rawCats.length) : [];
     const ints = userPrefs?.intents ?? [];
 
     // Still loading and nothing to show yet — wait for preferences to settle.
@@ -763,10 +767,15 @@ export const RecommendationsProvider: React.FC<
             }
             // Don't overwrite accumulatedCardsRef — keep existing cards visible
           } else if (batchSeed === 0) {
-            // First page: replace (fresh session or pref change)
+            // First page: replace (fresh session or pref change).
+            // Clear sessionServedIdsRef and use the FULL deckCards — not deduped.
+            // onSinglesReady may have already added partial IDs to sessionServedIdsRef,
+            // which would strip singles from the final interleaved result. Clearing
+            // ensures the complete interleaved deck is what the user sees. See ORCH-0345.
             consecutiveSkipCountRef.current = 0;
-            accumulatedCardsRef.current = dedupedCards.length > 0 ? dedupedCards : deckCards;
-            setRecommendations(accumulatedCardsRef.current);
+            sessionServedIdsRef.current = new Set(deckCards.map(c => c.id));
+            accumulatedCardsRef.current = deckCards;
+            setRecommendations(deckCards);
           } else {
             // Subsequent pages: append new unique cards
             consecutiveSkipCountRef.current = 0;

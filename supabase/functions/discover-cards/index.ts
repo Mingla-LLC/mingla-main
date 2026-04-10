@@ -141,7 +141,10 @@ function filterByDateTime(
   datetimePref: string | undefined,
   dateOption: string,
   timeSlot: string | null,
+  timeSlots?: string[] | null,
 ): any[] {
+  // Multi-slot UNION: if any slot is 'anytime', skip all time filtering
+  if (timeSlots?.includes('anytime')) return places;
   // 'anytime' means no time-of-day filtering — return all places as-is
   if (timeSlot === 'anytime') return places;
 
@@ -204,6 +207,68 @@ function filterByDateTime(
       // Including these places increases evening card counts by 30-50%. The user accepts
       // the risk of traveling to a potentially closed place for a larger, more varied deck.
       return true;
+    });
+  }
+
+  // Helper: check if a place is open during a specific hour range on a given day
+  function isOpenDuringHour(place: any, day: number, hourStart: number): boolean {
+    const pType = place.placeType || '';
+    if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
+    const periods = place.regularOpeningHours?.periods;
+    if (periods && periods.length > 0) {
+      return periods.some((period: any) => {
+        if (period.open?.day !== day) return false;
+        const openHour = period.open?.hour ?? 0;
+        let closeHour = period.close?.hour ?? 24;
+        if (closeHour === 0) closeHour = 24;
+        if (closeHour <= openHour) closeHour += 24;
+        return hourStart >= openHour && hourStart < closeHour;
+      });
+    }
+
+    const oh = place.openingHours;
+    if (oh && typeof oh === 'object') {
+      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
+        return oh._periods.some((period: any) => {
+          if (period.open?.day !== day) return false;
+          const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
+          let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
+          if (closeH === 0) closeH = 24;
+          if (closeH <= openH) closeH += 24;
+          return hourStart >= openH && hourStart < closeH;
+        });
+      }
+      const dayName = DAY_NAMES[day];
+      const dayText = oh[dayName];
+      if (!dayText) return true;
+      const parsed = parseHoursText(dayText);
+      if (!parsed) return false;
+      return hourInRanges(hourStart, parsed);
+    }
+
+    return true; // No hours data — assume open
+  }
+
+  // Multi-slot UNION filtering (collab mode — DEC-010)
+  // Place passes if open during ANY of the selected time slots.
+  if (timeSlots && timeSlots.length > 1) {
+    return places.filter(place => {
+      let targetDay: number;
+      if (datetimePref) {
+        const prefDate = new Date(datetimePref);
+        const noonUtc = new Date(prefDate.getUTCFullYear(), prefDate.getUTCMonth(), prefDate.getUTCDate(), 12, 0, 0);
+        targetDay = noonUtc.getDay();
+      } else {
+        const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
+        const localMs = Date.now() + offsetMin * 60 * 1000;
+        targetDay = new Date(localMs).getUTCDay();
+      }
+      return timeSlots.some(slot => {
+        const range = TIME_SLOT_RANGES[slot];
+        if (!range) return false;
+        return isOpenDuringHour(place, targetDay, range.start);
+      });
     });
   }
 
@@ -390,6 +455,7 @@ serve(async (req: Request) => {
       datetimePref,
       dateOption = 'now',
       timeSlot: rawTimeSlot = null,
+      timeSlots: rawTimeSlots,
       batchSeed = 0,
       limit = 200,
       priceTiers,
@@ -401,9 +467,18 @@ serve(async (req: Request) => {
       ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
       : [];
 
-    // Sanitize time inputs
-    const timeSlot = rawTimeSlot && ['brunch', 'afternoon', 'dinner', 'lateNight', 'anytime'].includes(rawTimeSlot)
-      ? rawTimeSlot
+    // Support both single timeSlot (solo) and timeSlots array (collab UNION — DEC-010)
+    const VALID_SLOTS = ['brunch', 'afternoon', 'dinner', 'lateNight', 'anytime'];
+    let resolvedTimeSlots: string[] | null = null;
+    if (Array.isArray(rawTimeSlots) && rawTimeSlots.length > 0) {
+      resolvedTimeSlots = rawTimeSlots.filter((s: string) => VALID_SLOTS.includes(s));
+      if (resolvedTimeSlots.length === 0) resolvedTimeSlots = null;
+    } else if (rawTimeSlot && VALID_SLOTS.includes(rawTimeSlot)) {
+      resolvedTimeSlots = [rawTimeSlot];
+    }
+    // Single slot for backward compat with existing filterByDateTime path
+    const timeSlot = resolvedTimeSlots && resolvedTimeSlots.length === 1
+      ? resolvedTimeSlots[0]
       : null;
 
     // ── Validate ──────────────────────────────────────────────────────────
@@ -568,7 +643,7 @@ serve(async (req: Request) => {
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
-          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot);
+          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, resolvedTimeSlots);
 
           // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();

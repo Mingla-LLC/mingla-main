@@ -5,7 +5,7 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 import { Icon } from "./ui/Icon";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors, shadows } from "../constants/designSystem";
-import { getCategoryIcon } from "../utils/categoryUtils";
+import { getCategoryIcon, getReadableCategoryName } from "../utils/categoryUtils";
 import {
   formatTierLabel,
   googleLevelToTierSlug,
@@ -24,6 +24,7 @@ export interface PersonGridCardProps {
   priceTier: PriceTierSlug | null;
   priceLevel: string | null;
   onPress: () => void;
+  width?: number;
 }
 
 const PersonGridCard: React.FC<PersonGridCardProps> = ({
@@ -33,6 +34,7 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
   priceTier,
   priceLevel,
   onPress,
+  width,
 }) => {
   const { currency } = useLocalePreferences();
   const resolvedTier: PriceTierSlug =
@@ -42,7 +44,7 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, width != null && { width }]}
       onPress={onPress}
       activeOpacity={0.85}
     >
@@ -76,7 +78,7 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
           {title}
         </Text>
         <Text style={styles.categoryLabel} numberOfLines={1}>
-          {category}
+          {getReadableCategoryName(category)}
         </Text>
         <View style={styles.footer}>
           <Text style={styles.priceText} numberOfLines={1}>

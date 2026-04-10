@@ -116,6 +116,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
             priceTier={asPriceTier(item.priceTier)}
             priceLevel={null}
             onPress={() => onCardPress(item.id)}
+            width={CARD_WIDTH}
           />
           {item.isVisited && <VisitBadge />}
         </View>
@@ -312,17 +313,22 @@ const styles = StyleSheet.create({
   // Grid
   gridContent: {
     paddingHorizontal: s(16),
+    paddingTop: vs(8),
     paddingBottom: vs(32),
   },
   columnWrapper: {
     justifyContent: 'space-between',
-    marginBottom: vs(16),
+    marginBottom: vs(12),
+    gap: s(12),
   },
   cardWrapper: {
     width: CARD_WIDTH,
+    overflow: 'hidden',
   },
   cardContainer: {
     position: 'relative',
+    borderRadius: s(16),
+    overflow: 'hidden',
   },
   // Skeleton
   skeletonGrid: {

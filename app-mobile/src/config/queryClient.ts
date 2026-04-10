@@ -2,7 +2,7 @@ import { QueryClient, QueryCache, MutationCache, focusManager, onlineManager } f
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { Alert, AppState } from 'react-native';
+import { AppState } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
@@ -57,6 +57,14 @@ export function setSignOutHandler(handler: () => Promise<void>): void {
 }
 
 /**
+ * Get the registered sign-out handler. Used by useForegroundRefresh for
+ * auth retry escalation (same handler as the 401 forced sign-out path).
+ */
+export function getSignOutHandler(): (() => Promise<void>) | null {
+  return _registeredSignOutHandler;
+}
+
+/**
  * Reset the 401 counter. Called by useForegroundRefresh at the start of
  * every resume so that transient 401s from focusManager-triggered refetches
  * (which fire before auth is refreshed) don't accumulate into a forced
@@ -92,6 +100,10 @@ function handlePotentialAuthError(error: Error): void {
     msg.includes('invalid claim: missing sub claim');
 
   if (is401) {
+    // Don't count 401s when offline — they're from in-flight requests that
+    // started before connectivity was lost, not from zombie auth. ORCH-0340.
+    if (!onlineManager.isOnline()) return;
+
     // During grace period (resume burst), skip counting — auth refresh is in progress
     if (auth401GracePeriod) return;
 
@@ -104,24 +116,13 @@ function handlePotentialAuthError(error: Error): void {
     if (auth401Count >= 3) {
       auth401Count = 0;
       if (auth401ResetTimer) { clearTimeout(auth401ResetTimer); auth401ResetTimer = null; }
-      console.warn('[AUTH] 3 consecutive 401s — forcing sign-out');
 
-      // Show message BEFORE sign-out so user knows what happened
-      Alert.alert("Session Expired", "Your session has expired. Please sign in again.");
-
-      // Use the registered full sign-out handler (from AppStateManager) so that
-      // SDK cleanup, AsyncStorage sweep, and React Query clear all execute.
-      // Falls back to raw supabase.auth.signOut() only if handler not yet registered.
-      setTimeout(() => {
-        if (_registeredSignOutHandler) {
-          _registeredSignOutHandler().catch((e) =>
-            console.error('[AUTH] Full sign-out failed:', e)
-          );
-        } else {
-          const { supabase } = require('../services/supabase');
-          supabase.auth.signOut();
-        }
-      }, 1000);
+      // INVARIANT I-NEVER-SIGNOUT: NEVER auto-sign-out. User directive 2026-04-08.
+      // Show a warning toast instead. If the session is genuinely dead, the user
+      // will encounter a sign-in prompt on the next significant action. See ORCH-0340.
+      console.warn('[AUTH] 3 consecutive 401s — showing connection warning');
+      const { toastManager } = require('../components/ui/Toast');
+      toastManager.warning('Having trouble connecting. Try again in a moment.', 4000);
     }
   } else {
     // Any non-auth error breaks the consecutive chain
@@ -180,7 +181,19 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000,
       gcTime: 24 * 60 * 60 * 1000,
-      retry: 1,
+      // Auth errors (401/JWT expired): don't retry — the auth handler refreshes
+      // the token, then invalidateQueries gives the query a fresh start. Retrying
+      // with the same expired JWT is a guaranteed waste. ORCH-0338.
+      retry: (failureCount: number, error: Error): boolean => {
+        const msg = error?.message ?? '';
+        const isAuthError =
+          msg.includes('401') ||
+          msg.includes('JWT expired') ||
+          msg.includes('Invalid JWT') ||
+          msg.includes('invalid claim: missing sub claim');
+        if (isAuthError) return false;
+        return failureCount < 1;
+      },
       refetchOnReconnect: 'always',
     },
   },

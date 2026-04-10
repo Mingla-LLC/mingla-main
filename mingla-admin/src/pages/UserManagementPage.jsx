@@ -145,7 +145,7 @@ export function UserManagementPage() {
   useEffect(() => {
     async function fetchCountries() {
       try {
-        const { data } = await supabase.from("profiles").select("country").or('account_type.neq.admin,account_type.is.null').limit(50000);
+        const { data } = await supabase.from("profiles").select("country").or('account_type.neq.admin,account_type.is.null').eq("is_seed", false).limit(50000);
         if (!mountedRef.current) return;
         const unique = [...new Set((data || []).map(r => r.country).filter(Boolean))].sort();
         setCountries(unique);
@@ -171,14 +171,14 @@ export function UserManagementPage() {
     setStatsLoading(true);
     try {
       const [totalRes, activeRes, bannedRes, onboardedRes] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null'),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("active", true),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("active", false),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("has_completed_onboarding", true),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("is_seed", false),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("active", true).eq("is_seed", false),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("active", false).eq("is_seed", false),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').eq("has_completed_onboarding", true).eq("is_seed", false),
       ]);
 
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').gte("created_at", weekAgo);
+      const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').gte("created_at", weekAgo).eq("is_seed", false);
 
       if (!mountedRef.current) return;
       setStats({
@@ -206,6 +206,7 @@ export function UserManagementPage() {
         .from("profiles")
         .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at, is_beta_tester", { count: "exact" })
         .or('account_type.neq.admin,account_type.is.null')
+        .eq("is_seed", false)
         .order(sortKey || "created_at", { ascending })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 

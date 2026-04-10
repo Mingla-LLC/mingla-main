@@ -126,6 +126,26 @@ const timeSlots = [
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight" | "anytime";
 
+// Kebab-case mapping for date_option DB persistence (standardized format)
+const DATE_OPTION_TO_KEBAB: Record<string, string> = {
+  'now': 'now',
+  'today': 'today',
+  'this weekend': 'this-weekend',
+  'pick a date': 'pick-a-date',
+};
+
+// Reverse mapping for loading date_option from DB (handles both kebab and legacy formats)
+const KEBAB_TO_DATE_OPTION: Record<string, DateOption> = {
+  'now': 'Now',
+  'today': 'Today',
+  'this-weekend': 'This Weekend',
+  'this weekend': 'This Weekend',
+  'pick-a-date': 'Pick a Date',
+  'pick a date': 'Pick a Date',
+  'weekend': 'This Weekend',
+  'custom': 'Pick a Date',
+};
+
 export default function PreferencesSheet({
   visible,
   onClose,
@@ -254,61 +274,89 @@ export default function PreferencesSheet({
     }
 
     if (isCollaborationMode) {
+      // Narrow type: in collab mode, preferences come from BoardSessionPreferences
+      const prefs = loadedPreferences as import('../hooks/useBoardSession').BoardSessionPreferences;
       // Load from board session preferences — intents and categories are separate DB columns
       const collabIntents = capIntents(
-        Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
+        Array.isArray(prefs.intents) ? prefs.intents : []
       );
       setSelectedIntents(collabIntents);
       const collabCats = normalizeCategoryArray(
-        Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        Array.isArray(prefs.categories) ? prefs.categories : []
       );
       setSelectedCategories(collabCats);
-      if (Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0) {
-        setSelectedPriceTiers((loadedPreferences).price_tiers);
+      if (Array.isArray(prefs.price_tiers) && prefs.price_tiers.length > 0) {
+        setSelectedPriceTiers(prefs.price_tiers as PriceTierSlug[]);
       }
-      if ((loadedPreferences).travel_mode) {
-        setTravelMode((loadedPreferences).travel_mode);
+      if (prefs.travel_mode) {
+        setTravelMode(prefs.travel_mode);
       }
       // travel_constraint_type is always 'time' — no need to load from DB
-      if ((loadedPreferences).travel_constraint_value !== undefined) {
-        setConstraintValue((loadedPreferences).travel_constraint_value);
+      if (prefs.travel_constraint_value !== undefined) {
+        setConstraintValue(prefs.travel_constraint_value);
       }
-      if ((loadedPreferences).time_of_day) {
-        const timeSlot = (loadedPreferences).time_of_day;
-        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(timeSlot)) {
-          setSelectedTimeSlot(timeSlot as TimeSlot);
+      // Load date_option — handle both kebab-case and legacy lowercase (ORCH-0321)
+      let loadedDateOption: DateOption = "Now";
+      if (prefs.date_option) {
+        loadedDateOption = (KEBAB_TO_DATE_OPTION[prefs.date_option] || 'Now') as DateOption;
+        setSelectedDateOption(loadedDateOption);
+      }
+      // Prefer time_slot (parity with solo), fall back to time_of_day (legacy) — ORCH-0320
+      const loadedTimeSlot = prefs.time_slot || prefs.time_of_day;
+      if (loadedTimeSlot) {
+        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(loadedTimeSlot)) {
+          setSelectedTimeSlot(loadedTimeSlot as TimeSlot);
         }
       }
-      if ((loadedPreferences).datetime_pref) {
-        const date = new Date((loadedPreferences).datetime_pref);
+      if (prefs.datetime_pref) {
+        const date = new Date(prefs.datetime_pref);
         if (!isNaN(date.getTime())) {
           setSelectedDate(date);
         }
       }
-      if ((loadedPreferences).location) {
-        const savedLocation = (loadedPreferences).location;
+      // Load location: prefer structured use_gps_location flag, fall back to heuristic (ORCH-0319)
+      if (typeof prefs.use_gps_location === 'boolean') {
+        const isGps = prefs.use_gps_location;
+        setUseGpsLocation(isGps);
+        setUseLocation(isGps ? 'gps' : 'search');
+        if (!isGps && prefs.custom_location) {
+          setSearchLocation(prefs.custom_location);
+        } else if (prefs.location) {
+          setSearchLocation(prefs.location);
+        }
+      } else if (prefs.location) {
+        // Legacy fallback: guess from location format
+        const savedLocation = prefs.location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
-        setUseLocation(isCoordinates ? "gps" : "search");
+        setUseLocation(isCoordinates ? 'gps' : 'search');
+        setUseGpsLocation(isCoordinates);
+      }
+      // Restore saved coordinates (ORCH-0319)
+      if (prefs.custom_lat != null && prefs.custom_lng != null) {
+        setSelectedCoords({
+          lat: prefs.custom_lat,
+          lng: prefs.custom_lng,
+        });
       }
 
       setInitialPreferences({
         selectedIntents: collabIntents,
-        selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
-          ? (loadedPreferences).price_tiers
+        selectedPriceTiers: Array.isArray(prefs.price_tiers) && prefs.price_tiers.length > 0
+          ? prefs.price_tiers
           : ['comfy', 'bougie'],
-        budgetMin: (loadedPreferences).budget_min || 0,
-        budgetMax: (loadedPreferences).budget_max || 200,
+        budgetMin: prefs.budget_min || 0,
+        budgetMax: prefs.budget_max || 200,
         selectedCategories: collabCats,
-        selectedDateOption: "Now",
-        selectedTimeSlot: (loadedPreferences).time_of_day || null,
-        selectedDate: (loadedPreferences).datetime_pref
-          ? new Date((loadedPreferences).datetime_pref)
+        selectedDateOption: loadedDateOption,
+        selectedTimeSlot: loadedTimeSlot || null,
+        selectedDate: prefs.datetime_pref
+          ? new Date(prefs.datetime_pref)
           : null,
-        travelMode: (loadedPreferences).travel_mode || "walking",
+        travelMode: prefs.travel_mode || "walking",
         constraintType: 'time' as const,
-        constraintValue: (loadedPreferences).travel_constraint_value || 30,
-        searchLocation: (loadedPreferences).location || "",
+        constraintValue: prefs.travel_constraint_value || 30,
+        searchLocation: prefs.custom_location || prefs.location || "",
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
@@ -322,7 +370,7 @@ export default function PreferencesSheet({
       setSelectedCategories(soloCats);
 
       if (Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0) {
-        setSelectedPriceTiers((loadedPreferences).price_tiers);
+        setSelectedPriceTiers((loadedPreferences).price_tiers as PriceTierSlug[]);
       }
 
       if (loadedPreferences.travel_mode) {
@@ -774,6 +822,8 @@ export default function PreferencesSheet({
     (async () => {
       try {
         if (isCollaborationMode) {
+          // PARITY: This is the SOLE preference sheet for both solo and collab modes.
+          // CollaborationPreferences.tsx was deleted (ORCH-0316) — this file is the single source of truth.
           const rawDbPrefs: any = {
             categories: finalCategories,
             intents: finalIntents,
@@ -785,16 +835,21 @@ export default function PreferencesSheet({
             travel_constraint_value:
               typeof constraintValue === "number" ? constraintValue : 30,
             time_of_day: selectedTimeSlot || null,
+            time_slot: selectedTimeSlot || null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
-            date_option: selectedDateOption?.toLowerCase() || null,
+            date_option: selectedDateOption
+              ? DATE_OPTION_TO_KEBAB[selectedDateOption.toLowerCase()] || selectedDateOption.toLowerCase()
+              : null,
             use_gps_location: useGpsLocation,
             custom_location: customLocationValue,
+            custom_lat: selectedCoords?.lat ?? null,
+            custom_lng: selectedCoords?.lng ?? null,
           };
 
           const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
 
           if (searchLocation) {
-            dbPrefs.location = searchLocation;
+            (dbPrefs as Record<string, unknown>).location = searchLocation;
           }
 
           await updateBoardPreferences(dbPrefs);

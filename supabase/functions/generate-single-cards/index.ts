@@ -83,8 +83,7 @@ const BATCH_SIZE = 500;
 async function processCategory(
   supabaseAdmin: any,
   category: string,
-  city: string,
-  country: string,
+  cityId: string,
   existingSet: Set<string>,
   existingCategoryMap: Map<string, string[]>,
 ): Promise<{ created: number; skipped: number; eligible: number; skippedNoPhotos: number; skippedDuplicate: number; skippedChildVenue: number; updatedCategories: number }> {
@@ -99,8 +98,7 @@ async function processCategory(
       .select('id, google_place_id, name, address, lat, lng, types, primary_type, rating, review_count, price_level, price_min, price_max, price_tier, price_tiers, opening_hours, website, stored_photo_urls, city_id, city, country, utc_offset_minutes, ai_categories, ai_approved')
       .eq('is_active', true)
       .eq('ai_approved', true)
-      .eq('city', city)
-      .eq('country', country)
+      .eq('city_id', cityId)
       .contains('ai_categories', [slug])
       .order('rating', { ascending: false })
       .range(offset, offset + BATCH_SIZE - 1);
@@ -194,7 +192,7 @@ async function processCategory(
 
 // ── Background processor (runs after response is sent) ──────────────────────
 
-async function runGenerationInBackground(supabaseAdmin: any, runId: string, city: string, country: string) {
+async function runGenerationInBackground(supabaseAdmin: any, runId: string, cityId: string, city: string, country: string) {
   const categories = ALL_CATEGORY_NAMES;
 
   try {
@@ -202,7 +200,7 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
     const { data: existingCards } = await supabaseAdmin
       .from('card_pool')
       .select('google_place_id, categories')
-      .eq('city', city)
+      .eq('city_id', cityId)
       .eq('card_type', 'single')
       .eq('is_active', true);
 
@@ -241,7 +239,7 @@ async function runGenerationInBackground(supabaseAdmin: any, runId: string, city
         .eq('id', runId);
 
       try {
-        const result = await processCategory(supabaseAdmin, category, city, country, existingSet, existingCategoryMap);
+        const result = await processCategory(supabaseAdmin, category, cityId, existingSet, existingCategoryMap);
 
         categoryResults[slug] = {
           created: result.created,
@@ -331,9 +329,9 @@ Deno.serve(async (req: Request) => {
 
     // ── generate_all: create run → return immediately → process in background
     if (action === 'generate_all') {
-      const { city, country } = body;
-      if (!city || !country) {
-        return jsonResponse({ error: 'city and country are required' }, 400);
+      const { cityId, city, country } = body;
+      if (!cityId || !city || !country) {
+        return jsonResponse({ error: 'cityId, city and country are required' }, 400);
       }
 
       // P0-02: Concurrency guard — reject if city already has a running job
@@ -372,7 +370,7 @@ Deno.serve(async (req: Request) => {
 
       // P0-01: Fire-and-forget — process in background, return runId now
       // @ts-ignore — EdgeRuntime.waitUntil is available in Supabase Edge Functions
-      EdgeRuntime.waitUntil(runGenerationInBackground(supabaseAdmin, run.id, city, country));
+      EdgeRuntime.waitUntil(runGenerationInBackground(supabaseAdmin, run.id, cityId, city, country));
 
       return jsonResponse({ success: true, runId: run.id });
     }

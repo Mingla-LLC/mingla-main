@@ -9,24 +9,9 @@
  */
 import { supabase } from "./supabase";
 
-export interface UserPreferences {
-  mode: string;
-  budget_min: number;
-  budget_max: number;
-  people_count: number;
-  categories: string[];
-  intents?: string[];
-  travel_mode: string;
-  travel_constraint_type: 'time';
-  travel_constraint_value: number;
-  datetime_pref: string | null;
-  date_option?: string | null;
-  time_slot?: string | null;
-  // Onboarding-restored fields — present in the DB but previously untyped
-  price_tiers?: string[] | null;
-  use_gps_location?: boolean | null;
-  custom_location?: string | null;
-}
+// Canonical type — single source of truth. See types/preferences.ts (ORCH-0339).
+import type { UserPreferences } from '../types/preferences';
+export type { UserPreferences } from '../types/preferences';
 
 export interface ProfileData {
   id: string;
@@ -158,6 +143,8 @@ export class PreferencesService {
         travel_constraint_type: "time",
         travel_constraint_value: 30,
         datetime_pref: new Date().toISOString(),
+        use_gps_location: true,
+        price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
       };
 
       const { error } = await supabase.from("preferences").insert({

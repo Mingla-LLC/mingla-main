@@ -1,13 +1,14 @@
 # Open Investigations
 
-> Last updated: 2026-03-31
-> Total: 0 active | 8 completed (historical)
+> Last updated: 2026-04-08
+> Total: 1 active | 8 completed (historical)
 
 ## Active Investigations
 
 | ID | Issue | Investigator | Started | Last Update | Status |
 |----|-------|-------------|---------|-------------|--------|
-| — | — | — | — | — | — |
+| INV-009 | ORCH-0336: Long background resume failure (Pass 1) | Forensics | 2026-04-08 | 2026-04-08 | **COMPLETE** — approved |
+| INV-010 | ORCH-0336: Deep-dive — SDK internals, full UI trace, edge cases | Forensics | 2026-04-08 | 2026-04-08 | **COMPLETE** — approved, spec next |
 
 ## Completed Investigations
 

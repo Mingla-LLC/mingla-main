@@ -33,6 +33,7 @@ import { DirectMessage } from "../services/messagingService";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
 import { useAppLayout } from "../hooks/useAppLayout";
+import { useAppLayout } from "../hooks/useAppLayout";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -149,6 +150,7 @@ export default function MessageInterface({
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
+  const { bottomNavTotalHeight } = useAppLayout();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
   const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
@@ -157,6 +159,10 @@ export default function MessageInterface({
 
   // Animated keyboard height (for smooth input bar transitions)
   const animatedKeyboardHeight = useRef(new Animated.Value(0)).current;
+  /** IMEs often re-fire keyboard show with a smaller frame once typing starts; keep lift stable. */
+  const keyboardHeightMaxWhileOpenRef = useRef(0);
+  /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
+  const prevComposerLiftRef = useRef(0);
   /** IMEs often re-fire keyboard show with a smaller frame once typing starts; keep lift stable. */
   const keyboardHeightMaxWhileOpenRef = useRef(0);
   /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
@@ -812,6 +818,9 @@ export default function MessageInterface({
         style={[
           styles.inputArea,
           {
+            // Match padding below the row to padding above (inputArea.paddingTop / border).
+            paddingBottom: keyboardVisible ? 0 : INPUT_AREA_VERTICAL_PADDING,
+            marginBottom: animatedKeyboardHeight,
             // Match padding below the row to padding above (inputArea.paddingTop / border).
             paddingBottom: keyboardVisible ? 0 : INPUT_AREA_VERTICAL_PADDING,
             marginBottom: animatedKeyboardHeight,
@@ -1480,6 +1489,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
     paddingHorizontal: 12,
+    paddingTop: INPUT_AREA_VERTICAL_PADDING,
     paddingTop: INPUT_AREA_VERTICAL_PADDING,
     paddingBottom: 0,
     backgroundColor: "white",

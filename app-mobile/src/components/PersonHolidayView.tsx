@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from './ui/Icon';
@@ -112,10 +113,16 @@ interface PersonHolidayViewProps {
     distance?: string;
     travelMode?: string;
   }) => void;
+  /** Called when a card from the saves list is tapped — passes raw cardData + navigation context */
+  onSaveCardPress?: (cardData: Record<string, unknown>, index: number, allCardData: Record<string, unknown>[]) => void;
   /** Called when user deletes a custom holiday */
   onDeleteCustomDay?: (holidayId: string, holidayName: string) => void;
   /** User's preferred travel mode — used for travel time computation on card press */
   travelMode?: string;
+  /** When true, auto-open the saves list modal on mount (e.g., from map "cards" button) */
+  autoOpenSaves?: boolean;
+  /** Called after autoOpenSaves is consumed so parent can reset the flag */
+  onAutoOpenSavesConsumed?: () => void;
 }
 
 // ── Category icon mapping (matches DiscoverScreen) ──────────────────────────
@@ -679,7 +686,8 @@ export default function PersonHolidayView({
   pairedUserId, pairingId, displayName, birthday, gender,
   location, userId, customHolidays, onAddCustomDay,
   fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
-  onCardPress, onDeleteCustomDay, travelMode,
+  onCardPress, onSaveCardPress, onDeleteCustomDay, travelMode,
+  autoOpenSaves, onAutoOpenSavesConsumed,
 }: PersonHolidayViewProps) {
   const firstName = getFirstName(displayName);
 
@@ -741,6 +749,16 @@ export default function PersonHolidayView({
   const saves = savesData?.saves ?? [];
   const visits = visitsData ?? [];
 
+  // Auto-open saves modal when triggered from map "cards" button
+  useEffect(() => {
+    if (autoOpenSaves && saves.length > 0) {
+      setShowSavesList(true);
+      onAutoOpenSavesConsumed?.();
+    } else if (autoOpenSaves && !savesLoading && saves.length === 0) {
+      onAutoOpenSavesConsumed?.();
+    }
+  }, [autoOpenSaves, saves.length, savesLoading]);
+
   // Derive archived set from persisted prop (parent owns state + AsyncStorage)
   const archivedSet = useMemo(
     () => new Set(archivedHolidayIds ?? []),
@@ -794,48 +812,7 @@ export default function PersonHolidayView({
     [sortedHolidays, archivedSet]
   );
 
-  // ── Sub-screen handling (must come before main return) ─────────────────
-  if (showSavesList) {
-    return (
-      <PairedSavesListScreen
-        title={`${firstName}'s saves`}
-        items={saves.map((sv) => ({
-          id: sv.id,
-          title: sv.title,
-          category: sv.category,
-          imageUrl: sv.imageUrl,
-          priceTier: asPriceTier(sv.priceTier),
-          rating: sv.rating,
-          timestamp: sv.savedAt,
-          timestampLabel: "Saved",
-        }))}
-        isLoading={savesLoading}
-        onBack={() => setShowSavesList(false)}
-        onCardPress={() => {}}
-      />
-    );
-  }
-
-  if (showVisitsList) {
-    return (
-      <PairedSavesListScreen
-        title={`${firstName}'s visits`}
-        items={visits.map((v) => ({
-          id: v.id,
-          title: v.cardData?.title || "Unknown place",
-          category: v.cardData?.category || "",
-          imageUrl: v.cardData?.imageUrl || "",
-          priceTier: asPriceTier(v.cardData?.priceTier),
-          timestamp: v.visitedAt,
-          timestampLabel: "Visited",
-          isVisited: true,
-        }))}
-        isLoading={visitsLoading}
-        onBack={() => setShowVisitsList(false)}
-        onCardPress={() => {}}
-      />
-    );
-  }
+  // Sub-screen handling moved to Modals at end of return (fixes FlatList-in-ScrollView nesting)
 
   return (
     <View style={styles.root}>
@@ -863,6 +840,19 @@ export default function PersonHolidayView({
                   {cd.small !== "" && <Text style={styles.heroDaysLabel}>{cd.small}</Text>}
                 </View>
               </View>
+              {saves.length > 0 && (
+                <TouchableOpacity
+                  style={styles.heroLikedBtn}
+                  onPress={() => setShowSavesList(true)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="heart" size={s(14)} color="white" />
+                  <Text style={styles.heroLikedText}>
+                    {saves.length} Liked {saves.length === 1 ? 'Place' : 'Places'}
+                  </Text>
+                  <Icon name="chevron-forward" size={s(14)} color="rgba(255,255,255,0.7)" />
+                </TouchableOpacity>
+              )}
               <CalendarButton
                 holidayKey="birthday" pairingId={pairingId}
                 eventTitle={`${fn}'s Birthday`} nextOccurrence={nd}
@@ -982,6 +972,57 @@ export default function PersonHolidayView({
           )}
         </View>
       )}
+      {/* Saves list — rendered as Modal to avoid FlatList-in-ScrollView nesting */}
+      <Modal visible={showSavesList} animationType="slide" presentationStyle="pageSheet">
+        <PairedSavesListScreen
+          title={`${firstName}'s saves`}
+          items={saves.map((sv) => ({
+            id: sv.id,
+            title: sv.title,
+            category: sv.category,
+            imageUrl: sv.imageUrl,
+            priceTier: asPriceTier(sv.priceTier),
+            rating: sv.rating,
+            timestamp: sv.savedAt,
+            timestampLabel: "Saved",
+          }))}
+          isLoading={savesLoading}
+          onBack={() => setShowSavesList(false)}
+          onCardPress={(id) => {
+            const idx = saves.findIndex((s) => s.id === id);
+            const sv = idx >= 0 ? saves[idx] : undefined;
+            if (!sv) return;
+            // Close saves modal first, then open expanded card (avoids stacked Modal issues on iOS)
+            setShowSavesList(false);
+            const cd = (sv.cardData ?? {}) as Record<string, unknown>;
+            if (onSaveCardPress) {
+              const allCd = saves.map((s) => ((s.cardData ?? {}) as Record<string, unknown>));
+              // Small delay to let pageSheet dismiss before opening expanded modal
+              setTimeout(() => onSaveCardPress(cd, idx, allCd), 300);
+            }
+          }}
+        />
+      </Modal>
+
+      {/* Visits list — rendered as Modal */}
+      <Modal visible={showVisitsList} animationType="slide" presentationStyle="pageSheet">
+        <PairedSavesListScreen
+          title={`${firstName}'s visits`}
+          items={visits.map((v) => ({
+            id: v.id,
+            title: v.cardData?.title || "Unknown place",
+            category: v.cardData?.category || "",
+            imageUrl: v.cardData?.imageUrl || "",
+            priceTier: asPriceTier(v.cardData?.priceTier),
+            timestamp: v.visitedAt,
+            timestampLabel: "Visited",
+            isVisited: true,
+          }))}
+          isLoading={visitsLoading}
+          onBack={() => setShowVisitsList(false)}
+          onCardPress={() => {}}
+        />
+      </Modal>
     </View>
   );
 }
@@ -998,7 +1039,9 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: "#eb7825",
     borderRadius: s(20),
-    padding: s(20),
+    paddingTop: s(20),
+    paddingHorizontal: s(20),
+    paddingBottom: s(2),
     marginBottom: s(4),
   },
   heroContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
@@ -1007,6 +1050,22 @@ const styles = StyleSheet.create({
   heroTitle: { fontSize: s(22), fontWeight: "700", color: "white", marginBottom: s(4) },
   heroSubtitle: { fontSize: s(14), color: "rgba(255,255,255,0.9)", marginBottom: s(2) },
   heroAge: { fontSize: s(15), fontWeight: "600", color: "rgba(255,255,255,0.95)" },
+  heroLikedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.15)",
+    borderRadius: s(10),
+    paddingHorizontal: s(14),
+    paddingVertical: s(9),
+    marginTop: s(12),
+  },
+  heroLikedText: {
+    fontSize: s(14),
+    fontWeight: "600",
+    color: "white",
+    marginLeft: s(8),
+    flex: 1,
+  },
   heroDaysNum: { fontSize: s(36), fontWeight: "700", color: "white", lineHeight: s(40) },
   heroDaysLabel: { fontSize: s(16), fontWeight: "700", color: "white", lineHeight: s(24), marginTop: s(4) },
 
