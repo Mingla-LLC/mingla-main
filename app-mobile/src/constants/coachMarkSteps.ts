@@ -45,7 +45,7 @@ export const COACH_STEPS: CoachStep[] = [
     tab: 'home',
     targetId: 'coach-collab-prefs',
     title: 'Set the Mood',
-    description: 'Each session gets its own vibe. Tap the gear to set what the group wants.',
+    description: "In a session, these are YOUR group preferences \u2014 different from solo. Set what works for everyone.",
     buttonLabel: 'Got it',
   },
   {

@@ -112,7 +112,7 @@ export default function CollaborationSessions({
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
-  const coachCreate = useCoachMark(4);
+  const coachCreate = useCoachMark(4, 20);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -481,7 +481,8 @@ export default function CollaborationSessions({
 
       <View collapsable={false}>
         <TouchableOpacity
-          style={[styles.pill, styles.createPill, coachCreate.isActive && coachCreate.highlightStyle]}
+          ref={coachCreate.targetRef as any}
+          style={[styles.pill, styles.createPill]}
           onPress={() => {
             HapticFeedback.buttonPress();
             if (!gateAllows && !isUnlimited) {

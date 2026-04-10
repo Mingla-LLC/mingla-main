@@ -6,6 +6,14 @@ import { requestPostTourPermissions } from '../services/permissionOrchestrator';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
+export interface TargetRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+
 interface CoachMarkContextType {
   /** 0=not started, 1-10=active, 11=done, -1=skipped, -2=loading */
   currentStep: number;
@@ -15,8 +23,18 @@ interface CoachMarkContextType {
   currentStepConfig: CoachStep | null;
   /** Advance to next step (or complete if on 10) */
   nextStep: () => void;
+  /** Go back to previous step */
+  prevStep: () => void;
   /** Skip permanently (set to -1) */
   skipTour: () => void;
+  /** Stored target measurements per step */
+  targetMeasurements: Map<number, TargetRect>;
+  /** Register/update a target element's measurement */
+  registerTarget: (stepId: number, rect: TargetRect) => void;
+  /** Register a scroll ref for a tab (for auto-scroll on steps 9-10) */
+  registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
+  /** Whether the overlay is visible (false during cross-tab transitions) */
+  overlayVisible: boolean;
 }
 
 interface CoachMarkProviderProps {
@@ -34,20 +52,26 @@ const TOUR_COMPLETED = 11;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
+const SCROLL_SETTLE_DELAY_MS = 400;
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
 export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, navigateToTab }) => {
   const { user } = useAppStore();
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
+  const [overlayVisible, setOverlayVisible] = useState(false);
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
 
+  // Target measurements map (stepId → rect)
+  const [targetMeasurements] = useState(() => new Map<number, TargetRect>());
+  // Scroll refs per tab
+  const scrollRefsRef = useRef<Map<string, React.RefObject<any>>>(new Map());
+
   // ── Fetch step from DB on mount ─────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
-
     let cancelled = false;
 
     async function fetchStep(): Promise<void> {
@@ -59,14 +83,11 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           .single();
 
         if (cancelled) return;
-
         if (error) {
           console.warn('[CoachMark] Failed to fetch step:', error.message);
-          // On error, assume completed so we don't block the user
           setCurrentStep(TOUR_COMPLETED);
           return;
         }
-
         const step = data?.coach_mark_step ?? TOUR_NOT_STARTED;
         setCurrentStep(step);
       } catch (e) {
@@ -86,6 +107,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     startTimerRef.current = setTimeout(() => {
       setCurrentStep(1);
       persistStep(1);
+      setOverlayVisible(true);
     }, START_DELAY_MS);
 
     return () => {
@@ -94,6 +116,32 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         startTimerRef.current = null;
       }
     };
+  }, [currentStep]);
+
+  // ── Show overlay when step becomes active (e.g. resume from DB) ─────────
+  useEffect(() => {
+    if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
+      // Check if auto-scroll is needed (steps 9-10 on profile tab)
+      if (currentStep === 9 || currentStep === 10) {
+        const config = COACH_STEPS.find((s) => s.id === currentStep);
+        if (config) {
+          const scrollRef = scrollRefsRef.current.get(config.tab);
+          if (scrollRef?.current) {
+            // Scroll to a fixed offset — step 9 (Account Settings) is roughly
+            // 400px down, step 10 (feedback) is further. We scroll first so the
+            // element becomes visible, then measure, then show overlay.
+            const scrollTarget = currentStep === 9 ? 300 : 500;
+            scrollRef.current.scrollTo?.({ y: scrollTarget, animated: true });
+            // Wait for scroll + layout, then show overlay
+            setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_DELAY_MS + 200);
+            return;
+          }
+        }
+      }
+      setOverlayVisible(true);
+    } else {
+      setOverlayVisible(false);
+    }
   }, [currentStep]);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────
@@ -113,50 +161,76 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       .update({ coach_mark_step: step })
       .eq('id', user.id)
       .then(({ error }) => {
-        if (error) {
-          console.warn('[CoachMark] Failed to persist step:', error.message);
-        }
+        if (error) console.warn('[CoachMark] Failed to persist step:', error.message);
       });
   }, [user?.id]);
 
+  // ── Register target measurement ─────────────────────────────────────────
+  const registerTarget = useCallback((stepId: number, rect: TargetRect): void => {
+    targetMeasurements.set(stepId, rect);
+  }, [targetMeasurements]);
+
+  // ── Register scroll ref ─────────────────────────────────────────────────
+  const registerScrollRef = useCallback((tabName: string, ref: React.RefObject<any>): void => {
+    scrollRefsRef.current.set(tabName, ref);
+  }, []);
+
+  // ── Navigate and transition ─────────────────────────────────────────────
+  const navigateAndTransition = useCallback((newStep: number, direction: 'forward' | 'back'): void => {
+    const currentConfig = COACH_STEPS.find((s) => s.id === currentStep);
+    const nextConfig = COACH_STEPS.find((s) => s.id === newStep);
+
+    if (currentConfig && nextConfig && currentConfig.tab !== nextConfig.tab) {
+      // Cross-tab: fade out, navigate, wait, fade in
+      setOverlayVisible(false);
+      navigateToTabRef.current(nextConfig.tab);
+      setTimeout(() => {
+        setCurrentStep(newStep);
+        persistStep(newStep);
+        // Auto-scroll handled by the useEffect watching currentStep
+        // Don't set overlayVisible here — the useEffect will handle it
+        // (including scroll delay for steps 9-10)
+        if (newStep !== 9 && newStep !== 10) {
+          setOverlayVisible(true);
+        }
+        // Steps 9-10 overlay visibility is handled by the useEffect above
+      }, TAB_NAVIGATE_DELAY_MS);
+    } else {
+      // Same tab: just update step
+      setCurrentStep(newStep);
+      persistStep(newStep);
+    }
+  }, [currentStep, persistStep, targetMeasurements]);
+
   // ── Next step ───────────────────────────────────────────────────────────
   const nextStep = useCallback((): void => {
-    setCurrentStep((prev) => {
-      if (prev < 1 || prev > COACH_STEP_COUNT) return prev;
+    if (currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
 
-      const newStep = prev + 1;
+    const newStep = currentStep + 1;
 
-      if (newStep > COACH_STEP_COUNT) {
-        // Tour complete
-        persistStep(TOUR_COMPLETED);
-        requestPostTourPermissions().catch((e) =>
-          console.warn('[CoachMark] Post-tour permissions failed:', e)
-        );
-        return TOUR_COMPLETED;
-      }
+    if (newStep > COACH_STEP_COUNT) {
+      // Tour complete
+      setOverlayVisible(false);
+      setCurrentStep(TOUR_COMPLETED);
+      persistStep(TOUR_COMPLETED);
+      requestPostTourPermissions().catch((e) =>
+        console.warn('[CoachMark] Post-tour permissions failed:', e)
+      );
+      return;
+    }
 
-      // Check if we need to navigate to a different tab
-      const currentConfig = COACH_STEPS.find((s) => s.id === prev);
-      const nextConfig = COACH_STEPS.find((s) => s.id === newStep);
+    navigateAndTransition(newStep, 'forward');
+  }, [currentStep, persistStep, navigateAndTransition]);
 
-      if (currentConfig && nextConfig && currentConfig.tab !== nextConfig.tab) {
-        // Navigate first, then update step after delay
-        navigateToTabRef.current(nextConfig.tab);
-        setTimeout(() => {
-          setCurrentStep(newStep);
-          persistStep(newStep);
-        }, TAB_NAVIGATE_DELAY_MS);
-        // Return prev for now — the setTimeout will update
-        return prev;
-      }
-
-      persistStep(newStep);
-      return newStep;
-    });
-  }, [persistStep]);
+  // ── Previous step ───────────────────────────────────────────────────────
+  const prevStep = useCallback((): void => {
+    if (currentStep <= 1) return;
+    navigateAndTransition(currentStep - 1, 'back');
+  }, [currentStep, navigateAndTransition]);
 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
+    setOverlayVisible(false);
     setCurrentStep(TOUR_SKIPPED);
     persistStep(TOUR_SKIPPED);
     requestPostTourPermissions().catch((e) =>
@@ -175,7 +249,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     isCoachActive,
     currentStepConfig,
     nextStep,
+    prevStep,
     skipTour,
+    targetMeasurements,
+    registerTarget,
+    registerScrollRef,
+    overlayVisible,
   };
 
   return (

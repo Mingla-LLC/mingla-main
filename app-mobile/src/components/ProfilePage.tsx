@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCoachMark } from "../hooks/useCoachMark";
+import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import {
   Text,
   View,
@@ -90,7 +91,16 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  const coachPrivacy = useCoachMark(9);
+  const coachPrivacy = useCoachMark(9, 12);
+
+  // Register scroll ref for coach mark auto-scroll (steps 9-10)
+  const scrollRef = useRef<any>(null);
+  const { registerScrollRef } = useCoachMarkContext();
+  useEffect(() => {
+    if (scrollRef.current) {
+      registerScrollRef('profile', scrollRef);
+    }
+  }, [registerScrollRef]);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -249,7 +259,7 @@ export default function ProfilePage({
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <KeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.content}>
           {/* 1. Hero Section — extends behind status bar */}
           <ProfileHeroSection
@@ -308,7 +318,7 @@ export default function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <View style={coachPrivacy.isActive ? [{ borderRadius: 12 }, coachPrivacy.highlightStyle] : undefined}>
+            <View ref={coachPrivacy.targetRef as any}>
               <SettingsRow
                 icon="shield"
                 label="Account Settings"

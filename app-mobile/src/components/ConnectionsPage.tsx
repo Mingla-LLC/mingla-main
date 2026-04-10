@@ -117,8 +117,8 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
-  const coachAddFriend = useCoachMark(7);
-  const coachChat = useCoachMark(8);
+  const coachAddFriend = useCoachMark(7, 8);
+  const coachChat = useCoachMark(8, 0);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 
@@ -1886,12 +1886,13 @@ export default function ConnectionsPageRefactored({
       <View style={styles.container}>
         <View style={styles.content}>
           {/* Compact header: title + action icons */}
-          <View style={[styles.headerRow, coachChat.isActive && coachChat.highlightStyle]}>
+          <View ref={coachChat.targetRef as any} style={styles.headerRow}>
             <Text style={styles.title}>Chats</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
                 onPress={() => handleActionPress("add")}
-                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive, coachAddFriend.isActive && coachAddFriend.highlightStyle]}
+                ref={coachAddFriend.targetRef as any}
+                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
                 activeOpacity={0.7}
               >
                 <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />

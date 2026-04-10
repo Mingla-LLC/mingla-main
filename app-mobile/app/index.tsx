@@ -47,7 +47,7 @@ import ShareModal from "../src/components/ShareModal";
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import { CoachMarkProvider } from "../src/contexts/CoachMarkContext";
-import CoachMarkCard from "../src/components/CoachMarkCard";
+import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
@@ -2183,8 +2183,8 @@ function AppContent() {
                         )}
                       </View>
 
-                      {/* Coach Mark Card — docked above tab bar */}
-                      <CoachMarkCard />
+                      {/* Coach Mark Spotlight Overlay */}
+                      <SpotlightOverlay />
 
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
                       <View
