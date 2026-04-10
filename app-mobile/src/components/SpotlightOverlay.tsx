@@ -19,7 +19,7 @@ import { COACH_STEP_COUNT } from '../constants/coachMarkSteps';
 
 const OVERLAY_COLOR = 'rgba(0,0,0,0.65)';
 const OVERLAY_MAP_COLOR = 'rgba(0,0,0,0.45)';
-const CUTOUT_PADDING = 8;
+const CUTOUT_PADDING = 4;
 const CUTOUT_EXTRA_RADIUS = 4;
 const GLOW_COLOR = 'rgba(235,120,37,0.4)';
 const GLOW_WIDTH = 2;
