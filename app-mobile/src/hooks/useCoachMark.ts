@@ -11,16 +11,17 @@ interface UseCoachMarkResult {
 
 /**
  * Hook for target components to register their position with the spotlight system.
+ * Uses measureInWindow for accurate screen-coordinate measurement.
+ *
+ * NOTE: Do NOT use this for elements inside ScrollViews (steps 11-12).
+ * Those use onLayout + registerTargetScrollOffset instead.
  *
  * Usage:
  *   const coach = useCoachMark(2, 19);
  *   return <View ref={coach.targetRef} style={styles.button} />;
- *
- * The SpotlightOverlay reads measurements from context to position
- * the cutout and bubble. No styles are applied to the target element.
  */
 export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoachMarkResult {
-  const { currentStep, registerTarget, measureVersion } = useCoachMarkContext();
+  const { currentStep, registerTarget } = useCoachMarkContext();
   const nodeRef = useRef<View | null>(null);
   const isActive = currentStep === stepId;
 
@@ -48,14 +49,6 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
       return () => clearTimeout(timer);
     }
   }, [isActive, measure]);
-
-  // Re-measure when measureVersion bumps (after scroll settles)
-  useEffect(() => {
-    if (measureVersion > 0 && isActive && nodeRef.current) {
-      const timer = setTimeout(() => measure(), 50);
-      return () => clearTimeout(timer);
-    }
-  }, [measureVersion, isActive, measure]);
 
   return { isActive, targetRef };
 }

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useCoachMark } from "../hooks/useCoachMark";
 import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import {
   Text,
@@ -91,11 +90,9 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  const coachPrivacy = useCoachMark(11, 12);
-
-  // Register scroll ref for coach mark auto-scroll (steps 9-10)
+  // Coach mark: register scroll ref + target offsets for steps 11-12
   const scrollRef = useRef<any>(null);
-  const { registerScrollRef } = useCoachMarkContext();
+  const { registerScrollRef, registerTargetScrollOffset } = useCoachMarkContext();
   useEffect(() => {
     if (scrollRef.current) {
       registerScrollRef('profile', scrollRef);
@@ -318,7 +315,7 @@ export default function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <View ref={coachPrivacy.targetRef as any}>
+            <View onLayout={(e) => registerTargetScrollOffset(11, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}>
               <SettingsRow
                 icon="shield"
                 label="Account Settings"

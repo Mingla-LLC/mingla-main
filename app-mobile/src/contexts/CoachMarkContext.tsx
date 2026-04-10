@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import { Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
@@ -14,33 +16,25 @@ export interface TargetRect {
   radius: number;
 }
 
+interface ScrollTargetOffset {
+  contentY: number;
+  height: number;
+}
+
 interface CoachMarkContextType {
-  /** 0=not started, 1-10=active, 11=done, -1=skipped, -2=loading */
   currentStep: number;
-  /** true when step is 1-10 */
   isCoachActive: boolean;
-  /** true when tour is about to start (step 0 during delay) — block navigation */
   isCoachPending: boolean;
-  /** true while fetching step from DB — block navigation */
   isCoachLoading: boolean;
-  /** Config for the current step, or null if not active */
   currentStepConfig: CoachStep | null;
-  /** Advance to next step (or complete if on 10) */
   nextStep: () => void;
-  /** Go back to previous step */
   prevStep: () => void;
-  /** Skip permanently (set to -1) */
   skipTour: () => void;
-  /** Stored target measurements per step */
   targetMeasurements: Map<number, TargetRect>;
-  /** Register/update a target element's measurement */
   registerTarget: (stepId: number, rect: TargetRect) => void;
-  /** Register a scroll ref for a tab (for auto-scroll on steps 9-10) */
   registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
-  /** Whether the overlay is visible (false during cross-tab transitions) */
+  registerTargetScrollOffset: (stepId: number, contentY: number, height: number) => void;
   overlayVisible: boolean;
-  /** Incremented after scroll settles to trigger re-measurement of targets */
-  measureVersion: number;
 }
 
 interface CoachMarkProviderProps {
@@ -58,23 +52,31 @@ const TOUR_COMPLETED = 13;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
-const SCROLL_SETTLE_DELAY_MS = 400;
+const SCROLL_SETTLE_MS = 500;
+
+// Steps that need known-position scrolling (inside a ScrollView on profile tab)
+const SCROLL_STEPS = new Set([11, 12]);
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
 export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, navigateToTab }) => {
   const { user } = useAppStore();
+  const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
-  const [measureVersion, setMeasureVersion] = useState(0);
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
 
-  // Target measurements map (stepId → rect)
+  // Target measurements map (stepId → rect) — used by SpotlightOverlay
   const [targetMeasurements] = useState(() => new Map<number, TargetRect>());
   // Scroll refs per tab
   const scrollRefsRef = useRef<Map<string, React.RefObject<any>>>(new Map());
+  // Scroll target offsets — contentY within ScrollView, captured via onLayout
+  const scrollTargetOffsetsRef = useRef<Map<number, ScrollTargetOffset>>(new Map());
+
+  const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
 
   // ── Fetch step from DB on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -112,7 +114,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     if (currentStep !== TOUR_NOT_STARTED) return;
 
     startTimerRef.current = setTimeout(() => {
-      // Ensure user is on the correct tab (step 1 is Home)
       navigateToTabRef.current('home');
       setCurrentStep(1);
       persistStep(1);
@@ -127,41 +128,67 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     };
   }, [currentStep]);
 
-  // ── Show overlay when step becomes active (e.g. resume from DB) ─────────
+  // ── Show overlay when step becomes active ───────────────────────────────
   useEffect(() => {
     if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
-      // Navigate to the correct tab for this step (handles app restart mid-tour)
+      // Navigate to the correct tab
       const config = COACH_STEPS.find((s) => s.id === currentStep);
       if (config) {
         navigateToTabRef.current(config.tab);
       }
 
-      // Check if auto-scroll is needed (profile tab steps)
-      if (currentStep === 11 || currentStep === 12) {
-        // Delay to allow the profile tab to mount and register its scroll ref
-        setTimeout(() => {
-          const stepConfig = COACH_STEPS.find((s) => s.id === currentStep);
-          if (stepConfig) {
-            const scrollRef = scrollRefsRef.current.get(stepConfig.tab);
-            if (scrollRef?.current) {
-              scrollRef.current.scrollToEnd?.({ animated: true });
-            }
-          }
-          // After scroll settles: bump measureVersion to force re-measurement,
-          // wait a frame for measurement to complete, then show overlay
-          setTimeout(() => {
-            setMeasureVersion((v) => v + 1);
-            // Give the re-measure 200ms to complete before showing overlay
-            setTimeout(() => setOverlayVisible(true), 200);
-          }, SCROLL_SETTLE_DELAY_MS);
-        }, TAB_NAVIGATE_DELAY_MS);
+      // Steps 11-12: known-position scroll approach
+      if (SCROLL_STEPS.has(currentStep)) {
+        scrollToKnownPosition(currentStep);
         return;
       }
+
       setOverlayVisible(true);
     } else {
       setOverlayVisible(false);
     }
   }, [currentStep]);
+
+  // ── Known-position scroll for profile steps ─────────────────────────────
+  const scrollToKnownPosition = useCallback((step: number): void => {
+    // Wait for profile tab to mount
+    setTimeout(() => {
+      const stepConfig = COACH_STEPS.find((s) => s.id === step);
+      if (!stepConfig) return;
+
+      const scrollRef = scrollRefsRef.current.get(stepConfig.tab);
+      const offset = scrollTargetOffsetsRef.current.get(step);
+
+      if (!scrollRef?.current || !offset) {
+        // Fallback: scroll to end and show without cutout
+        if (scrollRef?.current) {
+          scrollRef.current.scrollToEnd?.({ animated: true });
+        }
+        setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_MS);
+        return;
+      }
+
+      // Place the target at 35% from the top of the screen
+      const desiredScreenY = screenHeight * 0.35;
+      const scrollY = Math.max(0, offset.contentY - desiredScreenY);
+
+      scrollRef.current.scrollTo?.({ y: scrollY, animated: true });
+
+      // After scroll settles, register a SYNTHETIC measurement at the known position
+      setTimeout(() => {
+        // The element is now at desiredScreenY on screen (accounting for safe area)
+        // Profile page has its own header, so the content area starts after insets.top
+        registerTarget(step, {
+          x: 16,  // padding from left edge
+          y: desiredScreenY + insets.top,
+          width: screenWidth - 32,  // full width minus padding
+          height: offset.height,
+          radius: 12,
+        });
+        setOverlayVisible(true);
+      }, SCROLL_SETTLE_MS);
+    }, TAB_NAVIGATE_DELAY_MS);
+  }, [screenHeight, screenWidth, insets.top, registerTarget]);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
@@ -194,6 +221,11 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     scrollRefsRef.current.set(tabName, ref);
   }, []);
 
+  // ── Register scroll target offset (from onLayout in ProfilePage) ────────
+  const registerTargetScrollOffset = useCallback((stepId: number, contentY: number, height: number): void => {
+    scrollTargetOffsetsRef.current.set(stepId, { contentY, height });
+  }, []);
+
   // ── Navigate and transition ─────────────────────────────────────────────
   const navigateAndTransition = useCallback((newStep: number, direction: 'forward' | 'back'): void => {
     const currentConfig = COACH_STEPS.find((s) => s.id === currentStep);
@@ -206,20 +238,25 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       setTimeout(() => {
         setCurrentStep(newStep);
         persistStep(newStep);
-        // Auto-scroll handled by the useEffect watching currentStep
-        // Don't set overlayVisible here — the useEffect will handle it
-        // (including scroll delay for steps 9-10)
-        if (newStep !== 11 && newStep !== 12) {
+        // Steps 11-12 handled by useEffect → scrollToKnownPosition
+        if (!SCROLL_STEPS.has(newStep)) {
           setOverlayVisible(true);
         }
-        // Steps 9-10 overlay visibility is handled by the useEffect above
       }, TAB_NAVIGATE_DELAY_MS);
     } else {
-      // Same tab: just update step
-      setCurrentStep(newStep);
-      persistStep(newStep);
+      // Same tab
+      if (SCROLL_STEPS.has(newStep)) {
+        // Same tab but needs scroll (e.g., step 11 → 12)
+        setOverlayVisible(false);
+        setCurrentStep(newStep);
+        persistStep(newStep);
+        // useEffect will trigger scrollToKnownPosition
+      } else {
+        setCurrentStep(newStep);
+        persistStep(newStep);
+      }
     }
-  }, [currentStep, persistStep, targetMeasurements]);
+  }, [currentStep, persistStep]);
 
   // ── Next step ───────────────────────────────────────────────────────────
   const nextStep = useCallback((): void => {
@@ -228,7 +265,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     const newStep = currentStep + 1;
 
     if (newStep > COACH_STEP_COUNT) {
-      // Tour complete
       setOverlayVisible(false);
       setCurrentStep(TOUR_COMPLETED);
       persistStep(TOUR_COMPLETED);
@@ -277,8 +313,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     targetMeasurements,
     registerTarget,
     registerScrollRef,
+    registerTargetScrollOffset,
     overlayVisible,
-    measureVersion,
   };
 
   return (
