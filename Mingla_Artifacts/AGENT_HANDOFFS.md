@@ -1,13 +1,14 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-09
-> Total: 0 active | 55 completed
+> Total: 1 active | 55 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| (none) | | | | | |
+| AH-055 | ORCH-0360+ | Investigator (full audit) | 2026-04-09 | FORENSIC_ORCH-0360_MAP_INTERACTIONS_FULL_AUDIT.md | APPROVED |
+| AH-056 | ORCH-0360 | Implementor (clean fix) | 2026-04-09 | IMPLEMENTOR_ORCH-0360_CLEAN_FIX.md | READY |
 
 ## Completed Dispatches
 

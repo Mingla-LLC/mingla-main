@@ -17,6 +17,7 @@ import {
   ScrollView,
   useWindowDimensions,
   RefreshControl,
+  InteractionManager,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
@@ -546,7 +547,9 @@ export default function ConnectionsPageRefactored({
       status: "offline",
       isOnline: false,
     });
-    setShowBlockModal(true);
+    InteractionManager.runAfterInteractions(() => {
+      setShowBlockModal(true);
+    });
   };
 
   const handleReportFromModal = (friend: UseFriend) => {
@@ -1570,7 +1573,12 @@ export default function ConnectionsPageRefactored({
 
   const handleBlockUser = (friend: Friend) => {
     setSelectedUserToBlock(friend);
-    setShowBlockModal(true);
+    // Defer modal show until pending animations/interactions complete.
+    // ConnectionsPage is ~2100 lines — immediate setState triggers a heavy
+    // re-render that makes the modal feel sluggish to appear.
+    InteractionManager.runAfterInteractions(() => {
+      setShowBlockModal(true);
+    });
   };
 
   const handleBlockConfirm = async (reason?: BlockReason) => {

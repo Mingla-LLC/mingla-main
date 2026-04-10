@@ -24,6 +24,7 @@ import { useMapSettings } from '../../hooks/useMapSettings';
 import { useMapCards } from '../../hooks/useMapCards';
 import { usePairedMapSavedCards } from '../../hooks/usePairedMapSavedCards';
 import { supabase } from '../../services/supabase';
+import { blockUser } from '../../services/blockService';
 import { useAppStore } from '../../store/appStore';
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
@@ -317,8 +318,12 @@ export function DiscoverMap({
             actorId: user!.id,
             relatedId: requestData?.id || userId,
             relatedType: 'friend_request',
-            idempotencyKey: `friend_request_received:${user!.id}:${requestData?.id || userId}`,
+            idempotencyKey: `friend_request_received:${user!.id}:${userId}:${Date.now()}`,
           },
+        }).then((result) => {
+          if (result.data && !result.data.pushSent) {
+            console.warn('[DiscoverMap] Push not sent:', result.data.reason);
+          }
         }).catch((e) => {
           console.warn('[DiscoverMap] Friend request notification failed:', e);
         });
@@ -337,21 +342,19 @@ export function DiscoverMap({
           text: 'Block',
           style: 'destructive',
           onPress: async () => {
-            try {
-              await supabase.from('blocked_users').upsert(
-                { blocker_id: user!.id, blocked_user_id: userId },
-                { onConflict: 'blocker_id,blocked_user_id' },
-              );
+            const result = await blockUser(userId);
+            if (result.success) {
               personSheetRef.current?.close();
               queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
-            } catch {
-              Alert.alert('Error', 'Could not block user. Try again later.');
+              queryClient.invalidateQueries({ queryKey: ['friends'] });
+            } else {
+              Alert.alert('Error', result.error || 'Could not block user. Try again later.');
             }
           },
         },
       ]);
     },
-    [user, queryClient],
+    [queryClient],
   );
 
   const handleReportFromMap = useCallback(
