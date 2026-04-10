@@ -19,6 +19,8 @@ interface CoachMarkContextType {
   currentStep: number;
   /** true when step is 1-10 */
   isCoachActive: boolean;
+  /** true when tour is about to start (step 0 during delay) — block navigation */
+  isCoachPending: boolean;
   /** Config for the current step, or null if not active */
   currentStepConfig: CoachStep | null;
   /** Advance to next step (or complete if on 10) */
@@ -242,6 +244,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
   // ── Derived state ───────────────────────────────────────────────────────
   const isCoachActive = currentStep >= 1 && currentStep <= COACH_STEP_COUNT;
+  const isCoachPending = currentStep === TOUR_NOT_STARTED;
   const currentStepConfig = isCoachActive
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
@@ -249,6 +252,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const value: CoachMarkContextType = {
     currentStep,
     isCoachActive,
+    isCoachPending,
     currentStepConfig,
     nextStep,
     prevStep,

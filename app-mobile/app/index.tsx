@@ -46,7 +46,7 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
-import { CoachMarkProvider } from "../src/contexts/CoachMarkContext";
+import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
@@ -89,6 +89,23 @@ import {
 } from "../src/hooks/useNotifications";
 
 const TAB_BAR_ICON_SIZE = ms(20);
+
+/** Wraps the tab bar and disables it when the coach mark is pending or active */
+function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
+  const { isCoachPending, isCoachActive } = useCoachMarkContext();
+  const locked = isCoachPending || isCoachActive;
+  return (
+    <View
+      style={[
+        styles.bottomNavigation,
+        { paddingBottom: layout.bottomNavPadding },
+      ]}
+      pointerEvents={locked ? 'none' : 'auto'}
+    >
+      {children}
+    </View>
+  );
+}
 
 // ── Sentry ──────────────────────────────────────────────────────────────────
 // Initialize BEFORE any React component renders. Sentry's native module
@@ -2187,12 +2204,7 @@ function AppContent() {
                       <SpotlightOverlay />
 
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
-                      <View
-                        style={[
-                          styles.bottomNavigation,
-                          { paddingBottom: layout.bottomNavPadding },
-                        ]}
-                      >
+                      <CoachMarkNavigationGate layout={layout}>
                         <View style={styles.navigationContainer}>
                           <TouchableOpacity
                             onPress={() => {
@@ -2386,7 +2398,7 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                         </View>
-                      </View>
+                      </CoachMarkNavigationGate>
                     </View>
 
                     {/* Share Modal */}
