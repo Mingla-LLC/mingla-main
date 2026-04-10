@@ -143,6 +143,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
   const hasTarget = target && target.width > 0 && target.height > 0;
 
+  if (__DEV__) {
+    console.log(`[Spotlight] Step ${currentStep}: target=${JSON.stringify(target)}, hasTarget=${hasTarget}, isMap=${isMapStep}`);
+  }
+
   // ── Cutout calculation ──────────────────────────────────────────────────
   const cutout = hasTarget && !isMapStep ? {
     x: target.x - CUTOUT_PADDING,
@@ -208,20 +212,17 @@ export default function SpotlightOverlay(): React.ReactElement | null {
       accessibilityRole="none"
       accessibilityLabel={`Guided tour step ${currentStep} of ${COACH_STEP_COUNT}`}
     >
-      {/* Layer 1: Scrim strips — block taps on dark area but leave cutout open for interaction */}
+      {/* Layer 1: Scrim strips — 4 strips around the cutout block taps on dark area.
+          The cutout area has NO View covering it, so touches fall through the
+          root (box-none) to the app content underneath. */}
       {cutout ? (
         <>
-          {/* Top strip */}
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: Math.max(0, cutout.y) }} pointerEvents="auto" />
-          {/* Bottom strip */}
           <View style={{ position: 'absolute', top: cutout.y + cutout.height, left: 0, right: 0, bottom: 0 }} pointerEvents="auto" />
-          {/* Left strip */}
           <View style={{ position: 'absolute', top: cutout.y, left: 0, width: Math.max(0, cutout.x), height: cutout.height }} pointerEvents="auto" />
-          {/* Right strip */}
           <View style={{ position: 'absolute', top: cutout.y, left: cutout.x + cutout.width, right: 0, height: cutout.height }} pointerEvents="auto" />
         </>
       ) : (
-        /* No cutout (map step or no measurement) — block everything */
         <View style={StyleSheet.absoluteFill} pointerEvents="auto" />
       )}
 
