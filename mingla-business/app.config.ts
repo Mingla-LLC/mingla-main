@@ -1,0 +1,38 @@
+import { ExpoConfig, ConfigContext } from "expo/config";
+
+/**
+ * Reads env at build time. Set in `.env` (EAS secrets / local):
+ * - EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
+ * - EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+ * - EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID (iOS client id without `.apps.googleusercontent.com` suffix)
+ */
+const iosClientIdRaw =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? process.env.GOOGLE_IOS_CLIENT_ID ?? "";
+
+const iosClientId = iosClientIdRaw.replace(".apps.googleusercontent.com", "");
+
+const iosUrlScheme = iosClientId
+  ? `com.googleusercontent.apps.${iosClientId}`
+  : "com.googleusercontent.apps.placeholder";
+
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...config,
+  plugins: [
+    ...(config.plugins ?? []),
+    [
+      "@react-native-google-signin/google-signin",
+      {
+        iosUrlScheme,
+      },
+    ],
+    "expo-apple-authentication",
+  ],
+  extra: {
+    ...config.extra,
+    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
+      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
+    IOS_CLIENT_ID: iosClientId,
+  },
+});
