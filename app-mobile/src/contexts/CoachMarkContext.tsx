@@ -50,7 +50,7 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 
 const LOADING_SENTINEL = -2;
 const TOUR_NOT_STARTED = 0;
-const TOUR_COMPLETED = 12;
+const TOUR_COMPLETED = 13;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
@@ -126,7 +126,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   useEffect(() => {
     if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
       // Check if auto-scroll is needed (steps 9-10 on profile tab)
-      if (currentStep === 10 || currentStep === 11) {
+      if (currentStep === 11 || currentStep === 12) {
         const config = COACH_STEPS.find((s) => s.id === currentStep);
         if (config) {
           const scrollRef = scrollRefsRef.current.get(config.tab);
@@ -134,7 +134,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
             // Scroll to a fixed offset — step 10 (Account Settings) is roughly
             // 400px down, step 11 (feedback) is further. We scroll first so the
             // element becomes visible, then measure, then show overlay.
-            const scrollTarget = currentStep === 10 ? 300 : 500;
+            const scrollTarget = currentStep === 11 ? 300 : 500;
             scrollRef.current.scrollTo?.({ y: scrollTarget, animated: true });
             // Wait for scroll + layout, then show overlay
             setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_DELAY_MS + 200);
@@ -194,7 +194,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         // Auto-scroll handled by the useEffect watching currentStep
         // Don't set overlayVisible here — the useEffect will handle it
         // (including scroll delay for steps 9-10)
-        if (newStep !== 10 && newStep !== 11) {
+        if (newStep !== 11 && newStep !== 12) {
           setOverlayVisible(true);
         }
         // Steps 9-10 overlay visibility is handled by the useEffect above

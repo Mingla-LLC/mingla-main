@@ -66,6 +66,14 @@ export const COACH_STEPS: CoachStep[] = [
   },
   {
     id: 8,
+    tab: 'discover',
+    targetId: 'coach-map-controls',
+    title: 'You Run This Map',
+    description: "Tap here to control who sees you, toggle map layers (people, places, heatmap), and set your activity status.",
+    buttonLabel: 'Got it',
+  },
+  {
+    id: 9,
     tab: 'connections',
     targetId: 'coach-add-friend',
     title: 'Find Your People',
@@ -73,7 +81,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 9,
+    id: 10,
     tab: 'connections',
     targetId: 'coach-chat',
     title: 'Plan the Move',
@@ -81,7 +89,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 10,
+    id: 11,
     tab: 'profile',
     targetId: 'coach-privacy',
     title: 'On Your Terms',
@@ -89,7 +97,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 11,
+    id: 12,
     tab: 'profile',
     targetId: 'coach-feedback',
     title: "We're All Ears",

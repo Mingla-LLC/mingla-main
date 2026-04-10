@@ -29,6 +29,7 @@ import { useAppStore } from '../../store/appStore';
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { ActivityStatusPicker } from './ActivityStatusPicker';
+import { useCoachMark } from '../../hooks/useCoachMark';
 import { ActivityFeedOverlay } from './ActivityFeedOverlay';
 import { MapProviderSurface } from './providers/MapProviderSurface';
 
@@ -72,6 +73,7 @@ export function DiscoverMap({
   pendingFocusCardId = null,
   onFocusCardHandled,
 }: DiscoverMapProps) {
+  const coachMapControls = useCoachMark(8, 12);
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
@@ -467,6 +469,7 @@ export function DiscoverMap({
         onUserPress={handleUserMarkerPress}
       />
 
+      <View ref={coachMapControls.targetRef as any} collapsable={false}>
       <ActivityStatusPicker
         currentStatus={settings?.activity_status || null}
         peopleLayerOn={peopleLayerOn}
@@ -490,6 +493,7 @@ export function DiscoverMap({
           });
         }}
       />
+      </View>
 
       <MapBottomSheet
         ref={bottomSheetRef}
