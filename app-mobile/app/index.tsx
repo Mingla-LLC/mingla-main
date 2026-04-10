@@ -23,8 +23,6 @@ import { CollaborationSession, getInitials, Friend } from "../src/components/Col
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
 import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
-import TermsOfService from "../src/components/profile/TermsOfService";
-import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
 
 import ViewFriendProfileScreen from "../src/components/profile/ViewFriendProfileScreen";
@@ -52,7 +50,7 @@ import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
-  loginAndSubscribe,
+  loginToOneSignal,
   logoutOneSignal,
   onForegroundNotification,
   onNotificationClicked,
@@ -133,10 +131,6 @@ function AppContent() {
     setShowPreferences,
     showCollabPreferences,
     setShowCollabPreferences,
-    showTermsOfService,
-    setShowTermsOfService,
-    showPrivacyPolicy,
-    setShowPrivacyPolicy,
     showAccountSettings,
     setShowAccountSettings,
     showShareModal,
@@ -267,16 +261,15 @@ function AppContent() {
     initializeOneSignal();
   }, []); // intentionally once
 
-  // Full login sequence: link device → request OS permission → opt in.
-  // Login path: if user?.id is available (even while auth is still "loading"
-  // from a persisted Zustand session), call loginAndSubscribe immediately.
+  // Link device to user identity (no permission dialog).
+  // Permission is deferred to after the coach mark tour (ORCH-0349).
   // Logout path: only fires after isLoadingAuth is false, to prevent
   // premature logout while auth is still resolving a cached session.
   useEffect(() => {
     if (user?.id) {
-      console.log('[OneSignal] Calling loginAndSubscribe for:', user.id);
-      loginAndSubscribe(user.id).catch((err) =>
-        console.warn('[OneSignal] loginAndSubscribe failed:', err)
+      console.log('[OneSignal] Calling loginToOneSignal for:', user.id);
+      loginToOneSignal(user.id).catch((err) =>
+        console.warn('[OneSignal] loginToOneSignal failed:', err)
       );
     } else if (!isLoadingAuth) {
       logoutOneSignal();
@@ -873,10 +866,6 @@ function AppContent() {
       logger.nav('Screen: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
     } else if (showPreferences) {
       logger.nav('Modal: PreferencesSheet');
-    } else if (showTermsOfService) {
-      logger.nav('Modal: TermsOfService');
-    } else if (showPrivacyPolicy) {
-      logger.nav('Modal: PrivacyPolicy');
     } else {
       logger.nav(`Page: ${currentPage}`, { userId: user?.id });
     }
@@ -889,8 +878,6 @@ function AppContent() {
     showOnboardingFlow,
     needsOnboarding,
     showPreferences,
-    showTermsOfService,
-    showPrivacyPolicy,
   ]);
 
   // Track main screen visits in Mixpanel
@@ -1743,7 +1730,7 @@ function AppContent() {
   }
 
   // Whether any full-screen overlay is active (hides tab container)
-  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id) || showTermsOfService || showPrivacyPolicy;
+  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id);
 
   // Function to render current page based on navigation
   const renderCurrentPage = () => {
@@ -1911,8 +1898,6 @@ function AppContent() {
               logger.action('Navigate to connections from profile');
               setCurrentPage("connections");
             }}
-            onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
-            onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             notificationsEnabled={notificationsEnabled}
@@ -1973,8 +1958,6 @@ function AppContent() {
 
   // Ensure any full-screen profile overlays are closed when switching tabs/pages
   const closeProfileOverlays = () => {
-    setShowPrivacyPolicy(false);
-    setShowTermsOfService(false);
     setViewingFriendProfileId(null);
   };
 
@@ -2025,10 +2008,6 @@ function AppContent() {
                             userId={user.id}
                             onClose={() => setShowPaywall(false)}
                           />
-                        ) : showTermsOfService ? (
-                          <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
-                        ) : showPrivacyPolicy ? (
-                          <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
                         ) : null}
 
                         {/* All 5 tabs always mounted — only active tab visible */}
@@ -2190,8 +2169,6 @@ function AppContent() {
                                   logger.action('Navigate to connections from profile');
                                   setCurrentPage("connections");
                                 }}
-                                onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
-                                onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
                                 savedExperiences={savedCards?.length || 0}
                                 boardsCount={boardsSessions?.length || 0}
                                 notificationsEnabled={notificationsEnabled}

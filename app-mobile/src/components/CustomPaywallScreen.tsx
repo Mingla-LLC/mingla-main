@@ -9,8 +9,9 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
 import { Icon } from './ui/Icon';
+import InAppBrowserModal from './InAppBrowserModal';
+import { LEGAL_URLS } from '../constants/urls';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PurchasesPackage } from 'react-native-purchases';
 
@@ -112,6 +113,9 @@ export function CustomPaywallScreen({
 
   const [selectedTier, setSelectedTier] = useState<TierKey>(initialTier);
   const [selectedPkgId, setSelectedPkgId] = useState<string | null>(null);
+  const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
+  const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
+  const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
 
   // Sync state when the modal reopens — initialTier may have changed
   // (e.g. pairing gates pass 'elite', curated cards pass 'pro')
@@ -215,6 +219,7 @@ export function CustomPaywallScreen({
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
+    <>
     <Modal
       visible={isVisible}
       animationType="slide"
@@ -340,17 +345,32 @@ export function CustomPaywallScreen({
 
           {/* Terms & Privacy */}
           <View style={styles.legalRow}>
-            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://mingla.app/terms').catch(() => {})}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.termsOfService);
+              setLegalBrowserTitle('Terms of Service');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Terms of Service</Text>
             </TouchableOpacity>
             <Text style={styles.legalDot}> | </Text>
-            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://mingla.app/privacy').catch(() => {})}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.privacyPolicy);
+              setLegalBrowserTitle('Privacy Policy');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Privacy Policy</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
       </View>
     </Modal>
+    <InAppBrowserModal
+      visible={legalBrowserVisible}
+      url={legalBrowserUrl}
+      title={legalBrowserTitle}
+      onClose={() => setLegalBrowserVisible(false)}
+    />
+    </>
   );
 }
 

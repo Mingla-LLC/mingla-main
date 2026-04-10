@@ -27,8 +27,8 @@ let _loginComplete = false
  *
  * NOTE: This does NOT request notification permission. On Android 13+,
  * POST_NOTIFICATIONS is a runtime permission that should only be requested
- * after the user has context (i.e. after login). Call `loginAndSubscribe()`
- * separately after authentication succeeds.
+ * after the user has context. Call `loginToOneSignal()` on auth, then
+ * `requestPushPermission()` later (e.g. after coach mark tour).
  */
 export function initializeOneSignal(): void {
   if (_initialized) return
@@ -60,43 +60,52 @@ export function isOneSignalReady(): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Full login sequence: link device to user, request OS permission, opt in.
+ * Login only: link this device to a Supabase user ID.
  *
- * Order matters in SDK v5:
- *   1. login(userId)     — tells OneSignal WHO this device belongs to
- *   2. requestPermission — asks the OS for POST_NOTIFICATIONS (Android 13+)
- *   3. optIn()           — tells OneSignal this user WANTS push delivery
- *
- * All three must succeed for backend pushes targeting external_id to arrive.
- * Each step is awaited so the next one runs only after the previous completes.
+ * Call on auth. Does NOT request notification permission — that is deferred
+ * to `requestPushPermission()` so the user isn't bombarded with OS dialogs
+ * on first landing.
  */
-export async function loginAndSubscribe(userId: string): Promise<void> {
+export async function loginToOneSignal(userId: string): Promise<void> {
   if (!_initialized) {
-    console.warn('[OneSignal] loginAndSubscribe called before init — skipping')
+    console.warn('[OneSignal] loginToOneSignal called before init — skipping')
     return
   }
   try {
-    // Step 1: Link device to Supabase user ID.
-    // MUST await — without it, requestPermission and optIn fire before the
-    // backend associates this device with the external_id, causing the
-    // subscription to register as anonymous.
     await OneSignal.login(userId)
     if (__DEV__) logger.push('login', { userId })
+  } catch (e) {
+    console.warn('[OneSignal] loginToOneSignal failed:', e)
+  }
+}
 
-    // Step 2: Request OS-level notification permission
-    // On Android 13+ this shows the runtime POST_NOTIFICATIONS dialog.
-    // On older Android this is a no-op (permission granted at install).
+/**
+ * Request OS-level notification permission and opt in to push delivery.
+ *
+ * Call AFTER the user has context for why they need notifications (e.g. after
+ * coach mark tour completes). Do NOT call on app boot.
+ *
+ * Order matters in SDK v5:
+ *   1. login(userId) must have been called first (via loginToOneSignal)
+ *   2. requestPermission — asks the OS for POST_NOTIFICATIONS (Android 13+)
+ *   3. optIn() — tells OneSignal this user WANTS push delivery
+ */
+export async function requestPushPermission(): Promise<boolean> {
+  if (!_initialized) {
+    console.warn('[OneSignal] requestPushPermission called before init — skipping')
+    return false
+  }
+  try {
     const granted = await OneSignal.Notifications.requestPermission(true)
     if (__DEV__) logger.push('permission result', { granted })
 
-    // Step 3: Opt in to OneSignal's push subscription.
-    // Even if OS permission is denied, calling optIn is safe — OneSignal
-    // will deliver once permission is later granted in system settings.
     await OneSignal.User.pushSubscription.optIn()
     _loginComplete = true
     if (__DEV__) logger.push('subscription opted in')
+    return granted
   } catch (e) {
-    console.warn('[OneSignal] loginAndSubscribe failed:', e)
+    console.warn('[OneSignal] requestPushPermission failed:', e)
+    return false
   }
 }
 

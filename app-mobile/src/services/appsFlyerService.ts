@@ -30,7 +30,7 @@ export function initializeAppsFlyer(): void {
         appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : undefined,
         onInstallConversionDataListener: true,
         onDeepLinkListener: true,
-        timeToWaitForATTUserAuthorization: 10, // seconds to wait for iOS ATT prompt
+        timeToWaitForATTUserAuthorization: 0, // deferred — ATT requested after coach mark tour (ORCH-0349)
       },
       (result) => {
         if (__DEV__) console.log('[AppsFlyer] SDK initialized:', result)

@@ -1,13 +1,13 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-09
-> Total: 0 active | 50 completed
+> Total: 1 active | 50 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| (none) | | | | | |
+| AH-052 | ORCH-0356/0357 | Investigator | 2026-04-09 | FORENSIC_ORCH-0356-0357_MESSAGING_ACCESS_CONTROL.md | READY |
 
 ## Completed Dispatches
 

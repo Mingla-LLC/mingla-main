@@ -48,6 +48,9 @@ import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaboratio
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { Checkbox } from './ui/checkbox'
+import InAppBrowserModal from './InAppBrowserModal'
+import { LEGAL_URLS } from '../constants/urls'
 import { useFriends } from '../hooks/useFriends'
 import { FriendRequest } from '../services/friendsService'
 // processPersonAudio removed — pairing uses real behavior data
@@ -745,6 +748,10 @@ const OnboardingFlow = ({
   const [otpLoading, setOtpLoading] = useState(false)
   const [sendingOtp, setSendingOtp] = useState(false)
   const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [smsConsentChecked, setSmsConsentChecked] = useState(false)
+  const [legalBrowserUrl, setLegalBrowserUrl] = useState('')
+  const [legalBrowserTitle, setLegalBrowserTitle] = useState('')
+  const [legalBrowserVisible, setLegalBrowserVisible] = useState(false)
   const [resendCountdown, setResendCountdown] = useState(0)
   const [otpAttempts, setOtpAttempts] = useState(0)
   const [valuePropBeat, setValuePropBeat] = useState(0)
@@ -1806,7 +1813,7 @@ const OnboardingFlow = ({
       case 'phone':
         return data.phoneVerified
           ? { label: 'Continue', disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
-          : { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
+          : { label: 'Send code', disabled: !isPhoneValid() || !smsConsentChecked, loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
         return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'gender_identity':
@@ -1866,7 +1873,7 @@ const OnboardingFlow = ({
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -1983,7 +1990,51 @@ const OnboardingFlow = ({
               disabled={sendingOtp}
             />
           </View>
-          <Text style={styles.caption}>Only used to verify it's you. That's it.</Text>
+          <Pressable
+            style={styles.consentRow}
+            onPress={() => setSmsConsentChecked(prev => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityLabel="Agree to receive text messages from Mingla"
+            accessibilityState={{ checked: smsConsentChecked }}
+          >
+            <Checkbox
+              checked={smsConsentChecked}
+              onCheckedChange={setSmsConsentChecked}
+              size="md"
+              style={styles.consentCheckbox}
+            />
+            <Text style={styles.consentText}>
+              I agree to receive texts from Mingla, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our{' '}
+              <Text
+                style={styles.consentLink}
+                onPress={() => {
+                  setLegalBrowserUrl(LEGAL_URLS.termsOfService)
+                  setLegalBrowserTitle('Terms of Service')
+                  setLegalBrowserVisible(true)
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Terms of Service"
+                accessibilityHint="Opens Terms of Service in a browser window"
+              >
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text
+                style={styles.consentLink}
+                onPress={() => {
+                  setLegalBrowserUrl(LEGAL_URLS.privacyPolicy)
+                  setLegalBrowserTitle('Privacy Policy')
+                  setLegalBrowserVisible(true)
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+                accessibilityHint="Opens Privacy Policy in a browser window"
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </Pressable>
         </View>
       )
     }
@@ -2255,7 +2306,7 @@ const OnboardingFlow = ({
                   >
                     <Icon
                       name={intent.icon}
-                      size={20}
+                      size={28}
                       color={selected ? colors.text.inverse : colors.gray[600]}
                     />
                     <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
@@ -2908,6 +2959,7 @@ const OnboardingFlow = ({
   const ctaConfig = getCtaConfig()
 
   return (
+    <>
     <OnboardingShell
       step={navState.step}
       segmentFill={progress.segmentFill}
@@ -2920,11 +2972,18 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
     </OnboardingShell>
+    <InAppBrowserModal
+      visible={legalBrowserVisible}
+      url={legalBrowserUrl}
+      title={legalBrowserTitle}
+      onClose={() => setLegalBrowserVisible(false)}
+    />
+    </>
   )
 }
 
@@ -3078,6 +3137,25 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.md,
   },
+  consentRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: spacing.md,
+  },
+  consentCheckbox: {
+    marginTop: 2,
+  },
+  consentText: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  consentLink: {
+    color: colors.primary[700],
+    fontWeight: fontWeights.medium,
+  },
   captionCentered: {
     ...typography.sm,
     fontWeight: fontWeights.regular,
@@ -3219,14 +3297,14 @@ const styles = StyleSheet.create({
     flex: 1,
     // Floor height so short copy (e.g. Romantic) matches taller cards; flex fills row with stretch
     minHeight: 136,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
     backgroundColor: colors.background.primary,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   intentLabel: {
     ...typography.sm,
@@ -3258,8 +3336,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: 6,
+    marginTop: spacing.md,
   },
   // ─── Selection Tiles (Budget, Transport, Travel) ───
   tileGrid: {

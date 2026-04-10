@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
-import { enhancedLocationTrackingService } from '../services/enhancedLocationTrackingService';
 import { cameraService } from '../services/cameraService';
-// Removed aiReasoningService import - using RecommendationsGrid instead
 import { useAppStore } from '../store/appStore';
 
 interface MobileFeaturesContextType {
@@ -46,20 +44,12 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
   const [isInitialized, setIsInitialized] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
 
-  // Initialize mobile features
+  // Mark as initialized immediately — permissions are requested on-demand,
+  // not on mount. Location is already granted during onboarding (Step 3 GPS).
+  // Camera and background location are requested when the user actually
+  // needs them (profile photo, feedback recording, map share-location toggle).
   useEffect(() => {
-    // Add a timeout to prevent indefinite blocking
-    const timeoutId = setTimeout(() => {
-      if (!isInitialized) {
-        setIsInitialized(true);
-      }
-    }, 5000); // 5 second timeout
-
-    initializeMobileFeatures().finally(() => {
-      clearTimeout(timeoutId);
-    });
-
-    return () => clearTimeout(timeoutId);
+    setIsInitialized(true);
   }, []);
 
   // Handle app state changes
@@ -78,72 +68,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription?.remove();
   }, [isLocationTracking]);
-
-  const initializeMobileFeatures = async () => {
-    try {
-      setInitializationError(null);
-      
-      // Initialize services in parallel and don't block on failures
-      const initPromises = [
-        // Initialize location service
-        enhancedLocationService.requestPermissions()
-          .then(permission => {
-            setLocationPermissionGranted(permission);
-            if (permission) {
-              return enhancedLocationService.getCurrentLocation()
-                .then(location => {
-                  setCurrentLocation(location);
-                  return true;
-                })
-                .catch(error => {
-                  return false;
-                });
-            }
-            return false;
-          })
-          .catch(error => {
-            return false;
-          }),
-
-        // Initialize camera service
-        cameraService.initialize()
-          .then(permission => {
-            setCameraPermissionGranted(permission);
-            return permission;
-          })
-          .catch(error => {
-            return false;
-          }),
-
-        // Initialize enhanced location tracking service
-        enhancedLocationTrackingService.requestPermissions()
-          .then(permission => {
-            if (permission) {
-              return enhancedLocationTrackingService.startLocationTracking()
-                .then(success => {
-                  return success;
-                })
-                .catch(error => {
-                  return false;
-                });
-            }
-            return false;
-          })
-          .catch(error => {
-            return false;
-          })
-      ];
-
-      // Wait for all initializations to complete (or fail)
-      await Promise.allSettled(initPromises);
-
-      setIsInitialized(true);
-    } catch (error: any) {
-      console.error('Error initializing mobile features:', error);
-      setInitializationError(error.message);
-      setIsInitialized(true); // Always mark as initialized to prevent blocking
-    }
-  };
 
   const startLocationTracking = () => {
     if (!locationPermissionGranted) {
