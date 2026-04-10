@@ -522,10 +522,14 @@ export default function ConnectionsPageRefactored({
           style: "destructive",
           onPress: () => {
             HapticFeedback.warning();
-            // removeFriend invalidates friendsKeys.all — no explicit refetch needed
-            removeFriend(friendUserId).catch((e) => {
-              showMutationError(e, 'removing friend', showToast);
-            });
+            // removeFriend invalidates friendsKeys.all — also invalidate nearby-people for map (ORCH-0360)
+            removeFriend(friendUserId)
+              .then(() => {
+                queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+              })
+              .catch((e) => {
+                showMutationError(e, 'removing friend', showToast);
+              });
           },
         },
       ]
@@ -637,10 +641,10 @@ export default function ConnectionsPageRefactored({
     const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
     setActiveChatIsBlocked(isBlockedByMe);
 
-    // Synchronous friendship check from cached friends list (ORCH-0357).
-    // If user unfriended this person, the DM input will be hidden with a banner.
-    const isFriend = dbFriends.some((f: { id: string }) => f.id === friend.id);
-    setActiveChatIsUnfriended(!isFriend && !isBlockedByMe);
+    // Start optimistic (assume connected). The background server query below
+    // will set true if actually unfriended. This prevents a brief banner flash
+    // when the cache is stale but the user IS friends (ORCH-0360 rework).
+    setActiveChatIsUnfriended(false);
 
     // Reset deleted-account state (will be checked in background below)
     setActiveChatIsDeletedAccount(false);
@@ -672,6 +676,25 @@ export default function ConnectionsPageRefactored({
         setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
       }
     }).catch(() => {}); // Fail silently — input area defaults to visible
+
+    // Background friendship re-check (ORCH-0360) — handles re-friended users.
+    // The synchronous check above uses the cached friends list which may be stale.
+    // This server query catches cases where friendship was restored after unfriending.
+    Promise.resolve(
+      supabase
+        .from('friends')
+        .select('id')
+        .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
+        .eq('status', 'accepted')
+        .limit(1)
+    ).then(({ data: friendshipData }) => {
+      if (latestSelectedChatRef.current === capturedFriendId) {
+        const isFriendNow = friendshipData && friendshipData.length > 0;
+        // Server is the single source of truth for unfriended state (ORCH-0360 rework).
+        // Set true only when server confirms NOT friends and NOT blocked.
+        setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
+      }
+    }).catch(() => {}); // Fail silently — optimistic false stays
 
     setCurrentConversationId(conversation.id);
 
@@ -775,9 +798,9 @@ export default function ConnectionsPageRefactored({
     const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
     setActiveChatIsBlocked(isBlockedByMe);
 
-    // Friendship check — friend picker only shows friends, so this should always be true
-    const isFriend = dbFriends.some((f: { id: string }) => f.id === friendUserId);
-    setActiveChatIsUnfriended(!isFriend && !isBlockedByMe);
+    // Start optimistic — friend picker only shows friends, so this should always be false.
+    // Background server query will correct if needed (ORCH-0360 rework).
+    setActiveChatIsUnfriended(false);
     setActiveChatIsDeletedAccount(false);
 
     latestSelectedChatRef.current = friendUserId;
@@ -1505,6 +1528,10 @@ export default function ConnectionsPageRefactored({
             // Sequential: cleanup before remove. removeFriend invalidates friendsKeys.all.
             cleanupSharedSessions(friend.id)
               .then(() => removeFriend(friend.id))
+              .then(() => {
+                // Invalidate nearby-people so the map updates relationship state (ORCH-0360)
+                queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+              })
               .catch((e) => {
                 showMutationError(e, 'removing friend', showToast);
               });

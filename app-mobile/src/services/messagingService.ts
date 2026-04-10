@@ -52,6 +52,28 @@ export class MessagingService {
         return { conversation: null, error: 'Cannot message this user' };
       }
 
+      // Check friendship or pairing before allowing conversation.
+      // DM is gated to friends and paired users only (ORCH-0356).
+      const { data: friendship } = await supabase
+        .from('friends')
+        .select('id')
+        .or(`and(user_id.eq.${userId1},friend_user_id.eq.${userId2}),and(user_id.eq.${userId2},friend_user_id.eq.${userId1})`)
+        .eq('status', 'accepted')
+        .limit(1);
+
+      const sortedIds = [userId1, userId2].sort();
+      const { data: pairing } = await supabase
+        .from('pairings')
+        .select('id')
+        .eq('user_a_id', sortedIds[0])
+        .eq('user_b_id', sortedIds[1])
+        .limit(1);
+
+      const isFriendOrPaired = (friendship && friendship.length > 0) || (pairing && pairing.length > 0);
+      if (!isFriendOrPaired) {
+        return { conversation: null, error: 'You must be friends to message this person' };
+      }
+
       // Get all conversations where user1 is a participant
       const { data: user1Conversations, error: user1Error } = await supabase
         .from('conversation_participants')

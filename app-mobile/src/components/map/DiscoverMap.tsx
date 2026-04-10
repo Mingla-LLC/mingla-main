@@ -289,19 +289,44 @@ export function DiscoverMap({
           return;
         }
 
-        await supabase
+        const { data: requestData } = await supabase
           .from('friend_requests')
           .upsert(
             { sender_id: user!.id, receiver_id: userId, status: 'pending', source: 'map' },
             { onConflict: 'sender_id,receiver_id' },
-          );
+          )
+          .select('id')
+          .single();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+
+        // Send push notification to the receiver (fire-and-forget, non-blocking)
+        const senderName = profile?.display_name || profile?.first_name || 'Someone';
+        supabase.functions.invoke('notify-dispatch', {
+          body: {
+            userId,
+            type: 'friend_request_received',
+            title: `${senderName} wants to connect`,
+            body: 'Tap to accept or pass.',
+            data: {
+              deepLink: 'mingla://connections?tab=requests',
+              type: 'friend_request',
+              requestId: requestData?.id || userId,
+              senderId: user!.id,
+            },
+            actorId: user!.id,
+            relatedId: requestData?.id || userId,
+            relatedType: 'friend_request',
+            idempotencyKey: `friend_request_received:${user!.id}:${requestData?.id || userId}`,
+          },
+        }).catch((e) => {
+          console.warn('[DiscoverMap] Friend request notification failed:', e);
+        });
       } catch {
         Alert.alert('Error', 'Could not send friend request. Try again later.');
       }
     },
-    [user, queryClient, nearbyPeople],
+    [user, profile, queryClient, nearbyPeople],
   );
 
   const handleBlockFromMap = useCallback(

@@ -279,7 +279,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0327 | Stranger seeding — global grid, DiceBear avatars, friend request interception, updated categories | Map | S1 | missing-feature | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 14/14 PASS. Code ready. Seed NOT yet run — deploy first, then call seed_global_grid. |
 | ORCH-0331 | Admin dashboard seed filter — all profile queries now exclude is_seed=true | Admin | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 8 admin queries fixed (T-11 through T-14 PASS). |
 | ORCH-0355 | Map person profile is generic — shows placeholder instead of real photo/name/bio/interests/stats. Number + username visible, should be hidden. Full-screen but should be compact non-scrollable modal. | Map | S1 | bug | open | F | — | User report 2026-04-09. |
-| ORCH-0356 | Strangers on discover map can be messaged — should only show Add Friend + View Profile. DM must be gated to friends-only app-wide (pairing/collab invites must NOT be affected). | Map | S1 | security | open | F | — | User report 2026-04-09. Must verify messaging gate across all entry points, not just map. |
+| ORCH-0356 | Strangers on discover map can be messaged — should only show Add Friend + View Profile. DM must be gated to friends-only app-wide (pairing/collab invites must NOT be affected). | Map | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). 3-layer defense: UI gate (PersonBottomSheet), service gate (messagingService), RLS gate (blocked_users). 13/13 SC, 17/17 tests. Pairing/collab/deletion confirmed safe. |
 | ORCH-0358 | Friends-of-friends filter broken — won't toggle on discover map filter + option missing entirely from map privacy settings page | Map | S1 | bug | open | F | — | User report 2026-04-09. Two surfaces affected. |
 | ORCH-0359 | Red location pin dots unexplained — no label/tooltip when tapped. Need to determine what data they represent first. | Map | S2 | ux | open | F | — | User report 2026-04-09. Investigator must identify what the pins represent. |
 
@@ -295,7 +295,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0132 | Messaging realtime | Chat | S1 | unaudited | open | F | — | — |
 | ORCH-0133 | DM email notification | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0134 | Chat status line | Chat | S3 | unaudited | open | F | — | — |
-| ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | open | F | — | User report 2026-04-09. Applies to existing DM conversation threads. |
+| ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). Three banners (blocked/unfriended/deleted) with hidden input. Account deletion confirmed regression-free. |
 
 ### Section 11: Payments & Subscriptions
 

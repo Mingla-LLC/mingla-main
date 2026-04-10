@@ -41,6 +41,8 @@ interface MessagesTabProps {
   availableFriends: Friend[];
   currentUserId?: string;
   isBlocked?: boolean;
+  isUnfriended?: boolean;
+  isDeletedAccount?: boolean;
   mutedUserIds?: string[];
   loading?: boolean;
 }
@@ -64,6 +66,8 @@ export default function MessagesTab({
   availableFriends,
   currentUserId,
   isBlocked = false,
+  isUnfriended = false,
+  isDeletedAccount = false,
   mutedUserIds = [],
   loading = false,
 }: MessagesTabProps & { currentUserId?: string }) {
@@ -156,6 +160,8 @@ export default function MessagesTab({
         onUpdateBoardSession={onUpdateBoardSession}
         onCreateSession={onCreateSession}
         isBlocked={isBlocked}
+        isUnfriended={isUnfriended}
+        isDeletedAccount={isDeletedAccount}
       />
     );
   }

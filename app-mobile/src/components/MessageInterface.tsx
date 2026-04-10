@@ -90,6 +90,8 @@ interface MessageInterfaceProps {
   onCreateSession?: (newSession: any) => void;
   availableFriends?: Friend[];
   isBlocked?: boolean;
+  isUnfriended?: boolean;
+  isDeletedAccount?: boolean;
   conversationId?: string | null;
   currentUserId?: string | null;
   currentUserName?: string | null;
@@ -115,6 +117,8 @@ export default function MessageInterface({
   onCreateSession,
   availableFriends = [],
   isBlocked = false,
+  isUnfriended = false,
+  isDeletedAccount = false,
   conversationId = null,
   currentUserId = null,
   currentUserName = null,
@@ -801,8 +805,28 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* Input Area - Hidden when blocked */}
-      {!isBlocked && (
+      {/* Unfriended Banner */}
+      {isUnfriended && !isBlocked && (
+        <View style={styles.blockedBanner}>
+          <Icon name="person-remove" size={18} color="#dc2626" />
+          <Text style={styles.blockedBannerText}>
+            You are no longer connected with this person
+          </Text>
+        </View>
+      )}
+
+      {/* Deleted Account Banner */}
+      {isDeletedAccount && !isBlocked && !isUnfriended && (
+        <View style={styles.blockedBanner}>
+          <Icon name="alert-circle" size={18} color="#6b7280" />
+          <Text style={styles.blockedBannerText}>
+            This user has deleted their account
+          </Text>
+        </View>
+      )}
+
+      {/* Input Area - Hidden when blocked, unfriended, or account deleted */}
+      {!isBlocked && !isUnfriended && !isDeletedAccount && (
       <Animated.View
         style={[
           styles.inputArea,
