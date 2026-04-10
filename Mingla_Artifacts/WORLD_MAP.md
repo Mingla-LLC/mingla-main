@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-08
+> Last updated: 2026-04-09
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -75,6 +75,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0005 | Google Sign-In flow | Auth | S1 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — works but brittle string matching in retry logic |
 | ORCH-0006 | Apple Sign-In flow | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — clean, minor fire-and-forget name risk |
 | ORCH-0007 | Zombie auth prevention | Auth | S1 | bug | verified | B | 2026-03-23 | Commit 2a96c8f6 |
+| ORCH-0348 | Auto-assign beta tester flag on signup + backfill existing users | Auth | S2 | missing-feature | speced | F | 2026-04-09 | INVESTIGATION_BETA_TESTER_DEFAULT_REPORT.md, SPEC_BETA_TESTER_AUTO_ASSIGN.md — is_beta_tester defaults false, needs to default true + backfill. 1 migration, 0 code changes. |
 
 ### Section 2: Onboarding
 
