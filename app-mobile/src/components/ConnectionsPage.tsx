@@ -118,8 +118,8 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
-  const coachAddFriend = useCoachMark(9, 8);
-  const coachChat = useCoachMark(10, 0);
+  const coachAddFriend = useCoachMark(10, 8);
+  const coachChat = useCoachMark(11, 0);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 

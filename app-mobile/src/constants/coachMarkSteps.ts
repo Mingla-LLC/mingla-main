@@ -74,6 +74,14 @@ export const COACH_STEPS: CoachStep[] = [
   },
   {
     id: 9,
+    tab: 'discover',
+    targetId: 'coach-pair-button',
+    title: 'Your Inner Circle',
+    description: "Pair with your partner or close friends. You'll see each other on the map, share saves, and get cards tailored to both of you.",
+    buttonLabel: 'Got it',
+  },
+  {
+    id: 10,
     tab: 'connections',
     targetId: 'coach-add-friend',
     title: 'Find Your People',
@@ -81,7 +89,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 10,
+    id: 11,
     tab: 'connections',
     targetId: 'coach-chat',
     title: 'Plan the Move',
@@ -89,7 +97,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 11,
+    id: 12,
     tab: 'profile',
     targetId: 'coach-privacy',
     title: 'On Your Terms',
@@ -97,7 +105,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 12,
+    id: 13,
     tab: 'profile',
     targetId: 'coach-feedback',
     title: "We're All Ears",

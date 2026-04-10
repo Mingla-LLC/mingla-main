@@ -753,6 +753,7 @@ export default function DiscoverScreen({
 }: DiscoverScreenProps) {
   const insets = useSafeAreaInsets();
   const coachMap = useCoachMark(7, 0);
+  const coachPair = useCoachMark(9, 20);
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -3359,6 +3360,7 @@ export default function DiscoverScreen({
 
                 {/* Add Pair Button */}
                 <TouchableOpacity
+                  ref={coachPair.targetRef as any}
                   style={[
                     styles.addUserButtonPill,
                     !canAccess('pairing') && styles.addUserButtonPillLocked,

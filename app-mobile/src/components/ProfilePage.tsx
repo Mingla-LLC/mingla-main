@@ -91,7 +91,7 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  const coachPrivacy = useCoachMark(11, 12);
+  const coachPrivacy = useCoachMark(12, 12);
 
   // Register scroll ref for coach mark auto-scroll (steps 9-10)
   const scrollRef = useRef<any>(null);
