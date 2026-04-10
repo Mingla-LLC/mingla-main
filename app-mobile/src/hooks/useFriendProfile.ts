@@ -9,7 +9,6 @@ export interface FriendProfileData {
   last_name: string | null;
   username: string | null;
   avatar_url: string | null;
-  phone: string | null;
   country: string | null;
   tier: SubscriptionTier;
   intents: string[];
@@ -27,7 +26,7 @@ export function useFriendProfile(userId: string | null) {
     queryFn: async (): Promise<FriendProfileData> => {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, username, avatar_url, phone, country')
+        .select('id, first_name, last_name, username, avatar_url, country')
         .eq('id', userId!)
         .single();
       if (profileError) throw new Error(profileError.message);
@@ -48,7 +47,6 @@ export function useFriendProfile(userId: string | null) {
         last_name: profile.last_name,
         username: profile.username,
         avatar_url: profile.avatar_url ?? null,
-        phone: profile.phone ?? null,
         country: profile.country ?? null,
         tier,
         intents: prefs?.display_intents ?? [],

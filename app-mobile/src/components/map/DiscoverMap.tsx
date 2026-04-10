@@ -32,6 +32,8 @@ import { ActivityStatusPicker } from './ActivityStatusPicker';
 import { useCoachMark } from '../../hooks/useCoachMark';
 import { ActivityFeedOverlay } from './ActivityFeedOverlay';
 import { MapProviderSurface } from './providers/MapProviderSurface';
+import ReportUserModal from '../ReportUserModal';
+import { submitReport, type ReportReason } from '../../services/reportService';
 
 interface DiscoverMapProps {
   cards: Recommendation[];
@@ -80,6 +82,7 @@ export function DiscoverMap({
   const [peopleLayerOn, setPeopleLayerOn] = useState(true);
   const [feedOn, setFeedOn] = useState(false);
   const [heatmapOn, setHeatmapOn] = useState(false);
+  const [reportTargetUserId, setReportTargetUserId] = useState<string | null>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
@@ -359,22 +362,22 @@ export function DiscoverMap({
     [queryClient],
   );
 
-  const handleReportFromMap = useCallback(
-    async (userId: string) => {
-      try {
-        await supabase.from('user_reports').insert({
-          reporter_id: user!.id,
-          reported_user_id: userId,
-          reason: 'map_interaction',
-          details: 'Reported from map discovery',
-        });
+  const handleReportFromMap = useCallback((userId: string) => {
+    setReportTargetUserId(userId);
+  }, []);
+
+  const handleReportSubmit = useCallback(
+    async (userId: string, reason: string, details?: string) => {
+      const result = await submitReport(userId, reason as ReportReason, details);
+      setReportTargetUserId(null);
+      if (result.success) {
         Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
         personSheetRef.current?.close();
-      } catch {
-        Alert.alert('Error', 'Could not submit report. Try again later.');
+      } else {
+        Alert.alert('Report Failed', result.error || 'Unable to submit report.');
       }
     },
-    [user],
+    [],
   );
 
   const handleNext = useCallback(() => {
@@ -514,6 +517,17 @@ export function DiscoverMap({
         onAddFriend={handleAddFriendFromMap}
         onBlock={handleBlockFromMap}
         onReport={handleReportFromMap}
+      />
+
+      <ReportUserModal
+        isOpen={!!reportTargetUserId}
+        onClose={() => setReportTargetUserId(null)}
+        user={{
+          id: reportTargetUserId || '',
+          name: selectedPerson?.displayName || 'User',
+          username: selectedPerson?.displayName || '',
+        }}
+        onReport={handleReportSubmit}
       />
 
       {feedOn && (

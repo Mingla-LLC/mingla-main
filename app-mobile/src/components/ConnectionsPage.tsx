@@ -1603,7 +1603,6 @@ export default function ConnectionsPageRefactored({
   };
 
   const handleReportUser = (friend: Friend) => {
-    onBlockUser?.(friend, true);
     setSelectedUserToReport(friend);
     setShowReportModal(true);
   };

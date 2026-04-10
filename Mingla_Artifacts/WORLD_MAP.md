@@ -28,6 +28,7 @@
 | Sharing & Invites | Mobile + Backend | ShareModal.tsx, send-phone-invite | All F | 10 | Unaudited |
 | Post-Experience & Reviews | Mobile + Backend | PostExperienceModal.tsx, record-visit | All F | 9 | Unaudited |
 | Booking | Mobile | bookingService.ts | All F | 2 | Unaudited |
+| Reporting & Moderation | Mobile + Admin + Backend | ReportModal, admin Reports page | All F (2×S0, 1×S1) | 3 | Unaudited |
 | Network & Offline | Cross-cutting | networkMonitor.ts | Mixed (1B, 4F) | 5 | Weak |
 | State & Cache | Cross-cutting | queryKeys.ts, Zustand stores | Mixed (5A, 3F) | 8 | Partial |
 | Chat Responsiveness | Cross-cutting | messagingService.ts | All A | 4 | Strong |
@@ -278,11 +279,13 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0330 | Visibility dropdown fixed — optimistic update + rollback + toast on error | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — onMutate instant cache, onError rollback + toast. |
 | ORCH-0327 | Stranger seeding — global grid, DiceBear avatars, friend request interception, updated categories | Map | S1 | missing-feature | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 14/14 PASS. Code ready. Seed NOT yet run — deploy first, then call seed_global_grid. |
 | ORCH-0331 | Admin dashboard seed filter — all profile queries now exclude is_seed=true | Admin | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 8 admin queries fixed (T-11 through T-14 PASS). |
-| ORCH-0355 | Map person profile is generic — shows placeholder instead of real photo/name/bio/interests/stats. Number + username visible, should be hidden. Full-screen but should be compact non-scrollable modal. | Map | S1 | bug | open | F | — | User report 2026-04-09. |
+| ORCH-0355 | Map person profile is generic — shows placeholder instead of real photo/name/bio/interests/stats. Number + username visible, should be hidden. Full-screen but should be compact non-scrollable modal. | Map | S1 | bug | investigated | F | — | INV-015: `.single()` fails for strangers (RLS blocks), seeds not in profiles table, PersonBottomSheet lacks bio/interests. Needs design spec. |
+| ORCH-0365 | Phone number PII exposed in ViewFriendProfileScreen — useFriendProfile selects phone from profiles, screen renders it to friends | Profile | S1 | security | open | F | — | INV-015 side discovery. Any friend can see another friend's full phone number. |
 | ORCH-0356 | Strangers on discover map can be messaged — should only show Add Friend + View Profile. DM must be gated to friends-only app-wide (pairing/collab invites must NOT be affected). | Map | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). 3-layer defense: UI gate (PersonBottomSheet), service gate (messagingService), RLS gate (blocked_users). 13/13 SC, 17/17 tests. Pairing/collab/deletion confirmed safe. |
 | ORCH-0360 | Map interactions — broken block handler (wrong column), silent push notification failure (idempotency), block modal sluggish, add friend UX gaps | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS. blockService replaces raw upsert, idempotency key unique per attempt, InteractionManager defers modal, push response logged. 17/17 tests. |
-| ORCH-0358 | Friends-of-friends filter broken — won't toggle on discover map filter + option missing entirely from map privacy settings page | Map | S1 | bug | open | F | — | User report 2026-04-09. Two surfaces affected. |
-| ORCH-0359 | Red location pin dots unexplained — no label/tooltip when tapped. Need to determine what data they represent first. | Map | S2 | ux | open | F | — | User report 2026-04-09. Investigator must identify what the pins represent. |
+| ORCH-0358 | Friends-of-friends filter broken — MapPrivacySettings missing option + DB CHECK constraint needs live verification | Map | S1 | bug | investigated | F | — | INV-015: MapPrivacySettings.tsx:7 only lists 4 of 5 values. DB migration includes FoF but runtime rejects it — live DB check needed. |
+| ORCH-0359 | Place pins on map lack labels/tooltips — user can't identify them without tapping | Map | S2 | ux | investigated | F | — | INV-015: "Red dots" are PlacePin markers (PlacePinContent) with category colors/icons. Tap opens MapBottomSheet. UX gap: no visible label. |
+| ORCH-0361 | User avatars intermittently disappear — tracksViewChanges=false, 60s refetch, clustering | Map | S1 | bug | investigated | F | — | INV-015: Multiple contributing factors. `tracksViewChanges={false}` prevents image reload on failure. Refetch can shrink array. Needs runtime testing. |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -418,6 +421,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0333 | Admin cannot change tile radius on already-seeded city | Admin | S2 | missing-feature | investigated | F | 2026-04-08 | INVESTIGATION_CITY_UPDATE_AND_TILE_REGEN.md — TILE_RADIUS_OPTIONS exists. SeedTab needs picker + save-before-regenerate. No backend changes. |
 | ORCH-0334 | Photo tab shows stale London run (180/351 batches) — old run has dead references | Admin | S3 | bug | open | F | — | Previous session: old photo backfill run data from pre-bbox migration. May need cancel/dismiss action. |
 | ORCH-0335 | admin_place_photo_stats only counts AI-approved places — correct per spec but changed from before | Admin | S3 | quality-gap | open | F | — | Spec decision: photo stats scoped to AI-approved. Stats look different from pre-spec totals. Not a bug — document and close. |
+
+### Section 20: User Reporting & Moderation
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0362 | Map report sends invalid enum `map_interaction` + ignores Supabase error — user sees "Reported" but nothing saved | Moderation | S0 | bug | investigated | F | — | INV-015: `handleReportFromMap` bypasses reportService, sends invalid report_reason enum, doesn't check error. Silent failure. |
+| ORCH-0363 | Report modal delay — premature `onBlockUser` call + double-block + large modal mount | Moderation | S1 | ux | investigated | F | — | INV-015: `handleReportUser` calls `onBlockUser` before modal. ReportUserModal also blocks on submit. Double-block proven. |
+| ORCH-0364 | Admin reports empty — SELECT policy COMMENTED OUT, UPDATE policy MISSING, FK join hint wrong | Moderation | S0 | bug | investigated | F | — | INV-015: Admin SELECT policy for user_reports never created (line 66-73 commented). Admin uses anon key. RLS blocks all rows. |
 
 ### Cross-Cutting: Network & Offline
 

@@ -1,18 +1,20 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-09
-> Total: 0 active | 58 completed
+> Last updated: 2026-04-10
+> Total: 1 active | 60 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| (none) | | | | | |
+| AH-057 | ORCH-0358/0362/0363/0364/0365 | Tester | 2026-04-10 | QA_ORCH-0358-0362-0363-0364-0365_WAVE1.md | Awaiting dispatch |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-056 | ORCH-0358/0362/0363/0364/0365 | Implementor | 2026-04-10 | IMPLEMENTATION_WAVE1_ORCH-0358-0362-0363-0364-0365.md | APPROVED |
+| AH-055 | ORCH-0355/0358/0359/0361/0362/0363/0364 | Investigator | 2026-04-10 | INVESTIGATION_MAP_AND_REPORTING_ORCH-0355-0358-0359-0361-0362-0363-0364.md | APPROVED |
 | AH-040 | ORCH-0350/0351 | Investigator | 2026-04-09 | INVESTIGATION_ORCH-0350-0351_LEGAL_LINKS_SMS_CONSENT.md | APPROVED |
 | AH-042 | ORCH-0351 | Designer | 2026-04-09 | DESIGN_ORCH-0351_SMS_CONSENT_CHECKBOX_SPEC.md | APPROVED |
 | AH-043 | ORCH-0350/0351 | Implementor | 2026-04-09 | IMPLEMENTATION_ORCH-0350-0351_LEGAL_LINKS_SMS_CONSENT_REPORT.md | APPROVED |

@@ -1,7 +1,7 @@
 # Master Bug List
 
-> Last updated: 2026-04-08
-> Total: 302 | Open: 137 | Closed: 98 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-10
+> Total: 305 | Open: 140 | Closed: 98 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -34,6 +34,8 @@
 |----|-------|---------|---------------|--------|
 | ORCH-0066 | Collab mode parity (Phase 1 CLOSED — 5 sub-issues fixed, ORCH-0316 remains for Phase 2) | Collaboration | architecture-flaw | Closed → B |
 | ORCH-0336 | App stuck in loading after long iOS background (hours/days) | App Lifecycle | architecture-flaw | User report (production) |
+| ORCH-0362 | Reporting a user from the map does nothing — report not saved, account not flagged | Moderation | bug | User report 2026-04-10 |
+| ORCH-0364 | Admin reports tab shows no reports — moderation pipeline end-to-end broken | Moderation | bug | User report 2026-04-10 |
 | ORCH-0102 | Account deletion | Profile | unaudited | Tracker |
 | ORCH-0135 | Paywall screen | Payments | unaudited | Tracker |
 | ORCH-0137 | RevenueCat integration | Payments | unaudited | Tracker |
@@ -45,6 +47,7 @@
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
 | ORCH-0337 | Realtime event handlers silently cleared after disconnect/connect — all live updates dead until force-close | App Lifecycle | architecture-flaw | INV-010 (SDK-proven, RealtimeChannel.js:313) |
+| ORCH-0363 | Report modal from friend list opens too late — user navigates away before modal appears | Moderation | ux | User report 2026-04-10 |
 | ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
 | ORCH-0352 | Beta feedback modal — end-to-end defects (CLOSED) | Profile | bug | Closed → A |
 | ORCH-0008 | State machine progression | Onboarding | unaudited | Tracker |

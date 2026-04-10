@@ -162,14 +162,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const usernameDisplay = profile.username
     ? `@${profile.username.replace(/^@/, '')}`
     : null;
-  const phoneLine = profile.phone?.trim() ? profile.phone : 'Not shared';
   const countryName = profile.country
     ? getCountryByCode(profile.country)?.name ?? profile.country
     : null;
   const locationLine = countryName ?? 'Not shared';
   const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
   const tierBadge = TIER_BADGE_STYLES[profile.tier] ?? TIER_BADGE_STYLES.free;
-  const phoneMuted = phoneLine === 'Not shared';
   const locationMuted = locationLine === 'Not shared';
 
   return (
@@ -213,13 +211,6 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
 
         <View style={styles.card}>
           <Text style={styles.cardSectionLabel}>About</Text>
-          <InfoRow
-            icon="call-outline"
-            label="Phone"
-            value={phoneLine}
-            muted={phoneMuted}
-          />
-          <View style={styles.rowDivider} />
           <InfoRow
             icon="map-pin"
             label="Location"
