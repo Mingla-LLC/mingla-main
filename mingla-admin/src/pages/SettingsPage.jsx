@@ -513,7 +513,7 @@ function TestingToolsView() {
 
   const handleResetSingle = async () => {
     if (!userEmail.trim()) {
-      addToast("Enter a user email", "error");
+      addToast({ variant: "error", title: "Enter a user email" });
       return;
     }
     setResettingSingle(true);
@@ -526,9 +526,10 @@ function TestingToolsView() {
         .maybeSingle();
 
       if (findError) {
-        addToast(findError.message, "error");
+        console.error("[CoachMarkReset] Find error:", findError);
+        addToast({ variant: "error", title: findError.message || "Failed to look up user" });
       } else if (!user) {
-        addToast("No user found with that email", "error");
+        addToast({ variant: "error", title: `No user found with email "${userEmail.trim()}"` });
       } else {
         // Always set to 0, even if already 0
         const { error: updateError } = await supabase
@@ -537,16 +538,17 @@ function TestingToolsView() {
           .eq("id", user.id);
 
         if (updateError) {
-          addToast(updateError.message, "error");
+          console.error("[CoachMarkReset] Update error:", updateError);
+          addToast({ variant: "error", title: updateError.message || "Failed to update" });
         } else {
           const prev = user.coach_mark_step;
-          addToast(`Coach mark reset for ${userEmail.trim()}${prev === 0 ? " (was already at start)" : ` (was on step ${prev})`}`, "success");
+          addToast({ variant: "success", title: `Coach mark reset for ${userEmail.trim()}`, description: prev === 0 ? "Was already at start" : `Was on step ${prev}` });
           logAdminAction("testing.reset_coach_mark", "profile", userEmail.trim(), { scope: "single", previous_step: prev });
           setUserEmail("");
         }
       }
     } catch (e) {
-      addToast("Reset failed", "error");
+      addToast({ variant: "error", title: "Reset failed" });
     } finally {
       setResettingSingle(false);
     }
@@ -561,13 +563,13 @@ function TestingToolsView() {
         .neq("coach_mark_step", 0);
 
       if (error) {
-        addToast(error.message, "error");
+        addToast({ variant: "error", title: error.message || "Failed to reset" });
       } else {
-        addToast(`Coach mark reset for all users`, "success");
+        addToast({ variant: "success", title: "Coach mark reset for all users" });
         logAdminAction("testing.reset_coach_mark", "profile", "all", { scope: "all" });
       }
     } catch (e) {
-      addToast("Reset failed", "error");
+      addToast({ variant: "error", title: "Reset failed" });
     } finally {
       setResettingAll(false);
       setConfirmResetAll(false);
