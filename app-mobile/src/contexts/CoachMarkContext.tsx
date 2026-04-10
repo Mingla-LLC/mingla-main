@@ -135,20 +135,22 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
       // Check if auto-scroll is needed (profile tab steps)
       if (currentStep === 11 || currentStep === 12) {
-        const config = COACH_STEPS.find((s) => s.id === currentStep);
-        if (config) {
-          const scrollRef = scrollRefsRef.current.get(config.tab);
-          if (scrollRef?.current) {
-            // Scroll to a fixed offset — step 10 (Account Settings) is roughly
-            // 400px down, step 11 (feedback) is further. We scroll first so the
-            // element becomes visible, then measure, then show overlay.
-            const scrollTarget = currentStep === 11 ? 300 : 500;
-            scrollRef.current.scrollTo?.({ y: scrollTarget, animated: true });
-            // Wait for scroll + layout, then show overlay
-            setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_DELAY_MS + 200);
-            return;
+        // Delay to allow the profile tab to mount and register its scroll ref
+        setTimeout(() => {
+          const stepConfig = COACH_STEPS.find((s) => s.id === currentStep);
+          if (stepConfig) {
+            const scrollRef = scrollRefsRef.current.get(stepConfig.tab);
+            if (scrollRef?.current) {
+              // Scroll far enough to reveal the target. Account Settings is
+              // near the bottom of the profile page, feedback button even further.
+              const scrollTarget = currentStep === 11 ? 500 : 700;
+              scrollRef.current.scrollTo?.({ y: scrollTarget, animated: true });
+            }
           }
-        }
+          // Show overlay after scroll settles
+          setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_DELAY_MS);
+        }, TAB_NAVIGATE_DELAY_MS);
+        return;
       }
       setOverlayVisible(true);
     } else {
