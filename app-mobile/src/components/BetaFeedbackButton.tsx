@@ -20,7 +20,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
-  const coachFeedback = useCoachMark(13, 12);
+  const coachFeedback = useCoachMark(12, 12);
 
   // Stable callbacks — prevents handleClose inside BetaFeedbackModal from
   // being recreated on every parent render.
