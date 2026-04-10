@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { useCoachMarkContext } from '../contexts/CoachMarkContext';
 
@@ -22,17 +22,14 @@ interface UseCoachMarkResult {
 export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoachMarkResult {
   const { currentStep, registerTarget } = useCoachMarkContext();
   const nodeRef = useRef<View | null>(null);
+  const isActive = currentStep === stepId;
 
   const measure = useCallback((): void => {
     const node = nodeRef.current;
     if (!node) return;
 
-    // measureInWindow gives coordinates relative to the screen — exactly
-    // what we need for the absolute-positioned overlay.
     node.measureInWindow((x: number, y: number, width: number, height: number) => {
-      // Guard against unmounted/off-screen elements returning 0,0,0,0
       if (width === 0 && height === 0) return;
-
       registerTarget(stepId, { x, y, width, height, radius: targetRadius });
     });
   }, [stepId, targetRadius, registerTarget]);
@@ -40,22 +37,19 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
   const targetRef = useCallback((node: View | null): void => {
     nodeRef.current = node;
     if (node) {
-      // Measure after a frame to ensure layout is complete
-      requestAnimationFrame(() => {
-        measure();
-      });
-
-      // Also listen for layout changes and re-measure
-      // We use a small timeout to batch multiple rapid layout events
-      const originalOnLayout = (node as any).props?.onLayout;
-      if (!originalOnLayout) {
-        // Set onLayout via the ref approach — measure on every layout change
-        // This is handled by the component attaching onLayout itself
-      }
+      requestAnimationFrame(() => measure());
     }
   }, [measure]);
 
-  const isActive = currentStep === stepId;
+  // Re-measure whenever this step becomes active — critical for elements
+  // that moved due to scrolling (profile page steps 11-12)
+  useEffect(() => {
+    if (isActive && nodeRef.current) {
+      // Small delay to let any scroll/layout settle
+      const timer = setTimeout(() => measure(), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, measure]);
 
   return { isActive, targetRef };
 }

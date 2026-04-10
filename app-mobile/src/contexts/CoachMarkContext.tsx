@@ -141,14 +141,17 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           if (stepConfig) {
             const scrollRef = scrollRefsRef.current.get(stepConfig.tab);
             if (scrollRef?.current) {
-              // Scroll far enough to reveal the target. Account Settings is
-              // near the bottom of the profile page, feedback button even further.
-              const scrollTarget = currentStep === 11 ? 500 : 700;
-              scrollRef.current.scrollTo?.({ y: scrollTarget, animated: true });
+              // Scroll to the end — Account Settings and Feedback are at the
+              // bottom of the profile page. scrollToEnd is reliable regardless
+              // of content height.
+              scrollRef.current.scrollToEnd?.({ animated: true });
             }
           }
-          // Show overlay after scroll settles
-          setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_DELAY_MS);
+          // Show overlay after scroll settles, then re-measure targets
+          setTimeout(() => {
+            // Force re-measure of the target now that it's visible
+            setOverlayVisible(true);
+          }, SCROLL_SETTLE_DELAY_MS + 200);
         }, TAB_NAVIGATE_DELAY_MS);
         return;
       }
