@@ -204,10 +204,13 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   return (
     <Animated.View
       style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: overlayOpacity }]}
-      pointerEvents={overlayVisible ? 'auto' : 'none'}
+      pointerEvents={overlayVisible ? 'box-none' : 'none'}
       accessibilityRole="none"
       accessibilityLabel={`Guided tour step ${currentStep} of ${COACH_STEP_COUNT}`}
     >
+      {/* Layer 1: Scrim — blocks taps on dark area. Rendered FIRST so bubble is on top. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="auto" />
+
       {/* Layer 2: Dark overlay with SVG cutout (visual only — no touch handling) */}
       <Svg
         width={screenWidth}
