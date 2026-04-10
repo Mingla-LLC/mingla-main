@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   StatusBar,
+  Dimensions,
 } from "react-native";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import * as Location from "expo-location";
@@ -95,8 +96,9 @@ export default function ProfilePage({
   const contentRef = useRef<View>(null);
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
-  const { currentStep, registerScrollRef, registerTargetScrollOffset } = useCoachMarkContext();
-  const isCoachScrollLocked = currentStep === 11 || currentStep === 12;
+  const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
+  const isScrollStep = currentStep === 11 || currentStep === 12;
+  const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -288,8 +290,8 @@ export default function ProfilePage({
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!isCoachScrollLocked}>
-        <View style={styles.content} ref={contentRef} collapsable={false}>
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!scrollLockActive}>
+        <View style={[styles.content, coachScrollPadding > 0 && { paddingBottom: coachScrollPadding }]} ref={contentRef} collapsable={false}>
           {/* 1. Hero Section — extends behind status bar */}
           <ProfileHeroSection
             isOwnProfile

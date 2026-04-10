@@ -37,6 +37,7 @@ interface CoachMarkContextType {
   registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
   registerTargetScrollOffset: (stepId: number, contentX: number, contentY: number, width: number, height: number) => void;
   overlayVisible: boolean;
+  scrollLockActive: boolean;
 }
 
 interface CoachMarkProviderProps {
@@ -66,6 +67,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
+  const [scrollLockActive, setScrollLockActive] = useState(false);
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
@@ -145,14 +147,19 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         return;
       }
 
+      setScrollLockActive(false);
       setOverlayVisible(true);
     } else {
+      setScrollLockActive(false);
       setOverlayVisible(false);
     }
   }, [currentStep]);
 
   // ── Known-position scroll for profile steps ─────────────────────────────
   const scrollToKnownPosition = useCallback((step: number): void => {
+    // Unlock scroll so programmatic scrollTo works (scrollEnabled must be true)
+    setScrollLockActive(false);
+
     // Wait for profile tab to mount
     setTimeout(() => {
       const stepConfig = COACH_STEPS.find((s) => s.id === step);
@@ -166,7 +173,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         if (scrollRef?.current) {
           scrollRef.current.scrollToEnd?.({ animated: true });
         }
-        setTimeout(() => setOverlayVisible(true), SCROLL_SETTLE_MS);
+        setTimeout(() => {
+          setScrollLockActive(true);
+          setOverlayVisible(true);
+        }, SCROLL_SETTLE_MS);
         return;
       }
 
@@ -188,6 +198,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           height: offset.height,
           radius: 12,
         });
+        setScrollLockActive(true);
         setOverlayVisible(true);
       }, SCROLL_SETTLE_MS);
     }, TAB_NAVIGATE_DELAY_MS);
@@ -269,8 +280,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
     if (newStep > COACH_STEP_COUNT) {
       setOverlayVisible(false);
+      setScrollLockActive(false);
       setCurrentStep(TOUR_COMPLETED);
       persistStep(TOUR_COMPLETED);
+      navigateToTabRef.current('home');
       requestPostTourPermissions().catch((e) =>
         console.warn('[CoachMark] Post-tour permissions failed:', e)
       );
@@ -289,8 +302,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
     setOverlayVisible(false);
+    setScrollLockActive(false);
     setCurrentStep(TOUR_SKIPPED);
     persistStep(TOUR_SKIPPED);
+    navigateToTabRef.current('home');
     requestPostTourPermissions().catch((e) =>
       console.warn('[CoachMark] Post-tour permissions failed:', e)
     );
@@ -318,6 +333,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerScrollRef,
     registerTargetScrollOffset,
     overlayVisible,
+    scrollLockActive,
   };
 
   return (
