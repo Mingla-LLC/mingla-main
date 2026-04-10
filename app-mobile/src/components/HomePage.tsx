@@ -13,6 +13,7 @@ import { Icon } from "./ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
+import { useCoachMark } from "../hooks/useCoachMark";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
@@ -171,6 +172,12 @@ export default function HomePage({
 
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
+
+  // Coach mark highlights
+  const coachDeck = useCoachMark(1);
+  const coachPrefs = useCoachMark(2);
+  const coachCardTap = useCoachMark(3);
+  const coachCollabPrefs = useCoachMark(5);
   const sessionsOpacity = useRef(new Animated.Value(0.3)).current;
 
   // Run entrance animations on mount
@@ -215,6 +222,8 @@ export default function HomePage({
               style={[
                 styles.preferencesButton,
                 currentMode !== "solo" && styles.preferencesButtonActive,
+                coachPrefs.isActive && coachPrefs.highlightStyle,
+                coachCollabPrefs.isActive && coachCollabPrefs.highlightStyle,
               ]}
               activeOpacity={0.6}
               hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
@@ -288,7 +297,11 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <View style={styles.deckWrapper}>
+          <View style={[
+            styles.deckWrapper,
+            coachDeck.isActive && coachDeck.highlightStyle,
+            coachCardTap.isActive && coachCardTap.highlightStyle,
+          ]}>
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}

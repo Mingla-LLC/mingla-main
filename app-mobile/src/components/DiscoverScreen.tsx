@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useCoachMark } from "../hooks/useCoachMark";
 import {
   View,
   Text,
@@ -751,6 +752,7 @@ export default function DiscoverScreen({
   onDeepLinkHandled,
 }: DiscoverScreenProps) {
   const insets = useSafeAreaInsets();
+  const coachMap = useCoachMark(6);
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -3562,7 +3564,7 @@ export default function DiscoverScreen({
               )}
 
               {/* Map — always mounted, hidden when PersonHolidayView active */}
-              <View style={isMapShowing ? styles.mapFullscreen : styles.mapHidden}>
+              <View style={[isMapShowing ? styles.mapFullscreen : styles.mapHidden, coachMap.isActive && coachMap.highlightStyle]}>
               <View style={{ flex: 1 }}>
                 <DiscoverMap
                   cards={recommendations}

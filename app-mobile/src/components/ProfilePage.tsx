@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useCoachMark } from "../hooks/useCoachMark";
 import {
   Text,
   View,
@@ -89,6 +90,7 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
+  const coachPrivacy = useCoachMark(9);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -306,14 +308,16 @@ export default function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <SettingsRow
-              icon="shield"
-              label="Account Settings"
-              description="Privacy, preferences, and account management"
-              showChevron
-              onPress={() => setShowAccountSettings(true)}
-              isLast
-            />
+            <View style={coachPrivacy.isActive ? [{ borderRadius: 12 }, coachPrivacy.highlightStyle] : undefined}>
+              <SettingsRow
+                icon="shield"
+                label="Account Settings"
+                description="Privacy, preferences, and account management"
+                showChevron
+                onPress={() => setShowAccountSettings(true)}
+                isLast
+              />
+            </View>
           </View>
 
           {/* 5. Beta Feedback (conditional — only for beta testers) */}

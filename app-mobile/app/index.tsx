@@ -46,6 +46,8 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
+import { CoachMarkProvider } from "../src/contexts/CoachMarkContext";
+import CoachMarkCard from "../src/components/CoachMarkCard";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
@@ -1987,6 +1989,7 @@ function AppContent() {
           >
             <MobileFeaturesProvider>
               <NavigationProvider>
+                <CoachMarkProvider navigateToTab={(tab: string) => setCurrentPage(tab as any)}>
                 <ErrorBoundary>
                   <View style={styles.safeArea}>
                     <StatusBar
@@ -2179,6 +2182,9 @@ function AppContent() {
                           </View>
                         )}
                       </View>
+
+                      {/* Coach Mark Card — docked above tab bar */}
+                      <CoachMarkCard />
 
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
                       <View
@@ -2451,6 +2457,7 @@ function AppContent() {
           </ErrorBoundary>
                 ) : null}
 
+              </CoachMarkProvider>
               </NavigationProvider>
             </MobileFeaturesProvider>
           </RecommendationsProvider>

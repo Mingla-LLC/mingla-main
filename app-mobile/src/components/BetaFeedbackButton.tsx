@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { useCoachMark } from '../hooks/useCoachMark';
 import * as Haptics from 'expo-haptics';
 import { Icon } from './ui/Icon';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
@@ -19,6 +20,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
+  const coachFeedback = useCoachMark(10);
 
   // Stable callbacks — prevents handleClose inside BetaFeedbackModal from
   // being recreated on every parent render.
@@ -43,7 +45,7 @@ export default function BetaFeedbackButton({ isTabVisible }: BetaFeedbackButtonP
         <Text style={styles.sectionLabel}>BETA TESTER</Text>
 
         <TouchableOpacity
-          style={styles.feedbackButton}
+          style={[styles.feedbackButton, coachFeedback.isActive && coachFeedback.highlightStyle]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setShowFeedbackModal(true);

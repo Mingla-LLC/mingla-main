@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import { useCoachMark } from "../hooks/useCoachMark";
 import {
   Text,
   View,
@@ -116,6 +117,8 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
+  const coachAddFriend = useCoachMark(7);
+  const coachChat = useCoachMark(8);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 
@@ -206,6 +209,8 @@ export default function ConnectionsPageRefactored({
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
+  const [activeChatIsUnfriended, setActiveChatIsUnfriended] = useState(false);
+  const [activeChatIsDeletedAccount, setActiveChatIsDeletedAccount] = useState(false);
   const conversationChannelRef = useRef<any>(null);
   const broadcastSeenIds = useRef(new Set<string>());
   // Tracks the most-recently selected chat — used to discard stale background block-check results
@@ -631,6 +636,15 @@ export default function ConnectionsPageRefactored({
     // No network call — tap opens immediately. Server RLS enforces at send time.
     const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
     setActiveChatIsBlocked(isBlockedByMe);
+
+    // Synchronous friendship check from cached friends list (ORCH-0357).
+    // If user unfriended this person, the DM input will be hidden with a banner.
+    const isFriend = dbFriends.some((f: { id: string }) => f.id === friend.id);
+    setActiveChatIsUnfriended(!isFriend && !isBlockedByMe);
+
+    // Reset deleted-account state (will be checked in background below)
+    setActiveChatIsDeletedAccount(false);
+
     latestSelectedChatRef.current = friend.id;
 
     setActiveChat(friend);
@@ -645,6 +659,20 @@ export default function ConnectionsPageRefactored({
         }
       })
       .catch(() => {}); // Server enforces at send time via RLS
+
+    // Background check: is the other user's account deleted/inactive? (ORCH-0357)
+    Promise.resolve(
+      supabase
+        .from('profiles')
+        .select('active')
+        .eq('id', friend.id)
+        .single()
+    ).then(({ data: otherProfile }) => {
+      if (latestSelectedChatRef.current === capturedFriendId) {
+        setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
+      }
+    }).catch(() => {}); // Fail silently — input area defaults to visible
+
     setCurrentConversationId(conversation.id);
 
     // ── Offline-resilient message loading ──────────────────
@@ -746,6 +774,12 @@ export default function ConnectionsPageRefactored({
     // Synchronous block check from cached blocked-users list
     const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
     setActiveChatIsBlocked(isBlockedByMe);
+
+    // Friendship check — friend picker only shows friends, so this should always be true
+    const isFriend = dbFriends.some((f: { id: string }) => f.id === friendUserId);
+    setActiveChatIsUnfriended(!isFriend && !isBlockedByMe);
+    setActiveChatIsDeletedAccount(false);
+
     latestSelectedChatRef.current = friendUserId;
 
     // Background bidirectional check — fire-and-forget
@@ -1158,6 +1192,8 @@ export default function ConnectionsPageRefactored({
     setCurrentConversationId(null);
     setMessages([]);
     setActiveChatIsBlocked(false);
+    setActiveChatIsUnfriended(false);
+    setActiveChatIsDeletedAccount(false);
     latestSelectedChatRef.current = null;
     broadcastSeenIds.current.clear();
 
@@ -1768,6 +1804,8 @@ export default function ConnectionsPageRefactored({
             onCreateSession={onCreateSession}
             availableFriends={[]}
             isBlocked={activeChatIsBlocked}
+            isUnfriended={activeChatIsUnfriended}
+            isDeletedAccount={activeChatIsDeletedAccount}
             conversationId={currentConversationId}
             currentUserId={user?.id || null}
             currentUserName={currentUserDisplayName}
@@ -1821,12 +1859,12 @@ export default function ConnectionsPageRefactored({
       <View style={styles.container}>
         <View style={styles.content}>
           {/* Compact header: title + action icons */}
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, coachChat.isActive && coachChat.highlightStyle]}>
             <Text style={styles.title}>Chats</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
                 onPress={() => handleActionPress("add")}
-                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
+                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive, coachAddFriend.isActive && coachAddFriend.highlightStyle]}
                 activeOpacity={0.7}
               >
                 <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />

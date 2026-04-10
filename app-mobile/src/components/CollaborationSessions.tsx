@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useCoachMark } from '../hooks/useCoachMark';
 import {
   Text,
   View,
@@ -111,6 +112,7 @@ export default function CollaborationSessions({
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const coachCreate = useCoachMark(4);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -479,7 +481,7 @@ export default function CollaborationSessions({
 
       <View collapsable={false}>
         <TouchableOpacity
-          style={[styles.pill, styles.createPill]}
+          style={[styles.pill, styles.createPill, coachCreate.isActive && coachCreate.highlightStyle]}
           onPress={() => {
             HapticFeedback.buttonPress();
             if (!gateAllows && !isUnlimited) {
