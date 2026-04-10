@@ -36,6 +36,8 @@ interface ActivityStatusPickerProps {
   onToggleHeatmap: () => void;
   visibility: VisibilityLevel;
   onVisibilityChange: (level: VisibilityLevel) => void;
+  /** Coach mark ref — attaches to the FAB button for spotlight measurement */
+  fabRef?: (node: any) => void;
 }
 
 export function ActivityStatusPicker({
@@ -45,6 +47,7 @@ export function ActivityStatusPicker({
   feedOn, onToggleFeed,
   heatmapOn, onToggleHeatmap,
   visibility, onVisibilityChange,
+  fabRef,
 }: ActivityStatusPickerProps) {
   const [expanded, setExpanded] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
@@ -206,7 +209,7 @@ export function ActivityStatusPicker({
       )}
 
       {/* Single FAB */}
-      <TouchableOpacity style={styles.mainFab} onPress={toggleExpanded} activeOpacity={0.8}>
+      <TouchableOpacity ref={fabRef} style={styles.mainFab} onPress={toggleExpanded} activeOpacity={0.8}>
         <Icon name={expanded ? 'close' : 'options-outline'} size={22} color="#FFF" />
       </TouchableOpacity>
       {currentStatus && !expanded && (

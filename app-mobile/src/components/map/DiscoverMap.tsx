@@ -469,8 +469,8 @@ export function DiscoverMap({
         onUserPress={handleUserMarkerPress}
       />
 
-      <View ref={coachMapControls.targetRef as any} collapsable={false}>
       <ActivityStatusPicker
+        fabRef={coachMapControls.targetRef}
         currentStatus={settings?.activity_status || null}
         peopleLayerOn={peopleLayerOn}
         onTogglePeople={() => setPeopleLayerOn((prev) => !prev)}
@@ -493,7 +493,6 @@ export function DiscoverMap({
           });
         }}
       />
-      </View>
 
       <MapBottomSheet
         ref={bottomSheetRef}
