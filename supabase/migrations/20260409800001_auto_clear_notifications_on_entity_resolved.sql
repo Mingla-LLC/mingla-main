@@ -57,6 +57,7 @@ $$;
 -- ── Triggers ──────────────────────────────────────────────────────────────────
 
 -- friend_requests: fires when status changes from 'pending' → anything else
+DROP TRIGGER IF EXISTS trg_clear_notification_on_friend_request_resolved ON public.friend_requests;
 CREATE TRIGGER trg_clear_notification_on_friend_request_resolved
   AFTER UPDATE ON public.friend_requests
   FOR EACH ROW
@@ -64,6 +65,7 @@ CREATE TRIGGER trg_clear_notification_on_friend_request_resolved
   EXECUTE FUNCTION public.delete_notifications_on_entity_resolved();
 
 -- pair_requests: fires when status changes from 'pending' → anything else
+DROP TRIGGER IF EXISTS trg_clear_notification_on_pair_request_resolved ON public.pair_requests;
 CREATE TRIGGER trg_clear_notification_on_pair_request_resolved
   AFTER UPDATE ON public.pair_requests
   FOR EACH ROW
@@ -71,6 +73,7 @@ CREATE TRIGGER trg_clear_notification_on_pair_request_resolved
   EXECUTE FUNCTION public.delete_notifications_on_entity_resolved();
 
 -- collaboration_invites: fires when status changes from 'pending' → anything else
+DROP TRIGGER IF EXISTS trg_clear_notification_on_collab_invite_resolved ON public.collaboration_invites;
 CREATE TRIGGER trg_clear_notification_on_collab_invite_resolved
   AFTER UPDATE ON public.collaboration_invites
   FOR EACH ROW
