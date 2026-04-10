@@ -125,7 +125,13 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Show overlay when step becomes active (e.g. resume from DB) ─────────
   useEffect(() => {
     if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
-      // Check if auto-scroll is needed (steps 9-10 on profile tab)
+      // Navigate to the correct tab for this step (handles app restart mid-tour)
+      const config = COACH_STEPS.find((s) => s.id === currentStep);
+      if (config) {
+        navigateToTabRef.current(config.tab);
+      }
+
+      // Check if auto-scroll is needed (profile tab steps)
       if (currentStep === 11 || currentStep === 12) {
         const config = COACH_STEPS.find((s) => s.id === currentStep);
         if (config) {
