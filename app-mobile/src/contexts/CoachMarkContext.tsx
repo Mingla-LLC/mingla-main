@@ -105,6 +105,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     if (currentStep !== TOUR_NOT_STARTED) return;
 
     startTimerRef.current = setTimeout(() => {
+      // Ensure user is on the correct tab (step 1 is Home)
+      navigateToTabRef.current('home');
       setCurrentStep(1);
       persistStep(1);
       setOverlayVisible(true);
