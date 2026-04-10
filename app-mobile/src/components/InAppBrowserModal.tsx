@@ -58,9 +58,8 @@ export default function InAppBrowserModal({
     webViewRef.current?.goForward();
   }, []);
 
-  // Reset state when modal opens with a new URL
+  // Reset nav state when modal opens — loading is managed by WebView callbacks
   const handleShow = useCallback(() => {
-    setLoading(true);
     setCanGoBack(false);
     setCanGoForward(false);
     setCurrentTitle(title);
