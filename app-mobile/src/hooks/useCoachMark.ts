@@ -20,7 +20,7 @@ interface UseCoachMarkResult {
  * the cutout and bubble. No styles are applied to the target element.
  */
 export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoachMarkResult {
-  const { currentStep, registerTarget } = useCoachMarkContext();
+  const { currentStep, registerTarget, measureVersion } = useCoachMarkContext();
   const nodeRef = useRef<View | null>(null);
   const isActive = currentStep === stepId;
 
@@ -41,15 +41,21 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
     }
   }, [measure]);
 
-  // Re-measure whenever this step becomes active — critical for elements
-  // that moved due to scrolling (profile page steps 11-12)
+  // Re-measure when this step becomes active
   useEffect(() => {
     if (isActive && nodeRef.current) {
-      // Small delay to let any scroll/layout settle
       const timer = setTimeout(() => measure(), 100);
       return () => clearTimeout(timer);
     }
   }, [isActive, measure]);
+
+  // Re-measure when measureVersion bumps (after scroll settles)
+  useEffect(() => {
+    if (measureVersion > 0 && isActive && nodeRef.current) {
+      const timer = setTimeout(() => measure(), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [measureVersion, isActive, measure]);
 
   return { isActive, targetRef };
 }

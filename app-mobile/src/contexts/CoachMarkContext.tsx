@@ -39,6 +39,8 @@ interface CoachMarkContextType {
   registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
   /** Whether the overlay is visible (false during cross-tab transitions) */
   overlayVisible: boolean;
+  /** Incremented after scroll settles to trigger re-measurement of targets */
+  measureVersion: number;
 }
 
 interface CoachMarkProviderProps {
@@ -64,6 +66,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const { user } = useAppStore();
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
+  const [measureVersion, setMeasureVersion] = useState(0);
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
@@ -141,17 +144,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           if (stepConfig) {
             const scrollRef = scrollRefsRef.current.get(stepConfig.tab);
             if (scrollRef?.current) {
-              // Scroll to the end — Account Settings and Feedback are at the
-              // bottom of the profile page. scrollToEnd is reliable regardless
-              // of content height.
               scrollRef.current.scrollToEnd?.({ animated: true });
             }
           }
-          // Show overlay after scroll settles, then re-measure targets
+          // After scroll settles: bump measureVersion to force re-measurement,
+          // wait a frame for measurement to complete, then show overlay
           setTimeout(() => {
-            // Force re-measure of the target now that it's visible
-            setOverlayVisible(true);
-          }, SCROLL_SETTLE_DELAY_MS + 200);
+            setMeasureVersion((v) => v + 1);
+            // Give the re-measure 200ms to complete before showing overlay
+            setTimeout(() => setOverlayVisible(true), 200);
+          }, SCROLL_SETTLE_DELAY_MS);
         }, TAB_NAVIGATE_DELAY_MS);
         return;
       }
@@ -276,6 +278,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerTarget,
     registerScrollRef,
     overlayVisible,
+    measureVersion,
   };
 
   return (
