@@ -226,52 +226,50 @@ export default function SpotlightOverlay(): React.ReactElement | null {
         <View style={StyleSheet.absoluteFill} pointerEvents="auto" />
       )}
 
-      {/* Layer 2: Dark overlay with SVG cutout (visual only — no touch handling) */}
-      <Svg
-        width={screenWidth}
-        height={screenHeight}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      >
-        <Defs>
-          <Mask id="spotlight-mask">
-            <Rect x="0" y="0" width={screenWidth} height={screenHeight} fill="white" />
-            {cutout && (
-              <Rect
-                x={cutout.x}
-                y={cutout.y}
-                width={cutout.width}
-                height={cutout.height}
-                rx={cutout.radius}
-                ry={cutout.radius}
-                fill="black"
-              />
-            )}
-          </Mask>
-        </Defs>
-        <Rect
-          x="0"
-          y="0"
-          width={screenWidth}
-          height={screenHeight}
-          fill={overlayColor}
-          mask="url(#spotlight-mask)"
-        />
-        {/* Glow ring around cutout */}
-        {cutout && (
+      {/* Layer 2: Dark overlay with SVG cutout (visual only — no touch handling)
+          Wrapped in a View with pointerEvents="none" because react-native-svg
+          doesn't reliably respect pointerEvents on the Svg element itself. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Svg width={screenWidth} height={screenHeight}>
+          <Defs>
+            <Mask id="spotlight-mask">
+              <Rect x="0" y="0" width={screenWidth} height={screenHeight} fill="white" />
+              {cutout && (
+                <Rect
+                  x={cutout.x}
+                  y={cutout.y}
+                  width={cutout.width}
+                  height={cutout.height}
+                  rx={cutout.radius}
+                  ry={cutout.radius}
+                  fill="black"
+                />
+              )}
+            </Mask>
+          </Defs>
           <Rect
-            x={cutout.x}
-            y={cutout.y}
-            width={cutout.width}
-            height={cutout.height}
-            rx={cutout.radius}
-            ry={cutout.radius}
-            fill="none"
-            stroke={GLOW_COLOR}
-            strokeWidth={GLOW_WIDTH}
+            x="0"
+            y="0"
+            width={screenWidth}
+            height={screenHeight}
+            fill={overlayColor}
+            mask="url(#spotlight-mask)"
           />
-        )}
-      </Svg>
+          {cutout && (
+            <Rect
+              x={cutout.x}
+              y={cutout.y}
+              width={cutout.width}
+              height={cutout.height}
+              rx={cutout.radius}
+              ry={cutout.radius}
+              fill="none"
+              stroke={GLOW_COLOR}
+              strokeWidth={GLOW_WIDTH}
+            />
+          )}
+        </Svg>
+      </View>
 
       {/* Arrow */}
       {arrowDirection !== 'none' && cutout && (
