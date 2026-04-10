@@ -90,10 +90,10 @@ import {
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
-/** Wraps the tab bar and disables it when the coach mark is pending or active */
+/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active */
 function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
-  const { isCoachPending, isCoachActive } = useCoachMarkContext();
-  const locked = isCoachPending || isCoachActive;
+  const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
+  const locked = isCoachLoading || isCoachPending || isCoachActive;
   return (
     <View
       style={[
