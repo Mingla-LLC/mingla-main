@@ -330,7 +330,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
         </Text>
 
         {/* Description */}
-        <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">
+        <Text style={styles.description}>
           {currentStepConfig.description}
         </Text>
 
