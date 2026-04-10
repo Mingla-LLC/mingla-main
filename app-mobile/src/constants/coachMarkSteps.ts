@@ -45,7 +45,7 @@ export const COACH_STEPS: CoachStep[] = [
     tab: 'home',
     targetId: 'coach-collab-prefs',
     title: 'Set the Mood',
-    description: "In a session, these are YOUR group preferences \u2014 different from solo. Set what works for everyone.",
+    description: "Tap a session pill and this icon turns orange. Set your preferences \u2014 cards are built from what everyone picks, so make yours count.",
     buttonLabel: 'Got it',
   },
   {
