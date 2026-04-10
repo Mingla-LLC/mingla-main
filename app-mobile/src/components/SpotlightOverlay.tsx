@@ -34,7 +34,7 @@ const FADE_IN_DURATION = 300;
 const FADE_OUT_DURATION = 250;
 const BUBBLE_ENTRY_DURATION = 200;
 
-const MAP_STEP = 6;
+const MAP_STEP = 7;
 
 // ── Component ───────────────────────────────────────────────────────────────
 

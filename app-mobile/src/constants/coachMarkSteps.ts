@@ -50,6 +50,14 @@ export const COACH_STEPS: CoachStep[] = [
   },
   {
     id: 6,
+    tab: 'home',
+    targetId: 'coach-solo-pill',
+    title: 'Back to You',
+    description: "Done planning with the group? Tap Solo to switch back to your own deck and preferences.",
+    buttonLabel: 'Got it',
+  },
+  {
+    id: 7,
     tab: 'discover',
     targetId: 'coach-discover-map',
     title: 'Your Playground',
@@ -57,7 +65,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 7,
+    id: 8,
     tab: 'connections',
     targetId: 'coach-add-friend',
     title: 'Find Your People',
@@ -65,7 +73,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 8,
+    id: 9,
     tab: 'connections',
     targetId: 'coach-chat',
     title: 'Plan the Move',
@@ -73,7 +81,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 9,
+    id: 10,
     tab: 'profile',
     targetId: 'coach-privacy',
     title: 'On Your Terms',
@@ -81,7 +89,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    id: 10,
+    id: 11,
     tab: 'profile',
     targetId: 'coach-feedback',
     title: "We're All Ears",

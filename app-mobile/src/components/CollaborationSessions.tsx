@@ -113,6 +113,7 @@ export default function CollaborationSessions({
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const coachCreate = useCoachMark(4, 20);
+  const coachSolo = useCoachMark(6, 20);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -465,6 +466,7 @@ export default function CollaborationSessions({
       {/* Fixed pills */}
       <View collapsable={false}>
         <TouchableOpacity
+          ref={coachSolo.targetRef as any}
           style={[styles.pill, isSoloMode && styles.soloPill]}
           onPress={() => {
             onSoloSelect();
