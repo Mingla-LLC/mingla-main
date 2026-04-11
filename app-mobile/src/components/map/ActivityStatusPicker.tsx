@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Switch, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Switch, Pressable, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { Icon } from '../ui/Icon';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -79,6 +79,13 @@ export function ActivityStatusPicker({
 
   return (
     <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus]}>
+      {expanded && (
+        <Pressable
+          style={styles.backdrop}
+          onPress={toggleExpanded}
+          accessible={false}
+        />
+      )}
       {expanded && (
         <View style={styles.dropdown}>
           {/* Who sees you — compact dropdown at top */}
@@ -248,6 +255,14 @@ const styles = StyleSheet.create({
   },
   containerWithStatus: {
     bottom: 52,
+  },
+  backdrop: {
+    position: 'absolute',
+    top: -1000,
+    left: -1000,
+    right: -1000,
+    bottom: -1000,
+    zIndex: -1,
   },
   mainFab: {
     width: 48,
