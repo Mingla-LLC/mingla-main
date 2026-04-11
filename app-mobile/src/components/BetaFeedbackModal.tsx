@@ -8,7 +8,11 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +24,7 @@ import {
   betaFeedbackService,
   MAX_FEEDBACK_DURATION_MS,
   MIN_FEEDBACK_DURATION_MS,
+  MAX_SCREENSHOTS,
   type FeedbackCategory,
   type SubmitFeedbackRequest,
 } from '../services/betaFeedbackService';
@@ -36,7 +41,7 @@ interface BetaFeedbackModalProps {
   screenBefore: string;
 }
 
-type ModalStep = 'category' | 'recording' | 'review' | 'submitting' | 'success' | 'error';
+type ModalStep = 'category' | 'recording' | 'review' | 'screenshots' | 'submitting' | 'success' | 'error';
 
 interface CategoryOption {
   key: FeedbackCategory;
@@ -80,6 +85,10 @@ export default function BetaFeedbackModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [playbackSound, setPlaybackSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedScreenshots, setSelectedScreenshots] = useState<
+    Array<{ uri: string; width: number; height: number }>
+  >([]);
+  const [permissionMessage, setPermissionMessage] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,6 +124,8 @@ export default function BetaFeedbackModal({
     setRecordedDurationMs(0);
     setErrorMessage('');
     setIsPlaying(false);
+    setSelectedScreenshots([]);
+    setPermissionMessage('');
   }, [playbackSound]);
 
   const handleClose = useCallback(async () => {
@@ -252,6 +263,42 @@ export default function BetaFeedbackModal({
     setStep('category');
   };
 
+  // ── Screenshot Logic ─────────────────────────────────────────────────────
+
+  const pickScreenshots = async (): Promise<void> => {
+    const remaining = MAX_SCREENSHOTS - selectedScreenshots.length;
+    if (remaining <= 0) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setPermissionMessage('Photo library access is needed to attach screenshots');
+      return;
+    }
+    setPermissionMessage('');
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 1,
+      exif: false,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const newImages = result.assets.map((asset) => ({
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+    }));
+
+    setSelectedScreenshots((prev) => [...prev, ...newImages].slice(0, MAX_SCREENSHOTS));
+  };
+
+  const removeScreenshot = (index: number): void => {
+    setSelectedScreenshots((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // ── Submit Logic ────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
@@ -262,6 +309,15 @@ export default function BetaFeedbackModal({
     try {
       // Upload audio
       const audioPath = await betaFeedbackService.uploadFeedbackAudio(user.id, recordedUri);
+
+      // Upload screenshots (only if any selected)
+      let screenshotPaths: string[] | undefined;
+      if (selectedScreenshots.length > 0) {
+        screenshotPaths = await betaFeedbackService.uploadFeedbackScreenshots(
+          user.id,
+          selectedScreenshots,
+        );
+      }
 
       // Collect metadata
       const deviceInfo = getDeviceInfo();
@@ -295,6 +351,7 @@ export default function BetaFeedbackModal({
         session_duration_ms: sessionDurationMs,
         latitude,
         longitude,
+        screenshot_paths: screenshotPaths,
       };
 
       await submitMutation.mutateAsync(params);
@@ -396,12 +453,93 @@ export default function BetaFeedbackModal({
           <Text style={styles.secondaryButtonText}>Re-record</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} activeOpacity={0.7}>
-          <Text style={styles.primaryButtonText}>Submit</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => setStep('screenshots')} activeOpacity={0.7}>
+          <Text style={styles.primaryButtonText}>Next</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
+
+  const renderScreenshots = () => {
+    const thumbWidth = (Dimensions.get('window').width - spacing.lg * 2 - spacing.sm * 2) / 3;
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={styles.stepTitle}>Add Screenshots</Text>
+        <Text style={styles.stepSubtitle}>
+          {selectedScreenshots.length === 0
+            ? 'Optionally attach up to 10 images from your photo library'
+            : `${selectedScreenshots.length}/${MAX_SCREENSHOTS} screenshots`}
+        </Text>
+
+        {permissionMessage !== '' && (
+          <Text style={styles.permissionMessage}>{permissionMessage}</Text>
+        )}
+
+        {selectedScreenshots.length > 0 && (
+          <ScrollView
+            style={styles.screenshotScrollContainer}
+            contentContainerStyle={styles.screenshotGrid}
+            showsVerticalScrollIndicator={false}
+          >
+            {selectedScreenshots.map((img, index) => (
+              <View
+                key={`${img.uri}-${index}`}
+                style={[styles.screenshotThumb, { width: thumbWidth, height: thumbWidth }]}
+              >
+                <Image
+                  source={{ uri: img.uri }}
+                  style={styles.screenshotImage}
+                  resizeMode="cover"
+                />
+                <TouchableOpacity
+                  style={styles.screenshotRemove}
+                  onPress={() => removeScreenshot(index)}
+                  hitSlop={8}
+                  accessibilityLabel={`Remove screenshot ${index + 1}`}
+                >
+                  <Icon name="close-circle" size={22} color={colors.error[500]} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
+        {selectedScreenshots.length < MAX_SCREENSHOTS && (
+          <TouchableOpacity
+            style={styles.addScreenshotButton}
+            onPress={pickScreenshots}
+            activeOpacity={0.7}
+            accessibilityLabel="Add screenshots from library"
+          >
+            <Icon name="images-outline" size={20} color={colors.primary[500]} />
+            <Text style={styles.addScreenshotText}>
+              {selectedScreenshots.length === 0 ? 'Add from Library' : 'Add More'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.screenshotActions}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setStep('review')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.secondaryButtonText}>Back</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleSubmit}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.primaryButtonText}>
+              {selectedScreenshots.length === 0 ? 'Skip & Submit' : 'Submit'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   const renderSubmitting = () => (
     <View style={styles.centeredStep}>
@@ -424,7 +562,7 @@ export default function BetaFeedbackModal({
       <Text style={styles.errorText}>{errorMessage}</Text>
       <TouchableOpacity
         style={styles.secondaryButton}
-        onPress={() => setStep(recordedUri ? 'review' : 'category')}
+        onPress={() => setStep(recordedUri ? 'screenshots' : 'category')}
         activeOpacity={0.7}
       >
         <Text style={styles.secondaryButtonText}>Try Again</Text>
@@ -437,6 +575,7 @@ export default function BetaFeedbackModal({
       case 'category': return renderCategory();
       case 'recording': return renderRecording();
       case 'review': return renderReview();
+      case 'screenshots': return renderScreenshots();
       case 'submitting': return renderSubmitting();
       case 'success': return renderSuccess();
       case 'error': return renderError();
@@ -672,6 +811,60 @@ const styles = StyleSheet.create({
   reviewActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+
+  // Screenshots
+  screenshotScrollContainer: {
+    maxHeight: 240,
+    marginBottom: spacing.md,
+  },
+  screenshotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  screenshotThumb: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    position: 'relative' as const,
+  },
+  screenshotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  screenshotRemove: {
+    position: 'absolute' as const,
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 11,
+  },
+  addScreenshotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+    borderStyle: 'dashed' as const,
+    backgroundColor: colors.primary[50],
+  },
+  addScreenshotText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+  },
+  screenshotActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  permissionMessage: {
+    ...typography.xs,
+    color: colors.warning[600],
+    marginBottom: spacing.sm,
   },
 
   // Status

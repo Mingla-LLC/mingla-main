@@ -8,6 +8,8 @@ import {
   Pressable,
   FlatList,
   ActivityIndicator,
+  Image,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
@@ -60,7 +62,13 @@ function formatDuration(ms: number): string {
 
 // ── Item Component ──────────────────────────────────────────────────────────
 
-function FeedbackItem({ item }: { item: BetaFeedback }) {
+function FeedbackItem({
+  item,
+  onViewScreenshot,
+}: {
+  item: BetaFeedback;
+  onViewScreenshot: (url: string) => void;
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -135,6 +143,34 @@ function FeedbackItem({ item }: { item: BetaFeedback }) {
         )}
         <Text style={styles.playLabel}>{isPlaying ? 'Pause' : 'Play recording'}</Text>
       </TouchableOpacity>
+
+      {item.screenshot_urls && item.screenshot_urls.length > 0 && (
+        <View style={styles.screenshotSection}>
+          <Text style={styles.screenshotCountText}>
+            {item.screenshot_urls.length} screenshot{item.screenshot_urls.length > 1 ? 's' : ''}
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.screenshotScrollContent}
+          >
+            {item.screenshot_urls.map((url, idx) => (
+              <TouchableOpacity
+                key={`${item.id}-ss-${idx}`}
+                onPress={() => onViewScreenshot(url)}
+                activeOpacity={0.8}
+                accessibilityLabel={`View screenshot ${idx + 1}`}
+              >
+                <Image
+                  source={{ uri: url }}
+                  style={styles.historyScreenshotThumb}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
@@ -144,6 +180,7 @@ function FeedbackItem({ item }: { item: BetaFeedback }) {
 export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHistorySheetProps) {
   const insets = useSafeAreaInsets();
   const { data: history, isLoading, isError } = useFeedbackHistory();
+  const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -184,7 +221,9 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
             <FlatList
               data={history ?? []}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <FeedbackItem item={item} />}
+              renderItem={({ item }) => (
+                <FeedbackItem item={item} onViewScreenshot={(url) => setFullScreenImageUrl(url)} />
+              )}
               ListEmptyComponent={renderEmpty}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
@@ -192,6 +231,31 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
           )}
         </Pressable>
       </Pressable>
+
+      {/* Full-Screen Screenshot Viewer */}
+      <Modal
+        visible={!!fullScreenImageUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenImageUrl(null)}
+      >
+        <Pressable style={styles.fullScreenBackdrop} onPress={() => setFullScreenImageUrl(null)}>
+          {fullScreenImageUrl && (
+            <Image
+              source={{ uri: fullScreenImageUrl }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          )}
+          <TouchableOpacity
+            style={styles.fullScreenClose}
+            onPress={() => setFullScreenImageUrl(null)}
+            accessibilityLabel="Close screenshot"
+          >
+            <Icon name="close-circle" size={36} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -296,6 +360,42 @@ const styles = StyleSheet.create({
     ...typography.sm,
     color: colors.primary[500],
     fontWeight: fontWeights.medium,
+  },
+
+  // Screenshots
+  screenshotSection: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.gray[200],
+  },
+  screenshotCountText: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xs,
+  },
+  screenshotScrollContent: {
+    gap: spacing.xs,
+  },
+  historyScreenshotThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.sm,
+  },
+  fullScreenBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
+  },
+  fullScreenClose: {
+    position: 'absolute' as const,
+    top: 60,
+    right: 20,
   },
 
   // Empty

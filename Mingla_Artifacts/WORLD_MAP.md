@@ -251,8 +251,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0352 | Beta feedback modal — end-to-end defects (freeze, stale state, audio leak, icon errors, close-path gaps) | Profile | S1 | bug | closed | A | 2026-04-09 | QA PASS (AH-051). Full audit found 4 defects (missing pause icon, orphaned success timer, unstable onClose, cached permissions). All fixed in clean pass (AH-050). Prior patches preserved. 5 files changed total. |
 | ORCH-0353 | Permission storm on first landing — 4 OS dialogs fire on boot | App Lifecycle | S1 | ux | closed | A | 2026-04-09 | Device-verified PASS. Split OneSignal login/permission, removed auto location/camera/tracking from MobileFeaturesProvider, ATT wait→0. Zero dialogs on Home. |
 | ORCH-0354 | Coach mark guided tour system (10-step, cross-tab, resumable) | App Lifecycle | S1 | missing-feature | implementing | F | 2026-04-09 | Spec: SPEC_ORCH-0349_COACH_MARK_SYSTEM.md. Design: Hybrid bottom card + self-highlight. Phase 1 pending. Prerequisite ORCH-0353 complete. |
-| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | speccing | F | — | Intake complete. Full chain mapped. Awaiting spec. |
-| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests not showing, wire chat avatar tap to open profile | Profile + Chat | S1 | quality-gap | investigating | F | — | Intake confirmed. 5 sub-issues: (1) username visible, (2) bio missing, (3) interests empty for all users, (4) no stats row, (5) chat header avatar not tappable. |
+| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | implementing | F | — | Spec: SPEC_ORCH-0371_FEEDBACK_SCREENSHOTS.md. 7 files, 3 domains, 17 success criteria. Dispatched to implementor. |
+| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests not showing, wire chat avatar tap to open profile, wire onMessage | Profile + Chat | S1 | quality-gap | implementing | F | — | Investigation APPROVED (5 root causes proven). Dispatching to implementor. Report: INVESTIGATION_ORCH-0373_FRIEND_PROFILE_OVERHAUL.md |
 
 ### Section 9: Map & Location
 
@@ -290,6 +290,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0358 | Friends-of-friends filter fixed — MapPrivacySettings + DB CHECK constraint updated | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-057). FoF added to VISIBILITY_LEVELS + LABELS. DB constraint ALTERed live (migration 20260410000003). Verified via pg_constraint query. |
 | ORCH-0359 | Place pins now show name labels — truncated place/stop name below each pin | Map | S2 | ux | closed | A | 2026-04-10 | QA PASS (AH-059). Text label added to PlacePinContent. Curated shows first stop name, singles show place name. 15-char truncation. |
 | ORCH-0361 | Avatar disappearance fixed — 3s tracksViewChanges window for image loading | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-059). Person markers `tracksViewChanges={true}` for 3s then false. Prevents permanent fallback on slow image load. |
+| ORCH-0374 | Map pin labels cut off + poor legibility — triple truncation (15-char slice, 60px maxWidth, numberOfLines=1), no background container, text unreadable over map tiles. Redesign with orange pill for contrast. | Map | S2 | ux | designing | F | — | Follows ORCH-0359 (original label impl). Affected files: PlacePin.tsx, PersonPin.tsx. Designer dispatched. |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -325,7 +326,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
 | ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
-| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | investigating | F | — | ORCH-0371_PRICE_TIER_RESTRUCTURE_BLAST_RADIUS.md — blast radius mapped. ~30 files across all 3 domains. 5 decisions pending. |
+| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | speccing | F | — | Forensic complete (35 files). 8 decisions locked. Spec dispatched. No trial, remove swipe tracking, 1 pairing free, unlimited members all, mingla_plus in DB, RC=Mingla Plus. |
 
 ### Section 12: Calendar & Scheduling
 

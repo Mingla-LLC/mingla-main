@@ -1,5 +1,6 @@
 import { Audio } from 'expo-av';
 import { AppState } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from './supabase';
 import { extractFunctionError } from '../utils/edgeFunctionError';
 
@@ -19,6 +20,7 @@ export interface SubmitFeedbackRequest {
   session_duration_ms: number;
   latitude?: number;
   longitude?: number;
+  screenshot_paths?: string[];
 }
 
 export interface BetaFeedback {
@@ -39,6 +41,8 @@ export interface BetaFeedback {
   session_duration_ms: number | null;
   latitude: number | null;
   longitude: number | null;
+  screenshot_paths: string[] | null;
+  screenshot_urls: string[] | null;
   admin_notes: string | null;
   status: 'new' | 'reviewed' | 'actioned' | 'dismissed';
   created_at: string;
@@ -60,7 +64,10 @@ interface RNFormDataBlob {
 
 export const MAX_FEEDBACK_DURATION_MS = 300_000; // 5 minutes
 export const MIN_FEEDBACK_DURATION_MS = 3_000;   // 3 seconds
+export const MAX_SCREENSHOTS = 10;
 const SIGNED_URL_EXPIRY_SECONDS = 3600;          // 1 hour
+const SCREENSHOT_MAX_DIMENSION = 1920;            // px, longest edge
+const SCREENSHOT_JPEG_QUALITY = 0.7;
 
 // ── FeedbackRecorder Class ──────────────────────────────────────────────────
 
@@ -315,13 +322,107 @@ async function getFeedbackAudioUrl(
   return data.signedUrl;
 }
 
+// ── Screenshot Compression ─────────────────────────────────────────────────
+
+async function compressScreenshot(
+  uri: string,
+  width: number,
+  height: number,
+): Promise<{ uri: string; width: number; height: number }> {
+  const longest = Math.max(width, height);
+  const actions: ImageManipulator.Action[] = [];
+
+  if (longest > SCREENSHOT_MAX_DIMENSION) {
+    const scale = SCREENSHOT_MAX_DIMENSION / longest;
+    actions.push({
+      resize: {
+        width: Math.round(width * scale),
+        height: Math.round(height * scale),
+      },
+    });
+  }
+
+  const result = await ImageManipulator.manipulateAsync(uri, actions, {
+    compress: SCREENSHOT_JPEG_QUALITY,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+
+  return { uri: result.uri, width: result.width, height: result.height };
+}
+
+// ── Upload Screenshots ────────────────────────────────────────────────────
+
+async function uploadFeedbackScreenshots(
+  userId: string,
+  screenshots: Array<{ uri: string; width: number; height: number }>,
+): Promise<string[]> {
+  const ts = Date.now();
+
+  const uploadOne = async (
+    shot: { uri: string; width: number; height: number },
+    index: number,
+  ): Promise<string> => {
+    const compressed = await compressScreenshot(shot.uri, shot.width, shot.height);
+    const fileName = `feedback_${ts}_${index}.jpg`;
+    const filePath = `${userId}/screenshots/${fileName}`;
+
+    const formData = new FormData();
+    const blob: RNFormDataBlob = {
+      uri: compressed.uri,
+      type: 'image/jpeg',
+      name: fileName,
+    };
+    formData.append('file', blob as unknown as Blob);
+
+    const { error: uploadError } = await supabase.storage
+      .from('beta-feedback')
+      .upload(filePath, formData, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(
+        `Failed to upload screenshot ${index + 1} of ${screenshots.length}: ${uploadError.message}`,
+      );
+    }
+
+    return filePath;
+  };
+
+  return Promise.all(screenshots.map((shot, i) => uploadOne(shot, i)));
+}
+
+// ── Screenshot Signed URLs ────────────────────────────────────────────────
+
+async function getScreenshotSignedUrls(
+  paths: string[],
+): Promise<string[]> {
+  const results = await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const { data, error } = await supabase.storage
+          .from('beta-feedback')
+          .createSignedUrl(path, SIGNED_URL_EXPIRY_SECONDS);
+        if (error || !data?.signedUrl) return '';
+        return data.signedUrl;
+      } catch {
+        return '';
+      }
+    }),
+  );
+  return results;
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────────
 
 export const feedbackRecorder = new FeedbackRecorder();
 
 export const betaFeedbackService = {
   uploadFeedbackAudio,
+  uploadFeedbackScreenshots,
   submitFeedback,
   getUserFeedbackHistory,
   getFeedbackAudioUrl,
+  getScreenshotSignedUrls,
 };
