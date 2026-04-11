@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Ìfitónilétí",
+    "unread": "{{count}} tí a kò kà",
+    "markAllRead": "Ṣàmì gbogbo bí a ti kà",
+    "clearAll": "Pa gbogbo rẹ́"
+  },
+  "filters": {
+    "all": "Gbogbo",
+    "social": "Àwùjọ",
+    "sessions": "Àwọn Ìgbà",
+    "messages": "Ìfiránṣẹ́"
+  },
+  "timeAgo": {
+    "justNow": "Ní báyìí"
+  },
+  "dateGroups": {
+    "today": "Lónìí",
+    "yesterday": "Lánàá",
+    "thisWeek": "Ọ̀sẹ̀ Yìí",
+    "earlier": "Ṣáájú"
+  },
+  "actions": {
+    "accept": "Gba",
+    "decline": "Kọ̀",
+    "join": "Darapọ̀",
+    "upgrade": "Gbéga",
+    "review": "Ṣàyẹ̀wò",
+    "actionFailed": "Iṣẹ́ kùnà. Fọwọ́ kàn láti tún gbìyànjú."
+  },
+  "emptyState": {
+    "title": "Gbogbo ẹ̀ ti parí",
+    "subtitle": "Iṣẹ́ tuntun yóò hàn níbí."
+  },
+  "errorState": {
+    "title": "Nǹkan kan kò tọ́",
+    "subtitle": "Kò lè gbéyọ ìfitónilétí.",
+    "tryAgain": "Tún Gbìyànjú"
+  },
+  "offline": {
+    "banner": "O kò sí lórí ayélujára — ń ṣàfihàn àwọn ìfitónilétí tí a tọ́jú"
+  }
+}

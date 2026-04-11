@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "AKAỤNTỤ",
+    "billing_label": "Ụgwọ",
+    "billing_description": "Jikwaa atụmatụ gị na ndenye aha",
+    "account_settings_label": "Ntọala Akaụntụ",
+    "account_settings_description": "Nzuzo, nhọrọ, na njikwa akaụntụ",
+    "upload_profile_photo_title": "Bulite Foto Profaịlụ",
+    "upload_profile_photo_body": "Họrọ otu ị ga-esi melite foto profaịlụ gị",
+    "change_profile_photo_title": "Gbanwee Foto Profaịlụ",
+    "change_profile_photo_body": "Bulite foto ọhụrụ ma ọ bụ wepụ nke dị",
+    "error_remove_photo": "Enweghị ike iwepụ foto profaịlụ.",
+    "error_take_photo": "Enweghị ike ịse foto. Biko nwaa ọzọ.",
+    "error_select_image": "Enweghị ike ịhọrọ foto. Biko nwaa ọzọ.",
+    "error_upload_photo": "Enweghị ike ibulite foto profaịlụ.",
+    "error_save_bio": "Enweghị ike ịchekwa bio."
+  },
+  "edit_bio": {
+    "title": "Dezie Bio",
+    "placeholder": "Gwa ndị mmadụ banyere onwe gị",
+    "save": "Chekwaa"
+  },
+  "edit_interests": {
+    "title": "Dezie Ihe Masịrị Gị",
+    "what_are_you_into": "Kedụ ihe ị nwere mmasị na ya?",
+    "what_do_you_like": "Kedụ ihe masịrị gị?",
+    "save": "Chekwaa"
+  },
+  "hero": {
+    "your_name_here": "Aha gị ebe a",
+    "user_fallback": "Onye ọrụ",
+    "first_name": "Aha mbụ",
+    "last_name": "Aha ikpeazụ",
+    "name_error_empty": "Biko tinye aha gị.",
+    "name_error_failed": "Enweghị ike ịchekwa. Nwaa ọzọ.",
+    "somewhere_cool": "Ebe mara mma, ikekwe",
+    "tap_to_add_bio": "Pịa iji tinye bio",
+    "hint_add_photo": "Ndị mmadụ na-atụkwasị obi n'ihu. Tinye foto ka ndị enyi mara na ọ bụ gị.",
+    "hint_add_bio": "Bio dị mkpụmkpụ na-arụ ọrụ nke ọma. Kedụ ihe ndị mmadụ kwesịrị ịmata banyere gị?",
+    "cancel_editing": "Kagbuo ndezi",
+    "save_name": "Chekwaa aha"
+  },
+  "stats": {
+    "saved": "ECHEKWARA",
+    "friends": "NDỊ ENYI",
+    "boards": "BỌỌDỤ",
+    "places": "EBE",
+    "streak": "NTỤGHARỊ",
+    "level": "ỌKWA",
+    "motivation_start": "Ọnụ ọgụgụ gị na-amalite mgbe ị mere ihe. Gaa nyochaa.",
+    "motivation_close": "Ebe {{count}} ọzọ iji ruo {{tier}}. Ị nọ nso.",
+    "motivation_close_plural": "Ebe {{count}} ọzọ iji ruo {{tier}}. Ị nọ nso.",
+    "motivation_week": "Izu zuru oke. Ịdị n'otu adịrị gị mma.",
+    "motivation_month": "Ụbọchị 30 n'usoro. Enwere ike ị gaghị akwụsị."
+  },
+  "paired_section": {
+    "see_all": "Lee niile"
+  },
+  "interests": {
+    "edit_accessibility": "Dezie ihe masịrị gị",
+    "your_interests": "Ihe Masịrị Gị",
+    "interests": "Ihe Masịrị",
+    "not_shared": "Ekekọrịtaghị",
+    "empty_text": "Gwa anyị ihe masịrị gị — ọ na-enyere anyị aka ịchọta ihe ị ga-ahụ n'anya.",
+    "add_interests": "Tinye Ihe Masịrị"
+  },
+  "friend": {
+    "loading_profile": "Na-ebugo profaịlụ…",
+    "profile_unavailable_title": "Profaịlụ a adịghị",
+    "profile_unavailable_body": "Profaịlụ onye a nwere ike ịbụ nke nzuzo, ma ọ bụ ụnụ ejikọghị.",
+    "about": "Banyere",
+    "location_label": "Ebe",
+    "not_shared": "Ekekọrịtaghị",
+    "mingla_level": "Ọkwa Mingla",
+    "interests": "Ihe Masịrị",
+    "message": "Ozi",
+    "friend_fallback": "Enyi"
+  }
+}

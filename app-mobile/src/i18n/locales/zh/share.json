@@ -1,0 +1,18 @@
+{
+  "header.title": "分享体验",
+  "empty.no_data": "没有可用的体验数据",
+  "card.nearby": "附近",
+  "card.suggested_schedule": "建议日程",
+  "card.per_person": "每人",
+  "share_to": "分享到：",
+  "platform.messages": "短信",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "更多分享选项",
+  "actions.copy_link": "复制链接",
+  "actions.copy_message": "复制消息",
+  "alerts.copy_error": "复制消息到剪贴板失败",
+  "alerts.share_error": "分享失败。请重试。",
+  "alerts.error_title": "错误"
+}

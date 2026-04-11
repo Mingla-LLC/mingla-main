@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "COMPTE",
+    "billing_label": "Facturation",
+    "billing_description": "Gérez votre plan et votre abonnement",
+    "account_settings_label": "Paramètres du compte",
+    "account_settings_description": "Confidentialité, préférences et gestion du compte",
+    "upload_profile_photo_title": "Télécharger une photo de profil",
+    "upload_profile_photo_body": "Choisissez comment mettre à jour votre photo de profil",
+    "change_profile_photo_title": "Changer la photo de profil",
+    "change_profile_photo_body": "Téléchargez une nouvelle photo ou supprimez celle existante",
+    "error_remove_photo": "Échec de la suppression de la photo de profil.",
+    "error_take_photo": "Échec de la prise de photo. Veuillez réessayer.",
+    "error_select_image": "Échec de la sélection de l'image. Veuillez réessayer.",
+    "error_upload_photo": "Échec du téléchargement de la photo de profil.",
+    "error_save_bio": "Échec de l'enregistrement de la bio."
+  },
+  "edit_bio": {
+    "title": "Modifier la bio",
+    "placeholder": "Parlez de vous",
+    "save": "Enregistrer"
+  },
+  "edit_interests": {
+    "title": "Modifier les centres d'intérêt",
+    "what_are_you_into": "Qu'est-ce qui vous passionne ?",
+    "what_do_you_like": "Qu'aimez-vous ?",
+    "save": "Enregistrer"
+  },
+  "hero": {
+    "your_name_here": "Votre nom ici",
+    "user_fallback": "Utilisateur",
+    "first_name": "Prénom",
+    "last_name": "Nom de famille",
+    "name_error_empty": "Veuillez entrer votre nom.",
+    "name_error_failed": "Échec de l'enregistrement. Réessayez.",
+    "somewhere_cool": "Quelque part de cool, probablement",
+    "tap_to_add_bio": "Appuyez pour ajouter une bio",
+    "hint_add_photo": "Les gens font confiance aux visages. Ajoutez une photo pour que vos amis vous reconnaissent.",
+    "hint_add_bio": "Une courte bio fait la différence. Que devraient savoir les gens sur vous ?",
+    "cancel_editing": "Annuler la modification",
+    "save_name": "Enregistrer le nom"
+  },
+  "stats": {
+    "saved": "ENREGISTRÉS",
+    "friends": "AMIS",
+    "boards": "TABLEAUX",
+    "places": "LIEUX",
+    "streak": "SÉRIE",
+    "level": "NIVEAU",
+    "motivation_start": "Vos statistiques commencent à se construire dès que vous faites quelque chose. Allez explorer.",
+    "motivation_close": "Encore {{count}} lieu pour atteindre {{tier}}. Vous y êtes presque.",
+    "motivation_close_plural": "Encore {{count}} lieux pour atteindre {{tier}}. Vous y êtes presque.",
+    "motivation_week": "Une semaine entière. La régularité vous va bien.",
+    "motivation_month": "30 jours d'affilée. Vous êtes inarrêtable."
+  },
+  "paired_section": {
+    "see_all": "Tout voir"
+  },
+  "interests": {
+    "edit_accessibility": "Modifier vos centres d'intérêt",
+    "your_interests": "Vos centres d'intérêt",
+    "interests": "Centres d'intérêt",
+    "not_shared": "Non partagé",
+    "empty_text": "Dites-nous ce qui vous passionne — ça nous aide à trouver votre prochain coup de cœur.",
+    "add_interests": "Ajouter des centres d'intérêt"
+  },
+  "friend": {
+    "loading_profile": "Chargement du profil…",
+    "profile_unavailable_title": "Ce profil n'est pas disponible",
+    "profile_unavailable_body": "Le profil de cette personne est peut-être privé, ou vous n'êtes pas connectés.",
+    "about": "À propos",
+    "location_label": "Emplacement",
+    "not_shared": "Non partagé",
+    "mingla_level": "Niveau Mingla",
+    "interests": "Centres d'intérêt",
+    "message": "Message",
+    "friend_fallback": "Ami"
+  }
+}

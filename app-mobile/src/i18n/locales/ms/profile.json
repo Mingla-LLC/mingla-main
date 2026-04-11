@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "AKAUN",
+    "billing_label": "Pengebilan",
+    "billing_description": "Urus pelan dan langganan anda",
+    "account_settings_label": "Tetapan Akaun",
+    "account_settings_description": "Privasi, pilihan, dan pengurusan akaun",
+    "upload_profile_photo_title": "Muat Naik Foto Profil",
+    "upload_profile_photo_body": "Pilih cara anda mahu mengemas kini foto profil",
+    "change_profile_photo_title": "Tukar Foto Profil",
+    "change_profile_photo_body": "Muat naik foto baharu atau buang yang sedia ada",
+    "error_remove_photo": "Gagal membuang foto profil.",
+    "error_take_photo": "Gagal mengambil gambar. Sila cuba lagi.",
+    "error_select_image": "Gagal memilih imej. Sila cuba lagi.",
+    "error_upload_photo": "Gagal memuat naik foto profil.",
+    "error_save_bio": "Gagal menyimpan bio."
+  },
+  "edit_bio": {
+    "title": "Edit Bio",
+    "placeholder": "Ceritakan tentang diri anda",
+    "save": "Simpan"
+  },
+  "edit_interests": {
+    "title": "Edit Minat",
+    "what_are_you_into": "Apa minat anda?",
+    "what_do_you_like": "Apa yang anda suka?",
+    "save": "Simpan"
+  },
+  "hero": {
+    "your_name_here": "Nama anda di sini",
+    "user_fallback": "Pengguna",
+    "first_name": "Nama depan",
+    "last_name": "Nama belakang",
+    "name_error_empty": "Sila masukkan nama anda.",
+    "name_error_failed": "Gagal menyimpan. Cuba lagi.",
+    "somewhere_cool": "Mungkin di tempat yang menarik",
+    "tap_to_add_bio": "Ketik untuk tambah bio",
+    "hint_add_photo": "Orang percaya wajah. Tambah foto supaya rakan tahu itu anda.",
+    "hint_add_bio": "Bio pendek sangat bermakna. Apa yang orang patut tahu tentang anda?",
+    "cancel_editing": "Batal pengeditan",
+    "save_name": "Simpan nama"
+  },
+  "stats": {
+    "saved": "DISIMPAN",
+    "friends": "RAKAN",
+    "boards": "PAPAN",
+    "places": "TEMPAT",
+    "streak": "BERTURUT",
+    "level": "TAHAP",
+    "motivation_start": "Statistik anda mula dibina apabila anda mula melakukan sesuatu. Pergi teroka.",
+    "motivation_close": "Lagi {{count}} tempat untuk sampai {{tier}}. Hampir sampai.",
+    "motivation_close_plural": "Lagi {{count}} tempat untuk sampai {{tier}}. Hampir sampai.",
+    "motivation_week": "Seminggu penuh. Konsistensi nampak hebat.",
+    "motivation_month": "30 hari berturut-turut. Anda mungkin tidak boleh dihentikan."
+  },
+  "paired_section": {
+    "see_all": "Lihat semua"
+  },
+  "interests": {
+    "edit_accessibility": "Edit minat anda",
+    "your_interests": "Minat Anda",
+    "interests": "Minat",
+    "not_shared": "Tidak dikongsi",
+    "empty_text": "Beritahu kami apa yang anda suka — ia membantu kami cari perkara kegemaran anda seterusnya.",
+    "add_interests": "Tambah Minat"
+  },
+  "friend": {
+    "loading_profile": "Memuatkan profil…",
+    "profile_unavailable_title": "Profil ini tidak tersedia",
+    "profile_unavailable_body": "Profil orang ini mungkin peribadi, atau anda mungkin tidak berhubung.",
+    "about": "Tentang",
+    "location_label": "Lokasi",
+    "not_shared": "Tidak dikongsi",
+    "mingla_level": "Tahap Mingla",
+    "interests": "Minat",
+    "message": "Mesej",
+    "friend_fallback": "Rakan"
+  }
+}

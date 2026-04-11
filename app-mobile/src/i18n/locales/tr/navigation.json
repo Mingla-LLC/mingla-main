@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Keşfet",
+  "tabs.discover": "Keşfet",
+  "tabs.chats": "Sohbetler",
+  "tabs.likes": "Beğeniler",
+  "tabs.profile": "Profil",
+  "alerts.sign_in_error_title": "Giriş Hatası",
+  "alerts.error_title": "Hata",
+  "alerts.failed_sign_in": "Failed to complete sign-in: "
+}

@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Explorer",
+  "tabs.discover": "Découvrir",
+  "tabs.chats": "Discussions",
+  "tabs.likes": "Favoris",
+  "tabs.profile": "Profil",
+  "alerts.sign_in_error_title": "Erreur de connexion",
+  "alerts.error_title": "Erreur",
+  "alerts.failed_sign_in": "Échec de la connexion : "
+}

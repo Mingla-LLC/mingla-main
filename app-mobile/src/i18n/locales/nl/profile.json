@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "ACCOUNT",
+    "billing_label": "Facturering",
+    "billing_description": "Beheer je plan en abonnement",
+    "account_settings_label": "Accountinstellingen",
+    "account_settings_description": "Privacy, voorkeuren en accountbeheer",
+    "upload_profile_photo_title": "Profielfoto uploaden",
+    "upload_profile_photo_body": "Kies hoe je je profielfoto wilt bijwerken",
+    "change_profile_photo_title": "Profielfoto wijzigen",
+    "change_profile_photo_body": "Upload een nieuwe foto of verwijder de bestaande",
+    "error_remove_photo": "Profielfoto verwijderen mislukt.",
+    "error_take_photo": "Foto maken mislukt. Probeer het opnieuw.",
+    "error_select_image": "Afbeelding selecteren mislukt. Probeer het opnieuw.",
+    "error_upload_photo": "Profielfoto uploaden mislukt.",
+    "error_save_bio": "Bio opslaan mislukt."
+  },
+  "edit_bio": {
+    "title": "Bio bewerken",
+    "placeholder": "Vertel anderen over jezelf",
+    "save": "Opslaan"
+  },
+  "edit_interests": {
+    "title": "Interesses bewerken",
+    "what_are_you_into": "Waar ben je in geïnteresseerd?",
+    "what_do_you_like": "Wat vind je leuk?",
+    "save": "Opslaan"
+  },
+  "hero": {
+    "your_name_here": "Je naam hier",
+    "user_fallback": "Gebruiker",
+    "first_name": "Voornaam",
+    "last_name": "Achternaam",
+    "name_error_empty": "Vul je naam in.",
+    "name_error_failed": "Opslaan mislukt. Probeer het opnieuw.",
+    "somewhere_cool": "Ergens cools, waarschijnlijk",
+    "tap_to_add_bio": "Tik om een bio toe te voegen",
+    "hint_add_photo": "Mensen vertrouwen gezichten. Voeg een foto toe zodat vrienden weten dat jij het bent.",
+    "hint_add_bio": "Een korte bio maakt een groot verschil. Wat moeten mensen over je weten?",
+    "cancel_editing": "Bewerken annuleren",
+    "save_name": "Naam opslaan"
+  },
+  "stats": {
+    "saved": "OPGESLAGEN",
+    "friends": "VRIENDEN",
+    "boards": "BORDEN",
+    "places": "PLEKKEN",
+    "streak": "REEKS",
+    "level": "NIVEAU",
+    "motivation_start": "Je statistieken beginnen zodra je iets doet. Ga verkennen.",
+    "motivation_close": "Nog {{count}} plek om {{tier}} te bereiken. Je bent er bijna.",
+    "motivation_close_plural": "Nog {{count}} plekken om {{tier}} te bereiken. Je bent er bijna.",
+    "motivation_week": "Een hele week. Regelmaat staat je goed.",
+    "motivation_month": "30 dagen achter elkaar. Je bent niet te stoppen."
+  },
+  "paired_section": {
+    "see_all": "Alles bekijken"
+  },
+  "interests": {
+    "edit_accessibility": "Je interesses bewerken",
+    "your_interests": "Jouw interesses",
+    "interests": "Interesses",
+    "not_shared": "Niet gedeeld",
+    "empty_text": "Vertel ons waar je van houdt — het helpt ons je volgende favoriet te vinden.",
+    "add_interests": "Interesses toevoegen"
+  },
+  "friend": {
+    "loading_profile": "Profiel laden…",
+    "profile_unavailable_title": "Dit profiel is niet beschikbaar",
+    "profile_unavailable_body": "Het profiel van deze persoon is mogelijk privé, of jullie zijn niet verbonden.",
+    "about": "Over",
+    "location_label": "Locatie",
+    "not_shared": "Niet gedeeld",
+    "mingla_level": "Mingla-niveau",
+    "interests": "Interesses",
+    "message": "Bericht",
+    "friend_fallback": "Vriend"
+  }
+}

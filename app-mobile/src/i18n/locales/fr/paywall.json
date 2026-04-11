@@ -1,0 +1,10 @@
+{
+  "close": "Fermer le paywall",
+  "manage_subscription": "Gérer l'abonnement",
+  "alerts.restored_title": "Achats restaurés",
+  "alerts.restored_message": "Vos achats précédents ont été restaurés avec succès.",
+  "alerts.restored_done": "Terminé",
+  "alerts.purchase_failed": "Échec de l'achat",
+  "toast.purchase_delayed": "Achat réussi. Les fonctionnalités peuvent prendre un moment à s'activer.",
+  "toast.restore_delayed": "Achats restaurés. Les fonctionnalités peuvent prendre un moment à s'activer."
+}

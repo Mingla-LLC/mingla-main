@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Ọkwa",
+    "unread": "{{count}} agụghị",
+    "markAllRead": "Kee niile dị ka agụrụ",
+    "clearAll": "Hichapụ niile"
+  },
+  "filters": {
+    "all": "Niile",
+    "social": "Mmekọrịta",
+    "sessions": "Oge",
+    "messages": "Ozi"
+  },
+  "timeAgo": {
+    "justNow": "Ugbu a"
+  },
+  "dateGroups": {
+    "today": "Taa",
+    "yesterday": "Ụnyaahụ",
+    "thisWeek": "Izu A",
+    "earlier": "Oge gara aga"
+  },
+  "actions": {
+    "accept": "Nabata",
+    "decline": "Jụ",
+    "join": "Sonye",
+    "upgrade": "Gbakwunye",
+    "review": "Nyochaa",
+    "actionFailed": "Ọrụ adaghị. Pịa iji nwaa ọzọ."
+  },
+  "emptyState": {
+    "title": "Ihe niile emechara",
+    "subtitle": "Ihe omume ọhụrụ ga-apụta ebe a."
+  },
+  "errorState": {
+    "title": "Ihe ụfọdụ agaghị nke ọma",
+    "subtitle": "Enweghị ike ịbugo ọkwa.",
+    "tryAgain": "Nwaa Ọzọ"
+  },
+  "offline": {
+    "banner": "Ị nọghị na ntanetị — na-egosi ọkwa echekwara"
+  }
+}

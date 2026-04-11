@@ -1,0 +1,10 @@
+{
+  "header": { "title": "सूचनाएं", "unread": "{{count}} अपठित", "markAllRead": "सभी पढ़ा गया चिह्नित करें", "clearAll": "सभी साफ़ करें" },
+  "filters": { "all": "सभी", "social": "सामाजिक", "sessions": "सेशन", "messages": "संदेश" },
+  "timeAgo": { "justNow": "अभी" },
+  "dateGroups": { "today": "आज", "yesterday": "कल", "thisWeek": "इस सप्ताह", "earlier": "पहले" },
+  "actions": { "accept": "स्वीकार", "decline": "अस्वीकार", "join": "शामिल हों", "upgrade": "अपग्रेड", "review": "समीक्षा", "actionFailed": "कार्रवाई विफल। फिर से प्रयास करने के लिए टैप करें।" },
+  "emptyState": { "title": "सब देख लिया", "subtitle": "नई गतिविधि यहां दिखेगी।" },
+  "errorState": { "title": "कुछ गड़बड़ हो गई", "subtitle": "सूचनाएं लोड नहीं हो पाईं।", "tryAgain": "फिर से प्रयास" },
+  "offline": { "banner": "आप ऑफलाइन हैं — कैश्ड सूचनाएं दिखा रहे हैं" }
+}

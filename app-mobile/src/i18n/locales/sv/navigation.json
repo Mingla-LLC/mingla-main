@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Utforska",
+  "tabs.discover": "Upptäck",
+  "tabs.chats": "Chattar",
+  "tabs.likes": "Gillar",
+  "tabs.profile": "Profil",
+  "alerts.sign_in_error_title": "Inloggningsfel",
+  "alerts.error_title": "Fel",
+  "alerts.failed_sign_in": "Failed to complete sign-in: "
+}

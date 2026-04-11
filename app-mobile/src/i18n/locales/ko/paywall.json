@@ -1,0 +1,10 @@
+{
+  "close": "결제벽 닫기",
+  "manage_subscription": "구독 관리",
+  "alerts.restored_title": "구매가 복원되었습니다",
+  "alerts.restored_message": "이전 구매가 성공적으로 복원되었습니다.",
+  "alerts.restored_done": "완료",
+  "alerts.purchase_failed": "구매 실패",
+  "toast.purchase_delayed": "구매 완료. 기능 활성화에 잠시 시간이 걸릴 수 있습니다.",
+  "toast.restore_delayed": "구매가 복원되었습니다. 기능 활성화에 잠시 시간이 걸릴 수 있습니다."
+}

@@ -1,0 +1,18 @@
+{
+  "header.title": "שתף חוויה",
+  "empty.no_data": "אין נתוני חוויה זמינים",
+  "card.nearby": "בקרבת מקום",
+  "card.suggested_schedule": "לוח זמנים מומלץ",
+  "card.per_person": "לאדם",
+  "share_to": "שתף ל:",
+  "platform.messages": "הודעות",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "אפשרויות שיתוף נוספות",
+  "actions.copy_link": "העתק קישור",
+  "actions.copy_message": "העתק הודעה",
+  "alerts.copy_error": "העתקת ההודעה ללוח נכשלה",
+  "alerts.share_error": "השיתוף נכשל. נסה שוב.",
+  "alerts.error_title": "שגיאה"
+}

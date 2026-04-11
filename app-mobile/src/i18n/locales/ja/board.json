@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "カード", "discussion": "ディスカッション" },
+  "boardDiscussionTab": {
+    "noConnection": "接続なし", "noConnectionMsg": "インターネット接続を確認して再試行してください。",
+    "deleteMessage": "メッセージを削除", "deleteMessageConfirm": "このメッセージを削除しますか？",
+    "cancel": "キャンセル", "delete": "削除", "errorUpdateMsg": "メッセージの更新に失敗", "errorDeleteMsg": "メッセージの削除に失敗",
+    "justNow": "たった今", "minutesAgo": "{{count}}分前", "hoursAgo_one": "{{count}}時間前", "hoursAgo_other": "{{count}}時間前",
+    "error": "エラー", "typeMessage": "メッセージを入力...", "editMessage": "メッセージを編集...", "typing": "入力中...",
+    "inputPlaceholder": "@でメンション、#でカードをタグ...", "messagePlaceholder": "メッセージ..."
+  },
+  "boardPreferencesForm": {
+    "categories": "カテゴリ", "categoriesDesc": "一緒に探索したい体験の種類を選択",
+    "experienceTypes": "体験タイプ", "experienceTypesDesc": "どんな体験を計画していますか？",
+    "budget": "予算", "budgetDesc": "オプション：体験の予算範囲を設定",
+    "groupSize": "グループサイズ", "groupSizeDesc": "何名が参加しますか？",
+    "adventurous": "冒険", "firstDate": "初デート", "romantic": "ロマンチック", "groupFun": "グループで楽しく", "picnicDates": "ピクニックデート", "takeAStroll": "散歩"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "管理者権限", "manageBoard": "ボード管理", "renameBoard": "ボード名を変更",
+    "inviteParticipants": "参加者を招待", "turnOffNotifications": "通知をオフ", "turnOnNotifications": "通知をオン",
+    "leaveBoard": "ボードを退出", "leaving": "退出中...", "deleteBoard": "ボードを削除",
+    "editSessionName": "セッション名を編集", "enterSessionName": "セッション名を入力", "save": "保存",
+    "errorGeneric": "エラー", "errorLeave": "ボードの退出に失敗しました。もう一度お試しください。",
+    "permissionDenied": "権限がありません", "permissionEditName": "セッション作成者または管理者のみがセッション名を編集できます。",
+    "errorEmptyName": "セッション名を空にすることはできません。", "success": "成功", "nameUpdated": "セッション名が更新されました。",
+    "updateFailed": "更新失敗", "updateFailedMsg": "セッション名を更新できませんでした。",
+    "permissionDelete": "管理者のみがこのセッションを削除できます。", "sessionDeleted": "セッションが正常に削除されました。",
+    "deleteFailed": "削除失敗", "deleteFailedMsg": "このセッションを削除できませんでした。",
+    "permissionDeleteBoard": "セッション作成者または管理者のみがこのセッションを削除できます。",
+    "deleteSessionTitle": "セッションを削除", "deleteSessionMsg": "\"{{name}}\"を削除しますか？この操作は取り消せず、すべてのカード、投票、ディスカッションが完全に削除されます。",
+    "leaveSessionTitle": "ボードを退出", "leaveSessionMsg": "\"{{name}}\"を退出しますか？", "namePlaceholder": "セッション名を入力"
+  },
+  "cardDiscussionModal": {
+    "discussion": "ディスカッション", "cardDiscussion": "カードディスカッション", "errorLoadMsg": "メッセージの読み込みに失敗",
+    "errorSendMsg": "メッセージの送信に失敗", "errorUpdateMsg": "メッセージの更新に失敗",
+    "deleteMessage": "メッセージを削除", "deleteMessageConfirm": "このメッセージを削除しますか？",
+    "errorDeleteMsg": "メッセージの削除に失敗", "typeMessage": "メッセージを入力...", "error": "エラー", "justNow": "たった今", "unknown": "不明"
+  },
+  "cardTagPopover": { "tagACard": "カードをタグ", "untitled": "無題", "experience": "体験", "noCardsSaved": "保存されたカードはまだありません" },
+  "inviteCodeDisplay": {
+    "inviteCode": "招待コード", "description": "招待したい人にこのコードを共有してください",
+    "copied": "コピー済み！", "copiedMsg": "招待コードがクリップボードにコピーされました", "copyCode": "コードをコピー",
+    "errorCopy": "コードのコピーに失敗しました。もう一度お試しください。", "infoText": "受信者はアプリでこのコードを入力してボードセッションに参加できます"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "招待リンクを共有", "description": "招待したい人にこのリンクを送信してください",
+    "orShareCode": "またはこのコードを共有：", "copied": "コピー済み！", "copiedMsg": "招待リンクがクリップボードにコピーされました",
+    "copyLink": "リンクをコピー", "share": "共有", "shareMessage": "Minglaのボードセッションに参加しよう！{{link}}",
+    "errorCopy": "リンクのコピーに失敗しました。もう一度お試しください。", "errorShare": "リンクの共有に失敗", "error": "エラー"
+  },
+  "inviteMethodSelector": {
+    "title": "どのように招待しますか？", "description": "参加者を招待する方法を1つ以上選択",
+    "friendsList": "友達リスト", "friendsListDesc": "友達から招待",
+    "shareLink": "リンク共有", "shareLinkDesc": "リンクをコピーして共有",
+    "qrCode": "QRコード", "qrCodeDesc": "スキャン用QRコードを生成",
+    "inviteCode": "招待コード", "inviteCodeDesc": "シンプルなコードを共有"
+  },
+  "inviteParticipantsModal": {
+    "title": "参加者を招待", "addFriendsTo": "\"{{name}}\"に友達を追加",
+    "searchPlaceholder": "友達を検索...", "loadingFriends": "友達を読み込み中...", "noUsersFound": "ユーザーが見つかりません",
+    "allFriendsInBoard": "すべての友達がすでにこのボードにいます", "noFriendsAvailable": "利用可能な友達がいません",
+    "tryDifferentName": "別の名前やユーザー名で試してください", "addMoreFriends": "招待する友達をもっと追加",
+    "sendInvites": "招待を送信 ({{count}})", "invitesSent": "招待を送信しました",
+    "invitesSentMsg": "\"{{name}}\"に{{count}}人の友達{{plural}}を招待しました。",
+    "errorSendInvites": "招待の送信に失敗しました。もう一度お試しください。", "error": "エラー"
+  },
+  "manageBoardModal": {
+    "manageBoard": "ボード管理", "members": "メンバー", "admin": "管理者", "creator": "作成者", "you": "（あなた）",
+    "makeAdmin": "管理者にする", "removeAdmin": "管理者を解除", "removeMember": "削除", "leaveBoard": "ボードを退出",
+    "permissionDenied": "権限がありません", "permissionRemove": "管理者のみがこのボードからメンバーを削除できます。",
+    "cannotRemoveCreator": "削除不可", "cannotRemoveCreatorMsg": "ボード作成者は削除できません。本人がボードを退出することのみ可能です。",
+    "cannotRemoveSelf": "自分を削除できません", "cannotRemoveSelfMsg": "「ボードを退出」オプションを使用してください。",
+    "memberRemoved": "メンバーを削除しました", "memberRemovedMsg": "{{name}}がボードから削除されました。",
+    "errorRemove": "メンバーの削除に失敗しました。もう一度お試しください。", "permissionAdmin": "管理者のみが管理者権限を管理できます。",
+    "cannotModifyCreator": "変更不可", "cannotModifyCreatorMsg": "ボード作成者の管理者ステータスは変更できません。",
+    "errorPromote": "メンバーの管理者への昇格に失敗しました。もう一度お試しください。", "errorDemote": "管理者権限の削除に失敗しました。もう一度お試しください。",
+    "leaveBoardTitle": "ボードを退出", "leaveBoardMsg": "\"{{name}}\"を退出しますか？",
+    "boardDeleted": "ボード削除済み", "boardDeletedMsg": "アクティブな状態を維持するには最低2名のメンバーが必要なため、ボードが削除されました。",
+    "leftBoard": "ボードを退出しました", "leftBoardMsg": "ボードから正常に退出しました。",
+    "errorLeave": "ボードの退出に失敗しました。もう一度お試しください。", "error": "エラー"
+  },
+  "mentionPopover": { "mentionSomeone": "誰かをメンション" },
+  "participantAvatars": { "noParticipants": "参加者なし", "participant_one": "{{count}}人の参加者", "participant_other": "{{count}}人の参加者" },
+  "qrCodeDisplay": { "noData": "データなし", "noDataMsg": "データがないとQRコードを生成できません", "qrCode": "QRコード", "scanInstruction": "このQRコードをスキャンしてボードセッションに参加", "orUseCode": "またはこのコードを使用：" },
+  "boardMemberManagement": {
+    "manageBoard": "ボード管理", "creator": "作成者", "admin": "管理者", "you": "（あなた）",
+    "boardInfo": "ボード情報", "totalMembers": "メンバー合計：{{count}}", "admins": "管理者：{{count}}",
+    "minMembersWarning": "メンバーが退出するとボードが削除されます（最低2名必要）",
+    "removeConfirm": "<bold>{{name}}</bold>をこのボードから削除しますか？", "removeMember": "メンバーを削除", "cancel": "キャンセル",
+    "demoteConfirm": "<bold>{{name}}</bold>の管理者権限を削除しますか？", "removeAdmin": "管理者を解除",
+    "leaveConfirm": "このボードを退出しますか？", "leaveAdminNote": "別のメンバーがランダムに管理者に割り当てられます",
+    "leaveDeleteNote": "ボードは完全に削除されます（残りメンバーが2名未満）", "leaveUndoNote": "この操作は取り消せません", "leaveBoard": "ボードを退出"
+  },
+  "member": { "you_suffix": "（あなた）" }
+}

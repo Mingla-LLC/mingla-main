@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Sprachen suchen...",
+    "close_accessibility": "Sprachauswahl schließen"
+  },
+  "country_picker": {
+    "search_placeholder": "Länder suchen...",
+    "close_accessibility": "Länderauswahl schließen"
+  },
+  "welcome": {
+    "greeting_hey": "Hey",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Guter Geschmack",
+    "greeting_walked_in": "ist gerade reingekommen.",
+    "we_know": "Wir erkennen",
+    "good_taste": "guten Geschmack",
+    "just_walked_in": "wenn er reinkommt.",
+    "name_prompt": "Aber wir kennen deinen Namen noch nicht.",
+    "placeholder_first": "Vorname",
+    "placeholder_last": "Nachname",
+    "cta": "Los geht's"
+  },
+  "phone": {
+    "headline": "Wie ist deine Nummer?",
+    "body": "Wir senden einen Code. Dauert zwei Sekunden.",
+    "verified_headline": "Alles klar.",
+    "verified_body": "Deine Nummer ist hinterlegt. Eine Sache weniger.",
+    "consent_text": "Ich stimme dem Empfang von Nachrichten von Mingla per SMS oder Telefonanruf zu, einschließlich Verifizierungscodes, Freundeseinladungen und Erlebniserinnerungen. Antworte STOP zum Abmelden oder HELP für Hilfe. Siehe unsere ",
+    "terms_of_service": "Nutzungsbedingungen",
+    "and": " und ",
+    "privacy_policy": "Datenschutzrichtlinie",
+    "consent_accessibility": "Dem Empfang von Nachrichten von Mingla zustimmen",
+    "cta_send_code": "Code senden",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Ausgewähltes Land: {{name}}. Tippe zum Ändern."
+  },
+  "otp": {
+    "headline": "Code eingeben",
+    "body": "Gesendet an {{phone}}",
+    "verifying": "Wird überprüft...",
+    "sending": "Wird gesendet...",
+    "resend_countdown": "Erneut senden in {{seconds}}s",
+    "channel_label": "Nicht erhalten? Versuche es anders:",
+    "resend_sms": "SMS erneut senden",
+    "resend_sms_accessibility": "Code erneut per SMS senden",
+    "call_me": "Ruf mich an",
+    "call_me_accessibility": "Code per Telefonanruf erhalten",
+    "error_max_attempts": "Drei Versuche, kein Erfolg. Versuche eine andere Methode unten.",
+    "error_wrong_code": "Der Code stimmt nicht. Versuche es erneut.",
+    "cta_verify": "Überprüfen",
+    "otp_accessibility": "Einmaliger Verifizierungscode"
+  },
+  "gender": {
+    "headline": "Erzähl uns von dir.",
+    "body": "Damit wir deine Vorschläge besser anpassen können.",
+    "man": "Mann",
+    "woman": "Frau",
+    "non_binary": "Nicht-binär",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Agender",
+    "prefer_not_to_say": "Möchte ich nicht sagen"
+  },
+  "details": {
+    "headline": "Fast geschafft.",
+    "body": "Nur die Basics. Den Rest übernehmen wir.",
+    "country_label": "Land",
+    "country_helper": "Legt deine Währung und Maßeinheiten fest",
+    "dob_label": "Geburtsdatum",
+    "dob_placeholder": "Wann hast du Geburtstag?"
+  },
+  "value_prop": {
+    "beat1_headline": "Wisse genau, wohin.",
+    "beat1_sub": "Schluss mit Raten. Einfach losgehen.",
+    "beat2_headline": "Für Dates, Freunde & Solo-Ausflüge.",
+    "beat2_sub": "Pläne für jede Art von Unternehmung.",
+    "beat3_headline": "Schnell finden. Los.",
+    "beat3_sub": "Swipen. Speichern. Los."
+  },
+  "intents": {
+    "headline": "Jetzt wird's spaßig.",
+    "body": "Tippe auf jede Stimmung, die zu dir passt.",
+    "caption": "Wähle die, die dich am meisten begeistert.",
+    "adventurous": "Abenteuerlustig",
+    "adventurous_desc": "Das Unerwartete erkunden",
+    "first_date": "Erste Dates",
+    "first_date_desc": "Den ersten Eindruck perfektionieren",
+    "romantic": "Romantisch",
+    "romantic_desc": "Den Funken entfachen",
+    "group_fun": "Gruppenspaß",
+    "group_fun_desc": "Je mehr, desto besser",
+    "picnic_dates": "Picknick-Dates",
+    "picnic_dates_desc": "Sonne, Snacks, gute Zeiten",
+    "take_a_stroll": "Spazieren gehen",
+    "take_a_stroll_desc": "Zielgerichtet schlendern"
+  },
+  "location": {
+    "granted_headline": "Notiert — {{city}}!",
+    "granted_tap_hint": "Tippe zum Fortfahren",
+    "settings_headline": "Eine kurze Einstellung",
+    "settings_body": "Der Standort ist für Mingla deaktiviert.\nAktiviere ihn in den Einstellungen, damit wir\ndie besten Orte in deiner Nähe finden können.",
+    "open_settings": "Einstellungen öffnen",
+    "retry_turned_on": "Hab ich aktiviert — erneut versuchen",
+    "retry_finding": "Suche dich...",
+    "type_city": "Meine Stadt eingeben",
+    "error_headline": "Standort konnte nicht ermittelt werden",
+    "error_body": "Schwaches Signal oder GPS startet noch.\nVersuche es erneut oder gib deine Stadt ein.",
+    "try_again": "Erneut versuchen",
+    "idle_headline": "Bessere Orte beginnen hier",
+    "idle_body": "Aktiviere GPS, damit wir versteckte\nPerlen gleich um die Ecke finden können.",
+    "enable_location": "Standort aktivieren",
+    "privacy_hint": "Dein Standort bleibt privat. Immer.",
+    "cta_enable": "Standort aktivieren"
+  },
+  "celebration": {
+    "headline": "Gut gemacht!",
+    "body": "Vier schnelle Auswahlen und fertig."
+  },
+  "manual_location": {
+    "headline": "Setze deine Nadel auf die Karte",
+    "body": "Gib uns deine genaue Adresse — bis zur Straße — und wir finden die besten Orte um dich herum.",
+    "search_placeholder": "Adresse eingeben...",
+    "no_results": "Hmm, das haben wir nicht gefunden. Versuche eine Straße oder Gegend in der Nähe.",
+    "helper": "Je genauer, desto besser deine Empfehlungen.",
+    "privacy": "Dein genauer Standort bleibt unter uns. Immer.",
+    "change_accessibility": "Ausgewählten Standort ändern"
+  },
+  "categories": {
+    "headline": "Welche Art von Orten magst du?",
+    "body": "Wähle bis zu 3, die zu dir passen.",
+    "cap_message": "Maximal 3 Kategorien. Wähle eine ab, um eine andere zu wählen."
+  },
+  "budget": {
+    "headline": "Dein Budget",
+    "body": "Wähle die Preisklassen, die für dich passen.",
+    "caption": "Kostenlose Sachen tauchen auch immer auf."
+  },
+  "transport": {
+    "headline": "Wie bewegst du dich fort?",
+    "body": "Hilft uns, die Reisezeiten zu berechnen."
+  },
+  "travel_time": {
+    "headline": "Wie weit fährst du?",
+    "body": "Lege deine Komfortzone fest.",
+    "custom_toggle": "Selbst festlegen",
+    "custom_placeholder": "5 – 120 Minuten",
+    "unit": "Min",
+    "caption": "Bis zu {{minutes}} Min mit {{mode}}",
+    "error": "Einstellungen konnten nicht gespeichert werden. Tippe auf Erneut versuchen."
+  },
+  "friends": {
+    "headline": "Dein engster Kreis",
+    "body": "Füge deine engsten Leute hinzu und koppelt euch. Entdeckt zusammen Dinge, seht was die anderen mögen, und plant das Gute Seite an Seite.",
+    "waiting_header": "Wartet auf dich",
+    "added_feedback": "Hinzugefügt",
+    "declined_feedback": "Abgelehnt",
+    "add_friends_header": "Freunde hinzufügen",
+    "your_people_header": "Deine Leute",
+    "status_friends": "Freunde",
+    "status_request_sent": "Anfrage gesendet",
+    "status_invited": "Eingeladen",
+    "pair_paired": "Gekoppelt",
+    "pair_pending": "Ausstehend",
+    "pair_queued": "In der Warteschlange",
+    "pair_button": "Koppeln",
+    "pair_queued_hint": "Wird aktiv, wenn sie beitreten",
+    "empty_state": "Noch keine Freunde hier. Füge jemanden hinzu, mit dem du wirklich Pläne machen würdest.",
+    "pair_requests_header": "Koppelungsanfragen",
+    "paired_feedback": "Gekoppelt!",
+    "pair_wants": "Möchte sich mit dir koppeln",
+    "pair_curated": "Entdecke Erlebnisse, die für euch beide ausgewählt wurden.",
+    "alert_self_title": "Das bist du",
+    "alert_self_message": "Du kannst dich nicht selbst als Freund hinzufügen.",
+    "alert_duplicate_title": "Bereits hinzugefügt",
+    "alert_duplicate_message": "Diese Person ist bereits in deiner Liste.",
+    "alert_pair_error": "Koppelungsanfrage konnte nicht gesendet werden",
+    "alert_accept_error": "Koppelungsanfrage konnte nicht angenommen werden. Versuche es erneut.",
+    "alert_decline_error": "Koppelungsanfrage konnte nicht abgelehnt werden. Versuche es erneut.",
+    "alert_generic_error": "Anfrage konnte nicht verarbeitet werden. Versuche es erneut.",
+    "share_message": "Hey! Mach mit bei Mingla und lass uns zusammen tolle Erlebnisse finden. https://usemingla.com",
+    "fallback_user": "Benutzer"
+  },
+  "collaborations": {
+    "headline": "Plant etwas zusammen",
+    "body": "Starte eine Sitzung mit deiner Gruppe. Entdeckt gemeinsam Aktivitäten, stimmt über Favoriten ab und setzt sie um.",
+    "whos_in": "Wer ist dabei?",
+    "session_name_label": "Sitzungsname",
+    "session_name_placeholder": "z.B. Wochenendpläne, Date-Ideen...",
+    "created_header": "Erstellte Sitzungen ({{count}})",
+    "loading_invites": "Einladungen werden geladen...",
+    "invited_header": "Du bist eingeladen ({{count}})",
+    "inviter_message": "{{name}} hat dich eingeladen",
+    "fallback_someone": "Jemand",
+    "fallback_session": "Sitzung",
+    "name_taken_error": "Der Name ist vergeben. Sei kreativ!",
+    "generic_error": "Hmm, das hat nicht geklappt. Versuch es nochmal.",
+    "join_error": "Konnte der Sitzung nicht beitreten",
+    "decline_error": "Einladung konnte nicht abgelehnt werden",
+    "empty_state": "Füge zuerst Freunde hinzu — dann könnt ihr zusammen planen."
+  },
+  "consent": {
+    "headline": "Noch eine Sache",
+    "body": "Mingla nutzt, was du geteilt hast — deinen Geschmack, deinen Stil, deinen Standort — um Erlebnisse zu finden, die du wirklich magst. Deine Daten gehören dir. Wir verkaufen sie nie, und du kannst sie jederzeit löschen."
+  },
+  "getting_experiences": {
+    "loading_1": "Orte in der Nähe werden geprüft...",
+    "loading_2": "Abgleich mit deinen Vorlieben...",
+    "loading_3": "Geheimtipps werden gesucht...",
+    "loading_4": "Fast fertig..."
+  },
+  "occasions": {
+    "birthday": "Geburtstag",
+    "valentines": "Valentinstag",
+    "mothers_day": "Muttertag",
+    "fathers_day": "Vatertag",
+    "christmas": "Weihnachten"
+  }
+}

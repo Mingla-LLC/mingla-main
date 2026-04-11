@@ -1,0 +1,10 @@
+{
+  "close": "Close paywall",
+  "manage_subscription": "Erkekage subscription",
+  "alerts.restored_title": "Purchases restored",
+  "alerts.restored_message": "Your previous purchases have been restored successfully.",
+  "alerts.restored_done": "Tamam",
+  "alerts.purchase_failed": "Purchase failed",
+  "toast.purchase_delayed": "Purchase successful. Features may take a moment to activate.",
+  "toast.restore_delayed": "Purchases restored. Features may take a moment to activate."
+}

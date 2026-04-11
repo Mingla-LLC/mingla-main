@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "कार्ड", "discussion": "चर्चा" },
+  "boardDiscussionTab": {
+    "noConnection": "कोई कनेक्शन नहीं", "noConnectionMsg": "कृपया अपना इंटरनेट कनेक्शन जांचें और फिर से प्रयास करें।",
+    "deleteMessage": "संदेश हटाएं", "deleteMessageConfirm": "क्या आप इस संदेश को हटाना चाहते हैं?",
+    "cancel": "रद्द करें", "delete": "हटाएं", "errorUpdateMsg": "संदेश अपडेट विफल", "errorDeleteMsg": "संदेश हटाना विफल",
+    "justNow": "अभी", "minutesAgo": "{{count}}मि पहले", "hoursAgo_one": "{{count}} घंटे पहले", "hoursAgo_other": "{{count}} घंटे पहले",
+    "error": "त्रुटि", "typeMessage": "संदेश लिखें...", "editMessage": "संदेश संपादित करें...", "typing": "टाइप कर रहा है...",
+    "inputPlaceholder": "@ से उल्लेख करें, # से कार्ड टैग करें...", "messagePlaceholder": "संदेश..."
+  },
+  "boardPreferencesForm": {
+    "categories": "श्रेणियां", "categoriesDesc": "साथ मिलकर खोजने के लिए अनुभवों के प्रकार चुनें",
+    "experienceTypes": "अनुभव प्रकार", "experienceTypesDesc": "आप किस तरह के अनुभव की योजना बना रहे हैं?",
+    "budget": "बजट", "budgetDesc": "वैकल्पिक: अनुभवों के लिए बजट सीमा निर्धारित करें",
+    "groupSize": "समूह का आकार", "groupSizeDesc": "कितने लोग भाग लेंगे?",
+    "adventurous": "साहसिक", "firstDate": "पहला डेट", "romantic": "रोमांटिक", "groupFun": "ग्रुप मज़ा", "picnicDates": "पिकनिक डेट", "takeAStroll": "सैर"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "एडमिन विशेषाधिकार", "manageBoard": "बोर्ड प्रबंधित करें", "renameBoard": "बोर्ड का नाम बदलें",
+    "inviteParticipants": "प्रतिभागियों को आमंत्रित करें", "turnOffNotifications": "सूचनाएं बंद करें", "turnOnNotifications": "सूचनाएं चालू करें",
+    "leaveBoard": "बोर्ड छोड़ें", "leaving": "छोड़ रहे हैं...", "deleteBoard": "बोर्ड हटाएं",
+    "editSessionName": "सेशन का नाम संपादित करें", "enterSessionName": "सेशन का नाम दें", "save": "सेव",
+    "errorGeneric": "त्रुटि", "errorLeave": "बोर्ड छोड़ने में विफल। कृपया फिर से प्रयास करें।",
+    "permissionDenied": "अनुमति अस्वीकृत", "permissionEditName": "केवल सेशन बनाने वाला या एडमिन सेशन का नाम बदल सकते हैं।",
+    "errorEmptyName": "सेशन का नाम खाली नहीं हो सकता।", "success": "सफल", "nameUpdated": "सेशन का नाम सफलतापूर्वक अपडेट हो गया।",
+    "updateFailed": "अपडेट विफल", "updateFailedMsg": "सेशन का नाम अपडेट नहीं हो पाया।",
+    "permissionDelete": "केवल एडमिन इस सेशन को हटा सकते हैं।", "sessionDeleted": "सेशन सफलतापूर्वक हटा दिया गया।",
+    "deleteFailed": "हटाना विफल", "deleteFailedMsg": "यह सेशन हटाया नहीं जा सका।",
+    "permissionDeleteBoard": "केवल सेशन बनाने वाला या एडमिन इस सेशन को हटा सकते हैं।",
+    "deleteSessionTitle": "सेशन हटाएं", "deleteSessionMsg": "क्या आप \"{{name}}\" को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता और सभी कार्ड, वोट और चर्चाएं स्थायी रूप से हटा दी जाएंगी।",
+    "leaveSessionTitle": "बोर्ड छोड़ें", "leaveSessionMsg": "क्या आप \"{{name}}\" छोड़ना चाहते हैं?", "namePlaceholder": "सेशन का नाम दें"
+  },
+  "cardDiscussionModal": {
+    "discussion": "चर्चा", "cardDiscussion": "कार्ड चर्चा", "errorLoadMsg": "संदेश लोड विफल",
+    "errorSendMsg": "संदेश भेजना विफल", "errorUpdateMsg": "संदेश अपडेट विफल",
+    "deleteMessage": "संदेश हटाएं", "deleteMessageConfirm": "क्या आप इस संदेश को हटाना चाहते हैं?",
+    "errorDeleteMsg": "संदेश हटाना विफल", "typeMessage": "संदेश लिखें...", "error": "त्रुटि", "justNow": "अभी", "unknown": "अज्ञात"
+  },
+  "cardTagPopover": { "tagACard": "कार्ड टैग करें", "untitled": "शीर्षकहीन", "experience": "अनुभव", "noCardsSaved": "अभी तक कोई कार्ड सेव नहीं" },
+  "inviteCodeDisplay": {
+    "inviteCode": "आमंत्रण कोड", "description": "जिन लोगों को आमंत्रित करना चाहते हैं उनके साथ यह कोड साझा करें",
+    "copied": "कॉपी हो गया!", "copiedMsg": "आमंत्रण कोड क्लिपबोर्ड पर कॉपी हो गया", "copyCode": "कोड कॉपी करें",
+    "errorCopy": "कोड कॉपी विफल। कृपया फिर से प्रयास करें।", "infoText": "प्राप्तकर्ता बोर्ड सेशन में शामिल होने के लिए ऐप में यह कोड दर्ज कर सकते हैं"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "आमंत्रण लिंक साझा करें", "description": "जिसे आमंत्रित करना चाहते हैं उसे यह लिंक भेजें",
+    "orShareCode": "या यह कोड साझा करें:", "copied": "कॉपी हो गया!", "copiedMsg": "आमंत्रण लिंक क्लिपबोर्ड पर कॉपी हो गया",
+    "copyLink": "लिंक कॉपी", "share": "साझा करें", "shareMessage": "Mingla पर मेरे बोर्ड सेशन में शामिल हों! {{link}}",
+    "errorCopy": "लिंक कॉपी विफल। कृपया फिर से प्रयास करें।", "errorShare": "लिंक साझा विफल", "error": "त्रुटि"
+  },
+  "inviteMethodSelector": {
+    "title": "आप लोगों को कैसे आमंत्रित करना चाहते हैं?", "description": "प्रतिभागियों को आमंत्रित करने के लिए एक या अधिक तरीके चुनें",
+    "friendsList": "दोस्तों की सूची", "friendsListDesc": "अपने दोस्तों से आमंत्रित करें",
+    "shareLink": "लिंक साझा करें", "shareLinkDesc": "एक लिंक कॉपी करके साझा करें",
+    "qrCode": "QR कोड", "qrCodeDesc": "स्कैन करने के लिए QR कोड बनाएं",
+    "inviteCode": "आमंत्रण कोड", "inviteCodeDesc": "एक सरल कोड साझा करें"
+  },
+  "inviteParticipantsModal": {
+    "title": "प्रतिभागियों को आमंत्रित करें", "addFriendsTo": "\"{{name}}\" में दोस्त जोड़ें",
+    "searchPlaceholder": "दोस्त खोजें...", "loadingFriends": "दोस्त लोड हो रहे हैं...", "noUsersFound": "कोई उपयोगकर्ता नहीं मिला",
+    "allFriendsInBoard": "सभी दोस्त पहले से इस बोर्ड में हैं", "noFriendsAvailable": "कोई दोस्त उपलब्ध नहीं",
+    "tryDifferentName": "कोई अलग नाम या यूजरनेम आज़माएं", "addMoreFriends": "आमंत्रित करने के लिए और दोस्त जोड़ें",
+    "sendInvites": "आमंत्रण भेजें ({{count}})", "invitesSent": "आमंत्रण भेजे गए",
+    "invitesSentMsg": "\"{{name}}\" में {{count}} दोस्त{{plural}} को सफलतापूर्वक आमंत्रित किया गया।",
+    "errorSendInvites": "आमंत्रण भेजना विफल। कृपया फिर से प्रयास करें।", "error": "त्रुटि"
+  },
+  "manageBoardModal": {
+    "manageBoard": "बोर्ड प्रबंधित करें", "members": "सदस्य", "admin": "एडमिन", "creator": "बनाने वाला", "you": "(आप)",
+    "makeAdmin": "एडमिन बनाएं", "removeAdmin": "एडमिन हटाएं", "removeMember": "हटाएं", "leaveBoard": "बोर्ड छोड़ें",
+    "permissionDenied": "अनुमति अस्वीकृत", "permissionRemove": "केवल एडमिन इस बोर्ड से सदस्य हटा सकते हैं।",
+    "cannotRemoveCreator": "हटाया नहीं जा सकता", "cannotRemoveCreatorMsg": "बोर्ड बनाने वाले को हटाया नहीं जा सकता। वे खुद ही बोर्ड छोड़ सकते हैं।",
+    "cannotRemoveSelf": "खुद को नहीं हटा सकते", "cannotRemoveSelfMsg": "इस बोर्ड से खुद को हटाने के लिए 'बोर्ड छोड़ें' विकल्प का उपयोग करें।",
+    "memberRemoved": "सदस्य हटाया गया", "memberRemovedMsg": "{{name}} को बोर्ड से हटा दिया गया।",
+    "errorRemove": "सदस्य हटाना विफल। कृपया फिर से प्रयास करें।", "permissionAdmin": "केवल एडमिन एडमिन विशेषाधिकार प्रबंधित कर सकते हैं।",
+    "cannotModifyCreator": "संशोधित नहीं किया जा सकता", "cannotModifyCreatorMsg": "बोर्ड बनाने वाले की एडमिन स्थिति नहीं बदली जा सकती।",
+    "errorPromote": "सदस्य को एडमिन बनाना विफल। कृपया फिर से प्रयास करें।", "errorDemote": "एडमिन विशेषाधिकार हटाना विफल। कृपया फिर से प्रयास करें।",
+    "leaveBoardTitle": "बोर्ड छोड़ें", "leaveBoardMsg": "क्या आप \"{{name}}\" छोड़ना चाहते हैं?",
+    "boardDeleted": "बोर्ड हटाया गया", "boardDeletedMsg": "बोर्ड हटा दिया गया क्योंकि सक्रिय रहने के लिए कम से कम 2 सदस्य ज़रूरी हैं।",
+    "leftBoard": "बोर्ड छोड़ दिया", "leftBoardMsg": "आपने बोर्ड सफलतापूर्वक छोड़ दिया।",
+    "errorLeave": "बोर्ड छोड़ना विफल। कृपया फिर से प्रयास करें।", "error": "त्रुटि"
+  },
+  "mentionPopover": { "mentionSomeone": "किसी को उल्लेख करें" },
+  "participantAvatars": { "noParticipants": "कोई प्रतिभागी नहीं", "participant_one": "{{count}} प्रतिभागी", "participant_other": "{{count}} प्रतिभागी" },
+  "qrCodeDisplay": { "noData": "कोई डेटा नहीं", "noDataMsg": "डेटा के बिना QR कोड नहीं बनाया जा सकता", "qrCode": "QR कोड", "scanInstruction": "बोर्ड सेशन में शामिल होने के लिए यह QR कोड स्कैन करें", "orUseCode": "या यह कोड उपयोग करें:" },
+  "boardMemberManagement": {
+    "manageBoard": "बोर्ड प्रबंधित करें", "creator": "बनाने वाला", "admin": "एडमिन", "you": "(आप)",
+    "boardInfo": "बोर्ड जानकारी", "totalMembers": "कुल सदस्य: {{count}}", "admins": "एडमिन: {{count}}",
+    "minMembersWarning": "कोई भी सदस्य छोड़ने पर बोर्ड हटा दिया जाएगा (न्यूनतम 2 सदस्य आवश्यक)",
+    "removeConfirm": "इस बोर्ड से <bold>{{name}}</bold> को हटाएं?", "removeMember": "सदस्य हटाएं", "cancel": "रद्द करें",
+    "demoteConfirm": "<bold>{{name}}</bold> के एडमिन विशेषाधिकार हटाएं?", "removeAdmin": "एडमिन हटाएं",
+    "leaveConfirm": "यह बोर्ड छोड़ें?", "leaveAdminNote": "किसी अन्य सदस्य को यादृच्छिक रूप से एडमिन बनाया जाएगा",
+    "leaveDeleteNote": "बोर्ड स्थायी रूप से हटा दिया जाएगा (2 से कम सदस्य शेष)", "leaveUndoNote": "यह कार्रवाई पूर्ववत नहीं की जा सकती", "leaveBoard": "बोर्ड छोड़ें"
+  },
+  "member": { "you_suffix": " (आप)" }
+}

@@ -1,0 +1,10 @@
+{
+  "close": "Zamknij paywall",
+  "manage_subscription": "Zarządzaj subskrypcją",
+  "alerts.restored_title": "Zakupy przywrócone",
+  "alerts.restored_message": "Your previous purchases have been restored successfully.",
+  "alerts.restored_done": "Gotowe",
+  "alerts.purchase_failed": "Zakup nie powiódł się",
+  "toast.purchase_delayed": "Purchase successful. Features may take a moment to activate.",
+  "toast.restore_delayed": "Zakupy przywrócone. Features may take a moment to activate."
+}

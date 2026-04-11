@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Notificări",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Messages"
+  },
+  "timeAgo": {
+    "justNow": "Just now"
+  },
+  "dateGroups": {
+    "today": "Astăzi",
+    "yesterday": "Ieri",
+    "thisWeek": "This Week",
+    "earlier": "Earlier"
+  },
+  "actions": {
+    "accept": "Acceptă",
+    "decline": "Refuză",
+    "join": "Alătură-te",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Ceva nu a mers bine",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Try Again"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

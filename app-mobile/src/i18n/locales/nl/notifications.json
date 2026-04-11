@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Meldingen",
+    "unread": "{{count}} ongelezen",
+    "markAllRead": "Alles als gelezen markeren",
+    "clearAll": "Alles wissen"
+  },
+  "filters": {
+    "all": "Alles",
+    "social": "Sociaal",
+    "sessions": "Sessies",
+    "messages": "Berichten"
+  },
+  "timeAgo": {
+    "justNow": "Zojuist"
+  },
+  "dateGroups": {
+    "today": "Vandaag",
+    "yesterday": "Gisteren",
+    "thisWeek": "Deze week",
+    "earlier": "Eerder"
+  },
+  "actions": {
+    "accept": "Accepteren",
+    "decline": "Weigeren",
+    "join": "Deelnemen",
+    "upgrade": "Upgraden",
+    "review": "Beoordelen",
+    "actionFailed": "Actie mislukt. Tik om opnieuw te proberen."
+  },
+  "emptyState": {
+    "title": "Helemaal bij",
+    "subtitle": "Nieuwe activiteit verschijnt hier."
+  },
+  "errorState": {
+    "title": "Er is iets misgegaan",
+    "subtitle": "Meldingen konden niet worden geladen.",
+    "tryAgain": "Opnieuw proberen"
+  },
+  "offline": {
+    "banner": "Je bent offline — gecachte meldingen worden getoond"
+  }
+}

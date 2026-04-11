@@ -1,0 +1,10 @@
+{
+  "header": { "title": "বিজ্ঞপ্তি", "unread": "{{count}} অপঠিত", "markAllRead": "সব পড়া হিসেবে চিহ্নিত করুন", "clearAll": "সব মুছুন" },
+  "filters": { "all": "সব", "social": "সামাজিক", "sessions": "সেশন", "messages": "বার্তা" },
+  "timeAgo": { "justNow": "এইমাত্র" },
+  "dateGroups": { "today": "আজ", "yesterday": "গতকাল", "thisWeek": "এই সপ্তাহ", "earlier": "আগে" },
+  "actions": { "accept": "গ্রহণ", "decline": "প্রত্যাখ্যান", "join": "যোগ দিন", "upgrade": "আপগ্রেড", "review": "রিভিউ", "actionFailed": "কাজটি ব্যর্থ। আবার চেষ্টা করতে ট্যাপ করুন।" },
+  "emptyState": { "title": "সব দেখা হয়ে গেছে", "subtitle": "নতুন কার্যকলাপ এখানে দেখা যাবে।" },
+  "errorState": { "title": "কিছু ভুল হয়েছে", "subtitle": "বিজ্ঞপ্তি লোড করা যায়নি।", "tryAgain": "আবার চেষ্টা করুন" },
+  "offline": { "banner": "আপনি অফলাইন — ক্যাশ করা বিজ্ঞপ্তি দেখাচ্ছে" }
+}

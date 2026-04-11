@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Sanarwa",
+    "unread": "{{count}} ba a karanta ba",
+    "markAllRead": "Nuna duk an karanta",
+    "clearAll": "Share duka"
+  },
+  "filters": {
+    "all": "Duka",
+    "social": "Zamantakewa",
+    "sessions": "Zamunnuka",
+    "messages": "Saƙonni"
+  },
+  "timeAgo": {
+    "justNow": "Yanzu nan"
+  },
+  "dateGroups": {
+    "today": "Yau",
+    "yesterday": "Jiya",
+    "thisWeek": "Wannan Makon",
+    "earlier": "Baya"
+  },
+  "actions": {
+    "accept": "Karba",
+    "decline": "Ki",
+    "join": "Shiga",
+    "upgrade": "Ƙara",
+    "review": "Bita",
+    "actionFailed": "Aikin ya kasa. Danna don sake gwadawa."
+  },
+  "emptyState": {
+    "title": "Duk ya gama",
+    "subtitle": "Sababbin ayyuka za su bayyana a nan."
+  },
+  "errorState": {
+    "title": "Wani abu bai yi daidai ba",
+    "subtitle": "Ba a iya lodi sanarwa.",
+    "tryAgain": "Sake Gwadawa"
+  },
+  "offline": {
+    "banner": "Ba ka a layi — ana nuna sanarwar da aka ajiye"
+  }
+}

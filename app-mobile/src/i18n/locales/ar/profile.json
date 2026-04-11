@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "الحساب",
+    "billing_label": "الفواتير",
+    "billing_description": "إدارة خطتك واشتراكك",
+    "account_settings_label": "إعدادات الحساب",
+    "account_settings_description": "الخصوصية والتفضيلات وإدارة الحساب",
+    "upload_profile_photo_title": "رفع صورة الملف الشخصي",
+    "upload_profile_photo_body": "اختر كيف تريد تحديث صورة ملفك الشخصي",
+    "change_profile_photo_title": "تغيير صورة الملف الشخصي",
+    "change_profile_photo_body": "ارفع صورة جديدة أو أزل الحالية",
+    "error_remove_photo": "فشل إزالة صورة الملف الشخصي.",
+    "error_take_photo": "فشل التقاط الصورة. يرجى المحاولة مرة أخرى.",
+    "error_select_image": "فشل اختيار الصورة. يرجى المحاولة مرة أخرى.",
+    "error_upload_photo": "فشل رفع صورة الملف الشخصي.",
+    "error_save_bio": "فشل حفظ النبذة."
+  },
+  "edit_bio": {
+    "title": "تعديل النبذة",
+    "placeholder": "أخبر الناس عن نفسك",
+    "save": "حفظ"
+  },
+  "edit_interests": {
+    "title": "تعديل الاهتمامات",
+    "what_are_you_into": "ما الذي يثير اهتمامك؟",
+    "what_do_you_like": "ماذا تحب؟",
+    "save": "حفظ"
+  },
+  "hero": {
+    "your_name_here": "اسمك هنا",
+    "user_fallback": "مستخدم",
+    "first_name": "الاسم الأول",
+    "last_name": "الاسم الأخير",
+    "name_error_empty": "يرجى إدخال اسمك.",
+    "name_error_failed": "فشل الحفظ. حاول مرة أخرى.",
+    "somewhere_cool": "في مكان رائع على الأرجح",
+    "tap_to_add_bio": "اضغط لإضافة نبذة",
+    "hint_add_photo": "الناس يثقون بالوجوه. أضف صورة ليعرف الأصدقاء أنك أنت.",
+    "hint_add_bio": "نبذة قصيرة تفيد كثيراً. ماذا يجب أن يعرف الناس عنك؟",
+    "cancel_editing": "إلغاء التعديل",
+    "save_name": "حفظ الاسم"
+  },
+  "stats": {
+    "saved": "المحفوظات",
+    "friends": "الأصدقاء",
+    "boards": "اللوحات",
+    "places": "الأماكن",
+    "streak": "سلسلة متواصلة",
+    "level": "المستوى",
+    "motivation_start": "إحصائياتك تبدأ بالبناء لحظة فعل شيء. انطلق واستكشف.",
+    "motivation_close": "{{count}} مكان إضافي للوصول إلى {{tier}}. أنت قريب.",
+    "motivation_close_plural": "{{count}} أماكن إضافية للوصول إلى {{tier}}. أنت قريب.",
+    "motivation_week": "أسبوع كامل. الاستمرارية تبدو رائعة عليك.",
+    "motivation_month": "30 يوماً متواصلة. ربما لا يمكن إيقافك."
+  },
+  "paired_section": {
+    "see_all": "عرض الكل"
+  },
+  "interests": {
+    "edit_accessibility": "تعديل اهتماماتك",
+    "your_interests": "اهتماماتك",
+    "interests": "الاهتمامات",
+    "not_shared": "غير مشترك",
+    "empty_text": "أخبرنا بما يثير اهتمامك — يساعدنا في إيجاد شيئك المفضل القادم.",
+    "add_interests": "إضافة اهتمامات"
+  },
+  "friend": {
+    "loading_profile": "جارٍ تحميل الملف الشخصي…",
+    "profile_unavailable_title": "هذا الملف الشخصي غير متاح",
+    "profile_unavailable_body": "قد يكون ملف هذا الشخص خاصاً، أو قد لا تكون متصلاً به.",
+    "about": "حول",
+    "location_label": "الموقع",
+    "not_shared": "غير مشترك",
+    "mingla_level": "مستوى Mingla",
+    "interests": "الاهتمامات",
+    "message": "رسالة",
+    "friend_fallback": "صديق"
+  }
+}

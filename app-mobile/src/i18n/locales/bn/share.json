@@ -1,0 +1,18 @@
+{
+  "header.title": "অভিজ্ঞতা শেয়ার",
+  "empty.no_data": "কোনো অভিজ্ঞতার ডেটা পাওয়া যায়নি",
+  "card.nearby": "কাছাকাছি",
+  "card.suggested_schedule": "প্রস্তাবিত সময়সূচি",
+  "card.per_person": "প্রতি ব্যক্তি",
+  "share_to": "শেয়ার করুন:",
+  "platform.messages": "বার্তা",
+  "platform.whatsapp": "হোয়াটসঅ্যাপ",
+  "platform.instagram": "ইনস্টাগ্রাম",
+  "platform.twitter": "টুইটার",
+  "actions.more_options": "আরো শেয়ারিং অপশন",
+  "actions.copy_link": "লিংক কপি",
+  "actions.copy_message": "বার্তা কপি",
+  "alerts.copy_error": "ক্লিপবোর্ডে বার্তা কপি করতে ব্যর্থ",
+  "alerts.share_error": "শেয়ার করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+  "alerts.error_title": "ত্রুটি"
+}

@@ -1,0 +1,10 @@
+{
+  "close": "Fechar paywall",
+  "manage_subscription": "Gerenciar assinatura",
+  "alerts.restored_title": "Compras restauradas",
+  "alerts.restored_message": "Suas compras anteriores foram restauradas com sucesso.",
+  "alerts.restored_done": "Concluído",
+  "alerts.purchase_failed": "Compra falhou",
+  "toast.purchase_delayed": "Compra realizada. Os recursos podem levar um momento para ativar.",
+  "toast.restore_delayed": "Compras restauradas. Os recursos podem levar um momento para ativar."
+}

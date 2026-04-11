@@ -1,0 +1,18 @@
+{
+  "header.title": "แชร์ประสบการณ์",
+  "empty.no_data": "ไม่มีข้อมูลประสบการณ์",
+  "card.nearby": "ใกล้เคียง",
+  "card.suggested_schedule": "ตารางที่แนะนำ",
+  "card.per_person": "ต่อคน",
+  "share_to": "แชร์ไปยัง:",
+  "platform.messages": "ข้อความ",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "ตัวเลือกการแชร์เพิ่มเติม",
+  "actions.copy_link": "คัดลอกลิงก์",
+  "actions.copy_message": "คัดลอกข้อความ",
+  "alerts.copy_error": "คัดลอกข้อความไปยังคลิปบอร์ดไม่สำเร็จ",
+  "alerts.share_error": "แชร์ไม่สำเร็จ กรุณาลองใหม่",
+  "alerts.error_title": "ข้อผิดพลาด"
+}

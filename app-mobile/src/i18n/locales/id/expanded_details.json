@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Simpan",
+    "saved": "Tersimpan",
+    "schedule": "Jadwalkan",
+    "scheduled": "Terjadwal",
+    "policies_reservations": "Kebijakan & Reservasi",
+    "i_went_here": "Saya pernah ke sini",
+    "been_there": "Sudah pernah",
+    "on_it": "Memproses...",
+    "visited_label": "Anda pernah mengunjungi tempat ini",
+    "mark_visited_label": "Tandai tempat ini sebagai dikunjungi",
+    "visited_hint": "Ketuk untuk menghapus tanda kunjungan",
+    "mark_visited_hint": "Mencatat kunjungan Anda dan membuka alur ulasan",
+    "opening_hours": "Jam Buka",
+    "open_now": "Buka Sekarang",
+    "closed": "Tutup",
+    "show_all_hours": "Tampilkan semua jam",
+    "show_less": "Tampilkan lebih sedikit",
+    "select_date": "Pilih Tanggal",
+    "select_time": "Pilih Waktu",
+    "cancel": "Batal",
+    "next": "Berikutnya",
+    "done": "Selesai",
+    "error_save": "Gagal menyimpan kartu. Silakan coba lagi.",
+    "error_login": "Anda harus masuk untuk menjadwalkan kartu.",
+    "error_invalid_date": "Tanggal yang dipilih tidak valid. Silakan coba lagi.",
+    "schedule_failed_title": "Penjadwalan gagal",
+    "schedule_failed_body": "Kami tidak dapat menambahkan ini ke kalender Anda. Silakan coba lagi.",
+    "place_closed_title": "Tempat Tutup",
+    "place_closed_body": "Tempat ini tutup pada tanggal dan waktu yang dipilih. Silakan pilih waktu lain.",
+    "choose_another_time": "Pilih Waktu Lain",
+    "some_stops_closed_title": "Beberapa Tempat Mungkin Tutup",
+    "change_time": "Ubah Waktu",
+    "schedule_anyway": "Tetap Jadwalkan",
+    "scheduled_toast": "Terjadwal! {{title}} telah ditambahkan ke kalender Anda",
+    "closed_message": "Tempat ini tutup pada tanggal dan waktu yang dipilih. Ketuk \"Jadwalkan\" untuk memilih waktu lain.",
+    "share_prompt": "Bagikan {{title}} dengan teman"
+  },
+  "busyness": {
+    "traffic": "Lalu Lintas",
+    "busy_level": "Tingkat Keramaian",
+    "busy": "Ramai",
+    "clear_roads": "Jalan Lancar",
+    "clear": "Lancar",
+    "moderate": "Sedang",
+    "heavy": "Padat"
+  },
+  "match_factors": {
+    "title": "Rincian Kecocokan",
+    "location": "Lokasi",
+    "budget": "Anggaran",
+    "category": "Kategori",
+    "time": "Waktu",
+    "popularity": "Popularitas",
+    "excellent": "Sangat Baik",
+    "good": "Baik",
+    "fair": "Cukup",
+    "poor": "Kurang",
+    "summary": "Faktor-faktor ini menentukan seberapa cocok pengalaman ini dengan preferensi Anda. Skor lebih tinggi menunjukkan kecocokan yang lebih baik."
+  },
+  "weather": {
+    "weather": "Cuaca",
+    "clear": "Cerah",
+    "cloudy": "Berawan",
+    "rainy": "Hujan",
+    "snowy": "Bersalju",
+    "stormy": "Badai"
+  },
+  "timeline": {
+    "start": "Mulai",
+    "stop": "Perhentian {{number}}",
+    "open_in_maps": "Buka di Maps",
+    "then": "Lalu..."
+  },
+  "companion_stops": {
+    "title": "Mulai Jalan-Jalan Anda",
+    "subtitle": "Mulai dari salah satu tempat terdekat sebelum berjalan",
+    "reviews_count": "({{count}} ulasan)"
+  },
+  "highlights": {
+    "title": "Sorotan"
+  },
+  "description": {
+    "show_less": "Tampilkan lebih sedikit",
+    "read_more": "Baca selengkapnya"
+  },
+  "card_info": {
+    "nearby": "Terdekat"
+  }
+}

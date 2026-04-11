@@ -1,0 +1,18 @@
+{
+  "header.title": "Udostępnij doświadczenie",
+  "empty.no_data": "Nie experience data available",
+  "card.nearby": "W pobliżu",
+  "card.suggested_schedule": "Sugerowany harmonogram",
+  "card.per_person": "za osobę",
+  "share_to": "Udostępnij do:",
+  "platform.messages": "Wiadomości",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "More sharing options",
+  "actions.copy_link": "Kopiuj link",
+  "actions.copy_message": "Kopiuj wiadomość",
+  "alerts.copy_error": "Failed to copy message to clipboard",
+  "alerts.share_error": "Failed to share. Please try again.",
+  "alerts.error_title": "Błąd"
+}

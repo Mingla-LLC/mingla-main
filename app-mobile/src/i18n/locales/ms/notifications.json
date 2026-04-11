@@ -1,0 +1,10 @@
+{
+  "header": { "title": "Pemberitahuan", "unread": "{{count}} belum dibaca", "markAllRead": "Tandakan semua dibaca", "clearAll": "Kosongkan semua" },
+  "filters": { "all": "Semua", "social": "Sosial", "sessions": "Sesi", "messages": "Mesej" },
+  "timeAgo": { "justNow": "Baru sahaja" },
+  "dateGroups": { "today": "Hari Ini", "yesterday": "Semalam", "thisWeek": "Minggu Ini", "earlier": "Lebih Awal" },
+  "actions": { "accept": "Terima", "decline": "Tolak", "join": "Sertai", "upgrade": "Naik Taraf", "review": "Semak", "actionFailed": "Tindakan gagal. Ketuk untuk cuba lagi." },
+  "emptyState": { "title": "Anda sudah terkini", "subtitle": "Aktiviti baru akan muncul di sini." },
+  "errorState": { "title": "Sesuatu tidak kena", "subtitle": "Tidak dapat memuatkan pemberitahuan.", "tryAgain": "Cuba Lagi" },
+  "offline": { "banner": "Anda di luar talian — menunjukkan pemberitahuan tersimpan" }
+}

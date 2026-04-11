@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Ajiye",
+    "saved": "An ajiye",
+    "schedule": "Shirya",
+    "scheduled": "An shirya",
+    "policies_reservations": "Manufofi & Tanadin Wuri",
+    "i_went_here": "Na je nan",
+    "been_there": "Na taɓa je",
+    "on_it": "Ana aikawa...",
+    "visited_label": "Ka ziyarci wannan wurin",
+    "mark_visited_label": "Nuna ka ziyarci wannan wurin",
+    "visited_hint": "Danna don cire alamar ziyarar ka",
+    "mark_visited_hint": "Yana ɗaukar ziyarar ka kuma yana buɗe hanyar bita",
+    "opening_hours": "Sa'o'in Buɗewa",
+    "open_now": "A Bude Yanzu",
+    "closed": "An Rufe",
+    "show_all_hours": "Nuna duk sa'o'i",
+    "show_less": "Nuna ƙasa",
+    "select_date": "Zaɓi Rana",
+    "select_time": "Zaɓi Lokaci",
+    "cancel": "Soke",
+    "next": "Na gaba",
+    "done": "An gama",
+    "error_save": "An kasa ajiye katin. Da fatan a sake gwadawa.",
+    "error_login": "Dole ne ka shiga don shirya katuna.",
+    "error_invalid_date": "Ranar da ka zaɓa ba ta dace ba. Da fatan a sake gwadawa.",
+    "schedule_failed_title": "Shirya ya kasa",
+    "schedule_failed_body": "Ba mu iya ƙara wannan zuwa kalandar ka. Da fatan a sake gwadawa.",
+    "place_closed_title": "Wurin An Rufe",
+    "place_closed_body": "Wannan wurin an rufe shi a ranar da lokacin da ka zaɓa. Da fatan a zaɓi lokaci daban.",
+    "choose_another_time": "Zaɓi Lokaci Daban",
+    "some_stops_closed_title": "Wasu Tsayawa An Rufe",
+    "change_time": "Canja Lokaci",
+    "schedule_anyway": "Shirya Ko Haka",
+    "scheduled_toast": "An shirya! An matsar da {{title}} zuwa kalandar ka",
+    "closed_message": "An rufe wannan wurin a ranar da lokacin da ka zaɓa. Danna \"Shirya\" don zaɓi lokaci daban.",
+    "share_prompt": "Raba {{title}} tare da abokai"
+  },
+  "busyness": {
+    "traffic": "Cunkoson Ababen Hanya",
+    "busy_level": "Matakin Cunkoso",
+    "busy": "Mai cunkoso",
+    "clear_roads": "Hanyoyi Masu Kyau",
+    "clear": "Kyau",
+    "moderate": "Matsakaici",
+    "heavy": "Mai yawa"
+  },
+  "match_factors": {
+    "title": "Bayani na Daidaitawa",
+    "location": "Wuri",
+    "budget": "Kasafin kudi",
+    "category": "Nau'i",
+    "time": "Lokaci",
+    "popularity": "Shaharar",
+    "excellent": "Mai kyau ƙwarai",
+    "good": "Mai kyau",
+    "fair": "Na tsakiya",
+    "poor": "Ƙasa",
+    "summary": "Waɗannan abubuwa suna ƙayyade yadda wannan gogewar ta dace da zaɓin ka. Maki mafi girma suna nuna dacewa mafi kyau."
+  },
+  "weather": {
+    "weather": "Yanayi",
+    "clear": "Kyau",
+    "cloudy": "Gajimare",
+    "rainy": "Ruwan sama",
+    "snowy": "Dusar ƙanƙara",
+    "stormy": "Hadari"
+  },
+  "timeline": {
+    "start": "Farawa",
+    "stop": "Tsayawa {{number}}",
+    "open_in_maps": "Buɗa a Taswirar",
+    "then": "Sannan..."
+  },
+  "companion_stops": {
+    "title": "Fara Yawo",
+    "subtitle": "Fara a ɗaya daga cikin waɗannan wuraren kusa kafin tafiya",
+    "reviews_count": "(bitoci {{count}})"
+  },
+  "highlights": {
+    "title": "Manyan Abubuwa"
+  },
+  "description": {
+    "show_less": "Nuna ƙasa",
+    "read_more": "Karanta ƙari"
+  },
+  "card_info": {
+    "nearby": "Kusa"
+  }
+}

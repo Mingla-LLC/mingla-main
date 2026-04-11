@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "卡片", "discussion": "讨论" },
+  "boardDiscussionTab": {
+    "noConnection": "无网络连接", "noConnectionMsg": "请检查网络连接后重试。",
+    "deleteMessage": "删除消息", "deleteMessageConfirm": "确定要删除此消息吗？",
+    "cancel": "取消", "delete": "删除", "errorUpdateMsg": "消息更新失败", "errorDeleteMsg": "消息删除失败",
+    "justNow": "刚刚", "minutesAgo": "{{count}}分钟前", "hoursAgo_one": "{{count}}小时前", "hoursAgo_other": "{{count}}小时前",
+    "error": "错误", "typeMessage": "输入消息...", "editMessage": "编辑消息...", "typing": "正在输入...",
+    "inputPlaceholder": "输入 @ 提及，# 标记卡片...", "messagePlaceholder": "消息..."
+  },
+  "boardPreferencesForm": {
+    "categories": "分类", "categoriesDesc": "选择你们想一起探索的体验类型",
+    "experienceTypes": "体验类型", "experienceTypesDesc": "你在计划什么类型的体验？",
+    "budget": "预算", "budgetDesc": "可选：设定体验的预算范围",
+    "groupSize": "团队人数", "groupSizeDesc": "有多少人参加？",
+    "adventurous": "冒险", "firstDate": "初次约会", "romantic": "浪漫", "groupFun": "团体乐趣", "picnicDates": "野餐约会", "takeAStroll": "散步"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "管理员权限", "manageBoard": "管理面板", "renameBoard": "重命名面板",
+    "inviteParticipants": "邀请参与者", "turnOffNotifications": "关闭通知", "turnOnNotifications": "开启通知",
+    "leaveBoard": "离开面板", "leaving": "正在离开...", "deleteBoard": "删除面板",
+    "editSessionName": "编辑会话名称", "enterSessionName": "输入会话名称", "save": "保存",
+    "errorGeneric": "错误", "errorLeave": "离开面板失败。请重试。",
+    "permissionDenied": "权限被拒绝", "permissionEditName": "只有会话创建者或管理员可以编辑会话名称。",
+    "errorEmptyName": "会话名称不能为空。", "success": "成功", "nameUpdated": "会话名称更新成功。",
+    "updateFailed": "更新失败", "updateFailedMsg": "无法更新会话名称。",
+    "permissionDelete": "只有管理员可以删除此会话。", "sessionDeleted": "会话已成功删除。",
+    "deleteFailed": "删除失败", "deleteFailedMsg": "无法删除此会话。",
+    "permissionDeleteBoard": "只有会话创建者或管理员可以删除此会话。",
+    "deleteSessionTitle": "删除会话", "deleteSessionMsg": "确定要删除\"{{name}}\"吗？此操作无法撤销，所有卡片、投票和讨论将被永久删除。",
+    "leaveSessionTitle": "离开面板", "leaveSessionMsg": "确定要离开\"{{name}}\"吗？", "namePlaceholder": "输入会话名称"
+  },
+  "cardDiscussionModal": {
+    "discussion": "讨论", "cardDiscussion": "卡片讨论", "errorLoadMsg": "加载消息失败",
+    "errorSendMsg": "发送消息失败", "errorUpdateMsg": "更新消息失败",
+    "deleteMessage": "删除消息", "deleteMessageConfirm": "确定要删除此消息吗？",
+    "errorDeleteMsg": "删除消息失败", "typeMessage": "输入消息...", "error": "错误", "justNow": "刚刚", "unknown": "未知"
+  },
+  "cardTagPopover": { "tagACard": "标记卡片", "untitled": "无标题", "experience": "体验", "noCardsSaved": "还没有保存的卡片" },
+  "inviteCodeDisplay": {
+    "inviteCode": "邀请码", "description": "与你想邀请的人分享此邀请码",
+    "copied": "已复制！", "copiedMsg": "邀请码已复制到剪贴板", "copyCode": "复制邀请码",
+    "errorCopy": "复制邀请码失败。请重试。", "infoText": "收到邀请码的人可以在应用中输入此码加入面板会话"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "分享邀请链接", "description": "将此链接发送给你想邀请的人",
+    "orShareCode": "或分享此邀请码：", "copied": "已复制！", "copiedMsg": "邀请链接已复制到剪贴板",
+    "copyLink": "复制链接", "share": "分享", "shareMessage": "加入我在Mingla上的面板会话！{{link}}",
+    "errorCopy": "复制链接失败。请重试。", "errorShare": "分享链接失败", "error": "错误"
+  },
+  "inviteMethodSelector": {
+    "title": "你想如何邀请人？", "description": "选择一种或多种方式邀请参与者",
+    "friendsList": "好友列表", "friendsListDesc": "从好友中邀请",
+    "shareLink": "分享链接", "shareLinkDesc": "复制并分享链接",
+    "qrCode": "二维码", "qrCodeDesc": "生成二维码供扫描",
+    "inviteCode": "邀请码", "inviteCodeDesc": "分享一个简单的邀请码"
+  },
+  "inviteParticipantsModal": {
+    "title": "邀请参与者", "addFriendsTo": "添加好友到\"{{name}}\"",
+    "searchPlaceholder": "搜索好友...", "loadingFriends": "正在加载好友...", "noUsersFound": "未找到用户",
+    "allFriendsInBoard": "所有好友已在此面板中", "noFriendsAvailable": "没有可用的好友",
+    "tryDifferentName": "尝试不同的名字或用户名", "addMoreFriends": "添加更多好友以邀请",
+    "sendInvites": "发送邀请 ({{count}})", "invitesSent": "邀请已发送",
+    "invitesSentMsg": "已成功邀请{{count}}位好友{{plural}}加入\"{{name}}\"。",
+    "errorSendInvites": "发送邀请失败。请重试。", "error": "错误"
+  },
+  "manageBoardModal": {
+    "manageBoard": "管理面板", "members": "成员", "admin": "管理员", "creator": "创建者", "you": "（你）",
+    "makeAdmin": "设为管理员", "removeAdmin": "移除管理员", "removeMember": "移除", "leaveBoard": "离开面板",
+    "permissionDenied": "权限被拒绝", "permissionRemove": "只有管理员可以从此面板移除成员。",
+    "cannotRemoveCreator": "无法移除", "cannotRemoveCreatorMsg": "无法移除面板创建者。他们只能自行离开面板。",
+    "cannotRemoveSelf": "无法移除自己", "cannotRemoveSelfMsg": "请使用'离开面板'选项来退出此面板。",
+    "memberRemoved": "成员已移除", "memberRemovedMsg": "{{name}}已从面板中移除。",
+    "errorRemove": "移除成员失败。请重试。", "permissionAdmin": "只有管理员可以管理管理员权限。",
+    "cannotModifyCreator": "无法修改", "cannotModifyCreatorMsg": "无法更改面板创建者的管理员状态。",
+    "errorPromote": "提升成员为管理员失败。请重试。", "errorDemote": "移除管理员权限失败。请重试。",
+    "leaveBoardTitle": "离开面板", "leaveBoardMsg": "确定要离开\"{{name}}\"吗？",
+    "boardDeleted": "面板已删除", "boardDeletedMsg": "面板已被删除，因为至少需要2名成员才能保持活跃。",
+    "leftBoard": "已离开面板", "leftBoardMsg": "你已成功离开面板。",
+    "errorLeave": "离开面板失败。请重试。", "error": "错误"
+  },
+  "mentionPopover": { "mentionSomeone": "提及某人" },
+  "participantAvatars": { "noParticipants": "没有参与者", "participant_one": "{{count}}位参与者", "participant_other": "{{count}}位参与者" },
+  "qrCodeDisplay": { "noData": "无数据", "noDataMsg": "没有数据无法生成二维码", "qrCode": "二维码", "scanInstruction": "扫描此二维码加入面板会话", "orUseCode": "或使用此邀请码：" },
+  "boardMemberManagement": {
+    "manageBoard": "管理面板", "creator": "创建者", "admin": "管理员", "you": "（你）",
+    "boardInfo": "面板信息", "totalMembers": "总成员数：{{count}}", "admins": "管理员：{{count}}",
+    "minMembersWarning": "如果有成员离开，面板将被删除（最少需要2名成员）",
+    "removeConfirm": "从此面板移除<bold>{{name}}</bold>？", "removeMember": "移除成员", "cancel": "取消",
+    "demoteConfirm": "移除<bold>{{name}}</bold>的管理员权限？", "removeAdmin": "移除管理员",
+    "leaveConfirm": "离开此面板？", "leaveAdminNote": "将随机分配另一名成员为管理员",
+    "leaveDeleteNote": "面板将被永久删除（剩余成员不足2人）", "leaveUndoNote": "此操作无法撤销", "leaveBoard": "离开面板"
+  },
+  "member": { "you_suffix": "（你）" }
+}

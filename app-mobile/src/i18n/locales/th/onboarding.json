@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "ค้นหาภาษา...",
+    "close_accessibility": "ปิดตัวเลือกภาษา"
+  },
+  "country_picker": {
+    "search_placeholder": "ค้นหาประเทศ...",
+    "close_accessibility": "ปิดตัวเลือกประเทศ"
+  },
+  "welcome": {
+    "greeting_hey": "เฮ้",
+    "greeting_name": "{{name}}",
+    "greeting_good_taste": "มีรสนิยมดี",
+    "greeting_walked_in": "เพิ่งเข้ามา",
+    "we_know": "เรารู้",
+    "good_taste": "รสนิยมดี",
+    "just_walked_in": "เพิ่งเข้ามา",
+    "name_prompt": "แต่เรายังไม่รู้ชื่อคุณ",
+    "placeholder_first": "ชื่อ",
+    "placeholder_last": "นามสกุล",
+    "cta": "ไปกันเลย"
+  },
+  "phone": {
+    "headline": "เบอร์โทรคุณคืออะไร?",
+    "body": "เราจะส่งรหัสไปให้ แค่สองวินาที",
+    "verified_headline": "เรียบร้อยแล้ว",
+    "verified_body": "เบอร์ของคุณยืนยันแล้ว เสร็จหนึ่งอย่าง",
+    "consent_text": "ฉันยินยอมรับข้อความจาก Mingla ผ่าน SMS หรือโทรศัพท์ รวมถึงรหัสยืนยัน คำเชิญจากเพื่อน และการเตือนเรื่องประสบการณ์ ตอบ STOP เพื่อยกเลิก หรือ HELP เพื่อขอความช่วยเหลือ ดู",
+    "terms_of_service": "ข้อกำหนดการใช้บริการ",
+    "and": " และ ",
+    "privacy_policy": "นโยบายความเป็นส่วนตัว",
+    "consent_accessibility": "ยินยอมรับข้อความจาก Mingla",
+    "cta_send_code": "ส่งรหัส",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "ประเทศที่เลือก: {{name}} แตะเพื่อเปลี่ยน"
+  },
+  "otp": {
+    "headline": "กรอกรหัส",
+    "body": "ส่งไปที่ {{phone}}",
+    "verifying": "กำลังยืนยัน...",
+    "sending": "กำลังส่ง...",
+    "resend_countdown": "ส่งใหม่ใน {{seconds}} วินาที",
+    "channel_label": "ไม่ได้รับ? ลองวิธีอื่น:",
+    "resend_sms": "ส่ง SMS ใหม่",
+    "resend_sms_accessibility": "ส่งรหัสใหม่ทาง SMS",
+    "call_me": "โทรหาฉัน",
+    "call_me_accessibility": "รับรหัสทางโทรศัพท์",
+    "error_max_attempts": "ลองสามครั้งแล้วไม่สำเร็จ ลองวิธีอื่นด้านล่าง",
+    "error_wrong_code": "รหัสไม่ถูกต้อง ลองอีกครั้ง",
+    "cta_verify": "ยืนยัน",
+    "otp_accessibility": "รหัสยืนยันแบบใช้ครั้งเดียว"
+  },
+  "gender": {
+    "headline": "เล่าเกี่ยวกับตัวคุณ",
+    "body": "เพื่อให้เราแนะนำได้ตรงใจ",
+    "man": "ชาย",
+    "woman": "หญิง",
+    "non_binary": "นอนไบนารี",
+    "transgender": "ทรานส์เจนเดอร์",
+    "genderqueer": "เจนเดอร์เควียร์",
+    "genderfluid": "เจนเดอร์ฟลูอิด",
+    "agender": "เอเจนเดอร์",
+    "prefer_not_to_say": "ไม่ต้องการระบุ"
+  },
+  "details": {
+    "headline": "เกือบเสร็จแล้ว",
+    "body": "แค่ข้อมูลพื้นฐาน เราจัดการที่เหลือเอง",
+    "country_label": "ประเทศ",
+    "country_helper": "ตั้งค่าสกุลเงินและหน่วยวัด",
+    "dob_label": "วันเกิด",
+    "dob_placeholder": "วันเกิดของคุณคือเมื่อไหร่?"
+  },
+  "value_prop": {
+    "beat1_headline": "รู้เลยว่าจะไปไหน",
+    "beat1_sub": "ไม่ต้องเดา เริ่มออกไปเลย",
+    "beat2_headline": "สำหรับเดท เพื่อน และไปคนเดียว",
+    "beat2_sub": "แผนสำหรับทุกรูปแบบการออกไปเที่ยว",
+    "beat3_headline": "หาเร็ว ไปเลย",
+    "beat3_sub": "ปัด บันทึก ไป"
+  },
+  "intents": {
+    "headline": "ตอนนี้มาถึงส่วนสนุก",
+    "body": "แตะทุกไวบ์ที่ตรงกับคุณ",
+    "caption": "เลือกอันที่คุณตื่นเต้นมากที่สุด",
+    "adventurous": "ผจญภัย",
+    "adventurous_desc": "สำรวจสิ่งที่ไม่คาดคิด",
+    "first_date": "เดทแรก",
+    "first_date_desc": "สร้างความประทับใจแรก",
+    "romantic": "โรแมนติก",
+    "romantic_desc": "เพิ่มความโรแมนติก",
+    "group_fun": "สนุกเป็นกลุ่ม",
+    "group_fun_desc": "ยิ่งเยอะยิ่งสนุก",
+    "picnic_dates": "เดทปิกนิก",
+    "picnic_dates_desc": "แดด ของว่าง เวลาดีๆ",
+    "take_a_stroll": "เดินเล่น",
+    "take_a_stroll_desc": "เดินเที่ยวอย่างมีจุดหมาย"
+  },
+  "location": {
+    "granted_headline": "ได้แล้ว — {{city}}!",
+    "granted_tap_hint": "แตะเพื่อดำเนินการต่อ",
+    "settings_headline": "ปรับการตั้งค่าหนึ่งอย่าง",
+    "settings_body": "ตำแหน่งของ Mingla ปิดอยู่\nเปิดในการตั้งค่าเพื่อให้เราหา\nที่เด็ดๆ ใกล้คุณได้",
+    "open_settings": "เปิดการตั้งค่า",
+    "retry_turned_on": "เปิดแล้ว — ลองใหม่",
+    "retry_finding": "กำลังหาตำแหน่ง...",
+    "type_city": "พิมพ์ชื่อเมืองแทน",
+    "error_headline": "ไม่สามารถรับตำแหน่งของคุณ",
+    "error_body": "สัญญาณอ่อนหรือ GPS ยังไม่พร้อม\nลองอีกครั้งหรือพิมพ์ชื่อเมือง",
+    "try_again": "ลองอีกครั้ง",
+    "idle_headline": "ที่ดีๆ เริ่มจากตรงนี้",
+    "idle_body": "เปิด GPS เพื่อให้เราหา\nสถานที่ลับๆ ใกล้คุณ",
+    "enable_location": "เปิดตำแหน่ง",
+    "privacy_hint": "ตำแหน่งของคุณจะเป็นส่วนตัวเสมอ",
+    "cta_enable": "เปิดตำแหน่ง"
+  },
+  "celebration": {
+    "headline": "เก่งมาก",
+    "body": "เลือกแค่สี่อย่างก็เสร็จแล้ว"
+  },
+  "manual_location": {
+    "headline": "ปักหมุดบนแผนที่",
+    "body": "บอกที่อยู่ของคุณให้ละเอียดถึงระดับถนน แล้วเราจะเปิดสถานที่ดีๆ รอบตัวคุณ",
+    "search_placeholder": "เริ่มพิมพ์ที่อยู่...",
+    "no_results": "หืม หาไม่เจอ ลองพิมพ์ถนนหรือย่านใกล้เคียง",
+    "helper": "ยิ่งแม่นยำ ยิ่งได้คำแนะนำที่ดี",
+    "privacy": "ตำแหน่งที่แน่นอนของคุณจะเป็นความลับระหว่างเรา ตลอดไป",
+    "change_accessibility": "เปลี่ยนตำแหน่งที่เลือก"
+  },
+  "categories": {
+    "headline": "คุณชอบสถานที่แบบไหน?",
+    "body": "เลือกได้สูงสุด 3 อย่างที่ตรงกับไวบ์ของคุณ",
+    "cap_message": "สูงสุด 3 หมวดหมู่ ยกเลิกหนึ่งอย่างเพื่อเลือกอย่างอื่น"
+  },
+  "budget": {
+    "headline": "งบที่พอดี",
+    "body": "เลือกช่วงราคาที่เหมาะกับคุณ",
+    "caption": "ของฟรีก็แสดงเสมอ"
+  },
+  "transport": {
+    "headline": "คุณเดินทางด้วยอะไร?",
+    "body": "ช่วยเราคำนวณเวลาเดินทาง"
+  },
+  "travel_time": {
+    "headline": "คุณไปได้ไกลแค่ไหน?",
+    "body": "กำหนดขอบเขตความสะดวกของคุณ",
+    "custom_toggle": "กำหนดเอง",
+    "custom_placeholder": "5 – 120 นาที",
+    "unit": "นาที",
+    "caption": "สูงสุด {{minutes}} นาที โดย {{mode}}",
+    "error": "ไม่สามารถบันทึกการตั้งค่า แตะลองใหม่"
+  },
+  "friends": {
+    "headline": "คนสนิทของคุณ",
+    "body": "เพิ่มคนที่ใกล้ชิดที่สุด แล้วจับคู่ คุณจะค้นพบสิ่งที่ทำด้วยกัน ดูสิ่งที่พวกเขาชอบ และวางแผนดีๆ ร่วมกัน",
+    "waiting_header": "รอคุณอยู่",
+    "added_feedback": "เพิ่มแล้ว",
+    "declined_feedback": "ปฏิเสธแล้ว",
+    "add_friends_header": "เพิ่มเพื่อน",
+    "your_people_header": "คนของคุณ",
+    "status_friends": "เพื่อน",
+    "status_request_sent": "ส่งคำขอแล้ว",
+    "status_invited": "เชิญแล้ว",
+    "pair_paired": "จับคู่แล้ว",
+    "pair_pending": "รอดำเนินการ",
+    "pair_queued": "อยู่ในคิว",
+    "pair_button": "จับคู่",
+    "pair_queued_hint": "จะเปิดใช้เมื่อพวกเขาเข้าร่วม",
+    "empty_state": "ยังไม่มีเพื่อน เพิ่มคนที่คุณอยากวางแผนร่วมกันจริงๆ",
+    "pair_requests_header": "คำขอจับคู่",
+    "paired_feedback": "จับคู่แล้ว!",
+    "pair_wants": "ต้องการจับคู่กับคุณ",
+    "pair_curated": "ดูประสบการณ์ที่คัดสรรมาสำหรับคุณทั้งคู่",
+    "alert_self_title": "นั่นคือคุณ",
+    "alert_self_message": "คุณไม่สามารถเพิ่มตัวเองเป็นเพื่อนได้",
+    "alert_duplicate_title": "เพิ่มแล้ว",
+    "alert_duplicate_message": "คนนี้อยู่ในรายชื่อของคุณแล้ว",
+    "alert_pair_error": "ไม่สามารถส่งคำขอจับคู่ได้",
+    "alert_accept_error": "ไม่สามารถรับคำขอจับคู่ได้ ลองอีกครั้ง",
+    "alert_decline_error": "ไม่สามารถปฏิเสธคำขอจับคู่ได้ ลองอีกครั้ง",
+    "alert_generic_error": "ไม่สามารถดำเนินการตามคำขอ ลองอีกครั้ง",
+    "share_message": "เฮ้! มาร่วมกันใช้ Mingla หาประสบการณ์ดีๆ ด้วยกัน https://usemingla.com",
+    "fallback_user": "ผู้ใช้"
+  },
+  "collaborations": {
+    "headline": "วางแผนร่วมกัน",
+    "body": "เริ่มเซสชันกับเพื่อนๆ ค้นพบสิ่งที่ทำ โหวตสิ่งที่ชอบ และทำให้เกิดขึ้นจริง",
+    "whos_in": "ใครเข้าร่วม?",
+    "session_name_label": "ชื่อเซสชัน",
+    "session_name_placeholder": "เช่น แผนสุดสัปดาห์, ไอเดียเดท...",
+    "created_header": "เซสชันที่สร้าง ({{count}})",
+    "loading_invites": "กำลังโหลดคำเชิญ...",
+    "invited_header": "คุณได้รับเชิญ ({{count}})",
+    "inviter_message": "{{name}} เชิญคุณ",
+    "fallback_someone": "ใครสักคน",
+    "fallback_session": "เซสชัน",
+    "name_taken_error": "ชื่อนี้ถูกใช้แล้ว คิดชื่อใหม่สิ!",
+    "generic_error": "หืม ไม่สำเร็จ ลองอีกทีนะ",
+    "join_error": "ไม่สามารถเข้าร่วมเซสชันได้",
+    "decline_error": "ไม่สามารถปฏิเสธคำเชิญได้",
+    "empty_state": "เพิ่มเพื่อนก่อน — แล้วค่อยเริ่มวางแผนร่วมกัน"
+  },
+  "consent": {
+    "headline": "อีกเรื่องหนึ่ง",
+    "body": "Mingla ใช้สิ่งที่คุณแชร์ — ความชอบ ไวบ์ ตำแหน่ง — เพื่อหาประสบการณ์ที่คุณจะชอบจริงๆ ข้อมูลของคุณเป็นของคุณ เราไม่เคยขาย และคุณสามารถลบได้ทุกเมื่อ"
+  },
+  "getting_experiences": {
+    "loading_1": "กำลังตรวจสอบที่ใกล้เคียง...",
+    "loading_2": "จับคู่กับความชอบของคุณ...",
+    "loading_3": "ค้นหาที่ลับๆ...",
+    "loading_4": "เกือบเสร็จแล้ว..."
+  },
+  "occasions": {
+    "birthday": "วันเกิด",
+    "valentines": "วันวาเลนไทน์",
+    "mothers_day": "วันแม่",
+    "fathers_day": "วันพ่อ",
+    "christmas": "คริสต์มาส"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "header": { "title": "الإشعارات", "unread": "{{count}} غير مقروءة", "markAllRead": "تحديد الكل كمقروء", "clearAll": "مسح الكل" },
+  "filters": { "all": "الكل", "social": "اجتماعي", "sessions": "الجلسات", "messages": "الرسائل" },
+  "timeAgo": { "justNow": "الآن" },
+  "dateGroups": { "today": "اليوم", "yesterday": "أمس", "thisWeek": "هذا الأسبوع", "earlier": "سابقاً" },
+  "actions": { "accept": "قبول", "decline": "رفض", "join": "انضمام", "upgrade": "ترقية", "review": "مراجعة", "actionFailed": "فشل الإجراء. انقر للمحاولة مرة أخرى." },
+  "emptyState": { "title": "أنت على اطلاع بكل شيء", "subtitle": "النشاط الجديد سيظهر هنا." },
+  "errorState": { "title": "حدث خطأ ما", "subtitle": "تعذر تحميل الإشعارات.", "tryAgain": "حاول مرة أخرى" },
+  "offline": { "banner": "أنت غير متصل — عرض الإشعارات المخزنة" }
+}

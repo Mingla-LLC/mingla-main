@@ -1,0 +1,18 @@
+{
+  "header.title": "Chia sẻ trải nghiệm",
+  "empty.no_data": "Không có dữ liệu trải nghiệm",
+  "card.nearby": "Gần đây",
+  "card.suggested_schedule": "Lịch trình đề xuất",
+  "card.per_person": "mỗi người",
+  "share_to": "Chia sẻ đến:",
+  "platform.messages": "Tin nhắn",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Thêm tùy chọn chia sẻ",
+  "actions.copy_link": "Sao chép link",
+  "actions.copy_message": "Sao chép tin nhắn",
+  "alerts.copy_error": "Sao chép tin nhắn vào clipboard thất bại",
+  "alerts.share_error": "Chia sẻ thất bại. Vui lòng thử lại.",
+  "alerts.error_title": "Lỗi"
+}

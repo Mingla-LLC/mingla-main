@@ -1,0 +1,18 @@
+{
+  "header.title": "Kongsi Pengalaman",
+  "empty.no_data": "Tiada data pengalaman tersedia",
+  "card.nearby": "Berdekatan",
+  "card.suggested_schedule": "Jadual Dicadangkan",
+  "card.per_person": "seorang",
+  "share_to": "Kongsi ke:",
+  "platform.messages": "Mesej",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Lagi pilihan kongsi",
+  "actions.copy_link": "Salin pautan",
+  "actions.copy_message": "Salin Mesej",
+  "alerts.copy_error": "Gagal menyalin mesej ke papan keratan",
+  "alerts.share_error": "Gagal berkongsi. Sila cuba lagi.",
+  "alerts.error_title": "Ralat"
+}

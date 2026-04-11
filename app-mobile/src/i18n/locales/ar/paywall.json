@@ -1,0 +1,10 @@
+{
+  "close": "إغلاق جدار الدفع",
+  "manage_subscription": "إدارة الاشتراك",
+  "alerts.restored_title": "تمت استعادة المشتريات",
+  "alerts.restored_message": "تمت استعادة مشترياتك السابقة بنجاح.",
+  "alerts.restored_done": "تم",
+  "alerts.purchase_failed": "فشل الشراء",
+  "toast.purchase_delayed": "تم الشراء بنجاح. قد تستغرق الميزات لحظة للتفعيل.",
+  "toast.restore_delayed": "تمت استعادة المشتريات. قد تستغرق الميزات لحظة للتفعيل."
+}

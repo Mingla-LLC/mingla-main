@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "استكشاف",
+  "tabs.discover": "اكتشف",
+  "tabs.chats": "المحادثات",
+  "tabs.likes": "الإعجابات",
+  "tabs.profile": "الملف الشخصي",
+  "alerts.sign_in_error_title": "خطأ في تسجيل الدخول",
+  "alerts.error_title": "خطأ",
+  "alerts.failed_sign_in": "فشل إكمال تسجيل الدخول: "
+}

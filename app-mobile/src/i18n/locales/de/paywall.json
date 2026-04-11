@@ -1,0 +1,10 @@
+{
+  "close": "Paywall schließen",
+  "manage_subscription": "Abo verwalten",
+  "alerts.restored_title": "Käufe wiederhergestellt",
+  "alerts.restored_message": "Deine früheren Käufe wurden erfolgreich wiederhergestellt.",
+  "alerts.restored_done": "Fertig",
+  "alerts.purchase_failed": "Kauf fehlgeschlagen",
+  "toast.purchase_delayed": "Kauf erfolgreich. Funktionen können einen Moment brauchen, um aktiv zu werden.",
+  "toast.restore_delayed": "Käufe wiederhergestellt. Funktionen können einen Moment brauchen, um aktiv zu werden."
+}

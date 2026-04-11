@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "KONTO",
+    "billing_label": "Abrechnung",
+    "billing_description": "Verwalte deinen Plan und dein Abo",
+    "account_settings_label": "Kontoeinstellungen",
+    "account_settings_description": "Datenschutz, Einstellungen und Kontoverwaltung",
+    "upload_profile_photo_title": "Profilfoto hochladen",
+    "upload_profile_photo_body": "Wähle, wie du dein Profilfoto aktualisieren möchtest",
+    "change_profile_photo_title": "Profilfoto ändern",
+    "change_profile_photo_body": "Lade ein neues Foto hoch oder entferne das vorhandene",
+    "error_remove_photo": "Profilfoto konnte nicht entfernt werden.",
+    "error_take_photo": "Foto konnte nicht aufgenommen werden. Bitte versuche es erneut.",
+    "error_select_image": "Bild konnte nicht ausgewählt werden. Bitte versuche es erneut.",
+    "error_upload_photo": "Profilfoto konnte nicht hochgeladen werden.",
+    "error_save_bio": "Bio konnte nicht gespeichert werden."
+  },
+  "edit_bio": {
+    "title": "Bio bearbeiten",
+    "placeholder": "Erzähle anderen von dir",
+    "save": "Speichern"
+  },
+  "edit_interests": {
+    "title": "Interessen bearbeiten",
+    "what_are_you_into": "Wofür interessierst du dich?",
+    "what_do_you_like": "Was magst du?",
+    "save": "Speichern"
+  },
+  "hero": {
+    "your_name_here": "Dein Name hier",
+    "user_fallback": "Benutzer",
+    "first_name": "Vorname",
+    "last_name": "Nachname",
+    "name_error_empty": "Bitte gib deinen Namen ein.",
+    "name_error_failed": "Speichern fehlgeschlagen. Versuche es erneut.",
+    "somewhere_cool": "Irgendwo Cooles, wahrscheinlich",
+    "tap_to_add_bio": "Tippe, um eine Bio hinzuzufügen",
+    "hint_add_photo": "Leute vertrauen Gesichtern. Füge ein Foto hinzu, damit Freunde wissen, dass du es bist.",
+    "hint_add_bio": "Eine kurze Bio macht viel aus. Was sollten Leute über dich wissen?",
+    "cancel_editing": "Bearbeitung abbrechen",
+    "save_name": "Name speichern"
+  },
+  "stats": {
+    "saved": "GESPEICHERT",
+    "friends": "FREUNDE",
+    "boards": "BOARDS",
+    "places": "ORTE",
+    "streak": "SERIE",
+    "level": "LEVEL",
+    "motivation_start": "Deine Statistiken bauen sich auf, sobald du etwas unternimmst. Los, erkunden.",
+    "motivation_close": "Noch {{count}} Ort bis {{tier}}. Du bist fast da.",
+    "motivation_close_plural": "Noch {{count}} Orte bis {{tier}}. Du bist fast da.",
+    "motivation_week": "Eine ganze Woche. Regelmäßigkeit steht dir gut.",
+    "motivation_month": "30 Tage am Stück. Du bist nicht aufzuhalten."
+  },
+  "paired_section": {
+    "see_all": "Alle anzeigen"
+  },
+  "interests": {
+    "edit_accessibility": "Deine Interessen bearbeiten",
+    "your_interests": "Deine Interessen",
+    "interests": "Interessen",
+    "not_shared": "Nicht geteilt",
+    "empty_text": "Erzähle uns, was dich interessiert — es hilft uns, dein nächstes Lieblingserlebnis zu finden.",
+    "add_interests": "Interessen hinzufügen"
+  },
+  "friend": {
+    "loading_profile": "Profil wird geladen…",
+    "profile_unavailable_title": "Dieses Profil ist nicht verfügbar",
+    "profile_unavailable_body": "Das Profil dieser Person ist möglicherweise privat, oder ihr seid nicht verbunden.",
+    "about": "Über",
+    "location_label": "Standort",
+    "not_shared": "Nicht geteilt",
+    "mingla_level": "Mingla-Level",
+    "interests": "Interessen",
+    "message": "Nachricht",
+    "friend_fallback": "Freund"
+  }
+}

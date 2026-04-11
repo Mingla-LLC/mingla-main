@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "TÀI KHOẢN",
+    "billing_label": "Thanh toán",
+    "billing_description": "Quản lý gói và đăng ký",
+    "account_settings_label": "Cài đặt tài khoản",
+    "account_settings_description": "Quyền riêng tư, cài đặt và quản lý tài khoản",
+    "upload_profile_photo_title": "Tải lên ảnh hồ sơ",
+    "upload_profile_photo_body": "Chọn cách cập nhật ảnh hồ sơ",
+    "change_profile_photo_title": "Đổi ảnh hồ sơ",
+    "change_profile_photo_body": "Tải lên ảnh mới hoặc xóa ảnh hiện tại",
+    "error_remove_photo": "Xóa ảnh hồ sơ thất bại.",
+    "error_take_photo": "Chụp ảnh thất bại. Vui lòng thử lại.",
+    "error_select_image": "Chọn ảnh thất bại. Vui lòng thử lại.",
+    "error_upload_photo": "Tải lên ảnh hồ sơ thất bại.",
+    "error_save_bio": "Lưu tiểu sử thất bại."
+  },
+  "edit_bio": {
+    "title": "Chỉnh sửa tiểu sử",
+    "placeholder": "Giới thiệu về bạn",
+    "save": "Lưu"
+  },
+  "edit_interests": {
+    "title": "Chỉnh sửa sở thích",
+    "what_are_you_into": "Bạn quan tâm đến gì?",
+    "what_do_you_like": "Bạn thích gì?",
+    "save": "Lưu"
+  },
+  "hero": {
+    "your_name_here": "Tên của bạn ở đây",
+    "user_fallback": "Người dùng",
+    "first_name": "Tên",
+    "last_name": "Họ",
+    "name_error_empty": "Vui lòng nhập tên.",
+    "name_error_failed": "Lưu thất bại. Thử lại.",
+    "somewhere_cool": "Có lẽ ở nơi nào đó tuyệt vời",
+    "tap_to_add_bio": "Nhấn để thêm tiểu sử",
+    "hint_add_photo": "Mọi người tin tưởng khuôn mặt. Thêm ảnh để bạn bè nhận ra bạn.",
+    "hint_add_bio": "Tiểu sử ngắn giúp ích rất nhiều. Bạn muốn mọi người biết gì về bạn?",
+    "cancel_editing": "Hủy chỉnh sửa",
+    "save_name": "Lưu tên"
+  },
+  "stats": {
+    "saved": "ĐÃ LƯU",
+    "friends": "BẠN BÈ",
+    "boards": "BẢNG",
+    "places": "ĐỊA ĐIỂM",
+    "streak": "LIÊN TIẾP",
+    "level": "CẤP ĐỘ",
+    "motivation_start": "Thống kê bắt đầu tích lũy khi bạn hành động. Đi khám phá thôi.",
+    "motivation_close": "Còn {{count}} nơi nữa để đạt {{tier}}. Sắp tới rồi.",
+    "motivation_close_plural": "Còn {{count}} nơi nữa để đạt {{tier}}. Sắp tới rồi.",
+    "motivation_week": "Cả tuần liền. Sự kiên trì thật đẹp.",
+    "motivation_month": "30 ngày liên tiếp. Có lẽ không ai ngăn được bạn."
+  },
+  "paired_section": {
+    "see_all": "Xem tất cả"
+  },
+  "interests": {
+    "edit_accessibility": "Chỉnh sửa sở thích",
+    "your_interests": "Sở thích của bạn",
+    "interests": "Sở thích",
+    "not_shared": "Không chia sẻ",
+    "empty_text": "Cho chúng tôi biết bạn thích gì — sẽ giúp tìm điều yêu thích tiếp theo.",
+    "add_interests": "Thêm sở thích"
+  },
+  "friend": {
+    "loading_profile": "Đang tải hồ sơ…",
+    "profile_unavailable_title": "Hồ sơ này không khả dụng",
+    "profile_unavailable_body": "Hồ sơ người này có thể ở chế độ riêng tư, hoặc bạn chưa kết nối.",
+    "about": "Giới thiệu",
+    "location_label": "Vị trí",
+    "not_shared": "Không chia sẻ",
+    "mingla_level": "Cấp độ Mingla",
+    "interests": "Sở thích",
+    "message": "Tin nhắn",
+    "friend_fallback": "Bạn bè"
+  }
+}

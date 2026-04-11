@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Tìm kiếm ngôn ngữ...",
+    "close_accessibility": "Đóng chọn ngôn ngữ"
+  },
+  "country_picker": {
+    "search_placeholder": "Tìm kiếm quốc gia...",
+    "close_accessibility": "Đóng chọn quốc gia"
+  },
+  "welcome": {
+    "greeting_hey": "Này",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Gu thẩm mỹ tốt",
+    "greeting_walked_in": "vừa bước vào.",
+    "we_know": "Chúng tôi biết",
+    "good_taste": "gu thẩm mỹ tốt",
+    "just_walked_in": "vừa bước vào.",
+    "name_prompt": "Nhưng chúng tôi chưa biết tên bạn.",
+    "placeholder_first": "Tên",
+    "placeholder_last": "Họ",
+    "cta": "Bắt đầu thôi"
+  },
+  "phone": {
+    "headline": "Số điện thoại của bạn?",
+    "body": "Chúng tôi sẽ gửi mã. Chỉ mất hai giây.",
+    "verified_headline": "Xong rồi.",
+    "verified_body": "Số của bạn đã được xác nhận. Một việc đã xong.",
+    "consent_text": "Tôi đồng ý nhận tin nhắn từ Mingla qua SMS hoặc cuộc gọi, bao gồm mã xác minh, lời mời bạn bè và nhắc nhở trải nghiệm. Trả lời STOP để hủy hoặc HELP để được hỗ trợ. Xem ",
+    "terms_of_service": "Điều khoản dịch vụ",
+    "and": " và ",
+    "privacy_policy": "Chính sách bảo mật",
+    "consent_accessibility": "Đồng ý nhận tin nhắn từ Mingla",
+    "cta_send_code": "Gửi mã",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Quốc gia đã chọn: {{name}}. Nhấn để thay đổi."
+  },
+  "otp": {
+    "headline": "Nhập mã",
+    "body": "Đã gửi đến {{phone}}",
+    "verifying": "Đang xác minh...",
+    "sending": "Đang gửi...",
+    "resend_countdown": "Gửi lại sau {{seconds}} giây",
+    "channel_label": "Không nhận được? Thử cách khác:",
+    "resend_sms": "Gửi lại SMS",
+    "resend_sms_accessibility": "Gửi lại mã qua SMS",
+    "call_me": "Gọi cho tôi",
+    "call_me_accessibility": "Nhận mã qua cuộc gọi",
+    "error_max_attempts": "Đã thử ba lần mà không thành công. Hãy thử phương pháp khác bên dưới.",
+    "error_wrong_code": "Mã không đúng. Thử lại nhé.",
+    "cta_verify": "Xác minh",
+    "otp_accessibility": "Mã xác minh một lần"
+  },
+  "gender": {
+    "headline": "Hãy cho chúng tôi biết về bạn.",
+    "body": "Để chúng tôi gợi ý chính xác hơn.",
+    "man": "Nam",
+    "woman": "Nữ",
+    "non_binary": "Phi nhị giới",
+    "transgender": "Chuyển giới",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Agender",
+    "prefer_not_to_say": "Không muốn nói"
+  },
+  "details": {
+    "headline": "Sắp xong rồi.",
+    "body": "Chỉ cần thông tin cơ bản. Chúng tôi lo phần còn lại.",
+    "country_label": "Quốc gia",
+    "country_helper": "Thiết lập tiền tệ và đơn vị đo lường",
+    "dob_label": "Ngày sinh",
+    "dob_placeholder": "Sinh nhật bạn khi nào?"
+  },
+  "value_prop": {
+    "beat1_headline": "Biết ngay nên đi đâu.",
+    "beat1_sub": "Không cần đoán. Cứ đi thôi.",
+    "beat2_headline": "Cho hẹn hò, bạn bè và đi một mình.",
+    "beat2_sub": "Kế hoạch cho mọi kiểu đi chơi.",
+    "beat3_headline": "Tìm nhanh. Đi luôn.",
+    "beat3_sub": "Vuốt. Lưu. Đi."
+  },
+  "intents": {
+    "headline": "Giờ đến phần vui.",
+    "body": "Chọn mọi phong cách phù hợp với bạn.",
+    "caption": "Chọn cái khiến bạn hào hứng nhất.",
+    "adventurous": "Phiêu lưu",
+    "adventurous_desc": "Khám phá điều bất ngờ",
+    "first_date": "Hẹn hò lần đầu",
+    "first_date_desc": "Tạo ấn tượng đầu tiên hoàn hảo",
+    "romantic": "Lãng mạn",
+    "romantic_desc": "Tăng thêm cảm xúc",
+    "group_fun": "Vui nhóm",
+    "group_fun_desc": "Càng đông càng vui",
+    "picnic_dates": "Hẹn hò dã ngoại",
+    "picnic_dates_desc": "Nắng, đồ ăn nhẹ, thời gian tuyệt vời",
+    "take_a_stroll": "Đi dạo",
+    "take_a_stroll_desc": "Dạo bước có mục đích"
+  },
+  "location": {
+    "granted_headline": "Xác nhận rồi — {{city}}!",
+    "granted_tap_hint": "Nhấn để tiếp tục",
+    "settings_headline": "Chỉ cần bật một cài đặt",
+    "settings_body": "Vị trí đang tắt cho Mingla.\nBật trong Cài đặt để chúng tôi tìm\nnhững nơi tuyệt nhất gần bạn.",
+    "open_settings": "Mở cài đặt",
+    "retry_turned_on": "Đã bật rồi — thử lại",
+    "retry_finding": "Đang tìm vị trí...",
+    "type_city": "Nhập tên thành phố",
+    "error_headline": "Không thể lấy vị trí",
+    "error_body": "Tín hiệu yếu hoặc GPS đang khởi động.\nThử lại hoặc nhập tên thành phố.",
+    "try_again": "Thử lại",
+    "idle_headline": "Nơi tốt hơn bắt đầu từ đây",
+    "idle_body": "Bật GPS để chúng tôi tìm\nnhững viên ngọc ẩn ngay gần bạn.",
+    "enable_location": "Bật vị trí",
+    "privacy_hint": "Vị trí của bạn luôn được bảo mật.",
+    "cta_enable": "Bật vị trí"
+  },
+  "celebration": {
+    "headline": "Tuyệt vời.",
+    "body": "Bốn lựa chọn nhanh và xong."
+  },
+  "manual_location": {
+    "headline": "Đặt ghim trên bản đồ",
+    "body": "Cho chúng tôi địa chỉ chính xác — chi tiết đến đường phố — và chúng tôi sẽ mở khóa những nơi tuyệt nhất xung quanh bạn.",
+    "search_placeholder": "Bắt đầu nhập địa chỉ...",
+    "no_results": "Hmm, không tìm thấy. Hãy thử một con đường hoặc khu vực gần đó.",
+    "helper": "Càng chính xác, đề xuất càng tốt.",
+    "privacy": "Vị trí chính xác của bạn chỉ có chúng ta biết. Luôn luôn.",
+    "change_accessibility": "Thay đổi vị trí đã chọn"
+  },
+  "categories": {
+    "headline": "Bạn thích loại địa điểm nào?",
+    "body": "Chọn tối đa 3 loại phù hợp với phong cách bạn.",
+    "cap_message": "Tối đa 3 danh mục. Bỏ chọn một để chọn cái khác."
+  },
+  "budget": {
+    "headline": "Mức giá phù hợp",
+    "body": "Chọn khoảng giá phù hợp với bạn.",
+    "caption": "Những thứ miễn phí luôn hiển thị."
+  },
+  "transport": {
+    "headline": "Bạn di chuyển bằng gì?",
+    "body": "Giúp chúng tôi tính thời gian di chuyển."
+  },
+  "travel_time": {
+    "headline": "Bạn có thể đi xa bao nhiêu?",
+    "body": "Đặt phạm vi thoải mái của bạn.",
+    "custom_toggle": "Tự đặt",
+    "custom_placeholder": "5 – 120 phút",
+    "unit": "phút",
+    "caption": "Tối đa {{minutes}} phút bằng {{mode}}",
+    "error": "Không thể lưu sở thích. Nhấn Thử lại."
+  },
+  "friends": {
+    "headline": "Nhóm thân của bạn",
+    "body": "Thêm những người thân nhất, sau đó ghép đôi. Bạn sẽ khám phá những việc cùng làm, xem họ thích gì, và lên kế hoạch hay ho cùng nhau.",
+    "waiting_header": "Đang chờ bạn",
+    "added_feedback": "Đã thêm",
+    "declined_feedback": "Đã từ chối",
+    "add_friends_header": "Thêm bạn bè",
+    "your_people_header": "Người của bạn",
+    "status_friends": "Bạn bè",
+    "status_request_sent": "Đã gửi yêu cầu",
+    "status_invited": "Đã mời",
+    "pair_paired": "Đã ghép đôi",
+    "pair_pending": "Đang chờ",
+    "pair_queued": "Trong hàng đợi",
+    "pair_button": "Ghép đôi",
+    "pair_queued_hint": "Kích hoạt khi họ tham gia",
+    "empty_state": "Chưa có bạn bè. Thêm người bạn thực sự muốn lên kế hoạch cùng.",
+    "pair_requests_header": "Yêu cầu ghép đôi",
+    "paired_feedback": "Đã ghép đôi!",
+    "pair_wants": "Muốn ghép đôi với bạn",
+    "pair_curated": "Xem trải nghiệm được chọn lọc cho cả hai bạn.",
+    "alert_self_title": "Đó là bạn",
+    "alert_self_message": "Bạn không thể thêm chính mình làm bạn bè.",
+    "alert_duplicate_title": "Đã thêm rồi",
+    "alert_duplicate_message": "Người này đã có trong danh sách.",
+    "alert_pair_error": "Không thể gửi yêu cầu ghép đôi",
+    "alert_accept_error": "Không thể chấp nhận yêu cầu ghép đôi. Thử lại.",
+    "alert_decline_error": "Không thể từ chối yêu cầu ghép đôi. Thử lại.",
+    "alert_generic_error": "Không thể xử lý yêu cầu. Thử lại.",
+    "share_message": "Này! Tham gia Mingla cùng mình để tìm trải nghiệm tuyệt vời nhé. https://usemingla.com",
+    "fallback_user": "Người dùng"
+  },
+  "collaborations": {
+    "headline": "Lên kế hoạch cùng nhau",
+    "body": "Bắt đầu phiên với nhóm bạn. Khám phá những việc cần làm, bình chọn yêu thích, và biến nó thành hiện thực.",
+    "whos_in": "Ai tham gia?",
+    "session_name_label": "Tên phiên",
+    "session_name_placeholder": "VD: Kế hoạch cuối tuần, Ý tưởng hẹn hò...",
+    "created_header": "Phiên đã tạo ({{count}})",
+    "loading_invites": "Đang tải lời mời...",
+    "invited_header": "Bạn được mời ({{count}})",
+    "inviter_message": "{{name}} đã mời bạn",
+    "fallback_someone": "Ai đó",
+    "fallback_session": "Phiên",
+    "name_taken_error": "Tên đã được sử dụng. Hãy sáng tạo hơn!",
+    "generic_error": "Hmm, không thành công. Thử lại nhé.",
+    "join_error": "Không thể tham gia phiên",
+    "decline_error": "Không thể từ chối lời mời",
+    "empty_state": "Thêm bạn bè trước — rồi bạn có thể bắt đầu lên kế hoạch cùng nhau."
+  },
+  "consent": {
+    "headline": "Một điều nữa",
+    "body": "Mingla sử dụng những gì bạn chia sẻ — sở thích, phong cách, vị trí — để tìm trải nghiệm bạn thực sự thích. Dữ liệu thuộc về bạn. Chúng tôi không bao giờ bán, và bạn có thể xóa bất cứ lúc nào."
+  },
+  "getting_experiences": {
+    "loading_1": "Đang kiểm tra địa điểm gần đây...",
+    "loading_2": "Đang khớp với sở thích của bạn...",
+    "loading_3": "Đang tìm những viên ngọc ẩn...",
+    "loading_4": "Sắp xong rồi..."
+  },
+  "occasions": {
+    "birthday": "Sinh nhật",
+    "valentines": "Ngày Valentine",
+    "mothers_day": "Ngày của Mẹ",
+    "fathers_day": "Ngày của Bố",
+    "christmas": "Giáng sinh"
+  }
+}

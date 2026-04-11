@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Сповіщення",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Повідомлення"
+  },
+  "timeAgo": {
+    "justNow": "Щойно"
+  },
+  "dateGroups": {
+    "today": "Сьогодні",
+    "yesterday": "Вчора",
+    "thisWeek": "This Week",
+    "earlier": "Earlier"
+  },
+  "actions": {
+    "accept": "Прийняти",
+    "decline": "Відхилити",
+    "join": "Приєднатися",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Щось пішло не так",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Try Again"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

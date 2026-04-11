@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Lưu",
+    "saved": "Đã lưu",
+    "schedule": "Lên lịch",
+    "scheduled": "Đã lên lịch",
+    "policies_reservations": "Chính sách & Đặt chỗ",
+    "i_went_here": "Tôi đã đến đây",
+    "been_there": "Đã đến rồi",
+    "on_it": "Đang xử lý...",
+    "visited_label": "Bạn đã ghé thăm nơi này",
+    "mark_visited_label": "Đánh dấu nơi này là đã ghé thăm",
+    "visited_hint": "Nhấn để xóa dấu đã ghé thăm",
+    "mark_visited_hint": "Ghi lại lượt ghé thăm và mở quy trình đánh giá",
+    "opening_hours": "Giờ mở cửa",
+    "open_now": "Đang mở cửa",
+    "closed": "Đã đóng cửa",
+    "show_all_hours": "Xem tất cả giờ",
+    "show_less": "Thu gọn",
+    "select_date": "Chọn ngày",
+    "select_time": "Chọn giờ",
+    "cancel": "Hủy",
+    "next": "Tiếp theo",
+    "done": "Xong",
+    "error_save": "Lưu thẻ thất bại. Vui lòng thử lại.",
+    "error_login": "Bạn cần đăng nhập để lên lịch thẻ.",
+    "error_invalid_date": "Ngày đã chọn không hợp lệ. Vui lòng thử lại.",
+    "schedule_failed_title": "Lên lịch thất bại",
+    "schedule_failed_body": "Không thể thêm vào lịch của bạn. Vui lòng thử lại.",
+    "place_closed_title": "Địa điểm đã đóng cửa",
+    "place_closed_body": "Địa điểm này đóng cửa vào ngày và giờ đã chọn. Vui lòng chọn thời gian khác.",
+    "choose_another_time": "Chọn thời gian khác",
+    "some_stops_closed_title": "Một số điểm dừng có thể đã đóng cửa",
+    "change_time": "Đổi giờ",
+    "schedule_anyway": "Vẫn lên lịch",
+    "scheduled_toast": "Đã lên lịch! {{title}} đã được thêm vào lịch của bạn",
+    "closed_message": "Địa điểm này đóng cửa vào ngày và giờ đã chọn. Nhấn \"Lên lịch\" để chọn thời gian khác.",
+    "share_prompt": "Chia sẻ {{title}} với bạn bè"
+  },
+  "busyness": {
+    "traffic": "Giao thông",
+    "busy_level": "Mức độ đông đúc",
+    "busy": "Đông đúc",
+    "clear_roads": "Đường thông thoáng",
+    "clear": "Thông thoáng",
+    "moderate": "Vừa phải",
+    "heavy": "Tắc nghẽn"
+  },
+  "match_factors": {
+    "title": "Chi tiết độ phù hợp",
+    "location": "Vị trí",
+    "budget": "Ngân sách",
+    "category": "Danh mục",
+    "time": "Thời gian",
+    "popularity": "Độ phổ biến",
+    "excellent": "Xuất sắc",
+    "good": "Tốt",
+    "fair": "Khá",
+    "poor": "Thấp",
+    "summary": "Những yếu tố này xác định trải nghiệm này phù hợp với sở thích của bạn đến mức nào. Điểm càng cao thì càng phù hợp."
+  },
+  "weather": {
+    "weather": "Thời tiết",
+    "clear": "Quang đãng",
+    "cloudy": "Nhiều mây",
+    "rainy": "Mưa",
+    "snowy": "Tuyết",
+    "stormy": "Bão"
+  },
+  "timeline": {
+    "start": "Bắt đầu",
+    "stop": "Điểm dừng {{number}}",
+    "open_in_maps": "Mở trong bản đồ",
+    "then": "Tiếp theo..."
+  },
+  "companion_stops": {
+    "title": "Bắt đầu chuyến dạo bộ",
+    "subtitle": "Ghé qua một trong những điểm gần đây trước khi đi dạo",
+    "reviews_count": "({{count}} đánh giá)"
+  },
+  "highlights": {
+    "title": "Điểm nổi bật"
+  },
+  "description": {
+    "show_less": "Thu gọn",
+    "read_more": "Đọc thêm"
+  },
+  "card_info": {
+    "nearby": "Gần đây"
+  }
+}

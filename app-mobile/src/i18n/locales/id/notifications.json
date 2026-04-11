@@ -1,0 +1,10 @@
+{
+  "header": { "title": "Notifikasi", "unread": "{{count}} belum dibaca", "markAllRead": "Tandai semua dibaca", "clearAll": "Hapus semua" },
+  "filters": { "all": "Semua", "social": "Sosial", "sessions": "Sesi", "messages": "Pesan" },
+  "timeAgo": { "justNow": "Baru saja" },
+  "dateGroups": { "today": "Hari Ini", "yesterday": "Kemarin", "thisWeek": "Minggu Ini", "earlier": "Sebelumnya" },
+  "actions": { "accept": "Terima", "decline": "Tolak", "join": "Bergabung", "upgrade": "Upgrade", "review": "Tinjau", "actionFailed": "Tindakan gagal. Ketuk untuk coba lagi." },
+  "emptyState": { "title": "Semua sudah terbaca", "subtitle": "Aktivitas baru akan muncul di sini." },
+  "errorState": { "title": "Terjadi kesalahan", "subtitle": "Tidak bisa memuat notifikasi.", "tryAgain": "Coba Lagi" },
+  "offline": { "banner": "Anda offline — menampilkan notifikasi tersimpan" }
+}

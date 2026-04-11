@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Обзор",
+  "tabs.discover": "Открытия",
+  "tabs.chats": "Чаты",
+  "tabs.likes": "Нравится",
+  "tabs.profile": "Профиль",
+  "alerts.sign_in_error_title": "Ошибка входа",
+  "alerts.error_title": "Ошибка",
+  "alerts.failed_sign_in": "Failed to complete sign-in: "
+}

@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Opslaan",
+    "saved": "Opgeslagen",
+    "schedule": "Plannen",
+    "scheduled": "Gepland",
+    "policies_reservations": "Beleid & Reserveringen",
+    "i_went_here": "Ik ben hier geweest",
+    "been_there": "Daar geweest",
+    "on_it": "Bezig...",
+    "visited_label": "Je hebt deze plek bezocht",
+    "mark_visited_label": "Markeer deze plek als bezocht",
+    "visited_hint": "Tik om je bezoekmarkering te verwijderen",
+    "mark_visited_hint": "Registreert je bezoek en opent de beoordelingsflow",
+    "opening_hours": "Openingstijden",
+    "open_now": "Nu open",
+    "closed": "Gesloten",
+    "show_all_hours": "Alle tijden tonen",
+    "show_less": "Minder tonen",
+    "select_date": "Datum selecteren",
+    "select_time": "Tijd selecteren",
+    "cancel": "Annuleren",
+    "next": "Volgende",
+    "done": "Klaar",
+    "error_save": "Kaart opslaan mislukt. Probeer het opnieuw.",
+    "error_login": "Je moet ingelogd zijn om kaarten te plannen.",
+    "error_invalid_date": "De geselecteerde datum is niet geldig. Probeer het opnieuw.",
+    "schedule_failed_title": "Plannen mislukt",
+    "schedule_failed_body": "We konden dit niet aan je agenda toevoegen. Probeer het opnieuw.",
+    "place_closed_title": "Plek gesloten",
+    "place_closed_body": "Deze plek is gesloten op de geselecteerde datum en tijd. Kies een ander tijdstip.",
+    "choose_another_time": "Ander tijdstip kiezen",
+    "some_stops_closed_title": "Sommige stops kunnen gesloten zijn",
+    "change_time": "Tijd wijzigen",
+    "schedule_anyway": "Toch plannen",
+    "scheduled_toast": "Gepland! {{title}} is toegevoegd aan je agenda",
+    "closed_message": "Deze plek is gesloten op de geselecteerde datum en tijd. Tik op \"Plannen\" om een ander tijdstip te kiezen.",
+    "share_prompt": "{{title}} delen met vrienden"
+  },
+  "busyness": {
+    "traffic": "Verkeer",
+    "busy_level": "Drukte",
+    "busy": "Druk",
+    "clear_roads": "Vrije wegen",
+    "clear": "Vrij",
+    "moderate": "Matig",
+    "heavy": "Druk"
+  },
+  "match_factors": {
+    "title": "Match-uitsplitsing",
+    "location": "Locatie",
+    "budget": "Budget",
+    "category": "Categorie",
+    "time": "Tijd",
+    "popularity": "Populariteit",
+    "excellent": "Uitstekend",
+    "good": "Goed",
+    "fair": "Redelijk",
+    "poor": "Slecht",
+    "summary": "Deze factoren bepalen hoe goed deze ervaring aansluit bij je voorkeuren. Hogere scores wijzen op een betere afstemming."
+  },
+  "weather": {
+    "weather": "Weer",
+    "clear": "Helder",
+    "cloudy": "Bewolkt",
+    "rainy": "Regenachtig",
+    "snowy": "Sneeuw",
+    "stormy": "Stormachtig"
+  },
+  "timeline": {
+    "start": "Start",
+    "stop": "Stop {{number}}",
+    "open_in_maps": "Openen in Kaarten",
+    "then": "Dan..."
+  },
+  "companion_stops": {
+    "title": "Begin je wandeling",
+    "subtitle": "Begin bij een van deze nabijgelegen plekken voor je wandeling",
+    "reviews_count": "({{count}} beoordelingen)"
+  },
+  "highlights": {
+    "title": "Hoogtepunten"
+  },
+  "description": {
+    "show_less": "Minder tonen",
+    "read_more": "Meer lezen"
+  },
+  "card_info": {
+    "nearby": "In de buurt"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "Kad", "discussion": "Perbincangan" },
+  "boardDiscussionTab": {
+    "noConnection": "Tiada Sambungan", "noConnectionMsg": "Sila semak sambungan internet anda dan cuba lagi.",
+    "deleteMessage": "Padam Mesej", "deleteMessageConfirm": "Adakah anda pasti mahu memadam mesej ini?",
+    "cancel": "Batal", "delete": "Padam", "errorUpdateMsg": "Gagal mengemas kini mesej", "errorDeleteMsg": "Gagal memadam mesej",
+    "justNow": "Baru sahaja", "minutesAgo": "{{count}}m lalu", "hoursAgo_one": "{{count}} jam lalu", "hoursAgo_other": "{{count}} jam lalu",
+    "error": "Ralat", "typeMessage": "Taip mesej...", "editMessage": "Edit mesej...", "typing": "menaip...",
+    "inputPlaceholder": "Taip @ untuk sebut, # untuk tandakan kad...", "messagePlaceholder": "Mesej..."
+  },
+  "boardPreferencesForm": {
+    "categories": "Kategori", "categoriesDesc": "Pilih jenis pengalaman yang ingin diterokai bersama",
+    "experienceTypes": "Jenis Pengalaman", "experienceTypesDesc": "Pengalaman seperti apa yang dirancang?",
+    "budget": "Bajet", "budgetDesc": "Pilihan: Tetapkan julat bajet untuk pengalaman",
+    "groupSize": "Saiz Kumpulan", "groupSizeDesc": "Berapa orang akan menyertai?",
+    "adventurous": "Pengembaraan", "firstDate": "Temu Janji Pertama", "romantic": "Romantik", "groupFun": "Keseronokan Berkumpulan", "picnicDates": "Temu Janji Piknik", "takeAStroll": "Berjalan-jalan"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "Keistimewaan Admin", "manageBoard": "Urus Papan", "renameBoard": "Namakan Semula Papan",
+    "inviteParticipants": "Jemput Peserta", "turnOffNotifications": "Matikan Pemberitahuan", "turnOnNotifications": "Hidupkan Pemberitahuan",
+    "leaveBoard": "Tinggalkan Papan", "leaving": "Meninggalkan...", "deleteBoard": "Padam Papan",
+    "editSessionName": "Edit Nama Sesi", "enterSessionName": "Masukkan nama sesi", "save": "Simpan",
+    "errorGeneric": "Ralat", "errorLeave": "Gagal meninggalkan papan. Sila cuba lagi.",
+    "permissionDenied": "Kebenaran ditolak", "permissionEditName": "Hanya pencipta sesi atau admin boleh mengedit nama sesi.",
+    "errorEmptyName": "Nama sesi tidak boleh kosong.", "success": "Berjaya", "nameUpdated": "Nama sesi berjaya dikemas kini.",
+    "updateFailed": "Kemas kini gagal", "updateFailedMsg": "Tidak dapat mengemas kini nama sesi.",
+    "permissionDelete": "Hanya admin boleh memadam sesi ini.", "sessionDeleted": "Sesi berjaya dipadam.",
+    "deleteFailed": "Pemadaman gagal", "deleteFailedMsg": "Tidak dapat memadam sesi ini.",
+    "permissionDeleteBoard": "Hanya pencipta sesi atau admin boleh memadam sesi ini.",
+    "deleteSessionTitle": "Padam Sesi", "deleteSessionMsg": "Pasti mahu memadam \"{{name}}\"? Tindakan ini tidak boleh dibatalkan dan semua kad, undian, dan perbincangan akan dipadam secara kekal.",
+    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Pasti mahu meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi"
+  },
+  "cardDiscussionModal": {
+    "discussion": "Perbincangan", "cardDiscussion": "Perbincangan Kad", "errorLoadMsg": "Gagal memuatkan mesej",
+    "errorSendMsg": "Gagal menghantar mesej", "errorUpdateMsg": "Gagal mengemas kini mesej",
+    "deleteMessage": "Padam Mesej", "deleteMessageConfirm": "Pasti mahu memadam mesej ini?",
+    "errorDeleteMsg": "Gagal memadam mesej", "typeMessage": "Taip mesej...", "error": "Ralat", "justNow": "Baru sahaja", "unknown": "Tidak diketahui"
+  },
+  "cardTagPopover": { "tagACard": "Tandakan kad", "untitled": "Tanpa tajuk", "experience": "Pengalaman", "noCardsSaved": "Belum ada kad disimpan" },
+  "inviteCodeDisplay": {
+    "inviteCode": "Kod Jemputan", "description": "Kongsi kod ini dengan orang yang ingin anda jemput",
+    "copied": "Disalin!", "copiedMsg": "Kod jemputan disalin ke papan keratan", "copyCode": "Salin Kod",
+    "errorCopy": "Gagal menyalin kod. Sila cuba lagi.", "infoText": "Penerima boleh memasukkan kod ini dalam aplikasi untuk menyertai sesi papan anda"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "Kongsi Pautan Jemputan", "description": "Hantar pautan ini kepada sesiapa yang ingin anda jemput",
+    "orShareCode": "Atau kongsi kod ini:", "copied": "Disalin!", "copiedMsg": "Pautan jemputan disalin ke papan keratan",
+    "copyLink": "Salin Pautan", "share": "Kongsi", "shareMessage": "Sertai sesi papan saya di Mingla! {{link}}",
+    "errorCopy": "Gagal menyalin pautan. Sila cuba lagi.", "errorShare": "Gagal berkongsi pautan", "error": "Ralat"
+  },
+  "inviteMethodSelector": {
+    "title": "Bagaimana anda mahu menjemput orang?", "description": "Pilih satu atau lebih kaedah untuk menjemput peserta",
+    "friendsList": "Senarai Rakan", "friendsListDesc": "Jemput dari rakan anda",
+    "shareLink": "Kongsi Pautan", "shareLinkDesc": "Salin dan kongsi pautan",
+    "qrCode": "Kod QR", "qrCodeDesc": "Jana kod QR untuk diimbas",
+    "inviteCode": "Kod Jemputan", "inviteCodeDesc": "Kongsi kod mudah"
+  },
+  "inviteParticipantsModal": {
+    "title": "Jemput Peserta", "addFriendsTo": "Tambah rakan ke \"{{name}}\"",
+    "searchPlaceholder": "Cari rakan...", "loadingFriends": "Memuatkan rakan...", "noUsersFound": "Tiada pengguna dijumpai",
+    "allFriendsInBoard": "Semua rakan sudah berada dalam papan ini", "noFriendsAvailable": "Tiada rakan tersedia",
+    "tryDifferentName": "Cuba nama atau nama pengguna lain", "addMoreFriends": "Tambah lagi rakan untuk dijemput",
+    "sendInvites": "Hantar Jemputan ({{count}})", "invitesSent": "Jemputan Dihantar",
+    "invitesSentMsg": "Berjaya menjemput {{count}} rakan{{plural}} ke \"{{name}}\".",
+    "errorSendInvites": "Gagal menghantar jemputan. Sila cuba lagi.", "error": "Ralat"
+  },
+  "manageBoardModal": {
+    "manageBoard": "Urus Papan", "members": "Ahli", "admin": "Admin", "creator": "Pencipta", "you": "(Anda)",
+    "makeAdmin": "Jadikan Admin", "removeAdmin": "Buang Admin", "removeMember": "Buang", "leaveBoard": "Tinggalkan Papan",
+    "permissionDenied": "Kebenaran Ditolak", "permissionRemove": "Hanya admin boleh membuang ahli dari papan ini.",
+    "cannotRemoveCreator": "Tidak Boleh Dibuang", "cannotRemoveCreatorMsg": "Pencipta papan tidak boleh dibuang. Mereka hanya boleh meninggalkan papan sendiri.",
+    "cannotRemoveSelf": "Tidak Boleh Membuang Diri Sendiri", "cannotRemoveSelfMsg": "Gunakan pilihan 'Tinggalkan Papan' untuk keluar dari papan ini.",
+    "memberRemoved": "Ahli Dibuang", "memberRemovedMsg": "{{name}} telah dibuang dari papan.",
+    "errorRemove": "Gagal membuang ahli. Sila cuba lagi.", "permissionAdmin": "Hanya admin boleh mengurus keistimewaan admin.",
+    "cannotModifyCreator": "Tidak Boleh Diubah", "cannotModifyCreatorMsg": "Status admin pencipta papan tidak boleh diubah.",
+    "errorPromote": "Gagal menaikkan pangkat ahli ke admin. Sila cuba lagi.", "errorDemote": "Gagal membuang keistimewaan admin. Sila cuba lagi.",
+    "leaveBoardTitle": "Tinggalkan Papan", "leaveBoardMsg": "Pasti mahu meninggalkan \"{{name}}\"?",
+    "boardDeleted": "Papan Dipadam", "boardDeletedMsg": "Papan telah dipadam kerana memerlukan sekurang-kurangnya 2 ahli untuk kekal aktif.",
+    "leftBoard": "Meninggalkan Papan", "leftBoardMsg": "Anda berjaya meninggalkan papan.",
+    "errorLeave": "Gagal meninggalkan papan. Sila cuba lagi.", "error": "Ralat"
+  },
+  "mentionPopover": { "mentionSomeone": "Sebut seseorang" },
+  "participantAvatars": { "noParticipants": "Tiada peserta", "participant_one": "{{count}} peserta", "participant_other": "{{count}} peserta" },
+  "qrCodeDisplay": { "noData": "Tiada Data", "noDataMsg": "Tidak dapat menjana kod QR tanpa data", "qrCode": "Kod QR", "scanInstruction": "Imbas kod QR ini untuk menyertai sesi papan", "orUseCode": "Atau gunakan kod ini:" },
+  "boardMemberManagement": {
+    "manageBoard": "Urus Papan", "creator": "Pencipta", "admin": "Admin", "you": "(Anda)",
+    "boardInfo": "Info Papan", "totalMembers": "Jumlah Ahli: {{count}}", "admins": "Admin: {{count}}",
+    "minMembersWarning": "Papan akan dipadam jika mana-mana ahli pergi (minimum 2 ahli diperlukan)",
+    "removeConfirm": "Buang <bold>{{name}}</bold> dari papan ini?", "removeMember": "Buang Ahli", "cancel": "Batal",
+    "demoteConfirm": "Buang keistimewaan admin dari <bold>{{name}}</bold>?", "removeAdmin": "Buang Admin",
+    "leaveConfirm": "Tinggalkan papan ini?", "leaveAdminNote": "Ahli lain akan ditugaskan secara rawak sebagai admin",
+    "leaveDeleteNote": "Papan akan dipadam secara kekal (kurang dari 2 ahli berbaki)", "leaveUndoNote": "Tindakan ini tidak boleh dibatalkan", "leaveBoard": "Tinggalkan Papan"
+  },
+  "member": { "you_suffix": " (Anda)" }
+}

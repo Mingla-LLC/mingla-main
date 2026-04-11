@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Notifications",
+    "unread": "{{count}} non lues",
+    "markAllRead": "Tout marquer comme lu",
+    "clearAll": "Tout effacer"
+  },
+  "filters": {
+    "all": "Toutes",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Messages"
+  },
+  "timeAgo": {
+    "justNow": "À l'instant"
+  },
+  "dateGroups": {
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "thisWeek": "Cette semaine",
+    "earlier": "Plus tôt"
+  },
+  "actions": {
+    "accept": "Accepter",
+    "decline": "Refuser",
+    "join": "Rejoindre",
+    "upgrade": "Mettre à niveau",
+    "review": "Examiner",
+    "actionFailed": "L'action a échoué. Appuyez pour réessayer."
+  },
+  "emptyState": {
+    "title": "Tout est à jour",
+    "subtitle": "Les nouvelles activités apparaîtront ici."
+  },
+  "errorState": {
+    "title": "Une erreur est survenue",
+    "subtitle": "Impossible de charger les notifications.",
+    "tryAgain": "Réessayer"
+  },
+  "offline": {
+    "banner": "Vous êtes hors ligne — affichage des notifications en cache"
+  }
+}

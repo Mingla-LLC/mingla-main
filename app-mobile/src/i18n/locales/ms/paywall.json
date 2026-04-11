@@ -1,0 +1,10 @@
+{
+  "close": "Tutup paywall",
+  "manage_subscription": "Urus langganan",
+  "alerts.restored_title": "Pembelian dipulihkan",
+  "alerts.restored_message": "Pembelian terdahulu anda telah berjaya dipulihkan.",
+  "alerts.restored_done": "Selesai",
+  "alerts.purchase_failed": "Pembelian gagal",
+  "toast.purchase_delayed": "Pembelian berjaya. Ciri-ciri mungkin mengambil sedikit masa untuk aktif.",
+  "toast.restore_delayed": "Pembelian dipulihkan. Ciri-ciri mungkin mengambil sedikit masa untuk aktif."
+}

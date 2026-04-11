@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Ẹmwẹ Ne Ọ Rre",
+    "unread": "{{count}} a i re ghee",
+    "markAllRead": "Kẹ hia ne a ghee",
+    "clearAll": "Rhan hia kua"
+  },
+  "filters": {
+    "all": "Hia",
+    "social": "Ẹvbo",
+    "sessions": "Ẹghẹ",
+    "messages": "Ẹmwẹ"
+  },
+  "timeAgo": {
+    "justNow": "Nẹ nẹ"
+  },
+  "dateGroups": {
+    "today": "Ẹdẹ Na",
+    "yesterday": "Nodẹ",
+    "thisWeek": "Ọse Na",
+    "earlier": "Sẹ"
+  },
+  "actions": {
+    "accept": "Mwẹ",
+    "decline": "Giẹ",
+    "join": "Bẹghe",
+    "upgrade": "Mu ga",
+    "review": "Ghee",
+    "actionFailed": "Ẹre i ru ẹre. Kẹ ne u gha ke gberra."
+  },
+  "emptyState": {
+    "title": "Emwi hia e khin",
+    "subtitle": "Emwi nọhọ ma gha kẹ vbe iha."
+  },
+  "errorState": {
+    "title": "Emwi ọkpa i gha khin vbe ọ ma",
+    "subtitle": "I gha rhan ẹmwẹ ne ọ rre.",
+    "tryAgain": "Ke Gberra"
+  },
+  "offline": {
+    "banner": "U i vbe ẹrọ — a ya kẹ ẹmwẹ ne a sẹ"
+  }
+}

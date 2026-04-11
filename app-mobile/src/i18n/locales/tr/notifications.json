@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Bildirimler",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Mesajlar"
+  },
+  "timeAgo": {
+    "justNow": "Şimdi"
+  },
+  "dateGroups": {
+    "today": "Bugün",
+    "yesterday": "Dün",
+    "thisWeek": "This Week",
+    "earlier": "Earlier"
+  },
+  "actions": {
+    "accept": "Kabul Et",
+    "decline": "Reddet",
+    "join": "Katıl",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Bir şeyler ters gitti",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Try Again"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

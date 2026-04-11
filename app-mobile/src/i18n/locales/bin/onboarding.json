@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Wa ẹde...",
+    "close_accessibility": "Khui ebe ne a gha rhie ẹde"
+  },
+  "country_picker": {
+    "search_placeholder": "Wa ẹvbo...",
+    "close_accessibility": "Khui ebe ne a gha rhie ẹvbo"
+  },
+  "welcome": {
+    "greeting_hey": "Ọbọ",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Ọ mwẹ aro",
+    "greeting_walked_in": "rre gbe.",
+    "we_know": "A re ghẹ",
+    "good_taste": "aro ne ọ sẹ",
+    "just_walked_in": "rre gbe.",
+    "name_prompt": "Ama a i ghi re enni ẹre.",
+    "placeholder_first": "Eni ni bẹ ghe",
+    "placeholder_last": "Eni ọwa",
+    "cta": "Ma lẹ rre"
+  },
+  "phone": {
+    "headline": "De nọmba ẹrọ ẹre?",
+    "body": "A ma ya tiẹ kodu. Ẹghẹ eve ne ọ gha gbe.",
+    "verified_headline": "Ọ sẹ hia.",
+    "verified_body": "A ya kpa nọmba ẹre. Emwi ọkpa ọ ghi khin.",
+    "consent_text": "I mwẹ ne a gha ya tiẹ ẹmwẹ ne ọ rre Mingla vbe SMS ne ọ khin kiran, ne ọ khin kodu, itiẹ ọre, ne ọ khin emwi ne ọ gha do ọ ya. Zaghachi STOP ne u gha do ne ọ khin HELP ne ọ gha mwẹ ẹmwẹ. Ghee ",
+    "terms_of_service": "Ẹtan Ne Ọ Gha Mwẹ",
+    "and": " ne ọ khin ",
+    "privacy_policy": "Itan Ẹhẹn",
+    "consent_accessibility": "Mwẹ ne a gha ya tiẹ ẹmwẹ ne ọ rre Mingla",
+    "cta_send_code": "Tiẹ kodu",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Ẹvbo ne a rhie: {{name}}. Kẹ ne u gha rhan."
+  },
+  "otp": {
+    "headline": "De kodu na",
+    "body": "A ya tiẹ ne {{phone}}",
+    "verifying": "A ya kpa...",
+    "sending": "A ya tiẹ...",
+    "resend_countdown": "Ke tiẹ vbe {{seconds}}s",
+    "channel_label": "I mwẹ ẹre? Gberra ọda nọhọ:",
+    "resend_sms": "Ke tiẹ SMS",
+    "resend_sms_accessibility": "Ke tiẹ kodu vbe SMS",
+    "call_me": "Tiẹ mi kiran",
+    "call_me_accessibility": "Mwẹ kodu vbe kiran",
+    "error_max_attempts": "Igberra ẹha, ọ i ru ẹre. Gberra ọda nọhọ vbe ebe na.",
+    "error_wrong_code": "Kodu na i sẹ. Ke gberra.",
+    "cta_verify": "Kpa",
+    "otp_accessibility": "Kodu ne a gha kpa ẹghẹ ọkpa"
+  },
+  "gender": {
+    "headline": "Kẹ ma ghẹ emwi ne ọ gha gbe ọ.",
+    "body": "Ne a gha mwẹ emwi ne ọ sẹ ẹre.",
+    "man": "Okpia",
+    "woman": "Okhuo",
+    "non_binary": "I khin eve",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "I mwẹ ẹkpa",
+    "prefer_not_to_say": "I re tẹ kẹ"
+  },
+  "details": {
+    "headline": "Ọ fẹ khin.",
+    "body": "Emwi ne ọ bẹ ghe. A ma kpaọ iye ne ọ khin.",
+    "country_label": "Ẹvbo",
+    "country_helper": "Ọ ya rhan igho ne ọ khin ebe ne a gha kẹ",
+    "dob_label": "Ẹdẹ ne a bie ọ",
+    "dob_placeholder": "De ẹghẹ ne a bie ọ?"
+  },
+  "value_prop": {
+    "beat1_headline": "Re ghẹ ehe ne u gha rrie.",
+    "beat1_sub": "Giẹ ikẹ. Bẹ ghe irrie.",
+    "beat2_headline": "Ne ihẹnmwẹ, ọre & ẹre uwẹ.",
+    "beat2_sub": "Ẹtan ne ẹkpa irrie hia.",
+    "beat3_headline": "Mwẹ ẹre nẹ nẹ. Rrie.",
+    "beat3_sub": "Kẹ. Sẹ. Rrie."
+  },
+  "intents": {
+    "headline": "Nẹ ne ebe ne ọ sẹ.",
+    "body": "Kẹ emwi ne ọ sẹ ọ hia.",
+    "caption": "Rhie ọkpa ne ọ mu ọ ya gbẹra.",
+    "adventurous": "Wa Emwi Nọhọ",
+    "adventurous_desc": "Wa emwi ne a i re tẹ gha mwẹ",
+    "first_date": "Ọse Ni Bẹ Ghe",
+    "first_date_desc": "Mu ọse ni bẹ ghe sẹ",
+    "romantic": "Ihẹnmwẹ",
+    "romantic_desc": "Mu ọghọ ga",
+    "group_fun": "Ẹghẹ Nọ Sẹ Vbe Igho Ẹvbo",
+    "group_fun_desc": "Ẹvbo ne ọ bu ne ọ sẹ",
+    "picnic_dates": "Ẹdẹ Irriadẹ",
+    "picnic_dates_desc": "Ovẹn, evbare, ẹghẹ ne ọ sẹ",
+    "take_a_stroll": "Se Ọda",
+    "take_a_stroll_desc": "Se ọda ne u mwẹ ẹtan"
+  },
+  "location": {
+    "granted_headline": "A mwẹ ẹre — {{city}}!",
+    "granted_tap_hint": "Kẹ ne u gha kpaye",
+    "settings_headline": "Irhan ọkpa",
+    "settings_body": "A ya khui ehe ne u re ne Mingla.\nRuẹ ẹre vbe Ehe Ne A Rhan ne a gha mwẹ\nehe ne ọ sẹ gbẹra vbe iyeke ẹre.",
+    "open_settings": "Ruẹ Ehe Ne A Rhan",
+    "retry_turned_on": "I ya ruẹ ẹre — ke gberra",
+    "retry_finding": "A ya wa ọ...",
+    "type_city": "De eni ẹvbo mi",
+    "error_headline": "I gha mwẹ ehe ne u re",
+    "error_body": "Signal i sẹ ne ọ khin GPS ọ ghi re gbe.\nKe gberra ne ọ khin de eni ẹvbo ẹre.",
+    "try_again": "Ke Gberra",
+    "idle_headline": "Ehe ne ọ sẹ bẹ ghe vbe iha",
+    "idle_body": "Ruẹ GPS ne a gha mwẹ\nehe ne ọ sẹ vbe iyeke ẹre.",
+    "enable_location": "Ruẹ Ehe",
+    "privacy_hint": "Ehe ne u re, ọ vbe ẹhẹn. Ẹghẹ hia.",
+    "cta_enable": "Ruẹ ehe"
+  },
+  "celebration": {
+    "headline": "Kẹ ghee.",
+    "body": "Irhie ẹnẹ ne u gha gbe u ya khin."
+  },
+  "manual_location": {
+    "headline": "Fie pin ẹre vbe map",
+    "body": "Rhie adrẹsi ẹre ne ọ sẹ — rrie vbe ẹda — a ma ya ruẹ ehe ne ọ sẹ gbẹra vbe iyeke ẹre.",
+    "search_placeholder": "Bẹ ghe ode adrẹsi ẹre...",
+    "no_results": "Hmm, a i mwẹ ẹre. Gberra ẹda ne ọ khin ẹvbo ne ọ vbe iyeke.",
+    "helper": "Ne ọ sẹ, ne emwi ne a gha kẹ ma gha sẹ.",
+    "privacy": "Ehe ne u re ne ọ sẹ, ọ vbe ẹhẹn avbe ma. Ẹghẹ hia.",
+    "change_accessibility": "Rhan ehe ne a rhie"
+  },
+  "categories": {
+    "headline": "De ẹkpa ehe ne u hẹnmwẹ?",
+    "body": "Rhie rrie ẹha ne ọ sẹ ẹre.",
+    "cap_message": "Ẹha ne ọ khian. Rhan ọkpa kua ne u gha rhie nọhọ."
+  },
+  "budget": {
+    "headline": "Ehe ne ọ sẹ ẹre",
+    "body": "Rhie igho ne ọ sẹ ẹre.",
+    "caption": "Emwi ne i gha kha ẹghẹ hia ọ gha rre."
+  },
+  "transport": {
+    "headline": "De vbe u ya se ọda?",
+    "body": "Ọ ya mwẹ ma ghẹ ẹghẹ irrie."
+  },
+  "travel_time": {
+    "headline": "De ne u gha rrie?",
+    "body": "Rhan ehe ne u re tẹ.",
+    "custom_toggle": "Rhan ẹre uwẹ",
+    "custom_placeholder": "Ẹghẹ 5 – 120",
+    "unit": "ẹghẹ",
+    "caption": "Rrie ẹghẹ {{minutes}} vbe {{mode}}",
+    "error": "I gha sẹ emwi ne u rhie. Kẹ Ke gberra."
+  },
+  "friends": {
+    "headline": "Ẹvbo ne ọ vbe iyeke ẹre",
+    "body": "Fie ẹvbo ne ọ vbe iyeke ẹre, ke haɗa. Uwa ma gha mwẹ emwi ne uwa gha ru uwa, ghee emwi ne iran hẹnmwẹ, ya rhan emwi ne ọ sẹ uwa.",
+    "waiting_header": "Iran ya do ọ",
+    "added_feedback": "A ya fie",
+    "declined_feedback": "A ya giẹ",
+    "add_friends_header": "Fie ọre",
+    "your_people_header": "Ẹvbo ẹre",
+    "status_friends": "Ọre",
+    "status_request_sent": "A ya tiẹ ẹmwẹ",
+    "status_invited": "A ya tiẹ",
+    "pair_paired": "A ya haɗa",
+    "pair_pending": "A ya do",
+    "pair_queued": "A ya do",
+    "pair_button": "Haɗa",
+    "pair_queued_hint": "Ọ ma gha ru ẹre ne iran gha bẹghe",
+    "empty_state": "Ọre i re iha. Fie ẹvbo ne u gha ru emwi ne ọ sẹ ya.",
+    "pair_requests_header": "Ẹmwẹ ihaɗa",
+    "paired_feedback": "A ya haɗa!",
+    "pair_wants": "Ọ hẹnmwẹ ne ọ gha haɗa ne ọ",
+    "pair_curated": "Ghee emwi ne a rhie ne uwa eve.",
+    "alert_self_title": "Ọ khin uwẹ",
+    "alert_self_message": "U i gha fie ọ khin ọre.",
+    "alert_duplicate_title": "A te fie ẹre",
+    "alert_duplicate_message": "Ọghe na te vbe ebe ẹre.",
+    "alert_pair_error": "I gha tiẹ ẹmwẹ ihaɗa",
+    "alert_accept_error": "I gha mwẹ ẹmwẹ ihaɗa. Ke gberra.",
+    "alert_decline_error": "I gha giẹ ẹmwẹ ihaɗa. Ke gberra.",
+    "alert_generic_error": "I gha ru ẹmwẹ na. Ke gberra.",
+    "share_message": "Ọbọ! Bẹghe Mingla ne awa gha mwẹ emwi ne ọ sẹ uwa. https://usemingla.com",
+    "fallback_user": "Ọghe"
+  },
+  "collaborations": {
+    "headline": "Rhan emwi uwa",
+    "body": "Bẹ ghe ẹghẹ ne ẹvbo ẹre. Mwẹ emwi ne uwa gha ru, kẹ ne emwi ne uwa hẹnmwẹ, ya mu ẹre sẹ.",
+    "whos_in": "De iran?",
+    "session_name_label": "Eni ẹghẹ",
+    "session_name_placeholder": "vbe ẹtan irrie ẹdẹ ọghe, emwi ne a gha ru ason...",
+    "created_header": "Ẹghẹ ne u ya ru ({{count}})",
+    "loading_invites": "A ya rhan itiẹ...",
+    "invited_header": "A ya tiẹ ọ ({{count}})",
+    "inviter_message": "{{name}} ya tiẹ ọ",
+    "fallback_someone": "Ọghe",
+    "fallback_session": "Ẹghẹ",
+    "name_taken_error": "A te ya eni na. Ru ọnọhọ!",
+    "generic_error": "Hmm, ọ i ru ẹre. Ke gberra.",
+    "join_error": "I gha bẹghe ẹghẹ na",
+    "decline_error": "I gha giẹ itiẹ na",
+    "empty_state": "Fie ọre sẹ — ke u gha rhan emwi uwa."
+  },
+  "consent": {
+    "headline": "Emwi ọkpa nẹ nẹ",
+    "body": "Mingla ya ru ẹre ne emwi ne u rhie — aro ẹre, ọse ẹre, ehe ne u re — ne ọ gha mwẹ emwi ne u gha hẹnmwẹ gbẹra. Emwi ẹre khin ẹre uwẹ. A i ya hia ẹre, u gha rhan ẹre kua ẹghẹ ne u hẹnmwẹ."
+  },
+  "getting_experiences": {
+    "loading_1": "A ya ghee ehe ne ọ vbe iyeke...",
+    "loading_2": "A ya mu emwi ne u rhie sẹ...",
+    "loading_3": "A ya wa ehe ne ọ sẹ gbẹra...",
+    "loading_4": "Ọ fẹ khin..."
+  },
+  "occasions": {
+    "birthday": "Ẹdẹ ibie",
+    "valentines": "Ẹdẹ Ihẹnmwẹ",
+    "mothers_day": "Ẹdẹ Iye",
+    "fathers_day": "Ẹdẹ Erha",
+    "christmas": "Ẹdẹ Krismas"
+  }
+}

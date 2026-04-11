@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Enregistrer",
+    "saved": "Enregistré",
+    "schedule": "Planifier",
+    "scheduled": "Planifié",
+    "policies_reservations": "Conditions & Réservations",
+    "i_went_here": "J'y suis allé",
+    "been_there": "Déjà visité",
+    "on_it": "En cours...",
+    "visited_label": "Vous avez visité ce lieu",
+    "mark_visited_label": "Marquer ce lieu comme visité",
+    "visited_hint": "Appuyez pour retirer votre marqueur de visite",
+    "mark_visited_hint": "Enregistre votre visite et ouvre le flux d'avis",
+    "opening_hours": "Horaires d'ouverture",
+    "open_now": "Ouvert",
+    "closed": "Fermé",
+    "show_all_hours": "Afficher tous les horaires",
+    "show_less": "Afficher moins",
+    "select_date": "Sélectionner la date",
+    "select_time": "Sélectionner l'heure",
+    "cancel": "Annuler",
+    "next": "Suivant",
+    "done": "Terminé",
+    "error_save": "Échec de l'enregistrement de la carte. Veuillez réessayer.",
+    "error_login": "Vous devez être connecté pour planifier des cartes.",
+    "error_invalid_date": "La date sélectionnée n'est pas valide. Veuillez réessayer.",
+    "schedule_failed_title": "Échec de la planification",
+    "schedule_failed_body": "Impossible d'ajouter ceci à votre calendrier. Veuillez réessayer.",
+    "place_closed_title": "Lieu fermé",
+    "place_closed_body": "Ce lieu est fermé à la date et l'heure sélectionnées. Veuillez choisir un autre horaire.",
+    "choose_another_time": "Choisir un autre horaire",
+    "some_stops_closed_title": "Certains arrêts peuvent être fermés",
+    "change_time": "Changer l'heure",
+    "schedule_anyway": "Planifier quand même",
+    "scheduled_toast": "Planifié ! {{title}} a été ajouté à votre calendrier",
+    "closed_message": "Ce lieu est fermé à la date et l'heure sélectionnées. Appuyez sur « Planifier » pour choisir un autre horaire.",
+    "share_prompt": "Partager {{title}} avec des amis"
+  },
+  "busyness": {
+    "traffic": "Trafic",
+    "busy_level": "Niveau d'affluence",
+    "busy": "Fréquenté",
+    "clear_roads": "Routes dégagées",
+    "clear": "Dégagé",
+    "moderate": "Modéré",
+    "heavy": "Dense"
+  },
+  "match_factors": {
+    "title": "Détail de la correspondance",
+    "location": "Emplacement",
+    "budget": "Budget",
+    "category": "Catégorie",
+    "time": "Horaire",
+    "popularity": "Popularité",
+    "excellent": "Excellent",
+    "good": "Bon",
+    "fair": "Correct",
+    "poor": "Faible",
+    "summary": "Ces critères déterminent la qualité de correspondance entre cette expérience et vos préférences. Des scores plus élevés indiquent une meilleure adéquation."
+  },
+  "weather": {
+    "weather": "Météo",
+    "clear": "Dégagé",
+    "cloudy": "Nuageux",
+    "rainy": "Pluvieux",
+    "snowy": "Neigeux",
+    "stormy": "Orageux"
+  },
+  "timeline": {
+    "start": "Départ",
+    "stop": "Arrêt {{number}}",
+    "open_in_maps": "Ouvrir dans Plans",
+    "then": "Ensuite..."
+  },
+  "companion_stops": {
+    "title": "Commencez votre balade",
+    "subtitle": "Commencez par l'un de ces lieux à proximité avant votre promenade",
+    "reviews_count": "({{count}} avis)"
+  },
+  "highlights": {
+    "title": "Points forts"
+  },
+  "description": {
+    "show_less": "Afficher moins",
+    "read_more": "Lire la suite"
+  },
+  "card_info": {
+    "nearby": "À proximité"
+  }
+}

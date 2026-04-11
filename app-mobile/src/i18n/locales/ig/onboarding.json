@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Chọọ asụsụ...",
+    "close_accessibility": "Mechie nhọrọ asụsụ"
+  },
+  "country_picker": {
+    "search_placeholder": "Chọọ mba...",
+    "close_accessibility": "Mechie nhọrọ mba"
+  },
+  "welcome": {
+    "greeting_hey": "Nno",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Ezigbo nhọrọ",
+    "greeting_walked_in": "abatala.",
+    "we_know": "Anyị maara",
+    "good_taste": "ezigbo nhọrọ",
+    "just_walked_in": "abatala.",
+    "name_prompt": "Ma anyị amaghị aha gị.",
+    "placeholder_first": "Aha mbụ",
+    "placeholder_last": "Aha ikpeazụ",
+    "cta": "Ka anyị ga"
+  },
+  "phone": {
+    "headline": "Kedu nọmbà gị?",
+    "body": "Anyị ga-eziga koodu. Ọ bụ sekọnd abụọ.",
+    "verified_headline": "I kwadoro.",
+    "verified_body": "Ehichapụla nọmbà gị. Otu ihe fọdụrụ.",
+    "consent_text": "Ekwenyere m ịnata ozi sitere na Mingla site na SMS ma ọ bụ oku ekwentị, gụnyere koodu nkwenye, oku enyi, na ncheta. Zaghachi STOP iji kwụsị ma ọ bụ HELP maka enyemaka. Lee ",
+    "terms_of_service": "Usoro Ọrụ",
+    "and": " na ",
+    "privacy_policy": "Iwu Nzuzo",
+    "consent_accessibility": "Kwere ịnata ozi sitere na Mingla",
+    "cta_send_code": "Ziga koodu",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Mba a họọrọ: {{name}}. Pịa ka ị gbanwee."
+  },
+  "otp": {
+    "headline": "Tinye koodu ahụ",
+    "body": "Ezigara na {{phone}}",
+    "verifying": "Na-ekwenye...",
+    "sending": "Na-eziga...",
+    "resend_countdown": "Zighachi na {{seconds}}s",
+    "channel_label": "Ị nataghị ya? Nwaa ụzọ ọzọ:",
+    "resend_sms": "Zighachi SMS",
+    "resend_sms_accessibility": "Zighachi koodu site na SMS",
+    "call_me": "Kpọọ m oku kama",
+    "call_me_accessibility": "Nata koodu site na oku ekwentị",
+    "error_max_attempts": "Ọgwụgwụ atọ, ọ naghị arụ ọrụ. Nwaa ụzọ ọzọ n'okpuru.",
+    "error_wrong_code": "Koodu ahụ ezighị ezi. Nwaa ọzọ.",
+    "cta_verify": "Kwenye",
+    "otp_accessibility": "Koodu nkwenye otu oge"
+  },
+  "gender": {
+    "headline": "Gwa anyị banyere onwe gị.",
+    "body": "Ka anyị nwee ike ịhọrọ nke ziri ezi nye gị.",
+    "man": "Nwoke",
+    "woman": "Nwanyị",
+    "non_binary": "Abụghị nwoke ma ọ bụ nwanyị",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Enweghị okike",
+    "prefer_not_to_say": "Achọghị ikwu"
+  },
+  "details": {
+    "headline": "Ọ fọdụrụ ntakịrị.",
+    "body": "Naanị ihe ndị bụ isi. Anyị ga-elekọta ndị ọzọ.",
+    "country_label": "Mba",
+    "country_helper": "Ọ na-ahazi ego gị na ụdị ọtụtụ",
+    "dob_label": "Ụbọchị ọmụmụ",
+    "dob_placeholder": "Kedu mgbe ị mụrụ?"
+  },
+  "value_prop": {
+    "beat1_headline": "Mara ebe ị ga-aga.",
+    "beat1_sub": "Kwụsị iche echiche. Malite ịga.",
+    "beat2_headline": "Maka ịhụnanya, enyi & naanị gị.",
+    "beat2_sub": "Atụmatụ maka ụdị ọpụpụ ọ bụla.",
+    "beat3_headline": "Chọta ya ngwa ngwa. Ga.",
+    "beat3_sub": "Pịa. Chekwaa. Ga."
+  },
+  "intents": {
+    "headline": "Ugbu a bụ akụkụ ọchịchọ.",
+    "body": "Pịa ụdị ọ bụla dị ka nke gị.",
+    "caption": "Họrọ nke na-akpali gị karịsịa.",
+    "adventurous": "Nlegharị Anya",
+    "adventurous_desc": "Chọpụta ihe a na-atụghị anya ya",
+    "first_date": "Ezigbo Oge Mbụ",
+    "first_date_desc": "Mee ka mbụ dị mma",
+    "romantic": "Ịhụnanya",
+    "romantic_desc": "Mee ka ọkụ dị ukwuu",
+    "group_fun": "Obi Ụtọ Otu",
+    "group_fun_desc": "Ka ha dị ọtụtụ ka ọ dị mma",
+    "picnic_dates": "Oge Ezumike",
+    "picnic_dates_desc": "Anwụ, nri, oge dị mma",
+    "take_a_stroll": "Gaa Njem",
+    "take_a_stroll_desc": "Jee ije nwere ebumnuche"
+  },
+  "location": {
+    "granted_headline": "Achọtara — {{city}}!",
+    "granted_tap_hint": "Pịa ka ị gaa n'ihu",
+    "settings_headline": "Ntọgharị otu",
+    "settings_body": "Ebe nọ na-agbaghị ọkụ maka Mingla.\nGbanye ya na Ntọala ka anyị chọta\nebe kachasị mma nso gị.",
+    "open_settings": "Mepee Ntọala",
+    "retry_turned_on": "Agbanyela m ya — nwaa ọzọ",
+    "retry_finding": "Na-achọ gị...",
+    "type_city": "Dee obodo m kama",
+    "error_headline": "Enweghị ike ịchọta ebe ị nọ",
+    "error_body": "Mgbama adịghị ike ma ọ bụ GPS ka na-akwado.\nNwaa ọzọ ma ọ bụ dee obodo gị.",
+    "try_again": "Nwaa Ọzọ",
+    "idle_headline": "Ebe kachasị mma malitere ebe a",
+    "idle_body": "Gbanye GPS ka anyị chọta\nihe dị iche nso gị.",
+    "enable_location": "Gbanye Ebe",
+    "privacy_hint": "Ebe ị nọ bụ nzuzo. Mgbe ọ bụla.",
+    "cta_enable": "Gbanye ebe"
+  },
+  "celebration": {
+    "headline": "Lee gị.",
+    "body": "Nhọrọ anọ ngwa ngwa, ị gụchara."
+  },
+  "manual_location": {
+    "headline": "Tinye pin gị na maapụ",
+    "body": "Nye anyị adreesị gị kpọmkwem — ruo n'okporo ụzọ — anyị ga-emepe ebe kachasị mma gburugburu gị.",
+    "search_placeholder": "Malite ịde adreesị gị...",
+    "no_results": "Hmm, anyị ahụghị ya. Nwaa okporo ụzọ ma ọ bụ agbata obi nso.",
+    "helper": "Ka ọ dị mma, ka atụmatụ gị ga-adị mma.",
+    "privacy": "Ebe ị nọ kpọmkwem dị n'etiti anyị. Mgbe ọ bụla.",
+    "change_accessibility": "Gbanwee ebe a họọrọ"
+  },
+  "categories": {
+    "headline": "Kedụ ụdị ebe ị hụrụ n'anya?",
+    "body": "Họrọ ruo 3 nke dabara na ụdị gị.",
+    "cap_message": "3 kasị. Wepụ otu iji họrọ ọzọ."
+  },
+  "budget": {
+    "headline": "Ebe dị gị mma",
+    "body": "Họrọ ọnụ ahịa nke dị gị mma.",
+    "caption": "Ihe n'efu na-apụta mgbe ọ bụla."
+  },
+  "transport": {
+    "headline": "Kedu otu ị si aga?",
+    "body": "Ọ na-enyere anyị aka ịmata oge njem."
+  },
+  "travel_time": {
+    "headline": "Olee ebe ị ga-aga?",
+    "body": "Tọọ mpaghara ntụkwasị obi gị.",
+    "custom_toggle": "Tọọ nke gị",
+    "custom_placeholder": "Nkeji 5 – 120",
+    "unit": "nkeji",
+    "caption": "Ruo nkeji {{minutes}} site na {{mode}}",
+    "error": "Enweghị ike ịchekwa nhọrọ gị. Pịa Nwaa ọzọ."
+  },
+  "friends": {
+    "headline": "Ndị gị nọ nso",
+    "body": "Tinye ndị gị nọ nso, wee jikọọ. Ị ga-achọpụta ihe unu ga-eme ọnụ, hụ ihe ha hụrụ n'anya, ma hazịa ihe dị mma n'akụkụ ibe unu.",
+    "waiting_header": "Na-eche gị",
+    "added_feedback": "Etinyere",
+    "declined_feedback": "Ajụrụ",
+    "add_friends_header": "Tinye enyi",
+    "your_people_header": "Ndị gị",
+    "status_friends": "Ndị enyi",
+    "status_request_sent": "Arịrịọ ezigara",
+    "status_invited": "Akpọrọ oku",
+    "pair_paired": "Ejikọtara",
+    "pair_pending": "Na-eche",
+    "pair_queued": "Na-eche",
+    "pair_button": "Jikọọ",
+    "pair_queued_hint": "Ọ ga-arụ ọrụ mgbe ha sonyere",
+    "empty_state": "Enweghị enyi ebe a. Tinye onye ị ga-eme atụmatụ ya.",
+    "pair_requests_header": "Arịrịọ njikọ",
+    "paired_feedback": "Ejikọtara!",
+    "pair_wants": "Ọ chọrọ ijikọ na gị",
+    "pair_curated": "Lee ahụmịhe a hazịrị maka unu abụọ.",
+    "alert_self_title": "Ọ bụ gị",
+    "alert_self_message": "Ị nweghị ike ịtinye onwe gị dị ka enyi.",
+    "alert_duplicate_title": "Etinyere ya na mbụ",
+    "alert_duplicate_message": "Onye a nọ na ndepụta gị.",
+    "alert_pair_error": "Enweghị ike iziga arịrịọ njikọ",
+    "alert_accept_error": "Enweghị ike ịnabata arịrịọ njikọ. Nwaa ọzọ.",
+    "alert_decline_error": "Enweghị ike ịjụ arịrịọ njikọ. Nwaa ọzọ.",
+    "alert_generic_error": "Enweghị ike ịrụ arịrịọ ahụ. Nwaa ọzọ.",
+    "share_message": "Nno! Sonye na Mingla ka anyị chọta ahụmịhe dị mma ọnụ. https://usemingla.com",
+    "fallback_user": "Onye ọrụ"
+  },
+  "collaborations": {
+    "headline": "Hazịa ihe ọnụ",
+    "body": "Malite oge na ndị otu gị. Chọpụta ihe unu ga-eme, vootu maka nke unu masịrị karịsịa, mee ka ọ mee.",
+    "whos_in": "Onye nọ?",
+    "session_name_label": "Aha oge",
+    "session_name_placeholder": "dịka Atụmatụ ọgwụgwụ izu, Echiche maka abalị...",
+    "created_header": "Oge ị mepụtara ({{count}})",
+    "loading_invites": "Na-ebugo oku...",
+    "invited_header": "Akpọrọ gị oku ({{count}})",
+    "inviter_message": "{{name}} kpọrọ gị oku",
+    "fallback_someone": "Mmadụ",
+    "fallback_session": "Oge",
+    "name_taken_error": "Aha ahụ nwere onye nwe ya. Mee nke ọhụrụ!",
+    "generic_error": "Hmm, ọ naghị arụ ọrụ. Nwaa ọzọ.",
+    "join_error": "Enweghị ike ịsonye na oge",
+    "decline_error": "Enweghị ike ịjụ oku",
+    "empty_state": "Tinye enyi na mbụ — ka ị nwee ike ịmalite ịhazị ọnụ."
+  },
+  "consent": {
+    "headline": "Ihe otu ngwa ngwa",
+    "body": "Mingla na-eji ihe ị kesara — ụdị gị, ọnọdụ gị, ebe gị — ịchọta ahụmịhe ị ga-ahụ n'anya. Data gị bụ nke gị. Anyị anaghị ere ya, ị nwekwara ike ihichapụ ya oge ọ bụla."
+  },
+  "getting_experiences": {
+    "loading_1": "Na-enyocha ebe nso...",
+    "loading_2": "Na-edozi na nhọrọ gị...",
+    "loading_3": "Na-achọ ebe pụrụ iche...",
+    "loading_4": "Ọ fọdụrụ ntakịrị..."
+  },
+  "occasions": {
+    "birthday": "Ụbọchị ọmụmụ",
+    "valentines": "Ụbọchị Ndị Hụrụ N'anya",
+    "mothers_day": "Ụbọchị Nne",
+    "fathers_day": "Ụbọchị Nna",
+    "christmas": "Ekeresimesi"
+  }
+}

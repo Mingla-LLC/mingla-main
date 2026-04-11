@@ -1,0 +1,10 @@
+{
+  "close": "Khui igho ẹtan",
+  "manage_subscription": "Kpaọ ebe u te rhan igho",
+  "alerts.restored_title": "A ya rhan ihia gha",
+  "alerts.restored_message": "A ya rhan ihia ne u te ya ru gha vbe ọ sẹ.",
+  "alerts.restored_done": "E re rhie",
+  "alerts.purchase_failed": "Ihia i ru ẹre",
+  "toast.purchase_delayed": "Ihia ọ sẹ. Emwi na gha ya ẹghẹ ne ọ gha ru ẹre.",
+  "toast.restore_delayed": "A ya rhan ihia gha. Emwi na gha ya ẹghẹ ne ọ gha ru ẹre."
+}

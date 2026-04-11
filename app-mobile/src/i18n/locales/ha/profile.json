@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "ASUSU",
+    "billing_label": "Biyan Kuɗi",
+    "billing_description": "Sarrafa shirin ka da biyan kuɗi",
+    "account_settings_label": "Saitin Asusu",
+    "account_settings_description": "Sirri, zaɓuɓɓuka, da kula da asusu",
+    "upload_profile_photo_title": "Ɗora Hoton Bayani",
+    "upload_profile_photo_body": "Zaɓi yadda kake son sabunta hoton bayanan ka",
+    "change_profile_photo_title": "Canja Hoton Bayani",
+    "change_profile_photo_body": "Ɗora sabon hoto ko cire na yanzu",
+    "error_remove_photo": "An kasa cire hoton bayani.",
+    "error_take_photo": "An kasa ɗaukar hoto. Da fatan a sake gwadawa.",
+    "error_select_image": "An kasa zaɓar hoto. Da fatan a sake gwadawa.",
+    "error_upload_photo": "An kasa ɗora hoton bayani.",
+    "error_save_bio": "An kasa adana bayani."
+  },
+  "edit_bio": {
+    "title": "Gyara Bayani",
+    "placeholder": "Gaya wa mutane game da kanka",
+    "save": "Ajiye"
+  },
+  "edit_interests": {
+    "title": "Gyara Abubuwan Sha'awa",
+    "what_are_you_into": "Me kake sha'awar?",
+    "what_do_you_like": "Me kake so?",
+    "save": "Ajiye"
+  },
+  "hero": {
+    "your_name_here": "Sunanka a nan",
+    "user_fallback": "Mai amfani",
+    "first_name": "Sunan farko",
+    "last_name": "Sunan ƙarshe",
+    "name_error_empty": "Da fatan a shigar da sunanka.",
+    "name_error_failed": "An kasa adanawa. Sake gwadawa.",
+    "somewhere_cool": "Wuri mai kyau, watakila",
+    "tap_to_add_bio": "Danna don ƙara bayani",
+    "hint_add_photo": "Mutane suna amincewa da fuskokin. Ƙara hoto don abokai su san kai ne.",
+    "hint_add_bio": "Bayani gajere yana taimakawa sosai. Me mutane ya kamata su sani game da kai?",
+    "cancel_editing": "Soke gyarawa",
+    "save_name": "Ajiye suna"
+  },
+  "stats": {
+    "saved": "AN AJIYE",
+    "friends": "ABOKAI",
+    "boards": "HUKUMOMI",
+    "places": "WURARE",
+    "streak": "JERIN",
+    "level": "MATAKI",
+    "motivation_start": "Ƙididdigan ka suna farawa a lokacin da ka yi wani abu. Je ka bincika.",
+    "motivation_close": "Wuri {{count}} ƙari don isa {{tier}}. Kana kusa.",
+    "motivation_close_plural": "Wurare {{count}} ƙari don isa {{tier}}. Kana kusa.",
+    "motivation_week": "Mako daya cikakke. Daidaitawa tana da kyau a kanka.",
+    "motivation_month": "Kwanaki 30 a jere. Wataƙila ba za a iya tsayar da kai ba."
+  },
+  "paired_section": {
+    "see_all": "Duba duka"
+  },
+  "interests": {
+    "edit_accessibility": "Gyara abubuwan sha'awa",
+    "your_interests": "Abubuwan Sha'awar Ka",
+    "interests": "Abubuwan Sha'awa",
+    "not_shared": "Ba a raba ba",
+    "empty_text": "Gaya mana me kake sha'awar — yana taimaka mana nemo abin da kake so.",
+    "add_interests": "Ƙara Abubuwan Sha'awa"
+  },
+  "friend": {
+    "loading_profile": "Ana lodi bayani…",
+    "profile_unavailable_title": "Wannan bayanan ba su samuwa ba",
+    "profile_unavailable_body": "Bayanan wannan mutumi na iya zama masu zaman kansu, ko kuma ba ku da alaƙa.",
+    "about": "Game da",
+    "location_label": "Wuri",
+    "not_shared": "Ba a raba ba",
+    "mingla_level": "Matakin Mingla",
+    "interests": "Abubuwan Sha'awa",
+    "message": "Saƙo",
+    "friend_fallback": "Aboki"
+  }
+}

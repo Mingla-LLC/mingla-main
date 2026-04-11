@@ -1,0 +1,10 @@
+{
+  "close": "סגור paywall",
+  "manage_subscription": "נהל מנוי",
+  "alerts.restored_title": "רכישות שוחזרו",
+  "alerts.restored_message": "הרכישות הקודמות שלך שוחזרו בהצלחה.",
+  "alerts.restored_done": "סיום",
+  "alerts.purchase_failed": "הרכישה נכשלה",
+  "toast.purchase_delayed": "הרכישה הצליחה. התכונות עשויות לקחת רגע להפעלה.",
+  "toast.restore_delayed": "רכישות שוחזרו. התכונות עשויות לקחת רגע להפעלה."
+}

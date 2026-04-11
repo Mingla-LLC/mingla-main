@@ -1,0 +1,18 @@
+{
+  "header.title": "Distribuie Experience",
+  "empty.no_data": "Nu experience data available",
+  "card.nearby": "În apropiere",
+  "card.suggested_schedule": "Suggested Programează",
+  "card.per_person": "per person",
+  "share_to": "Distribuie to:",
+  "platform.messages": "Messages",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "More sharing options",
+  "actions.copy_link": "Copy link",
+  "actions.copy_message": "Copy Message",
+  "alerts.copy_error": "Failed to copy message to clipboard",
+  "alerts.share_error": "Failed to share. Please try again.",
+  "alerts.error_title": "Eroare"
+}

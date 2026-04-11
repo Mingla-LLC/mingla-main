@@ -1,0 +1,18 @@
+{
+  "header.title": "체험 공유",
+  "empty.no_data": "체험 데이터가 없습니다",
+  "card.nearby": "근처",
+  "card.suggested_schedule": "추천 일정",
+  "card.per_person": "1인당",
+  "share_to": "공유하기:",
+  "platform.messages": "메시지",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "더 많은 공유 옵션",
+  "actions.copy_link": "링크 복사",
+  "actions.copy_message": "메시지 복사",
+  "alerts.copy_error": "클립보드에 메시지 복사 실패",
+  "alerts.share_error": "공유 실패. 다시 시도해 주세요.",
+  "alerts.error_title": "오류"
+}

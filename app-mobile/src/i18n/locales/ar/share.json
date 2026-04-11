@@ -1,0 +1,18 @@
+{
+  "header.title": "مشاركة التجربة",
+  "empty.no_data": "لا تتوفر بيانات التجربة",
+  "card.nearby": "قريب",
+  "card.suggested_schedule": "الجدول المقترح",
+  "card.per_person": "للشخص",
+  "share_to": "مشاركة إلى:",
+  "platform.messages": "الرسائل",
+  "platform.whatsapp": "واتساب",
+  "platform.instagram": "إنستغرام",
+  "platform.twitter": "تويتر",
+  "actions.more_options": "المزيد من خيارات المشاركة",
+  "actions.copy_link": "نسخ الرابط",
+  "actions.copy_message": "نسخ الرسالة",
+  "alerts.copy_error": "فشل نسخ الرسالة إلى الحافظة",
+  "alerts.share_error": "فشلت المشاركة. يرجى المحاولة مرة أخرى.",
+  "alerts.error_title": "خطأ"
+}

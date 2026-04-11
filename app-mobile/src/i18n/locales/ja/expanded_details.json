@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "保存",
+    "saved": "保存済み",
+    "schedule": "スケジュール",
+    "scheduled": "スケジュール済み",
+    "policies_reservations": "ポリシーと予約",
+    "i_went_here": "行ったことある",
+    "been_there": "行ったことある",
+    "on_it": "処理中...",
+    "visited_label": "この場所を訪問済み",
+    "mark_visited_label": "この場所を訪問済みにする",
+    "visited_hint": "タップで訪問マーカーを削除",
+    "mark_visited_hint": "訪問を記録し、レビューフローを開始します",
+    "opening_hours": "営業時間",
+    "open_now": "営業中",
+    "closed": "閉店",
+    "show_all_hours": "すべての時間を表示",
+    "show_less": "表示を減らす",
+    "select_date": "日付を選択",
+    "select_time": "時間を選択",
+    "cancel": "キャンセル",
+    "next": "次へ",
+    "done": "完了",
+    "error_save": "カードの保存に失敗しました。もう一度お試しください。",
+    "error_login": "カードをスケジュールするにはログインが必要です。",
+    "error_invalid_date": "選択した日付が無効です。もう一度お試しください。",
+    "schedule_failed_title": "スケジュール失敗",
+    "schedule_failed_body": "カレンダーに追加できませんでした。もう一度お試しください。",
+    "place_closed_title": "閉店中",
+    "place_closed_body": "選択した日時にはこの場所は閉まっています。別の時間を選んでください。",
+    "choose_another_time": "別の時間を選ぶ",
+    "some_stops_closed_title": "一部の場所が閉まっている可能性があります",
+    "change_time": "時間を変更",
+    "schedule_anyway": "そのままスケジュール",
+    "scheduled_toast": "スケジュール完了！ {{title}}がカレンダーに追加されました",
+    "closed_message": "選択した日時にはこの場所は閉まっています。「スケジュール」をタップして別の時間を選んでください。",
+    "share_prompt": "{{title}}を友達と共有"
+  },
+  "busyness": {
+    "traffic": "交通状況",
+    "busy_level": "混雑度",
+    "busy": "混雑",
+    "clear_roads": "道路空き",
+    "clear": "空いている",
+    "moderate": "普通",
+    "heavy": "混雑"
+  },
+  "match_factors": {
+    "title": "マッチ内訳",
+    "location": "場所",
+    "budget": "予算",
+    "category": "カテゴリー",
+    "time": "時間",
+    "popularity": "人気度",
+    "excellent": "最高",
+    "good": "良い",
+    "fair": "普通",
+    "poor": "低い",
+    "summary": "これらの要素は、この体験があなたの好みにどれだけ合っているかを示しています。スコアが高いほど相性が良いことを表します。"
+  },
+  "weather": {
+    "weather": "天気",
+    "clear": "晴れ",
+    "cloudy": "曇り",
+    "rainy": "雨",
+    "snowy": "雪",
+    "stormy": "嵐"
+  },
+  "timeline": {
+    "start": "出発",
+    "stop": "ストップ {{number}}",
+    "open_in_maps": "マップで開く",
+    "then": "次に..."
+  },
+  "companion_stops": {
+    "title": "散歩を始めよう",
+    "subtitle": "ウォーキングの前に近くのスポットから始めましょう",
+    "reviews_count": "({{count}}件のレビュー)"
+  },
+  "highlights": {
+    "title": "ハイライト"
+  },
+  "description": {
+    "show_less": "表示を減らす",
+    "read_more": "もっと読む"
+  },
+  "card_info": {
+    "nearby": "近く"
+  }
+}

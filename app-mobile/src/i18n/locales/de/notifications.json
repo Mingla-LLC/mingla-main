@@ -1,0 +1,10 @@
+{
+  "header": { "title": "Benachrichtigungen", "unread": "{{count}} ungelesen", "markAllRead": "Alle als gelesen markieren", "clearAll": "Alle löschen" },
+  "filters": { "all": "Alle", "social": "Sozial", "sessions": "Sitzungen", "messages": "Nachrichten" },
+  "timeAgo": { "justNow": "Gerade eben" },
+  "dateGroups": { "today": "Heute", "yesterday": "Gestern", "thisWeek": "Diese Woche", "earlier": "Früher" },
+  "actions": { "accept": "Annehmen", "decline": "Ablehnen", "join": "Beitreten", "upgrade": "Upgraden", "review": "Überprüfen", "actionFailed": "Aktion fehlgeschlagen. Tippe zum Wiederholen." },
+  "emptyState": { "title": "Alles auf dem neuesten Stand", "subtitle": "Neue Aktivitäten erscheinen hier." },
+  "errorState": { "title": "Etwas ist schiefgelaufen", "subtitle": "Benachrichtigungen konnten nicht geladen werden.", "tryAgain": "Erneut versuchen" },
+  "offline": { "banner": "Du bist offline — zwischengespeicherte Benachrichtigungen werden angezeigt" }
+}

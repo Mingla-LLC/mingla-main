@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "AKUN",
+    "billing_label": "Tagihan",
+    "billing_description": "Kelola paket dan langganan Anda",
+    "account_settings_label": "Pengaturan Akun",
+    "account_settings_description": "Privasi, preferensi, dan manajemen akun",
+    "upload_profile_photo_title": "Unggah Foto Profil",
+    "upload_profile_photo_body": "Pilih cara memperbarui foto profil Anda",
+    "change_profile_photo_title": "Ubah Foto Profil",
+    "change_profile_photo_body": "Unggah foto baru atau hapus yang ada",
+    "error_remove_photo": "Gagal menghapus foto profil.",
+    "error_take_photo": "Gagal mengambil foto. Silakan coba lagi.",
+    "error_select_image": "Gagal memilih gambar. Silakan coba lagi.",
+    "error_upload_photo": "Gagal mengunggah foto profil.",
+    "error_save_bio": "Gagal menyimpan bio."
+  },
+  "edit_bio": {
+    "title": "Edit Bio",
+    "placeholder": "Ceritakan tentang dirimu",
+    "save": "Simpan"
+  },
+  "edit_interests": {
+    "title": "Edit Minat",
+    "what_are_you_into": "Apa yang kamu minati?",
+    "what_do_you_like": "Apa yang kamu suka?",
+    "save": "Simpan"
+  },
+  "hero": {
+    "your_name_here": "Namamu di sini",
+    "user_fallback": "Pengguna",
+    "first_name": "Nama depan",
+    "last_name": "Nama belakang",
+    "name_error_empty": "Silakan masukkan nama Anda.",
+    "name_error_failed": "Gagal menyimpan. Coba lagi.",
+    "somewhere_cool": "Mungkin di tempat keren",
+    "tap_to_add_bio": "Ketuk untuk menambah bio",
+    "hint_add_photo": "Orang percaya pada wajah. Tambahkan foto agar teman tahu itu kamu.",
+    "hint_add_bio": "Bio singkat sangat membantu. Apa yang harus orang ketahui tentangmu?",
+    "cancel_editing": "Batalkan pengeditan",
+    "save_name": "Simpan nama"
+  },
+  "stats": {
+    "saved": "DISIMPAN",
+    "friends": "TEMAN",
+    "boards": "BOARD",
+    "places": "TEMPAT",
+    "streak": "STREAK",
+    "level": "LEVEL",
+    "motivation_start": "Statistikmu mulai terbentuk saat kamu melakukan sesuatu. Pergi jelajahi.",
+    "motivation_close": "{{count}} tempat lagi untuk mencapai {{tier}}. Kamu hampir sampai.",
+    "motivation_close_plural": "{{count}} tempat lagi untuk mencapai {{tier}}. Kamu hampir sampai.",
+    "motivation_week": "Satu minggu penuh. Konsistensi cocok untukmu.",
+    "motivation_month": "30 hari berturut-turut. Kamu mungkin tak terhentikan."
+  },
+  "paired_section": {
+    "see_all": "Lihat semua"
+  },
+  "interests": {
+    "edit_accessibility": "Edit minatmu",
+    "your_interests": "Minatmu",
+    "interests": "Minat",
+    "not_shared": "Tidak dibagikan",
+    "empty_text": "Beritahu kami apa yang kamu minati — membantu kami menemukan hal favorit berikutnya untukmu.",
+    "add_interests": "Tambah Minat"
+  },
+  "friend": {
+    "loading_profile": "Memuat profil…",
+    "profile_unavailable_title": "Profil ini tidak tersedia",
+    "profile_unavailable_body": "Profil orang ini mungkin privat, atau Anda tidak terhubung.",
+    "about": "Tentang",
+    "location_label": "Lokasi",
+    "not_shared": "Tidak dibagikan",
+    "mingla_level": "Level Mingla",
+    "interests": "Minat",
+    "message": "Pesan",
+    "friend_fallback": "Teman"
+  }
+}

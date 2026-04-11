@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "AKAỤNTỤ",
+    "billing_label": "Igho",
+    "billing_description": "Kpaọ ẹtan ẹre ne igho ne u ya kha",
+    "account_settings_label": "Ehe Ne A Rhan Akaụntụ",
+    "account_settings_description": "Ẹhẹn, emwi ne u rhie, ne ikpaọ akaụntụ",
+    "upload_profile_photo_title": "Rhan Ifoto Profailu Nẹ",
+    "upload_profile_photo_body": "Rhie ọda ne u gha ya rhan ifoto profailu ẹre",
+    "change_profile_photo_title": "Rhan Ifoto Profailu",
+    "change_profile_photo_body": "Rhan ifoto nọhọ nẹ ne ọ khin rhan ne ọ re kua",
+    "error_remove_photo": "I gha rhan ifoto profailu kua.",
+    "error_take_photo": "I gha ya ifoto. Kpaye ke gberra.",
+    "error_select_image": "I gha rhie ifoto. Kpaye ke gberra.",
+    "error_upload_photo": "I gha rhan ifoto profailu nẹ.",
+    "error_save_bio": "I gha sẹ bio."
+  },
+  "edit_bio": {
+    "title": "Rhan Bio",
+    "placeholder": "Kẹ ma ẹvbo ghẹ emwi ne ọ gha gbe ọ",
+    "save": "Sẹ"
+  },
+  "edit_interests": {
+    "title": "Rhan Emwi Ne U Hẹnmwẹ",
+    "what_are_you_into": "De emwi ne u hẹnmwẹ?",
+    "what_do_you_like": "De emwi ne u hẹnmwẹ?",
+    "save": "Sẹ"
+  },
+  "hero": {
+    "your_name_here": "Eni ẹre vbe iha",
+    "user_fallback": "Ọghe",
+    "first_name": "Eni ni bẹ ghe",
+    "last_name": "Eni ọwa",
+    "name_error_empty": "Kpaye de eni ẹre.",
+    "name_error_failed": "I gha sẹ. Ke gberra.",
+    "somewhere_cool": "Ehe ne ọ sẹ, ọ khin",
+    "tap_to_add_bio": "Kẹ ne u gha fie bio",
+    "hint_add_photo": "Ẹvbo ya amẹ ne iran ghee ifoto. Fie ifoto ne ọre gha re ghẹ ne ọ khin uwẹ.",
+    "hint_add_bio": "Bio ne ọ khọọ ọ ya mwẹ aro. De emwi ne ẹvbo ma gha re ghẹ ne ọ gha gbe ọ?",
+    "cancel_editing": "Giẹ irhan",
+    "save_name": "Sẹ eni"
+  },
+  "stats": {
+    "saved": "A SẸ",
+    "friends": "ỌRE",
+    "boards": "BỌỌDỤ",
+    "places": "EHE",
+    "streak": "IJERE",
+    "level": "EBE",
+    "motivation_start": "Emwi ẹre bẹ ghe vbe ẹghẹ ne u ru emwi. Rrie wa.",
+    "motivation_close": "Ehe {{count}} ọ ghi khin ne u gha rrie {{tier}}. U vbe iyeke.",
+    "motivation_close_plural": "Ehe {{count}} ọ ghi khin ne u gha rrie {{tier}}. U vbe iyeke.",
+    "motivation_week": "Ọse ọkpa hia. Idẹ ọ sẹ ọ.",
+    "motivation_month": "Ẹdẹ 30 ọ tere. Ọ khin ne a i gha mu ọ do."
+  },
+  "paired_section": {
+    "see_all": "Ghee hia"
+  },
+  "interests": {
+    "edit_accessibility": "Rhan emwi ne u hẹnmwẹ",
+    "your_interests": "Emwi Ne U Hẹnmwẹ",
+    "interests": "Emwi Ne Ọ Hẹnmwẹ",
+    "not_shared": "A i tiẹ",
+    "empty_text": "Kẹ ma ghẹ emwi ne u hẹnmwẹ — ọ ya mwẹ ma ehe ne u gha hẹnmwẹ.",
+    "add_interests": "Fie Emwi Ne U Hẹnmwẹ"
+  },
+  "friend": {
+    "loading_profile": "A ya rhan profailu…",
+    "profile_unavailable_title": "Profailu na i re",
+    "profile_unavailable_body": "Profailu ọghe na ọ khin ne ọ vbe ẹhẹn, ne ọ khin uwa i haɗa.",
+    "about": "Ne ọ gha gbe",
+    "location_label": "Ehe",
+    "not_shared": "A i tiẹ",
+    "mingla_level": "Ebe Mingla",
+    "interests": "Emwi Ne Ọ Hẹnmwẹ",
+    "message": "Ẹmwẹ",
+    "friend_fallback": "Ọre"
+  }
+}

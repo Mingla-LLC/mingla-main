@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "账户",
+    "billing_label": "账单",
+    "billing_description": "管理你的套餐和订阅",
+    "account_settings_label": "账户设置",
+    "account_settings_description": "隐私、偏好和账户管理",
+    "upload_profile_photo_title": "上传头像",
+    "upload_profile_photo_body": "选择如何更新你的头像",
+    "change_profile_photo_title": "更换头像",
+    "change_profile_photo_body": "上传新照片或移除现有照片",
+    "error_remove_photo": "移除头像失败。",
+    "error_take_photo": "拍照失败，请重试。",
+    "error_select_image": "选择图片失败，请重试。",
+    "error_upload_photo": "上传头像失败。",
+    "error_save_bio": "保存简介失败。"
+  },
+  "edit_bio": {
+    "title": "编辑简介",
+    "placeholder": "介绍一下自己",
+    "save": "保存"
+  },
+  "edit_interests": {
+    "title": "编辑兴趣",
+    "what_are_you_into": "你对什么感兴趣？",
+    "what_do_you_like": "你喜欢什么？",
+    "save": "保存"
+  },
+  "hero": {
+    "your_name_here": "你的名字",
+    "user_fallback": "用户",
+    "first_name": "名",
+    "last_name": "姓",
+    "name_error_empty": "请输入你的名字。",
+    "name_error_failed": "保存失败，请重试。",
+    "somewhere_cool": "大概在某个很酷的地方",
+    "tap_to_add_bio": "点击添加简介",
+    "hint_add_photo": "人们信任真实面孔。添加照片让朋友知道是你。",
+    "hint_add_bio": "简短的简介很有帮助。别人应该知道你什么？",
+    "cancel_editing": "取消编辑",
+    "save_name": "保存名字"
+  },
+  "stats": {
+    "saved": "收藏",
+    "friends": "好友",
+    "boards": "看板",
+    "places": "地点",
+    "streak": "连续天数",
+    "level": "等级",
+    "motivation_start": "你的数据从你行动的那一刻开始积累。去探索吧。",
+    "motivation_close": "还差 {{count}} 个地方到 {{tier}}。你很接近了。",
+    "motivation_close_plural": "还差 {{count}} 个地方到 {{tier}}。你很接近了。",
+    "motivation_week": "整整一周。坚持让你更出色。",
+    "motivation_month": "连续30天。你可能无法阻挡了。"
+  },
+  "paired_section": {
+    "see_all": "查看全部"
+  },
+  "interests": {
+    "edit_accessibility": "编辑你的兴趣",
+    "your_interests": "你的兴趣",
+    "interests": "兴趣",
+    "not_shared": "未分享",
+    "empty_text": "告诉我们你的兴趣 — 帮助我们为你找到下一个最爱。",
+    "add_interests": "添加兴趣"
+  },
+  "friend": {
+    "loading_profile": "加载资料中…",
+    "profile_unavailable_title": "此资料不可用",
+    "profile_unavailable_body": "此人的资料可能是私密的，或你们未建立联系。",
+    "about": "关于",
+    "location_label": "位置",
+    "not_shared": "未分享",
+    "mingla_level": "Mingla 等级",
+    "interests": "兴趣",
+    "message": "消息",
+    "friend_fallback": "好友"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "close": "Chiudi paywall",
+  "manage_subscription": "Gestisci abbonamento",
+  "alerts.restored_title": "Acquisti ripristinati",
+  "alerts.restored_message": "I tuoi acquisti precedenti sono stati ripristinati.",
+  "alerts.restored_done": "Fatto",
+  "alerts.purchase_failed": "Acquisto fallito",
+  "toast.purchase_delayed": "Acquisto riuscito. Le funzionalità potrebbero richiedere un momento per attivarsi.",
+  "toast.restore_delayed": "Acquisti ripristinati. Le funzionalità potrebbero richiedere un momento per attivarsi."
+}

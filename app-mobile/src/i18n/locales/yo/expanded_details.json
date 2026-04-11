@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Tọ́jú",
+    "saved": "A ti tọ́jú",
+    "schedule": "Ṣètò",
+    "scheduled": "A ti ṣètò",
+    "policies_reservations": "Àwọn Òfin & Ìpamọ́",
+    "i_went_here": "Mo lọ síbí",
+    "been_there": "Mo ti lọ",
+    "on_it": "Ń ṣiṣẹ́...",
+    "visited_label": "O ti ṣàbẹ̀wò ibi yìí",
+    "mark_visited_label": "Ṣàmì pé o ti ṣàbẹ̀wò ibi yìí",
+    "visited_hint": "Fọwọ́ kàn láti yọ àmì àbẹ̀wò rẹ",
+    "mark_visited_hint": "Ó ń gbà àbẹ̀wò rẹ sílẹ̀ ó sì ṣí ìlana àyẹ̀wò",
+    "opening_hours": "Àwọn Wákàtí Ṣíṣí",
+    "open_now": "Ṣí Ní Báyìí",
+    "closed": "Ti Tì",
+    "show_all_hours": "Ṣàfihàn gbogbo wákàtí",
+    "show_less": "Ṣàfihàn díẹ̀",
+    "select_date": "Yan Ọjọ́",
+    "select_time": "Yan Àkókò",
+    "cancel": "Fagilé",
+    "next": "Tókàn",
+    "done": "Ó parí",
+    "error_save": "Kò lè tọ́jú káàdì. Jọ̀wọ́ tún gbìyànjú.",
+    "error_login": "O gbọ́dọ̀ wọlé láti ṣètò káàdì.",
+    "error_invalid_date": "Ọjọ́ tí a yàn kò tọ́. Jọ̀wọ́ tún gbìyànjú.",
+    "schedule_failed_title": "Ìṣètò kùnà",
+    "schedule_failed_body": "A kò lè fi èyí kún kàlẹ́ndà rẹ. Jọ̀wọ́ tún gbìyànjú.",
+    "place_closed_title": "Ibi Ti Tì",
+    "place_closed_body": "Ibi yìí ti tì ní ọjọ́ àti àkókò tí o yàn. Jọ̀wọ́ yan àkókò mìíràn.",
+    "choose_another_time": "Yan Àkókò Mìíràn",
+    "some_stops_closed_title": "Àwọn Ìdúró Kan Ti Tì",
+    "change_time": "Yí Àkókò Padà",
+    "schedule_anyway": "Ṣètò Bí Ó Ti Wù",
+    "scheduled_toast": "A ti ṣètò! A ti gbé {{title}} lọ sí kàlẹ́ndà rẹ",
+    "closed_message": "Ibi yìí ti tì ní ọjọ́ àti àkókò tí o yàn. Fọwọ́ kàn \"Ṣètò\" láti yan àkókò mìíràn.",
+    "share_prompt": "Pín {{title}} pẹ̀lú àwọn ọ̀rẹ́"
+  },
+  "busyness": {
+    "traffic": "Ìjá-àrà Ọkọ̀",
+    "busy_level": "Ìpele Ìṣiṣẹ́",
+    "busy": "Ń ṣiṣẹ́",
+    "clear_roads": "Ọ̀nà Gbangba",
+    "clear": "Gbangba",
+    "moderate": "Àárín",
+    "heavy": "Pípọ̀"
+  },
+  "match_factors": {
+    "title": "Ìtúpalẹ̀ Ìbámu",
+    "location": "Ibi",
+    "budget": "Ìṣúná",
+    "category": "Ẹ̀ka",
+    "time": "Àkókò",
+    "popularity": "Gbajúmọ̀",
+    "excellent": "Ó Dára Jùlọ",
+    "good": "Ó Dára",
+    "fair": "Àárín",
+    "poor": "Kò Tó",
+    "summary": "Àwọn ohun wọ̀nyí ni ó pinnu bí ìrírí yìí ṣe bá àṣàyàn rẹ mu. Àwọn iye tó ga jùlọ fi ìbámu tó dára hàn."
+  },
+  "weather": {
+    "weather": "Ojú Ọjọ́",
+    "clear": "Ìmọ́lẹ̀",
+    "cloudy": "Àwọ̀sánmà",
+    "rainy": "Òjò",
+    "snowy": "Yìnyín",
+    "stormy": "Ìjì"
+  },
+  "timeline": {
+    "start": "Ìbẹ̀rẹ̀",
+    "stop": "Ìdúró {{number}}",
+    "open_in_maps": "Ṣí nínú Àwòrán Ilẹ̀",
+    "then": "Lẹ́yìn náà..."
+  },
+  "companion_stops": {
+    "title": "Bẹ̀rẹ̀ Ìrìn Rẹ",
+    "subtitle": "Bẹ̀rẹ̀ ní ọ̀kan nínú àwọn ibi tó wà nítòsí ṣáájú ìrìn rẹ",
+    "reviews_count": "(àyẹ̀wò {{count}})"
+  },
+  "highlights": {
+    "title": "Àwọn Ohun Pàtàkì"
+  },
+  "description": {
+    "show_less": "Ṣàfihàn díẹ̀",
+    "read_more": "Ka síi"
+  },
+  "card_info": {
+    "nearby": "Nítòsí"
+  }
+}

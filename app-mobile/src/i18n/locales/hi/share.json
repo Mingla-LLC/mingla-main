@@ -1,0 +1,18 @@
+{
+  "header.title": "अनुभव साझा करें",
+  "empty.no_data": "कोई अनुभव डेटा उपलब्ध नहीं",
+  "card.nearby": "पास में",
+  "card.suggested_schedule": "सुझाया गया शेड्यूल",
+  "card.per_person": "प्रति व्यक्ति",
+  "share_to": "साझा करें:",
+  "platform.messages": "संदेश",
+  "platform.whatsapp": "व्हाट्सएप",
+  "platform.instagram": "इंस्टाग्राम",
+  "platform.twitter": "ट्विटर",
+  "actions.more_options": "और साझाकरण विकल्प",
+  "actions.copy_link": "लिंक कॉपी",
+  "actions.copy_message": "संदेश कॉपी",
+  "alerts.copy_error": "क्लिपबोर्ड पर संदेश कॉपी विफल",
+  "alerts.share_error": "साझा करना विफल। कृपया फिर से प्रयास करें।",
+  "alerts.error_title": "त्रुटि"
+}

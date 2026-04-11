@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "অ্যাকাউন্ট",
+    "billing_label": "বিলিং",
+    "billing_description": "আপনার প্ল্যান ও সাবস্ক্রিপশন পরিচালনা করুন",
+    "account_settings_label": "অ্যাকাউন্ট সেটিংস",
+    "account_settings_description": "গোপনীয়তা, পছন্দ এবং অ্যাকাউন্ট ব্যবস্থাপনা",
+    "upload_profile_photo_title": "প্রোফাইল ছবি আপলোড করুন",
+    "upload_profile_photo_body": "কীভাবে আপনার প্রোফাইল ছবি আপডেট করতে চান তা বেছে নিন",
+    "change_profile_photo_title": "প্রোফাইল ছবি পরিবর্তন করুন",
+    "change_profile_photo_body": "নতুন ছবি আপলোড করুন বা বিদ্যমানটি সরান",
+    "error_remove_photo": "প্রোফাইল ছবি সরাতে ব্যর্থ।",
+    "error_take_photo": "ছবি তুলতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "error_select_image": "ছবি নির্বাচন করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "error_upload_photo": "প্রোফাইল ছবি আপলোড করতে ব্যর্থ।",
+    "error_save_bio": "বায়ো সেভ করতে ব্যর্থ।"
+  },
+  "edit_bio": {
+    "title": "বায়ো সম্পাদনা",
+    "placeholder": "নিজের সম্পর্কে বলুন",
+    "save": "সেভ"
+  },
+  "edit_interests": {
+    "title": "আগ্রহ সম্পাদনা",
+    "what_are_you_into": "আপনি কিসে আগ্রহী?",
+    "what_do_you_like": "আপনার কী পছন্দ?",
+    "save": "সেভ"
+  },
+  "hero": {
+    "your_name_here": "আপনার নাম এখানে",
+    "user_fallback": "ব্যবহারকারী",
+    "first_name": "নাম",
+    "last_name": "পদবি",
+    "name_error_empty": "অনুগ্রহ করে আপনার নাম লিখুন।",
+    "name_error_failed": "সেভ করা যায়নি। আবার চেষ্টা করুন।",
+    "somewhere_cool": "কোথাও দারুণ জায়গায়, সম্ভবত",
+    "tap_to_add_bio": "বায়ো যোগ করতে ট্যাপ করুন",
+    "hint_add_photo": "মানুষ মুখ দেখে বিশ্বাস করে। ছবি যোগ করুন যাতে বন্ধুরা জানে এটা আপনি।",
+    "hint_add_bio": "একটু বায়ো অনেক কাজ দেয়। মানুষের কী জানা উচিত?",
+    "cancel_editing": "সম্পাদনা বাতিল",
+    "save_name": "নাম সেভ করুন"
+  },
+  "stats": {
+    "saved": "সেভ করা",
+    "friends": "বন্ধু",
+    "boards": "বোর্ড",
+    "places": "জায়গা",
+    "streak": "স্ট্রিক",
+    "level": "লেভেল",
+    "motivation_start": "আপনি কিছু করার মুহূর্তেই আপনার পরিসংখ্যান তৈরি হতে শুরু করে। গিয়ে এক্সপ্লোর করুন।",
+    "motivation_close": "{{tier}}-এ পৌঁছাতে আর {{count}}টি জায়গা। আপনি কাছে।",
+    "motivation_close_plural": "{{tier}}-এ পৌঁছাতে আর {{count}}টি জায়গা। আপনি কাছে।",
+    "motivation_week": "পুরো এক সপ্তাহ। ধারাবাহিকতা আপনাকে মানায়।",
+    "motivation_month": "30 দিন একটানা। আপনাকে হয়তো থামানো যাবে না।"
+  },
+  "paired_section": {
+    "see_all": "সব দেখুন"
+  },
+  "interests": {
+    "edit_accessibility": "আপনার আগ্রহ সম্পাদনা করুন",
+    "your_interests": "আপনার আগ্রহ",
+    "interests": "আগ্রহ",
+    "not_shared": "শেয়ার করা হয়নি",
+    "empty_text": "আমাদের বলুন আপনি কিসে আগ্রহী — এটি আপনার পরবর্তী প্রিয় জিনিস খুঁজে পেতে সাহায্য করে।",
+    "add_interests": "আগ্রহ যোগ করুন"
+  },
+  "friend": {
+    "loading_profile": "প্রোফাইল লোড হচ্ছে…",
+    "profile_unavailable_title": "এই প্রোফাইল উপলব্ধ নয়",
+    "profile_unavailable_body": "এই ব্যক্তির প্রোফাইল ব্যক্তিগত হতে পারে, অথবা আপনি সংযুক্ত নন।",
+    "about": "সম্পর্কে",
+    "location_label": "অবস্থান",
+    "not_shared": "শেয়ার করা হয়নি",
+    "mingla_level": "Mingla লেভেল",
+    "interests": "আগ্রহ",
+    "message": "মেসেজ",
+    "friend_fallback": "বন্ধু"
+  }
+}

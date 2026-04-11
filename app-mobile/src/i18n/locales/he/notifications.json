@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "התראות",
+    "unread": "{{count}} לא נקראו",
+    "markAllRead": "סמן הכל כנקרא",
+    "clearAll": "נקה הכל"
+  },
+  "filters": {
+    "all": "הכל",
+    "social": "חברתי",
+    "sessions": "סשנים",
+    "messages": "הודעות"
+  },
+  "timeAgo": {
+    "justNow": "הרגע"
+  },
+  "dateGroups": {
+    "today": "היום",
+    "yesterday": "אתמול",
+    "thisWeek": "השבוע",
+    "earlier": "קודם"
+  },
+  "actions": {
+    "accept": "אשר",
+    "decline": "דחה",
+    "join": "הצטרף",
+    "upgrade": "שדרג",
+    "review": "בדוק",
+    "actionFailed": "הפעולה נכשלה. הקש כדי לנסות שוב."
+  },
+  "emptyState": {
+    "title": "אתה מעודכן",
+    "subtitle": "פעילות חדשה תופיע כאן."
+  },
+  "errorState": {
+    "title": "משהו השתבש",
+    "subtitle": "לא ניתן לטעון התראות.",
+    "tryAgain": "נסה שוב"
+  },
+  "offline": {
+    "banner": "אתה לא מחובר — מציג התראות שמורות"
+  }
+}

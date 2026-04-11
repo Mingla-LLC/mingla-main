@@ -1,0 +1,10 @@
+{
+  "close": "ปิดเพย์วอลล์",
+  "manage_subscription": "จัดการการสมัครสมาชิก",
+  "alerts.restored_title": "กู้คืนการซื้อแล้ว",
+  "alerts.restored_message": "การซื้อก่อนหน้าของคุณได้รับการกู้คืนสำเร็จ",
+  "alerts.restored_done": "เสร็จสิ้น",
+  "alerts.purchase_failed": "การซื้อล้มเหลว",
+  "toast.purchase_delayed": "การซื้อสำเร็จ ฟีเจอร์อาจใช้เวลาสักครู่ในการเปิดใช้งาน",
+  "toast.restore_delayed": "กู้คืนการซื้อแล้ว ฟีเจอร์อาจใช้เวลาสักครู่ในการเปิดใช้งาน"
+}

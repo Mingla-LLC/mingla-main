@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Nemo harsuna...",
+    "close_accessibility": "Rufe zaɓin harshe"
+  },
+  "country_picker": {
+    "search_placeholder": "Nemo ƙasashe...",
+    "close_accessibility": "Rufe zaɓin ƙasa"
+  },
+  "welcome": {
+    "greeting_hey": "Sannu",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Zaɓi mai kyau",
+    "greeting_walked_in": "ya shigo.",
+    "we_know": "Mun san",
+    "good_taste": "zaɓi mai kyau",
+    "just_walked_in": "ya shigo.",
+    "name_prompt": "Amma ba mu san sunanka ba tukuna.",
+    "placeholder_first": "Na farko",
+    "placeholder_last": "Na ƙarshe",
+    "cta": "Mu tafi"
+  },
+  "phone": {
+    "headline": "Mene ne lambar ka?",
+    "body": "Za mu aiko maka lambar. Seconds biyu ne.",
+    "verified_headline": "Duk ya yi.",
+    "verified_body": "An tabbatar da lambar ka. Abu ɗaya ya rage.",
+    "consent_text": "Na yarda in karɓi saƙonni daga Mingla ta hanyar SMS ko kiran waya, ciki har da lambobin tabbatarwa, gayyatar abokai, da tunatarwa. Ka amsa STOP don dakatar ko HELP don taimako. Duba ",
+    "terms_of_service": "Sharuɗɗan Amfani",
+    "and": " da ",
+    "privacy_policy": "Manufar Sirri",
+    "consent_accessibility": "Na yarda in karɓi saƙonni daga Mingla",
+    "cta_send_code": "Aika lambar",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Ƙasar da aka zaɓa: {{name}}. Danna don canzawa."
+  },
+  "otp": {
+    "headline": "Shigar da lambar",
+    "body": "An aika zuwa {{phone}}",
+    "verifying": "Ana tabbatarwa...",
+    "sending": "Ana aikawa...",
+    "resend_countdown": "Sake aikawa a cikin {{seconds}}s",
+    "channel_label": "Bai iso ba? Gwada wata hanya:",
+    "resend_sms": "Sake aika SMS",
+    "resend_sms_accessibility": "Sake aika lambar ta SMS",
+    "call_me": "Ki ra ni a maimakon haka",
+    "call_me_accessibility": "Karɓi lambar ta kiran waya",
+    "error_max_attempts": "Gwaji uku, bai yi ba. Gwada wata hanya a ƙasa.",
+    "error_wrong_code": "Lambar bai yi daidai ba. Sake gwadawa.",
+    "cta_verify": "Tabbatar",
+    "otp_accessibility": "Lambar tabbatarwa ta lokaci ɗaya"
+  },
+  "gender": {
+    "headline": "Gaya mana game da kai.",
+    "body": "Don mu sami maka abubuwan da suka dace.",
+    "man": "Namiji",
+    "woman": "Mace",
+    "non_binary": "Ba na biyu",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Babu jinsi",
+    "prefer_not_to_say": "Na fi so in ɓoye"
+  },
+  "details": {
+    "headline": "Kusan gama.",
+    "body": "Bayanan farko kaɗan. Za mu kula da sauran.",
+    "country_label": "Ƙasa",
+    "country_helper": "Yana saita kuɗin ka da ma'aunin awo",
+    "dob_label": "Ranar haihuwa",
+    "dob_placeholder": "Yaushe ne ranar haihuwar ka?"
+  },
+  "value_prop": {
+    "beat1_headline": "Ka san inda za ka je.",
+    "beat1_sub": "Daina tunanin. Fara tafiya.",
+    "beat2_headline": "Don soyayya, abokai & keɓantacce.",
+    "beat2_sub": "Shirye-shirye don kowane irin fita.",
+    "beat3_headline": "Same shi da sauri. Tafi.",
+    "beat3_sub": "Goga. Ajiye. Tafi."
+  },
+  "intents": {
+    "headline": "Yanzu sashen nishaɗi.",
+    "body": "Danna kowane yanayin da yake yi maka.",
+    "caption": "Zaɓi wanda ya fi ƙarfafa maka.",
+    "adventurous": "Mai ƙalubale",
+    "adventurous_desc": "Bincika abin da ba a zata ba",
+    "first_date": "Farkon Soyayya",
+    "first_date_desc": "Sami farkon da ya dace",
+    "romantic": "Soyayya",
+    "romantic_desc": "Ƙara zafi",
+    "group_fun": "Nishaɗin Ƙungiya",
+    "group_fun_desc": "Yawan mutane yana da daɗi",
+    "picnic_dates": "Bukukuwan Shakatawa",
+    "picnic_dates_desc": "Rana, abinci, lokaci mai kyau",
+    "take_a_stroll": "Yi Yawo",
+    "take_a_stroll_desc": "Yi tafiya da manufa"
+  },
+  "location": {
+    "granted_headline": "An samu — {{city}}!",
+    "granted_tap_hint": "Danna don ci gaba",
+    "settings_headline": "Buɗa ɗaya",
+    "settings_body": "An kashe wurin ga Mingla.\nBuɗa shi a Saituna don mu same maka\nwurare mafi kyau kusa da kai.",
+    "open_settings": "Buɗe Saituna",
+    "retry_turned_on": "Na buɗa shi — sake gwadawa",
+    "retry_finding": "Ana nemanka...",
+    "type_city": "Rubuta birni na a maimakon haka",
+    "error_headline": "Ba a iya samun wurin ka ba",
+    "error_body": "Siginar ya yi rauni ko GPS yana ɗumamar.\nSake gwadawa ko rubuta birni ka.",
+    "try_again": "Sake Gwadawa",
+    "idle_headline": "Wurare mafi kyau suna nan",
+    "idle_body": "Kunna GPS don mu same maka\nwurare na musamman a kusa da kai.",
+    "enable_location": "Kunna Wuri",
+    "privacy_hint": "Wurin ka yana ɓoye. Kullum.",
+    "cta_enable": "Kunna wuri"
+  },
+  "celebration": {
+    "headline": "Ga shi yanzu.",
+    "body": "Zaɓe huɗu cikin sauri ka gama."
+  },
+  "manual_location": {
+    "headline": "Saka alamar ka a taswirar",
+    "body": "Ba mu adireshin ka na daidai — har zuwa titin — za mu buɗe maka wurare mafi kyau kusa da kai.",
+    "search_placeholder": "Fara rubuta adireshin ka...",
+    "no_results": "Hmm, ba mu ji ba. Gwada wani titi ko unguwa kusa.",
+    "helper": "Yawancin daidaitawa, yawancin shawarwarin da suka dace.",
+    "privacy": "Wurin ka na daidai yana tsakaninmu. Kullum.",
+    "change_accessibility": "Canja wurin da aka zaɓa"
+  },
+  "categories": {
+    "headline": "Wanne irin wurare kake so?",
+    "body": "Zaɓi har zuwa 3 da suka dace da yanayin ka.",
+    "cap_message": "Mafi yawa 3 nau'ikan. Cire ɗaya don zaɓar wani."
+  },
+  "budget": {
+    "headline": "Wurin da ya dace",
+    "body": "Zaɓi farashin da ya dace.",
+    "caption": "Abubuwan kyauta koyaushe suna bayyana."
+  },
+  "transport": {
+    "headline": "Yaya kake tafiya?",
+    "body": "Yana taimaka mana mu ƙididdige lokacin tafiya."
+  },
+  "travel_time": {
+    "headline": "Zuwa ina za ka je?",
+    "body": "Saita yankin jin daɗin ka.",
+    "custom_toggle": "Saita naka",
+    "custom_placeholder": "Minti 5 – 120",
+    "unit": "minti",
+    "caption": "Har zuwa minti {{minutes}} ta {{mode}}",
+    "error": "Ba a iya adana zaɓin ka ba. Danna Sake gwadawa."
+  },
+  "friends": {
+    "headline": "Ƙungiyar ka ta kusa",
+    "body": "Ƙara mutanen ka na kusa, sannan ku haɗa. Za ku gano abubuwan da za ku yi tare, ku ga abin da suke so, ku shirya abubuwa masu kyau tare.",
+    "waiting_header": "Suna jiran ka",
+    "added_feedback": "An ƙara",
+    "declined_feedback": "An ƙi",
+    "add_friends_header": "Ƙara abokai",
+    "your_people_header": "Mutanenka",
+    "status_friends": "Abokai",
+    "status_request_sent": "An aika buƙata",
+    "status_invited": "An gayyata",
+    "pair_paired": "An haɗa",
+    "pair_pending": "Ana jira",
+    "pair_queued": "Ana jira",
+    "pair_button": "Haɗa",
+    "pair_queued_hint": "Zai kunna idan sun shiga",
+    "empty_state": "Babu abokai a nan tukuna. Ƙara wanda za ka shirya shiri da shi.",
+    "pair_requests_header": "Buƙatun haɗawa",
+    "paired_feedback": "An haɗa!",
+    "pair_wants": "Yana son ya haɗa da kai",
+    "pair_curated": "Duba abubuwan da aka zaɓa don ku biyu.",
+    "alert_self_title": "Kai ne",
+    "alert_self_message": "Ba za ka iya ƙara kanka a matsayin aboki ba.",
+    "alert_duplicate_title": "An riga an ƙara",
+    "alert_duplicate_message": "Wannan mutumin yana cikin jerin ka.",
+    "alert_pair_error": "Ba a iya aika buƙatar haɗawa ba",
+    "alert_accept_error": "Ba a iya karɓar buƙatar haɗawa. Sake gwadawa.",
+    "alert_decline_error": "Ba a iya ƙin buƙatar haɗawa. Sake gwadawa.",
+    "alert_generic_error": "Ba a iya gudanar da buƙatar. Sake gwadawa.",
+    "share_message": "Sannu! Ka shigo Mingla mu sami abubuwa masu ban sha'awa tare. https://usemingla.com",
+    "fallback_user": "Mai amfani"
+  },
+  "collaborations": {
+    "headline": "Shirya wani abu tare",
+    "body": "Fara zama tare da ƙungiyar ka. Gano abubuwan da za ku yi, jefa ƙuri'a akan abin da kuka fi so, ku sa ya faru.",
+    "whos_in": "Wanene?",
+    "session_name_label": "Sunan zama",
+    "session_name_placeholder": "misali Shirye-shiryen karshen mako, Ra'ayoyin dare...",
+    "created_header": "Zamunnuka da ka ƙirƙira ({{count}})",
+    "loading_invites": "Ana lodi gayyatoci...",
+    "invited_header": "An gayyace ka ({{count}})",
+    "inviter_message": "{{name}} ya gayyace ka",
+    "fallback_someone": "Wani",
+    "fallback_session": "Zama",
+    "name_taken_error": "An riga an ɗauki wannan sunan. Yi ƙirƙira!",
+    "generic_error": "Hmm, bai yi ba. Sake gwadawa.",
+    "join_error": "Ba a iya shiga zaman ba",
+    "decline_error": "Ba a iya ƙin gayyatar ba",
+    "empty_state": "Fara ƙara abokai — sannan za ka iya shirya tare."
+  },
+  "consent": {
+    "headline": "Abu ɗaya cikin sauri",
+    "body": "Mingla yana amfani da abin da ka raba — zaɓin ka, yanayin ka, wurin ka — don samun abubuwan da za ka fi so. Bayanan ka naka ne. Ba ma sayar da su ba, kuma za ka iya share su kowane lokaci."
+  },
+  "getting_experiences": {
+    "loading_1": "Ana duba wurare kusa...",
+    "loading_2": "Ana daidaita da zaɓin ka...",
+    "loading_3": "Ana nemo wurare na musamman...",
+    "loading_4": "Kusan gama..."
+  },
+  "occasions": {
+    "birthday": "Ranar haihuwa",
+    "valentines": "Ranar Masoya",
+    "mothers_day": "Ranar Uwaye",
+    "fathers_day": "Ranar Ubanni",
+    "christmas": "Kirsimati"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "header.title": "Bagikan Pengalaman",
+  "empty.no_data": "Tidak ada data pengalaman",
+  "card.nearby": "Dekat",
+  "card.suggested_schedule": "Jadwal yang Disarankan",
+  "card.per_person": "per orang",
+  "share_to": "Bagikan ke:",
+  "platform.messages": "Pesan",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Opsi berbagi lainnya",
+  "actions.copy_link": "Salin link",
+  "actions.copy_message": "Salin Pesan",
+  "alerts.copy_error": "Gagal menyalin pesan ke clipboard",
+  "alerts.share_error": "Gagal membagikan. Silakan coba lagi.",
+  "alerts.error_title": "Kesalahan"
+}

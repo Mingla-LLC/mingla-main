@@ -1,0 +1,10 @@
+{
+  "close": "पेवॉल बंद करें",
+  "manage_subscription": "सदस्यता प्रबंधित करें",
+  "alerts.restored_title": "खरीदारी बहाल हो गई",
+  "alerts.restored_message": "आपकी पिछली खरीदारी सफलतापूर्वक बहाल हो गई है।",
+  "alerts.restored_done": "हो गया",
+  "alerts.purchase_failed": "खरीदारी विफल",
+  "toast.purchase_delayed": "खरीदारी सफल। सुविधाओं को सक्रिय होने में कुछ समय लग सकता है।",
+  "toast.restore_delayed": "खरीदारी बहाल हो गई। सुविधाओं को सक्रिय होने में कुछ समय लग सकता है।"
+}

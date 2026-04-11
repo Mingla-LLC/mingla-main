@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "สำรวจ",
+  "tabs.discover": "ค้นพบ",
+  "tabs.chats": "แชท",
+  "tabs.likes": "ถูกใจ",
+  "tabs.profile": "โปรไฟล์",
+  "alerts.sign_in_error_title": "ข้อผิดพลาดในการลงชื่อเข้าใช้",
+  "alerts.error_title": "ข้อผิดพลาด",
+  "alerts.failed_sign_in": "ลงชื่อเข้าใช้ไม่สำเร็จ: "
+}

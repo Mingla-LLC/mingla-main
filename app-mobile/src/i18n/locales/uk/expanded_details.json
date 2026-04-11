@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Зберегти",
+    "saved": "Збережено",
+    "schedule": "Запланувати",
+    "scheduled": "Заплановано",
+    "policies_reservations": "Policies & Reservations",
+    "i_went_here": "I went here",
+    "been_there": "Been there",
+    "on_it": "On it...",
+    "visited_label": "You visited this place",
+    "mark_visited_label": "Mark this place as visited",
+    "visited_hint": "Tap to remove your visit marker",
+    "mark_visited_hint": "Records your visit та opens the review flow",
+    "opening_hours": "Opening Hours",
+    "open_now": "Зараз відкрито",
+    "closed": "Зачинено",
+    "show_all_hours": "Show all hours",
+    "show_less": "Show less",
+    "select_date": "Select Date",
+    "select_time": "Select Time",
+    "cancel": "Скасувати",
+    "next": "Далі",
+    "done": "Готово",
+    "error_save": "Failed to save the card. Please try again.",
+    "error_login": "You must be logged in to schedule cards.",
+    "error_invalid_date": "The selected date is not valid. Please try again.",
+    "schedule_failed_title": "Запланувати failed",
+    "schedule_failed_body": "We couldn't add this to your calendar. Please try again.",
+    "place_closed_title": "Place Зачинено",
+    "place_closed_body": "This place is closed at the selected date та time. Please choose a different time.",
+    "choose_another_time": "Choose Another Time",
+    "some_stops_closed_title": "Some Stops May Be Зачинено",
+    "change_time": "Change Time",
+    "schedule_anyway": "Запланувати Anyway",
+    "scheduled_toast": "Заплановано! {{title}} has been moved to your calendar",
+    "closed_message": "This place is closed at the selected date та time. Tap \"Запланувати\" to choose a different time.",
+    "share_prompt": "Поділитися {{title}} with friends"
+  },
+  "busyness": {
+    "traffic": "Traffic",
+    "busy_level": "Busy Level",
+    "busy": "Busy",
+    "clear_roads": "Clear Roads",
+    "clear": "Clear",
+    "moderate": "Moderate",
+    "heavy": "Heavy"
+  },
+  "match_factors": {
+    "title": "Match Breakdown",
+    "location": "Місцезнаходження",
+    "budget": "Бюджет",
+    "category": "Категорія",
+    "time": "Time",
+    "popularity": "Popularity",
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "poor": "Poor",
+    "summary": "These factors deterхвe how well this experience matches your preferences. Higher scores indicate better alignment."
+  },
+  "weather": {
+    "weather": "Weather",
+    "clear": "Clear",
+    "cloudy": "Cloudy",
+    "rainy": "Rainy",
+    "snowy": "Snowy",
+    "stormy": "Stormy"
+  },
+  "timeline": {
+    "start": "Start",
+    "stop": "Stop {{number}}",
+    "open_in_maps": "Open in Maps",
+    "then": "Then..."
+  },
+  "companion_stops": {
+    "title": "Start Your Stroll",
+    "subtitle": "Begin at one of these nearby spots before your walk",
+    "reviews_count": "({{count}} reviews)"
+  },
+  "highlights": {
+    "title": "Highlights"
+  },
+  "description": {
+    "show_less": "Show less",
+    "read_more": "Read more"
+  },
+  "card_info": {
+    "nearby": "Поблизу"
+  }
+}

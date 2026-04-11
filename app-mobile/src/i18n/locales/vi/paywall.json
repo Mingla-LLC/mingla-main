@@ -1,0 +1,10 @@
+{
+  "close": "Đóng tường phí",
+  "manage_subscription": "Quản lý đăng ký",
+  "alerts.restored_title": "Đã khôi phục mua hàng",
+  "alerts.restored_message": "Các giao dịch mua trước đó đã được khôi phục thành công.",
+  "alerts.restored_done": "Xong",
+  "alerts.purchase_failed": "Mua hàng thất bại",
+  "toast.purchase_delayed": "Mua hàng thành công. Các tính năng có thể mất một lát để kích hoạt.",
+  "toast.restore_delayed": "Đã khôi phục mua hàng. Các tính năng có thể mất một lát để kích hoạt."
+}

@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "アカウント",
+    "billing_label": "お支払い",
+    "billing_description": "プランとサブスクリプションの管理",
+    "account_settings_label": "アカウント設定",
+    "account_settings_description": "プライバシー、設定、アカウント管理",
+    "upload_profile_photo_title": "プロフィール写真をアップロード",
+    "upload_profile_photo_body": "プロフィール写真の更新方法を選択してください",
+    "change_profile_photo_title": "プロフィール写真を変更",
+    "change_profile_photo_body": "新しい写真をアップロードするか、既存の写真を削除します",
+    "error_remove_photo": "プロフィール写真の削除に失敗しました。",
+    "error_take_photo": "写真の撮影に失敗しました。もう一度お試しください。",
+    "error_select_image": "画像の選択に失敗しました。もう一度お試しください。",
+    "error_upload_photo": "プロフィール写真のアップロードに失敗しました。",
+    "error_save_bio": "自己紹介の保存に失敗しました。"
+  },
+  "edit_bio": {
+    "title": "自己紹介を編集",
+    "placeholder": "あなたについて教えてください",
+    "save": "保存"
+  },
+  "edit_interests": {
+    "title": "興味を編集",
+    "what_are_you_into": "何に興味がありますか？",
+    "what_do_you_like": "何が好きですか？",
+    "save": "保存"
+  },
+  "hero": {
+    "your_name_here": "名前を入力",
+    "user_fallback": "ユーザー",
+    "first_name": "名",
+    "last_name": "姓",
+    "name_error_empty": "名前を入力してください。",
+    "name_error_failed": "保存に失敗しました。もう一度お試しください。",
+    "somewhere_cool": "たぶんどこかクールな場所",
+    "tap_to_add_bio": "タップして自己紹介を追加",
+    "hint_add_photo": "人は顔を信頼します。友達があなただとわかるように写真を追加しましょう。",
+    "hint_add_bio": "短い自己紹介で印象が変わります。みんなに何を知ってほしいですか？",
+    "cancel_editing": "編集をキャンセル",
+    "save_name": "名前を保存"
+  },
+  "stats": {
+    "saved": "保存",
+    "friends": "友達",
+    "boards": "ボード",
+    "places": "場所",
+    "streak": "連続",
+    "level": "レベル",
+    "motivation_start": "何かを始めた瞬間から統計が積み上がります。探索に行きましょう。",
+    "motivation_close": "{{tier}}まであと{{count}}か所。もうすぐです。",
+    "motivation_close_plural": "{{tier}}まであと{{count}}か所。もうすぐです。",
+    "motivation_week": "まる一週間。継続は力なり。",
+    "motivation_month": "30日連続。もう止められないかも。"
+  },
+  "paired_section": {
+    "see_all": "すべて見る"
+  },
+  "interests": {
+    "edit_accessibility": "興味を編集",
+    "your_interests": "あなたの興味",
+    "interests": "興味",
+    "not_shared": "非公開",
+    "empty_text": "何が好きか教えてください — 次のお気に入りを見つける手助けになります。",
+    "add_interests": "興味を追加"
+  },
+  "friend": {
+    "loading_profile": "プロフィールを読み込み中…",
+    "profile_unavailable_title": "このプロフィールは閲覧できません",
+    "profile_unavailable_body": "この方のプロフィールは非公開か、つながりがない可能性があります。",
+    "about": "紹介",
+    "location_label": "場所",
+    "not_shared": "非公開",
+    "mingla_level": "Minglaレベル",
+    "interests": "興味",
+    "message": "メッセージ",
+    "friend_fallback": "友達"
+  }
+}

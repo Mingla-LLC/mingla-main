@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Powiadomienia",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Wiadomości"
+  },
+  "timeAgo": {
+    "justNow": "Właśnie teraz"
+  },
+  "dateGroups": {
+    "today": "Dziś",
+    "yesterday": "Wczoraj",
+    "thisWeek": "Ten tydzień",
+    "earlier": "Wcześniej"
+  },
+  "actions": {
+    "accept": "Akceptuj",
+    "decline": "Odrzuć",
+    "join": "Dołącz",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Coś poszło nie tak",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Spróbuj ponownie"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

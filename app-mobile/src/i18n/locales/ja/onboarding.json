@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "言語を検索...",
+    "close_accessibility": "言語選択を閉じる"
+  },
+  "country_picker": {
+    "search_placeholder": "国を検索...",
+    "close_accessibility": "国選択を閉じる"
+  },
+  "welcome": {
+    "greeting_hey": "やあ",
+    "greeting_name": "{{name}}さん。",
+    "greeting_good_taste": "センスがいいね",
+    "greeting_walked_in": "ようこそ。",
+    "we_know": "わかってる",
+    "good_taste": "センスがいい",
+    "just_walked_in": "ようこそ。",
+    "name_prompt": "でもまだ名前を知らないんだ。",
+    "placeholder_first": "名",
+    "placeholder_last": "姓",
+    "cta": "さあ始めよう"
+  },
+  "phone": {
+    "headline": "電話番号は？",
+    "body": "コードを送ります。2秒で完了。",
+    "verified_headline": "準備完了。",
+    "verified_body": "番号が確認されました。一つ片付いた。",
+    "consent_text": "SMS・電話を通じて、認証コード、友達からの招待、体験のリマインダーなどのメッセージをMinglaから受信することに同意します。STOPで配信停止、HELPでヘルプ。",
+    "terms_of_service": "利用規約",
+    "and": "と",
+    "privacy_policy": "プライバシーポリシー",
+    "consent_accessibility": "Minglaからのメッセージ受信に同意",
+    "cta_send_code": "コードを送信",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "選択中の国: {{name}}。タップして変更。"
+  },
+  "otp": {
+    "headline": "コードを入力",
+    "body": "{{phone}}に送信しました",
+    "verifying": "確認中...",
+    "sending": "送信中...",
+    "resend_countdown": "{{seconds}}秒後に再送信",
+    "channel_label": "届きませんでしたか？別の方法を試してください：",
+    "resend_sms": "SMSを再送信",
+    "resend_sms_accessibility": "SMSでコードを再送信",
+    "call_me": "電話で受け取る",
+    "call_me_accessibility": "電話でコードを受け取る",
+    "error_max_attempts": "3回試しましたが上手くいきませんでした。下の別の方法を試してください。",
+    "error_wrong_code": "そのコードは正しくありません。もう一度お試しください。",
+    "cta_verify": "確認",
+    "otp_accessibility": "ワンタイム認証コード"
+  },
+  "gender": {
+    "headline": "あなたについて教えてください。",
+    "body": "ぴったりの提案ができるように。",
+    "man": "男性",
+    "woman": "女性",
+    "non_binary": "ノンバイナリー",
+    "transgender": "トランスジェンダー",
+    "genderqueer": "ジェンダークィア",
+    "genderfluid": "ジェンダーフルイド",
+    "agender": "アジェンダー",
+    "prefer_not_to_say": "回答しない"
+  },
+  "details": {
+    "headline": "もうすぐ完了。",
+    "body": "基本情報だけ。あとはお任せください。",
+    "country_label": "国",
+    "country_helper": "通貨と単位を設定します",
+    "dob_label": "生年月日",
+    "dob_placeholder": "誕生日はいつですか？"
+  },
+  "value_prop": {
+    "beat1_headline": "どこに行くべきかすぐわかる。",
+    "beat1_sub": "迷わない。行動する。",
+    "beat2_headline": "デート、友達、ソロでも。",
+    "beat2_sub": "あらゆるお出かけの計画を。",
+    "beat3_headline": "見つけて、すぐ出発。",
+    "beat3_sub": "スワイプ。保存。出発。"
+  },
+  "intents": {
+    "headline": "さて、楽しい部分。",
+    "body": "ピンとくるバイブをタップしてください。",
+    "caption": "一番ワクワクするものを選んで。",
+    "adventurous": "冒険",
+    "adventurous_desc": "予想外を楽しむ",
+    "first_date": "初デート",
+    "first_date_desc": "第一印象をバッチリに",
+    "romantic": "ロマンチック",
+    "romantic_desc": "ときめきをアップ",
+    "group_fun": "グループで楽しむ",
+    "group_fun_desc": "人数が多いほど楽しい",
+    "picnic_dates": "ピクニックデート",
+    "picnic_dates_desc": "太陽、おやつ、楽しい時間",
+    "take_a_stroll": "お散歩",
+    "take_a_stroll_desc": "目的のある散策"
+  },
+  "location": {
+    "granted_headline": "確認完了 — {{city}}！",
+    "granted_tap_hint": "タップして続ける",
+    "settings_headline": "あと一つの設定",
+    "settings_body": "Minglaの位置情報がオフです。\n設定でオンにして\n近くのベストスポットを見つけましょう。",
+    "open_settings": "設定を開く",
+    "retry_turned_on": "オンにした — 再試行",
+    "retry_finding": "位置を検索中...",
+    "type_city": "代わりに都市を入力",
+    "error_headline": "位置を取得できませんでした",
+    "error_body": "信号が弱いかGPSがまだ起動中です。\nもう一度試すか、都市名を入力してください。",
+    "try_again": "もう一度試す",
+    "idle_headline": "もっといいスポットはここから",
+    "idle_body": "GPSを有効にして\nすぐ近くの隠れた名所を見つけましょう。",
+    "enable_location": "位置情報を有効にする",
+    "privacy_hint": "あなたの位置情報はいつもプライベートです。",
+    "cta_enable": "位置情報を有効にする"
+  },
+  "celebration": {
+    "headline": "その調子。",
+    "body": "4つ選んで完了です。"
+  },
+  "manual_location": {
+    "headline": "マップにピンを落とす",
+    "body": "正確な住所を教えてください。周辺のベストスポットをご案内します。",
+    "search_placeholder": "住所を入力...",
+    "no_results": "見つかりませんでした。近くの通りや地域名を試してください。",
+    "helper": "正確であるほど、より良いおすすめができます。",
+    "privacy": "正確な位置情報は私たちだけの秘密です。いつも。",
+    "change_accessibility": "選択した場所を変更"
+  },
+  "categories": {
+    "headline": "どんな場所が好きですか？",
+    "body": "あなたの好みに合うものを3つまで選んでください。",
+    "cap_message": "最大3カテゴリー。1つ外して別のものを選んでください。"
+  },
+  "budget": {
+    "headline": "ちょうどいい価格帯",
+    "body": "合う価格帯を選んでください。",
+    "caption": "無料のものも常に表示されます。"
+  },
+  "transport": {
+    "headline": "普段の移動手段は？",
+    "body": "移動時間の計算に役立ちます。"
+  },
+  "travel_time": {
+    "headline": "どこまで行ける？",
+    "body": "快適な範囲を設定してください。",
+    "custom_toggle": "自分で設定",
+    "custom_placeholder": "5〜120分",
+    "unit": "分",
+    "caption": "{{mode}}で最大{{minutes}}分",
+    "error": "設定を保存できませんでした。再試行をタップしてください。"
+  },
+  "friends": {
+    "headline": "あなたの仲間",
+    "body": "親しい人を追加してペアリング。一緒にやりたいことを見つけたり、好みを共有したり、楽しい計画を立てましょう。",
+    "waiting_header": "あなたを待っています",
+    "added_feedback": "追加済み",
+    "declined_feedback": "辞退済み",
+    "add_friends_header": "友達を追加",
+    "your_people_header": "あなたの仲間",
+    "status_friends": "友達",
+    "status_request_sent": "リクエスト送信済み",
+    "status_invited": "招待済み",
+    "pair_paired": "ペア済み",
+    "pair_pending": "保留中",
+    "pair_queued": "待機中",
+    "pair_button": "ペア",
+    "pair_queued_hint": "参加時に有効になります",
+    "empty_state": "まだ友達がいません。一緒に予定を立てたい人を追加しましょう。",
+    "pair_requests_header": "ペアリクエスト",
+    "paired_feedback": "ペアリングしました！",
+    "pair_wants": "ペアリングを希望しています",
+    "pair_curated": "お二人のためにキュレーションされた体験をご覧ください。",
+    "alert_self_title": "それはあなたです",
+    "alert_self_message": "自分自身を友達として追加することはできません。",
+    "alert_duplicate_title": "すでに追加済み",
+    "alert_duplicate_message": "この方はすでにリストに追加されています。",
+    "alert_pair_error": "ペアリクエストを送信できませんでした",
+    "alert_accept_error": "ペアリクエストを承認できませんでした。もう一度お試しください。",
+    "alert_decline_error": "ペアリクエストを辞退できませんでした。もう一度お試しください。",
+    "alert_generic_error": "リクエストを処理できませんでした。もう一度お試しください。",
+    "share_message": "やあ！Minglaで一緒に素敵な体験を見つけよう。https://usemingla.com",
+    "fallback_user": "ユーザー"
+  },
+  "collaborations": {
+    "headline": "一緒に計画しよう",
+    "body": "仲間とセッションを始めましょう。やりたいことを見つけて、お気に入りに投票して、実現させましょう。",
+    "whos_in": "誰が参加する？",
+    "session_name_label": "セッション名",
+    "session_name_placeholder": "例: 週末プラン、デートのアイデア...",
+    "created_header": "作成したセッション ({{count}})",
+    "loading_invites": "招待を読み込み中...",
+    "invited_header": "招待されています ({{count}})",
+    "inviter_message": "{{name}}から招待が届いています",
+    "fallback_someone": "誰か",
+    "fallback_session": "セッション",
+    "name_taken_error": "その名前は使われています。別の名前を考えましょう！",
+    "generic_error": "うまくいきませんでした。もう一度お試しください。",
+    "join_error": "セッションに参加できませんでした",
+    "decline_error": "招待を辞退できませんでした",
+    "empty_state": "まず友達を追加してから一緒に計画を始めましょう。"
+  },
+  "consent": {
+    "headline": "一つお知らせ",
+    "body": "Minglaは、あなたが共有した好み、バイブ、位置情報を使って、本当に気に入る体験を見つけます。データはあなたのもの。売却することはなく、いつでも削除できます。"
+  },
+  "getting_experiences": {
+    "loading_1": "近くのスポットを確認中...",
+    "loading_2": "好みとマッチング中...",
+    "loading_3": "隠れた名所を探し中...",
+    "loading_4": "もうすぐです..."
+  },
+  "occasions": {
+    "birthday": "誕生日",
+    "valentines": "バレンタインデー",
+    "mothers_day": "母の日",
+    "fathers_day": "父の日",
+    "christmas": "クリスマス"
+  }
+}

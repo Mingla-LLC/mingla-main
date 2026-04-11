@@ -1,0 +1,18 @@
+{
+  "header.title": "Κοινοποίηση Εμπειρίας",
+  "empty.no_data": "Δεν υπάρχουν δεδομένα εμπειρίας",
+  "card.nearby": "Κοντά",
+  "card.suggested_schedule": "Προτεινόμενο Πρόγραμμα",
+  "card.per_person": "ανά άτομο",
+  "share_to": "Κοινοποίηση σε:",
+  "platform.messages": "Μηνύματα",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Περισσότερες επιλογές κοινοποίησης",
+  "actions.copy_link": "Αντιγραφή συνδέσμου",
+  "actions.copy_message": "Αντιγραφή Μηνύματος",
+  "alerts.copy_error": "Αποτυχία αντιγραφής μηνύματος στο πρόχειρο",
+  "alerts.share_error": "Αποτυχία κοινοποίησης. Δοκίμασε ξανά.",
+  "alerts.error_title": "Σφάλμα"
+}

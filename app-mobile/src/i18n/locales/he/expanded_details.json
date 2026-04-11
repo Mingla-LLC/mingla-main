@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "שמור",
+    "saved": "נשמר",
+    "schedule": "תזמן",
+    "scheduled": "מתוזמן",
+    "policies_reservations": "מדיניות והזמנות",
+    "i_went_here": "הייתי כאן",
+    "been_there": "הייתי שם",
+    "on_it": "על זה...",
+    "visited_label": "ביקרת במקום הזה",
+    "mark_visited_label": "סמן מקום זה כביקור",
+    "visited_hint": "הקש כדי להסיר את סימון הביקור",
+    "mark_visited_hint": "מתעד את הביקור ופותח תהליך ביקורת",
+    "opening_hours": "שעות פתיחה",
+    "open_now": "פתוח עכשיו",
+    "closed": "סגור",
+    "show_all_hours": "הצג את כל השעות",
+    "show_less": "הצג פחות",
+    "select_date": "בחר תאריך",
+    "select_time": "בחר שעה",
+    "cancel": "ביטול",
+    "next": "הבא",
+    "done": "סיום",
+    "error_save": "שמירת הכרטיס נכשלה. נסה שוב.",
+    "error_login": "עליך להיות מחובר כדי לתזמן כרטיסים.",
+    "error_invalid_date": "התאריך שנבחר אינו חוקי. נסה שוב.",
+    "schedule_failed_title": "התזמון נכשל",
+    "schedule_failed_body": "לא הצלחנו להוסיף ליומן. נסה שוב.",
+    "place_closed_title": "מקום סגור",
+    "place_closed_body": "המקום סגור בתאריך ובשעה שנבחרו. בחר שעה אחרת.",
+    "choose_another_time": "בחר שעה אחרת",
+    "some_stops_closed_title": "חלק מהתחנות עשויות להיות סגורות",
+    "change_time": "שנה שעה",
+    "schedule_anyway": "תזמן בכל זאת",
+    "scheduled_toast": "תוזמן! {{title}} הועבר ליומן שלך",
+    "closed_message": "המקום סגור בתאריך ובשעה שנבחרו. הקש \"תזמן\" כדי לבחור שעה אחרת.",
+    "share_prompt": "שתף את {{title}} עם חברים"
+  },
+  "busyness": {
+    "traffic": "תנועה",
+    "busy_level": "רמת עומס",
+    "busy": "עמוס",
+    "clear_roads": "כבישים פנויים",
+    "clear": "פנוי",
+    "moderate": "בינוני",
+    "heavy": "כבד"
+  },
+  "match_factors": {
+    "title": "פירוט התאמה",
+    "location": "מיקום",
+    "budget": "תקציב",
+    "category": "קטגוריה",
+    "time": "זמן",
+    "popularity": "פופולריות",
+    "excellent": "מצוין",
+    "good": "טוב",
+    "fair": "סביר",
+    "poor": "חלש",
+    "summary": "גורמים אלה קובעים עד כמה החוויה מתאימה להעדפות שלך. ציונים גבוהים יותר מצביעים על התאמה טובה יותר."
+  },
+  "weather": {
+    "weather": "מזג אוויר",
+    "clear": "בהיר",
+    "cloudy": "מעונן",
+    "rainy": "גשום",
+    "snowy": "שלגי",
+    "stormy": "סוער"
+  },
+  "timeline": {
+    "start": "התחלה",
+    "stop": "תחנה {{number}}",
+    "open_in_maps": "פתח במפות",
+    "then": "אחר כך..."
+  },
+  "companion_stops": {
+    "title": "התחל את הטיול",
+    "subtitle": "התחל באחד מהמקומות הקרובים לפני ההליכה",
+    "reviews_count": "({{count}} ביקורות)"
+  },
+  "highlights": {
+    "title": "דגשים"
+  },
+  "description": {
+    "show_less": "הצג פחות",
+    "read_more": "קרא עוד"
+  },
+  "card_info": {
+    "nearby": "בקרבת מקום"
+  }
+}

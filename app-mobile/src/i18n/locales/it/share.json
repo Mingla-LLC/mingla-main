@@ -1,0 +1,18 @@
+{
+  "header.title": "Condividi Esperienza",
+  "empty.no_data": "Nessun dato disponibile",
+  "card.nearby": "Nelle vicinanze",
+  "card.suggested_schedule": "Programma Suggerito",
+  "card.per_person": "a persona",
+  "share_to": "Condividi su:",
+  "platform.messages": "Messaggi",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Altre opzioni di condivisione",
+  "actions.copy_link": "Copia link",
+  "actions.copy_message": "Copia Messaggio",
+  "alerts.copy_error": "Copia del messaggio non riuscita",
+  "alerts.share_error": "Condivisione non riuscita. Riprova.",
+  "alerts.error_title": "Errore"
+}

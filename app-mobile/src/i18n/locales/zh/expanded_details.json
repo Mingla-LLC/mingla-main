@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "收藏",
+    "saved": "已收藏",
+    "schedule": "安排日程",
+    "scheduled": "已安排",
+    "policies_reservations": "政策与预订",
+    "i_went_here": "我去过这里",
+    "been_there": "去过了",
+    "on_it": "处理中...",
+    "visited_label": "您到访过此地",
+    "mark_visited_label": "标记为已到访",
+    "visited_hint": "点击移除到访标记",
+    "mark_visited_hint": "记录您的到访并打开评价流程",
+    "opening_hours": "营业时间",
+    "open_now": "营业中",
+    "closed": "已关闭",
+    "show_all_hours": "显示全部时间",
+    "show_less": "收起",
+    "select_date": "选择日期",
+    "select_time": "选择时间",
+    "cancel": "取消",
+    "next": "下一步",
+    "done": "完成",
+    "error_save": "保存卡片失败，请重试。",
+    "error_login": "请先登录以安排卡片日程。",
+    "error_invalid_date": "所选日期无效，请重试。",
+    "schedule_failed_title": "安排失败",
+    "schedule_failed_body": "无法添加到您的日历，请重试。",
+    "place_closed_title": "地点已关闭",
+    "place_closed_body": "此地点在所选日期和时间已关闭，请选择其他时间。",
+    "choose_another_time": "选择其他时间",
+    "some_stops_closed_title": "部分站点可能已关闭",
+    "change_time": "更改时间",
+    "schedule_anyway": "仍然安排",
+    "scheduled_toast": "已安排！{{title}} 已添加到您的日历",
+    "closed_message": "此地点在所选日期和时间已关闭。点击\"安排日程\"选择其他时间。",
+    "share_prompt": "与好友分享 {{title}}"
+  },
+  "busyness": {
+    "traffic": "交通",
+    "busy_level": "繁忙程度",
+    "busy": "繁忙",
+    "clear_roads": "道路畅通",
+    "clear": "畅通",
+    "moderate": "适中",
+    "heavy": "拥堵"
+  },
+  "match_factors": {
+    "title": "匹配分析",
+    "location": "位置",
+    "budget": "预算",
+    "category": "类别",
+    "time": "时间",
+    "popularity": "热度",
+    "excellent": "极佳",
+    "good": "良好",
+    "fair": "一般",
+    "poor": "较差",
+    "summary": "这些因素决定了此体验与您偏好的匹配程度。分数越高，匹配度越好。"
+  },
+  "weather": {
+    "weather": "天气",
+    "clear": "晴朗",
+    "cloudy": "多云",
+    "rainy": "雨天",
+    "snowy": "雪天",
+    "stormy": "暴风雨"
+  },
+  "timeline": {
+    "start": "起点",
+    "stop": "站点 {{number}}",
+    "open_in_maps": "在地图中打开",
+    "then": "然后..."
+  },
+  "companion_stops": {
+    "title": "开始您的漫步",
+    "subtitle": "散步前先到附近这些地方逛逛",
+    "reviews_count": "（{{count}} 条评价）"
+  },
+  "highlights": {
+    "title": "亮点"
+  },
+  "description": {
+    "show_less": "收起",
+    "read_more": "阅读更多"
+  },
+  "card_info": {
+    "nearby": "附近"
+  }
+}

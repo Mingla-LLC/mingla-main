@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Notifiche",
+    "unread": "{{count}} non lette",
+    "markAllRead": "Segna tutto come letto",
+    "clearAll": "Cancella tutto"
+  },
+  "filters": {
+    "all": "Tutti",
+    "social": "Social",
+    "sessions": "Sessioni",
+    "messages": "Messaggi"
+  },
+  "timeAgo": {
+    "justNow": "Proprio ora"
+  },
+  "dateGroups": {
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "thisWeek": "Questa Settimana",
+    "earlier": "Precedenti"
+  },
+  "actions": {
+    "accept": "Accetta",
+    "decline": "Rifiuta",
+    "join": "Unisciti",
+    "upgrade": "Aggiorna",
+    "review": "Recensisci",
+    "actionFailed": "Azione fallita. Tocca per riprovare."
+  },
+  "emptyState": {
+    "title": "Sei aggiornato",
+    "subtitle": "Le nuove attività appariranno qui."
+  },
+  "errorState": {
+    "title": "Qualcosa è andato storto",
+    "subtitle": "Impossibile caricare le notifiche.",
+    "tryAgain": "Riprova"
+  },
+  "offline": {
+    "banner": "Sei offline — mostrando notifiche salvate"
+  }
+}

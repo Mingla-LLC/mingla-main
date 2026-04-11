@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "ACCOUNT",
+    "billing_label": "Billing",
+    "billing_description": "Erkekage your plan ve subscription",
+    "account_settings_label": "Account Ayarlar",
+    "account_settings_description": "Gizlilik, preferences, ve account management",
+    "upload_profile_photo_title": "Upload Profil Fotoğraf",
+    "upload_profile_photo_body": "Choose how you want to update your profile photo",
+    "change_profile_photo_title": "Change Profil Fotoğraf",
+    "change_profile_photo_body": "Upload a new photo or remove the existing one",
+    "error_remove_photo": "Failed to remove profile photo.",
+    "error_take_photo": "Failed to take photo. Please try again.",
+    "error_select_image": "Failed to select image. Please try again.",
+    "error_upload_photo": "Failed to upload profile photo.",
+    "error_save_bio": "Failed to save bio."
+  },
+  "edit_bio": {
+    "title": "Edit Bio",
+    "placeholder": "Tell people about yourself",
+    "save": "Kaydet"
+  },
+  "edit_interests": {
+    "title": "Edit Interests",
+    "what_are_you_into": "What are you into?",
+    "what_do_you_like": "What do you like?",
+    "save": "Kaydet"
+  },
+  "hero": {
+    "your_name_here": "Your name here",
+    "user_fallback": "Kullanıcı",
+    "first_name": "First name",
+    "last_name": "Last name",
+    "name_error_empty": "Please enter your name.",
+    "name_error_failed": "Failed to save. Try again.",
+    "somewhere_cool": "Somewhere cool, probably",
+    "tap_to_add_bio": "Tap to add a bio",
+    "hint_add_photo": "People trust faces. Ekle a photo so friends know it's you.",
+    "hint_add_bio": "A short bio goes a long way. What should people know about you?",
+    "cancel_editing": "İptal editing",
+    "save_name": "Kaydet name"
+  },
+  "stats": {
+    "saved": "SAVED",
+    "friends": "FRIENDS",
+    "boards": "BOARDS",
+    "places": "PLACES",
+    "streak": "STREAK",
+    "level": "LEVEL",
+    "motivation_start": "Your stats start building the moment you do something. Go explore.",
+    "motivation_close": "{{count}} more place to hit {{tier}}. You're close.",
+    "motivation_close_plural": "{{count}} more places to hit {{tier}}. You're close.",
+    "motivation_week": "A whole week. Consistency looks good on you.",
+    "motivation_month": "30 days straight. You might be unstoppable."
+  },
+  "paired_section": {
+    "see_all": "See all"
+  },
+  "interests": {
+    "edit_accessibility": "Edit your interests",
+    "your_interests": "Your Interests",
+    "interests": "Interests",
+    "not_shared": "Hayırt shared",
+    "empty_text": "Tell us what you're into — it helps us find your next favorite thing.",
+    "add_interests": "Ekle Interests"
+  },
+  "friend": {
+    "loading_profile": "Loading profile…",
+    "profile_unavailable_title": "This profile isn't available",
+    "profile_unavailable_body": "This person's profile may be private, or you may not be connected.",
+    "about": "About",
+    "location_label": "Konum",
+    "not_shared": "Hayırt shared",
+    "mingla_level": "Mingla level",
+    "interests": "Interests",
+    "message": "Message",
+    "friend_fallback": "Arkadaş"
+  }
+}

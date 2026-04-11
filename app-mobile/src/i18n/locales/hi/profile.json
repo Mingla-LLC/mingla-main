@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "खाता",
+    "billing_label": "बिलिंग",
+    "billing_description": "अपनी योजना और सदस्यता प्रबंधित करें",
+    "account_settings_label": "खाता सेटिंग्स",
+    "account_settings_description": "गोपनीयता, प्राथमिकताएँ और खाता प्रबंधन",
+    "upload_profile_photo_title": "प्रोफ़ाइल फ़ोटो अपलोड करें",
+    "upload_profile_photo_body": "चुनें कि आप अपनी प्रोफ़ाइल फ़ोटो कैसे अपडेट करना चाहते हैं",
+    "change_profile_photo_title": "प्रोफ़ाइल फ़ोटो बदलें",
+    "change_profile_photo_body": "नई फ़ोटो अपलोड करें या मौजूदा हटाएँ",
+    "error_remove_photo": "प्रोफ़ाइल फ़ोटो हटाने में विफल।",
+    "error_take_photo": "फ़ोटो लेने में विफल। कृपया फिर से कोशिश करें।",
+    "error_select_image": "छवि चुनने में विफल। कृपया फिर से कोशिश करें।",
+    "error_upload_photo": "प्रोफ़ाइल फ़ोटो अपलोड करने में विफल।",
+    "error_save_bio": "बायो सहेजने में विफल।"
+  },
+  "edit_bio": {
+    "title": "बायो संपादित करें",
+    "placeholder": "लोगों को अपने बारे में बताएँ",
+    "save": "सहेजें"
+  },
+  "edit_interests": {
+    "title": "रुचियाँ संपादित करें",
+    "what_are_you_into": "आपकी रुचि किसमें है?",
+    "what_do_you_like": "आपको क्या पसंद है?",
+    "save": "सहेजें"
+  },
+  "hero": {
+    "your_name_here": "यहाँ आपका नाम",
+    "user_fallback": "उपयोगकर्ता",
+    "first_name": "पहला नाम",
+    "last_name": "उपनाम",
+    "name_error_empty": "कृपया अपना नाम दर्ज करें।",
+    "name_error_failed": "सहेजने में विफल। फिर से कोशिश करें।",
+    "somewhere_cool": "शायद किसी बढ़िया जगह पर",
+    "tap_to_add_bio": "बायो जोड़ने के लिए टैप करें",
+    "hint_add_photo": "लोग चेहरों पर भरोसा करते हैं। फ़ोटो जोड़ें ताकि दोस्त जानें कि यह आप हैं।",
+    "hint_add_bio": "छोटा सा बायो बहुत काम आता है। लोगों को आपके बारे में क्या जानना चाहिए?",
+    "cancel_editing": "संपादन रद्द करें",
+    "save_name": "नाम सहेजें"
+  },
+  "stats": {
+    "saved": "सहेजे गए",
+    "friends": "मित्र",
+    "boards": "बोर्ड",
+    "places": "जगहें",
+    "streak": "स्ट्रीक",
+    "level": "स्तर",
+    "motivation_start": "आपके आँकड़े उसी पल बनने शुरू होते हैं जब आप कुछ करते हैं। जाइए और एक्सप्लोर कीजिए।",
+    "motivation_close": "{{tier}} तक पहुँचने में {{count}} और जगह। आप करीब हैं।",
+    "motivation_close_plural": "{{tier}} तक पहुँचने में {{count}} और जगहें। आप करीब हैं।",
+    "motivation_week": "पूरा एक हफ़्ता। निरंतरता आप पर अच्छी लगती है।",
+    "motivation_month": "लगातार 30 दिन। शायद आपको रोका नहीं जा सकता।"
+  },
+  "paired_section": {
+    "see_all": "सभी देखें"
+  },
+  "interests": {
+    "edit_accessibility": "अपनी रुचियाँ संपादित करें",
+    "your_interests": "आपकी रुचियाँ",
+    "interests": "रुचियाँ",
+    "not_shared": "साझा नहीं किया गया",
+    "empty_text": "बताइए आपकी रुचि किसमें है — इससे हमें आपकी अगली पसंदीदा चीज़ ढूँढने में मदद मिलती है।",
+    "add_interests": "रुचियाँ जोड़ें"
+  },
+  "friend": {
+    "loading_profile": "प्रोफ़ाइल लोड हो रही है…",
+    "profile_unavailable_title": "यह प्रोफ़ाइल उपलब्ध नहीं है",
+    "profile_unavailable_body": "इस व्यक्ति की प्रोफ़ाइल निजी हो सकती है, या आप जुड़े नहीं हैं।",
+    "about": "परिचय",
+    "location_label": "स्थान",
+    "not_shared": "साझा नहीं किया गया",
+    "mingla_level": "Mingla स्तर",
+    "interests": "रुचियाँ",
+    "message": "संदेश",
+    "friend_fallback": "मित्र"
+  }
+}

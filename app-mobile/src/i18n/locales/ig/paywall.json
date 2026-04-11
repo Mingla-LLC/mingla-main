@@ -1,0 +1,10 @@
+{
+  "close": "Mechie ụgwọ",
+  "manage_subscription": "Jikwaa ndenye aha",
+  "alerts.restored_title": "Eweghachiri ịzụ ahịa",
+  "alerts.restored_message": "Eweghachiri ịzụ ahịa gị gara aga nke ọma.",
+  "alerts.restored_done": "Emechara",
+  "alerts.purchase_failed": "Ịzụ ahịa adaghị",
+  "toast.purchase_delayed": "Ịzụ ahịa gara nke ọma. Ihe ndị a nwere ike were obere oge iji malite.",
+  "toast.restore_delayed": "Eweghachiri ịzụ ahịa. Ihe ndị a nwere ike were obere oge iji malite."
+}

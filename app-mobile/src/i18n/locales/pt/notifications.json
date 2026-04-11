@@ -1,0 +1,10 @@
+{
+  "header": { "title": "Notificações", "unread": "{{count}} não lidas", "markAllRead": "Marcar tudo como lido", "clearAll": "Limpar tudo" },
+  "filters": { "all": "Todas", "social": "Social", "sessions": "Sessões", "messages": "Mensagens" },
+  "timeAgo": { "justNow": "Agora mesmo" },
+  "dateGroups": { "today": "Hoje", "yesterday": "Ontem", "thisWeek": "Esta semana", "earlier": "Anteriores" },
+  "actions": { "accept": "Aceitar", "decline": "Recusar", "join": "Participar", "upgrade": "Fazer upgrade", "review": "Analisar", "actionFailed": "Ação falhou. Toque para tentar novamente." },
+  "emptyState": { "title": "Tudo em dia", "subtitle": "Novas atividades aparecerão aqui." },
+  "errorState": { "title": "Algo deu errado", "subtitle": "Não foi possível carregar notificações.", "tryAgain": "Tentar novamente" },
+  "offline": { "banner": "Você está offline — mostrando notificações em cache" }
+}

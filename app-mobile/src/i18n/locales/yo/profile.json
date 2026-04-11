@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "ÀKÁǸTÌ",
+    "billing_label": "Ìdíyelé",
+    "billing_description": "Ṣàkóso ètò rẹ àti ìforúkọsílẹ̀",
+    "account_settings_label": "Ètò Àkáǹtì",
+    "account_settings_description": "Ìkọ̀kọ̀, àṣàyàn, àti ìṣàkóso àkáǹtì",
+    "upload_profile_photo_title": "Gbéyọ Àwòrán Profáìlì",
+    "upload_profile_photo_body": "Yan bí o ṣe fẹ́ ṣe ìmúdójúìwọ̀n àwòrán profáìlì rẹ",
+    "change_profile_photo_title": "Yí Àwòrán Profáìlì Padà",
+    "change_profile_photo_body": "Gbéyọ àwòrán tuntun tàbí yọ èyí tó wà",
+    "error_remove_photo": "Kò lè yọ àwòrán profáìlì.",
+    "error_take_photo": "Kò lè ya àwòrán. Jọ̀wọ́ tún gbìyànjú.",
+    "error_select_image": "Kò lè yan àwòrán. Jọ̀wọ́ tún gbìyànjú.",
+    "error_upload_photo": "Kò lè gbéyọ àwòrán profáìlì.",
+    "error_save_bio": "Kò lè tọ́jú bíó."
+  },
+  "edit_bio": {
+    "title": "Ṣàtúnṣe Bíó",
+    "placeholder": "Sọ fún àwọn ènìyàn nípa ara rẹ",
+    "save": "Tọ́jú"
+  },
+  "edit_interests": {
+    "title": "Ṣàtúnṣe Àwọn Ìfẹ́ràn",
+    "what_are_you_into": "Kíni o nífẹ̀ẹ́ sí?",
+    "what_do_you_like": "Kíni o fẹ́ràn?",
+    "save": "Tọ́jú"
+  },
+  "hero": {
+    "your_name_here": "Orúkọ rẹ níbí",
+    "user_fallback": "Olùlò",
+    "first_name": "Orúkọ àkọ́kọ́",
+    "last_name": "Orúkọ ìdílé",
+    "name_error_empty": "Jọ̀wọ́ tẹ orúkọ rẹ.",
+    "name_error_failed": "Kò lè tọ́jú. Tún gbìyànjú.",
+    "somewhere_cool": "Ibi tó dára, bóyá",
+    "tap_to_add_bio": "Fọwọ́ kàn láti fi bíó kún",
+    "hint_add_photo": "Àwọn ènìyàn ní ìgbàgbọ́ nínú ojú. Fi àwòrán kún kí àwọn ọ̀rẹ́ mọ̀ pé ìwọ ni.",
+    "hint_add_bio": "Bíó kúkurú ń ṣe nnkan púpọ̀. Kíni àwọn ènìyàn yẹ kí wọ́n mọ̀ nípa rẹ?",
+    "cancel_editing": "Fagilé àtúnṣe",
+    "save_name": "Tọ́jú orúkọ"
+  },
+  "stats": {
+    "saved": "TÍ A TỌJÚ",
+    "friends": "ỌRẸ́",
+    "boards": "BỌỌDÙ",
+    "places": "IBI",
+    "streak": "ÌTẸ̀SÍWÁJÚ",
+    "level": "ÌPÈ̀LÈ̀",
+    "motivation_start": "Àwọn ọ̀nà rẹ ń bẹ̀rẹ̀ ní àkókò tí o bá ṣe nǹkan. Lọ ṣàwárí.",
+    "motivation_close": "Ibi {{count}} síi láti dé {{tier}}. O ti sún mọ́.",
+    "motivation_close_plural": "Àwọn ibi {{count}} síi láti dé {{tier}}. O ti sún mọ́.",
+    "motivation_week": "Ọ̀sẹ̀ kan lápapọ̀. Ìṣọ̀kan dára lórí rẹ.",
+    "motivation_month": "Ọjọ́ 30 ní ọ̀kọ̀ọ̀kan. O lè jẹ́ aláìṣeé dá dúró."
+  },
+  "paired_section": {
+    "see_all": "Wo gbogbo"
+  },
+  "interests": {
+    "edit_accessibility": "Ṣàtúnṣe àwọn ìfẹ́ràn rẹ",
+    "your_interests": "Àwọn Ìfẹ́ràn Rẹ",
+    "interests": "Àwọn Ìfẹ́ràn",
+    "not_shared": "Kò pín",
+    "empty_text": "Sọ fún wa ohun tí o nífẹ̀ẹ́ sí — ó ń ràn wá lọ́wọ́ láti rí ohun tó tẹ́ ọ lọ́rùn.",
+    "add_interests": "Fi Ìfẹ́ràn Kún"
+  },
+  "friend": {
+    "loading_profile": "Ń gbéyọ profáìlì…",
+    "profile_unavailable_title": "Profáìlì yìí kò sí",
+    "profile_unavailable_body": "Profáìlì ẹni yìí le jẹ́ àdáni, tàbí ẹ̀yin kò sopọ̀.",
+    "about": "Nípa",
+    "location_label": "Ibi",
+    "not_shared": "Kò pín",
+    "mingla_level": "Ìpele Mingla",
+    "interests": "Àwọn Ìfẹ́ràn",
+    "message": "Ìfiránṣẹ́",
+    "friend_fallback": "Ọ̀rẹ́"
+  }
+}

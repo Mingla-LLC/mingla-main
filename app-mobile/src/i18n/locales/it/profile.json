@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "ACCOUNT",
+    "billing_label": "Fatturazione",
+    "billing_description": "Gestisci il tuo piano e abbonamento",
+    "account_settings_label": "Impostazioni Account",
+    "account_settings_description": "Privacy, preferences, e account management",
+    "upload_profile_photo_title": "Carica Profilo Foto",
+    "upload_profile_photo_body": "Choose how you want to update your profile photo",
+    "change_profile_photo_title": "Change Profilo Foto",
+    "change_profile_photo_body": "Carica a new photo or remove the existing one",
+    "error_remove_photo": "Fallito to remove profile photo.",
+    "error_take_photo": "Fallito to take photo. Please try again.",
+    "error_select_image": "Fallito to select image. Please try again.",
+    "error_upload_photo": "Fallito to upload profile photo.",
+    "error_save_bio": "Fallito to save bio."
+  },
+  "edit_bio": {
+    "title": "Modifica Bio",
+    "placeholder": "Tell people about yourself",
+    "save": "Salva"
+  },
+  "edit_interests": {
+    "title": "Modifica Interessi",
+    "what_are_you_into": "Cosa ti interessa?",
+    "what_do_you_like": "Cosa ti piace?",
+    "save": "Salva"
+  },
+  "hero": {
+    "your_name_here": "Il tuo nome qui",
+    "user_fallback": "Utente",
+    "first_name": "Nome",
+    "last_name": "Cognome",
+    "name_error_empty": "Please enter your name.",
+    "name_error_failed": "Fallito to save. Try again.",
+    "somewhere_cool": "Somewhere cool, probably",
+    "tap_to_add_bio": "Tap to add a bio",
+    "hint_add_photo": "Persone trust faces. Aggiungi a photo so friends know it's you.",
+    "hint_add_bio": "A short bio goes a long way. What should people know about you?",
+    "cancel_editing": "Annulla editing",
+    "save_name": "Salva name"
+  },
+  "stats": {
+    "saved": "SALVATI",
+    "friends": "AMICI",
+    "boards": "BACHECHE",
+    "places": "LUOGHI",
+    "streak": "SERIE",
+    "level": "LIVELLO",
+    "motivation_start": "Your stats start building the moment you do something. Go explore.",
+    "motivation_close": "{{count}} more place to hit {{tier}}. You're close.",
+    "motivation_close_plural": "{{count}} more places to hit {{tier}}. You're close.",
+    "motivation_week": "A whole week. Consistency looks good on you.",
+    "motivation_month": "30 days straight. You might be unstoppable."
+  },
+  "paired_section": {
+    "see_all": "Vedi tutto"
+  },
+  "interests": {
+    "edit_accessibility": "Edit your interests",
+    "your_interests": "I Tuoi Interessi",
+    "interests": "Interessi",
+    "not_shared": "Non condiviso",
+    "empty_text": "Tell us what you're into — it helps us find your next favorite thing.",
+    "add_interests": "Aggiungi Interessi"
+  },
+  "friend": {
+    "loading_profile": "Loading profile…",
+    "profile_unavailable_title": "This profile isn't available",
+    "profile_unavailable_body": "This person's profile may be private, or you may not be connected.",
+    "about": "About",
+    "location_label": "Posizione",
+    "not_shared": "Non condiviso",
+    "mingla_level": "Mingla level",
+    "interests": "Interessi",
+    "message": "Messaggio",
+    "friend_fallback": "Amico"
+  }
+}

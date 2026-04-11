@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Aviseringar",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Meddelanden"
+  },
+  "timeAgo": {
+    "justNow": "Just nu"
+  },
+  "dateGroups": {
+    "today": "Idag",
+    "yesterday": "Igår",
+    "thisWeek": "This Week",
+    "earlier": "Earlier"
+  },
+  "actions": {
+    "accept": "Acceptera",
+    "decline": "Avböj",
+    "join": "Gå med",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Något gick fel",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Try Again"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

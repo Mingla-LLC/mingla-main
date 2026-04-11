@@ -1,0 +1,103 @@
+{
+  "boardTabs": { "cards": "কার্ড", "discussion": "আলোচনা" },
+  "boardDiscussionTab": {
+    "noConnection": "সংযোগ নেই", "noConnectionMsg": "অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন এবং আবার চেষ্টা করুন।",
+    "deleteMessage": "বার্তা মুছুন", "deleteMessageConfirm": "আপনি কি এই বার্তা মুছে ফেলতে চান?",
+    "cancel": "বাতিল", "delete": "মুছুন", "errorUpdateMsg": "বার্তা আপডেট করতে ব্যর্থ", "errorDeleteMsg": "বার্তা মুছতে ব্যর্থ",
+    "justNow": "এইমাত্র", "minutesAgo": "{{count}}মি আগে", "hoursAgo_one": "{{count}} ঘণ্টা আগে", "hoursAgo_other": "{{count}} ঘণ্টা আগে",
+    "error": "ত্রুটি", "typeMessage": "একটি বার্তা লিখুন...", "editMessage": "বার্তা সম্পাদনা...", "typing": "টাইপ করছে...",
+    "inputPlaceholder": "@ দিয়ে উল্লেখ করুন, # দিয়ে কার্ড ট্যাগ করুন...", "messagePlaceholder": "বার্তা..."
+  },
+  "boardPreferencesForm": {
+    "categories": "বিভাগ", "categoriesDesc": "একসাথে অন্বেষণ করতে চান এমন অভিজ্ঞতার ধরন নির্বাচন করুন",
+    "experienceTypes": "অভিজ্ঞতার ধরন", "experienceTypesDesc": "কী ধরনের অভিজ্ঞতার পরিকল্পনা করছেন?",
+    "budget": "বাজেট", "budgetDesc": "ঐচ্ছিক: অভিজ্ঞতার জন্য বাজেট সীমা নির্ধারণ করুন",
+    "groupSize": "দলের আকার", "groupSizeDesc": "কতজন অংশগ্রহণ করবে?",
+    "adventurous": "দুঃসাহসিক", "firstDate": "প্রথম ডেট", "romantic": "রোমান্টিক",
+    "groupFun": "গ্রুপ মজা", "picnicDates": "পিকনিক ডেট", "takeAStroll": "ঘুরে আসুন"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "অ্যাডমিন সুবিধা", "manageBoard": "বোর্ড পরিচালনা", "renameBoard": "বোর্ড পুনঃনামকরণ",
+    "inviteParticipants": "অংশগ্রহণকারী আমন্ত্রণ", "turnOffNotifications": "বিজ্ঞপ্তি বন্ধ করুন", "turnOnNotifications": "বিজ্ঞপ্তি চালু করুন",
+    "leaveBoard": "বোর্ড ছেড়ে দিন", "leaving": "ছেড়ে দিচ্ছে...", "deleteBoard": "বোর্ড মুছুন",
+    "editSessionName": "সেশনের নাম সম্পাদনা", "enterSessionName": "সেশনের নাম দিন", "save": "সেভ করুন",
+    "errorGeneric": "ত্রুটি", "errorLeave": "বোর্ড ছেড়ে দিতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "permissionDenied": "অনুমতি প্রত্যাখ্যাত", "permissionEditName": "শুধুমাত্র সেশন তৈরিকারী বা অ্যাডমিনরা সেশনের নাম সম্পাদনা করতে পারেন।",
+    "errorEmptyName": "সেশনের নাম খালি রাখা যাবে না।", "success": "সফল", "nameUpdated": "সেশনের নাম সফলভাবে আপডেট হয়েছে।",
+    "updateFailed": "আপডেট ব্যর্থ", "updateFailedMsg": "সেশনের নাম আপডেট করা যায়নি।",
+    "permissionDelete": "শুধুমাত্র অ্যাডমিনরা এই সেশন মুছতে পারেন।", "sessionDeleted": "সেশন সফলভাবে মুছে ফেলা হয়েছে।",
+    "deleteFailed": "মুছে ফেলা ব্যর্থ", "deleteFailedMsg": "এই সেশন মুছে ফেলা যায়নি।",
+    "permissionDeleteBoard": "শুধুমাত্র সেশন তৈরিকারী বা অ্যাডমিনরা এই সেশন মুছতে পারেন।",
+    "deleteSessionTitle": "সেশন মুছুন",
+    "deleteSessionMsg": "আপনি কি \"{{name}}\" মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না এবং সমস্ত কার্ড, ভোট ও আলোচনা স্থায়ীভাবে মুছে যাবে।",
+    "leaveSessionTitle": "বোর্ড ছেড়ে দিন", "leaveSessionMsg": "আপনি কি \"{{name}}\" ছেড়ে দিতে চান?",
+    "namePlaceholder": "সেশনের নাম দিন"
+  },
+  "cardDiscussionModal": {
+    "discussion": "আলোচনা", "cardDiscussion": "কার্ড আলোচনা", "errorLoadMsg": "বার্তা লোড করতে ব্যর্থ",
+    "errorSendMsg": "বার্তা পাঠাতে ব্যর্থ", "errorUpdateMsg": "বার্তা আপডেট করতে ব্যর্থ",
+    "deleteMessage": "বার্তা মুছুন", "deleteMessageConfirm": "আপনি কি এই বার্তা মুছে ফেলতে চান?",
+    "errorDeleteMsg": "বার্তা মুছতে ব্যর্থ", "typeMessage": "একটি বার্তা লিখুন...", "error": "ত্রুটি",
+    "justNow": "এইমাত্র", "unknown": "অজানা"
+  },
+  "cardTagPopover": { "tagACard": "একটি কার্ড ট্যাগ করুন", "untitled": "শিরোনামহীন", "experience": "অভিজ্ঞতা", "noCardsSaved": "এখনও কোনো কার্ড সেভ হয়নি" },
+  "inviteCodeDisplay": {
+    "inviteCode": "আমন্ত্রণ কোড", "description": "আপনি যাদের আমন্ত্রণ জানাতে চান তাদের সাথে এই কোড শেয়ার করুন",
+    "copied": "কপি হয়েছে!", "copiedMsg": "আমন্ত্রণ কোড ক্লিপবোর্ডে কপি হয়েছে", "copyCode": "কোড কপি করুন",
+    "errorCopy": "কোড কপি করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "infoText": "প্রাপকরা বোর্ড সেশনে যোগ দিতে অ্যাপে এই কোড প্রবেশ করতে পারেন"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "আমন্ত্রণ লিংক শেয়ার", "description": "আপনি যাকে আমন্ত্রণ জানাতে চান তাকে এই লিংক পাঠান",
+    "orShareCode": "অথবা এই কোড শেয়ার করুন:", "copied": "কপি হয়েছে!", "copiedMsg": "আমন্ত্রণ লিংক ক্লিপবোর্ডে কপি হয়েছে",
+    "copyLink": "লিংক কপি", "share": "শেয়ার", "shareMessage": "Mingla-তে আমার বোর্ড সেশনে যোগ দিন! {{link}}",
+    "errorCopy": "লিংক কপি করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।", "errorShare": "লিংক শেয়ার করতে ব্যর্থ", "error": "ত্রুটি"
+  },
+  "inviteMethodSelector": {
+    "title": "আপনি কীভাবে মানুষদের আমন্ত্রণ জানাতে চান?", "description": "অংশগ্রহণকারীদের আমন্ত্রণ জানাতে এক বা একাধিক পদ্ধতি বেছে নিন",
+    "friendsList": "বন্ধু তালিকা", "friendsListDesc": "আপনার বন্ধুদের থেকে আমন্ত্রণ জানান",
+    "shareLink": "লিংক শেয়ার", "shareLinkDesc": "একটি লিংক কপি করে শেয়ার করুন",
+    "qrCode": "QR কোড", "qrCodeDesc": "স্ক্যানের জন্য QR কোড তৈরি করুন",
+    "inviteCode": "আমন্ত্রণ কোড", "inviteCodeDesc": "একটি সহজ কোড শেয়ার করুন"
+  },
+  "inviteParticipantsModal": {
+    "title": "অংশগ্রহণকারী আমন্ত্রণ", "addFriendsTo": "\"{{name}}\"-এ বন্ধু যোগ করুন",
+    "searchPlaceholder": "বন্ধু খুঁজুন...", "loadingFriends": "বন্ধু লোড হচ্ছে...", "noUsersFound": "কোনো ব্যবহারকারী পাওয়া যায়নি",
+    "allFriendsInBoard": "সব বন্ধু ইতিমধ্যে এই বোর্ডে আছে", "noFriendsAvailable": "কোনো বন্ধু উপলব্ধ নেই",
+    "tryDifferentName": "ভিন্ন নাম বা ইউজারনেম চেষ্টা করুন", "addMoreFriends": "আমন্ত্রণ জানাতে আরও বন্ধু যোগ করুন",
+    "sendInvites": "আমন্ত্রণ পাঠান ({{count}})", "invitesSent": "আমন্ত্রণ পাঠানো হয়েছে",
+    "invitesSentMsg": "\"{{name}}\"-এ সফলভাবে {{count}} জন বন্ধু{{plural}} আমন্ত্রণ জানানো হয়েছে।",
+    "errorSendInvites": "আমন্ত্রণ পাঠাতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।", "error": "ত্রুটি"
+  },
+  "manageBoardModal": {
+    "manageBoard": "বোর্ড পরিচালনা", "members": "সদস্য", "admin": "অ্যাডমিন", "creator": "তৈরিকারী", "you": "(আপনি)",
+    "makeAdmin": "অ্যাডমিন করুন", "removeAdmin": "অ্যাডমিন সরান", "removeMember": "সরান", "leaveBoard": "বোর্ড ছেড়ে দিন",
+    "permissionDenied": "অনুমতি প্রত্যাখ্যাত", "permissionRemove": "শুধুমাত্র অ্যাডমিনরা এই বোর্ড থেকে সদস্য সরাতে পারেন।",
+    "cannotRemoveCreator": "সরানো যায় না", "cannotRemoveCreatorMsg": "বোর্ড তৈরিকারীকে সরানো যায় না। তারা নিজেই বোর্ড ছেড়ে দিতে পারেন।",
+    "cannotRemoveSelf": "নিজেকে সরাতে পারবেন না", "cannotRemoveSelfMsg": "এই বোর্ড থেকে নিজেকে সরাতে 'বোর্ড ছেড়ে দিন' অপশন ব্যবহার করুন।",
+    "memberRemoved": "সদস্য সরানো হয়েছে", "memberRemovedMsg": "{{name}} বোর্ড থেকে সরানো হয়েছে।",
+    "errorRemove": "সদস্য সরাতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "permissionAdmin": "শুধুমাত্র অ্যাডমিনরা অ্যাডমিন সুবিধা পরিচালনা করতে পারেন।",
+    "cannotModifyCreator": "পরিবর্তন করা যায় না", "cannotModifyCreatorMsg": "বোর্ড তৈরিকারীর অ্যাডমিন স্ট্যাটাস পরিবর্তন করা যায় না।",
+    "errorPromote": "সদস্যকে অ্যাডমিনে প্রমোট করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "errorDemote": "অ্যাডমিন সুবিধা সরাতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।",
+    "leaveBoardTitle": "বোর্ড ছেড়ে দিন", "leaveBoardMsg": "আপনি কি \"{{name}}\" ছেড়ে দিতে চান?",
+    "boardDeleted": "বোর্ড মুছে ফেলা হয়েছে", "boardDeletedMsg": "বোর্ডটি মুছে ফেলা হয়েছে কারণ সক্রিয় থাকতে কমপক্ষে ২ জন সদস্য প্রয়োজন।",
+    "leftBoard": "বোর্ড ছেড়ে দিয়েছেন", "leftBoardMsg": "আপনি সফলভাবে বোর্ড ছেড়ে দিয়েছেন।",
+    "errorLeave": "বোর্ড ছেড়ে দিতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।", "error": "ত্রুটি"
+  },
+  "mentionPopover": { "mentionSomeone": "কাউকে উল্লেখ করুন" },
+  "participantAvatars": { "noParticipants": "কোনো অংশগ্রহণকারী নেই", "participant_one": "{{count}} অংশগ্রহণকারী", "participant_other": "{{count}} অংশগ্রহণকারী" },
+  "qrCodeDisplay": { "noData": "কোনো ডেটা নেই", "noDataMsg": "ডেটা ছাড়া QR কোড তৈরি করা যায় না", "qrCode": "QR কোড", "scanInstruction": "বোর্ড সেশনে যোগ দিতে এই QR কোড স্ক্যান করুন", "orUseCode": "অথবা এই কোড ব্যবহার করুন:" },
+  "boardMemberManagement": {
+    "manageBoard": "বোর্ড পরিচালনা", "creator": "তৈরিকারী", "admin": "অ্যাডমিন", "you": "(আপনি)",
+    "boardInfo": "বোর্ড তথ্য", "totalMembers": "মোট সদস্য: {{count}}", "admins": "অ্যাডমিন: {{count}}",
+    "minMembersWarning": "কোনো সদস্য চলে গেলে বোর্ড মুছে যাবে (ন্যূনতম ২ সদস্য প্রয়োজন)",
+    "removeConfirm": "এই বোর্ড থেকে <bold>{{name}}</bold>-কে সরাবেন?", "removeMember": "সদস্য সরান", "cancel": "বাতিল",
+    "demoteConfirm": "<bold>{{name}}</bold>-এর অ্যাডমিন সুবিধা সরাবেন?", "removeAdmin": "অ্যাডমিন সরান",
+    "leaveConfirm": "এই বোর্ড ছেড়ে দেবেন?", "leaveAdminNote": "অন্য একজন সদস্যকে এলোমেলোভাবে অ্যাডমিন নির্ধারণ করা হবে",
+    "leaveDeleteNote": "বোর্ড স্থায়ীভাবে মুছে যাবে (২ জনের কম সদস্য বাকি)", "leaveUndoNote": "এই কাজটি পূর্বাবস্থায় ফেরানো যাবে না",
+    "leaveBoard": "বোর্ড ছেড়ে দিন"
+  },
+  "member": { "you_suffix": " (আপনি)" }
+}

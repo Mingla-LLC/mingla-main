@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Wá èdè...",
+    "close_accessibility": "Pa àṣàyàn èdè"
+  },
+  "country_picker": {
+    "search_placeholder": "Wá àwọn orílẹ̀-èdè...",
+    "close_accessibility": "Pa àṣàyàn orílẹ̀-èdè"
+  },
+  "welcome": {
+    "greeting_hey": "Pẹ̀lẹ́ o",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Àṣàyàn tó dára",
+    "greeting_walked_in": "ṣẹ̀ṣẹ̀ wọlé.",
+    "we_know": "A mọ̀",
+    "good_taste": "àṣàyàn tó dára",
+    "just_walked_in": "ṣẹ̀ṣẹ̀ wọlé.",
+    "name_prompt": "Ṣùgbọ́n a kò mọ orúkọ rẹ sí i.",
+    "placeholder_first": "Orúkọ àkọ́kọ́",
+    "placeholder_last": "Orúkọ ìdílé",
+    "cta": "Ẹ jẹ́ ká lọ"
+  },
+  "phone": {
+    "headline": "Kíni nọ́mbà rẹ?",
+    "body": "A ó fi kóòdù ránṣẹ́. Ìṣẹ́jú àáyá méjì ni.",
+    "verified_headline": "Ó parí.",
+    "verified_body": "A ti fi nọ́mbà rẹ múlẹ̀. Ọ̀kan kù.",
+    "consent_text": "Mo gbà láti gba ìfiránṣẹ́ láti ọ̀dọ̀ Mingla nípasẹ̀ SMS tàbí ìpè fóònù, títí kan àwọn kóòdù ìfìdímúlẹ̀, ìpè ọ̀rẹ́, àti ìránnilétí. Dáhùn STOP láti dáwọ́ tàbí HELP fún ìrànlọ́wọ́. Wo ",
+    "terms_of_service": "Àwọn Òfin Iṣẹ́",
+    "and": " àti ",
+    "privacy_policy": "Ìlànà Ìkọ̀kọ̀",
+    "consent_accessibility": "Gbà láti gba ìfiránṣẹ́ láti ọ̀dọ̀ Mingla",
+    "cta_send_code": "Fi kóòdù ránṣẹ́",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Orílẹ̀-èdè tí a yàn: {{name}}. Fọwọ́ kàn láti yí padà."
+  },
+  "otp": {
+    "headline": "Tẹ kóòdù náà",
+    "body": "A ti fi ránṣẹ́ sí {{phone}}",
+    "verifying": "Ń fìdí múlẹ̀...",
+    "sending": "Ń fi ránṣẹ́...",
+    "resend_countdown": "Tún fi ránṣẹ́ ní {{seconds}}s",
+    "channel_label": "Kò rí i? Gbìyànjú ọ̀nà mìíràn:",
+    "resend_sms": "Tún fi SMS ránṣẹ́",
+    "resend_sms_accessibility": "Tún fi kóòdù ránṣẹ́ nípasẹ̀ SMS",
+    "call_me": "Pè mí dípò",
+    "call_me_accessibility": "Gba kóòdù nípasẹ̀ ìpè fóònù",
+    "error_max_attempts": "Ìgbìyànjú mẹ́ta, kò ṣiṣẹ́. Gbìyànjú ọ̀nà mìíràn ní ìsàlẹ̀.",
+    "error_wrong_code": "Kóòdù yẹn kò tọ́. Tún gbìyànjú.",
+    "cta_verify": "Fìdí múlẹ̀",
+    "otp_accessibility": "Kóòdù ìfìdímúlẹ̀ ẹ̀ẹ̀kan"
+  },
+  "gender": {
+    "headline": "Sọ fún wa nípa rẹ.",
+    "body": "Kí a lè ṣe àṣàyàn tó dára fún ọ.",
+    "man": "Ọkùnrin",
+    "woman": "Obìnrin",
+    "non_binary": "Kìí ṣe méjì",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Aláìníakọ-abo",
+    "prefer_not_to_say": "Kò fẹ́ sọ"
+  },
+  "details": {
+    "headline": "Ó fẹ́rẹ̀ẹ́ parí.",
+    "body": "Àwọn pàtàkì díẹ̀. A ó ṣe ìyókù.",
+    "country_label": "Orílẹ̀-èdè",
+    "country_helper": "Ó ṣètò owó rẹ àti ìwọ̀n",
+    "dob_label": "Ọjọ́ ìbí",
+    "dob_placeholder": "Ìgbà wo ni ọjọ́ ìbí rẹ?"
+  },
+  "value_prop": {
+    "beat1_headline": "Mọ̀ ibi tó yẹ kí o lọ.",
+    "beat1_sub": "Dáwọ́ àròjinlẹ̀ dúró. Bẹ̀rẹ̀ ìlọ.",
+    "beat2_headline": "Fún ìfẹ́, ọ̀rẹ́ & àdáni.",
+    "beat2_sub": "Ètò fún gbogbo irú àjò.",
+    "beat3_headline": "Rí i ní kíákíá. Lọ.",
+    "beat3_sub": "Fà. Tọ́jú. Lọ."
+  },
+  "intents": {
+    "headline": "Báyìí ni apá ìgbádùn.",
+    "body": "Fọwọ́ kàn gbogbo ìhùwàsí tó dà bí tìrẹ.",
+    "caption": "Yan èyí tó mú ọ yá jùlọ.",
+    "adventurous": "Ìrìnàjò",
+    "adventurous_desc": "Ṣàwárí ohun tí a kò retí",
+    "first_date": "Ìpàdé Àkọ́kọ́",
+    "first_date_desc": "Ṣe àkọ́kọ́ tó dára",
+    "romantic": "Ìfẹ́",
+    "romantic_desc": "Mú iná ṣíṣe pọ̀ sí i",
+    "group_fun": "Ìgbádùn Ẹgbẹ́",
+    "group_fun_desc": "Bí wọ́n ti pọ̀ tó, bẹ́ẹ̀ ni ìgbádùn",
+    "picnic_dates": "Ọjọ́ Ìṣẹ́ríre",
+    "picnic_dates_desc": "Oòrùn, ipanu, àkókò tó dára",
+    "take_a_stroll": "Rìnrìn Àjò",
+    "take_a_stroll_desc": "Rìn pẹ̀lú ète"
+  },
+  "location": {
+    "granted_headline": "A ti rí ọ — {{city}}!",
+    "granted_tap_hint": "Fọwọ́ kàn láti tẹsiwaju",
+    "settings_headline": "Ìyípadà kékeré kan",
+    "settings_body": "A ti pa ibi tí o wà fún Mingla.\nṢí i nínú Ètò kí a lè rí\nàwọn ibi tó dára jùlọ nítòsí rẹ.",
+    "open_settings": "Ṣí Ètò",
+    "retry_turned_on": "Mo ti ṣí i — tún gbìyànjú",
+    "retry_finding": "Ń wá ọ...",
+    "type_city": "Tẹ orúkọ ìlú mi dípò",
+    "error_headline": "Kò lè rí ibi tí o wà",
+    "error_body": "Àmì ti rọ tàbí GPS ṣì ń mura.\nTún gbìyànjú tàbí tẹ orúkọ ìlú rẹ.",
+    "try_again": "Tún Gbìyànjú",
+    "idle_headline": "Àwọn ibi tó dára jùlọ bẹ̀rẹ̀ níbí",
+    "idle_body": "Ṣí GPS kí a lè rí àwọn ibi\ntó wúni lórí nítòsí rẹ.",
+    "enable_location": "Ṣí Ibi",
+    "privacy_hint": "Ibi tí o wà jẹ́ àṣírí. Nígbà gbogbo.",
+    "cta_enable": "Ṣí ibi"
+  },
+  "celebration": {
+    "headline": "Ó ṣeé ṣe.",
+    "body": "Àṣàyàn mẹ́rin ní kíákíá, o sì parí."
+  },
+  "manual_location": {
+    "headline": "Fi àmì sí orí àwòrán ilẹ̀",
+    "body": "Fún wa ní àdírẹ́sì rẹ gangan — títí dé ojú ọ̀nà — a ó sì ṣí àwọn ibi tó dára jùlọ ní àyíká rẹ.",
+    "search_placeholder": "Bẹ̀rẹ̀ sí í tẹ àdírẹ́sì rẹ...",
+    "no_results": "Hmm, a kò rí i. Gbìyànjú ojú ọ̀nà tàbí àdúgbò tó sún mọ́.",
+    "helper": "Bí ó ṣe péye tó, bẹ́ẹ̀ ni àwọn ìṣedúró rẹ yóò dára.",
+    "privacy": "Ibi tí o wà gangan wà láàárín àwa méjì. Nígbà gbogbo.",
+    "change_accessibility": "Yí ibi tí a yàn padà"
+  },
+  "categories": {
+    "headline": "Irú àwọn ibi wo ni o nífẹ̀ẹ́ sí?",
+    "body": "Yan tó mẹ́ta tó bá ìhùwàsí rẹ mu.",
+    "cap_message": "Mẹ́ta ló pọ̀ jùlọ. Yọ ọ̀kan kúrò láti yan òmíìràn."
+  },
+  "budget": {
+    "headline": "Ibi tó bá ọ mu",
+    "body": "Yan àwọn owó tó bá ọ mu.",
+    "caption": "Ohun ọ̀fẹ́ máa ń hàn nígbà gbogbo."
+  },
+  "transport": {
+    "headline": "Báwo ni o ṣe ń rìnrìn àjò?",
+    "body": "Ó ń ràn wá lọ́wọ́ láti mọ àkókò ìrìnàjò."
+  },
+  "travel_time": {
+    "headline": "Báwo ni ó ṣe jìnnà tó?",
+    "body": "Ṣètò àgbègbè ìtùnú rẹ.",
+    "custom_toggle": "Ṣètò tìrẹ",
+    "custom_placeholder": "Ìṣẹ́jú 5 – 120",
+    "unit": "ìṣẹ́jú",
+    "caption": "Tó ìṣẹ́jú {{minutes}} nípasẹ̀ {{mode}}",
+    "error": "Kò lè tọ́jú àwọn àṣàyàn rẹ. Fọwọ́ kàn Tún gbìyànjú."
+  },
+  "friends": {
+    "headline": "Àwọn ènìyàn rẹ",
+    "body": "Fi àwọn ènìyàn tó sún mọ́ ọ jùlọ kún, lẹ́yìn náà ẹ so ara pọ̀. Ẹ̀yin yóò rí àwọn nǹkan láti ṣe papọ̀, ẹ rí ohun tí wọ́n fẹ́ràn, ẹ sì ṣe ètò ohun tó dára ní ẹ̀gbẹ́ ara yín.",
+    "waiting_header": "Wọ́n ń dúró dè ọ́",
+    "added_feedback": "A ti fi kún",
+    "declined_feedback": "A ti kọ̀",
+    "add_friends_header": "Fi ọ̀rẹ́ kún",
+    "your_people_header": "Àwọn ènìyàn rẹ",
+    "status_friends": "Àwọn ọ̀rẹ́",
+    "status_request_sent": "A ti fi ìbéèrè ránṣẹ́",
+    "status_invited": "A ti pè",
+    "pair_paired": "A ti so pọ̀",
+    "pair_pending": "Ń dúró",
+    "pair_queued": "Ń dúró",
+    "pair_button": "So pọ̀",
+    "pair_queued_hint": "Yóò ṣiṣẹ́ nígbà tí wọ́n bá darapọ̀",
+    "empty_state": "Kò sí ọ̀rẹ́ níbí sí i. Fi ẹnìkan tí o máa ṣe ètò pẹ̀lú kún.",
+    "pair_requests_header": "Àwọn ìbéèrè ìsopọ̀",
+    "paired_feedback": "A ti so pọ̀!",
+    "pair_wants": "Ó fẹ́ so pọ̀ mọ́ ọ",
+    "pair_curated": "Wo àwọn ìrírí tí a ṣe fún ẹ̀yin méjèèjì.",
+    "alert_self_title": "Ìwọ ni yẹn",
+    "alert_self_message": "O kò lè fi ara rẹ kún gẹ́gẹ́ bí ọ̀rẹ́.",
+    "alert_duplicate_title": "A ti fi kún tẹ́lẹ̀",
+    "alert_duplicate_message": "Ẹni yìí ti wà nínú àkójọ rẹ.",
+    "alert_pair_error": "Kò lè fi ìbéèrè ìsopọ̀ ránṣẹ́",
+    "alert_accept_error": "Kò lè gba ìbéèrè ìsopọ̀. Tún gbìyànjú.",
+    "alert_decline_error": "Kò lè kọ ìbéèrè ìsopọ̀. Tún gbìyànjú.",
+    "alert_generic_error": "Kò lè ṣe ìbéèrè náà. Tún gbìyànjú.",
+    "share_message": "Pẹ̀lẹ́ o! Darapọ̀ mọ́ mi lórí Mingla kí a lè rí àwọn ìrírí tó dára papọ̀. https://usemingla.com",
+    "fallback_user": "Olùlò"
+  },
+  "collaborations": {
+    "headline": "Ṣe ètò nǹkan papọ̀",
+    "body": "Bẹ̀rẹ̀ ìgbà pẹ̀lú àwọn ọ̀rẹ́ rẹ. Rí àwọn nǹkan láti ṣe, dìbò lórí àwọn tó wù yín jùlọ, kí ẹ sì mú u ṣẹlẹ̀.",
+    "whos_in": "Ta ló wà nínú?",
+    "session_name_label": "Orúkọ ìgbà",
+    "session_name_placeholder": "àpẹẹrẹ Ètò ìparí ọ̀sẹ̀, Èrò fún alẹ́...",
+    "created_header": "Àwọn ìgbà tí o dá ({{count}})",
+    "loading_invites": "Ń gbéyọ àwọn ìpè...",
+    "invited_header": "A ti pè ọ́ ({{count}})",
+    "inviter_message": "{{name}} pè ọ́",
+    "fallback_someone": "Ẹnìkan",
+    "fallback_session": "Ìgbà",
+    "name_taken_error": "Orúkọ yẹn ti wà. Ṣe àtúnṣe!",
+    "generic_error": "Hmm, kò ṣiṣẹ́. Tún gbìyànjú.",
+    "join_error": "Kò lè darapọ̀ mọ́ ìgbà",
+    "decline_error": "Kò lè kọ ìpè",
+    "empty_state": "Fi ọ̀rẹ́ kún ní àkọ́kọ́ — lẹ́yìn náà o lè bẹ̀rẹ̀ ètò papọ̀."
+  },
+  "consent": {
+    "headline": "Nǹkan kan ní kíákíá",
+    "body": "Mingla ń lo ohun tí o pín — àṣà rẹ, ìhùwàsí rẹ, ibi tí o wà — láti rí àwọn ìrírí tí o máa nífẹ̀ẹ́ sí gan-an. Dátà rẹ jẹ́ tìrẹ. A kì í ta à, o sì lè pa á rẹ́ nígbàkúgbà."
+  },
+  "getting_experiences": {
+    "loading_1": "Ń ṣàyẹ̀wò àwọn ibi nítòsí...",
+    "loading_2": "Ń bá àṣàyàn rẹ mu...",
+    "loading_3": "Ń wá àwọn ibi àìkàwé...",
+    "loading_4": "Ó fẹ́rẹ̀ẹ́ parí..."
+  },
+  "occasions": {
+    "birthday": "Ọjọ́ ìbí",
+    "valentines": "Ọjọ́ Ìfẹ́",
+    "mothers_day": "Ọjọ́ Ìyá",
+    "fathers_day": "Ọjọ́ Bàbá",
+    "christmas": "Kérésìmesì"
+  }
+}

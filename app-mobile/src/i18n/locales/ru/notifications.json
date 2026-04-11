@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Уведомления",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all"
+  },
+  "filters": {
+    "all": "All",
+    "social": "Social",
+    "sessions": "Sessions",
+    "messages": "Сообщения"
+  },
+  "timeAgo": {
+    "justNow": "Только что"
+  },
+  "dateGroups": {
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "thisWeek": "This Week",
+    "earlier": "Earlier"
+  },
+  "actions": {
+    "accept": "Принять",
+    "decline": "Отклонить",
+    "join": "Присоединиться",
+    "upgrade": "Upgrade",
+    "review": "Review",
+    "actionFailed": "Action failed. Tap to retry."
+  },
+  "emptyState": {
+    "title": "You're all caught up",
+    "subtitle": "New activity will show up here."
+  },
+  "errorState": {
+    "title": "Что-то пошло не так",
+    "subtitle": "Couldn't load notifications.",
+    "tryAgain": "Try Again"
+  },
+  "offline": {
+    "banner": "You're offline — showing cached notifications"
+  }
+}

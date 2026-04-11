@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "حفظ",
+    "saved": "محفوظ",
+    "schedule": "جدولة",
+    "scheduled": "مجدول",
+    "policies_reservations": "السياسات والحجوزات",
+    "i_went_here": "زرت هذا المكان",
+    "been_there": "كنت هناك",
+    "on_it": "جارٍ...",
+    "visited_label": "لقد زرت هذا المكان",
+    "mark_visited_label": "وضع علامة زيارة لهذا المكان",
+    "visited_hint": "اضغط لإزالة علامة الزيارة",
+    "mark_visited_hint": "يسجّل زيارتك ويفتح نموذج التقييم",
+    "opening_hours": "ساعات العمل",
+    "open_now": "مفتوح الآن",
+    "closed": "مغلق",
+    "show_all_hours": "عرض جميع الأوقات",
+    "show_less": "عرض أقل",
+    "select_date": "اختر التاريخ",
+    "select_time": "اختر الوقت",
+    "cancel": "إلغاء",
+    "next": "التالي",
+    "done": "تم",
+    "error_save": "فشل حفظ البطاقة. يرجى المحاولة مرة أخرى.",
+    "error_login": "يجب تسجيل الدخول لجدولة البطاقات.",
+    "error_invalid_date": "التاريخ المحدد غير صالح. يرجى المحاولة مرة أخرى.",
+    "schedule_failed_title": "فشلت الجدولة",
+    "schedule_failed_body": "تعذّرت إضافة هذا إلى تقويمك. يرجى المحاولة مرة أخرى.",
+    "place_closed_title": "المكان مغلق",
+    "place_closed_body": "هذا المكان مغلق في التاريخ والوقت المحددين. يرجى اختيار وقت آخر.",
+    "choose_another_time": "اختر وقتاً آخر",
+    "some_stops_closed_title": "بعض المحطات قد تكون مغلقة",
+    "change_time": "تغيير الوقت",
+    "schedule_anyway": "جدولة على أي حال",
+    "scheduled_toast": "تمت الجدولة! تم نقل {{title}} إلى تقويمك",
+    "closed_message": "هذا المكان مغلق في التاريخ والوقت المحددين. اضغط \"جدولة\" لاختيار وقت آخر.",
+    "share_prompt": "مشاركة {{title}} مع الأصدقاء"
+  },
+  "busyness": {
+    "traffic": "حركة المرور",
+    "busy_level": "مستوى الازدحام",
+    "busy": "مزدحم",
+    "clear_roads": "طرق خالية",
+    "clear": "خالٍ",
+    "moderate": "متوسط",
+    "heavy": "مزدحم جداً"
+  },
+  "match_factors": {
+    "title": "تفصيل التطابق",
+    "location": "الموقع",
+    "budget": "الميزانية",
+    "category": "الفئة",
+    "time": "الوقت",
+    "popularity": "الشعبية",
+    "excellent": "ممتاز",
+    "good": "جيد",
+    "fair": "مقبول",
+    "poor": "ضعيف",
+    "summary": "تحدد هذه العوامل مدى تطابق هذه التجربة مع تفضيلاتك. الدرجات الأعلى تعني توافقاً أفضل."
+  },
+  "weather": {
+    "weather": "الطقس",
+    "clear": "صافٍ",
+    "cloudy": "غائم",
+    "rainy": "ممطر",
+    "snowy": "ثلجي",
+    "stormy": "عاصف"
+  },
+  "timeline": {
+    "start": "البداية",
+    "stop": "المحطة {{number}}",
+    "open_in_maps": "فتح في الخرائط",
+    "then": "ثم..."
+  },
+  "companion_stops": {
+    "title": "ابدأ جولتك",
+    "subtitle": "ابدأ من أحد هذه الأماكن القريبة قبل جولتك",
+    "reviews_count": "({{count}} تقييمات)"
+  },
+  "highlights": {
+    "title": "أبرز النقاط"
+  },
+  "description": {
+    "show_less": "عرض أقل",
+    "read_more": "اقرأ المزيد"
+  },
+  "card_info": {
+    "nearby": "قريب"
+  }
+}

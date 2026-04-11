@@ -1,0 +1,18 @@
+{
+  "header.title": "Dela Experience",
+  "empty.no_data": "Nej experience data available",
+  "card.nearby": "I närheten",
+  "card.suggested_schedule": "Suggested Schemalägg",
+  "card.per_person": "per person",
+  "share_to": "Dela to:",
+  "platform.messages": "Meddelanden",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "More sharing options",
+  "actions.copy_link": "Copy link",
+  "actions.copy_message": "Copy Message",
+  "alerts.copy_error": "Failed to copy message to clipboard",
+  "alerts.share_error": "Failed to share. Please try again.",
+  "alerts.error_title": "Fel"
+}

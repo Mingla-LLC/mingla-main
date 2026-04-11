@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Rechercher des langues...",
+    "close_accessibility": "Fermer le sélecteur de langue"
+  },
+  "country_picker": {
+    "search_placeholder": "Rechercher des pays...",
+    "close_accessibility": "Fermer le sélecteur de pays"
+  },
+  "welcome": {
+    "greeting_hey": "Salut",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Le bon goût",
+    "greeting_walked_in": "vient d'arriver.",
+    "we_know": "On reconnaît",
+    "good_taste": "le bon goût",
+    "just_walked_in": "dès qu'il entre.",
+    "name_prompt": "Mais on ne connaît pas encore votre nom.",
+    "placeholder_first": "Prénom",
+    "placeholder_last": "Nom",
+    "cta": "C'est parti"
+  },
+  "phone": {
+    "headline": "Votre numéro ?",
+    "body": "On vous envoie un code. Deux secondes.",
+    "verified_headline": "C'est bon.",
+    "verified_body": "Votre numéro est enregistré. Une chose de faite.",
+    "consent_text": "J'accepte de recevoir des messages de Mingla par SMS ou appel téléphonique, y compris des codes de vérification, des invitations d'amis et des rappels d'expériences. Répondez STOP pour vous désinscrire ou HELP pour obtenir de l'aide. Consultez nos ",
+    "terms_of_service": "Conditions d'utilisation",
+    "and": " et ",
+    "privacy_policy": "Politique de confidentialité",
+    "consent_accessibility": "Accepter de recevoir des messages de Mingla",
+    "cta_send_code": "Envoyer le code",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Pays sélectionné : {{name}}. Appuyez pour changer."
+  },
+  "otp": {
+    "headline": "Entrez le code",
+    "body": "Envoyé au {{phone}}",
+    "verifying": "Vérification...",
+    "sending": "Envoi...",
+    "resend_countdown": "Renvoyer dans {{seconds}}s",
+    "channel_label": "Pas reçu ? Essayez autrement :",
+    "resend_sms": "Renvoyer par SMS",
+    "resend_sms_accessibility": "Renvoyer le code par SMS",
+    "call_me": "Appelez-moi",
+    "call_me_accessibility": "Recevoir le code par appel téléphonique",
+    "error_max_attempts": "Trois essais, pas de chance. Essayez une autre méthode ci-dessous.",
+    "error_wrong_code": "Ce code n'est pas le bon. Réessayez.",
+    "cta_verify": "Vérifier",
+    "otp_accessibility": "Code de vérification à usage unique"
+  },
+  "gender": {
+    "headline": "Parlez-nous de vous.",
+    "body": "Pour mieux personnaliser vos suggestions.",
+    "man": "Homme",
+    "woman": "Femme",
+    "non_binary": "Non-binaire",
+    "transgender": "Transgenre",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genre fluide",
+    "agender": "Agenre",
+    "prefer_not_to_say": "Je préfère ne pas dire"
+  },
+  "details": {
+    "headline": "Presque fini.",
+    "body": "Juste l'essentiel. On s'occupe du reste.",
+    "country_label": "Pays",
+    "country_helper": "Définit votre devise et vos unités de mesure",
+    "dob_label": "Date de naissance",
+    "dob_placeholder": "Quelle est votre date de naissance ?"
+  },
+  "value_prop": {
+    "beat1_headline": "Sachez exactement où aller.",
+    "beat1_sub": "Arrêtez de deviner. Lancez-vous.",
+    "beat2_headline": "Pour les rendez-vous, les amis et les sorties solo.",
+    "beat2_sub": "Des plans pour chaque type de sortie.",
+    "beat3_headline": "Trouvez vite. Foncez.",
+    "beat3_sub": "Swipez. Enregistrez. Partez."
+  },
+  "intents": {
+    "headline": "Place au fun.",
+    "body": "Appuyez sur chaque ambiance qui vous correspond.",
+    "caption": "Choisissez celle qui vous enthousiasme le plus.",
+    "adventurous": "Aventurier",
+    "adventurous_desc": "Explorer l'inattendu",
+    "first_date": "Premiers rendez-vous",
+    "first_date_desc": "Réussir la première impression",
+    "romantic": "Romantique",
+    "romantic_desc": "Raviver la flamme",
+    "group_fun": "Sortie en groupe",
+    "group_fun_desc": "Plus on est de fous, plus on rit",
+    "picnic_dates": "Pique-niques",
+    "picnic_dates_desc": "Soleil, en-cas, bons moments",
+    "take_a_stroll": "Se balader",
+    "take_a_stroll_desc": "Flâner avec un but"
+  },
+  "location": {
+    "granted_headline": "C'est noté — {{city}} !",
+    "granted_tap_hint": "Appuyez pour continuer",
+    "settings_headline": "Un petit réglage",
+    "settings_body": "La localisation est désactivée pour Mingla.\nActivez-la dans les Paramètres pour qu'on\ntrouve les meilleurs endroits près de vous.",
+    "open_settings": "Ouvrir les paramètres",
+    "retry_turned_on": "C'est activé — réessayer",
+    "retry_finding": "Recherche en cours...",
+    "type_city": "Saisir ma ville",
+    "error_headline": "Impossible de vous localiser",
+    "error_body": "Signal faible ou GPS en cours de démarrage.\nRéessayez ou saisissez votre ville.",
+    "try_again": "Réessayer",
+    "idle_headline": "De meilleurs endroits commencent ici",
+    "idle_body": "Activez le GPS pour qu'on trouve des\npépites juste à côté de chez vous.",
+    "enable_location": "Activer la localisation",
+    "privacy_hint": "Votre position reste privée. Toujours.",
+    "cta_enable": "Activer la localisation"
+  },
+  "celebration": {
+    "headline": "Bravo !",
+    "body": "Quatre choix rapides et c'est fait."
+  },
+  "manual_location": {
+    "headline": "Placez votre épingle sur la carte",
+    "body": "Donnez-nous votre adresse exacte — jusqu'à la rue — et on vous trouvera les meilleurs endroits autour de vous.",
+    "search_placeholder": "Commencez à taper votre adresse...",
+    "no_results": "Hmm, on n'a pas trouvé. Essayez une rue ou un quartier à proximité.",
+    "helper": "Plus c'est précis, meilleures seront vos recommandations.",
+    "privacy": "Votre emplacement exact reste entre nous. Toujours.",
+    "change_accessibility": "Modifier l'emplacement sélectionné"
+  },
+  "categories": {
+    "headline": "Quel type d'endroits aimez-vous ?",
+    "body": "Choisissez jusqu'à 3 qui correspondent à votre style.",
+    "cap_message": "Maximum 3 catégories. Désélectionnez-en une pour en choisir une autre."
+  },
+  "budget": {
+    "headline": "Votre budget idéal",
+    "body": "Choisissez les gammes de prix qui vous conviennent.",
+    "caption": "Les activités gratuites apparaissent toujours aussi."
+  },
+  "transport": {
+    "headline": "Comment vous déplacez-vous ?",
+    "body": "Pour calculer vos temps de trajet."
+  },
+  "travel_time": {
+    "headline": "Jusqu'où irez-vous ?",
+    "body": "Définissez votre zone de confort.",
+    "custom_toggle": "Personnaliser",
+    "custom_placeholder": "5 – 120 minutes",
+    "unit": "min",
+    "caption": "Jusqu'à {{minutes}} min en {{mode}}",
+    "error": "Impossible d'enregistrer vos préférences. Appuyez sur Réessayer."
+  },
+  "friends": {
+    "headline": "Votre cercle proche",
+    "body": "Ajoutez vos proches, puis associez-vous. Vous découvrirez des activités ensemble, verrez ce qu'ils aiment, et organiserez vos sorties côte à côte.",
+    "waiting_header": "En attente",
+    "added_feedback": "Ajouté",
+    "declined_feedback": "Refusé",
+    "add_friends_header": "Ajouter des amis",
+    "your_people_header": "Vos proches",
+    "status_friends": "Amis",
+    "status_request_sent": "Demande envoyée",
+    "status_invited": "Invité",
+    "pair_paired": "Associé",
+    "pair_pending": "En attente",
+    "pair_queued": "En file d'attente",
+    "pair_button": "Associer",
+    "pair_queued_hint": "S'active quand ils rejoignent",
+    "empty_state": "Pas encore d'amis ici. Ajoutez quelqu'un avec qui vous feriez vraiment des plans.",
+    "pair_requests_header": "Demandes d'association",
+    "paired_feedback": "Associés !",
+    "pair_wants": "Veut s'associer avec vous",
+    "pair_curated": "Découvrez des expériences sélectionnées pour vous deux.",
+    "alert_self_title": "C'est vous",
+    "alert_self_message": "Vous ne pouvez pas vous ajouter comme ami.",
+    "alert_duplicate_title": "Déjà ajouté",
+    "alert_duplicate_message": "Cette personne est déjà dans votre liste.",
+    "alert_pair_error": "Impossible d'envoyer la demande d'association",
+    "alert_accept_error": "Impossible d'accepter la demande d'association. Réessayez.",
+    "alert_decline_error": "Impossible de refuser la demande d'association. Réessayez.",
+    "alert_generic_error": "Impossible de traiter la demande. Réessayez.",
+    "share_message": "Salut ! Rejoins-moi sur Mingla et trouvons ensemble des expériences incroyables. https://usemingla.com",
+    "fallback_user": "Utilisateur"
+  },
+  "collaborations": {
+    "headline": "Organisez quelque chose ensemble",
+    "body": "Lancez une session avec votre groupe. Découvrez des activités, votez pour vos favoris, et concrétisez vos plans.",
+    "whos_in": "Qui participe ?",
+    "session_name_label": "Nom de la session",
+    "session_name_placeholder": "ex. Plans du weekend, Idées de soirée...",
+    "created_header": "Sessions créées ({{count}})",
+    "loading_invites": "Chargement des invitations...",
+    "invited_header": "Vous êtes invité ({{count}})",
+    "inviter_message": "{{name}} vous a invité",
+    "fallback_someone": "Quelqu'un",
+    "fallback_session": "Session",
+    "name_taken_error": "Ce nom est pris. Soyez créatif !",
+    "generic_error": "Hmm, ça n'a pas marché. Réessayez.",
+    "join_error": "Impossible de rejoindre la session",
+    "decline_error": "Impossible de refuser l'invitation",
+    "empty_state": "Ajoutez d'abord des amis — ensuite vous pourrez planifier ensemble."
+  },
+  "consent": {
+    "headline": "Une dernière chose",
+    "body": "Mingla utilise ce que vous avez partagé — vos goûts, votre style, votre emplacement — pour trouver des expériences que vous aimerez vraiment. Vos données restent les vôtres. On ne les vend jamais, et vous pouvez les supprimer à tout moment."
+  },
+  "getting_experiences": {
+    "loading_1": "Vérification des endroits à proximité...",
+    "loading_2": "Correspondance avec vos préférences...",
+    "loading_3": "Recherche de pépites cachées...",
+    "loading_4": "Presque terminé..."
+  },
+  "occasions": {
+    "birthday": "Anniversaire",
+    "valentines": "Saint-Valentin",
+    "mothers_day": "Fête des mères",
+    "fathers_day": "Fête des pères",
+    "christmas": "Noël"
+  }
+}

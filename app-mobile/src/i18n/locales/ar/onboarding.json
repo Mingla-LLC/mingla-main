@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "ابحث عن اللغات...",
+    "close_accessibility": "إغلاق منتقي اللغة"
+  },
+  "country_picker": {
+    "search_placeholder": "ابحث عن الدول...",
+    "close_accessibility": "إغلاق منتقي الدولة"
+  },
+  "welcome": {
+    "greeting_hey": "مرحباً",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "ذوق رفيع",
+    "greeting_walked_in": "دخل للتو.",
+    "we_know": "نعلم أن",
+    "good_taste": "الذوق الرفيع",
+    "just_walked_in": "دخل للتو.",
+    "name_prompt": "لكننا لا نعرف اسمك بعد.",
+    "placeholder_first": "الأول",
+    "placeholder_last": "الأخير",
+    "cta": "هيا بنا"
+  },
+  "phone": {
+    "headline": "ما رقمك؟",
+    "body": "سنرسل رمزاً. يستغرق ثانيتين.",
+    "verified_headline": "أنت جاهز.",
+    "verified_body": "تم تأكيد رقمك. شيء أقل للقلق.",
+    "consent_text": "أوافق على تلقي رسائل من Mingla عبر الرسائل القصيرة أو المكالمات الهاتفية، بما في ذلك رموز التحقق ودعوات الأصدقاء وتذكيرات التجارب. أرسل STOP لإلغاء الاشتراك أو HELP للمساعدة. راجع ",
+    "terms_of_service": "شروط الخدمة",
+    "and": " و ",
+    "privacy_policy": "سياسة الخصوصية",
+    "consent_accessibility": "الموافقة على تلقي رسائل من Mingla",
+    "cta_send_code": "إرسال الرمز",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "الدولة المحددة: {{name}}. اضغط للتغيير."
+  },
+  "otp": {
+    "headline": "أدخل الرمز",
+    "body": "تم الإرسال إلى {{phone}}",
+    "verifying": "جارٍ التحقق...",
+    "sending": "جارٍ الإرسال...",
+    "resend_countdown": "إعادة الإرسال خلال {{seconds}} ثانية",
+    "channel_label": "لم يصلك؟ جرّب طريقة أخرى:",
+    "resend_sms": "إعادة إرسال SMS",
+    "resend_sms_accessibility": "إعادة إرسال الرمز عبر SMS",
+    "call_me": "اتصل بي بدلاً من ذلك",
+    "call_me_accessibility": "تلقي الرمز عبر مكالمة هاتفية",
+    "error_max_attempts": "ثلاث محاولات بدون نجاح. جرّب طريقة مختلفة أدناه.",
+    "error_wrong_code": "هذا الرمز غير صحيح. حاول مرة أخرى.",
+    "cta_verify": "تحقق",
+    "otp_accessibility": "رمز التحقق لمرة واحدة"
+  },
+  "gender": {
+    "headline": "أخبرنا عن نفسك.",
+    "body": "لنتمكن من اختيار الأنسب لك.",
+    "man": "رجل",
+    "woman": "امرأة",
+    "non_binary": "غير ثنائي",
+    "transgender": "متحول جنسياً",
+    "genderqueer": "جندركوير",
+    "genderfluid": "جندرفلويد",
+    "agender": "بدون جنس",
+    "prefer_not_to_say": "أفضل عدم الإفصاح"
+  },
+  "details": {
+    "headline": "أوشكنا على الانتهاء.",
+    "body": "فقط الأساسيات. سنتولى الباقي.",
+    "country_label": "الدولة",
+    "country_helper": "يحدد العملة ووحدات القياس",
+    "dob_label": "تاريخ الميلاد",
+    "dob_placeholder": "متى عيد ميلادك؟"
+  },
+  "value_prop": {
+    "beat1_headline": "اعرف بالضبط أين تذهب.",
+    "beat1_sub": "توقف عن التخمين. ابدأ بالذهاب.",
+    "beat2_headline": "للمواعيد والأصدقاء والمغامرات الفردية.",
+    "beat2_sub": "خطط لكل نوع من الخروج.",
+    "beat3_headline": "اعثر عليه بسرعة. انطلق.",
+    "beat3_sub": "اسحب. احفظ. انطلق."
+  },
+  "intents": {
+    "headline": "الآن الجزء الممتع.",
+    "body": "اضغط على كل أجواء تناسبك.",
+    "caption": "اختر الأكثر إثارة لك.",
+    "adventurous": "مغامرة",
+    "adventurous_desc": "استكشف غير المتوقع",
+    "first_date": "المواعيد الأولى",
+    "first_date_desc": "اجعل الانطباع الأول مثالياً",
+    "romantic": "رومانسي",
+    "romantic_desc": "أشعل الشرارة",
+    "group_fun": "متعة جماعية",
+    "group_fun_desc": "كلما زاد العدد زادت المتعة",
+    "picnic_dates": "نزهات",
+    "picnic_dates_desc": "شمس ووجبات خفيفة وأوقات جميلة",
+    "take_a_stroll": "جولة مشي",
+    "take_a_stroll_desc": "تجوّل بهدف"
+  },
+  "location": {
+    "granted_headline": "تم التحديد — {{city}}!",
+    "granted_tap_hint": "اضغط للمتابعة",
+    "settings_headline": "تبديل سريع",
+    "settings_body": "الموقع مغلق لـ Mingla.\nقم بتشغيله في الإعدادات حتى نتمكن من إيجاد\nأفضل الأماكن بالقرب منك.",
+    "open_settings": "فتح الإعدادات",
+    "retry_turned_on": "لقد شغّلته — أعد المحاولة",
+    "retry_finding": "جارٍ البحث عنك...",
+    "type_city": "اكتب مدينتي بدلاً من ذلك",
+    "error_headline": "تعذّر الحصول على موقعك",
+    "error_body": "إشارة ضعيفة أو GPS لا يزال يعمل.\nحاول مرة أخرى أو اكتب مدينتك بدلاً من ذلك.",
+    "try_again": "حاول مرة أخرى",
+    "idle_headline": "أماكن أفضل تبدأ من هنا",
+    "idle_body": "فعّل GPS حتى نتمكن من إيجاد الجواهر\nالمخفية بالقرب منك.",
+    "enable_location": "تفعيل الموقع",
+    "privacy_hint": "موقعك يبقى خاصاً. دائماً.",
+    "cta_enable": "تفعيل الموقع"
+  },
+  "celebration": {
+    "headline": "أحسنت.",
+    "body": "أربعة اختيارات سريعة وانتهيت."
+  },
+  "manual_location": {
+    "headline": "ضع دبوسك على الخريطة",
+    "body": "أعطنا عنوانك الدقيق — حتى الشارع — وسنكشف لك أفضل الأماكن حولك.",
+    "search_placeholder": "ابدأ بكتابة عنوانك...",
+    "no_results": "لم نتمكن من إيجاده. جرّب شارعاً أو حيّاً قريباً.",
+    "helper": "كلما كان أدق، كانت التوصيات أفضل.",
+    "privacy": "موقعك الدقيق يبقى بيننا. دائماً.",
+    "change_accessibility": "تغيير الموقع المحدد"
+  },
+  "categories": {
+    "headline": "ما نوع الأماكن التي تحبها؟",
+    "body": "اختر حتى 3 تتناسب مع ذوقك.",
+    "cap_message": "الحد الأقصى 3 فئات. ألغِ واحدة لاختيار أخرى."
+  },
+  "budget": {
+    "headline": "نطاقك المفضل",
+    "body": "اختر نطاقات الأسعار المناسبة.",
+    "caption": "الأشياء المجانية تظهر دائماً أيضاً."
+  },
+  "transport": {
+    "headline": "كيف تتنقل؟",
+    "body": "يساعدنا في تحديد أوقات السفر."
+  },
+  "travel_time": {
+    "headline": "كم ستسافر؟",
+    "body": "حدد منطقة راحتك.",
+    "custom_toggle": "حدد بنفسك",
+    "custom_placeholder": "5 – 120 دقيقة",
+    "unit": "دقيقة",
+    "caption": "حتى {{minutes}} دقيقة بواسطة {{mode}}",
+    "error": "تعذّر حفظ تفضيلاتك. اضغط إعادة المحاولة للمحاولة مرة أخرى."
+  },
+  "friends": {
+    "headline": "دائرتك المقربة",
+    "body": "أضف أقرب الناس إليك، ثم اقترن. ستكتشفون أشياء تفعلونها معاً، وترون ما يحبونه، وتخططون لأوقات جميلة جنباً إلى جنب.",
+    "waiting_header": "بانتظارك",
+    "added_feedback": "تمت الإضافة",
+    "declined_feedback": "تم الرفض",
+    "add_friends_header": "إضافة أصدقاء",
+    "your_people_header": "أصدقاؤك",
+    "status_friends": "أصدقاء",
+    "status_request_sent": "تم إرسال الطلب",
+    "status_invited": "تمت الدعوة",
+    "pair_paired": "مقترن",
+    "pair_pending": "قيد الانتظار",
+    "pair_queued": "في الانتظار",
+    "pair_button": "اقتران",
+    "pair_queued_hint": "يتفعل عند انضمامهم",
+    "empty_state": "لا أصدقاء هنا بعد. أضف شخصاً تخطط معه فعلاً.",
+    "pair_requests_header": "طلبات الاقتران",
+    "paired_feedback": "تم الاقتران!",
+    "pair_wants": "يريد الاقتران معك",
+    "pair_curated": "شاهد تجارب مختارة لكليكما.",
+    "alert_self_title": "هذا أنت",
+    "alert_self_message": "لا يمكنك إضافة نفسك كصديق.",
+    "alert_duplicate_title": "مضاف بالفعل",
+    "alert_duplicate_message": "هذا الشخص موجود بالفعل في قائمتك.",
+    "alert_pair_error": "تعذّر إرسال طلب الاقتران",
+    "alert_accept_error": "تعذّر قبول طلب الاقتران. حاول مرة أخرى.",
+    "alert_decline_error": "تعذّر رفض طلب الاقتران. حاول مرة أخرى.",
+    "alert_generic_error": "تعذّرت معالجة الطلب. حاول مرة أخرى.",
+    "share_message": "مرحباً! انضم إليّ على Mingla ولنكتشف تجارب رائعة معاً. https://usemingla.com",
+    "fallback_user": "مستخدم"
+  },
+  "collaborations": {
+    "headline": "خططوا لشيء معاً",
+    "body": "ابدأ جلسة مع مجموعتك. اكتشفوا أشياء تفعلونها، صوّتوا على المفضلات، وحققوا الأمر فعلاً.",
+    "whos_in": "من ينضم؟",
+    "session_name_label": "اسم الجلسة",
+    "session_name_placeholder": "مثال: خطط نهاية الأسبوع، أفكار سهرة...",
+    "created_header": "الجلسات المنشأة ({{count}})",
+    "loading_invites": "جارٍ تحميل الدعوات...",
+    "invited_header": "أنت مدعو ({{count}})",
+    "inviter_message": "{{name}} دعاك",
+    "fallback_someone": "شخص ما",
+    "fallback_session": "جلسة",
+    "name_taken_error": "هذا الاسم مأخوذ. كن أكثر إبداعاً!",
+    "generic_error": "لم ينجح. حاول مرة أخرى.",
+    "join_error": "تعذّر الانضمام للجلسة",
+    "decline_error": "تعذّر رفض الدعوة",
+    "empty_state": "أضف أصدقاء أولاً — ثم يمكنك بدء التخطيط معاً."
+  },
+  "consent": {
+    "headline": "شيء سريع",
+    "body": "يستخدم Mingla ما شاركته — ذوقك وأجواؤك وموقعك — لإيجاد تجارب ستحبها فعلاً. بياناتك تبقى ملكك. لن نبيعها أبداً، ويمكنك حذفها في أي وقت."
+  },
+  "getting_experiences": {
+    "loading_1": "نتحقق من الأماكن القريبة...",
+    "loading_2": "نطابق تفضيلاتك...",
+    "loading_3": "نبحث عن الجواهر المخفية...",
+    "loading_4": "أوشكنا..."
+  },
+  "occasions": {
+    "birthday": "عيد ميلاد",
+    "valentines": "عيد الحب",
+    "mothers_day": "عيد الأم",
+    "fathers_day": "عيد الأب",
+    "christmas": "عيد الميلاد"
+  }
+}

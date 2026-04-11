@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Sẹ",
+    "saved": "A ya sẹ",
+    "schedule": "Rhan ẹghẹ",
+    "scheduled": "A ya rhan ẹghẹ",
+    "policies_reservations": "Itan & Ehe Ne A Sẹ",
+    "i_went_here": "I rrie iha",
+    "been_there": "I te rrie",
+    "on_it": "A ya ru...",
+    "visited_label": "U te rrie ehe na",
+    "mark_visited_label": "Kẹ ne u te rrie ehe na",
+    "visited_hint": "Kẹ ne u gha rhan eni irrie ẹre kua",
+    "mark_visited_hint": "Ọ ya sẹ irrie ẹre ọ ya ruẹ ọda ighee",
+    "opening_hours": "Ẹghẹ Iruẹ",
+    "open_now": "E Ya Ruẹ Nẹ",
+    "closed": "E Khui Nẹ",
+    "show_all_hours": "Kẹ ẹghẹ hia",
+    "show_less": "Kẹ ne ọ khọọ",
+    "select_date": "Rhie Ẹdẹ",
+    "select_time": "Rhie Ẹghẹ",
+    "cancel": "Giẹ",
+    "next": "Ọ na dee",
+    "done": "E re rhie",
+    "error_save": "I gha sẹ kaadi. Kpaye ke gberra.",
+    "error_login": "U ma gha wọlọ sẹ u gha rhan kaadi ẹghẹ.",
+    "error_invalid_date": "Ẹdẹ ne u rhie i sẹ. Kpaye ke gberra.",
+    "schedule_failed_title": "Irhan ẹghẹ i ru ẹre",
+    "schedule_failed_body": "A i gha fie ẹre ne kalẹnda ẹre. Kpaye ke gberra.",
+    "place_closed_title": "Ehe E Khui",
+    "place_closed_body": "A ya khui ehe na vbe ẹdẹ ne ẹghẹ ne u rhie. Kpaye rhie ẹghẹ nọhọ.",
+    "choose_another_time": "Rhie Ẹghẹ Nọhọ",
+    "some_stops_closed_title": "Ehe Ọkpa A Khui",
+    "change_time": "Rhan Ẹghẹ",
+    "schedule_anyway": "Rhan Ẹghẹ Vbe Ọ Ma",
+    "scheduled_toast": "A ya rhan ẹghẹ! A ya mu {{title}} rrie kalẹnda ẹre",
+    "closed_message": "A ya khui ehe na vbe ẹdẹ ne ẹghẹ ne u rhie. Kẹ \"Rhan ẹghẹ\" ne u gha rhie ẹghẹ nọhọ.",
+    "share_prompt": "Tiẹ {{title}} ne ọre"
+  },
+  "busyness": {
+    "traffic": "Ọda Imọtọ",
+    "busy_level": "Ebe Iwinna",
+    "busy": "Ọ ya iwinna",
+    "clear_roads": "Ọda Ne Ọ Sẹ",
+    "clear": "Ọ Sẹ",
+    "moderate": "Ọ Vbe Agbọn",
+    "heavy": "Ọ Bu"
+  },
+  "match_factors": {
+    "title": "Ẹmwẹ Isẹ",
+    "location": "Ehe",
+    "budget": "Igho",
+    "category": "Ẹkpa",
+    "time": "Ẹghẹ",
+    "popularity": "Ọ Mwẹ Aro",
+    "excellent": "Ọ Sẹ Gbẹra",
+    "good": "Ọ Sẹ",
+    "fair": "Ọ Khin",
+    "poor": "I Sẹ",
+    "summary": "Emwi na ya kẹ ne emwi na sẹ aro ẹre ne ọ i sẹ. Ebe ne ọ ga ne ọ kẹ ne ọ sẹ gbẹra."
+  },
+  "weather": {
+    "weather": "Ọfuanmwẹ",
+    "clear": "Ọ Sẹ",
+    "cloudy": "Ọ Ru Aro",
+    "rainy": "Amẹ",
+    "snowy": "Amẹ Ẹzẹ",
+    "stormy": "Ọkọ"
+  },
+  "timeline": {
+    "start": "Ibẹ ghe",
+    "stop": "Ehe {{number}}",
+    "open_in_maps": "Ruẹ Vbe Map",
+    "then": "Ke..."
+  },
+  "companion_stops": {
+    "title": "Bẹ Ghe Iyawo Ẹre",
+    "subtitle": "Bẹ ghe vbe ọkpa vbe ehe ne ọ vbe iyeke sẹ u gha se ọda",
+    "reviews_count": "(ighee {{count}})"
+  },
+  "highlights": {
+    "title": "Emwi Ne Ọ Sẹ"
+  },
+  "description": {
+    "show_less": "Kẹ ne ọ khọọ",
+    "read_more": "Re ọ nọhọ"
+  },
+  "card_info": {
+    "nearby": "Ọ Vbe Iyeke"
+  }
+}

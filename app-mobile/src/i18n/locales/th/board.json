@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "การ์ด", "discussion": "การสนทนา" },
+  "boardDiscussionTab": {
+    "noConnection": "ไม่มีการเชื่อมต่อ", "noConnectionMsg": "กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่",
+    "deleteMessage": "ลบข้อความ", "deleteMessageConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบข้อความนี้?",
+    "cancel": "ยกเลิก", "delete": "ลบ", "errorUpdateMsg": "ไม่สามารถอัปเดตข้อความ", "errorDeleteMsg": "ไม่สามารถลบข้อความ",
+    "justNow": "เมื่อสักครู่", "minutesAgo": "{{count}}น. ที่แล้ว", "hoursAgo_one": "{{count}} ชม. ที่แล้ว", "hoursAgo_other": "{{count}} ชม. ที่แล้ว",
+    "error": "ข้อผิดพลาด", "typeMessage": "พิมพ์ข้อความ...", "editMessage": "แก้ไขข้อความ...", "typing": "กำลังพิมพ์...",
+    "inputPlaceholder": "พิมพ์ @ เพื่อกล่าวถึง, # เพื่อแท็กการ์ด...", "messagePlaceholder": "ข้อความ..."
+  },
+  "boardPreferencesForm": {
+    "categories": "หมวดหมู่", "categoriesDesc": "เลือกประเภทประสบการณ์ที่อยากสำรวจด้วยกัน",
+    "experienceTypes": "ประเภทประสบการณ์", "experienceTypesDesc": "คุณวางแผนประสบการณ์แบบไหน?",
+    "budget": "งบประมาณ", "budgetDesc": "ตัวเลือก: กำหนดช่วงงบประมาณสำหรับประสบการณ์",
+    "groupSize": "ขนาดกลุ่ม", "groupSizeDesc": "มีกี่คนที่จะเข้าร่วม?",
+    "adventurous": "ผจญภัย", "firstDate": "เดทแรก", "romantic": "โรแมนติก", "groupFun": "สนุกเป็นกลุ่ม", "picnicDates": "เดทปิกนิก", "takeAStroll": "เดินเล่น"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "สิทธิ์ผู้ดูแล", "manageBoard": "จัดการบอร์ด", "renameBoard": "เปลี่ยนชื่อบอร์ด",
+    "inviteParticipants": "เชิญผู้เข้าร่วม", "turnOffNotifications": "ปิดการแจ้งเตือน", "turnOnNotifications": "เปิดการแจ้งเตือน",
+    "leaveBoard": "ออกจากบอร์ด", "leaving": "กำลังออก...", "deleteBoard": "ลบบอร์ด",
+    "editSessionName": "แก้ไขชื่อเซสชัน", "enterSessionName": "ใส่ชื่อเซสชัน", "save": "บันทึก",
+    "errorGeneric": "ข้อผิดพลาด", "errorLeave": "ออกจากบอร์ดไม่สำเร็จ กรุณาลองใหม่",
+    "permissionDenied": "ไม่มีสิทธิ์", "permissionEditName": "เฉพาะผู้สร้างเซสชันหรือผู้ดูแลเท่านั้นที่สามารถแก้ไขชื่อเซสชัน",
+    "errorEmptyName": "ชื่อเซสชันต้องไม่ว่างเปล่า", "success": "สำเร็จ", "nameUpdated": "อัปเดตชื่อเซสชันสำเร็จ",
+    "updateFailed": "อัปเดตล้มเหลว", "updateFailedMsg": "ไม่สามารถอัปเดตชื่อเซสชัน",
+    "permissionDelete": "เฉพาะผู้ดูแลเท่านั้นที่สามารถลบเซสชันนี้", "sessionDeleted": "ลบเซสชันสำเร็จ",
+    "deleteFailed": "ลบไม่สำเร็จ", "deleteFailedMsg": "ไม่สามารถลบเซสชันนี้",
+    "permissionDeleteBoard": "เฉพาะผู้สร้างเซสชันหรือผู้ดูแลเท่านั้นที่สามารถลบเซสชันนี้",
+    "deleteSessionTitle": "ลบเซสชัน", "deleteSessionMsg": "คุณแน่ใจหรือไม่ว่าต้องการลบ \"{{name}}\"? การกระทำนี้ไม่สามารถย้อนกลับได้และการ์ด โหวต และการสนทนาทั้งหมดจะถูกลบถาวร",
+    "leaveSessionTitle": "ออกจากบอร์ด", "leaveSessionMsg": "คุณแน่ใจหรือไม่ว่าต้องการออกจาก \"{{name}}\"?", "namePlaceholder": "ใส่ชื่อเซสชัน"
+  },
+  "cardDiscussionModal": {
+    "discussion": "การสนทนา", "cardDiscussion": "การสนทนาการ์ด", "errorLoadMsg": "ไม่สามารถโหลดข้อความ",
+    "errorSendMsg": "ไม่สามารถส่งข้อความ", "errorUpdateMsg": "ไม่สามารถอัปเดตข้อความ",
+    "deleteMessage": "ลบข้อความ", "deleteMessageConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบข้อความนี้?",
+    "errorDeleteMsg": "ไม่สามารถลบข้อความ", "typeMessage": "พิมพ์ข้อความ...", "error": "ข้อผิดพลาด", "justNow": "เมื่อสักครู่", "unknown": "ไม่ทราบ"
+  },
+  "cardTagPopover": { "tagACard": "แท็กการ์ด", "untitled": "ไม่มีชื่อ", "experience": "ประสบการณ์", "noCardsSaved": "ยังไม่มีการ์ดที่บันทึก" },
+  "inviteCodeDisplay": {
+    "inviteCode": "รหัสเชิญ", "description": "แชร์รหัสนี้กับคนที่คุณต้องการเชิญ",
+    "copied": "คัดลอกแล้ว!", "copiedMsg": "คัดลอกรหัสเชิญไปยังคลิปบอร์ดแล้ว", "copyCode": "คัดลอกรหัส",
+    "errorCopy": "คัดลอกรหัสไม่สำเร็จ กรุณาลองใหม่", "infoText": "ผู้รับสามารถกรอกรหัสนี้ในแอปเพื่อเข้าร่วมเซสชันบอร์ดของคุณ"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "แชร์ลิงก์เชิญ", "description": "ส่งลิงก์นี้ให้ใครก็ตามที่คุณต้องการเชิญ",
+    "orShareCode": "หรือแชร์รหัสนี้:", "copied": "คัดลอกแล้ว!", "copiedMsg": "คัดลอกลิงก์เชิญไปยังคลิปบอร์ดแล้ว",
+    "copyLink": "คัดลอกลิงก์", "share": "แชร์", "shareMessage": "เข้าร่วมเซสชันบอร์ดของฉันบน Mingla! {{link}}",
+    "errorCopy": "คัดลอกลิงก์ไม่สำเร็จ กรุณาลองใหม่", "errorShare": "แชร์ลิงก์ไม่สำเร็จ", "error": "ข้อผิดพลาด"
+  },
+  "inviteMethodSelector": {
+    "title": "คุณต้องการเชิญคนอย่างไร?", "description": "เลือกวิธีหนึ่งหรือมากกว่าเพื่อเชิญผู้เข้าร่วม",
+    "friendsList": "รายชื่อเพื่อน", "friendsListDesc": "เชิญจากเพื่อนของคุณ",
+    "shareLink": "แชร์ลิงก์", "shareLinkDesc": "คัดลอกและแชร์ลิงก์",
+    "qrCode": "คิวอาร์โค้ด", "qrCodeDesc": "สร้างคิวอาร์โค้ดเพื่อสแกน",
+    "inviteCode": "รหัสเชิญ", "inviteCodeDesc": "แชร์รหัสง่ายๆ"
+  },
+  "inviteParticipantsModal": {
+    "title": "เชิญผู้เข้าร่วม", "addFriendsTo": "เพิ่มเพื่อนไปยัง \"{{name}}\"",
+    "searchPlaceholder": "ค้นหาเพื่อน...", "loadingFriends": "กำลังโหลดเพื่อน...", "noUsersFound": "ไม่พบผู้ใช้",
+    "allFriendsInBoard": "เพื่อนทุกคนอยู่ในบอร์ดนี้แล้ว", "noFriendsAvailable": "ไม่มีเพื่อนที่พร้อม",
+    "tryDifferentName": "ลองชื่อหรือชื่อผู้ใช้อื่น", "addMoreFriends": "เพิ่มเพื่อนอีกเพื่อเชิญ",
+    "sendInvites": "ส่งคำเชิญ ({{count}})", "invitesSent": "ส่งคำเชิญแล้ว",
+    "invitesSentMsg": "เชิญเพื่อน {{count}} คน{{plural}}ไปยัง \"{{name}}\" สำเร็จ",
+    "errorSendInvites": "ส่งคำเชิญไม่สำเร็จ กรุณาลองใหม่", "error": "ข้อผิดพลาด"
+  },
+  "manageBoardModal": {
+    "manageBoard": "จัดการบอร์ด", "members": "สมาชิก", "admin": "ผู้ดูแล", "creator": "ผู้สร้าง", "you": "(คุณ)",
+    "makeAdmin": "ตั้งเป็นผู้ดูแล", "removeAdmin": "ถอดถอนผู้ดูแล", "removeMember": "ลบ", "leaveBoard": "ออกจากบอร์ด",
+    "permissionDenied": "ไม่มีสิทธิ์", "permissionRemove": "เฉพาะผู้ดูแลเท่านั้นที่สามารถลบสมาชิกออกจากบอร์ดนี้",
+    "cannotRemoveCreator": "ไม่สามารถลบได้", "cannotRemoveCreatorMsg": "ไม่สามารถลบผู้สร้างบอร์ดได้ พวกเขาสามารถออกจากบอร์ดเองเท่านั้น",
+    "cannotRemoveSelf": "ไม่สามารถลบตัวเองได้", "cannotRemoveSelfMsg": "ใช้ตัวเลือก 'ออกจากบอร์ด' เพื่อออกจากบอร์ดนี้",
+    "memberRemoved": "ลบสมาชิกแล้ว", "memberRemovedMsg": "{{name}} ถูกลบออกจากบอร์ดแล้ว",
+    "errorRemove": "ลบสมาชิกไม่สำเร็จ กรุณาลองใหม่", "permissionAdmin": "เฉพาะผู้ดูแลเท่านั้นที่จัดการสิทธิ์ผู้ดูแลได้",
+    "cannotModifyCreator": "ไม่สามารถแก้ไขได้", "cannotModifyCreatorMsg": "ไม่สามารถเปลี่ยนสถานะผู้ดูแลของผู้สร้างบอร์ด",
+    "errorPromote": "เลื่อนตำแหน่งสมาชิกเป็นผู้ดูแลไม่สำเร็จ กรุณาลองใหม่", "errorDemote": "ถอดถอนสิทธิ์ผู้ดูแลไม่สำเร็จ กรุณาลองใหม่",
+    "leaveBoardTitle": "ออกจากบอร์ด", "leaveBoardMsg": "คุณแน่ใจหรือไม่ว่าต้องการออกจาก \"{{name}}\"?",
+    "boardDeleted": "ลบบอร์ดแล้ว", "boardDeletedMsg": "บอร์ดถูกลบเนื่องจากต้องการสมาชิกอย่างน้อย 2 คนเพื่อคงอยู่",
+    "leftBoard": "ออกจากบอร์ดแล้ว", "leftBoardMsg": "คุณออกจากบอร์ดสำเร็จแล้ว",
+    "errorLeave": "ออกจากบอร์ดไม่สำเร็จ กรุณาลองใหม่", "error": "ข้อผิดพลาด"
+  },
+  "mentionPopover": { "mentionSomeone": "กล่าวถึงใครสักคน" },
+  "participantAvatars": { "noParticipants": "ไม่มีผู้เข้าร่วม", "participant_one": "{{count}} ผู้เข้าร่วม", "participant_other": "{{count}} ผู้เข้าร่วม" },
+  "qrCodeDisplay": { "noData": "ไม่มีข้อมูล", "noDataMsg": "ไม่สามารถสร้างคิวอาร์โค้ดโดยไม่มีข้อมูล", "qrCode": "คิวอาร์โค้ด", "scanInstruction": "สแกนคิวอาร์โค้ดนี้เพื่อเข้าร่วมเซสชันบอร์ด", "orUseCode": "หรือใช้รหัสนี้:" },
+  "boardMemberManagement": {
+    "manageBoard": "จัดการบอร์ด", "creator": "ผู้สร้าง", "admin": "ผู้ดูแล", "you": "(คุณ)",
+    "boardInfo": "ข้อมูลบอร์ด", "totalMembers": "สมาชิกทั้งหมด: {{count}}", "admins": "ผู้ดูแล: {{count}}",
+    "minMembersWarning": "บอร์ดจะถูกลบหากสมาชิกคนใดออกไป (ต้องมีสมาชิกขั้นต่ำ 2 คน)",
+    "removeConfirm": "ลบ <bold>{{name}}</bold> ออกจากบอร์ดนี้?", "removeMember": "ลบสมาชิก", "cancel": "ยกเลิก",
+    "demoteConfirm": "ถอดถอนสิทธิ์ผู้ดูแลจาก <bold>{{name}}</bold>?", "removeAdmin": "ถอดถอนผู้ดูแล",
+    "leaveConfirm": "ออกจากบอร์ดนี้?", "leaveAdminNote": "สมาชิกอื่นจะถูกสุ่มเลือกเป็นผู้ดูแล",
+    "leaveDeleteNote": "บอร์ดจะถูกลบถาวร (เหลือสมาชิกน้อยกว่า 2 คน)", "leaveUndoNote": "การกระทำนี้ไม่สามารถย้อนกลับได้", "leaveBoard": "ออกจากบอร์ด"
+  },
+  "member": { "you_suffix": " (คุณ)" }
+}

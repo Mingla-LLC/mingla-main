@@ -1,0 +1,18 @@
+{
+  "header.title": "体験を共有",
+  "empty.no_data": "体験データがありません",
+  "card.nearby": "近く",
+  "card.suggested_schedule": "おすすめスケジュール",
+  "card.per_person": "1人あたり",
+  "share_to": "共有先：",
+  "platform.messages": "メッセージ",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "その他の共有オプション",
+  "actions.copy_link": "リンクをコピー",
+  "actions.copy_message": "メッセージをコピー",
+  "alerts.copy_error": "メッセージのコピーに失敗しました",
+  "alerts.share_error": "共有に失敗しました。もう一度お試しください。",
+  "alerts.error_title": "エラー"
+}

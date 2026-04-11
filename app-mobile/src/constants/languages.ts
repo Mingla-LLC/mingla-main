@@ -4,27 +4,30 @@ export interface LanguageData {
   nativeName: string  // Native name (e.g., 'English')
 }
 
-// Top 10 most spoken languages first, then alphabetical.
-// This list covers 95%+ of global mobile users.
+// Priority order: English first, then Nigerian languages, then European, then alphabetical.
 export const LANGUAGES: LanguageData[] = [
-  // ─── Top 10 ───
+  // ─── Priority ───
   { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'bin', name: 'Bini', nativeName: 'Ẹ̀dó' },
+  { code: 'ha', name: 'Hausa', nativeName: 'Hausa' },
+  { code: 'ig', name: 'Igbo', nativeName: 'Igbo' },
+  { code: 'yo', name: 'Yoruba', nativeName: 'Yorùbá' },
   { code: 'fr', name: 'French', nativeName: 'Français' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어' },
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
-  // ─── Alphabetical ───
-  { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
   { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  // ─── Alphabetical ───
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
+  { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
+  { code: 'zh', name: 'Chinese', nativeName: '中文' },
   { code: 'el', name: 'Greek', nativeName: 'Ελληνικά' },
   { code: 'he', name: 'Hebrew', nativeName: 'עברית' },
+  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
   { code: 'id', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
   { code: 'it', name: 'Italian', nativeName: 'Italiano' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어' },
   { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu' },
   { code: 'pl', name: 'Polish', nativeName: 'Polski' },
   { code: 'ro', name: 'Romanian', nativeName: 'Română' },

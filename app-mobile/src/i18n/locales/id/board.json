@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "Kartu", "discussion": "Diskusi" },
+  "boardDiscussionTab": {
+    "noConnection": "Tidak Ada Koneksi", "noConnectionMsg": "Silakan periksa koneksi internet Anda dan coba lagi.",
+    "deleteMessage": "Hapus Pesan", "deleteMessageConfirm": "Yakin ingin menghapus pesan ini?",
+    "cancel": "Batal", "delete": "Hapus", "errorUpdateMsg": "Gagal memperbarui pesan", "errorDeleteMsg": "Gagal menghapus pesan",
+    "justNow": "Baru saja", "minutesAgo": "{{count}}m lalu", "hoursAgo_one": "{{count}} jam lalu", "hoursAgo_other": "{{count}} jam lalu",
+    "error": "Kesalahan", "typeMessage": "Ketik pesan...", "editMessage": "Edit pesan...", "typing": "mengetik...",
+    "inputPlaceholder": "Ketik @ untuk menyebut, # untuk menandai kartu...", "messagePlaceholder": "Pesan..."
+  },
+  "boardPreferencesForm": {
+    "categories": "Kategori", "categoriesDesc": "Pilih jenis pengalaman yang ingin dijelajahi bersama",
+    "experienceTypes": "Jenis Pengalaman", "experienceTypesDesc": "Pengalaman seperti apa yang direncanakan?",
+    "budget": "Anggaran", "budgetDesc": "Opsional: Tetapkan rentang anggaran untuk pengalaman",
+    "groupSize": "Ukuran Grup", "groupSizeDesc": "Berapa orang yang akan berpartisipasi?",
+    "adventurous": "Petualangan", "firstDate": "Kencan Pertama", "romantic": "Romantis", "groupFun": "Kesenangan Grup", "picnicDates": "Kencan Piknik", "takeAStroll": "Jalan-Jalan"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "Hak Admin", "manageBoard": "Kelola Papan", "renameBoard": "Ganti Nama Papan",
+    "inviteParticipants": "Undang Peserta", "turnOffNotifications": "Matikan Notifikasi", "turnOnNotifications": "Nyalakan Notifikasi",
+    "leaveBoard": "Tinggalkan Papan", "leaving": "Meninggalkan...", "deleteBoard": "Hapus Papan",
+    "editSessionName": "Edit Nama Sesi", "enterSessionName": "Masukkan nama sesi", "save": "Simpan",
+    "errorGeneric": "Kesalahan", "errorLeave": "Gagal meninggalkan papan. Silakan coba lagi.",
+    "permissionDenied": "Izin ditolak", "permissionEditName": "Hanya pembuat sesi atau admin yang dapat mengedit nama sesi.",
+    "errorEmptyName": "Nama sesi tidak boleh kosong.", "success": "Berhasil", "nameUpdated": "Nama sesi berhasil diperbarui.",
+    "updateFailed": "Pembaruan gagal", "updateFailedMsg": "Tidak dapat memperbarui nama sesi.",
+    "permissionDelete": "Hanya admin yang dapat menghapus sesi ini.", "sessionDeleted": "Sesi berhasil dihapus.",
+    "deleteFailed": "Penghapusan gagal", "deleteFailedMsg": "Tidak dapat menghapus sesi ini.",
+    "permissionDeleteBoard": "Hanya pembuat sesi atau admin yang dapat menghapus sesi ini.",
+    "deleteSessionTitle": "Hapus Sesi", "deleteSessionMsg": "Yakin ingin menghapus \"{{name}}\"? Tindakan ini tidak dapat dibatalkan dan semua kartu, suara, dan diskusi akan dihapus secara permanen.",
+    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Yakin ingin meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi"
+  },
+  "cardDiscussionModal": {
+    "discussion": "Diskusi", "cardDiscussion": "Diskusi Kartu", "errorLoadMsg": "Gagal memuat pesan",
+    "errorSendMsg": "Gagal mengirim pesan", "errorUpdateMsg": "Gagal memperbarui pesan",
+    "deleteMessage": "Hapus Pesan", "deleteMessageConfirm": "Yakin ingin menghapus pesan ini?",
+    "errorDeleteMsg": "Gagal menghapus pesan", "typeMessage": "Ketik pesan...", "error": "Kesalahan", "justNow": "Baru saja", "unknown": "Tidak diketahui"
+  },
+  "cardTagPopover": { "tagACard": "Tandai kartu", "untitled": "Tanpa judul", "experience": "Pengalaman", "noCardsSaved": "Belum ada kartu tersimpan" },
+  "inviteCodeDisplay": {
+    "inviteCode": "Kode Undangan", "description": "Bagikan kode ini dengan orang yang ingin Anda undang",
+    "copied": "Tersalin!", "copiedMsg": "Kode undangan disalin ke clipboard", "copyCode": "Salin Kode",
+    "errorCopy": "Gagal menyalin kode. Silakan coba lagi.", "infoText": "Penerima dapat memasukkan kode ini di aplikasi untuk bergabung dengan sesi papan Anda"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "Bagikan Link Undangan", "description": "Kirim link ini ke siapa saja yang ingin Anda undang",
+    "orShareCode": "Atau bagikan kode ini:", "copied": "Tersalin!", "copiedMsg": "Link undangan disalin ke clipboard",
+    "copyLink": "Salin Link", "share": "Bagikan", "shareMessage": "Bergabunglah dengan sesi papan saya di Mingla! {{link}}",
+    "errorCopy": "Gagal menyalin link. Silakan coba lagi.", "errorShare": "Gagal membagikan link", "error": "Kesalahan"
+  },
+  "inviteMethodSelector": {
+    "title": "Bagaimana Anda ingin mengundang orang?", "description": "Pilih satu atau lebih metode untuk mengundang peserta",
+    "friendsList": "Daftar Teman", "friendsListDesc": "Undang dari teman Anda",
+    "shareLink": "Bagikan Link", "shareLinkDesc": "Salin dan bagikan link",
+    "qrCode": "Kode QR", "qrCodeDesc": "Buat kode QR untuk dipindai",
+    "inviteCode": "Kode Undangan", "inviteCodeDesc": "Bagikan kode sederhana"
+  },
+  "inviteParticipantsModal": {
+    "title": "Undang Peserta", "addFriendsTo": "Tambah teman ke \"{{name}}\"",
+    "searchPlaceholder": "Cari teman...", "loadingFriends": "Memuat teman...", "noUsersFound": "Tidak ada pengguna ditemukan",
+    "allFriendsInBoard": "Semua teman sudah ada di papan ini", "noFriendsAvailable": "Tidak ada teman tersedia",
+    "tryDifferentName": "Coba nama atau username lain", "addMoreFriends": "Tambah lebih banyak teman untuk diundang",
+    "sendInvites": "Kirim Undangan ({{count}})", "invitesSent": "Undangan Terkirim",
+    "invitesSentMsg": "Berhasil mengundang {{count}} teman{{plural}} ke \"{{name}}\".",
+    "errorSendInvites": "Gagal mengirim undangan. Silakan coba lagi.", "error": "Kesalahan"
+  },
+  "manageBoardModal": {
+    "manageBoard": "Kelola Papan", "members": "Anggota", "admin": "Admin", "creator": "Pembuat", "you": "(Anda)",
+    "makeAdmin": "Jadikan Admin", "removeAdmin": "Hapus Admin", "removeMember": "Hapus", "leaveBoard": "Tinggalkan Papan",
+    "permissionDenied": "Izin Ditolak", "permissionRemove": "Hanya admin yang dapat menghapus anggota dari papan ini.",
+    "cannotRemoveCreator": "Tidak Dapat Dihapus", "cannotRemoveCreatorMsg": "Pembuat papan tidak dapat dihapus. Mereka hanya bisa meninggalkan papan sendiri.",
+    "cannotRemoveSelf": "Tidak Dapat Menghapus Diri Sendiri", "cannotRemoveSelfMsg": "Gunakan opsi 'Tinggalkan Papan' untuk mengeluarkan diri dari papan ini.",
+    "memberRemoved": "Anggota Dihapus", "memberRemovedMsg": "{{name}} telah dihapus dari papan.",
+    "errorRemove": "Gagal menghapus anggota. Silakan coba lagi.", "permissionAdmin": "Hanya admin yang dapat mengelola hak admin.",
+    "cannotModifyCreator": "Tidak Dapat Diubah", "cannotModifyCreatorMsg": "Status admin pembuat papan tidak dapat diubah.",
+    "errorPromote": "Gagal mempromosikan anggota menjadi admin. Silakan coba lagi.", "errorDemote": "Gagal menghapus hak admin. Silakan coba lagi.",
+    "leaveBoardTitle": "Tinggalkan Papan", "leaveBoardMsg": "Yakin ingin meninggalkan \"{{name}}\"?",
+    "boardDeleted": "Papan Dihapus", "boardDeletedMsg": "Papan telah dihapus karena membutuhkan minimal 2 anggota untuk tetap aktif.",
+    "leftBoard": "Meninggalkan Papan", "leftBoardMsg": "Anda berhasil meninggalkan papan.",
+    "errorLeave": "Gagal meninggalkan papan. Silakan coba lagi.", "error": "Kesalahan"
+  },
+  "mentionPopover": { "mentionSomeone": "Sebut seseorang" },
+  "participantAvatars": { "noParticipants": "Tidak ada peserta", "participant_one": "{{count}} peserta", "participant_other": "{{count}} peserta" },
+  "qrCodeDisplay": { "noData": "Tidak Ada Data", "noDataMsg": "Tidak dapat membuat kode QR tanpa data", "qrCode": "Kode QR", "scanInstruction": "Pindai kode QR ini untuk bergabung dengan sesi papan", "orUseCode": "Atau gunakan kode ini:" },
+  "boardMemberManagement": {
+    "manageBoard": "Kelola Papan", "creator": "Pembuat", "admin": "Admin", "you": "(Anda)",
+    "boardInfo": "Info Papan", "totalMembers": "Total Anggota: {{count}}", "admins": "Admin: {{count}}",
+    "minMembersWarning": "Papan akan dihapus jika ada anggota yang pergi (minimum 2 anggota diperlukan)",
+    "removeConfirm": "Hapus <bold>{{name}}</bold> dari papan ini?", "removeMember": "Hapus Anggota", "cancel": "Batal",
+    "demoteConfirm": "Hapus hak admin dari <bold>{{name}}</bold>?", "removeAdmin": "Hapus Admin",
+    "leaveConfirm": "Tinggalkan papan ini?", "leaveAdminNote": "Anggota lain akan ditunjuk secara acak sebagai admin",
+    "leaveDeleteNote": "Papan akan dihapus secara permanen (kurang dari 2 anggota tersisa)", "leaveUndoNote": "Tindakan ini tidak dapat dibatalkan", "leaveBoard": "Tinggalkan Papan"
+  },
+  "member": { "you_suffix": " (Anda)" }
+}

@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Cerca languages...",
+    "close_accessibility": "Chiudi language picker"
+  },
+  "country_picker": {
+    "search_placeholder": "Cerca countries...",
+    "close_accessibility": "Chiudi country picker"
+  },
+  "welcome": {
+    "greeting_hey": "Ciao",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Buon gusto",
+    "greeting_walked_in": "appena arrivato.",
+    "we_know": "Sappiamo",
+    "good_taste": "buon gusto",
+    "just_walked_in": "appena arrivato.",
+    "name_prompt": "Ma non sappiamo ancora il tuo nome.",
+    "placeholder_first": "Nome",
+    "placeholder_last": "Cognome",
+    "cta": "Andiamo"
+  },
+  "phone": {
+    "headline": "Qual è il tuo numero?",
+    "body": "Invieremo un codice. Due secondi.",
+    "verified_headline": "Tutto pronto.",
+    "verified_body": "Il tuo numero è registrato. Una cosa in meno.",
+    "consent_text": "I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, e experience reminders. Reply STOP to opt out or HELP for help. See our ",
+    "terms_of_service": "Termini di Servizio",
+    "and": " e ",
+    "privacy_policy": "Informativa sulla Privacy",
+    "consent_accessibility": "Agree to receive messages from Mingla",
+    "cta_send_code": "Invia codice",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Selezionaed country: {{name}}. Tap to change."
+  },
+  "otp": {
+    "headline": "Inserisci il codice",
+    "body": "Inviato a {{phone}}",
+    "verifying": "Verifica in corso...",
+    "sending": "Invio...",
+    "resend_countdown": "Resend in {{seconds}}s",
+    "channel_label": "Didn't get it? Try another way:",
+    "resend_sms": "Resend SMS",
+    "resend_sms_accessibility": "Resend code via SMS",
+    "call_me": "Call me instead",
+    "call_me_accessibility": "Receive code via phone call",
+    "error_max_attempts": "Three tries, no luck. Try a different method below.",
+    "error_wrong_code": "That code didn't land. Try again.",
+    "cta_verify": "Verifica",
+    "otp_accessibility": "One-time verification code"
+  },
+  "gender": {
+    "headline": "Parlaci di te.",
+    "body": "Per azzeccare le tue scelte.",
+    "man": "Uomo",
+    "woman": "Donna",
+    "non_binary": "Non binario",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Agender",
+    "prefer_not_to_say": "Preferisco non dire"
+  },
+  "details": {
+    "headline": "Quasi fatto.",
+    "body": "Solo le basi. Ci pensiamo noi al resto.",
+    "country_label": "Paese",
+    "country_helper": "Sets your currency e units of measurement",
+    "dob_label": "Data di nascita",
+    "dob_placeholder": "Quando è il tuo compleanno?"
+  },
+  "value_prop": {
+    "beat1_headline": "Sai esattamente dove andare.",
+    "beat1_sub": "Smetti di indovinare. Inizia ad andare.",
+    "beat2_headline": "Per appuntamenti, amici e uscite in solitaria.",
+    "beat2_sub": "Piani per ogni tipo di uscita.",
+    "beat3_headline": "Trova veloce. Vai.",
+    "beat3_sub": "Scorri. Salva. Vai."
+  },
+  "intents": {
+    "headline": "Ora la parte divertente.",
+    "body": "Tocca ogni vibe che ti rappresenta.",
+    "caption": "Scegli quello che ti entusiasma di più.",
+    "adventurous": "Avventuroso",
+    "adventurous_desc": "Esplora l'inaspettato",
+    "first_date": "Primo Appuntamento",
+    "first_date_desc": "Colpisci alla prima impressione",
+    "romantic": "Romantico",
+    "romantic_desc": "Accendi la scintilla",
+    "group_fun": "Divertimento di Gruppo",
+    "group_fun_desc": "Più si è, meglio è",
+    "picnic_dates": "Picnic",
+    "picnic_dates_desc": "Sole, snack, bei momenti",
+    "take_a_stroll": "Fai una Passeggiata",
+    "take_a_stroll_desc": "Passeggia con uno scopo"
+  },
+  "location": {
+    "granted_headline": "Bloccato in — {{city}}!",
+    "granted_tap_hint": "Tap to continue",
+    "settings_headline": "One quick toggle",
+    "settings_body": "Posizione is off for Mingla.\nTurn it on in Settings so we can find\nthe best spots near you.",
+    "open_settings": "Apri Impostazioni",
+    "retry_turned_on": "I've turned it on — retry",
+    "retry_finding": "Finding you...",
+    "type_city": "Type my city instead",
+    "error_headline": "Couldn't get your location",
+    "error_body": "Weak signal or GPS still warming up.\nTry again or type your city instead.",
+    "try_again": "Riprova",
+    "idle_headline": "Better spots start here",
+    "idle_body": "Enable GPS so we can find hidden\ngems right around the corner.",
+    "enable_location": "Abilita Posizione",
+    "privacy_hint": "Your location stays private. Always.",
+    "cta_enable": "Enable location"
+  },
+  "celebration": {
+    "headline": "Look at you go.",
+    "body": "Four quick picks e you're done."
+  },
+  "manual_location": {
+    "headline": "Drop your pin on the map",
+    "body": "Give us your exact address — down to the street — e we'll unlock the best spots around you.",
+    "search_placeholder": "Inizio sta scrivendo your address...",
+    "no_results": "Hmm, we didn't catch that. Try a nearby street or neighborhood.",
+    "helper": "The more precise, the better your recommendations.",
+    "privacy": "Your exact location stays between us. Always.",
+    "change_accessibility": "Change selected location"
+  },
+  "categories": {
+    "headline": "What kind of places do you love?",
+    "body": "Pick up to 3 that match your vibe.",
+    "cap_message": "Maximum 3 categories. Deselect one to choose another."
+  },
+  "budget": {
+    "headline": "Your sweet spot",
+    "body": "Pick the price ranges that work.",
+    "caption": "Gratuito stuff always shows up too."
+  },
+  "transport": {
+    "headline": "How do you get around?",
+    "body": "Helps us nail the travel times."
+  },
+  "travel_time": {
+    "headline": "How far will you go?",
+    "body": "Set your comfort zone.",
+    "custom_toggle": "Imposta il tuo",
+    "custom_placeholder": "5 – 120 minuti",
+    "unit": "min",
+    "caption": "Up to {{minuti}} min by {{mode}}",
+    "error": "Couldn't save your preferences. Tap Riprova to try again."
+  },
+  "friends": {
+    "headline": "Il tuo cerchio ristretto",
+    "body": "Aggiungi your closest people, then pair up. You'll discover things to do together, see what they love, e plan the good stuff side by side.",
+    "waiting_header": "Waiting for you",
+    "added_feedback": "Aggiungied",
+    "declined_feedback": "Rifiutad",
+    "add_friends_header": "Aggiungi friends",
+    "your_people_header": "Your people",
+    "status_friends": "Amici",
+    "status_request_sent": "Request sent",
+    "status_invited": "Invitad",
+    "pair_paired": "Accoppiato",
+    "pair_pending": "In attesa",
+    "pair_queued": "Queued",
+    "pair_button": "Accoppia",
+    "pair_queued_hint": "Activates when they join",
+    "empty_state": "No friends here yet. Aggiungi someone you'd actually make plans with.",
+    "pair_requests_header": "Accoppia requests",
+    "paired_feedback": "Accoppiato!",
+    "pair_wants": "Wants to pair with you",
+    "pair_curated": "See experiences curated for both of you.",
+    "alert_self_title": "That's you",
+    "alert_self_message": "You can't add yourself as a friend.",
+    "alert_duplicate_title": "Already added",
+    "alert_duplicate_message": "This person is already in your list.",
+    "alert_pair_error": "Could not send pair request",
+    "alert_accept_error": "Couldn't accept the pair request. Try again.",
+    "alert_decline_error": "Couldn't decline the pair request. Try again.",
+    "alert_generic_error": "Couldn't process the request. Try again.",
+    "share_message": "Ciao! Unisciti me on Mingla e let's find amazing experiences together. https://usemingla.com",
+    "fallback_user": "Utente"
+  },
+  "collaborations": {
+    "headline": "Pianifica qualcosa insieme",
+    "body": "Inizio a session with your crew. Scopri things to do, vote on favorites, e actually make it happen.",
+    "whos_in": "Who's in?",
+    "session_name_label": "Sessione name",
+    "session_name_placeholder": "e.g. Weekend plans, Data night ideas...",
+    "created_header": "Created sessions ({{count}})",
+    "loading_invites": "Loading invites...",
+    "invited_header": "You're invited ({{count}})",
+    "inviter_message": "{{name}} invited you",
+    "fallback_someone": "Someone",
+    "fallback_session": "Sessione",
+    "name_taken_error": "That name's taken. Get creative!",
+    "generic_error": "Hmm, that didn't work. Give it another go.",
+    "join_error": "Could not join session",
+    "decline_error": "Could not decline invite",
+    "empty_state": "Aggiungi friends first — then you can start planning together."
+  },
+  "consent": {
+    "headline": "One quick thing",
+    "body": "Mingla uses what you've shared — your tastes, your vibe, your location — to find experiences you'll genuinely love. Your data stays yours. We never sell it, e you can delete it anytime."
+  },
+  "getting_experiences": {
+    "loading_1": "Checking spots nearby...",
+    "loading_2": "Matching your preferences...",
+    "loading_3": "Finding hidden gems...",
+    "loading_4": "Almost there..."
+  },
+  "occasions": {
+    "birthday": "Compleanno",
+    "valentines": "San Valentino",
+    "mothers_day": "Festa della Mamma",
+    "fathers_day": "Festa del Papà",
+    "christmas": "Natale"
+  }
+}

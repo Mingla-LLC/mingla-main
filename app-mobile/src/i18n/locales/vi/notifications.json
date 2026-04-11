@@ -1,0 +1,10 @@
+{
+  "header": { "title": "Thông báo", "unread": "{{count}} chưa đọc", "markAllRead": "Đánh dấu tất cả đã đọc", "clearAll": "Xóa tất cả" },
+  "filters": { "all": "Tất cả", "social": "Xã hội", "sessions": "Phiên", "messages": "Tin nhắn" },
+  "timeAgo": { "justNow": "Vừa xong" },
+  "dateGroups": { "today": "Hôm nay", "yesterday": "Hôm qua", "thisWeek": "Tuần này", "earlier": "Trước đó" },
+  "actions": { "accept": "Chấp nhận", "decline": "Từ chối", "join": "Tham gia", "upgrade": "Nâng cấp", "review": "Xem lại", "actionFailed": "Thao tác thất bại. Nhấn để thử lại." },
+  "emptyState": { "title": "Bạn đã cập nhật hết", "subtitle": "Hoạt động mới sẽ hiển thị ở đây." },
+  "errorState": { "title": "Đã xảy ra lỗi", "subtitle": "Không thể tải thông báo.", "tryAgain": "Thử lại" },
+  "offline": { "banner": "Bạn đang ngoại tuyến — hiển thị thông báo đã lưu" }
+}

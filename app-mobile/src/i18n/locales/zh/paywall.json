@@ -1,0 +1,10 @@
+{
+  "close": "关闭付费墙",
+  "manage_subscription": "管理订阅",
+  "alerts.restored_title": "购买已恢复",
+  "alerts.restored_message": "您之前的购买已成功恢复。",
+  "alerts.restored_done": "完成",
+  "alerts.purchase_failed": "购买失败",
+  "toast.purchase_delayed": "购买成功。功能可能需要片刻才能激活。",
+  "toast.restore_delayed": "购买已恢复。功能可能需要片刻才能激活。"
+}

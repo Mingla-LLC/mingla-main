@@ -1,0 +1,10 @@
+{
+  "header": { "title": "通知", "unread": "{{count}} 条未读", "markAllRead": "全部标为已读", "clearAll": "清除全部" },
+  "filters": { "all": "全部", "social": "社交", "sessions": "会话", "messages": "消息" },
+  "timeAgo": { "justNow": "刚刚" },
+  "dateGroups": { "today": "今天", "yesterday": "昨天", "thisWeek": "本周", "earlier": "更早" },
+  "actions": { "accept": "接受", "decline": "拒绝", "join": "加入", "upgrade": "升级", "review": "查看", "actionFailed": "操作失败。点击重试。" },
+  "emptyState": { "title": "全部看完了", "subtitle": "新活动将显示在这里。" },
+  "errorState": { "title": "出了点问题", "subtitle": "无法加载通知。", "tryAgain": "重试" },
+  "offline": { "banner": "你已离线 — 显示缓存通知" }
+}

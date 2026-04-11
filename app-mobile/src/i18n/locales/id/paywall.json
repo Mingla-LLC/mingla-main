@@ -1,0 +1,10 @@
+{
+  "close": "Tutup paywall",
+  "manage_subscription": "Kelola langganan",
+  "alerts.restored_title": "Pembelian dipulihkan",
+  "alerts.restored_message": "Pembelian sebelumnya telah berhasil dipulihkan.",
+  "alerts.restored_done": "Selesai",
+  "alerts.purchase_failed": "Pembelian gagal",
+  "toast.purchase_delayed": "Pembelian berhasil. Fitur mungkin butuh waktu untuk aktif.",
+  "toast.restore_delayed": "Pembelian dipulihkan. Fitur mungkin butuh waktu untuk aktif."
+}

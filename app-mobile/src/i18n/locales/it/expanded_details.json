@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Salva",
+    "saved": "Salvato",
+    "schedule": "Programma",
+    "scheduled": "Programmato",
+    "policies_reservations": "Politiche e Prenotazioni",
+    "i_went_here": "Ci sono stato",
+    "been_there": "Ci sono stato",
+    "on_it": "Ci sto...",
+    "visited_label": "Hai visitato questo posto",
+    "mark_visited_label": "Segna questo posto come visitato",
+    "visited_hint": "Tap to remove your visit marker",
+    "mark_visited_hint": "Records your visit e opens the review flow",
+    "opening_hours": "Orari di Apertura",
+    "open_now": "Aperto Ora",
+    "closed": "Chiuso",
+    "show_all_hours": "Mostra tutti gli orari",
+    "show_less": "Mostra meno",
+    "select_date": "Seleziona Data",
+    "select_time": "Seleziona Orario",
+    "cancel": "Annulla",
+    "next": "Avanti",
+    "done": "Fatto",
+    "error_save": "Fallito to save the card. Please try again.",
+    "error_login": "Devi essere connesso per programmare le carte.",
+    "error_invalid_date": "La data selezionata non è valida. Riprova.",
+    "schedule_failed_title": "Programmazione fallita",
+    "schedule_failed_body": "Non siamo riusciti ad aggiungerlo al calendario. Riprova.",
+    "place_closed_title": "Posto Chiuso",
+    "place_closed_body": "This place is closed at the selected date e time. Please choose a different time.",
+    "choose_another_time": "Choose Another Orario",
+    "some_stops_closed_title": "Some Stops May Be Chiuso",
+    "change_time": "Cambia Orario",
+    "schedule_anyway": "Programma Comunque",
+    "scheduled_toast": "Programmato! {{title}} è stato aggiunto al tuo calendario",
+    "closed_message": "This place is closed at the selected date e time. Tap \"Programma\" to choose a different time.",
+    "share_prompt": "Condividi {{title}} with friends"
+  },
+  "busyness": {
+    "traffic": "Traffico",
+    "busy_level": "Livello di Affluenza",
+    "busy": "Occupato",
+    "clear_roads": "Strade Libere",
+    "clear": "Libero",
+    "moderate": "Moderato",
+    "heavy": "Intenso"
+  },
+  "match_factors": {
+    "title": "Analisi Corrispondenza",
+    "location": "Posizione",
+    "budget": "Budget",
+    "category": "Categoria",
+    "time": "Orario",
+    "popularity": "Popolarità",
+    "excellent": "Eccellente",
+    "good": "Buono",
+    "fair": "Discreto",
+    "poor": "Scarso",
+    "summary": "These factors determine how well this experience matches your preferences. Higher scores indicate better alignment."
+  },
+  "weather": {
+    "weather": "Meteo",
+    "clear": "Libero",
+    "cloudy": "Nuvoloso",
+    "rainy": "Piovoso",
+    "snowy": "Nevoso",
+    "stormy": "Tempestoso"
+  },
+  "timeline": {
+    "start": "Inizio",
+    "stop": "Stop {{number}}",
+    "open_in_maps": "Apri in Mappe",
+    "then": "Poi..."
+  },
+  "companion_stops": {
+    "title": "Inizia la Passeggiata",
+    "subtitle": "Inizia da uno di questi posti vicini prima della passeggiata",
+    "reviews_count": "({{count}} recensioni)"
+  },
+  "highlights": {
+    "title": "Punti salienti"
+  },
+  "description": {
+    "show_less": "Mostra meno",
+    "read_more": "Leggi di più"
+  },
+  "card_info": {
+    "nearby": "Nelle vicinanze"
+  }
+}

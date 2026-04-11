@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Chekwaa",
+    "saved": "Echekwara",
+    "schedule": "Hazịa",
+    "scheduled": "Ahazịrị",
+    "policies_reservations": "Iwu & Nchekwa Ebe",
+    "i_went_here": "Agara m ebe a",
+    "been_there": "Anọọla m ebe a",
+    "on_it": "Na-arụ ọrụ...",
+    "visited_label": "Ị gara ebe a",
+    "mark_visited_label": "Kee ebe a dị ka agara",
+    "visited_hint": "Pịa iji wepụ akara nleta gị",
+    "mark_visited_hint": "Ọ na-edekọ nleta gị ma meghe usoro nyocha",
+    "opening_hours": "Oge Mmepe",
+    "open_now": "Mepere Ugbu a",
+    "closed": "Mechiri",
+    "show_all_hours": "Gosi oge niile",
+    "show_less": "Gosi ntakịrị",
+    "select_date": "Họrọ Ụbọchị",
+    "select_time": "Họrọ Oge",
+    "cancel": "Kagbuo",
+    "next": "Ọzọ",
+    "done": "Emechara",
+    "error_save": "Enweghị ike ịchekwa kaadị. Biko nwaa ọzọ.",
+    "error_login": "Ị ga-ebu ụzọ banye iji hazịa kaadị.",
+    "error_invalid_date": "Ụbọchị a họọrọ ezighị ezi. Biko nwaa ọzọ.",
+    "schedule_failed_title": "Nhazi adaghị",
+    "schedule_failed_body": "Anyị enweghị ike itinye nke a na kalenda gị. Biko nwaa ọzọ.",
+    "place_closed_title": "Ebe Mechiri",
+    "place_closed_body": "Ebe a mechiri na ụbọchị na oge ị họọrọ. Biko họrọ oge ọzọ.",
+    "choose_another_time": "Họrọ Oge Ọzọ",
+    "some_stops_closed_title": "Ụfọdụ Nkwụsị Mechiri",
+    "change_time": "Gbanwee Oge",
+    "schedule_anyway": "Hazịa N'agbanyeghị",
+    "scheduled_toast": "Ahazịrị! Ebugara {{title}} na kalenda gị",
+    "closed_message": "Ebe a mechiri na ụbọchị na oge ị họọrọ. Pịa \"Hazịa\" iji họrọ oge ọzọ.",
+    "share_prompt": "Kekọrịta {{title}} na ndị enyi"
+  },
+  "busyness": {
+    "traffic": "Okporo Ụzọ",
+    "busy_level": "Ọkwa Ọrụ",
+    "busy": "Na-arụ ọrụ",
+    "clear_roads": "Okporo Ụzọ Dị Mma",
+    "clear": "Dị Mma",
+    "moderate": "Nkwurịta",
+    "heavy": "Dị Ukwuu"
+  },
+  "match_factors": {
+    "title": "Nkọwa Ndakọrịta",
+    "location": "Ebe",
+    "budget": "Mmefu ego",
+    "category": "Ụdị",
+    "time": "Oge",
+    "popularity": "Ama ama",
+    "excellent": "Kachasị Mma",
+    "good": "Dị Mma",
+    "fair": "Nkwurịta",
+    "poor": "Adịghị Mma",
+    "summary": "Ihe ndị a na-ekpebi otu ahụmịhe a si dakọrịta na nhọrọ gị. Akara dị elu na-egosi ndakọrịta ka mma."
+  },
+  "weather": {
+    "weather": "Ihu Igwe",
+    "clear": "Dị Mma",
+    "cloudy": "Igwe Ojii",
+    "rainy": "Mmiri Ozuzo",
+    "snowy": "Snow",
+    "stormy": "Oké Ifufe"
+  },
+  "timeline": {
+    "start": "Mmalite",
+    "stop": "Nkwụsị {{number}}",
+    "open_in_maps": "Mepee na Maapụ",
+    "then": "Wee..."
+  },
+  "companion_stops": {
+    "title": "Malite Ịje Gị",
+    "subtitle": "Malite n'otu n'ime ebe ndị a nso tupu ịje gị",
+    "reviews_count": "(nyocha {{count}})"
+  },
+  "highlights": {
+    "title": "Ihe Ndị Pụtara Ìhè"
+  },
+  "description": {
+    "show_less": "Gosi ntakịrị",
+    "read_more": "Gụkwuo"
+  },
+  "card_info": {
+    "nearby": "Nso"
+  }
+}

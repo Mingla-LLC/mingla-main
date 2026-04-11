@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "Simpan",
+    "saved": "Disimpan",
+    "schedule": "Jadualkan",
+    "scheduled": "Dijadualkan",
+    "policies_reservations": "Polisi & Tempahan",
+    "i_went_here": "Saya pernah ke sini",
+    "been_there": "Pernah ke sini",
+    "on_it": "Sedang proses...",
+    "visited_label": "Anda telah melawat tempat ini",
+    "mark_visited_label": "Tandakan tempat ini sebagai dilawati",
+    "visited_hint": "Ketik untuk membuang penanda lawatan",
+    "mark_visited_hint": "Merekodkan lawatan anda dan membuka aliran ulasan",
+    "opening_hours": "Waktu Operasi",
+    "open_now": "Buka Sekarang",
+    "closed": "Tutup",
+    "show_all_hours": "Tunjukkan semua waktu",
+    "show_less": "Tunjukkan kurang",
+    "select_date": "Pilih Tarikh",
+    "select_time": "Pilih Masa",
+    "cancel": "Batal",
+    "next": "Seterusnya",
+    "done": "Selesai",
+    "error_save": "Gagal menyimpan kad. Sila cuba lagi.",
+    "error_login": "Anda perlu log masuk untuk menjadualkan kad.",
+    "error_invalid_date": "Tarikh yang dipilih tidak sah. Sila cuba lagi.",
+    "schedule_failed_title": "Penjadualan gagal",
+    "schedule_failed_body": "Tidak dapat menambah ke kalendar anda. Sila cuba lagi.",
+    "place_closed_title": "Tempat Tutup",
+    "place_closed_body": "Tempat ini tutup pada tarikh dan masa yang dipilih. Sila pilih masa lain.",
+    "choose_another_time": "Pilih Masa Lain",
+    "some_stops_closed_title": "Sesetengah Tempat Mungkin Tutup",
+    "change_time": "Tukar Masa",
+    "schedule_anyway": "Jadualkan Sahaja",
+    "scheduled_toast": "Dijadualkan! {{title}} telah ditambah ke kalendar anda",
+    "closed_message": "Tempat ini tutup pada tarikh dan masa yang dipilih. Ketik \"Jadualkan\" untuk memilih masa lain.",
+    "share_prompt": "Kongsi {{title}} dengan rakan"
+  },
+  "busyness": {
+    "traffic": "Trafik",
+    "busy_level": "Tahap Kesibukan",
+    "busy": "Sibuk",
+    "clear_roads": "Jalan Lancar",
+    "clear": "Lancar",
+    "moderate": "Sederhana",
+    "heavy": "Sesak"
+  },
+  "match_factors": {
+    "title": "Pecahan Padanan",
+    "location": "Lokasi",
+    "budget": "Bajet",
+    "category": "Kategori",
+    "time": "Masa",
+    "popularity": "Populariti",
+    "excellent": "Cemerlang",
+    "good": "Baik",
+    "fair": "Sederhana",
+    "poor": "Lemah",
+    "summary": "Faktor-faktor ini menentukan sejauh mana pengalaman ini sepadan dengan pilihan anda. Skor yang lebih tinggi menunjukkan padanan yang lebih baik."
+  },
+  "weather": {
+    "weather": "Cuaca",
+    "clear": "Cerah",
+    "cloudy": "Mendung",
+    "rainy": "Hujan",
+    "snowy": "Bersalji",
+    "stormy": "Ribut"
+  },
+  "timeline": {
+    "start": "Mula",
+    "stop": "Perhentian {{number}}",
+    "open_in_maps": "Buka dalam Peta",
+    "then": "Seterusnya..."
+  },
+  "companion_stops": {
+    "title": "Mulakan Jalan-jalan Anda",
+    "subtitle": "Mulakan di salah satu tempat berdekatan sebelum berjalan",
+    "reviews_count": "({{count}} ulasan)"
+  },
+  "highlights": {
+    "title": "Sorotan"
+  },
+  "description": {
+    "show_less": "Tunjukkan kurang",
+    "read_more": "Baca lagi"
+  },
+  "card_info": {
+    "nearby": "Berdekatan"
+  }
+}

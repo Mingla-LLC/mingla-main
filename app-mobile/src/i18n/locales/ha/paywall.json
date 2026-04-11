@@ -1,0 +1,10 @@
+{
+  "close": "Rufe bangon biya",
+  "manage_subscription": "Sarrafa biyan kuɗi",
+  "alerts.restored_title": "An dawo da sayayya",
+  "alerts.restored_message": "An dawo da sayayyar ka da aka yi a baya cikin nasara.",
+  "alerts.restored_done": "An gama",
+  "alerts.purchase_failed": "Siyayya ta kasa",
+  "toast.purchase_delayed": "Siyayya ta yi nasara. Fasalolin na iya ɗaukar ɗan lokaci don kunna.",
+  "toast.restore_delayed": "An dawo da sayayya. Fasalolin na iya ɗaukar ɗan lokaci don kunna."
+}

@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Cari bahasa...",
+    "close_accessibility": "Tutup pemilih bahasa"
+  },
+  "country_picker": {
+    "search_placeholder": "Cari negara...",
+    "close_accessibility": "Tutup pemilih negara"
+  },
+  "welcome": {
+    "greeting_hey": "Hei",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Citarasa yang bagus",
+    "greeting_walked_in": "baru masuk.",
+    "we_know": "Kami tahu",
+    "good_taste": "citarasa yang bagus",
+    "just_walked_in": "baru masuk.",
+    "name_prompt": "Tapi kami belum tahu nama anda.",
+    "placeholder_first": "Nama depan",
+    "placeholder_last": "Nama belakang",
+    "cta": "Jom mulakan"
+  },
+  "phone": {
+    "headline": "Nombor anda?",
+    "body": "Kami akan hantar kod. Dua saat sahaja.",
+    "verified_headline": "Sudah siap.",
+    "verified_body": "Nombor anda sudah disahkan. Satu perkara selesai.",
+    "consent_text": "Saya bersetuju menerima mesej daripada Mingla melalui SMS atau panggilan telefon, termasuk kod pengesahan, jemputan rakan, dan peringatan pengalaman. Balas STOP untuk berhenti atau HELP untuk bantuan. Lihat ",
+    "terms_of_service": "Terma Perkhidmatan",
+    "and": " dan ",
+    "privacy_policy": "Dasar Privasi",
+    "consent_accessibility": "Bersetuju menerima mesej daripada Mingla",
+    "cta_send_code": "Hantar kod",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Negara dipilih: {{name}}. Ketik untuk tukar."
+  },
+  "otp": {
+    "headline": "Masukkan kod",
+    "body": "Dihantar ke {{phone}}",
+    "verifying": "Mengesahkan...",
+    "sending": "Menghantar...",
+    "resend_countdown": "Hantar semula dalam {{seconds}}s",
+    "channel_label": "Tidak terima? Cuba cara lain:",
+    "resend_sms": "Hantar Semula SMS",
+    "resend_sms_accessibility": "Hantar semula kod melalui SMS",
+    "call_me": "Panggil saya",
+    "call_me_accessibility": "Terima kod melalui panggilan telefon",
+    "error_max_attempts": "Tiga kali cuba, tidak berjaya. Cuba kaedah lain di bawah.",
+    "error_wrong_code": "Kod itu tidak betul. Cuba lagi.",
+    "cta_verify": "Sahkan",
+    "otp_accessibility": "Kod pengesahan sekali guna"
+  },
+  "gender": {
+    "headline": "Ceritakan tentang diri anda.",
+    "body": "Supaya kami boleh memilih yang terbaik untuk anda.",
+    "man": "Lelaki",
+    "woman": "Wanita",
+    "non_binary": "Bukan binari",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluid",
+    "agender": "Agender",
+    "prefer_not_to_say": "Tidak mahu menyatakan"
+  },
+  "details": {
+    "headline": "Hampir siap.",
+    "body": "Maklumat asas sahaja. Kami uruskan yang lain.",
+    "country_label": "Negara",
+    "country_helper": "Menetapkan mata wang dan unit ukuran anda",
+    "dob_label": "Tarikh lahir",
+    "dob_placeholder": "Bila hari jadi anda?"
+  },
+  "value_prop": {
+    "beat1_headline": "Tahu tepat ke mana nak pergi.",
+    "beat1_sub": "Berhenti meneka. Mula pergi.",
+    "beat2_headline": "Untuk temu janji, rakan & solo.",
+    "beat2_sub": "Rancangan untuk setiap jenis outing.",
+    "beat3_headline": "Cari cepat. Pergi.",
+    "beat3_sub": "Leret. Simpan. Pergi."
+  },
+  "intents": {
+    "headline": "Sekarang bahagian yang seronok.",
+    "body": "Ketik setiap vibe yang sesuai dengan anda.",
+    "caption": "Pilih yang paling menguja anda.",
+    "adventurous": "Pengembaraan",
+    "adventurous_desc": "Teroka yang tidak dijangka",
+    "first_date": "Temu Janji Pertama",
+    "first_date_desc": "Buat tanggapan pertama yang hebat",
+    "romantic": "Romantik",
+    "romantic_desc": "Tingkatkan kemesraan",
+    "group_fun": "Keseronokan Berkumpulan",
+    "group_fun_desc": "Lebih ramai lebih meriah",
+    "picnic_dates": "Temu Janji Piknik",
+    "picnic_dates_desc": "Matahari, snek, masa yang indah",
+    "take_a_stroll": "Berjalan-jalan",
+    "take_a_stroll_desc": "Merayau dengan tujuan"
+  },
+  "location": {
+    "granted_headline": "Sudah dapat — {{city}}!",
+    "granted_tap_hint": "Ketik untuk teruskan",
+    "settings_headline": "Satu tetapan pantas",
+    "settings_body": "Lokasi dimatikan untuk Mingla.\nHidupkan dalam Tetapan supaya kami boleh\ncari tempat terbaik berhampiran anda.",
+    "open_settings": "Buka Tetapan",
+    "retry_turned_on": "Saya sudah hidupkan — cuba semula",
+    "retry_finding": "Mencari anda...",
+    "type_city": "Taip bandar saya",
+    "error_headline": "Tidak dapat mendapatkan lokasi anda",
+    "error_body": "Isyarat lemah atau GPS masih bermula.\nCuba lagi atau taip nama bandar anda.",
+    "try_again": "Cuba Lagi",
+    "idle_headline": "Tempat yang lebih baik bermula di sini",
+    "idle_body": "Aktifkan GPS supaya kami boleh cari\npermata tersembunyi di sekitar anda.",
+    "enable_location": "Aktifkan Lokasi",
+    "privacy_hint": "Lokasi anda sentiasa peribadi. Selalu.",
+    "cta_enable": "Aktifkan lokasi"
+  },
+  "celebration": {
+    "headline": "Hebat.",
+    "body": "Empat pilihan pantas dan anda sudah siap."
+  },
+  "manual_location": {
+    "headline": "Letakkan pin anda di peta",
+    "body": "Berikan alamat tepat anda dan kami akan buka tempat terbaik di sekitar anda.",
+    "search_placeholder": "Mula taip alamat anda...",
+    "no_results": "Hmm, kami tidak tangkap itu. Cuba jalan atau kejiranan berdekatan.",
+    "helper": "Semakin tepat, semakin baik cadangan anda.",
+    "privacy": "Lokasi tepat anda kekal antara kita. Selalu.",
+    "change_accessibility": "Tukar lokasi yang dipilih"
+  },
+  "categories": {
+    "headline": "Apakah jenis tempat yang anda suka?",
+    "body": "Pilih sehingga 3 yang sepadan dengan vibe anda.",
+    "cap_message": "Maksimum 3 kategori. Nyahpilih satu untuk memilih yang lain."
+  },
+  "budget": {
+    "headline": "Titik manis anda",
+    "body": "Pilih julat harga yang sesuai.",
+    "caption": "Benda percuma sentiasa muncul juga."
+  },
+  "transport": {
+    "headline": "Bagaimana anda bergerak?",
+    "body": "Membantu kami mengira masa perjalanan."
+  },
+  "travel_time": {
+    "headline": "Sejauh mana anda sanggup pergi?",
+    "body": "Tetapkan zon selesa anda.",
+    "custom_toggle": "Tetapkan sendiri",
+    "custom_placeholder": "5 – 120 minit",
+    "unit": "min",
+    "caption": "Sehingga {{minutes}} min dengan {{mode}}",
+    "error": "Tidak dapat menyimpan pilihan anda. Ketik Cuba Semula."
+  },
+  "friends": {
+    "headline": "Bulatan dalaman anda",
+    "body": "Tambah orang terdekat anda, kemudian berpasangan. Anda akan temui aktiviti bersama, lihat apa yang mereka suka, dan rancang benda baik sebelah menyebelah.",
+    "waiting_header": "Menunggu anda",
+    "added_feedback": "Ditambah",
+    "declined_feedback": "Ditolak",
+    "add_friends_header": "Tambah rakan",
+    "your_people_header": "Orang anda",
+    "status_friends": "Rakan",
+    "status_request_sent": "Permintaan dihantar",
+    "status_invited": "Dijemput",
+    "pair_paired": "Dipasangkan",
+    "pair_pending": "Menunggu",
+    "pair_queued": "Dalam barisan",
+    "pair_button": "Pasangkan",
+    "pair_queued_hint": "Aktif apabila mereka sertai",
+    "empty_state": "Belum ada rakan. Tambah seseorang yang anda betul-betul mahu buat rancangan bersama.",
+    "pair_requests_header": "Permintaan pasangan",
+    "paired_feedback": "Dipasangkan!",
+    "pair_wants": "Mahu berpasangan dengan anda",
+    "pair_curated": "Lihat pengalaman yang dikurasi untuk anda berdua.",
+    "alert_self_title": "Itu anda",
+    "alert_self_message": "Anda tidak boleh menambah diri sendiri sebagai rakan.",
+    "alert_duplicate_title": "Sudah ditambah",
+    "alert_duplicate_message": "Orang ini sudah dalam senarai anda.",
+    "alert_pair_error": "Tidak dapat menghantar permintaan pasangan",
+    "alert_accept_error": "Tidak dapat menerima permintaan pasangan. Cuba lagi.",
+    "alert_decline_error": "Tidak dapat menolak permintaan pasangan. Cuba lagi.",
+    "alert_generic_error": "Tidak dapat memproses permintaan. Cuba lagi.",
+    "share_message": "Hei! Sertai saya di Mingla dan jom cari pengalaman hebat bersama. https://usemingla.com",
+    "fallback_user": "Pengguna"
+  },
+  "collaborations": {
+    "headline": "Rancang sesuatu bersama",
+    "body": "Mulakan sesi dengan krew anda. Temui aktiviti, undi kegemaran, dan jadikan ia kenyataan.",
+    "whos_in": "Siapa nak sertai?",
+    "session_name_label": "Nama sesi",
+    "session_name_placeholder": "cth. Rancangan hujung minggu, Idea temu janji...",
+    "created_header": "Sesi yang dibuat ({{count}})",
+    "loading_invites": "Memuatkan jemputan...",
+    "invited_header": "Anda dijemput ({{count}})",
+    "inviter_message": "{{name}} menjemput anda",
+    "fallback_someone": "Seseorang",
+    "fallback_session": "Sesi",
+    "name_taken_error": "Nama itu sudah diambil. Cuba yang lain!",
+    "generic_error": "Hmm, tak berjaya. Cuba lagi.",
+    "join_error": "Tidak dapat menyertai sesi",
+    "decline_error": "Tidak dapat menolak jemputan",
+    "empty_state": "Tambah rakan dulu — kemudian anda boleh mula merancang bersama."
+  },
+  "consent": {
+    "headline": "Satu perkara",
+    "body": "Mingla menggunakan apa yang anda kongsikan — citarasa, vibe, lokasi — untuk mencari pengalaman yang anda benar-benar akan suka. Data anda kekal milik anda. Kami tidak pernah menjualnya, dan anda boleh padamkannya bila-bila masa."
+  },
+  "getting_experiences": {
+    "loading_1": "Menyemak tempat berdekatan...",
+    "loading_2": "Memadankan pilihan anda...",
+    "loading_3": "Mencari permata tersembunyi...",
+    "loading_4": "Hampir siap..."
+  },
+  "occasions": {
+    "birthday": "Hari Jadi",
+    "valentines": "Hari Valentine",
+    "mothers_day": "Hari Ibu",
+    "fathers_day": "Hari Bapa",
+    "christmas": "Krismas"
+  }
+}

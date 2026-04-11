@@ -1,0 +1,18 @@
+{
+  "header.title": "Erlebnis teilen",
+  "empty.no_data": "Keine Erlebnisdaten verfügbar",
+  "card.nearby": "In der Nähe",
+  "card.suggested_schedule": "Vorgeschlagener Zeitplan",
+  "card.per_person": "pro Person",
+  "share_to": "Teilen über:",
+  "platform.messages": "Nachrichten",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Weitere Teiloptionen",
+  "actions.copy_link": "Link kopieren",
+  "actions.copy_message": "Nachricht kopieren",
+  "alerts.copy_error": "Nachricht konnte nicht in die Zwischenablage kopiert werden",
+  "alerts.share_error": "Teilen fehlgeschlagen. Bitte versuche es erneut.",
+  "alerts.error_title": "Fehler"
+}

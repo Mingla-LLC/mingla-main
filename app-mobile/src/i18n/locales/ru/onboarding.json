@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Поиск languages...",
+    "close_accessibility": "Close language picker"
+  },
+  "country_picker": {
+    "search_placeholder": "Поиск countries...",
+    "close_accessibility": "Close country picker"
+  },
+  "welcome": {
+    "greeting_hey": "Hey",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Good taste",
+    "greeting_walked_in": "just walked in.",
+    "we_know": "We know",
+    "good_taste": "good taste",
+    "just_walked_in": "just walked in.",
+    "name_prompt": "But we don't know your name yet.",
+    "placeholder_first": "First",
+    "placeholder_last": "Last",
+    "cta": "Поехали"
+  },
+  "phone": {
+    "headline": "What's your number?",
+    "body": "We'll send a code. Takes two seconds.",
+    "verified_headline": "You're all set.",
+    "verified_body": "Your number's locked in. One less thing.",
+    "consent_text": "I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, и experience reминders. Reply STOP to opt out or HELP for help. See our ",
+    "terms_of_service": "Условиями использования",
+    "and": " и ",
+    "privacy_policy": "Политикой конфиденциальности",
+    "consent_accessibility": "Agree to receive messages from Mingla",
+    "cta_send_code": "Send code",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Selected country: {{name}}. Tap to change."
+  },
+  "otp": {
+    "headline": "Enter the code",
+    "body": "Sent to {{phone}}",
+    "verifying": "Verifying...",
+    "sending": "Sending...",
+    "resend_countdown": "Resend in {{seconds}}s",
+    "channel_label": "Didn't get it? Try another way:",
+    "resend_sms": "Resend SMS",
+    "resend_sms_accessibility": "Resend code via SMS",
+    "call_me": "Call me instead",
+    "call_me_accessibility": "Receive code via phone call",
+    "error_max_attempts": "Three tries, no luck. Try a different method below.",
+    "error_wrong_code": "That code didn't land. Try again.",
+    "cta_verify": "Verify",
+    "otp_accessibility": "One-time verification code"
+  },
+  "gender": {
+    "headline": "Tell us about you.",
+    "body": "So we can get your picks right.",
+    "man": "Мужчина",
+    "woman": "Женщина",
+    "non_binary": "Нетn-binary",
+    "transgender": "Transgender",
+    "genderqueer": "Полqueer",
+    "genderfluid": "Полfluid",
+    "agender": "Agender",
+    "prefer_not_to_say": "Prefer not to say"
+  },
+  "details": {
+    "headline": "Almost done.",
+    "body": "Just the basics. We'll handle the rest.",
+    "country_label": "Страна",
+    "country_helper": "Sets your currency и units of measurement",
+    "dob_label": "Date of birth",
+    "dob_placeholder": "When's your birthday?"
+  },
+  "value_prop": {
+    "beat1_headline": "Know exactly where to go.",
+    "beat1_sub": "Stop guessing. Start going.",
+    "beat2_headline": "For dates, friends & solo runs.",
+    "beat2_sub": "Plans for every kind of outing.",
+    "beat3_headline": "Find it fast. Go.",
+    "beat3_sub": "Swipe. Сохранить. Go."
+  },
+  "intents": {
+    "headline": "Нетw the fun part.",
+    "body": "Tap every vibe that sounds like you.",
+    "caption": "Pick the one that excites you most.",
+    "adventurous": "Adventurous",
+    "adventurous_desc": "Обзор the unexpected",
+    "first_date": "First Dates",
+    "first_date_desc": "Nail the first impression",
+    "romantic": "Romantic",
+    "romantic_desc": "Turn up the spark",
+    "group_fun": "Group Fun",
+    "group_fun_desc": "The more the merrier",
+    "picnic_dates": "Picnic Dates",
+    "picnic_dates_desc": "Sun, snacks, good times",
+    "take_a_stroll": "Take a Stroll",
+    "take_a_stroll_desc": "Wander with purpose"
+  },
+  "location": {
+    "granted_headline": "Locked in — {{city}}!",
+    "granted_tap_hint": "Tap to continue",
+    "settings_headline": "One quick toggle",
+    "settings_body": "Местоположение is off for Mingla.\nTurn it on in Настройки so we can find\nthe best spots near you.",
+    "open_settings": "Open Настройки",
+    "retry_turned_on": "I've turned it on — retry",
+    "retry_finding": "Finding you...",
+    "type_city": "Type my city instead",
+    "error_headline": "Couldn't get your location",
+    "error_body": "Weak signal or GPS still warминg up.\nTry again or type your city instead.",
+    "try_again": "Try Again",
+    "idle_headline": "Better spots start here",
+    "idle_body": "Enable GPS so we can find hidden\ngems right around the corner.",
+    "enable_location": "Enable Местоположение",
+    "privacy_hint": "Your location stays private. Always.",
+    "cta_enable": "Enable location"
+  },
+  "celebration": {
+    "headline": "Look at you go.",
+    "body": "Four quick picks и you're done."
+  },
+  "manual_location": {
+    "headline": "Drop your pin on the map",
+    "body": "Give us your exact address — down to the street — и we'll unlock the best spots around you.",
+    "search_placeholder": "Start typing your address...",
+    "no_results": "Hmm, we didn't catch that. Try a nearby street or neighborhood.",
+    "helper": "The more precise, the better your recommendations.",
+    "privacy": "Your exact location stays between us. Always.",
+    "change_accessibility": "Change selected location"
+  },
+  "categories": {
+    "headline": "What kind of places do you love?",
+    "body": "Pick up to 3 that match your vibe.",
+    "cap_message": "Maximum 3 categories. Deselect one to choose another."
+  },
+  "budget": {
+    "headline": "Your sweet spot",
+    "body": "Pick the price ranges that work.",
+    "caption": "Бесплатно stuff always shows up too."
+  },
+  "transport": {
+    "headline": "How do you get around?",
+    "body": "Helps us nail the travel times."
+  },
+  "travel_time": {
+    "headline": "How far will you go?",
+    "body": "Set your comfort zone.",
+    "custom_toggle": "Set your own",
+    "custom_placeholder": "5 – 120 минут",
+    "unit": "мин",
+    "caption": "Up to {{минут}} мин by {{mode}}",
+    "error": "Couldn't save your preferences. Tap Повторить to try again."
+  },
+  "friends": {
+    "headline": "Your inner circle",
+    "body": "Добавить your closest people, then pair up. You'll discover things to do together, see what they love, и plan the good stuff side by side.",
+    "waiting_header": "Waiting for you",
+    "added_feedback": "Добавитьed",
+    "declined_feedback": "Отклонитьd",
+    "add_friends_header": "Добавить friends",
+    "your_people_header": "Your people",
+    "status_friends": "Друзья",
+    "status_request_sent": "Request sent",
+    "status_invited": "Пригласитьd",
+    "pair_paired": "Paired",
+    "pair_pending": "Pending",
+    "pair_queued": "Queued",
+    "pair_button": "Pair",
+    "pair_queued_hint": "Activates when they join",
+    "empty_state": "Нет friends here yet. Добавить someone you'd actually make plans with.",
+    "pair_requests_header": "Pair requests",
+    "paired_feedback": "Paired!",
+    "pair_wants": "Wants to pair with you",
+    "pair_curated": "See experiences curated for both of you.",
+    "alert_self_title": "That's you",
+    "alert_self_message": "You can't add yourself as a friend.",
+    "alert_duplicate_title": "Already added",
+    "alert_duplicate_message": "This person is already in your list.",
+    "alert_pair_error": "Could not send pair request",
+    "alert_accept_error": "Couldn't accept the pair request. Try again.",
+    "alert_decline_error": "Couldn't decline the pair request. Try again.",
+    "alert_generic_error": "Couldn't process the request. Try again.",
+    "share_message": "Hey! Присоединиться me on Mingla и let's find amazing experiences together. https://useминgla.com",
+    "fallback_user": "Пользователь"
+  },
+  "collaborations": {
+    "headline": "Plan something together",
+    "body": "Start a session with your crew. Открытия things to do, vote on favorites, и actually make it happen.",
+    "whos_in": "Who's in?",
+    "session_name_label": "Session name",
+    "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
+    "created_header": "Created sessions ({{count}})",
+    "loading_invites": "Loading invites...",
+    "invited_header": "You're invited ({{count}})",
+    "inviter_message": "{{name}} invited you",
+    "fallback_someone": "Someone",
+    "fallback_session": "Session",
+    "name_taken_error": "That name's taken. Get creative!",
+    "generic_error": "Hmm, that didn't work. Give it another go.",
+    "join_error": "Could not join session",
+    "decline_error": "Could not decline invite",
+    "empty_state": "Добавить friends first — then you can start planning together."
+  },
+  "consent": {
+    "headline": "One quick thing",
+    "body": "Mingla uses what you've shared — your tastes, your vibe, your location — to find experiences you'll genuinely love. Your data stays yours. We never sell it, и you can delete it anytime."
+  },
+  "getting_experiences": {
+    "loading_1": "Checking spots nearby...",
+    "loading_2": "Matching your preferences...",
+    "loading_3": "Finding hidden gems...",
+    "loading_4": "Almost there..."
+  },
+  "occasions": {
+    "birthday": "День рождения",
+    "valentines": "Valentine's Day",
+    "mothers_day": "Mother's Day",
+    "fathers_day": "Father's Day",
+    "christmas": "Рождество"
+  }
+}

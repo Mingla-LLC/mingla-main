@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "חפש שפות...",
+    "close_accessibility": "סגור בחירת שפה"
+  },
+  "country_picker": {
+    "search_placeholder": "חפש מדינות...",
+    "close_accessibility": "סגור בחירת מדינה"
+  },
+  "welcome": {
+    "greeting_hey": "היי",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "טעם טוב",
+    "greeting_walked_in": "זה עתה נכנס.",
+    "we_know": "אנחנו יודעים",
+    "good_taste": "טעם טוב",
+    "just_walked_in": "זה עתה נכנס.",
+    "name_prompt": "אבל עדיין לא יודעים את השם שלך.",
+    "placeholder_first": "שם פרטי",
+    "placeholder_last": "שם משפחה",
+    "cta": "יאללה"
+  },
+  "phone": {
+    "headline": "מה המספר שלך?",
+    "body": "נשלח קוד. שתי שניות.",
+    "verified_headline": "הכל מסודר.",
+    "verified_body": "המספר שלך נעול. דבר אחד פחות.",
+    "consent_text": "אני מסכים לקבל הודעות מ-Mingla דרך SMS או שיחת טלפון, כולל קודי אימות, הזמנות חברים ותזכורות חוויות. השב STOP לביטול או HELP לעזרה. ראה את ",
+    "terms_of_service": "תנאי השימוש",
+    "and": " ואת ",
+    "privacy_policy": "מדיניות הפרטיות",
+    "consent_accessibility": "הסכם לקבל הודעות מ-Mingla",
+    "cta_send_code": "שלח קוד",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "מדינה נבחרת: {{name}}. הקש לשינוי."
+  },
+  "otp": {
+    "headline": "הזן את הקוד",
+    "body": "נשלח ל-{{phone}}",
+    "verifying": "מאמת...",
+    "sending": "שולח...",
+    "resend_countdown": "שלח שוב בעוד {{seconds}} שניות",
+    "channel_label": "לא קיבלת? נסה דרך אחרת:",
+    "resend_sms": "שלח שוב SMS",
+    "resend_sms_accessibility": "שלח שוב קוד ב-SMS",
+    "call_me": "התקשר אליי",
+    "call_me_accessibility": "קבל קוד דרך שיחת טלפון",
+    "error_max_attempts": "שלוש נסיונות, בלי הצלחה. נסה שיטה אחרת למטה.",
+    "error_wrong_code": "הקוד לא התאים. נסה שוב.",
+    "cta_verify": "אמת",
+    "otp_accessibility": "קוד אימות חד-פעמי"
+  },
+  "gender": {
+    "headline": "ספר לנו על עצמך.",
+    "body": "כדי שנבחר לך נכון.",
+    "man": "גבר",
+    "woman": "אישה",
+    "non_binary": "לא בינארי",
+    "transgender": "טרנסג'נדר",
+    "genderqueer": "ג'נדרקוויר",
+    "genderfluid": "ג'נדרפלואיד",
+    "agender": "אג'נדר",
+    "prefer_not_to_say": "מעדיף לא לציין"
+  },
+  "details": {
+    "headline": "כמעט סיימנו.",
+    "body": "רק הדברים הבסיסיים. אנחנו נטפל בשאר.",
+    "country_label": "מדינה",
+    "country_helper": "קובע את המטבע ויחידות המידה",
+    "dob_label": "תאריך לידה",
+    "dob_placeholder": "מתי יום ההולדת שלך?"
+  },
+  "value_prop": {
+    "beat1_headline": "דע בדיוק לאן ללכת.",
+    "beat1_sub": "תפסיק לנחש. תתחיל ללכת.",
+    "beat2_headline": "לדייטים, חברים ויציאות עצמאיות.",
+    "beat2_sub": "תוכניות לכל סוג יציאה.",
+    "beat3_headline": "מצא מהר. לך.",
+    "beat3_sub": "החלק. שמור. לך."
+  },
+  "intents": {
+    "headline": "עכשיו החלק הכיף.",
+    "body": "הקש על כל וייב שמתאים לך.",
+    "caption": "בחר את מה שמרגש אותך הכי הרבה.",
+    "adventurous": "הרפתקני",
+    "adventurous_desc": "גלה את הבלתי צפוי",
+    "first_date": "דייט ראשון",
+    "first_date_desc": "עשה רושם ראשון מושלם",
+    "romantic": "רומנטי",
+    "romantic_desc": "הדלק את הניצוץ",
+    "group_fun": "כיף קבוצתי",
+    "group_fun_desc": "ככל שיותר כך יותר כיף",
+    "picnic_dates": "פיקניק",
+    "picnic_dates_desc": "שמש, חטיפים, זמן טוב",
+    "take_a_stroll": "טיול קצר",
+    "take_a_stroll_desc": "שוטט עם מטרה"
+  },
+  "location": {
+    "granted_headline": "נעול — {{city}}!",
+    "granted_tap_hint": "הקש כדי להמשיך",
+    "settings_headline": "כפתור אחד מהיר",
+    "settings_body": "המיקום כבוי ב-Mingla.\nהפעל בהגדרות כדי שנמצא\nאת המקומות הטובים ביותר בקרבתך.",
+    "open_settings": "פתח הגדרות",
+    "retry_turned_on": "הפעלתי — נסה שוב",
+    "retry_finding": "מחפשים אותך...",
+    "type_city": "אקליד את העיר שלי",
+    "error_headline": "לא הצלחנו לקבל את המיקום",
+    "error_body": "אות חלש או ה-GPS עדיין מתחמם.\nנסה שוב או הקלד את העיר.",
+    "try_again": "נסה שוב",
+    "idle_headline": "מקומות טובים יותר מתחילים כאן",
+    "idle_body": "הפעל GPS כדי שנמצא\nאבני חן מוסתרות ממש מסביבך.",
+    "enable_location": "הפעל מיקום",
+    "privacy_hint": "המיקום שלך נשאר פרטי. תמיד.",
+    "cta_enable": "הפעל מיקום"
+  },
+  "celebration": {
+    "headline": "תראו אותך.",
+    "body": "ארבע בחירות מהירות וסיימת."
+  },
+  "manual_location": {
+    "headline": "מקם את הסיכה על המפה",
+    "body": "תן לנו את הכתובת המדויקת — עד לרחוב — ונפתח לך את המקומות הטובים ביותר סביבך.",
+    "search_placeholder": "התחל להקליד את הכתובת...",
+    "no_results": "הממ, לא תפסנו. נסה רחוב או שכונה קרובים.",
+    "helper": "ככל שיותר מדויק, כך ההמלצות טובות יותר.",
+    "privacy": "המיקום המדויק שלך נשאר בינינו. תמיד.",
+    "change_accessibility": "שנה מיקום נבחר"
+  },
+  "categories": {
+    "headline": "איזה סוג מקומות אתה אוהב?",
+    "body": "בחר עד 3 שמתאימים לוויב שלך.",
+    "cap_message": "מקסימום 3 קטגוריות. בטל בחירה כדי לבחור אחרת."
+  },
+  "budget": {
+    "headline": "הנקודה המתוקה שלך",
+    "body": "בחר את טווחי המחירים שעובדים.",
+    "caption": "דברים חינמיים תמיד מופיעים גם."
+  },
+  "transport": {
+    "headline": "איך אתה מסתובב?",
+    "body": "עוזר לנו לחשב זמני נסיעה."
+  },
+  "travel_time": {
+    "headline": "עד כמה רחוק תלך?",
+    "body": "הגדר את אזור הנוחות שלך.",
+    "custom_toggle": "הגדר בעצמך",
+    "custom_placeholder": "5 – 120 דקות",
+    "unit": "דק'",
+    "caption": "עד {{minutes}} דק' ב-{{mode}}",
+    "error": "לא ניתן לשמור העדפות. הקש נסה שוב."
+  },
+  "friends": {
+    "headline": "המעגל הקרוב שלך",
+    "body": "הוסף את האנשים הקרובים אליך ואז עשה זיווג. תגלו דברים לעשות ביחד, תראו מה הם אוהבים ותתכננו את הדברים הטובים יחד.",
+    "waiting_header": "מחכים לך",
+    "added_feedback": "נוסף",
+    "declined_feedback": "נדחה",
+    "add_friends_header": "הוסף חברים",
+    "your_people_header": "האנשים שלך",
+    "status_friends": "חברים",
+    "status_request_sent": "בקשה נשלחה",
+    "status_invited": "הוזמן",
+    "pair_paired": "מזווג",
+    "pair_pending": "ממתין",
+    "pair_queued": "בתור",
+    "pair_button": "זווג",
+    "pair_queued_hint": "מופעל כשהם מצטרפים",
+    "empty_state": "אין חברים עדיין. הוסף מישהו שאיתו באמת תעשה תוכניות.",
+    "pair_requests_header": "בקשות זיווג",
+    "paired_feedback": "מזווגים!",
+    "pair_wants": "רוצה להזדווג איתך",
+    "pair_curated": "ראה חוויות שנבחרו לשניכם.",
+    "alert_self_title": "זה אתה",
+    "alert_self_message": "לא ניתן להוסיף את עצמך כחבר.",
+    "alert_duplicate_title": "כבר נוסף",
+    "alert_duplicate_message": "האדם הזה כבר ברשימה שלך.",
+    "alert_pair_error": "לא ניתן לשלוח בקשת זיווג",
+    "alert_accept_error": "לא ניתן לאשר בקשה. נסה שוב.",
+    "alert_decline_error": "לא ניתן לדחות בקשה. נסה שוב.",
+    "alert_generic_error": "לא ניתן לעבד בקשה. נסה שוב.",
+    "share_message": "היי! הצטרף אליי ב-Mingla ונמצא חוויות מדהימות ביחד. https://usemingla.com",
+    "fallback_user": "משתמש"
+  },
+  "collaborations": {
+    "headline": "תכנן משהו ביחד",
+    "body": "התחל סשן עם החבר'ה. גלה דברים לעשות, הצבע על המועדפים ותגשים את זה.",
+    "whos_in": "מי בפנים?",
+    "session_name_label": "שם סשן",
+    "session_name_placeholder": "למשל תוכניות לסופ\"ש, רעיונות לדייט...",
+    "created_header": "סשנים שנוצרו ({{count}})",
+    "loading_invites": "טוען הזמנות...",
+    "invited_header": "הוזמנת ({{count}})",
+    "inviter_message": "{{name}} הזמין אותך",
+    "fallback_someone": "מישהו",
+    "fallback_session": "סשן",
+    "name_taken_error": "השם הזה תפוס. תהיה יצירתי!",
+    "generic_error": "הממ, לא הצליח. נסה שוב.",
+    "join_error": "לא ניתן להצטרף לסשן",
+    "decline_error": "לא ניתן לדחות הזמנה",
+    "empty_state": "הוסף חברים קודם — אז תוכל להתחיל לתכנן ביחד."
+  },
+  "consent": {
+    "headline": "דבר אחד מהיר",
+    "body": "Mingla משתמש במה ששיתפת — הטעם שלך, הוייב שלך, המיקום שלך — כדי למצוא חוויות שתאהב באמת. הנתונים שלך שלך. אנחנו לעולם לא מוכרים אותם, ואתה יכול למחוק בכל עת."
+  },
+  "getting_experiences": {
+    "loading_1": "בודקים מקומות בקרבת מקום...",
+    "loading_2": "מתאימים להעדפות שלך...",
+    "loading_3": "מוצאים אבני חן מוסתרות...",
+    "loading_4": "כמעט שם..."
+  },
+  "occasions": {
+    "birthday": "יום הולדת",
+    "valentines": "יום האהבה",
+    "mothers_day": "יום האם",
+    "fathers_day": "יום האב",
+    "christmas": "חג המולד"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "header": { "title": "알림", "unread": "{{count}}개 읽지 않음", "markAllRead": "모두 읽음 표시", "clearAll": "모두 지우기" },
+  "filters": { "all": "전체", "social": "소셜", "sessions": "세션", "messages": "메시지" },
+  "timeAgo": { "justNow": "방금" },
+  "dateGroups": { "today": "오늘", "yesterday": "어제", "thisWeek": "이번 주", "earlier": "이전" },
+  "actions": { "accept": "수락", "decline": "거절", "join": "참여", "upgrade": "업그레이드", "review": "확인", "actionFailed": "작업 실패. 다시 시도하려면 탭하세요." },
+  "emptyState": { "title": "모두 확인했습니다", "subtitle": "새로운 활동이 여기에 표시됩니다." },
+  "errorState": { "title": "문제가 발생했습니다", "subtitle": "알림을 불러올 수 없습니다.", "tryAgain": "다시 시도" },
+  "offline": { "banner": "오프라인 상태 — 캐시된 알림 표시 중" }
+}

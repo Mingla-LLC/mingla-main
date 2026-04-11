@@ -1,0 +1,95 @@
+{
+  "boardTabs": { "cards": "Thẻ", "discussion": "Thảo luận" },
+  "boardDiscussionTab": {
+    "noConnection": "Không có kết nối", "noConnectionMsg": "Vui lòng kiểm tra kết nối internet và thử lại.",
+    "deleteMessage": "Xóa tin nhắn", "deleteMessageConfirm": "Bạn có chắc muốn xóa tin nhắn này?",
+    "cancel": "Hủy", "delete": "Xóa", "errorUpdateMsg": "Cập nhật tin nhắn thất bại", "errorDeleteMsg": "Xóa tin nhắn thất bại",
+    "justNow": "Vừa xong", "minutesAgo": "{{count}}ph trước", "hoursAgo_one": "{{count}} giờ trước", "hoursAgo_other": "{{count}} giờ trước",
+    "error": "Lỗi", "typeMessage": "Nhập tin nhắn...", "editMessage": "Sửa tin nhắn...", "typing": "đang nhập...",
+    "inputPlaceholder": "Nhập @ để nhắc đến, # để gắn thẻ...", "messagePlaceholder": "Tin nhắn..."
+  },
+  "boardPreferencesForm": {
+    "categories": "Danh mục", "categoriesDesc": "Chọn loại trải nghiệm muốn khám phá cùng nhau",
+    "experienceTypes": "Loại trải nghiệm", "experienceTypesDesc": "Bạn đang lên kế hoạch trải nghiệm gì?",
+    "budget": "Ngân sách", "budgetDesc": "Tùy chọn: Đặt phạm vi ngân sách cho trải nghiệm",
+    "groupSize": "Quy mô nhóm", "groupSizeDesc": "Có bao nhiêu người tham gia?",
+    "adventurous": "Phiêu lưu", "firstDate": "Buổi hẹn đầu", "romantic": "Lãng mạn", "groupFun": "Vui nhóm", "picnicDates": "Hẹn hò dã ngoại", "takeAStroll": "Đi dạo"
+  },
+  "boardSettingsDropdown": {
+    "adminPrivileges": "Quyền quản trị", "manageBoard": "Quản lý bảng", "renameBoard": "Đổi tên bảng",
+    "inviteParticipants": "Mời người tham gia", "turnOffNotifications": "Tắt thông báo", "turnOnNotifications": "Bật thông báo",
+    "leaveBoard": "Rời bảng", "leaving": "Đang rời...", "deleteBoard": "Xóa bảng",
+    "editSessionName": "Sửa tên phiên", "enterSessionName": "Nhập tên phiên", "save": "Lưu",
+    "errorGeneric": "Lỗi", "errorLeave": "Không thể rời bảng. Vui lòng thử lại.",
+    "permissionDenied": "Không có quyền", "permissionEditName": "Chỉ người tạo phiên hoặc quản trị viên mới có thể sửa tên phiên.",
+    "errorEmptyName": "Tên phiên không được để trống.", "success": "Thành công", "nameUpdated": "Cập nhật tên phiên thành công.",
+    "updateFailed": "Cập nhật thất bại", "updateFailedMsg": "Không thể cập nhật tên phiên.",
+    "permissionDelete": "Chỉ quản trị viên mới có thể xóa phiên này.", "sessionDeleted": "Xóa phiên thành công.",
+    "deleteFailed": "Xóa thất bại", "deleteFailedMsg": "Không thể xóa phiên này.",
+    "permissionDeleteBoard": "Chỉ người tạo phiên hoặc quản trị viên mới có thể xóa phiên này.",
+    "deleteSessionTitle": "Xóa phiên", "deleteSessionMsg": "Bạn có chắc muốn xóa \"{{name}}\"? Hành động này không thể hoàn tác và tất cả thẻ, bình chọn, thảo luận sẽ bị xóa vĩnh viễn.",
+    "leaveSessionTitle": "Rời bảng", "leaveSessionMsg": "Bạn có chắc muốn rời \"{{name}}\"?", "namePlaceholder": "Nhập tên phiên"
+  },
+  "cardDiscussionModal": {
+    "discussion": "Thảo luận", "cardDiscussion": "Thảo luận thẻ", "errorLoadMsg": "Tải tin nhắn thất bại",
+    "errorSendMsg": "Gửi tin nhắn thất bại", "errorUpdateMsg": "Cập nhật tin nhắn thất bại",
+    "deleteMessage": "Xóa tin nhắn", "deleteMessageConfirm": "Bạn có chắc muốn xóa tin nhắn này?",
+    "errorDeleteMsg": "Xóa tin nhắn thất bại", "typeMessage": "Nhập tin nhắn...", "error": "Lỗi", "justNow": "Vừa xong", "unknown": "Không rõ"
+  },
+  "cardTagPopover": { "tagACard": "Gắn thẻ", "untitled": "Chưa đặt tên", "experience": "Trải nghiệm", "noCardsSaved": "Chưa có thẻ nào được lưu" },
+  "inviteCodeDisplay": {
+    "inviteCode": "Mã mời", "description": "Chia sẻ mã này với những người bạn muốn mời",
+    "copied": "Đã sao chép!", "copiedMsg": "Mã mời đã được sao chép", "copyCode": "Sao chép mã",
+    "errorCopy": "Sao chép mã thất bại. Vui lòng thử lại.", "infoText": "Người nhận có thể nhập mã này trong ứng dụng để tham gia phiên bảng của bạn"
+  },
+  "inviteLinkShare": {
+    "shareInviteLink": "Chia sẻ link mời", "description": "Gửi link này cho bất kỳ ai bạn muốn mời",
+    "orShareCode": "Hoặc chia sẻ mã này:", "copied": "Đã sao chép!", "copiedMsg": "Link mời đã được sao chép",
+    "copyLink": "Sao chép link", "share": "Chia sẻ", "shareMessage": "Tham gia phiên bảng của tôi trên Mingla! {{link}}",
+    "errorCopy": "Sao chép link thất bại. Vui lòng thử lại.", "errorShare": "Chia sẻ link thất bại", "error": "Lỗi"
+  },
+  "inviteMethodSelector": {
+    "title": "Bạn muốn mời mọi người bằng cách nào?", "description": "Chọn một hoặc nhiều cách để mời người tham gia",
+    "friendsList": "Danh sách bạn bè", "friendsListDesc": "Mời từ bạn bè của bạn",
+    "shareLink": "Chia sẻ link", "shareLinkDesc": "Sao chép và chia sẻ link",
+    "qrCode": "Mã QR", "qrCodeDesc": "Tạo mã QR để quét",
+    "inviteCode": "Mã mời", "inviteCodeDesc": "Chia sẻ mã đơn giản"
+  },
+  "inviteParticipantsModal": {
+    "title": "Mời người tham gia", "addFriendsTo": "Thêm bạn bè vào \"{{name}}\"",
+    "searchPlaceholder": "Tìm bạn bè...", "loadingFriends": "Đang tải bạn bè...", "noUsersFound": "Không tìm thấy người dùng",
+    "allFriendsInBoard": "Tất cả bạn bè đã ở trong bảng này", "noFriendsAvailable": "Không có bạn bè khả dụng",
+    "tryDifferentName": "Thử tên hoặc tên người dùng khác", "addMoreFriends": "Thêm bạn bè để mời",
+    "sendInvites": "Gửi lời mời ({{count}})", "invitesSent": "Đã gửi lời mời",
+    "invitesSentMsg": "Đã mời thành công {{count}} bạn bè{{plural}} vào \"{{name}}\".",
+    "errorSendInvites": "Gửi lời mời thất bại. Vui lòng thử lại.", "error": "Lỗi"
+  },
+  "manageBoardModal": {
+    "manageBoard": "Quản lý bảng", "members": "Thành viên", "admin": "Quản trị viên", "creator": "Người tạo", "you": "(Bạn)",
+    "makeAdmin": "Đặt làm quản trị", "removeAdmin": "Gỡ quản trị", "removeMember": "Xóa", "leaveBoard": "Rời bảng",
+    "permissionDenied": "Không có quyền", "permissionRemove": "Chỉ quản trị viên mới có thể xóa thành viên khỏi bảng này.",
+    "cannotRemoveCreator": "Không thể xóa", "cannotRemoveCreatorMsg": "Không thể xóa người tạo bảng. Họ chỉ có thể tự rời bảng.",
+    "cannotRemoveSelf": "Không thể tự xóa", "cannotRemoveSelfMsg": "Sử dụng tùy chọn 'Rời bảng' để rời khỏi bảng này.",
+    "memberRemoved": "Đã xóa thành viên", "memberRemovedMsg": "{{name}} đã bị xóa khỏi bảng.",
+    "errorRemove": "Xóa thành viên thất bại. Vui lòng thử lại.", "permissionAdmin": "Chỉ quản trị viên mới có thể quản lý quyền quản trị.",
+    "cannotModifyCreator": "Không thể sửa", "cannotModifyCreatorMsg": "Không thể thay đổi trạng thái quản trị của người tạo bảng.",
+    "errorPromote": "Nâng cấp thành viên thành quản trị thất bại. Vui lòng thử lại.", "errorDemote": "Gỡ quyền quản trị thất bại. Vui lòng thử lại.",
+    "leaveBoardTitle": "Rời bảng", "leaveBoardMsg": "Bạn có chắc muốn rời \"{{name}}\"?",
+    "boardDeleted": "Đã xóa bảng", "boardDeletedMsg": "Bảng đã bị xóa vì cần ít nhất 2 thành viên để duy trì hoạt động.",
+    "leftBoard": "Đã rời bảng", "leftBoardMsg": "Bạn đã rời bảng thành công.",
+    "errorLeave": "Rời bảng thất bại. Vui lòng thử lại.", "error": "Lỗi"
+  },
+  "mentionPopover": { "mentionSomeone": "Nhắc đến ai đó" },
+  "participantAvatars": { "noParticipants": "Không có người tham gia", "participant_one": "{{count}} người tham gia", "participant_other": "{{count}} người tham gia" },
+  "qrCodeDisplay": { "noData": "Không có dữ liệu", "noDataMsg": "Không thể tạo mã QR khi không có dữ liệu", "qrCode": "Mã QR", "scanInstruction": "Quét mã QR này để tham gia phiên bảng", "orUseCode": "Hoặc sử dụng mã này:" },
+  "boardMemberManagement": {
+    "manageBoard": "Quản lý bảng", "creator": "Người tạo", "admin": "Quản trị viên", "you": "(Bạn)",
+    "boardInfo": "Thông tin bảng", "totalMembers": "Tổng thành viên: {{count}}", "admins": "Quản trị viên: {{count}}",
+    "minMembersWarning": "Bảng sẽ bị xóa nếu bất kỳ thành viên nào rời đi (cần tối thiểu 2 thành viên)",
+    "removeConfirm": "Xóa <bold>{{name}}</bold> khỏi bảng này?", "removeMember": "Xóa thành viên", "cancel": "Hủy",
+    "demoteConfirm": "Gỡ quyền quản trị của <bold>{{name}}</bold>?", "removeAdmin": "Gỡ quản trị",
+    "leaveConfirm": "Rời bảng này?", "leaveAdminNote": "Một thành viên khác sẽ được chỉ định ngẫu nhiên làm quản trị",
+    "leaveDeleteNote": "Bảng sẽ bị xóa vĩnh viễn (còn ít hơn 2 thành viên)", "leaveUndoNote": "Hành động này không thể hoàn tác", "leaveBoard": "Rời bảng"
+  },
+  "member": { "you_suffix": " (Bạn)" }
+}

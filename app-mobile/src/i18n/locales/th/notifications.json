@@ -1,0 +1,10 @@
+{
+  "header": { "title": "การแจ้งเตือน", "unread": "{{count}} ยังไม่ได้อ่าน", "markAllRead": "อ่านทั้งหมด", "clearAll": "ล้างทั้งหมด" },
+  "filters": { "all": "ทั้งหมด", "social": "สังคม", "sessions": "เซสชัน", "messages": "ข้อความ" },
+  "timeAgo": { "justNow": "เมื่อสักครู่" },
+  "dateGroups": { "today": "วันนี้", "yesterday": "เมื่อวาน", "thisWeek": "สัปดาห์นี้", "earlier": "ก่อนหน้า" },
+  "actions": { "accept": "ยอมรับ", "decline": "ปฏิเสธ", "join": "เข้าร่วม", "upgrade": "อัปเกรด", "review": "ตรวจสอบ", "actionFailed": "ดำเนินการไม่สำเร็จ แตะเพื่อลองใหม่" },
+  "emptyState": { "title": "คุณตามข่าวทันแล้ว", "subtitle": "กิจกรรมใหม่จะแสดงที่นี่" },
+  "errorState": { "title": "เกิดข้อผิดพลาด", "subtitle": "ไม่สามารถโหลดการแจ้งเตือน", "tryAgain": "ลองใหม่" },
+  "offline": { "banner": "คุณออฟไลน์ — แสดงการแจ้งเตือนที่บันทึกไว้" }
+}

@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "חשבון",
+    "billing_label": "חיוב",
+    "billing_description": "נהל את התוכנית והמנוי שלך",
+    "account_settings_label": "הגדרות חשבון",
+    "account_settings_description": "פרטיות, העדפות וניהול חשבון",
+    "upload_profile_photo_title": "העלה תמונת פרופיל",
+    "upload_profile_photo_body": "בחר איך לעדכן את תמונת הפרופיל",
+    "change_profile_photo_title": "שנה תמונת פרופיל",
+    "change_profile_photo_body": "העלה תמונה חדשה או הסר את הקיימת",
+    "error_remove_photo": "הסרת תמונת פרופיל נכשלה.",
+    "error_take_photo": "צילום נכשל. נסה שוב.",
+    "error_select_image": "בחירת תמונה נכשלה. נסה שוב.",
+    "error_upload_photo": "העלאת תמונת פרופיל נכשלה.",
+    "error_save_bio": "שמירת הביוגרפיה נכשלה."
+  },
+  "edit_bio": {
+    "title": "ערוך ביוגרפיה",
+    "placeholder": "ספר לאנשים על עצמך",
+    "save": "שמור"
+  },
+  "edit_interests": {
+    "title": "ערוך תחומי עניין",
+    "what_are_you_into": "מה מעניין אותך?",
+    "what_do_you_like": "מה אתה אוהב?",
+    "save": "שמור"
+  },
+  "hero": {
+    "your_name_here": "השם שלך כאן",
+    "user_fallback": "משתמש",
+    "first_name": "שם פרטי",
+    "last_name": "שם משפחה",
+    "name_error_empty": "הזן את שמך.",
+    "name_error_failed": "השמירה נכשלה. נסה שוב.",
+    "somewhere_cool": "כנראה במקום מגניב",
+    "tap_to_add_bio": "הקש כדי להוסיף ביוגרפיה",
+    "hint_add_photo": "אנשים סומכים על פנים. הוסף תמונה כדי שחברים ידעו שזה אתה.",
+    "hint_add_bio": "ביוגרפיה קצרה עושה הרבה. מה צריכים לדעת עליך?",
+    "cancel_editing": "בטל עריכה",
+    "save_name": "שמור שם"
+  },
+  "stats": {
+    "saved": "שמורים",
+    "friends": "חברים",
+    "boards": "לוחות",
+    "places": "מקומות",
+    "streak": "רצף",
+    "level": "רמה",
+    "motivation_start": "הסטטיסטיקות שלך מתחילות ברגע שאתה עושה משהו. לך לגלות.",
+    "motivation_close": "עוד {{count}} מקום כדי להגיע ל-{{tier}}. אתה קרוב.",
+    "motivation_close_plural": "עוד {{count}} מקומות כדי להגיע ל-{{tier}}. אתה קרוב.",
+    "motivation_week": "שבוע שלם. עקביות נראית טוב עליך.",
+    "motivation_month": "30 ימים ברציפות. אולי אתה בלתי ניתן לעצירה."
+  },
+  "paired_section": {
+    "see_all": "ראה הכל"
+  },
+  "interests": {
+    "edit_accessibility": "ערוך את תחומי העניין",
+    "your_interests": "תחומי העניין שלך",
+    "interests": "תחומי עניין",
+    "not_shared": "לא שותף",
+    "empty_text": "ספר לנו מה מעניין אותך — זה עוזר לנו למצוא את הדבר המועדף הבא שלך.",
+    "add_interests": "הוסף תחומי עניין"
+  },
+  "friend": {
+    "loading_profile": "טוען פרופיל\u2026",
+    "profile_unavailable_title": "הפרופיל הזה לא זמין",
+    "profile_unavailable_body": "הפרופיל של אדם זה עשוי להיות פרטי, או שאינכם מחוברים.",
+    "about": "אודות",
+    "location_label": "מיקום",
+    "not_shared": "לא שותף",
+    "mingla_level": "רמת Mingla",
+    "interests": "תחומי עניין",
+    "message": "הודעה",
+    "friend_fallback": "חבר"
+  }
+}

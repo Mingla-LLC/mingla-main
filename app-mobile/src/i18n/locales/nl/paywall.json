@@ -1,0 +1,10 @@
+{
+  "close": "Betaalmuur sluiten",
+  "manage_subscription": "Abonnement beheren",
+  "alerts.restored_title": "Aankopen hersteld",
+  "alerts.restored_message": "Je eerdere aankopen zijn succesvol hersteld.",
+  "alerts.restored_done": "Klaar",
+  "alerts.purchase_failed": "Aankoop mislukt",
+  "toast.purchase_delayed": "Aankoop geslaagd. Functies kunnen even duren om te activeren.",
+  "toast.restore_delayed": "Aankopen hersteld. Functies kunnen even duren om te activeren."
+}

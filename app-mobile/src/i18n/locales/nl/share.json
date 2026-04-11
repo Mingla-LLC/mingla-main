@@ -1,0 +1,18 @@
+{
+  "header.title": "Ervaring delen",
+  "empty.no_data": "Geen ervaringsgegevens beschikbaar",
+  "card.nearby": "In de buurt",
+  "card.suggested_schedule": "Voorgesteld schema",
+  "card.per_person": "per persoon",
+  "share_to": "Delen via:",
+  "platform.messages": "Berichten",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Meer deelopties",
+  "actions.copy_link": "Link kopiëren",
+  "actions.copy_message": "Bericht kopiëren",
+  "alerts.copy_error": "Bericht kon niet naar klembord worden gekopieerd",
+  "alerts.share_error": "Delen mislukt. Probeer het opnieuw.",
+  "alerts.error_title": "Fout"
+}

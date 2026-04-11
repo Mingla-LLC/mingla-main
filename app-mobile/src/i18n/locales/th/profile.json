@@ -1,0 +1,79 @@
+{
+  "page": {
+    "account_section": "บัญชี",
+    "billing_label": "การเรียกเก็บเงิน",
+    "billing_description": "จัดการแพลนและการสมัครสมาชิก",
+    "account_settings_label": "การตั้งค่าบัญชี",
+    "account_settings_description": "ความเป็นส่วนตัว การตั้งค่า และการจัดการบัญชี",
+    "upload_profile_photo_title": "อัปโหลดรูปโปรไฟล์",
+    "upload_profile_photo_body": "เลือกวิธีอัปเดตรูปโปรไฟล์ของคุณ",
+    "change_profile_photo_title": "เปลี่ยนรูปโปรไฟล์",
+    "change_profile_photo_body": "อัปโหลดรูปใหม่หรือลบรูปที่มีอยู่",
+    "error_remove_photo": "ไม่สามารถลบรูปโปรไฟล์ได้",
+    "error_take_photo": "ถ่ายรูปไม่สำเร็จ กรุณาลองอีกครั้ง",
+    "error_select_image": "เลือกรูปไม่สำเร็จ กรุณาลองอีกครั้ง",
+    "error_upload_photo": "อัปโหลดรูปโปรไฟล์ไม่สำเร็จ",
+    "error_save_bio": "บันทึกประวัติไม่สำเร็จ"
+  },
+  "edit_bio": {
+    "title": "แก้ไขประวัติ",
+    "placeholder": "เล่าเกี่ยวกับตัวคุณ",
+    "save": "บันทึก"
+  },
+  "edit_interests": {
+    "title": "แก้ไขความสนใจ",
+    "what_are_you_into": "คุณสนใจอะไร?",
+    "what_do_you_like": "คุณชอบอะไร?",
+    "save": "บันทึก"
+  },
+  "hero": {
+    "your_name_here": "ใส่ชื่อของคุณ",
+    "user_fallback": "ผู้ใช้",
+    "first_name": "ชื่อ",
+    "last_name": "นามสกุล",
+    "name_error_empty": "กรุณากรอกชื่อ",
+    "name_error_failed": "บันทึกไม่สำเร็จ ลองอีกครั้ง",
+    "somewhere_cool": "อาจจะอยู่ที่เจ๋งๆ",
+    "tap_to_add_bio": "แตะเพื่อเพิ่มประวัติ",
+    "hint_add_photo": "คนเชื่อใจเมื่อเห็นหน้า เพิ่มรูปเพื่อให้เพื่อนรู้ว่าเป็นคุณ",
+    "hint_add_bio": "ประวัติสั้นๆ ช่วยได้มาก คนอื่นควรรู้อะไรเกี่ยวกับคุณ?",
+    "cancel_editing": "ยกเลิกการแก้ไข",
+    "save_name": "บันทึกชื่อ"
+  },
+  "stats": {
+    "saved": "บันทึก",
+    "friends": "เพื่อน",
+    "boards": "บอร์ด",
+    "places": "สถานที่",
+    "streak": "ต่อเนื่อง",
+    "level": "เลเวล",
+    "motivation_start": "สถิติของคุณจะเริ่มสะสมเมื่อคุณเริ่มทำอะไรสักอย่าง ไปสำรวจเลย",
+    "motivation_close": "อีก {{count}} ที่ก็จะถึง {{tier}} ใกล้แล้ว",
+    "motivation_close_plural": "อีก {{count}} ที่ก็จะถึง {{tier}} ใกล้แล้ว",
+    "motivation_week": "ครบหนึ่งสัปดาห์ ความสม่ำเสมอดูดีนะ",
+    "motivation_month": "30 วันติดต่อกัน คุณอาจจะหยุดไม่ได้แล้ว"
+  },
+  "paired_section": {
+    "see_all": "ดูทั้งหมด"
+  },
+  "interests": {
+    "edit_accessibility": "แก้ไขความสนใจ",
+    "your_interests": "ความสนใจของคุณ",
+    "interests": "ความสนใจ",
+    "not_shared": "ไม่แชร์",
+    "empty_text": "บอกเราว่าคุณชอบอะไร — มันจะช่วยเราหาสิ่งที่คุณจะชอบต่อไป",
+    "add_interests": "เพิ่มความสนใจ"
+  },
+  "friend": {
+    "loading_profile": "กำลังโหลดโปรไฟล์…",
+    "profile_unavailable_title": "โปรไฟล์นี้ไม่พร้อมใช้งาน",
+    "profile_unavailable_body": "โปรไฟล์ของบุคคลนี้อาจเป็นส่วนตัว หรือคุณอาจไม่ได้เชื่อมต่อกัน",
+    "about": "เกี่ยวกับ",
+    "location_label": "ตำแหน่ง",
+    "not_shared": "ไม่แชร์",
+    "mingla_level": "เลเวล Mingla",
+    "interests": "ความสนใจ",
+    "message": "ข้อความ",
+    "friend_fallback": "เพื่อน"
+  }
+}

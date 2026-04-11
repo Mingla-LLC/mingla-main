@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "搜索语言...",
+    "close_accessibility": "关闭语言选择器"
+  },
+  "country_picker": {
+    "search_placeholder": "搜索国家...",
+    "close_accessibility": "关闭国家选择器"
+  },
+  "welcome": {
+    "greeting_hey": "嘿",
+    "greeting_name": "{{name}}。",
+    "greeting_good_taste": "好品味",
+    "greeting_walked_in": "刚刚来了。",
+    "we_know": "我们知道",
+    "good_taste": "好品味",
+    "just_walked_in": "刚刚来了。",
+    "name_prompt": "但我们还不知道你的名字。",
+    "placeholder_first": "名",
+    "placeholder_last": "姓",
+    "cta": "开始吧"
+  },
+  "phone": {
+    "headline": "你的号码是？",
+    "body": "我们会发送验证码，只要两秒钟。",
+    "verified_headline": "全部搞定。",
+    "verified_body": "你的号码已确认，少一件事要操心。",
+    "consent_text": "我同意通过短信或电话接收 Mingla 的消息，包括验证码、好友邀请和体验提醒。回复 STOP 取消订阅或 HELP 获取帮助。查看我们的",
+    "terms_of_service": "服务条款",
+    "and": "和",
+    "privacy_policy": "隐私政策",
+    "consent_accessibility": "同意接收 Mingla 的消息",
+    "cta_send_code": "发送验证码",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "已选国家：{{name}}。点击更改。"
+  },
+  "otp": {
+    "headline": "输入验证码",
+    "body": "已发送至 {{phone}}",
+    "verifying": "验证中...",
+    "sending": "发送中...",
+    "resend_countdown": "{{seconds}}秒后重新发送",
+    "channel_label": "没收到？试试其他方式：",
+    "resend_sms": "重新发送短信",
+    "resend_sms_accessibility": "通过短信重新发送验证码",
+    "call_me": "打电话给我",
+    "call_me_accessibility": "通过电话接收验证码",
+    "error_max_attempts": "三次尝试未成功。请试试下方其他方式。",
+    "error_wrong_code": "验证码不正确，请重试。",
+    "cta_verify": "验证",
+    "otp_accessibility": "一次性验证码"
+  },
+  "gender": {
+    "headline": "介绍一下你自己。",
+    "body": "这样我们能更好地为你推荐。",
+    "man": "男性",
+    "woman": "女性",
+    "non_binary": "非二元",
+    "transgender": "跨性别",
+    "genderqueer": "酷儿",
+    "genderfluid": "流性别",
+    "agender": "无性别",
+    "prefer_not_to_say": "不愿透露"
+  },
+  "details": {
+    "headline": "快完成了。",
+    "body": "只需基本信息，其余的我们来处理。",
+    "country_label": "国家",
+    "country_helper": "设置你的货币和度量单位",
+    "dob_label": "出生日期",
+    "dob_placeholder": "你的生日是？"
+  },
+  "value_prop": {
+    "beat1_headline": "精确知道去哪里。",
+    "beat1_sub": "别再猜了，出发吧。",
+    "beat2_headline": "约会、朋友和独自出行。",
+    "beat2_sub": "各种出行计划。",
+    "beat3_headline": "快速找到，出发。",
+    "beat3_sub": "滑动、收藏、出发。"
+  },
+  "intents": {
+    "headline": "现在是有趣的部分。",
+    "body": "点击所有适合你的风格。",
+    "caption": "选择最让你兴奋的一个。",
+    "adventurous": "冒险",
+    "adventurous_desc": "探索未知",
+    "first_date": "初次约会",
+    "first_date_desc": "留下完美第一印象",
+    "romantic": "浪漫",
+    "romantic_desc": "点燃火花",
+    "group_fun": "团体活动",
+    "group_fun_desc": "人越多越开心",
+    "picnic_dates": "野餐约会",
+    "picnic_dates_desc": "阳光、小食、好时光",
+    "take_a_stroll": "散步",
+    "take_a_stroll_desc": "有目的地漫步"
+  },
+  "location": {
+    "granted_headline": "已定位 — {{city}}！",
+    "granted_tap_hint": "点击继续",
+    "settings_headline": "快速开关",
+    "settings_body": "Mingla 的定位已关闭。\n请在设置中开启，这样我们就能\n找到你附近最好的地方。",
+    "open_settings": "打开设置",
+    "retry_turned_on": "我已开启 — 重试",
+    "retry_finding": "正在定位...",
+    "type_city": "手动输入城市",
+    "error_headline": "无法获取你的位置",
+    "error_body": "信号弱或 GPS 仍在预热。\n请重试或手动输入城市。",
+    "try_again": "重试",
+    "idle_headline": "更好的地方从这里开始",
+    "idle_body": "开启 GPS 让我们为你发现\n周边的隐藏好去处。",
+    "enable_location": "开启定位",
+    "privacy_hint": "你的位置始终保持私密。",
+    "cta_enable": "开启定位"
+  },
+  "celebration": {
+    "headline": "太棒了。",
+    "body": "四个快速选择，你就完成了。"
+  },
+  "manual_location": {
+    "headline": "在地图上标记你的位置",
+    "body": "告诉我们你的精确地址 — 精确到街道 — 我们会为你解锁周围最好的去处。",
+    "search_placeholder": "开始输入你的地址...",
+    "no_results": "没找到，试试附近的街道或社区。",
+    "helper": "越精确，推荐越好。",
+    "privacy": "你的精确位置只有我们知道。永远。",
+    "change_accessibility": "更改已选位置"
+  },
+  "categories": {
+    "headline": "你喜欢什么类型的地方？",
+    "body": "选择最多3个符合你风格的。",
+    "cap_message": "最多3个类别。取消一个才能选择另一个。"
+  },
+  "budget": {
+    "headline": "你的价格偏好",
+    "body": "选择适合你的价格范围。",
+    "caption": "免费项目也会显示。"
+  },
+  "transport": {
+    "headline": "你怎么出行？",
+    "body": "帮我们精确计算出行时间。"
+  },
+  "travel_time": {
+    "headline": "你愿意走多远？",
+    "body": "设置你的舒适范围。",
+    "custom_toggle": "自定义",
+    "custom_placeholder": "5 – 120 分钟",
+    "unit": "分钟",
+    "caption": "{{mode}}最多 {{minutes}} 分钟",
+    "error": "无法保存你的偏好。点击重试再试一次。"
+  },
+  "friends": {
+    "headline": "你的小圈子",
+    "body": "添加你最亲近的人，然后配对。你们会一起发现好去处、看到彼此的喜好、并肩规划美好时光。",
+    "waiting_header": "等待你",
+    "added_feedback": "已添加",
+    "declined_feedback": "已拒绝",
+    "add_friends_header": "添加好友",
+    "your_people_header": "你的人",
+    "status_friends": "好友",
+    "status_request_sent": "请求已发送",
+    "status_invited": "已邀请",
+    "pair_paired": "已配对",
+    "pair_pending": "等待中",
+    "pair_queued": "排队中",
+    "pair_button": "配对",
+    "pair_queued_hint": "他们加入后激活",
+    "empty_state": "这里还没有好友。添加一个你真正会一起出去的人。",
+    "pair_requests_header": "配对请求",
+    "paired_feedback": "已配对！",
+    "pair_wants": "想和你配对",
+    "pair_curated": "查看为你们两人精选的体验。",
+    "alert_self_title": "这是你自己",
+    "alert_self_message": "你不能把自己添加为好友。",
+    "alert_duplicate_title": "已经添加",
+    "alert_duplicate_message": "这个人已经在你的列表中了。",
+    "alert_pair_error": "无法发送配对请求",
+    "alert_accept_error": "无法接受配对请求，请重试。",
+    "alert_decline_error": "无法拒绝配对请求，请重试。",
+    "alert_generic_error": "无法处理请求，请重试。",
+    "share_message": "嘿！加入我的 Mingla，一起发现精彩体验吧。https://usemingla.com",
+    "fallback_user": "用户"
+  },
+  "collaborations": {
+    "headline": "一起计划些什么",
+    "body": "和你的伙伴们开始一个会话。一起发现好去处、投票选出最爱、然后真正去做。",
+    "whos_in": "谁参加？",
+    "session_name_label": "会话名称",
+    "session_name_placeholder": "例如：周末计划、约会点子...",
+    "created_header": "已创建的会话 ({{count}})",
+    "loading_invites": "加载邀请中...",
+    "invited_header": "你被邀请了 ({{count}})",
+    "inviter_message": "{{name}} 邀请了你",
+    "fallback_someone": "某人",
+    "fallback_session": "会话",
+    "name_taken_error": "这个名字已被使用，换一个吧！",
+    "generic_error": "没成功，再试一次。",
+    "join_error": "无法加入会话",
+    "decline_error": "无法拒绝邀请",
+    "empty_state": "先添加好友 — 然后就可以一起计划了。"
+  },
+  "consent": {
+    "headline": "说一件事",
+    "body": "Mingla 会使用你分享的信息 — 你的品味、风格和位置 — 来找到你真正喜欢的体验。你的数据归你所有。我们绝不出售，你可以随时删除。"
+  },
+  "getting_experiences": {
+    "loading_1": "查看附近地点...",
+    "loading_2": "匹配你的偏好...",
+    "loading_3": "寻找隐藏好去处...",
+    "loading_4": "快好了..."
+  },
+  "occasions": {
+    "birthday": "生日",
+    "valentines": "情人节",
+    "mothers_day": "母亲节",
+    "fathers_day": "父亲节",
+    "christmas": "圣诞节"
+  }
+}

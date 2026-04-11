@@ -1,0 +1,10 @@
+{
+  "close": "ペイウォールを閉じる",
+  "manage_subscription": "サブスクリプションを管理",
+  "alerts.restored_title": "購入が復元されました",
+  "alerts.restored_message": "以前の購入が正常に復元されました。",
+  "alerts.restored_done": "完了",
+  "alerts.purchase_failed": "購入に失敗しました",
+  "toast.purchase_delayed": "購入完了。機能の有効化に少し時間がかかる場合があります。",
+  "toast.restore_delayed": "購入が復元されました。機能の有効化に少し時間がかかる場合があります。"
+}

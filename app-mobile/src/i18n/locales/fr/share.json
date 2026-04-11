@@ -1,0 +1,18 @@
+{
+  "header.title": "Partager l'expérience",
+  "empty.no_data": "Aucune donnée d'expérience disponible",
+  "card.nearby": "À proximité",
+  "card.suggested_schedule": "Programme suggéré",
+  "card.per_person": "par personne",
+  "share_to": "Partager via :",
+  "platform.messages": "Messages",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Plus d'options de partage",
+  "actions.copy_link": "Copier le lien",
+  "actions.copy_message": "Copier le message",
+  "alerts.copy_error": "Échec de la copie du message dans le presse-papiers",
+  "alerts.share_error": "Échec du partage. Veuillez réessayer.",
+  "alerts.error_title": "Erreur"
+}

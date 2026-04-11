@@ -1,0 +1,219 @@
+{
+  "language": {
+    "search_placeholder": "Talen zoeken...",
+    "close_accessibility": "Taalkiezer sluiten"
+  },
+  "country_picker": {
+    "search_placeholder": "Landen zoeken...",
+    "close_accessibility": "Landkiezer sluiten"
+  },
+  "welcome": {
+    "greeting_hey": "Hé",
+    "greeting_name": "{{name}}.",
+    "greeting_good_taste": "Goede smaak",
+    "greeting_walked_in": "is net binnengekomen.",
+    "we_know": "We herkennen",
+    "good_taste": "goede smaak",
+    "just_walked_in": "als die binnenkomt.",
+    "name_prompt": "Maar we weten je naam nog niet.",
+    "placeholder_first": "Voornaam",
+    "placeholder_last": "Achternaam",
+    "cta": "Laten we gaan"
+  },
+  "phone": {
+    "headline": "Wat is je nummer?",
+    "body": "We sturen een code. Duurt twee seconden.",
+    "verified_headline": "Helemaal klaar.",
+    "verified_body": "Je nummer is vastgelegd. Eén ding minder.",
+    "consent_text": "Ik ga akkoord met het ontvangen van berichten van Mingla via SMS of telefoon, inclusief verificatiecodes, vriendenuitnodigingen en herinneringen voor ervaringen. Antwoord STOP om af te melden of HELP voor hulp. Bekijk onze ",
+    "terms_of_service": "Gebruiksvoorwaarden",
+    "and": " en ",
+    "privacy_policy": "Privacybeleid",
+    "consent_accessibility": "Akkoord met het ontvangen van berichten van Mingla",
+    "cta_send_code": "Code versturen",
+    "placeholder_phone": "(555) 123-4567",
+    "country_accessibility": "Geselecteerd land: {{name}}. Tik om te wijzigen."
+  },
+  "otp": {
+    "headline": "Voer de code in",
+    "body": "Verstuurd naar {{phone}}",
+    "verifying": "Verifiëren...",
+    "sending": "Versturen...",
+    "resend_countdown": "Opnieuw versturen in {{seconds}}s",
+    "channel_label": "Niet ontvangen? Probeer een andere manier:",
+    "resend_sms": "SMS opnieuw versturen",
+    "resend_sms_accessibility": "Code opnieuw versturen via SMS",
+    "call_me": "Bel me",
+    "call_me_accessibility": "Code ontvangen via telefoongesprek",
+    "error_max_attempts": "Drie pogingen, geen succes. Probeer een andere methode hieronder.",
+    "error_wrong_code": "Die code klopt niet. Probeer het opnieuw.",
+    "cta_verify": "Verifiëren",
+    "otp_accessibility": "Eenmalige verificatiecode"
+  },
+  "gender": {
+    "headline": "Vertel ons over jezelf.",
+    "body": "Zodat we je suggesties beter kunnen afstemmen.",
+    "man": "Man",
+    "woman": "Vrouw",
+    "non_binary": "Non-binair",
+    "transgender": "Transgender",
+    "genderqueer": "Genderqueer",
+    "genderfluid": "Genderfluïde",
+    "agender": "Agender",
+    "prefer_not_to_say": "Zeg ik liever niet"
+  },
+  "details": {
+    "headline": "Bijna klaar.",
+    "body": "Alleen de basis. De rest regelen wij.",
+    "country_label": "Land",
+    "country_helper": "Bepaalt je valuta en maateenheden",
+    "dob_label": "Geboortedatum",
+    "dob_placeholder": "Wanneer is je verjaardag?"
+  },
+  "value_prop": {
+    "beat1_headline": "Weet precies waar je naartoe moet.",
+    "beat1_sub": "Stop met gokken. Begin met gaan.",
+    "beat2_headline": "Voor dates, vrienden & solo-uitjes.",
+    "beat2_sub": "Plannen voor elk soort uitje.",
+    "beat3_headline": "Vind het snel. Ga.",
+    "beat3_sub": "Swipe. Bewaar. Ga."
+  },
+  "intents": {
+    "headline": "Nu het leuke deel.",
+    "body": "Tik op elke sfeer die bij je past.",
+    "caption": "Kies degene die je het meest aanspreekt.",
+    "adventurous": "Avontuurlijk",
+    "adventurous_desc": "Ontdek het onverwachte",
+    "first_date": "Eerste dates",
+    "first_date_desc": "Maak een geweldige eerste indruk",
+    "romantic": "Romantisch",
+    "romantic_desc": "Laat de vonk overspringen",
+    "group_fun": "Groepspret",
+    "group_fun_desc": "Hoe meer zielen, hoe meer vreugd",
+    "picnic_dates": "Picknickdates",
+    "picnic_dates_desc": "Zon, snacks, goede tijden",
+    "take_a_stroll": "Wandeling maken",
+    "take_a_stroll_desc": "Dwalen met een doel"
+  },
+  "location": {
+    "granted_headline": "Genoteerd — {{city}}!",
+    "granted_tap_hint": "Tik om door te gaan",
+    "settings_headline": "Eén snelle instelling",
+    "settings_body": "Locatie is uitgeschakeld voor Mingla.\nSchakel het in via Instellingen zodat we de\nbeste plekken bij jou in de buurt kunnen vinden.",
+    "open_settings": "Instellingen openen",
+    "retry_turned_on": "Ik heb het ingeschakeld — opnieuw proberen",
+    "retry_finding": "Je zoeken...",
+    "type_city": "Typ mijn stad",
+    "error_headline": "Kon je locatie niet vinden",
+    "error_body": "Zwak signaal of GPS nog aan het opstarten.\nProbeer het opnieuw of typ je stad.",
+    "try_again": "Opnieuw proberen",
+    "idle_headline": "Betere plekken beginnen hier",
+    "idle_body": "Schakel GPS in zodat we verborgen\nparels om de hoek kunnen vinden.",
+    "enable_location": "Locatie inschakelen",
+    "privacy_hint": "Je locatie blijft privé. Altijd.",
+    "cta_enable": "Locatie inschakelen"
+  },
+  "celebration": {
+    "headline": "Goed bezig!",
+    "body": "Vier snelle keuzes en je bent klaar."
+  },
+  "manual_location": {
+    "headline": "Zet je pin op de kaart",
+    "body": "Geef ons je exacte adres — tot op straatniveau — en we vinden de beste plekken in je buurt.",
+    "search_placeholder": "Begin je adres te typen...",
+    "no_results": "Hmm, dat hebben we niet gevonden. Probeer een straat of buurt in de buurt.",
+    "helper": "Hoe preciezer, hoe beter je aanbevelingen.",
+    "privacy": "Je exacte locatie blijft tussen ons. Altijd.",
+    "change_accessibility": "Geselecteerde locatie wijzigen"
+  },
+  "categories": {
+    "headline": "Wat voor plekken vind je leuk?",
+    "body": "Kies er maximaal 3 die bij je passen.",
+    "cap_message": "Maximaal 3 categorieën. Deselecteer er een om een andere te kiezen."
+  },
+  "budget": {
+    "headline": "Jouw ideale budget",
+    "body": "Kies de prijsklassen die voor jou werken.",
+    "caption": "Gratis activiteiten verschijnen ook altijd."
+  },
+  "transport": {
+    "headline": "Hoe verplaats je je?",
+    "body": "Helpt ons de reistijden te berekenen."
+  },
+  "travel_time": {
+    "headline": "Hoe ver wil je gaan?",
+    "body": "Stel je comfortzone in.",
+    "custom_toggle": "Zelf instellen",
+    "custom_placeholder": "5 – 120 minuten",
+    "unit": "min",
+    "caption": "Tot {{minutes}} min met {{mode}}",
+    "error": "Voorkeuren konden niet worden opgeslagen. Tik op Opnieuw proberen."
+  },
+  "friends": {
+    "headline": "Je inner circle",
+    "body": "Voeg je beste mensen toe en koppel je. Ontdek samen dingen om te doen, bekijk wat zij leuk vinden en plan de leuke dingen zij aan zij.",
+    "waiting_header": "Wacht op jou",
+    "added_feedback": "Toegevoegd",
+    "declined_feedback": "Geweigerd",
+    "add_friends_header": "Vrienden toevoegen",
+    "your_people_header": "Jouw mensen",
+    "status_friends": "Vrienden",
+    "status_request_sent": "Verzoek verstuurd",
+    "status_invited": "Uitgenodigd",
+    "pair_paired": "Gekoppeld",
+    "pair_pending": "In afwachting",
+    "pair_queued": "In wachtrij",
+    "pair_button": "Koppelen",
+    "pair_queued_hint": "Wordt actief wanneer ze deelnemen",
+    "empty_state": "Nog geen vrienden hier. Voeg iemand toe met wie je echt plannen zou maken.",
+    "pair_requests_header": "Koppelverzoeken",
+    "paired_feedback": "Gekoppeld!",
+    "pair_wants": "Wil met je koppelen",
+    "pair_curated": "Bekijk ervaringen die voor jullie beiden zijn geselecteerd.",
+    "alert_self_title": "Dat ben jij",
+    "alert_self_message": "Je kunt jezelf niet als vriend toevoegen.",
+    "alert_duplicate_title": "Al toegevoegd",
+    "alert_duplicate_message": "Deze persoon staat al in je lijst.",
+    "alert_pair_error": "Koppelverzoek kon niet worden verstuurd",
+    "alert_accept_error": "Koppelverzoek kon niet worden geaccepteerd. Probeer het opnieuw.",
+    "alert_decline_error": "Koppelverzoek kon niet worden geweigerd. Probeer het opnieuw.",
+    "alert_generic_error": "Verzoek kon niet worden verwerkt. Probeer het opnieuw.",
+    "share_message": "Hé! Doe mee op Mingla en laten we samen geweldige ervaringen vinden. https://usemingla.com",
+    "fallback_user": "Gebruiker"
+  },
+  "collaborations": {
+    "headline": "Plan iets samen",
+    "body": "Start een sessie met je groep. Ontdek dingen om te doen, stem op favorieten en maak het waar.",
+    "whos_in": "Wie doet mee?",
+    "session_name_label": "Sessienaam",
+    "session_name_placeholder": "bijv. Weekendplannen, Date-ideeën...",
+    "created_header": "Aangemaakte sessies ({{count}})",
+    "loading_invites": "Uitnodigingen laden...",
+    "invited_header": "Je bent uitgenodigd ({{count}})",
+    "inviter_message": "{{name}} heeft je uitgenodigd",
+    "fallback_someone": "Iemand",
+    "fallback_session": "Sessie",
+    "name_taken_error": "Die naam is al bezet. Wees creatief!",
+    "generic_error": "Hmm, dat werkte niet. Probeer het nog eens.",
+    "join_error": "Kon niet deelnemen aan sessie",
+    "decline_error": "Uitnodiging kon niet worden geweigerd",
+    "empty_state": "Voeg eerst vrienden toe — daarna kun je samen plannen."
+  },
+  "consent": {
+    "headline": "Nog één ding",
+    "body": "Mingla gebruikt wat je hebt gedeeld — je smaak, je stijl, je locatie — om ervaringen te vinden die je echt leuk vindt. Je gegevens blijven van jou. We verkopen ze nooit en je kunt ze altijd verwijderen."
+  },
+  "getting_experiences": {
+    "loading_1": "Plekken in de buurt checken...",
+    "loading_2": "Afstemmen op je voorkeuren...",
+    "loading_3": "Verborgen parels zoeken...",
+    "loading_4": "Bijna klaar..."
+  },
+  "occasions": {
+    "birthday": "Verjaardag",
+    "valentines": "Valentijnsdag",
+    "mothers_day": "Moederdag",
+    "fathers_day": "Vaderdag",
+    "christmas": "Kerst"
+  }
+}

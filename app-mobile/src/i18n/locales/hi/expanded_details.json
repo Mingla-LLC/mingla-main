@@ -1,0 +1,91 @@
+{
+  "action_buttons": {
+    "save": "सहेजें",
+    "saved": "सहेजा गया",
+    "schedule": "शेड्यूल",
+    "scheduled": "शेड्यूल किया गया",
+    "policies_reservations": "नीतियाँ और आरक्षण",
+    "i_went_here": "मैं यहाँ गया",
+    "been_there": "जा चुका हूँ",
+    "on_it": "हो रहा है...",
+    "visited_label": "आपने इस जगह का दौरा किया",
+    "mark_visited_label": "इस जगह को विज़िट किया हुआ चिह्नित करें",
+    "visited_hint": "विज़िट चिह्न हटाने के लिए टैप करें",
+    "mark_visited_hint": "आपकी विज़िट रिकॉर्ड करता है और समीक्षा प्रक्रिया खोलता है",
+    "opening_hours": "खुलने का समय",
+    "open_now": "अभी खुला है",
+    "closed": "बंद",
+    "show_all_hours": "सभी समय दिखाएँ",
+    "show_less": "कम दिखाएँ",
+    "select_date": "तारीख चुनें",
+    "select_time": "समय चुनें",
+    "cancel": "रद्द करें",
+    "next": "अगला",
+    "done": "हो गया",
+    "error_save": "कार्ड सहेजने में विफल। कृपया फिर से कोशिश करें।",
+    "error_login": "कार्ड शेड्यूल करने के लिए लॉगिन करें।",
+    "error_invalid_date": "चयनित तारीख मान्य नहीं है। कृपया फिर से कोशिश करें।",
+    "schedule_failed_title": "शेड्यूल विफल",
+    "schedule_failed_body": "आपके कैलेंडर में जोड़ नहीं सके। कृपया फिर से कोशिश करें।",
+    "place_closed_title": "जगह बंद है",
+    "place_closed_body": "चयनित तारीख और समय पर यह जगह बंद है। कृपया दूसरा समय चुनें।",
+    "choose_another_time": "दूसरा समय चुनें",
+    "some_stops_closed_title": "कुछ स्टॉप बंद हो सकते हैं",
+    "change_time": "समय बदलें",
+    "schedule_anyway": "फिर भी शेड्यूल करें",
+    "scheduled_toast": "शेड्यूल हो गया! {{title}} आपके कैलेंडर में जोड़ दिया गया",
+    "closed_message": "चयनित तारीख और समय पर यह जगह बंद है। दूसरा समय चुनने के लिए \"शेड्यूल\" टैप करें।",
+    "share_prompt": "{{title}} दोस्तों के साथ साझा करें"
+  },
+  "busyness": {
+    "traffic": "ट्रैफ़िक",
+    "busy_level": "भीड़ का स्तर",
+    "busy": "भीड़",
+    "clear_roads": "खाली सड़कें",
+    "clear": "खाली",
+    "moderate": "मध्यम",
+    "heavy": "भारी"
+  },
+  "match_factors": {
+    "title": "मैच विश्लेषण",
+    "location": "स्थान",
+    "budget": "बजट",
+    "category": "श्रेणी",
+    "time": "समय",
+    "popularity": "लोकप्रियता",
+    "excellent": "उत्कृष्ट",
+    "good": "अच्छा",
+    "fair": "ठीक-ठाक",
+    "poor": "कमज़ोर",
+    "summary": "ये कारक निर्धारित करते हैं कि यह अनुभव आपकी प्राथमिकताओं से कितना मेल खाता है। उच्च स्कोर बेहतर मिलान दर्शाता है।"
+  },
+  "weather": {
+    "weather": "मौसम",
+    "clear": "साफ़",
+    "cloudy": "बादल",
+    "rainy": "बारिश",
+    "snowy": "बर्फ़",
+    "stormy": "तूफ़ानी"
+  },
+  "timeline": {
+    "start": "शुरुआत",
+    "stop": "स्टॉप {{number}}",
+    "open_in_maps": "मानचित्र में खोलें",
+    "then": "फिर..."
+  },
+  "companion_stops": {
+    "title": "अपनी सैर शुरू करें",
+    "subtitle": "चलने से पहले इन नज़दीकी जगहों में से किसी एक से शुरू करें",
+    "reviews_count": "({{count}} समीक्षाएँ)"
+  },
+  "highlights": {
+    "title": "मुख्य आकर्षण"
+  },
+  "description": {
+    "show_less": "कम दिखाएँ",
+    "read_more": "और पढ़ें"
+  },
+  "card_info": {
+    "nearby": "आस-पास"
+  }
+}
