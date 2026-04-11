@@ -7,6 +7,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native'
+import { useTranslation } from 'react-i18next'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from './ui/Icon';
 import RevenueCatUI from 'react-native-purchases-ui'
@@ -46,6 +47,7 @@ interface PaywallScreenProps {
 export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
   const queryClient = useQueryClient()
   const { showToast } = useToast()
+  const { t } = useTranslation(['paywall', 'common'])
 
   // Called by RC Paywall UI after a successful purchase
   const handlePurchaseCompleted = useCallback(
@@ -65,7 +67,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
             await syncSubscriptionFromRC(userId, customerInfo)
           } catch (retryErr) {
             console.error('[PaywallScreen] Sync retry failed:', retryErr)
-            showToast({ message: 'Purchase successful. Features may take a moment to activate.', type: 'info' })
+            showToast({ message: t('paywall:toast.purchase_delayed'), type: 'info' })
           }
         }, 2000)
       }
@@ -96,7 +98,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
             await syncSubscriptionFromRC(userId, customerInfo)
           } catch (retryErr) {
             console.error('[PaywallScreen] Restore sync retry failed:', retryErr)
-            showToast({ message: 'Purchases restored. Features may take a moment to activate.', type: 'info' })
+            showToast({ message: t('paywall:toast.restore_delayed'), type: 'info' })
           }
         }, 2000)
       }
@@ -106,9 +108,9 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
       })
 
       Alert.alert(
-        'Purchases restored',
-        'Your previous purchases have been restored successfully.',
-        [{ text: 'Done', onPress: onClose }],
+        t('paywall:alerts.restored_title'),
+        t('paywall:alerts.restored_message'),
+        [{ text: t('paywall:alerts.restored_done'), onPress: onClose }],
       )
     },
     [userId, queryClient, onClose, showToast],
@@ -124,7 +126,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
     ({ error }: { error: PurchasesError }) => {
       // userCancelled errors are silent — the user chose to back out
       if ((error as unknown as { userCancelled?: boolean }).userCancelled) return
-      Alert.alert('Purchase failed', error.message)
+      Alert.alert(t('paywall:alerts.purchase_failed'), error.message)
     },
     [],
   )
@@ -136,7 +138,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
         style={styles.closeButton}
         onPress={onClose}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        accessibilityLabel="Close paywall"
+        accessibilityLabel={t('paywall:close')}
         accessibilityRole="button"
       >
         <Icon name="close" size={24} color={colors.gray700} />
@@ -157,7 +159,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
         onPress={presentCustomerCenter}
         accessibilityRole="button"
       >
-        <Text style={styles.manageText}>Manage subscription</Text>
+        <Text style={styles.manageText}>{t('paywall:manage_subscription')}</Text>
       </TouchableOpacity>
     </SafeAreaView>
   )

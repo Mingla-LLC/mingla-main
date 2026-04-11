@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Explorar",
+  "tabs.discover": "Descubrir",
+  "tabs.chats": "Chats",
+  "tabs.likes": "Favoritos",
+  "tabs.profile": "Perfil",
+  "alerts.sign_in_error_title": "Error de inicio de sesión",
+  "alerts.error_title": "Error",
+  "alerts.failed_sign_in": "No se pudo completar el inicio de sesión: "
+}

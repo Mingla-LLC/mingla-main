@@ -12,6 +12,7 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
@@ -394,6 +395,7 @@ export default function SwipeableCards({
   refreshKey,
   savedCards = [],
 }: SwipeableCardsProps) {
+  const { t } = useTranslation(['cards', 'common']);
   // Use recommendations from context
 
   const {
@@ -1469,7 +1471,7 @@ export default function SwipeableCards({
               height={SCREEN_HEIGHT - 280}
               borderRadius={20}
             />
-            <Text style={styles.skeletonLoadingText}>Curating your lineup</Text>
+            <Text style={styles.skeletonLoadingText}>{t('cards:swipeable.curating_lineup')}</Text>
           </Animated.View>
         </View>
       );
@@ -1481,7 +1483,7 @@ export default function SwipeableCards({
             <View style={styles.noCardsIcon}>
               <Icon name="alert-circle" size={48} color="#ef4444" />
             </View>
-            <Text style={styles.noCardsTitle}>That didn't land</Text>
+            <Text style={styles.noCardsTitle}>{t('cards:swipeable.error_title')}</Text>
             <Text style={styles.noCardsSubtitle}>{effectiveUIState.message}</Text>
             <TouchableOpacity
               onPress={() => {
@@ -1490,7 +1492,7 @@ export default function SwipeableCards({
               style={styles.startOverButton}
               activeOpacity={0.7}
             >
-              <Text style={styles.startOverButtonText}>Try Again</Text>
+              <Text style={styles.startOverButtonText}>{t('cards:swipeable.try_again')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1506,10 +1508,10 @@ export default function SwipeableCards({
                 <Icon name="earth-outline" size={24} color="#eb7825" />
               </View>
               <Text style={styles.emptyDeckTitle}>
-                You've seen everything available
+                {t('cards:swipeable.seen_everything')}
               </Text>
               <Text style={styles.emptyDeckSubtitle}>
-                Shift your vibe to unlock new spots, or look back at what you've been through.
+                {t('cards:swipeable.shift_vibe')}
               </Text>
 
               <View style={styles.emptyDeckActions}>
@@ -1519,7 +1521,7 @@ export default function SwipeableCards({
                   activeOpacity={0.7}
                 >
                   <Icon name="options-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.emptyDeckButtonText}>Shift preferences</Text>
+                  <Text style={styles.emptyDeckButtonText}>{t('cards:swipeable.shift_preferences')}</Text>
                 </TouchableOpacity>
 
                 {sessionSwipedCards.length > 0 && (
@@ -1530,7 +1532,7 @@ export default function SwipeableCards({
                   >
                     <Icon name="time-outline" size={16} color="#eb7825" />
                     <Text style={styles.emptyDeckOutlineButtonText}>
-                      Review all cards
+                      {t('cards:swipeable.review_all_cards')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1620,7 +1622,7 @@ export default function SwipeableCards({
             >
               <Icon name="time-outline" size={14} color="#6b7280" />
               <Text style={styles.batchChipText}>
-                {sessionSwipedCards.length} viewed
+                {t('cards:swipeable.viewed', { count: sessionSwipedCards.length })}
               </Text>
             </TouchableOpacity>
           )}
@@ -1671,7 +1673,7 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Icon name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || 'Nearby'}
+                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
                           </Text>
                         </View>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
@@ -1695,7 +1697,7 @@ export default function SwipeableCards({
                           <Text style={styles.detailBadgeText}>
                             {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
                               ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
+                              : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1708,7 +1710,7 @@ export default function SwipeableCards({
                       <View style={styles.viewMoreRow}>
                         <View style={styles.viewMoreBadge}>
                           <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>View more</Text>
+                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
                         </View>
                       </View>
                     </View>
@@ -1731,7 +1733,7 @@ export default function SwipeableCards({
                         size={18}
                         color="#6b7280"
                       />
-                      <Text style={styles.shareButtonText}>Share</Text>
+                      <Text style={styles.shareButtonText}>{t('cards:swipeable.share')}</Text>
                     </TouchableOpacity>
                   </View>
                   </View>
@@ -1761,7 +1763,7 @@ export default function SwipeableCards({
               pointerEvents="none"
             >
               <View style={styles.likeIndicator}>
-                <Text style={styles.likeText}>LIKE</Text>
+                <Text style={styles.likeText}>{t('cards:swipeable.like')}</Text>
               </View>
             </Animated.View>
 
@@ -1770,7 +1772,7 @@ export default function SwipeableCards({
               pointerEvents="none"
             >
               <View style={styles.passIndicator}>
-                <Text style={styles.passText}>PASS</Text>
+                <Text style={styles.passText}>{t('cards:swipeable.pass')}</Text>
               </View>
             </Animated.View>
 
@@ -1811,7 +1813,7 @@ export default function SwipeableCards({
                         transform: [{ translateY: titleOverlaySlide }],
                       },
                     ]}>
-                      <Text style={styles.cardTitle}>{currentRec.title || 'Experience'}</Text>
+                      <Text style={styles.cardTitle}>{currentRec.title || t('cards:swipeable.experience')}</Text>
                       {currentRec.oneLiner && (
                         <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
                       )}
@@ -1821,7 +1823,7 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Icon name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || 'Nearby'}
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
                           </Text>
                         </View>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
@@ -1845,7 +1847,7 @@ export default function SwipeableCards({
                           <Text style={styles.detailBadgeText}>
                             {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
                               ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
+                              : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1855,7 +1857,7 @@ export default function SwipeableCards({
                         {isCurrentCardSaved && (
                           <View style={styles.savedBadge}>
                             <Icon name="heart" size={10} color="white" />
-                            <Text style={styles.savedBadgeText}>Saved</Text>
+                            <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
                           </View>
                         )}
                       </View>
@@ -1864,7 +1866,7 @@ export default function SwipeableCards({
                       <View style={styles.viewMoreRow}>
                         <View style={styles.viewMoreBadge}>
                           <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>View more</Text>
+                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
                         </View>
                       </View>
                     </Animated.View>
@@ -1883,7 +1885,7 @@ export default function SwipeableCards({
                         size={18}
                         color="#6b7280"
                       />
-                      <Text style={styles.shareButtonText}>Share</Text>
+                      <Text style={styles.shareButtonText}>{t('cards:swipeable.share')}</Text>
                     </TouchableOpacity>
                   </View>
                 </>

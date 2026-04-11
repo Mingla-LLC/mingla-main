@@ -6,8 +6,20 @@ import { getDefaultLanguageCode } from '../constants/languages'
 // Import all translation files statically
 import en_common from './locales/en/common.json'
 import en_onboarding from './locales/en/onboarding.json'
+import en_navigation from './locales/en/navigation.json'
+import en_cards from './locales/en/cards.json'
+import en_discover from './locales/en/discover.json'
+import en_preferences from './locales/en/preferences.json'
+import en_share from './locales/en/share.json'
+import en_paywall from './locales/en/paywall.json'
 import es_common from './locales/es/common.json'
 import es_onboarding from './locales/es/onboarding.json'
+import es_navigation from './locales/es/navigation.json'
+import es_cards from './locales/es/cards.json'
+import es_discover from './locales/es/discover.json'
+import es_preferences from './locales/es/preferences.json'
+import es_share from './locales/es/share.json'
+import es_paywall from './locales/es/paywall.json'
 
 const LANGUAGE_STORAGE_KEY = 'mingla_preferred_language'
 
@@ -36,12 +48,12 @@ export async function persistLanguage(code: string): Promise<void> {
 
 i18n.use(initReactI18next).init({
   resources: {
-    en: { common: en_common, onboarding: en_onboarding },
-    es: { common: es_common, onboarding: es_onboarding },
+    en: { common: en_common, onboarding: en_onboarding, navigation: en_navigation, cards: en_cards, discover: en_discover, preferences: en_preferences, share: en_share, paywall: en_paywall },
+    es: { common: es_common, onboarding: es_onboarding, navigation: es_navigation, cards: es_cards, discover: es_discover, preferences: es_preferences, share: es_share, paywall: es_paywall },
   },
   lng: getDefaultLanguageCode(),
   fallbackLng: 'en',
-  ns: ['common', 'onboarding'],
+  ns: ['common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences', 'share', 'paywall'],
   defaultNS: 'common',
   interpolation: {
     escapeValue: false,

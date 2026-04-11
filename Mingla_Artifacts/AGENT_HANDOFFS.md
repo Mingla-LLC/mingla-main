@@ -1,13 +1,19 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 0 active | 74 completed
+> Total: 1 active | 75 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| (none) | | | | | |
+| AH-070 | ORCH-0386 Phase 2 | Implementor | 2026-04-11 | ORCH-0386_IMPLEMENT_I18N_PHASE2.md | Awaiting dispatch |
+
+## Completed Dispatches
+
+| ID | Issue | Agent Role | Completed | Artifact | Verdict |
+|----|-------|-----------|-----------|----------|---------|
+| AH-069 | ORCH-0386 Phase 2 | Investigator | 2026-04-11 | INVESTIGATION_ORCH-0386_I18N_PHASE2_REPORT.md | APPROVED |
 
 ## Completed Dispatches
 

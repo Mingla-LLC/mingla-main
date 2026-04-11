@@ -14,6 +14,7 @@ import {
   LayoutAnimation,
   PanResponder,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
@@ -605,6 +606,7 @@ function MultiStopPlanView({
   onCardRemoved?: (cardId: string) => void;
   currencyCode?: string;
 }) {
+  const { t } = useTranslation(['cards', 'common']);
   // ── Local card state (mutable for stop replacements) ──────────────────────
   const [localCard, setLocalCard] = useState<CuratedExperienceCard>(card);
   const isCustomized = localCard !== card; // Reference equality — true after any replacement
@@ -620,7 +622,7 @@ function MultiStopPlanView({
   const effectiveCurrency = currencyCode || 'USD';
   const priceText =
     localCard.totalPriceMin === 0 && localCard.totalPriceMax === 0
-      ? 'Free'
+      ? t('cards:swipeable.free')
       : `${formatCurrency(localCard.totalPriceMin, effectiveCurrency)}–${formatCurrency(localCard.totalPriceMax, effectiveCurrency)}`;
 
   // Total time calculation
@@ -768,7 +770,7 @@ function MultiStopPlanView({
         {isCustomized && (
           <View style={curatedStyles.customizedBadge}>
             <Icon name="create-outline" size={12} color="#9ca3af" />
-            <Text style={curatedStyles.customizedText}>Customized</Text>
+            <Text style={curatedStyles.customizedText}>{t('cards:expanded.customized')}</Text>
           </View>
         )}
         <View style={curatedStyles.summaryRow}>
@@ -784,7 +786,7 @@ function MultiStopPlanView({
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
             <Icon name="star" size={14} color="white" />
-            <Text style={curatedStyles.summaryText}>{avgRating} avg</Text>
+            <Text style={curatedStyles.summaryText}>{t('cards:expanded.avg', { rating: avgRating })}</Text>
           </View>
         </View>
       </View>
@@ -846,7 +848,7 @@ function MultiStopPlanView({
                     <View style={curatedStyles.stopLabelTextWrap}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={[curatedStyles.stopLabel, isOptional && curatedStyles.optionalLabel]}>
-                          {isOptional ? 'Suggested' : stop.stopLabel}
+                          {isOptional ? t('cards:expanded.suggested') : stop.stopLabel}
                         </Text>
                         {isOptional && (
                           <TouchableOpacity
@@ -855,7 +857,7 @@ function MultiStopPlanView({
                               setDismissedStops(prev => new Set([...prev, originalIdx]));
                             }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityLabel="Dismiss optional stop"
+                            accessibilityLabel={t('cards:expanded.dismiss_optional_stop')}
                             accessibilityRole="button"
                           >
                             <Icon name="close-circle-outline" size={16} color="#9ca3af" />
@@ -866,7 +868,7 @@ function MultiStopPlanView({
                       {stop.role ? (
                         <Text style={curatedStyles.roleSubtitle} numberOfLines={1}>
                           {stop.optional
-                            ? (stop.role === 'Flowers' ? 'Pick up flowers' : stop.role === 'Groceries' ? 'Grab groceries' : stop.role)
+                            ? (stop.role === 'Flowers' ? t('cards:expanded.pick_up_flowers') : stop.role === 'Groceries' ? t('cards:expanded.grab_groceries') : stop.role)
                             : `Your ${stop.role.toLowerCase()} stop`}
                         </Text>
                       ) : null}
@@ -961,7 +963,7 @@ function MultiStopPlanView({
                     activeOpacity={0.8}
                   >
                     <Icon name="globe-outline" size={15} color="#ffffff" />
-                    <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
+                    <Text style={curatedStyles.policiesButtonText}>{t('cards:expanded.policies_reservations')}</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -970,11 +972,11 @@ function MultiStopPlanView({
                   style={curatedStyles.expandToggle}
                   onPress={() => toggleStop(stop.stopNumber)}
                   activeOpacity={0.7}
-                  accessibilityLabel={isExpanded ? 'Collapse stop details' : 'Expand stop details'}
+                  accessibilityLabel={isExpanded ? t('cards:expanded.collapse_stop_details') : t('cards:expanded.expand_stop_details')}
                   accessibilityRole="button"
                 >
                   <Text style={curatedStyles.expandToggleText}>
-                    {isExpanded ? 'Less Details' : 'More Details'}
+                    {isExpanded ? t('cards:expanded.less_details') : t('cards:expanded.more_details')}
                   </Text>
                   <Icon
                     name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -993,7 +995,7 @@ function MultiStopPlanView({
                     accessibilityRole="button"
                   >
                     <Icon name="refresh-outline" size={14} color="#eb7825" />
-                    <Text style={curatedStyles.replaceButtonText}>Replace</Text>
+                    <Text style={curatedStyles.replaceButtonText}>{t('cards:expanded.replace')}</Text>
                   </TouchableOpacity>
                 )}
 
@@ -1001,7 +1003,7 @@ function MultiStopPlanView({
                 {replacingStopIndex === originalIdx && (
                   <View style={curatedStyles.alternativesContainer}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={curatedStyles.alternativesLabel}>Alternatives</Text>
+                      <Text style={curatedStyles.alternativesLabel}>{t('cards:expanded.alternatives')}</Text>
                       <TouchableOpacity onPress={dismissAlternatives} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Icon name="close" size={16} color="#9ca3af" />
                       </TouchableOpacity>
@@ -1009,20 +1011,20 @@ function MultiStopPlanView({
                     {isLoadingAlts && (
                       <View style={curatedStyles.alternativesEmpty}>
                         <ActivityIndicator size="small" color="#eb7825" />
-                        <Text style={[curatedStyles.alternativesEmptyText, { marginTop: 6 }]}>Finding alternatives...</Text>
+                        <Text style={[curatedStyles.alternativesEmptyText, { marginTop: 6 }]}>{t('cards:expanded.finding_alternatives')}</Text>
                       </View>
                     )}
                     {altsError && (
                       <View style={curatedStyles.alternativesError}>
-                        <Text style={curatedStyles.alternativesErrorText}>Couldn't load alternatives.</Text>
+                        <Text style={curatedStyles.alternativesErrorText}>{t('cards:expanded.couldnt_load_alternatives')}</Text>
                         <TouchableOpacity onPress={() => handleReplace(originalIdx)}>
-                          <Text style={{ color: '#eb7825', fontWeight: '600', fontSize: 13 }}>Retry</Text>
+                          <Text style={{ color: '#eb7825', fontWeight: '600', fontSize: 13 }}>{t('cards:expanded.retry')}</Text>
                         </TouchableOpacity>
                       </View>
                     )}
                     {!isLoadingAlts && !altsError && alternatives.length === 0 && (
                       <View style={curatedStyles.alternativesEmpty}>
-                        <Text style={curatedStyles.alternativesEmptyText}>No alternatives in this area</Text>
+                        <Text style={curatedStyles.alternativesEmptyText}>{t('cards:expanded.no_alternatives')}</Text>
                       </View>
                     )}
                     {!isLoadingAlts && alternatives.length > 0 && (
@@ -1042,7 +1044,7 @@ function MultiStopPlanView({
                                 {alt.rating > 0 ? `★ ${alt.rating.toFixed(1)}` : ''}{alt.rating > 0 && alt.priceTier ? ' · ' : ''}{alt.priceTier ? alt.priceTier.charAt(0).toUpperCase() + alt.priceTier.slice(1) : ''}
                               </Text>
                               <TouchableOpacity style={curatedStyles.altCardSelect} onPress={() => handleSelectAlternative(alt)} activeOpacity={0.8}>
-                                <Text style={curatedStyles.altCardSelectText}>Select</Text>
+                                <Text style={curatedStyles.altCardSelectText}>{t('cards:expanded.select')}</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -1058,7 +1060,7 @@ function MultiStopPlanView({
                   if (!weekdayLines || weekdayLines.length === 0) return null;
                   return (
                     <View style={curatedStyles.hoursSection}>
-                      <Text style={curatedStyles.hoursSectionLabel}>Weekly Hours</Text>
+                      <Text style={curatedStyles.hoursSectionLabel}>{t('cards:expanded.weekly_hours')}</Text>
                       {weekdayLines.map((line, index) => {
                         const isToday = line.startsWith(todayName);
                         return (
@@ -1101,7 +1103,7 @@ function MultiStopPlanView({
                       activeOpacity={0.7}
                     >
                       <Icon name="navigate-outline" size={14} color="#eb7825" />
-                      <Text style={curatedStyles.directionsText}>Get Directions</Text>
+                      <Text style={curatedStyles.directionsText}>{t('cards:expanded.get_directions')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1115,10 +1117,10 @@ function MultiStopPlanView({
         <View style={curatedStyles.totalTimeCard}>
           <Icon name="time-outline" size={20} color="#eb7825" />
           <View style={curatedStyles.totalTimeTextBlock}>
-            <Text style={curatedStyles.totalTimeLabel}>Total Time Estimate</Text>
+            <Text style={curatedStyles.totalTimeLabel}>{t('cards:expanded.total_time_estimate')}</Text>
             <Text style={curatedStyles.totalTimeValue}>{totalTimeLabel}</Text>
             <Text style={curatedStyles.totalTimeBreakdown}>
-              {totalStopMinutes}min at stops · {totalTravelMinutes}min travel
+              {t('cards:expanded.at_stops', { minutes: totalStopMinutes })} · {t('cards:expanded.travel_time', { minutes: totalTravelMinutes })}
             </Text>
           </View>
         </View>
@@ -1146,10 +1148,10 @@ function MultiStopPlanView({
       {showUndo && undoRef.current && (
         <View style={curatedStyles.undoToast}>
           <Text style={curatedStyles.undoToastText} numberOfLines={1}>
-            Replaced {undoRef.current.originalStop.placeName}
+            {t('cards:expanded.replaced', { name: undoRef.current.originalStop.placeName })}
           </Text>
           <TouchableOpacity style={curatedStyles.undoToastButton} onPress={handleUndo} activeOpacity={0.8}>
-            <Text style={curatedStyles.undoToastButtonText}>Undo</Text>
+            <Text style={curatedStyles.undoToastButtonText}>{t('cards:expanded.undo')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1175,6 +1177,7 @@ function MultiStopPlanView({
 
 /** Wrapper component so each curated stop gets its own useIsPlaceOpen hook instance */
 function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> | null | undefined }) {
+  const { t } = useTranslation(['cards', 'common']);
   const liveOpenStatus = useIsPlaceOpen(openingHours);
   if (liveOpenStatus === null) return null;
   return (
@@ -1188,7 +1191,7 @@ function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> 
           curatedStyles.openBadgeText,
           liveOpenStatus ? curatedStyles.openBadgeTextOpen : curatedStyles.openBadgeTextClosed,
         ]}>
-          {liveOpenStatus ? 'Open Now' : 'Closed'}
+          {liveOpenStatus ? t('cards:expanded.open_now') : t('cards:expanded.closed')}
         </Text>
       </View>
     </>
@@ -1215,6 +1218,7 @@ export default function ExpandedCardModal({
   navigationIndex,
   navigationTotal,
 }: ExpandedCardModalProps) {
+  const { t } = useTranslation(['cards', 'common']);
   const { updateCardStrollData, collabTravelMode } = useRecommendations();
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own preference.
@@ -1605,7 +1609,7 @@ export default function ExpandedCardModal({
                     category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
                     title={curatedCard.title}
                     address={curatedCard.stops[0]?.address}
-                    priceRange={curatedCard.totalPriceMin === 0 && curatedCard.totalPriceMax === 0 ? 'Free' : `${formatCurrency(curatedCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(curatedCard.totalPriceMax, accountPreferences?.currency || 'USD')}`}
+                    priceRange={curatedCard.totalPriceMin === 0 && curatedCard.totalPriceMax === 0 ? t('cards:swipeable.free') : `${formatCurrency(curatedCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(curatedCard.totalPriceMax, accountPreferences?.currency || 'USD')}`}
                     travelTime={curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined}
                     strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
                     routeDuration={curatedCard.estimatedDurationMinutes}
@@ -1626,7 +1630,7 @@ export default function ExpandedCardModal({
                   alignItems: "center",
                 }}
               >
-                <Text>No images available</Text>
+                <Text>{t('cards:expanded.no_images')}</Text>
               </View>
             ))}
 
@@ -1668,8 +1672,8 @@ export default function ExpandedCardModal({
                 ]}>
                   <Icon name="ticket-outline" size={16} color="#fff" />
                   <Text style={nightOutStyles.ticketStatusText}>
-                    {nightOut.ticketStatus === "onsale" ? "On Sale" :
-                     nightOut.ticketStatus === "offsale" ? "Sold Out" : "Coming Soon"}
+                    {nightOut.ticketStatus === "onsale" ? t('cards:expanded.on_sale') :
+                     nightOut.ticketStatus === "offsale" ? t('cards:expanded.sold_out') : t('cards:expanded.coming_soon')}
                   </Text>
                 </View>
 
@@ -1679,7 +1683,7 @@ export default function ExpandedCardModal({
                   <View style={nightOutStyles.infoCard}>
                     <View style={nightOutStyles.infoCardHeader}>
                       <Icon name="calendar" size={14} color="#eb7825" />
-                      <Text style={nightOutStyles.infoCardLabel}>Date & Time</Text>
+                      <Text style={nightOutStyles.infoCardLabel}>{t('cards:expanded.date_time')}</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrimary}>{nightOut.date}</Text>
                     <Text style={nightOutStyles.infoCardSecondary}>{nightOut.time}</Text>
@@ -1689,10 +1693,10 @@ export default function ExpandedCardModal({
                   <View style={nightOutStyles.infoCard}>
                     <View style={nightOutStyles.infoCardHeader}>
                       <Icon name="pricetag-outline" size={14} color="#eb7825" />
-                      <Text style={nightOutStyles.infoCardLabel}>Tickets</Text>
+                      <Text style={nightOutStyles.infoCardLabel}>{t('cards:expanded.tickets')}</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrice} numberOfLines={1} adjustsFontSizeToFit>{formatPriceRange(nightOut.price, accountPreferences?.currency)}</Text>
-                    <Text style={nightOutStyles.infoCardSecondary}>per ticket</Text>
+                    <Text style={nightOutStyles.infoCardSecondary}>{t('cards:expanded.per_ticket')}</Text>
                   </View>
                 </View>
 
@@ -1702,7 +1706,7 @@ export default function ExpandedCardModal({
                 {/* Vibe Tags */}
                 {nightOut.tags && nightOut.tags.length > 0 && (
                   <>
-                    <Text style={nightOutStyles.sectionTitle}>Vibe</Text>
+                    <Text style={nightOutStyles.sectionTitle}>{t('cards:expanded.vibe')}</Text>
                     <View style={nightOutStyles.tagsRow}>
                       {nightOut.tags.map((tag, index) => (
                         <View key={index} style={nightOutStyles.vibeBadge}>
@@ -1733,14 +1737,14 @@ export default function ExpandedCardModal({
                     activeOpacity={0.7}
                   >
                     <Icon name="navigate-outline" size={16} color="#eb7825" />
-                    <Text style={nightOutStyles.directionsText}>Get Directions</Text>
+                    <Text style={nightOutStyles.directionsText}>{t('cards:expanded.get_directions')}</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Seat Map (if available) */}
                 {nightOut.seatMapUrl && !seatMapFailed && (
                   <View style={{ marginTop: 16 }}>
-                    <Text style={nightOutStyles.sectionTitle}>Seat Map</Text>
+                    <Text style={nightOutStyles.sectionTitle}>{t('cards:expanded.seat_map')}</Text>
                     <Image
                       source={{ uri: nightOut.seatMapUrl }}
                       style={{ width: '100%', height: 200, borderRadius: 12 }}
@@ -2035,13 +2039,13 @@ export default function ExpandedCardModal({
                   >
                     <Icon name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
-                      Get Tickets – {formatPriceRange(nightOut.price, accountPreferences?.currency)}
+                      {t('cards:expanded.get_tickets', { price: formatPriceRange(nightOut.price, accountPreferences?.currency) })}
                     </Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={[nightOutStyles.getTicketsButton, { backgroundColor: '#666' }]}>
                     <Text style={nightOutStyles.getTicketsText}>
-                      {nightOut.ticketStatus === "offsale" ? "Sold Out" : "Tickets Coming Soon"}
+                      {nightOut.ticketStatus === "offsale" ? t('cards:expanded.sold_out') : t('cards:expanded.tickets_coming_soon')}
                     </Text>
                   </View>
                 )}

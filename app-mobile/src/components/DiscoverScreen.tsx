@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useTranslation } from 'react-i18next';
 import { useCoachMark } from "../hooks/useCoachMark";
 import {
   View,
@@ -476,9 +477,10 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
   activeTab,
   onTabChange,
 }) => {
+  const { t } = useTranslation(['discover', 'common']);
   const tabs: Array<{ id: DiscoverTab; label: string; icon: string }> = [
-    { id: "for-you", label: "For you", icon: "map-pin" },
-    { id: "night-out", label: "Night out", icon: "music" },
+    { id: "for-you", label: t('discover:tabs.for_you'), icon: "map-pin" },
+    { id: "night-out", label: t('discover:tabs.night_out'), icon: "music" },
   ];
 
   return (
@@ -514,6 +516,7 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
 
 // Featured Card Component
 const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
+  const { t } = useTranslation(['discover', 'common']);
   const formattedPrice = formatPriceRange(card.priceRange, currency);
   const formattedDistance = parseAndFormatDistance(card.distance, measurementSystem);
   
@@ -532,7 +535,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
         />
         {/* Featured Badge */}
         <View style={styles.featuredBadge}>
-          <Text style={styles.featuredBadgeText}>Featured</Text>
+          <Text style={styles.featuredBadgeText}>{t('discover:featured.badge')}</Text>
         </View>
         {/* Travel Info Badges */}
         <View style={styles.travelInfoContainer}>
@@ -665,10 +668,11 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
 
 // Night Out Card Component — compact horizontal layout
 const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onPress }) => {
+  const { t } = useTranslation(['discover', 'common']);
   const formattedPrice = formatPriceRange(card.price, currency);
-  const displayPrice = formattedPrice || card.price || "TBA";
+  const displayPrice = formattedPrice || card.price || t('discover:nightout.tba');
   const statusColor = card.ticketStatus === "onsale" ? "#10B981" : card.ticketStatus === "offsale" ? "#EF4444" : "#F59E0B";
-  const statusLabel = card.ticketStatus === "onsale" ? "On Sale" : card.ticketStatus === "offsale" ? "Sold Out" : "Soon";
+  const statusLabel = card.ticketStatus === "onsale" ? t('discover:nightout.on_sale') : card.ticketStatus === "offsale" ? t('discover:nightout.sold_out') : t('discover:nightout.soon');
 
   return (
     <TouchableOpacity
@@ -751,6 +755,7 @@ export default function DiscoverScreen({
   deepLinkParams,
   onDeepLinkHandled,
 }: DiscoverScreenProps) {
+  const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
   const coachMap = useCoachMark(7, 0);
   const coachPair = useCoachMark(9, 20);
@@ -1799,7 +1804,7 @@ export default function DiscoverScreen({
             return;
           }
 
-          setDiscoverError("Unable to load experiences right now. Please try again.");
+          setDiscoverError(t('discover:errors.unable_to_load'));
           hasFetchedRef.current = false;
           return;
         }
@@ -2011,12 +2016,12 @@ export default function DiscoverScreen({
             // Silently keep stale cache, no error banner
             return;
           }
-          setDiscoverError("Session expired. Pull down to retry.");
+          setDiscoverError(t('discover:errors.session_expired'));
         } else {
           // Server/network error: set date guard to avoid hammering
           // Leave hasFetchedRef as true so the AND guard (hasFetchedRef && dateRef === today) blocks re-fetching
           lastDiscoverFetchDateRef.current = today;
-          setDiscoverError("Failed to load recommendations");
+          setDiscoverError(t('discover:errors.failed_recommendations'));
         }
       } finally {
         fetchingRef.current = false;
@@ -2325,7 +2330,7 @@ export default function DiscoverScreen({
         saveNightOutCache(cards);
       } catch (err) {
         console.error("Error fetching night-out events:", err);
-        setNightOutError("Failed to load events");
+        setNightOutError(t('discover:errors.failed_events'));
       } finally {
         setNightOutLoading(false);
       }
@@ -2508,7 +2513,7 @@ export default function DiscoverScreen({
   // Derive the genre label for confirmation display
   const getGenreLabel = (id: GenreFilter): string => {
     const opt = genreFilterOptions.find((o) => o.id === id);
-    return opt?.label || "All Genres";
+    return opt?.label || t('discover:filters.all_genres');
   };
 
   // Filter night-out cards and sort by nearest date
@@ -2685,12 +2690,12 @@ export default function DiscoverScreen({
 
   // Filter options
   const dateFilterOptions: { id: DateFilter; label: string }[] = [
-    { id: "any", label: "Any Date" },
-    { id: "today", label: "Today" },
-    { id: "tomorrow", label: "Tomorrow" },
-    { id: "weekend", label: "This Weekend" },
-    { id: "next-week", label: "Next Week" },
-    { id: "month", label: "This Month" },
+    { id: "any", label: t('discover:filters.any_date') },
+    { id: "today", label: t('discover:filters.today') },
+    { id: "tomorrow", label: t('discover:filters.tomorrow') },
+    { id: "weekend", label: t('discover:filters.this_weekend') },
+    { id: "next-week", label: t('discover:filters.next_week') },
+    { id: "month", label: t('discover:filters.this_month') },
   ];
 
   const cRate = getCurrencyRate(accountPreferences?.currency);
@@ -2698,7 +2703,7 @@ export default function DiscoverScreen({
 
   // PRICE_TIERS already includes slug `any`; omit it here so list keys stay unique (duplicate `any` broke the filter modal).
   const priceFilterOptions: { id: PriceFilter; label: string }[] = [
-    { id: "any", label: "Any Price" },
+    { id: "any", label: t('discover:filters.any_price') },
     ...PRICE_TIERS.filter((tier) => tier.slug !== "any").map((tier) => ({
       id: tier.slug as PriceFilter,
       label: `${tier.label} · ${tier.rangeLabel}`,
@@ -2706,17 +2711,17 @@ export default function DiscoverScreen({
   ];
 
   const genreFilterOptions: { id: GenreFilter; label: string }[] = [
-    { id: "all", label: "All Genres" },
-    { id: "afrobeats", label: "Afrobeats" },
-    { id: "dancehall", label: "Dancehall / Soca" },
-    { id: "hiphop-rnb", label: "Hip-Hop / R&B" },
-    { id: "house", label: "House / Electronic" },
-    { id: "techno", label: "Techno / Electronic" },
-    { id: "jazz-blues", label: "Jazz / Blues" },
-    { id: "latin-salsa", label: "Latin / Salsa" },
-    { id: "reggae", label: "Reggae" },
-    { id: "kpop", label: "K-Pop" },
-    { id: "acoustic-indie", label: "Acoustic / Indie" },
+    { id: "all", label: t('discover:filters.all_genres') },
+    { id: "afrobeats", label: t('discover:filters.afrobeats') },
+    { id: "dancehall", label: t('discover:filters.dancehall') },
+    { id: "hiphop-rnb", label: t('discover:filters.hiphop_rnb') },
+    { id: "house", label: t('discover:filters.house') },
+    { id: "techno", label: t('discover:filters.techno') },
+    { id: "jazz-blues", label: t('discover:filters.jazz_blues') },
+    { id: "latin-salsa", label: t('discover:filters.latin_salsa') },
+    { id: "reggae", label: t('discover:filters.reggae') },
+    { id: "kpop", label: t('discover:filters.kpop') },
+    { id: "acoustic-indie", label: t('discover:filters.acoustic_indie') },
   ];
 
   // Handle pill selection ("for-you" or pill.id)
@@ -3010,12 +3015,12 @@ export default function DiscoverScreen({
 
   const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
     Alert.alert(
-      "Delete custom holiday?",
-      `Delete \"${holidayName}\"? This can’t be undone.`,
+      t("discover:alerts.delete_holiday_title"),
+      t("discover:alerts.delete_holiday_message", { name: holidayName }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("discover:alerts.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("discover:alerts.delete"),
           style: "destructive",
           onPress: () => {
             void handleDeleteCustomHoliday(holidayId);
@@ -3430,11 +3435,11 @@ export default function DiscoverScreen({
                         if (pill.pillState === 'active') {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                           Alert.alert(
-                            "Unpair",
-                            `Unpair from ${pill.displayName}? Custom holidays and saved cards for them will be removed.`,
+                            t('discover:alerts.unpair_title'),
+                            t('discover:alerts.unpair_message', { name: pill.displayName }),
                             [
-                              { text: "Cancel", style: "cancel" },
-                              { text: "Unpair", style: "destructive", onPress: () => handleUnpair(pill.pairingId!) },
+                              { text: t('discover:alerts.cancel'), style: "cancel" },
+                              { text: t('discover:alerts.unpair'), style: "destructive", onPress: () => handleUnpair(pill.pairingId!) },
                             ]
                           );
                         } else {
@@ -3727,7 +3732,7 @@ export default function DiscoverScreen({
                   {recommendationsLoading && !hasCompletedInitialFetch && (
                     <View style={styles.loadingContainer}>
                       <ActivityIndicator size="large" color="#eb7825" />
-                      <Text style={styles.loadingText}>Discovering experiences for you...</Text>
+                      <Text style={styles.loadingText}>{t('discover:loading.for_you')}</Text>
                     </View>
                   )}
 
@@ -3735,14 +3740,14 @@ export default function DiscoverScreen({
                   {recommendationsError && !recommendationsLoading && (
                     <View style={styles.emptyStateContainer}>
                       <Icon name="alert-circle-outline" size={48} color="#ef4444" />
-                      <Text style={styles.emptyStateTitle}>Something went wrong</Text>
+                      <Text style={styles.emptyStateTitle}>{t('discover:error.title')}</Text>
                       <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
                       <TouchableOpacity
                         onPress={() => setDiscoverRetryKey(k => k + 1)}
                         style={styles.retryButton}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.retryButtonText}>Try Again</Text>
+                        <Text style={styles.retryButtonText}>{t('discover:error.try_again')}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -3751,9 +3756,9 @@ export default function DiscoverScreen({
                   {!recommendationsLoading && !recommendationsError && !featuredCard && gridCards.length === 0 && recommendations.length === 0 && hasCompletedInitialFetch && (
                     <View style={styles.emptyStateContainer}>
                       <Icon name="compass-outline" size={48} color="#eb7825" />
-                      <Text style={styles.emptyStateTitle}>No experiences found</Text>
+                      <Text style={styles.emptyStateTitle}>{t('discover:empty.no_experiences')}</Text>
                       <Text style={styles.emptyStateSubtitle}>
-                        Try adjusting your preferences to discover new activities
+                        {t('discover:empty.adjust_preferences')}
                       </Text>
                     </View>
                   )}
@@ -3839,7 +3844,7 @@ export default function DiscoverScreen({
               >
                 <View style={styles.filterButtonLeft}>
                   <Icon name="filter" size={18} color="#eb7825" />
-                  <Text style={styles.filterButtonText}>Filter</Text>
+                  <Text style={styles.filterButtonText}>{t('discover:filters.button')}</Text>
                   {activeFilterCount > 0 && (
                     <View style={styles.filterBadge}>
                       <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
@@ -3854,7 +3859,7 @@ export default function DiscoverScreen({
                 <View style={styles.activeFilterChip}>
                   <Icon name="music" size={14} color="#eb7825" />
                   <Text style={styles.activeFilterChipText}>
-                    Showing: {getGenreLabel(selectedFilters.genre)}
+                    {t('discover:filters.showing', { genre: getGenreLabel(selectedFilters.genre) })}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setSelectedFilters({ ...selectedFilters, genre: "all" })}
@@ -3869,7 +3874,7 @@ export default function DiscoverScreen({
               {nightOutLoading && (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color="#eb7825" />
-                  <Text style={styles.loadingText}>Discovering nightlife near you...</Text>
+                  <Text style={styles.loadingText}>{t('discover:loading.nightlife')}</Text>
                 </View>
               )}
 
@@ -3877,7 +3882,7 @@ export default function DiscoverScreen({
               {nightOutError && !nightOutLoading && (
                 <View style={styles.emptyStateContainer}>
                   <Icon name="alert-circle-outline" size={48} color="#ef4444" />
-                  <Text style={styles.emptyStateTitle}>Something went wrong</Text>
+                  <Text style={styles.emptyStateTitle}>{t('discover:error.title')}</Text>
                   <Text style={styles.emptyStateSubtitle}>{nightOutError}</Text>
                   <TouchableOpacity
                     style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: "#eb7825", borderRadius: 8 }}
@@ -3897,7 +3902,7 @@ export default function DiscoverScreen({
                       } catch (_) {}
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>{t('discover:error.retry')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -3906,8 +3911,8 @@ export default function DiscoverScreen({
               {!nightOutLoading && !nightOutError && nightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
                   <Icon name="moon-outline" size={48} color="#eb7825" />
-                  <Text style={styles.emptyStateTitle}>No events found</Text>
-                  <Text style={styles.emptyStateSubtitle}>No events found near your location. Try increasing your radius.</Text>
+                  <Text style={styles.emptyStateTitle}>{t('discover:empty.no_events')}</Text>
+                  <Text style={styles.emptyStateSubtitle}>{t('discover:empty.no_events_nearby')}</Text>
                 </View>
               )}
 
@@ -3915,16 +3920,16 @@ export default function DiscoverScreen({
               {!nightOutLoading && !nightOutError && nightOutCards.length > 0 && filteredNightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
                   <Icon name="sliders" size={48} color="#eb7825" />
-                  <Text style={styles.emptyStateTitle}>No matching events</Text>
+                  <Text style={styles.emptyStateTitle}>{t('discover:empty.no_matching')}</Text>
                   <Text style={styles.emptyStateSubtitle}>
-                    No events match your selected filters
+                    {t('discover:empty.no_matching_filters')}
                   </Text>
                   <TouchableOpacity
                     style={styles.showAllPartiesButton}
                     onPress={() => setSelectedFilters({ date: "any", price: "any", genre: "all" })}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.showAllPartiesText}>Show All Parties</Text>
+                    <Text style={styles.showAllPartiesText}>{t('discover:empty.show_all_parties')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -4051,7 +4056,7 @@ export default function DiscoverScreen({
           <View style={styles.filterModalContent}>
             {/* Modal Header */}
             <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>Filters</Text>
+              <Text style={styles.filterModalTitle}>{t('discover:filters.title')}</Text>
               <TouchableOpacity
                 onPress={handleCloseFilterModal}
                 style={styles.modalCloseButton}
@@ -4068,7 +4073,7 @@ export default function DiscoverScreen({
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="calendar" size={20} color="#eb7825" />
-                  <Text style={styles.filterSectionTitle}>Date</Text>
+                  <Text style={styles.filterSectionTitle}>{t('discover:filters.date')}</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
                   {dateFilterOptions.map((option) => (
@@ -4098,7 +4103,7 @@ export default function DiscoverScreen({
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="tag" size={20} color="#eb7825" />
-                  <Text style={styles.filterSectionTitle}>Price Range</Text>
+                  <Text style={styles.filterSectionTitle}>{t('discover:filters.price_range')}</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
                   {priceFilterOptions.map((option) => (
@@ -4128,7 +4133,7 @@ export default function DiscoverScreen({
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="music" size={20} color="#eb7825" />
-                  <Text style={styles.filterSectionTitle}>Music Genre</Text>
+                  <Text style={styles.filterSectionTitle}>{t('discover:filters.music_genre')}</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
                   {genreFilterOptions.map((option) => (
@@ -4162,14 +4167,14 @@ export default function DiscoverScreen({
                 onPress={handleResetFilters}
                 activeOpacity={0.7}
               >
-                <Text style={styles.resetFilterButtonText}>Reset</Text>
+                <Text style={styles.resetFilterButtonText}>{t('discover:filters.reset')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.applyFilterButton}
                 onPress={handleApplyFilters}
                 activeOpacity={0.7}
               >
-                <Text style={styles.applyFilterButtonText}>Apply Filters</Text>
+                <Text style={styles.applyFilterButtonText}>{t('discover:filters.apply')}</Text>
               </TouchableOpacity>
             </View>
           </View>

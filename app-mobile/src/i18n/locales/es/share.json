@@ -1,0 +1,18 @@
+{
+  "header.title": "Compartir experiencia",
+  "empty.no_data": "No hay datos de la experiencia",
+  "card.nearby": "Cerca",
+  "card.suggested_schedule": "Horario sugerido",
+  "card.per_person": "por persona",
+  "share_to": "Compartir en:",
+  "platform.messages": "Mensajes",
+  "platform.whatsapp": "WhatsApp",
+  "platform.instagram": "Instagram",
+  "platform.twitter": "Twitter",
+  "actions.more_options": "Más opciones para compartir",
+  "actions.copy_link": "Copiar enlace",
+  "actions.copy_message": "Copiar mensaje",
+  "alerts.copy_error": "No se pudo copiar el mensaje",
+  "alerts.share_error": "No se pudo compartir. Inténtalo de nuevo.",
+  "alerts.error_title": "Error"
+}

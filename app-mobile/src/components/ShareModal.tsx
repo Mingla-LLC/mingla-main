@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
@@ -32,6 +33,7 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const { t } = useTranslation(['share', 'common']);
   // const { accountPreferences } = useAppState();
   
   if (!isOpen) return null;
@@ -54,13 +56,13 @@ export default function ShareModal({
           <View style={styles.modalContainer}>
             <View style={styles.header}>
               <View style={styles.headerSidePlaceholder} />
-              <Text style={styles.headerTitle}>Share Experience</Text>
+              <Text style={styles.headerTitle}>{t('share:header.title')}</Text>
               <TrackedTouchableOpacity logComponent="ShareModal" onPress={onClose} style={styles.closeButton}>
                 <Icon name="close" size={20} color="#111827" />
               </TrackedTouchableOpacity>
             </View>
             <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: '#6b7280' }}>No experience data available</Text>
+              <Text style={{ color: '#6b7280' }}>{t('share:empty.no_data')}</Text>
             </View>
           </View>
         </View>
@@ -74,7 +76,7 @@ export default function ShareModal({
   const rawDistance = experienceData.distance || experienceData.travelTime;
   const distance = rawDistance
     ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
-    : 'Nearby';
+    : t('share:card.nearby');
   const priceRange = experienceData.priceTier && TIER_BY_SLUG[experienceData.priceTier as PriceTierSlug]
     ? formatTierLabel(experienceData.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
     : formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
@@ -114,7 +116,7 @@ export default function ShareModal({
       logAppsFlyerEvent('af_share', { af_content_type: 'copy_message' });
     } catch (err) {
       console.error('Failed to copy message:', err);
-      Alert.alert('Error', 'Failed to copy message to clipboard');
+      Alert.alert(t('share:alerts.error_title'), t('share:alerts.copy_error'));
     }
   };
 
@@ -183,7 +185,7 @@ export default function ShareModal({
       }
     } catch (error) {
       console.error('Error sharing:', error);
-      Alert.alert('Error', 'Failed to share. Please try again.');
+      Alert.alert(t('share:alerts.error_title'), t('share:alerts.share_error'));
     } finally {
       setIsSharing(false);
     }
@@ -262,7 +264,7 @@ export default function ShareModal({
                     <View style={styles.scheduleContainer}>
                       <View style={styles.scheduleHeader}>
                         <Icon name="calendar-outline" size={14} color="#eb7825" />
-                        <Text style={styles.scheduleTitle}>Suggested Schedule</Text>
+                        <Text style={styles.scheduleTitle}>{t('share:card.suggested_schedule')}</Text>
                       </View>
                       <View style={styles.scheduleDetails}>
                         <Text style={styles.scheduleText}>
@@ -280,7 +282,7 @@ export default function ShareModal({
                     {/* Price */}
                     <View style={styles.priceContainer}>
                       <Text style={styles.priceText}>{priceRange}</Text>
-                      <Text style={styles.priceSubtext}>per person</Text>
+                      <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text>
                     </View>
                   </View>
                 </View>
@@ -304,7 +306,7 @@ export default function ShareModal({
 
             {/* Share Options */}
             <View style={styles.shareOptions}>
-              <Text style={styles.shareTitle}>Share to:</Text>
+              <Text style={styles.shareTitle}>{t('share:share_to')}</Text>
               
               {/* Social Media Buttons */}
               <View style={styles.socialButtons}>
@@ -316,7 +318,7 @@ export default function ShareModal({
                   <View style={[styles.socialButtonIconWrapper, styles.messagesButton]}>
                     <Icon name="chatbubble" size={20} color="white" />
                   </View>
-                  <Text style={styles.socialText}>Messages</Text>
+                  <Text style={styles.socialText}>{t('share:platform.messages')}</Text>
                 </TrackedTouchableOpacity>
 
                 <TrackedTouchableOpacity logComponent="ShareModal"
@@ -327,7 +329,7 @@ export default function ShareModal({
                   <View style={[styles.socialButtonIconWrapper, styles.whatsappButton]}>
                     <WhatsAppLogo size={20} color="white" />
                   </View>
-                  <Text style={styles.socialText}>WhatsApp</Text>
+                  <Text style={styles.socialText}>{t('share:platform.whatsapp')}</Text>
                 </TrackedTouchableOpacity>
 
                 <TrackedTouchableOpacity logComponent="ShareModal"
@@ -338,7 +340,7 @@ export default function ShareModal({
                   <View style={[styles.socialButtonIconWrapper, styles.instagramButton]}>
                     <InstagramLogo size={20} color="white" />
                   </View>
-                  <Text style={styles.socialText}>Instagram</Text>
+                  <Text style={styles.socialText}>{t('share:platform.instagram')}</Text>
                 </TrackedTouchableOpacity>
 
                 <TrackedTouchableOpacity logComponent="ShareModal"
@@ -349,7 +351,7 @@ export default function ShareModal({
                   <View style={[styles.socialButtonIconWrapper, styles.twitterButton]}>
                     <TwitterLogo size={20} color="white" />
                   </View>
-                  <Text style={styles.socialText}>Twitter</Text>
+                  <Text style={styles.socialText}>{t('share:platform.twitter')}</Text>
                 </TrackedTouchableOpacity>
               </View>
 
@@ -360,7 +362,7 @@ export default function ShareModal({
                   }}
                 >
                   <Icon name='share-2' size={24} color="black"/>
-                  <Text>More sharing options</Text>
+                  <Text>{t('share:actions.more_options')}</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons]}
                   onPress={() => {
@@ -370,13 +372,13 @@ export default function ShareModal({
                   }}
                 >
                   <Icon name='copy' size={24} color="black"/>
-                  <Text>Copy link</Text>
+                  <Text>{t('share:actions.copy_link')}</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal"
                 onPress={handleCopyMessage}
                 style={[styles.bottomButtons]}>
                   <Icon name='copy' size={24} color="black"/>
-                  <Text>Copy Message</Text>
+                  <Text>{t('share:actions.copy_message')}</Text>
                 </TrackedTouchableOpacity>
               </View>
             </View>

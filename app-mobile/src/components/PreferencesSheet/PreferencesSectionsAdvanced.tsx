@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Switch,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
 
@@ -22,6 +23,7 @@ export const TravelLimitSection = memo(
     onConstraintValueChange: (value: string) => void;
     onFocus: () => void;
   }) => {
+    const { t } = useTranslation(['preferences', 'common']);
     const numericValue = typeof constraintValue === "number" ? constraintValue : 0;
     const isPreset = (TRAVEL_TIME_PRESETS as readonly number[]).includes(numericValue);
     const [showCustom, setShowCustom] = useState(
@@ -40,9 +42,9 @@ export const TravelLimitSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>How Far?</Text>
+        <Text style={styles.sectionTitle}>{t('preferences:travel_limit.title')}</Text>
         <Text style={styles.sectionQuestion}>
-          Set your travel radius
+          {t('preferences:travel_limit.question')}
         </Text>
         <View style={styles.travelPresetsContainer}>
           {TRAVEL_TIME_PRESETS.map((mins) => {
@@ -65,14 +67,14 @@ export const TravelLimitSection = memo(
                     selected && styles.travelPresetPillTextSelected,
                   ]}
                 >
-                  {mins} min
+                  {mins} {t('preferences:travel_limit.min_unit')}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
         <View style={styles.customBudgetToggleRow}>
-          <Text style={styles.customBudgetToggleLabel}>Set your own</Text>
+          <Text style={styles.customBudgetToggleLabel}>{t('preferences:travel_limit.set_your_own')}</Text>
           <Switch
             value={showCustom}
             onValueChange={(val) => {
@@ -102,11 +104,11 @@ export const TravelLimitSection = memo(
               onFocus={onFocus}
               keyboardType="numeric"
               style={styles.constraintInput}
-              placeholder="5 – 120 minutes"
+              placeholder={t('preferences:travel_limit.custom_placeholder')}
               placeholderTextColor="#9ca3af"
               maxLength={3}
             />
-            <Text style={styles.travelInputUnit}>min</Text>
+            <Text style={styles.travelInputUnit}>{t('preferences:travel_limit.min_unit')}</Text>
           </View>
         )}
       </View>
@@ -149,7 +151,9 @@ export const LocationInputSection = memo(
     onToggleGps: (value: boolean) => void;
     isLocked?: boolean;
     onLockedTap?: () => void;
-  }) => (
+  }) => {
+    const { t } = useTranslation(['preferences', 'common']);
+    return (
     <View>
       <View style={styles.gpsSwitchRow}>
         <Icon
@@ -157,7 +161,7 @@ export const LocationInputSection = memo(
           size={16}
           color={useGpsLocation ? "#eb7825" : "#6b7280"}
         />
-        <Text style={styles.gpsSwitchLabel}>Use my current location</Text>
+        <Text style={styles.gpsSwitchLabel}>{t('preferences:location.use_current')}</Text>
         {isLocked && (
           <Icon name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
         )}
@@ -191,7 +195,7 @@ export const LocationInputSection = memo(
             />
             <TextInput
               style={styles.locationTextInput}
-              placeholder="Search for a starting spot..."
+              placeholder={t('preferences:location.search_placeholder')}
               placeholderTextColor="#9ca3af"
               value={searchLocation}
               onChangeText={onLocationInputChange}
@@ -214,8 +218,8 @@ export const LocationInputSection = memo(
         />
         <Text style={styles.locationHelperText}>
           {useGpsLocation
-            ? "We've got you pinned. Chill."
-            : "Drop a pin anywhere. Or toggle back for GPS."}
+            ? t('preferences:location.gps_helper')
+            : t('preferences:location.manual_helper')}
         </Text>
       </View>
 
@@ -225,7 +229,7 @@ export const LocationInputSection = memo(
           <View style={styles.lockedHintContainer}>
             <Icon name="sparkles" size={14} color="#f97316" />
             <Text style={styles.lockedHintText}>
-              Pro feature — explore from anywhere
+              {t('preferences:location.pro_feature')}
             </Text>
           </View>
         </TouchableOpacity>
@@ -243,7 +247,7 @@ export const LocationInputSection = memo(
             {isLoadingSuggestions ? (
               <View style={styles.suggestionItem}>
                 <ActivityIndicator size="small" color="#eb7825" />
-                <Text style={styles.suggestionText}>Searching...</Text>
+                <Text style={styles.suggestionText}>{t('preferences:location.searching')}</Text>
               </View>
             ) : (
               suggestions.map((suggestion, index) => (
@@ -278,7 +282,8 @@ export const LocationInputSection = memo(
           </ScrollView>
         )}
     </View>
-  )
+    );
+  }
 );
 
 LocationInputSection.displayName = "LocationInputSection";

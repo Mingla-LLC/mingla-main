@@ -1,0 +1,10 @@
+{
+  "tabs.explore": "Explore",
+  "tabs.discover": "Discover",
+  "tabs.chats": "Chats",
+  "tabs.likes": "Likes",
+  "tabs.profile": "Profile",
+  "alerts.sign_in_error_title": "Sign-in Error",
+  "alerts.error_title": "Error",
+  "alerts.failed_sign_in": "Failed to complete sign-in: "
+}

@@ -78,6 +78,7 @@ import { logger } from "../src/utils/logger";
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
+import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
@@ -129,6 +130,7 @@ function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();
+  const { t } = useTranslation(['navigation', 'common']);
 
   // CRITICAL: Destructure immediately after useAppState(). useEffect dependency
   // arrays below reference these variables during render. If the destructuring
@@ -1531,7 +1533,7 @@ function AppContent() {
 
         if (error) {
           console.error("OAuth error from deep link:", error);
-          Alert.alert("Sign-in Error", String(error));
+          Alert.alert(t('navigation:alerts.sign_in_error_title'), String(error));
           return;
         }
 
@@ -1549,8 +1551,8 @@ function AppContent() {
           if (sessionError) {
             console.error("Error setting session:", sessionError);
             Alert.alert(
-              "Error",
-              "Failed to complete sign-in: " + sessionError.message
+              t('navigation:alerts.error_title'),
+              t('navigation:alerts.failed_sign_in') + sessionError.message
             );
           } else if (data.session?.user) {
             console.log("✅ Session set successfully via deep link");
@@ -2244,7 +2246,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Explore
+                              {t('navigation:tabs.explore')}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -2272,7 +2274,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Discover
+                              {t('navigation:tabs.discover')}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -2311,7 +2313,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Chats
+                              {t('navigation:tabs.chats')}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -2350,7 +2352,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Likes
+                              {t('navigation:tabs.likes')}
                             </Text>
                           </TouchableOpacity>
                           {/*    <TouchableOpacity
@@ -2407,7 +2409,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Profile
+                              {t('navigation:tabs.profile')}
                             </Text>
                           </TouchableOpacity>
                         </View>

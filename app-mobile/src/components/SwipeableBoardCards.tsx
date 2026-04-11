@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Text, View, StyleSheet, ScrollView, Image, PanResponder, Animated } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -59,6 +60,7 @@ interface SwipeableBoardCardsProps {
 }
 
 export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscussion, accountPreferences }: SwipeableBoardCardsProps) {
+  const { t } = useTranslation(['cards', 'common']);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [galleryIndices, setGalleryIndices] = useState<{[key: string]: number}>({});
@@ -73,7 +75,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
         <View style={styles.emptyIconContainer}>
           <Icon name="eye" size={32} color="#9ca3af" />
         </View>
-        <Text style={styles.emptyText}>No cards in this session yet</Text>
+        <Text style={styles.emptyText}>{t('cards:board.no_cards')}</Text>
       </View>
     );
   }
@@ -150,10 +152,10 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Session Cards</Text>
+        <Text style={styles.headerTitle}>{t('cards:board.session_cards')}</Text>
         <View style={styles.headerControls}>
           <Text style={styles.cardCounter}>
-            {currentIndex + 1} of {cards.length}
+            {t('cards:board.of', { current: currentIndex + 1, total: cards.length })}
           </Text>
           <View style={styles.navigationButtons}>
             <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
@@ -221,7 +223,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         {/* Status Badge */}
                         {card.isLocked && (
                           <View style={[styles.statusBadge, styles.lockedBadge]}>
-                            <Text style={styles.statusText}>Locked</Text>
+                            <Text style={styles.statusText}>{t('cards:board.locked')}</Text>
                           </View>
                         )}
 
@@ -264,7 +266,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           </View>
                           <View style={styles.statItem}>
                             <Icon name="location" size={16} color="#eb7825" />
-                            <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || 'Nearby'}</Text>
+                            <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || t('cards:board.nearby')}</Text>
                           </View>
                           <View style={styles.statItem}>
                             <Text style={styles.priceText}>{card.priceRange}</Text>
@@ -317,7 +319,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                 styles.rsvpButtonText,
                                 card.rsvps.userRSVP === 'yes' ? styles.rsvpButtonTextActive : styles.rsvpButtonTextInactive
                               ]}>
-                                {card.rsvps.userRSVP === 'yes' ? 'RSVP\'d Yes' : 'RSVP Yes'}
+                                {card.rsvps.userRSVP === 'yes' ? t('cards:board.rsvpd_yes') : t('cards:board.rsvp_yes')}
                               </Text>
                             </TrackedTouchableOpacity>
                           </View>
@@ -325,9 +327,9 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           <View style={styles.lockedSection}>
                             <View style={styles.lockedContent}>
                               <Icon name="checkmark" size={16} color="#16a34a" />
-                              <Text style={styles.lockedText}>Added to Calendar</Text>
+                              <Text style={styles.lockedText}>{t('cards:board.added_to_calendar')}</Text>
                             </View>
-                            <Text style={styles.lockedSubtext}>Locked {card.lockedAt}</Text>
+                            <Text style={styles.lockedSubtext}>{t('cards:board.locked_at', { date: card.lockedAt })}</Text>
                           </View>
                         )}
                       </View>
@@ -352,7 +354,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             {card.isLocked && (
                               <View style={[styles.expandedStatusBadge, styles.lockedBadge]}>
                                 <Icon name="lock-closed" size={16} color="white" />
-                                <Text style={styles.expandedStatusText}>Locked In</Text>
+                                <Text style={styles.expandedStatusText}>{t('cards:board.locked_in')}</Text>
                               </View>
                             )}
                           </View>
@@ -387,14 +389,14 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               <View style={styles.matchBreakdown}>
                                 <Text style={styles.matchBreakdownTitle}>
                                   <Icon name="sparkles" size={16} color="#eb7825" />
-                                  Why It's Perfect
+                                  {t('cards:board.why_perfect')}
                                 </Text>
                                 <View style={styles.matchFactors}>
                                   {Object.entries(card.matchFactors).slice(0, 3).map(([key, value]) => {
                                     const labels = {
-                                      location: 'Location',
-                                      budget: 'Budget', 
-                                      category: 'Category'
+                                      location: t('cards:board.location'),
+                                      budget: t('cards:board.budget'),
+                                      category: t('cards:board.category')
                                     };
                                     return (
                                       <View key={key} style={styles.matchFactor}>
@@ -414,7 +416,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   <Icon name="star" size={16} color="#eb7825" />
                                   <Text style={styles.statCardValue}>{card.rating}</Text>
                                 </View>
-                                <Text style={styles.statCardSubtext}>{card.reviewCount || '100+'} reviews</Text>
+                                <Text style={styles.statCardSubtext}>{t('cards:board.reviews', { count: card.reviewCount || '100+' })}</Text>
                               </View>
                               <View style={styles.statCard}>
                                 <View style={styles.statCardHeader}>
@@ -436,7 +438,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             {/* Highlights */}
                             {card.highlights && card.highlights.length > 0 && (
                               <View style={styles.highlightsSection}>
-                                <Text style={styles.highlightsTitle}>What Makes It Special</Text>
+                                <Text style={styles.highlightsTitle}>{t('cards:board.what_makes_special')}</Text>
                                 <View style={styles.highlightsContainer}>
                                   {card.highlights.map((highlight, i) => (
                                     <View key={i} style={styles.highlightTag}>
@@ -449,21 +451,21 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
 
                             {/* Voting Status */}
                             <View style={styles.votingStatus}>
-                              <Text style={styles.votingStatusTitle}>Group Decision</Text>
+                              <Text style={styles.votingStatusTitle}>{t('cards:board.group_decision')}</Text>
                               <View style={styles.votingStats}>
                                 <View style={styles.votingStat}>
                                   <View style={styles.votingStatIcon}>
                                     <Icon name="thumbs-up" size={16} color="#16a34a" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.votes.yes}</Text>
-                                  <Text style={styles.votingStatLabel}>Yes</Text>
+                                  <Text style={styles.votingStatLabel}>{t('cards:board.yes')}</Text>
                                 </View>
                                 <View style={styles.votingStat}>
                                   <View style={styles.votingStatIcon}>
                                     <Icon name="thumbs-down" size={16} color="#dc2626" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.votes.no}</Text>
-                                  <Text style={styles.votingStatLabel}>No</Text>
+                                  <Text style={styles.votingStatLabel}>{t('cards:board.no')}</Text>
                                 </View>
                                 <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   style={styles.votingStat}
@@ -474,11 +476,11 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                     <Icon name="chatbubble" size={16} color="#2563eb" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.messages}</Text>
-                                  <Text style={styles.votingStatLabel}>Messages</Text>
+                                  <Text style={styles.votingStatLabel}>{t('cards:board.messages')}</Text>
                                 </TrackedTouchableOpacity>
                               </View>
                               <Text style={styles.votingStatusSubtext}>
-                                {card.rsvps.responded}/{card.rsvps.total} responses
+                                {t('cards:board.responses', { responded: card.rsvps.responded, total: card.rsvps.total })}
                               </Text>
                             </View>
                           </View>
@@ -500,7 +502,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   <Text style={[
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'yes' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
-                                  ]}>Vote Yes</Text>
+                                  ]}>{t('cards:board.vote_yes')}</Text>
                                 </TrackedTouchableOpacity>
                                 <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                                   onPress={() => onVote(card.id, 'no')}
@@ -513,7 +515,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   <Text style={[
                                     styles.expandedVoteButtonText,
                                     card.votes.userVote === 'no' ? styles.expandedVoteButtonTextActive : styles.expandedVoteButtonTextInactive
-                                  ]}>Vote No</Text>
+                                  ]}>{t('cards:board.vote_no')}</Text>
                                 </TrackedTouchableOpacity>
                               </View>
                               <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
@@ -527,7 +529,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                   styles.expandedRSVPButtonText,
                                   card.rsvps.userRSVP === 'yes' ? styles.expandedRSVPButtonTextActive : styles.expandedRSVPButtonTextInactive
                                 ]}>
-                                  {card.rsvps.userRSVP === 'yes' ? 'RSVP\'d Yes' : 'RSVP Yes'}
+                                  {card.rsvps.userRSVP === 'yes' ? t('cards:board.rsvpd_yes') : t('cards:board.rsvp_yes')}
                                 </Text>
                               </TrackedTouchableOpacity>
                               {onOpenDiscussion && (
@@ -537,7 +539,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                                 >
                                   <Icon name="chatbubbles" size={16} color="#007AFF" />
                                   <Text style={styles.discussionButtonText}>
-                                    Discuss ({card.messages})
+                                    {t('cards:board.discuss', { count: card.messages })}
                                   </Text>
                                 </TrackedTouchableOpacity>
                               )}
@@ -546,7 +548,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             <View style={styles.expandedLockedSection}>
                               <View style={styles.expandedLockedContent}>
                                 <Icon name="checkmark" size={20} color="#16a34a" />
-                                <Text style={styles.expandedLockedText}>Added to Calendar</Text>
+                                <Text style={styles.expandedLockedText}>{t('cards:board.added_to_calendar')}</Text>
                               </View>
                               <Text style={styles.expandedLockedSubtext}>This activity has been locked and scheduled</Text>
                             </View>

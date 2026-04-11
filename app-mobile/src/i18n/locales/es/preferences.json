@@ -1,0 +1,66 @@
+{
+  "experience_types.title": "Pon el ambiente",
+  "experience_types.subtitle": "¿Qué tipo de salida te apetece?",
+  "experience_types.curated_locked": "Las tarjetas curadas están bloqueadas en el plan gratuito — mejora tu plan para explorarlas",
+  "experience_types.min_message": "Elige al menos un ambiente o categoría.",
+
+  "experience_descriptions.adventurous": "Algo inesperado — para los que no juegan a lo seguro",
+  "experience_descriptions.first-date": "Lugares tranquilos donde la conversación fluye sola",
+  "experience_descriptions.romantic": "Momentos íntimos que realmente se sienten especiales",
+  "experience_descriptions.group-fun": "Cuantos más, mejor — actividades que todo el grupo disfrutará",
+  "experience_descriptions.picnic-dates": "Nosotros preparamos todo — tú solo llega y disfruta",
+  "experience_descriptions.take-a-stroll": "Una ruta panorámica con algo rico en cada extremo",
+
+  "categories.title": "¿Qué te suena bien?",
+  "categories.cap_message": "Máximo 3 — quita una para agregar otra.",
+  "categories.min_message": "Elige al menos un ambiente o categoría.",
+
+  "category_descriptions.nature": "Senderos, parques, jardines, vistas panorámicas — aire fresco y buen paisaje",
+  "category_descriptions.first_meet": "Lugares relajados ideales para primeras impresiones",
+  "category_descriptions.picnic_park": "Los mejores parques cercanos para extender una manta",
+  "category_descriptions.drink": "Bares de cócteles, cafés acogedores, pubs del barrio",
+  "category_descriptions.casual_eats": "Comida callejera, bocados rápidos y comida informal",
+  "category_descriptions.fine_dining": "Los lugares elegantes — vístete un poco",
+  "category_descriptions.watch": "Cines para una noche divertida juntos",
+  "category_descriptions.live_performance": "Salas de conciertos, teatros, ópera — entretenimiento en vivo",
+  "category_descriptions.creative_arts": "Galerías, museos, puntos culturales",
+  "category_descriptions.play": "Arcades, boliche, escape rooms — trae tu lado competitivo",
+  "category_descriptions.wellness": "Spas, saunas y lugares para derretir el estrés",
+  "category_descriptions.flowers": "Floristerías y tiendas de flores para ramos frescos",
+
+  "datetime.title": "Cuándo",
+  "datetime.question": "¿Cuándo sales?",
+  "datetime.this_weekend": "Este fin de semana",
+  "datetime.friday_through_sunday": "Viernes a domingo",
+  "datetime.date_placeholder": "dd/mm/aaaa",
+  "datetime.time_label": "¿A qué hora más o menos?",
+
+  "time_slots.brunch": "Brunch",
+  "time_slots.brunch_time": "11–1",
+  "time_slots.afternoon": "Tarde",
+  "time_slots.afternoon_time": "2–5",
+  "time_slots.dinner": "Cena",
+  "time_slots.dinner_time": "6–9",
+  "time_slots.late_night": "Noche",
+  "time_slots.late_night_time": "10–12",
+  "time_slots.anytime": "Cualquier hora",
+  "time_slots.anytime_time": "Todo el día",
+
+  "travel_mode.title": "Cómo llegas",
+  "travel_mode.question": "¿Cómo te mueves?",
+
+  "loading.text": "Preparando el ambiente...",
+
+  "travel_limit.title": "¿Qué tan lejos?",
+  "travel_limit.question": "Define tu radio de viaje",
+  "travel_limit.min_unit": "min",
+  "travel_limit.set_your_own": "Personalizar",
+  "travel_limit.custom_placeholder": "5 – 120 minutos",
+
+  "location.use_current": "Usar mi ubicación actual",
+  "location.search_placeholder": "Busca un punto de partida...",
+  "location.gps_helper": "Ya te tenemos ubicado. Relájate.",
+  "location.manual_helper": "Pon un pin en cualquier lugar. O vuelve al GPS.",
+  "location.pro_feature": "Función Pro — explora desde cualquier lugar",
+  "location.searching": "Buscando..."
+}

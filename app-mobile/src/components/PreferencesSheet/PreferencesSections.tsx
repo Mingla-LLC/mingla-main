@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 
 /**
@@ -14,13 +15,13 @@ import { Icon } from '../ui/Icon';
  * Prevents unnecessary re-renders of category buttons
  */
 // Helper descriptions for curated experience types
-const EXPERIENCE_TYPE_DESCRIPTIONS: Record<string, string> = {
-  "adventurous":   "Something unexpected \u2014 for the ones who don\u2019t play it safe",
-  "first-date":    "Easy, low-key spots where conversation flows naturally",
-  "romantic":      "Intimate moments that actually feel special",
-  "group-fun":     "The more the merrier \u2014 activities the whole crew will love",
-  "picnic-dates":  "We\u2019ll curate the spread \u2014 you just show up and enjoy",
-  "take-a-stroll": "A scenic route with a great bite at each end",
+const EXPERIENCE_TYPE_DESCRIPTION_KEYS: Record<string, string> = {
+  "adventurous":   "experience_descriptions.adventurous",
+  "first-date":    "experience_descriptions.first-date",
+  "romantic":      "experience_descriptions.romantic",
+  "group-fun":     "experience_descriptions.group-fun",
+  "picnic-dates":  "experience_descriptions.picnic-dates",
+  "take-a-stroll": "experience_descriptions.take-a-stroll",
 };
 
 export const ExperienceTypesSection = memo(
@@ -39,6 +40,7 @@ export const ExperienceTypesSection = memo(
     isCuratedLocked?: boolean;
     onLockedTap?: () => void;
   }) => {
+    const { t } = useTranslation(['preferences', 'common']);
     const [lastTappedIntent, setLastTappedIntent] = useState<string | null>(null);
 
     const handlePress = (id: string) => {
@@ -52,9 +54,9 @@ export const ExperienceTypesSection = memo(
 
     return (
       <View style={[styles.section, { marginTop: 20 }]}>
-        <Text style={styles.sectionTitle}>Set the Mood</Text>
+        <Text style={styles.sectionTitle}>{t('preferences:experience_types.title')}</Text>
         <Text style={styles.sectionSubtitle}>
-          What kind of outing are you feeling?
+          {t('preferences:experience_types.subtitle')}
         </Text>
         {isCuratedLocked && (
           <TouchableOpacity
@@ -64,7 +66,7 @@ export const ExperienceTypesSection = memo(
           >
             <Icon name="lock-closed" size={14} color="#f97316" />
             <Text style={styles.curatedLockedText}>
-              Curated cards are locked on Free — upgrade to explore them
+              {t('preferences:experience_types.curated_locked')}
             </Text>
           </TouchableOpacity>
         )}
@@ -97,17 +99,17 @@ export const ExperienceTypesSection = memo(
             );
           })}
         </View>
-        {helperIntent && EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id] && (
+        {helperIntent && EXPERIENCE_TYPE_DESCRIPTION_KEYS[helperIntent.id] && (
           <View style={styles.helperTextContainer}>
             <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
               <Text style={styles.helperTextBold}>{helperIntent.label}:</Text>{" "}
-              {EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id]}
+              {t(`preferences:${EXPERIENCE_TYPE_DESCRIPTION_KEYS[helperIntent.id]}`)}
             </Text>
           </View>
         )}
         {minMessage && (
-          <Text style={styles.capMessage}>Pick at least one mood or category.</Text>
+          <Text style={styles.capMessage}>{t('preferences:experience_types.min_message')}</Text>
         )}
       </View>
     );
@@ -123,20 +125,20 @@ export const ExperienceTypesSection = memo(
 
 ExperienceTypesSection.displayName = "ExperienceTypesSection";
 
-// Helper descriptions for each category
-const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  nature: "Trails, parks, gardens, scenic views \u2014 fresh air and good scenery",
-  first_meet: "Relaxed spots made for first impressions",
-  picnic_park: "The best nearby parks for spreading out a blanket",
-  drink: "Cocktail bars, cozy caf\u00e9s, neighborhood pubs",
-  casual_eats: "Street food, quick bites, and laid-back dining",
-  fine_dining: "The nice places \u2014 dress up a little",
-  watch: "Movie theaters for a fun shared evening",
-  live_performance: "Concert halls, theaters, opera \u2014 live entertainment",
-  creative_arts: "Galleries, museums, cultural landmarks",
-  play: "Arcades, bowling, escape rooms \u2014 bring your competitive side",
-  wellness: "Spas, saunas, and places that melt the stress away",
-  flowers: "Florists and flower shops for fresh bouquets",
+// Keys for each category description in the preferences namespace
+const CATEGORY_DESCRIPTION_KEYS: Record<string, string> = {
+  nature: "category_descriptions.nature",
+  first_meet: "category_descriptions.first_meet",
+  picnic_park: "category_descriptions.picnic_park",
+  drink: "category_descriptions.drink",
+  casual_eats: "category_descriptions.casual_eats",
+  fine_dining: "category_descriptions.fine_dining",
+  watch: "category_descriptions.watch",
+  live_performance: "category_descriptions.live_performance",
+  creative_arts: "category_descriptions.creative_arts",
+  play: "category_descriptions.play",
+  wellness: "category_descriptions.wellness",
+  flowers: "category_descriptions.flowers",
 };
 
 // IDs of categories that need wider pills due to long labels
@@ -160,6 +162,7 @@ export const CategoriesSection = memo(
     capMessage?: boolean;
     minMessage?: boolean;
   }) => {
+    const { t } = useTranslation(['preferences', 'common']);
     const [lastTappedCategory, setLastTappedCategory] = useState<string | null>(null);
 
     const handlePress = (id: string) => {
@@ -174,7 +177,7 @@ export const CategoriesSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>What Sounds Good?</Text>
+        <Text style={styles.sectionTitle}>{t('preferences:categories.title')}</Text>
         <View style={styles.categoriesContainer}>
           {filteredCategories.map((category) => {
             const isSelected = selectedCategories.includes(category.id);
@@ -207,20 +210,20 @@ export const CategoriesSection = memo(
             );
           })}
         </View>
-        {helperCategory && CATEGORY_DESCRIPTIONS[helperCategory.id] && (
+        {helperCategory && CATEGORY_DESCRIPTION_KEYS[helperCategory.id] && (
           <View style={styles.helperTextContainer}>
             <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
               <Text style={styles.helperTextBold}>{helperCategory.label}:</Text>{" "}
-              {CATEGORY_DESCRIPTIONS[helperCategory.id]}
+              {t(`preferences:${CATEGORY_DESCRIPTION_KEYS[helperCategory.id]}`)}
             </Text>
           </View>
         )}
         {capMessage && (
-          <Text style={styles.capMessage}>3 max — drop one to add another.</Text>
+          <Text style={styles.capMessage}>{t('preferences:categories.cap_message')}</Text>
         )}
         {minMessage && (
-          <Text style={styles.capMessage}>Pick at least one mood or category.</Text>
+          <Text style={styles.capMessage}>{t('preferences:categories.min_message')}</Text>
         )}
       </View>
     );
@@ -241,12 +244,12 @@ CategoriesSection.displayName = "CategoriesSection";
  * Memoized Date & Time Section
  */
 // Time slots — defined here for rendering in DateTimeSection
-const timeSlots = [
-  { id: "brunch", label: "Brunch", time: "11–1", icon: "cafe-outline" },
-  { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
-  { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
-  { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
-  { id: "anytime", label: "Anytime", time: "All day", icon: "time-outline" },
+const TIME_SLOT_KEYS = [
+  { id: "brunch", labelKey: "time_slots.brunch", timeKey: "time_slots.brunch_time", icon: "cafe-outline" },
+  { id: "afternoon", labelKey: "time_slots.afternoon", timeKey: "time_slots.afternoon_time", icon: "sunny-outline" },
+  { id: "dinner", labelKey: "time_slots.dinner", timeKey: "time_slots.dinner_time", icon: "restaurant-outline" },
+  { id: "lateNight", labelKey: "time_slots.late_night", timeKey: "time_slots.late_night_time", icon: "moon-outline" },
+  { id: "anytime", labelKey: "time_slots.anytime", timeKey: "time_slots.anytime_time", icon: "time-outline" },
 ];
 
 export const DateTimeSection = memo(
@@ -262,10 +265,12 @@ export const DateTimeSection = memo(
     selectedTimeSlot,
     onTimeSlotSelect,
     formatDateForDisplay,
-  }: any) => (
+  }: any) => {
+    const { t } = useTranslation(['preferences', 'common']);
+    return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>When</Text>
-      <Text style={styles.sectionQuestion}>When are you heading out?</Text>
+      <Text style={styles.sectionTitle}>{t('preferences:datetime.title')}</Text>
+      <Text style={styles.sectionQuestion}>{t('preferences:datetime.question')}</Text>
       <View style={styles.dateOptionsGrid}>
         {dateOptions.map((option: any) => {
           const isSelected = selectedDateOption === option.id;
@@ -300,9 +305,9 @@ export const DateTimeSection = memo(
             style={styles.weekendInfoIcon}
           />
           <View style={styles.weekendInfoContent}>
-            <Text style={styles.weekendInfoLabel}>This Weekend</Text>
+            <Text style={styles.weekendInfoLabel}>{t('preferences:datetime.this_weekend')}</Text>
             <Text style={styles.weekendInfoDescription}>
-              Friday through Sunday
+              {t('preferences:datetime.friday_through_sunday')}
             </Text>
           </View>
         </TouchableOpacity>
@@ -319,16 +324,16 @@ export const DateTimeSection = memo(
               {formatDateForDisplay(selectedDate)}
             </Text>
           ) : (
-            <Text style={styles.dateInputPlaceholder}>mm/dd/yyyy</Text>
+            <Text style={styles.dateInputPlaceholder}>{t('preferences:datetime.date_placeholder')}</Text>
           )}
         </TouchableOpacity>
       )}
 
       {showTimeSection && (
         <View style={styles.timeSlotSection}>
-          <Text style={styles.timeSlotLabel}>Around What Time?</Text>
+          <Text style={styles.timeSlotLabel}>{t('preferences:datetime.time_label')}</Text>
           <View style={styles.timeSlotsGrid}>
-            {timeSlots.map((slot) => {
+            {TIME_SLOT_KEYS.map((slot) => {
               const isSelected = selectedTimeSlot === slot.id;
               return (
                 <TouchableOpacity
@@ -350,7 +355,7 @@ export const DateTimeSection = memo(
                       isSelected && styles.timeSlotPillLabelSelected,
                     ]}
                   >
-                    {slot.label}
+                    {t(`preferences:${slot.labelKey}`)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -359,7 +364,8 @@ export const DateTimeSection = memo(
         </View>
       )}
     </View>
-  )
+    );
+  }
 );
 
 DateTimeSection.displayName = "DateTimeSection";
@@ -376,10 +382,12 @@ export const TravelModeSection = memo(
     travelModes: any[];
     travelMode: string;
     onTravelModeChange: (mode: string) => void;
-  }) => (
+  }) => {
+    const { t } = useTranslation(['preferences', 'common']);
+    return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Getting There</Text>
-      <Text style={styles.sectionQuestion}>How are you rolling?</Text>
+      <Text style={styles.sectionTitle}>{t('preferences:travel_mode.title')}</Text>
+      <Text style={styles.sectionQuestion}>{t('preferences:travel_mode.question')}</Text>
       <View style={styles.travelModesGrid}>
         {travelModes.map((mode) => {
           const isSelected = travelMode === mode.id;
@@ -410,7 +418,8 @@ export const TravelModeSection = memo(
         })}
       </View>
     </View>
-  ),
+    );
+  },
   (prev, next) => prev.travelMode === next.travelMode
 );
 
@@ -419,12 +428,15 @@ TravelModeSection.displayName = "TravelModeSection";
 /**
  * Memoized Loading Indicator
  */
-export const LoadingShimmer = memo(() => (
+export const LoadingShimmer = memo(() => {
+  const { t } = useTranslation(['preferences', 'common']);
+  return (
   <View style={styles.loadingContainer}>
     <ActivityIndicator size="large" color="#eb7825" />
-    <Text style={styles.loadingText}>Setting the mood...</Text>
+    <Text style={styles.loadingText}>{t('preferences:loading.text')}</Text>
   </View>
-));
+  );
+});
 
 LoadingShimmer.displayName = "LoadingShimmer";
 

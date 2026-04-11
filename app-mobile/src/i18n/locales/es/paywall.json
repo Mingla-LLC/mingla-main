@@ -1,0 +1,10 @@
+{
+  "close": "Cerrar muro de pago",
+  "manage_subscription": "Administrar suscripción",
+  "alerts.restored_title": "Compras restauradas",
+  "alerts.restored_message": "Tus compras anteriores se restauraron correctamente.",
+  "alerts.restored_done": "Listo",
+  "alerts.purchase_failed": "Error en la compra",
+  "toast.purchase_delayed": "Compra exitosa. Las funciones pueden tardar un momento en activarse.",
+  "toast.restore_delayed": "Compras restauradas. Las funciones pueden tardar un momento en activarse."
+}
