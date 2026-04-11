@@ -78,7 +78,7 @@ export const PlacePinContent = React.memo(function PlacePinContent({
       )}
       {pinLabel ? (
         <View style={isCurated ? styles.labelPillLarge : styles.labelPill}>
-          <Text style={styles.labelText} numberOfLines={1}>{pinLabel}</Text>
+          <Text style={styles.labelText}>{pinLabel}</Text>
         </View>
       ) : null}
     </View>
@@ -102,8 +102,8 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
 
 const styles = StyleSheet.create({
   wrapper: {
-    width: 80,
-    height: 56,
+    width: 140,
+    height: 60,
     alignItems: 'center',
     overflow: 'visible',
   },
@@ -125,8 +125,8 @@ const styles = StyleSheet.create({
   },
   // Curated cards — larger pins
   wrapperLarge: {
-    width: 90,
-    height: 68,
+    width: 160,
+    height: 72,
     alignItems: 'center',
     overflow: 'visible',
   },
@@ -178,7 +178,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 2,
     alignSelf: 'center',
-    maxWidth: 120,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
@@ -192,7 +191,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 2,
     alignSelf: 'center',
-    maxWidth: 140,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
