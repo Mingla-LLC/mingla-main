@@ -56,11 +56,8 @@ function getDaysUntilBirthday(birthdayStr: string): number {
 
 function formatBirthdayShort(birthdayStr: string): string {
   const { month, day } = parseDateOnly(birthdayStr);
-  const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ];
-  return `${months[month]} ${day}`;
+  const date = new Date(new Date().getFullYear(), month, day);
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function getCountdownLabel(daysAway: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
@@ -75,7 +72,7 @@ export default function PairedPeopleRow({
   people,
   onSelectPerson,
 }: PairedPeopleRowProps) {
-  const { t } = useTranslation(['social', 'common']);
+  const { t } = useTranslation(['social', 'common', 'profile']);
   const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
 
   if (people.length === 0) return null;
@@ -89,7 +86,7 @@ export default function PairedPeopleRow({
         contentContainerStyle={styles.scrollContent}
       >
         {people.map((person) => {
-          const name = person.firstName || person.displayName?.split(" ")[0] || 'Friend';
+          const name = person.firstName || person.displayName?.split(" ")[0] || t('profile:friend.friend_fallback');
           const hasBirthday = !!person.birthday;
           const rawDaysAway = hasBirthday
             ? getDaysUntilBirthday(person.birthday!)

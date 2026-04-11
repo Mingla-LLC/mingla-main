@@ -16,6 +16,7 @@ import { BoardMessageService, CardMessage } from '../../services/boardMessageSer
 import { realtimeService } from '../../services/realtimeService';
 import { useAppStore } from '../../store/appStore';
 import { Participant } from './ParticipantAvatars';
+import { useTranslation } from 'react-i18next';
 
 interface CardDiscussionModalProps {
   visible: boolean;
@@ -36,6 +37,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
   onClose,
   onMentionUser,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const { user } = useAppStore();
   const [messages, setMessages] = useState<CardMessage[]>([]);
   const [messageText, setMessageText] = useState('');
@@ -73,7 +75,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
       }
     } catch (err: any) {
       console.error('Error loading card messages:', err);
-      Alert.alert('Error', 'Failed to load messages');
+      Alert.alert(t('board:cardDiscussionModal.error'), t('board:cardDiscussionModal.errorLoadMsg'));
     } finally {
       setLoading(false);
     }
@@ -127,7 +129,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
       realtimeService.broadcastTypingStop(sessionId, user.id, savedCardId);
     } catch (err: any) {
       console.error('Error sending message:', err);
-      Alert.alert('Error', 'Failed to send message');
+      Alert.alert(t('board:cardDiscussionModal.error'), t('board:cardDiscussionModal.errorSendMsg'));
       setMessageText(content);
     } finally {
       setSending(false);
@@ -156,7 +158,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
       }
     } catch (err: any) {
       console.error('Error updating message:', err);
-      Alert.alert('Error', 'Failed to update message');
+      Alert.alert(t('board:cardDiscussionModal.error'), t('board:cardDiscussionModal.errorUpdateMsg'));
     }
   }, [editingMessage, messageText, user?.id]);
 
@@ -165,12 +167,12 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
     if (!user?.id) return;
 
     Alert.alert(
-      'Delete Message',
-      'Are you sure you want to delete this message?',
+      t('board:cardDiscussionModal.deleteMessage'),
+      t('board:cardDiscussionModal.deleteMessageConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common:cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common:delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -184,7 +186,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
               setMessages(prev => prev.filter(m => m.id !== messageId));
             } catch (err: any) {
               console.error('Error deleting message:', err);
-              Alert.alert('Error', 'Failed to delete message');
+              Alert.alert(t('board:cardDiscussionModal.error'), t('board:cardDiscussionModal.errorDeleteMsg'));
             }
           },
         },
@@ -214,7 +216,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
 
-    if (minutes < 1) return 'Just now';
+    if (minutes < 1) return t('board:cardDiscussionModal.justNow');
     if (minutes < 60) return `${minutes}m ago`;
     if (date.toDateString() === now.toDateString()) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -231,7 +233,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
     if (participant?.profiles?.first_name && participant?.profiles?.last_name) {
       return `${participant.profiles.first_name} ${participant.profiles.last_name}`;
     }
-    return participant?.profiles?.username || 'Unknown';
+    return participant?.profiles?.username || t('board:cardDiscussionModal.unknown');
   };
 
   // Render message content with mentions
@@ -373,7 +375,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
           <View style={styles.headerSidePlaceholder} />
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {cardTitle || 'Card Discussion'}
+              {cardTitle || t('board:cardDiscussionModal.cardDiscussion')}
             </Text>
             <Text style={styles.headerSubtitle}>
               {participants.length} {participants.length === 1 ? 'participant' : 'participants'}

@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius } from '../constants/designSystem';
+import { useTranslation } from 'react-i18next';
 
 interface ConfidenceScoreProps {
   score: number; // 0-100
@@ -30,6 +31,7 @@ export const ConfidenceScore: React.FC<ConfidenceScoreProps> = ({
   showDetails = false,
   size = 'medium',
 }) => {
+  const { t } = useTranslation(['common']);
   const progress = useSharedValue(0);
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0);
@@ -54,10 +56,10 @@ export const ConfidenceScore: React.FC<ConfidenceScoreProps> = ({
   };
 
   const getScoreLabel = (score: number) => {
-    if (score >= 80) return 'Excellent Match';
-    if (score >= 60) return 'Good Match';
-    if (score >= 40) return 'Fair Match';
-    return 'Low Match';
+    if (score >= 80) return t('common:confidence_excellent');
+    if (score >= 60) return t('common:confidence_good');
+    if (score >= 40) return t('common:confidence_fair');
+    return t('common:confidence_low');
   };
 
   const getSizeConfig = () => {
@@ -180,16 +182,16 @@ export const ConfidenceScore: React.FC<ConfidenceScoreProps> = ({
     if (!factors || !showDetails) return null;
 
     const factorItems = [
-      { key: 'locationMatch', label: 'Location', icon: 'location' as const, value: factors.locationMatch },
-      { key: 'budgetMatch', label: 'Budget', icon: 'cash' as const, value: factors.budgetMatch },
-      { key: 'categoryMatch', label: 'Category', icon: 'grid' as const, value: factors.categoryMatch },
-      { key: 'timeMatch', label: 'Time', icon: 'time' as const, value: factors.timeMatch },
-      { key: 'popularity', label: 'Popularity', icon: 'trending-up' as const, value: factors.popularity },
+      { key: 'locationMatch', label: t('common:match_location'), icon: 'location' as const, value: factors.locationMatch },
+      { key: 'budgetMatch', label: t('common:match_budget'), icon: 'cash' as const, value: factors.budgetMatch },
+      { key: 'categoryMatch', label: t('common:match_category'), icon: 'grid' as const, value: factors.categoryMatch },
+      { key: 'timeMatch', label: t('common:match_time'), icon: 'time' as const, value: factors.timeMatch },
+      { key: 'popularity', label: t('common:match_popularity'), icon: 'trending-up' as const, value: factors.popularity },
     ];
 
     return (
       <View style={styles.factorBreakdown}>
-        <Text style={styles.factorTitle}>Match Factors</Text>
+        <Text style={styles.factorTitle}>{t('common:match_factors')}</Text>
         {factorItems.map((factor) => (
           <View key={factor.key} style={styles.factorItem}>
             <View style={styles.factorHeader}>

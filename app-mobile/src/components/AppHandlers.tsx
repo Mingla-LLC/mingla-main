@@ -241,8 +241,8 @@ export function useAppHandlers(state: any) {
       const notification = {
         id: `invite-${Date.now()}-${user.id}`,
         type: "success" as const,
-        title: "Invite Sent!",
-        message: `Collaboration invite sent to ${user.name}`,
+        title: i18n.t('common:toast_invite_sent'),
+        message: i18n.t('common:toast_invite_sent_msg', { name: user.name }),
         sessionName: sessionId,
         autoHide: true,
         duration: 3000,
@@ -265,8 +265,8 @@ export function useAppHandlers(state: any) {
         const notification = {
           id: `promote-admin-${Date.now()}`,
           type: "success" as const,
-          title: "Member Promoted",
-          message: `${participant?.name} has been promoted to admin`,
+          title: i18n.t('common:toast_member_promoted'),
+          message: i18n.t('common:toast_member_promoted_msg', { name: participant?.name }),
           autoHide: true,
           duration: 3000,
         };
@@ -296,8 +296,8 @@ export function useAppHandlers(state: any) {
         const notification = {
           id: `demote-admin-${Date.now()}`,
           type: "success" as const,
-          title: "Admin Removed",
-          message: `${participant?.name} is no longer an admin`,
+          title: i18n.t('common:toast_admin_removed'),
+          message: i18n.t('common:toast_admin_removed_msg', { name: participant?.name }),
           autoHide: true,
           duration: 3000,
         };
@@ -346,11 +346,11 @@ export function useAppHandlers(state: any) {
       id: `remove-member-${Date.now()}`,
       type: "success" as const,
       title: updatedBoards.find((b: any) => b.id === boardId)
-        ? "Member Removed"
-        : "Board Deleted",
+        ? i18n.t('common:toast_member_removed')
+        : i18n.t('common:toast_board_deleted'),
       message: updatedBoards.find((b: any) => b.id === boardId)
-        ? `${participant?.name} has been removed from the board`
-        : `Board "${board.name}" was deleted (insufficient members)`,
+        ? i18n.t('common:toast_member_removed_msg', { name: participant?.name })
+        : i18n.t('common:toast_board_deleted_insufficient', { name: board.name }),
       autoHide: true,
       duration: 4000,
     };
@@ -398,8 +398,8 @@ export function useAppHandlers(state: any) {
               const adminNotification = {
                 id: `new-admin-${Date.now()}`,
                 type: "success" as const,
-                title: "New Admin Assigned",
-                message: `${newAdmin.name} is now the admin of "${board.name}"`,
+                title: i18n.t('common:toast_new_admin'),
+                message: i18n.t('common:toast_new_admin_msg', { name: newAdmin.name, board: board.name }),
                 autoHide: true,
                 duration: 4000,
               };
@@ -421,11 +421,11 @@ export function useAppHandlers(state: any) {
       id: `leave-board-${Date.now()}`,
       type: "success" as const,
       title: updatedBoards.find((b: any) => b.id === boardId)
-        ? "Left Board"
-        : "Board Deleted",
+        ? i18n.t('common:toast_left_board')
+        : i18n.t('common:toast_board_deleted'),
       message: updatedBoards.find((b: any) => b.id === boardId)
-        ? `You have left "${board.name}"`
-        : `Board "${board.name}" was deleted (insufficient members)`,
+        ? i18n.t('common:toast_left_board_msg', { name: board.name })
+        : i18n.t('common:toast_board_deleted_insufficient', { name: board.name }),
       autoHide: true,
       duration: 4000,
     };
@@ -446,12 +446,12 @@ export function useAppHandlers(state: any) {
         type: "success" as const,
         title:
           sessionIds.length === 1
-            ? "Added to Board!"
-            : `Added to ${sessionIds.length} Boards!`,
+            ? i18n.t('common:toast_added_to_board')
+            : i18n.t('common:toast_added_to_boards', { count: sessionIds.length }),
         message:
           sessionIds.length === 1
-            ? `${friend.name} has been added to the collaboration board`
-            : `${friend.name} has been added to ${sessionIds.length} collaboration boards`,
+            ? i18n.t('common:toast_added_board_msg', { name: friend.name })
+            : i18n.t('common:toast_added_boards_msg', { name: friend.name, count: sessionIds.length }),
         sessionName: sessionId,
         autoHide: true,
         duration: 4000,
@@ -471,8 +471,8 @@ export function useAppHandlers(state: any) {
       const notification = {
         id: `share-saved-card-${Date.now()}-${friend.id}`,
         type: "success" as const,
-        title: "Card Shared!",
-        message: `A saved experience has been shared with ${friend.name}`,
+        title: i18n.t('common:toast_card_shared'),
+        message: i18n.t('common:toast_card_shared_msg', { name: friend.name }),
         autoHide: true,
         duration: 3000,
       };
@@ -488,8 +488,8 @@ export function useAppHandlers(state: any) {
       setNotifications((prev: any) => [...prev, {
         id: `remove-friend-${Date.now()}-${friend.id}`,
         type: "success" as const,
-        title: "Friend Removed",
-        message: `${friend.name} has been removed from your friends list`,
+        title: i18n.t('common:toast_friend_removed'),
+        message: i18n.t('common:toast_friend_removed_msg', { name: friend.name }),
         autoHide: true,
         duration: 3000,
       }]);
@@ -501,8 +501,8 @@ export function useAppHandlers(state: any) {
       setNotifications((prev: any) => [...prev, {
         id: `block-user-${Date.now()}-${friend.id}`,
         type: "success" as const,
-        title: "User Blocked",
-        message: `${friend.name} has been blocked and removed from your friends list`,
+        title: i18n.t('common:toast_user_blocked'),
+        message: i18n.t('common:toast_user_blocked_msg', { name: friend.name }),
         autoHide: true,
         duration: 3000,
       }]);
@@ -519,8 +519,8 @@ export function useAppHandlers(state: any) {
       const notification = {
         id: `unblock-user-${Date.now()}-${blockedUser.id}`,
         type: "success" as const,
-        title: "User Unblocked",
-        message: `${blockedUser.name ?? "User"} has been unblocked`,
+        title: i18n.t('common:toast_user_unblocked'),
+        message: i18n.t('common:toast_user_unblocked_msg', { name: blockedUser.name ?? i18n.t('common:user_fallback') }),
         autoHide: true,
         duration: 3000,
       };
@@ -536,10 +536,10 @@ export function useAppHandlers(state: any) {
   ) => {
     if (!suppressNotification) {
       const reasonMessages: { [key: string]: string } = {
-        spam: "for spam behavior",
-        "inappropriate-content": "for inappropriate content",
-        harassment: "for harassment",
-        other: "for violating community guidelines",
+        spam: i18n.t('common:toast_report_reason_spam'),
+        "inappropriate-content": i18n.t('common:toast_report_reason_inappropriate'),
+        harassment: i18n.t('common:toast_report_reason_harassment'),
+        other: i18n.t('common:toast_report_reason_other'),
       };
 
       const reasonText =
@@ -548,8 +548,8 @@ export function useAppHandlers(state: any) {
       const notification = {
         id: `report-user-${Date.now()}-${friend.id}`,
         type: "success" as const,
-        title: "Report Submitted",
-        message: `${friend.name} has been blocked and reported ${reasonText}. Our moderation team will review this report.`,
+        title: i18n.t('common:toast_report_submitted'),
+        message: i18n.t('common:toast_report_submitted_msg', { name: friend.name, reason: reasonText }),
         autoHide: true,
         duration: 5000,
       };

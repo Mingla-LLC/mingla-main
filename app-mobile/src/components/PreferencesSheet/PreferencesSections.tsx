@@ -289,7 +289,7 @@ export const DateTimeSection = memo(
                   isSelected && styles.dateOptionPillLabelSelected,
                 ]}
               >
-                {option.label}
+                {t(`preferences:date_options.${option.id === 'Now' ? 'now' : option.id === 'Today' ? 'today' : option.id === 'This Weekend' ? 'this_weekend' : 'pick_a_date'}`)}
               </Text>
             </TouchableOpacity>
           );

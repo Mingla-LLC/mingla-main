@@ -74,9 +74,17 @@
   },
   "cardDiscussionModal": {
     "discussion": "Discussion",
+    "cardDiscussion": "Card Discussion",
     "errorLoadMsg": "Failed to load messages",
+    "errorSendMsg": "Failed to send message",
+    "errorUpdateMsg": "Failed to update message",
+    "deleteMessage": "Delete Message",
+    "deleteMessageConfirm": "Are you sure you want to delete this message?",
+    "errorDeleteMsg": "Failed to delete message",
     "typeMessage": "Type a message...",
-    "error": "Error"
+    "error": "Error",
+    "justNow": "Just now",
+    "unknown": "Unknown"
   },
   "cardTagPopover": {
     "tagACard": "Tag a card",

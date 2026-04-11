@@ -85,9 +85,16 @@
   "cardFilterBar": {
     "searchPlaceholder": "Buscar...",
     "clearFilters": "Limpiar filtros",
-    "when": "Cu\u00e1ndo",
-    "category": "Categor\u00eda",
-    "budget": "Presupuesto"
+    "when": "Cuándo",
+    "category": "Categoría",
+    "budget": "Presupuesto",
+    "filter_all": "Todo",
+    "filter_all_dates": "Todas las fechas",
+    "filter_today": "Hoy",
+    "filter_this_week": "Esta semana",
+    "filter_this_month": "Este mes",
+    "filter_upcoming": "Próximos",
+    "filter_any_price": "Cualquier precio"
   },
   "dateOptionsGrid": {
     "now": "Ahora",

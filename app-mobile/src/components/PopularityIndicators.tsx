@@ -13,6 +13,7 @@ import Animated, {
 import { Icon } from './ui/Icon';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { formatDecimal, formatToOneDecimal } from '../utils/numberFormatter';
+import { useTranslation } from 'react-i18next';
 
 interface PopularityData {
   likes: number;
@@ -42,6 +43,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
   isLiked = false,
   isSaved = false,
 }) => {
+  const { t } = useTranslation(['common']);
   const animatedValues = useRef({
     likes: useSharedValue(0),
     saves: useSharedValue(0),
@@ -259,7 +261,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
         </View>
         
         <Text style={styles.reviewCount}>
-          {data.reviewCount} {data.reviewCount === 1 ? 'review' : 'reviews'}
+          {t('common:review_count', { count: data.reviewCount })}
         </Text>
       </View>
     );
@@ -270,25 +272,25 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
 
     const stats = [
       {
-        label: 'Views',
+        label: t('common:stat_views'),
         value: animatedValues.views,
         icon: 'eye' as const,
         color: colors.gray[500],
       },
       {
-        label: 'Likes',
+        label: t('common:stat_likes'),
         value: animatedValues.likes,
         icon: 'heart' as const,
         color: colors.error[500],
       },
       {
-        label: 'Saves',
+        label: t('common:stat_saves'),
         value: animatedValues.saves,
         icon: 'bookmark' as const,
         color: colors.primary[500],
       },
       {
-        label: 'Shares',
+        label: t('common:stat_shares'),
         value: animatedValues.shares,
         icon: 'share' as const,
         color: colors.success[500],

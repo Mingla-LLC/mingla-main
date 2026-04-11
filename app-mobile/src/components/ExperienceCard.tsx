@@ -12,6 +12,7 @@ import { Experience } from '../types';
 import { useExperiences } from '../hooks/useExperiences';
 import { useAppStore } from '../store/appStore';
 import { getReadableCategoryName } from '../utils/categoryUtils';
+import { useTranslation } from 'react-i18next';
 
 interface ExperienceCardProps {
   experience: Experience;
@@ -28,6 +29,7 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
   showLocation = true,
   compact = false,
 }) => {
+  const { t } = useTranslation(['common']);
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const { saveExperience, unsaveExperience } = useExperiences();
@@ -35,7 +37,7 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
 
   const handleSave = async () => {
     if (!user) {
-      Alert.alert('Error', 'Please sign in to save experiences');
+      Alert.alert(t('common:error'), t('common:error_sign_in_save'));
       return;
     }
 
@@ -44,27 +46,27 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
       if (isSaved) {
         const { error } = await unsaveExperience(experience.id);
         if (error) {
-          Alert.alert('Error', error.message);
+          Alert.alert(t('common:error'), error.message);
         } else {
           setIsSaved(false);
         }
       } else {
         const { error } = await saveExperience(experience.id, 'liked');
         if (error) {
-          Alert.alert('Error', error.message);
+          Alert.alert(t('common:error'), error.message);
         } else {
           setIsSaved(true);
         }
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert(t('common:error'), error.message);
     } finally {
       setSaving(false);
     }
   };
 
   const formatPrice = (min: number, max: number) => {
-    if (min === 0 && max === 0) return 'Free';
+    if (min === 0 && max === 0) return t('common:free');
     if (min === max) return `$${min}`;
     return `$${min}-$${max}`;
   };

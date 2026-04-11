@@ -16,35 +16,11 @@ interface ReportUserModalProps {
   onReport: (userId: string, reason: string, details?: string) => void | Promise<void>;
 }
 
-const reportOptions = [
-  {
-    id: 'spam',
-    label: 'Spam',
-    description: 'Unwanted or repetitive messages',
-    icon: 'chatbubbles',
-    color: '#ea580c'
-  },
-  {
-    id: 'inappropriate-content',
-    label: 'Inappropriate Content',
-    description: 'Offensive or inappropriate behavior',
-    icon: 'warning',
-    color: '#dc2626'
-  },
-  {
-    id: 'harassment',
-    label: 'Harassment',
-    description: 'Bullying or threatening behavior',
-    icon: 'shield',
-    color: '#7c3aed'
-  },
-  {
-    id: 'other',
-    label: 'Other',
-    description: 'Another reason not listed above',
-    icon: 'document-text',
-    color: '#6b7280'
-  }
+const REPORT_OPTION_KEYS = [
+  { id: 'spam', labelKey: 'social:spam', descKey: 'social:spamDescription', icon: 'chatbubbles', color: '#ea580c' },
+  { id: 'inappropriate-content', labelKey: 'social:inappropriateContent', descKey: 'social:inappropriateContentDescription', icon: 'warning', color: '#dc2626' },
+  { id: 'harassment', labelKey: 'social:harassment', descKey: 'social:harassmentDescription', icon: 'shield', color: '#7c3aed' },
+  { id: 'other', labelKey: 'social:other', descKey: 'social:otherDescription', icon: 'document-text', color: '#6b7280' },
 ];
 
 export default function ReportUserModal({ isOpen, onClose, user, onReport }: ReportUserModalProps) {
@@ -142,7 +118,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
           {/* Report Options */}
           <View style={styles.optionsContainer}>
             <Text style={styles.optionsTitle}>{t('social:reasonForReporting')}</Text>
-            {reportOptions.map((option) => (
+            {REPORT_OPTION_KEYS.map((option) => (
               <TrackedTouchableOpacity logComponent="ReportUserModal"
                 key={option.id}
                 onPress={() => setSelectedReason(option.id)}
@@ -152,9 +128,9 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
                 ]}
               >
                 <View style={styles.optionContent}>
-                  <Icon 
-                    name={option.icon} 
-                    size={20} 
+                  <Icon
+                    name={option.icon}
+                    size={20}
                     color={selectedReason === option.id ? '#eb7825' : option.color}
                     style={styles.optionIcon}
                   />
@@ -163,10 +139,10 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
                       styles.optionLabel,
                       selectedReason === option.id ? styles.optionLabelSelected : styles.optionLabelDefault
                     ]}>
-                      {option.label}
+                      {t(option.labelKey)}
                     </Text>
                     <Text style={styles.optionDescription}>
-                      {option.description}
+                      {t(option.descKey)}
                     </Text>
                   </View>
                 </View>

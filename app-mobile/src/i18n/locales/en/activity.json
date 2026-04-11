@@ -87,7 +87,14 @@
     "clearFilters": "Clear filters",
     "when": "When",
     "category": "Category",
-    "budget": "Budget"
+    "budget": "Budget",
+    "filter_all": "All",
+    "filter_all_dates": "All Dates",
+    "filter_today": "Today",
+    "filter_this_week": "This Week",
+    "filter_this_month": "This Month",
+    "filter_upcoming": "Upcoming",
+    "filter_any_price": "Any Price"
   },
   "dateOptionsGrid": {
     "now": "Now",

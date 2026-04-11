@@ -73,10 +73,18 @@
     "namePlaceholder": "Ingresa el nombre de la sesi\u00f3n"
   },
   "cardDiscussionModal": {
-    "discussion": "Discusi\u00f3n",
+    "discussion": "Discusión",
+    "cardDiscussion": "Discusión de tarjeta",
     "errorLoadMsg": "Error al cargar mensajes",
+    "errorSendMsg": "Error al enviar mensaje",
+    "errorUpdateMsg": "Error al actualizar mensaje",
+    "deleteMessage": "Eliminar mensaje",
+    "deleteMessageConfirm": "¿Estás seguro de que quieres eliminar este mensaje?",
+    "errorDeleteMsg": "Error al eliminar mensaje",
     "typeMessage": "Escribe un mensaje...",
-    "error": "Error"
+    "error": "Error",
+    "justNow": "Ahora",
+    "unknown": "Desconocido"
   },
   "cardTagPopover": {
     "tagACard": "Etiquetar una tarjeta",

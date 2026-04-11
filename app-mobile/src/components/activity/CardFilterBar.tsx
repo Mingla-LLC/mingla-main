@@ -46,7 +46,7 @@ const FILTER_WHEN = [
 
 const FILTER_TIERS = [
   { slug: 'all', label: 'Any Price' },
-  ...PRICE_TIERS.map(t => ({ slug: t.slug, label: t.label })),
+  ...PRICE_TIERS.map(pt => ({ slug: pt.slug, label: pt.label })),
 ] as const;
 
 export type WhenFilter = 'all' | 'today' | 'this_week' | 'this_month' | 'upcoming';
@@ -135,7 +135,7 @@ export function CardFilterBar({
                 onPress={() => onWhenChange(w.key as WhenFilter)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.chipText, selectedWhen === w.key && styles.chipTextSelected]}>{w.label}</Text>
+                <Text style={[styles.chipText, selectedWhen === w.key && styles.chipTextSelected]}>{t(`activity:cardFilterBar.filter_${w.key === 'all' ? 'all_dates' : w.key}`)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -149,21 +149,21 @@ export function CardFilterBar({
                 onPress={() => onCategoryChange(selectedCategory === c.slug ? 'all' : c.slug)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.chipText, selectedCategory === c.slug && styles.chipTextSelected]}>{c.label}</Text>
+                <Text style={[styles.chipText, selectedCategory === c.slug && styles.chipTextSelected]}>{c.slug === 'all' ? t('activity:cardFilterBar.filter_all') : t(`common:category_${c.slug}`)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           <Text style={styles.filterLabel}>{t('activity:cardFilterBar.budget')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
-            {FILTER_TIERS.map(t => (
+            {FILTER_TIERS.map(tier => (
               <TouchableOpacity
-                key={t.slug}
-                style={[styles.chip, selectedTier === t.slug && styles.chipSelected]}
-                onPress={() => onTierChange(selectedTier === t.slug ? 'all' : t.slug)}
+                key={tier.slug}
+                style={[styles.chip, selectedTier === tier.slug && styles.chipSelected]}
+                onPress={() => onTierChange(selectedTier === tier.slug ? 'all' : tier.slug)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.chipText, selectedTier === t.slug && styles.chipTextSelected]}>{t.label}</Text>
+                <Text style={[styles.chipText, selectedTier === tier.slug && styles.chipTextSelected]}>{tier.slug === 'all' ? t('activity:cardFilterBar.filter_any_price') : t(`common:tier_${tier.slug}`)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>

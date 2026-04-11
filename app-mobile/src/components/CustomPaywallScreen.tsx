@@ -37,45 +37,40 @@ interface CustomPaywallScreenProps {
 // Feature-to-header mapping
 // ─────────────────────────────────────────────────────────────────────────────
 
-const FEATURE_HEADERS: Record<GatedFeature, string> = {
-  curated_cards: 'Unlock Curated Experiences',
-  pairing: 'Connect with Your People',
-  custom_starting_point: 'Explore From Anywhere',
-  session_creation: 'Plan More Adventures',
-};
+// Feature headers — i18n keys are in FEATURE_HEADER_KEYS inside the component
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature checklists
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ChecklistItem {
-  label: string;
+  labelKey: string;
   free: boolean;
   minglaPlus: boolean;
 }
 
 const FEATURE_CHECKLIST: ChecklistItem[] = [
-  { label: 'Unlimited swipes', free: true, minglaPlus: true },
-  { label: '1 pairing', free: true, minglaPlus: false },
-  { label: 'Unlimited pairings', free: false, minglaPlus: true },
-  { label: '1 session', free: true, minglaPlus: false },
-  { label: 'Unlimited sessions', free: false, minglaPlus: true },
-  { label: 'View curated experiences', free: true, minglaPlus: true },
-  { label: 'Save curated experiences', free: false, minglaPlus: true },
-  { label: 'Custom starting point', free: false, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_unlimited_swipes', free: true, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_1_pairing', free: true, minglaPlus: false },
+  { labelKey: 'billing:paywall.checklist_unlimited_pairings', free: false, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_1_session', free: true, minglaPlus: false },
+  { labelKey: 'billing:paywall.checklist_unlimited_sessions', free: false, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_view_curated', free: true, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_save_curated', free: false, minglaPlus: true },
+  { labelKey: 'billing:paywall.checklist_custom_starting_point', free: false, minglaPlus: true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getPeriodLabel(identifier: string): string {
+function getPeriodLabelKey(identifier: string): string {
   const id = identifier.toLowerCase();
-  if (id.includes('annual') || id.includes('yearly') || id === '$rc_annual') return 'Annual';
-  if (id.includes('monthly') || id === '$rc_monthly') return 'Monthly';
-  if (id.includes('weekly') || id === '$rc_weekly') return 'Weekly';
-  if (id.includes('lifetime') || id === '$rc_lifetime') return 'Lifetime';
-  return 'Subscribe';
+  if (id.includes('annual') || id.includes('yearly') || id === '$rc_annual') return 'billing:paywall.period_annual';
+  if (id.includes('monthly') || id === '$rc_monthly') return 'billing:paywall.period_monthly';
+  if (id.includes('weekly') || id === '$rc_weekly') return 'billing:paywall.period_weekly';
+  if (id.includes('lifetime') || id === '$rc_lifetime') return 'billing:paywall.period_lifetime';
+  return 'billing:paywall.period_subscribe';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,14 +218,14 @@ export function CustomPaywallScreen({
             {FEATURE_CHECKLIST.map((item) => {
               const included = item.minglaPlus;
               return (
-                <View key={item.label} style={styles.checklistRow}>
+                <View key={item.labelKey} style={styles.checklistRow}>
                   <Icon
                     name={included ? 'checkmark-circle' : 'close-circle'}
                     size={20}
                     color={included ? '#22C55E' : '#6B7280'}
                   />
                   <Text style={[styles.checklistLabel, !included && styles.checklistLabelDimmed]}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </Text>
                 </View>
               );
@@ -254,7 +249,7 @@ export function CustomPaywallScreen({
                     onPress={() => setSelectedPkgId(pkg.identifier)}
                   >
                     <Text style={styles.packagePeriod}>
-                      {getPeriodLabel(pkg.identifier)}
+                      {t(getPeriodLabelKey(pkg.identifier))}
                     </Text>
                     <Text style={styles.packagePrice}>
                       {pkg.product.priceString}

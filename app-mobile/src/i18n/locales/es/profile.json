@@ -57,7 +57,12 @@
     "see_all": "Ver todo"
   },
   "interests": {
-    "edit_accessibility": "Editar tus intereses"
+    "edit_accessibility": "Editar tus intereses",
+    "your_interests": "Tus intereses",
+    "interests": "Intereses",
+    "not_shared": "No compartido",
+    "empty_text": "Cuéntanos qué te gusta — nos ayuda a encontrar tu próxima cosa favorita.",
+    "add_interests": "Agregar intereses"
   },
   "friend": {
     "loading_profile": "Cargando perfil\u2026",

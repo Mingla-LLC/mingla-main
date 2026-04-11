@@ -90,8 +90,8 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     } catch (error: any) {
       console.error("Error exiting board:", error);
       Alert.alert(
-        "Error",
-        error?.message || "Failed to leave the board. Please try again."
+        t('board:boardSettingsDropdown.errorGeneric'),
+        error?.message || t('board:boardSettingsDropdown.errorLeave')
       );
     } finally {
       setExitingBoard(false);

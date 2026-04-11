@@ -28,6 +28,7 @@ import { BoardMessageService } from "../services/boardMessageService";
 import { BoardErrorHandler } from "../services/boardErrorHandler";
 import { withTimeout } from "../utils/withTimeout";
 import { showMutationError } from "../utils/showMutationError";
+import { useTranslation } from 'react-i18next';
 import { useToast } from "./ToastManager";
 import { Participant } from "./board/ParticipantAvatars";
 import { BoardTabs, BoardTab } from "./board/BoardTabs";
@@ -121,6 +122,7 @@ export default function SessionViewModal({
   onSessionDeleted,
   onSessionExited,
 }: SessionViewModalProps) {
+  const { t } = useTranslation(['modals', 'common']);
   const insets = useSafeAreaInsets();
   const {
     session,
@@ -281,12 +283,12 @@ export default function SessionViewModal({
     if (!user?.id || !sessionId) return;
 
     Alert.alert(
-      "Exit Board",
-      "Are you sure you want to exit this board? You will no longer receive updates or be able to participate.",
+      t('modals:session_view.exit_board_title'),
+      t('modals:session_view.exit_board_body'),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('common:cancel'), style: "cancel" },
         {
-          text: "Exit",
+          text: t('modals:session_view.exit'),
           style: "destructive",
           onPress: () => {
             // Close modal immediately — user sees instant feedback
@@ -508,9 +510,9 @@ export default function SessionViewModal({
 
     if (!hasValidCardData) {
       Alert.alert(
-        "Card Unavailable",
-        "This experience is no longer available. It may have been removed or is temporarily inaccessible.",
-        [{ text: "OK" }]
+        t('modals:session_view.card_unavailable_title'),
+        t('modals:session_view.card_unavailable_body'),
+        [{ text: t('common:ok') }]
       );
       return;
     }
@@ -519,8 +521,8 @@ export default function SessionViewModal({
     const expandedCardData: ExpandedCardData = {
       id: cardData.id || card.id,
       placeId: cardData.placeId || card.id,
-      title: cardData.title || "Untitled Experience",
-      category: cardData.category || "Experience",
+      title: cardData.title || t('modals:session_view.session_fallback'),
+      category: cardData.category || t('modals:session_view.session_fallback'),
       categoryIcon: cardData.categoryIcon || "star",
       description: cardData.description || "",
       fullDescription: cardData.fullDescription || cardData.description || "",
@@ -589,7 +591,7 @@ export default function SessionViewModal({
 
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {sessionName || session?.name || "Session"}
+              {sessionName || session?.name || t('modals:session_view.session_fallback')}
             </Text>
             <View style={styles.headerParticipantsRow}>
               <View style={styles.participantAvatarsSmall}>
@@ -742,7 +744,7 @@ export default function SessionViewModal({
         <ManageBoardModal
           visible={showManageMembersModal}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || "Board"}
+          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
           sessionCreatorId={session?.created_by}
           participants={participants}
           onClose={() => setShowManageMembersModal(false)}
@@ -754,7 +756,7 @@ export default function SessionViewModal({
         <InviteParticipantsModal
           visible={showInviteParticipantsModal}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || "Board"}
+          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
           existingParticipantIds={participants.map((p) => p.user_id)}
           onClose={() => setShowInviteParticipantsModal(false)}
           onInvitesSent={refreshParticipants}

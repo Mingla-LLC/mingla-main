@@ -73,5 +73,26 @@
   "budget.title": "Presupuesto",
   "budget.subtitle": "Selecciona todos los rangos que te funcionen",
   "starting_point.title": "Punto de partida",
-  "starting_point.subtitle": "¿Desde dónde empezamos a buscar?"
+  "starting_point.subtitle": "¿Desde dónde empezamos a buscar?",
+
+  "date_options.now": "Ahora",
+  "date_options.now_desc": "Salir inmediatamente",
+  "date_options.today": "Hoy",
+  "date_options.today_desc": "Elige una hora",
+  "date_options.this_weekend": "Este fin de semana",
+  "date_options.this_weekend_desc": "Vie-Dom",
+  "date_options.pick_a_date": "Elige una fecha",
+  "date_options.pick_a_date_desc": "Fecha personalizada",
+
+  "travel_modes.walk": "Caminar",
+  "travel_modes.bike": "Bicicleta",
+  "travel_modes.bus": "Autobús",
+  "travel_modes.drive": "Auto",
+
+  "sheet.session_vibes": "Vibras de {{name}}",
+  "sheet.pick_time_hint": "Elige una hora para continuar",
+  "sheet.pick_date_hint": "Elige una fecha para continuar",
+  "sheet.set_travel_hint": "Establece el tiempo de viaje para continuar",
+  "sheet.complete_hint": "Completa tus preferencias",
+  "sheet.save_error": "No se pudieron guardar las preferencias — se restablecerán la próxima vez."
 }

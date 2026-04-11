@@ -267,7 +267,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 ? formatTierLabel(firstStopTier, currencySymbol, currencyRate)
                 : cardData.totalPriceMin != null && cardData.totalPriceMax != null
                   ? cardData.totalPriceMin === 0 && cardData.totalPriceMax === 0
-                    ? "Free"
+                    ? t('common:free')
                     : `${currencySymbol}${Math.round(cardData.totalPriceMin * currencyRate)}–${currencySymbol}${Math.round(cardData.totalPriceMax * currencyRate)}`
                   : "";
 
@@ -340,7 +340,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     </View>
 
                     <Text style={styles.curatedTitle} numberOfLines={2} ellipsizeMode="tail">
-                      {cardData.title || "Untitled"}
+                      {cardData.title || t('common:untitled')}
                     </Text>
 
                     {/* Meta row */}
@@ -431,7 +431,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 
                   <View style={styles.titleOverlay}>
                     <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
-                      {cardData.title || "Untitled"}
+                      {cardData.title || t('common:untitled')}
                     </Text>
                     <View style={styles.detailsBadges}>
                       <View style={styles.detailBadge}>

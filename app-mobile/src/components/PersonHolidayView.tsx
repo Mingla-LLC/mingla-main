@@ -41,6 +41,8 @@ import BilateralToggle from "./BilateralToggle";
 import VisitBadge from "./VisitBadge";
 import PairedProfileSection from "./profile/PairedProfileSection";
 import PairedSavesListScreen from "./PairedSavesListScreen";
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 
 // ── Price tier helper ───────────────────────────────────────────────────────
 const VALID_TIERS: Set<string> = new Set(["chill", "comfy", "bougie", "lavish"]);
@@ -199,8 +201,7 @@ function filterByGender(
 }
 
 function fmtMonthDay(date: Date): string {
-  const M = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  return `${M[date.getMonth()]} ${date.getDate()}`;
+  return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
 }
 
 function parseDateOnly(s: string) {
@@ -223,10 +224,10 @@ function turningAge(s: string): number {
   return bday < today ? y + 1 - by : y - by;
 }
 
-function countdownText(d: number): { big: string; small: string } {
-  if (d === 0) return { big: "Today!", small: "" };
-  if (d === 1) return { big: "1", small: "day" };
-  return { big: String(d), small: "days" };
+function countdownText(d: number, t: (key: string) => string): { big: string; small: string } {
+  if (d === 0) return { big: t('social:holiday.today'), small: "" };
+  if (d === 1) return { big: "1", small: t('social:holiday.day') };
+  return { big: String(d), small: t('social:holiday.days') };
 }
 
 function seededShuffle<T>(arr: T[], seed: string): T[] {
@@ -275,7 +276,7 @@ function CompactCard({
   const catLabel = isCurated
     ? experienceType
       ? experienceType.charAt(0).toUpperCase() + experienceType.slice(1)
-      : "Curated"
+      : i18n.t('social:holiday.curated')
     : getReadableCategoryName(category);
 
   return (
@@ -306,7 +307,7 @@ function CompactCard({
         </Text>
         <Text style={[styles.compactCardCategory, isCurated && styles.compactCardCatCurated]} numberOfLines={1}>
           {catLabel}
-          {isCurated && stops > 0 ? ` · ${stops} stops` : ""}
+          {isCurated && stops > 0 ? ` · ${i18n.t('social:holiday.stops', { count: stops })}` : ""}
         </Text>
         <View style={styles.compactCardFooter}>
           {priceRange ? (
@@ -361,6 +362,7 @@ function CardRow({
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
 }) {
+  const { t } = useTranslation(['social', 'common']);
   const { currency } = useLocalePreferences();
   const currencySymbol = getCurrencySymbol(currency);
   const currencyRate = getCurrencyRate(currency);
@@ -411,7 +413,7 @@ function CardRow({
       <View style={styles.loadingRow}>
         <ActivityIndicator size="small" color="#eb7825" />
         <Text style={styles.loadingText}>
-          {hasLoc ? "Loading recommendations..." : "Getting your location..."}
+          {hasLoc ? t('social:holiday.loading_recommendations') : t('social:holiday.getting_location')}
         </Text>
       </View>
     );
@@ -421,10 +423,10 @@ function CardRow({
     return (
       <View style={styles.errorRow}>
         <Icon name="cloud-offline-outline" size={s(20)} color="#9ca3af" />
-        <Text style={styles.errorText}>Couldn't load recommendations</Text>
+        <Text style={styles.errorText}>{t('social:holiday.couldnt_load')}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => refetch()} activeOpacity={0.7}>
           <Icon name="refresh-outline" size={s(14)} color="#eb7825" />
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{t('social:holiday.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -552,8 +554,9 @@ function HolidaySectionView({
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
 }) {
+  const { t } = useTranslation(['social', 'common']);
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
-  const cd = countdownText(daysAway);
+  const cd = countdownText(daysAway, t);
 
   return (
     <View style={styles.holidaySection}>
@@ -621,13 +624,14 @@ function CustomHolidaySectionView({
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
 }) {
+  const { t } = useTranslation(['social', 'common']);
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
-  const cd = countdownText(da);
+  const cd = countdownText(da, t);
   const { sections: ai, invalidate } = useHolidayCategories(`custom_${holiday.id}`, holiday.name);
   const yr = new Date().getFullYear();
   const elapsed = yr - holiday.year;
-  const commem = elapsed <= 0 ? "First year" : `${ordinal(elapsed)} year`;
+  const commem = elapsed <= 0 ? t('social:holiday.first_year') : t('social:holiday.year_ordinal', { ordinal: ordinal(elapsed) });
 
   return (
     <View style={styles.holidaySection}>
@@ -660,7 +664,7 @@ function CustomHolidaySectionView({
             <CalendarButton
               holidayKey={`custom_${holiday.id}`} pairingId={pairingId}
               eventTitle={holiday.name} nextOccurrence={nd}
-              notes={`Reminder from Mingla — ${holiday.name}`}
+              notes={t('social:holiday.reminder_notes', { event: holiday.name })}
               personName={firstName} occasionLabel={holiday.name}
             />
           </View>
@@ -689,6 +693,7 @@ export default function PersonHolidayView({
   onCardPress, onSaveCardPress, onDeleteCustomDay, travelMode,
   autoOpenSaves, onAutoOpenSavesConsumed,
 }: PersonHolidayViewProps) {
+  const { t } = useTranslation(['social', 'common']);
   const firstName = getFirstName(displayName);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -824,7 +829,7 @@ export default function PersonHolidayView({
         if (isNaN(bm) || isNaN(bd)) return null;
         const da = getDaysUntil(bm, bd);
         const ta = turningAge(birthday);
-        const cd = countdownText(da);
+        const cd = countdownText(da, t);
         const nd = getNextOccurrenceDate(bm, bd);
         return (
           <View style={styles.birthdaySection}>
@@ -832,8 +837,8 @@ export default function PersonHolidayView({
               <View style={styles.heroContent}>
                 <View style={styles.heroLeft}>
                   <Text style={styles.heroTitle}>{fn}</Text>
-                  <Text style={styles.heroSubtitle}>Birthday · {fmtBirthdayMD(birthday)}</Text>
-                  <Text style={styles.heroAge}>Turning {ta}</Text>
+                  <Text style={styles.heroSubtitle}>{t('social:holiday.birthday_label')} · {fmtBirthdayMD(birthday)}</Text>
+                  <Text style={styles.heroAge}>{t('social:holiday.turning_age', { age: ta })}</Text>
                 </View>
                 <View style={styles.heroDaysWrap}>
                   <Text style={styles.heroDaysNum}>{cd.big}</Text>
@@ -848,16 +853,16 @@ export default function PersonHolidayView({
                 >
                   <Icon name="heart" size={s(14)} color="white" />
                   <Text style={styles.heroLikedText}>
-                    {saves.length} Liked {saves.length === 1 ? 'Place' : 'Places'}
+                    {t('social:holiday.liked_places', { count: saves.length })}
                   </Text>
                   <Icon name="chevron-forward" size={s(14)} color="rgba(255,255,255,0.7)" />
                 </TouchableOpacity>
               )}
               <CalendarButton
                 holidayKey="birthday" pairingId={pairingId}
-                eventTitle={`${fn}'s Birthday`} nextOccurrence={nd}
-                notes={`Reminder from Mingla — ${fn}'s Birthday`}
-                personName={fn} occasionLabel="Birthday"
+                eventTitle={t('social:holiday.birthday_event', { name: fn })} nextOccurrence={nd}
+                notes={t('social:holiday.reminder_notes', { event: t('social:holiday.birthday_event', { name: fn }) })}
+                personName={fn} occasionLabel={t('social:holiday.birthday_label')}
               />
             </View>
             {/* Birthday card row — always visible beneath hero */}
@@ -880,7 +885,7 @@ export default function PersonHolidayView({
       {/* ── 2. Your Special Days (custom holidays) ────────────────── */}
       <View style={styles.sectionWrap}>
         <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Your Special Days</Text>
+          <Text style={styles.sectionTitle}>{t('social:holiday.your_special_days')}</Text>
           {onAddCustomDay && (
             <TouchableOpacity onPress={onAddCustomDay} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Icon name="add-circle-outline" size={s(24)} color="#eb7825" />
@@ -912,7 +917,7 @@ export default function PersonHolidayView({
         ) : (
           <TouchableOpacity style={styles.emptyCustom} onPress={onAddCustomDay} activeOpacity={0.7}>
             <Icon name="calendar-outline" size={s(28)} color="#d1d5db" />
-            <Text style={styles.emptyCustomText}>Mark a day that matters</Text>
+            <Text style={styles.emptyCustomText}>{t('social:holiday.mark_a_day')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -927,7 +932,7 @@ export default function PersonHolidayView({
       {/* ── 5. Upcoming Holidays (moved to bottom) ────────────────── */}
       {sortedHolidays.length > 0 && (
         <View style={styles.sectionWrap}>
-          <Text style={styles.sectionTitleStandalone}>Upcoming Holidays</Text>
+          <Text style={styles.sectionTitleStandalone}>{t('social:holiday.upcoming_holidays')}</Text>
 
           {visible.map(({ holiday, date, daysAway }) => (
             <HolidaySectionView
@@ -950,7 +955,7 @@ export default function PersonHolidayView({
               <TouchableOpacity style={styles.archToggle} onPress={() => setShowArchived((v) => !v)} activeOpacity={0.7}>
                 <View style={styles.archToggleLeft}>
                   <Icon name="archive-outline" size={s(16)} color="#6b7280" />
-                  <Text style={styles.archLabel}>Archived</Text>
+                  <Text style={styles.archLabel}>{t('social:holiday.archived')}</Text>
                   <Text style={styles.archCount}>({archived.length})</Text>
                 </View>
                 <Icon name={showArchived ? "chevron-up" : "chevron-down"} size={s(16)} color="#6b7280" />
@@ -960,7 +965,7 @@ export default function PersonHolidayView({
                   <View style={styles.flex1}>
                     <Text style={styles.archItemName}>{holiday.name}</Text>
                     <Text style={styles.archItemMeta}>
-                      {fmtMonthDay(date)} · {daysAway} {daysAway === 1 ? "day" : "days"} away
+                      {fmtMonthDay(date)} · {t('social:holiday.days_away', { count: daysAway })}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => handleUnarchive(holiday.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -975,7 +980,7 @@ export default function PersonHolidayView({
       {/* Saves list — rendered as Modal to avoid FlatList-in-ScrollView nesting */}
       <Modal visible={showSavesList} animationType="slide" presentationStyle="pageSheet">
         <PairedSavesListScreen
-          title={`${firstName}'s saves`}
+          title={t('social:holiday.saves_title', { name: firstName })}
           items={saves.map((sv) => ({
             id: sv.id,
             title: sv.title,
@@ -984,7 +989,7 @@ export default function PersonHolidayView({
             priceTier: asPriceTier(sv.priceTier),
             rating: sv.rating,
             timestamp: sv.savedAt,
-            timestampLabel: "Saved",
+            timestampLabel: t('social:holiday.saved'),
           }))}
           isLoading={savesLoading}
           onBack={() => setShowSavesList(false)}
@@ -1007,15 +1012,15 @@ export default function PersonHolidayView({
       {/* Visits list — rendered as Modal */}
       <Modal visible={showVisitsList} animationType="slide" presentationStyle="pageSheet">
         <PairedSavesListScreen
-          title={`${firstName}'s visits`}
+          title={t('social:holiday.visits_title', { name: firstName })}
           items={visits.map((v) => ({
             id: v.id,
-            title: v.cardData?.title || "Unknown place",
+            title: v.cardData?.title || t('social:holiday.unknown_place'),
             category: v.cardData?.category || "",
             imageUrl: v.cardData?.imageUrl || "",
             priceTier: asPriceTier(v.cardData?.priceTier),
             timestamp: v.visitedAt,
-            timestampLabel: "Visited",
+            timestampLabel: t('social:holiday.visited'),
             isVisited: true,
           }))}
           isLoading={visitsLoading}

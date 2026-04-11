@@ -14,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { buildHolidayCalendarEvent } from "../utils/calendarReminders";
 import { s, vs } from "../utils/responsive";
+import { useTranslation } from 'react-i18next';
 
 interface CalendarButtonProps {
   /** Unique key for this occasion — e.g. "birthday" or holiday ID */
@@ -47,6 +48,7 @@ export default function CalendarButton({
   personName,
   occasionLabel,
 }: CalendarButtonProps) {
+  const { t } = useTranslation(['common']);
   const [isAdded, setIsAdded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -87,21 +89,21 @@ export default function CalendarButton({
           setIsLoading(false);
           if (Platform.OS === "ios") {
             Alert.alert(
-              "Calendar Access Needed",
-              `To add reminders for ${personName}'s ${occasionLabel}, allow calendar access in Settings.`,
+              t('common:calendar_access_needed'),
+              t('common:calendar_access_needed_msg'),
               [
-                { text: "Not Now", style: "cancel" },
+                { text: t('common:cancel'), style: "cancel" },
                 {
-                  text: "Open Settings",
+                  text: t('common:open_settings'),
                   onPress: () => Linking.openSettings(),
                 },
               ]
             );
           } else {
             Alert.alert(
-              "Calendar Permission",
-              `Mingla needs calendar access to create reminders for ${personName}'s ${occasionLabel}.`,
-              [{ text: "OK" }]
+              t('common:calendar_permission'),
+              t('common:calendar_permission_msg'),
+              [{ text: t('common:ok') }]
             );
           }
           return;
@@ -113,9 +115,9 @@ export default function CalendarButton({
       if (!calendarId) {
         setIsLoading(false);
         Alert.alert(
-          "No Calendar Available",
-          "No writable calendar found on your device. Please set up a calendar app.",
-          [{ text: "OK" }]
+          t('common:no_calendar'),
+          t('common:no_calendar_msg'),
+          [{ text: t('common:ok') }]
         );
         return;
       }
@@ -153,9 +155,9 @@ export default function CalendarButton({
       }
     } catch {
       Alert.alert(
-        "Couldn't Add Event",
-        "Something went wrong. Please try again.",
-        [{ text: "OK" }]
+        t('common:calendar_error'),
+        t('common:calendar_error_msg'),
+        [{ text: t('common:ok') }]
       );
     } finally {
       setIsLoading(false);
@@ -189,7 +191,7 @@ export default function CalendarButton({
             color={isAdded ? "#FFFFFF" : "#eb7825"}
           />
           <Text style={[styles.buttonText, isAdded && styles.buttonTextAdded]}>
-            {isAdded ? "Added \u2713" : "Add to calendar"}
+            {isAdded ? `${t('common:added_to_calendar')} \u2713` : t('common:add_to_calendar')}
           </Text>
         </>
       )}

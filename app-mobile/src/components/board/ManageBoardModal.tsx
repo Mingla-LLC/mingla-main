@@ -56,7 +56,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
   onParticipantsChange,
 }) => {
   const { user } = useAppStore();
-  const { t } = useTranslation(['board', 'common']);
+  const { t } = useTranslation(['board', 'common', 'modals']);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ userId: string; displayName: string } | null>(null);
@@ -163,8 +163,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       const canRemove = isAdmin || creatorId === user.id;
       if (!canRemove) {
         Alert.alert(
-          "Permission Denied",
-          "Only admins can remove members from this board."
+          t('board:manageBoardModal.permissionDenied'),
+          t('board:manageBoardModal.permissionRemove')
         );
         return;
       }
@@ -172,8 +172,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       // Prevent removing the session creator
       if (memberUserId === creatorId) {
         Alert.alert(
-          "Cannot Remove",
-          "The board creator cannot be removed. They can only leave the board themselves."
+          t('board:manageBoardModal.cannotRemoveCreator'),
+          t('board:manageBoardModal.cannotRemoveCreatorMsg')
         );
         return;
       }
@@ -181,8 +181,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       // Prevent removing yourself - use exit board instead
       if (memberUserId === user.id) {
         Alert.alert(
-          "Cannot Remove Yourself",
-          "Use the 'Leave Board' option to remove yourself from this board."
+          t('board:manageBoardModal.cannotRemoveSelf'),
+          t('board:manageBoardModal.cannotRemoveSelfMsg')
         );
         return;
       }
@@ -232,7 +232,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       // Notify remaining participants that someone was removed.
       notifyMemberLeft({
         sessionId,
-        sessionName: sessionName || 'Session',
+        sessionName: sessionName || t('modals:session_view.session_fallback'),
         userId: memberToRemove.userId,
         userName: memberToRemove.displayName,
       });
@@ -245,14 +245,14 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
 
       // Show success message
       Alert.alert(
-        "Member Removed",
-        `${memberToRemove.displayName} has been removed from the board.`
+        t('board:manageBoardModal.memberRemoved'),
+        t('board:manageBoardModal.memberRemovedMsg', { name: memberToRemove.displayName })
       );
     } catch (err: any) {
       console.error("Error removing member:", err);
       Alert.alert(
-        "Error",
-        err?.message || "Failed to remove member. Please try again."
+        t('board:manageBoardModal.error'),
+        err?.message || t('board:manageBoardModal.errorRemove')
       );
     }
   }, [memberToRemove, sessionId, loadParticipants, onParticipantsChange]);
@@ -266,8 +266,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       const canManageAdmins = creatorId === user.id || adminUsers.has(user.id);
       if (!canManageAdmins) {
         Alert.alert(
-          "Permission Denied",
-          "Only admins can manage admin privileges."
+          t('board:manageBoardModal.permissionDenied'),
+          t('board:manageBoardModal.permissionAdmin')
         );
         return;
       }
@@ -275,8 +275,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       // Cannot change creator's admin status
       if (memberUserId === creatorId) {
         Alert.alert(
-          "Cannot Modify",
-          "The board creator's admin status cannot be changed."
+          t('board:manageBoardModal.cannotModifyCreator'),
+          t('board:manageBoardModal.cannotModifyCreatorMsg')
         );
         return;
       }
@@ -310,8 +310,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         } catch (err: any) {
           console.error("Error promoting member to admin:", err);
           Alert.alert(
-            "Error",
-            err?.message || "Failed to promote member to admin. Please try again."
+            t('board:manageBoardModal.error'),
+            err?.message || t('board:manageBoardModal.errorPromote')
           );
         }
       }
@@ -355,8 +355,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
     } catch (err: any) {
       console.error("Error removing admin privileges:", err);
       Alert.alert(
-        "Error",
-        err?.message || "Failed to remove admin privileges. Please try again."
+        t('board:manageBoardModal.error'),
+        err?.message || t('board:manageBoardModal.errorDemote')
       );
     }
   }, [memberToToggleAdmin, sessionId, onParticipantsChange]);
@@ -390,8 +390,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         if (deleteError) throw deleteError;
 
         Alert.alert(
-          "Board Deleted",
-          "The board has been deleted because it requires at least 2 members to remain active."
+          t('board:manageBoardModal.boardDeleted'),
+          t('board:manageBoardModal.boardDeletedMsg')
         );
 
         onExitBoard?.();
@@ -453,7 +453,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       const userName = getDisplayName(user);
       notifyMemberLeft({
         sessionId,
-        sessionName: sessionName || 'Session',
+        sessionName: sessionName || t('modals:session_view.session_fallback'),
         userId: user.id,
         userName,
       });
@@ -464,8 +464,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
     } catch (error: any) {
       console.error("Error leaving board:", error);
       Alert.alert(
-        "Error",
-        error?.message || "Failed to leave the board. Please try again."
+        t('board:manageBoardModal.error'),
+        error?.message || t('board:manageBoardModal.errorLeave')
       );
     } finally {
       setLeavingBoard(false);
@@ -475,12 +475,12 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
   // Show confirmation dialog for leaving board
   const handleLeaveBoard = useCallback(() => {
     Alert.alert(
-      "Leave Board",
-      `Are you sure you want to leave "${sessionName}"?`,
+      t('board:manageBoardModal.leaveBoardTitle'),
+      t('board:manageBoardModal.leaveBoardMsg', { name: sessionName }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('common:cancel'), style: "cancel" },
         {
-          text: "Leave",
+          text: t('board:manageBoardModal.leaveBoard'),
           style: "destructive",
           onPress: handleLeaveBoardWithRules,
         },
@@ -662,7 +662,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
             >
               <Icon name="user-minus" size={20} color={leavingBoard ? "#9CA3AF" : "#EF4444"} />
               <Text style={[styles.leaveBoardButtonText, leavingBoard && styles.leaveBoardButtonTextDisabled]}>
-                {leavingBoard ? "Leaving..." : "Leave Board"}
+                {leavingBoard ? t('board:boardSettingsDropdown.leaving') : t('board:manageBoardModal.leaveBoard')}
               </Text>
             </TouchableOpacity>
           )}

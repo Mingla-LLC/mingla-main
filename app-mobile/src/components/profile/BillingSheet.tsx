@@ -32,35 +32,35 @@ import { useTranslation } from "react-i18next";
 
 // --- Tier configuration ---
 
-interface TierConfig {
-  name: string;
+interface TierConfigI18n {
+  nameKey: string;
   icon: string;
-  description: string;
-  perks: string[];
+  descriptionKey: string;
+  perkKeys: string[];
 }
 
-const TIERS: Record<SubscriptionTier, TierConfig> = {
+const TIERS_I18N: Record<SubscriptionTier, TierConfigI18n> = {
   free: {
-    name: "Free Plan",
+    nameKey: "billing:tier.free_name",
     icon: "person-outline",
-    description: "The essentials to start exploring.",
-    perks: [
-      "Unlimited swipes",
-      "1 active pairing",
-      "1 board session",
-      "View curated experiences",
+    descriptionKey: "billing:tier.free_description",
+    perkKeys: [
+      "billing:tier.free_perk_1",
+      "billing:tier.free_perk_2",
+      "billing:tier.free_perk_3",
+      "billing:tier.free_perk_4",
     ],
   },
   mingla_plus: {
-    name: "Mingla+",
+    nameKey: "billing:tier.plus_name",
     icon: "diamond",
-    description: "Everything unlocked. No limits.",
-    perks: [
-      "Unlimited swipes",
-      "Unlimited pairings",
-      "Unlimited board sessions",
-      "Save curated experiences",
-      "Set your own starting point",
+    descriptionKey: "billing:tier.plus_description",
+    perkKeys: [
+      "billing:tier.plus_perk_1",
+      "billing:tier.plus_perk_2",
+      "billing:tier.plus_perk_3",
+      "billing:tier.plus_perk_4",
+      "billing:tier.plus_perk_5",
     ],
   },
 };
@@ -71,9 +71,9 @@ const TIER_RANK: Record<SubscriptionTier, number> = { free: 0, mingla_plus: 1 };
 
 // --- CTA helpers ---
 
-function getCtaLabel(tier: SubscriptionTier, isUpgrade: boolean): string {
-  if (tier === "free") return "Manage Subscription";
-  if (isUpgrade) return "Upgrade to Mingla+";
+function getCtaLabelKey(tier: SubscriptionTier, isUpgrade: boolean): string {
+  if (tier === "free") return "billing:sheet.manage_subscription";
+  if (isUpgrade) return "billing:sheet.upgrade_to_plus";
   return "";
 }
 
@@ -282,7 +282,7 @@ interface CurrentPlanCardProps {
 
 function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: CurrentPlanCardProps) {
   const { t } = useTranslation(['billing', 'common']);
-  const config = TIERS[tier];
+  const config = TIERS_I18N[tier];
   const isOnTrial = trialDays > 0;
   const hasReferralBonus = referralDays > 0 && !isOnTrial;
 
@@ -296,7 +296,7 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
       {/* Top row */}
       <View style={styles.currentTopRow}>
         <Icon name={config.icon} size={22} color="#eb7825" />
-        <Text style={styles.currentTierName}>{config.name}</Text>
+        <Text style={styles.currentTierName}>{t(config.nameKey)}</Text>
         {isOnTrial && (
           <View style={styles.trialBadge}>
             <Text style={styles.trialBadgeText}>{t('billing:sheet.trial_badge')}</Text>
@@ -310,7 +310,7 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
       </View>
 
       {/* Description */}
-      <Text style={styles.currentDescription}>{config.description}</Text>
+      <Text style={styles.currentDescription}>{t(config.descriptionKey)}</Text>
 
       {/* Trial progress bar */}
       {isOnTrial && (
@@ -360,8 +360,9 @@ interface TierCardProps {
 
 function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: TierCardProps) {
   const { t } = useTranslation(['billing', 'common']);
-  const config = TIERS[tier];
-  const ctaText = getCtaLabel(tier, isUpgrade);
+  const config = TIERS_I18N[tier];
+  const ctaKey = getCtaLabelKey(tier, isUpgrade);
+  const ctaText = ctaKey ? t(ctaKey) : "";
   const showCta = !isCurrent && ctaText;
 
   return (
@@ -374,7 +375,7 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: Tie
             size={20}
             color={isCurrent ? "#eb7825" : "#9ca3af"}
           />
-          <Text style={styles.tierName}>{config.name}</Text>
+          <Text style={styles.tierName}>{t(config.nameKey)}</Text>
         </View>
         {isCurrent && (
           <View style={styles.currentBadge}>
@@ -385,14 +386,14 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: Tie
 
       {/* Perks */}
       <View style={styles.perksList}>
-        {config.perks.map((perk, i) => (
+        {config.perkKeys.map((perkKey, i) => (
           <View key={i} style={styles.perkRow}>
             <Icon
               name="checkmark-circle"
               size={16}
               color={isCurrent ? "#eb7825" : "#9ca3af"}
             />
-            <Text style={styles.perkText}>{perk}</Text>
+            <Text style={styles.perkText}>{t(perkKey)}</Text>
           </View>
         ))}
       </View>

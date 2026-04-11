@@ -358,15 +358,15 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
                 <Icon name="users" size={32} color="#9ca3af" />
                 <Text style={styles.emptyStateTitle}>
                   {searchQuery
-                    ? "No users found"
+                    ? t('board:inviteParticipantsModal.noUsersFound')
                     : availableFriends.length === 0
-                    ? "All friends are already in this board"
-                    : "No friends available"}
+                    ? t('board:inviteParticipantsModal.allFriendsInBoard')
+                    : t('board:inviteParticipantsModal.noFriendsAvailable')}
                 </Text>
                 <Text style={styles.emptyStateText}>
                   {searchQuery
-                    ? "Try a different name or username"
-                    : "Add more friends to invite them"}
+                    ? t('board:inviteParticipantsModal.tryDifferentName')
+                    : t('board:inviteParticipantsModal.addMoreFriends')}
                 </Text>
               </View>
             ) : (

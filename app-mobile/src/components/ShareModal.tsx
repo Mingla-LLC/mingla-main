@@ -70,7 +70,7 @@ export default function ShareModal({
   }
 
   // Extract data with fallbacks
-  const title = experienceData.title || experienceData.name || 'Experience';
+  const title = experienceData.title || experienceData.name || t('common:experience');
   const image = experienceData.image || experienceData.images?.[0] || '';
   const rawDistance = experienceData.distance || experienceData.travelTime;
   const distance = rawDistance

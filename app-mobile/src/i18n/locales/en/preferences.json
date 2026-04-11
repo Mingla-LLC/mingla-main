@@ -73,5 +73,26 @@
   "budget.title": "Budget",
   "budget.subtitle": "Select every tier you're open to",
   "starting_point.title": "Starting Point",
-  "starting_point.subtitle": "Where should we start looking?"
+  "starting_point.subtitle": "Where should we start looking?",
+
+  "date_options.now": "Now",
+  "date_options.now_desc": "Leave immediately",
+  "date_options.today": "Today",
+  "date_options.today_desc": "Pick a time",
+  "date_options.this_weekend": "This Weekend",
+  "date_options.this_weekend_desc": "Fri-Sun",
+  "date_options.pick_a_date": "Pick a Date",
+  "date_options.pick_a_date_desc": "Custom date",
+
+  "travel_modes.walk": "Walk",
+  "travel_modes.bike": "Bike",
+  "travel_modes.bus": "Bus",
+  "travel_modes.drive": "Drive",
+
+  "sheet.session_vibes": "{{name}} Vibes",
+  "sheet.pick_time_hint": "Pick a time to continue",
+  "sheet.pick_date_hint": "Pick a date to continue",
+  "sheet.set_travel_hint": "Set travel time to continue",
+  "sheet.complete_hint": "Complete your preferences",
+  "sheet.save_error": "Preferences couldn't save — they'll reset next time."
 }

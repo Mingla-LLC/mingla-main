@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { logger } from '../utils/logger';
 import { breadcrumbs } from '../utils/breadcrumbs';
+import i18n from '../i18n';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -44,12 +45,12 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         <View style={styles.container}>
           <View style={styles.card}>
             <Text style={styles.icon}>⚠️</Text>
-            <Text style={styles.title}>Something went wrong</Text>
+            <Text style={styles.title}>{i18n.t('common:error_boundary_title')}</Text>
             <Text style={styles.message}>
-              We encountered an unexpected error. Please try again.
+              {i18n.t('common:error_boundary_message')}
             </Text>
             <TouchableOpacity style={styles.button} onPress={this.handleRetry}>
-              <Text style={styles.buttonText}>Try Again</Text>
+              <Text style={styles.buttonText}>{i18n.t('common:try_again')}</Text>
             </TouchableOpacity>
           </View>
         </View>

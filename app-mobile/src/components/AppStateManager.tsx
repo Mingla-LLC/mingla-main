@@ -18,6 +18,7 @@ import { SessionService } from "../services/sessionService";
 import { preloadRates } from "../services/currencyService";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
+import i18n from '../i18n';
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
@@ -303,7 +304,7 @@ export function useAppState() {
     if (user && profile) {
       // Use the actual first_name and last_name fields from the profile
       const updatedIdentity = {
-        firstName: profile.first_name || user.email?.split("@")[0] || "User",
+        firstName: profile.first_name || user.email?.split("@")[0] || i18n.t('common:user_fallback'),
         lastName: profile.last_name || "",
         username: profile.username || user.email?.split("@")[0] || "user",
         profileImage: profile.avatar_url || null,
@@ -327,7 +328,7 @@ export function useAppState() {
       }
     } else if (user && !profile) {
       // User is authenticated but no profile yet - use basic info from user
-      const emailName = user.email?.split("@")[0] || "User";
+      const emailName = user.email?.split("@")[0] || i18n.t('common:user_fallback');
       const updatedIdentity = {
         firstName: emailName,
         lastName: "",
@@ -542,8 +543,8 @@ export function useAppState() {
           id: record.id,
           card_id: record.card_id,
           board_card_id: record.board_card_id,
-          title: cardData.title || "Saved Experience",
-          category: cardData.category || "Experience",
+          title: cardData.title || i18n.t('common:saved_experience'),
+          category: cardData.category || i18n.t('common:experience'),
           categoryIcon: cardData.categoryIcon || "star",
           image:
             cardData.image ||
@@ -556,7 +557,7 @@ export function useAppState() {
           source: record.source || "solo",
           sourceDetails: cardData.sessionName
             ? `From ${cardData.sessionName}`
-            : "Solo Experience",
+            : i18n.t('common:solo_experience'),
           priceRange: cardData.priceRange || "TBD",
           description: cardData.description || "",
           fullDescription:
@@ -640,8 +641,8 @@ export function useAppState() {
             {
               id: `profile-update-error-${Date.now()}`,
               type: "error" as const,
-              title: "Profile Update Failed",
-              message: "Failed to update profile. Please try again.",
+              title: i18n.t('common:profile_update_failed'),
+              message: i18n.t('common:profile_update_failed_msg'),
               autoHide: true,
               duration: 3000,
             },
@@ -694,8 +695,8 @@ export function useAppState() {
         {
           id: `profile-update-error-${Date.now()}`,
           type: "error" as const,
-          title: "Profile Update Failed",
-          message: "Failed to update profile. Please try again.",
+          title: i18n.t('common:profile_update_failed'),
+          message: i18n.t('common:profile_update_failed_msg'),
           autoHide: true,
           duration: 3000,
         },

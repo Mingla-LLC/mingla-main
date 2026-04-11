@@ -29,7 +29,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
 }) => {
   const { t } = useTranslation(['profile', 'common']);
   const hasInterests = intents.length > 0 || categories.length > 0;
-  const headerTitle = sectionTitle ?? (isOwnProfile ? 'Your Interests' : 'Interests');
+  const headerTitle = sectionTitle ?? (isOwnProfile ? t('profile:interests.your_interests') : t('profile:interests.interests'));
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
   const categoryData = allCategories.filter((c) => categories.includes(c.name));
   const totalPills = intentData.length + categoryData.length;
@@ -73,7 +73,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
         <View style={styles.header}>
           <Text style={styles.title}>{headerTitle}</Text>
         </View>
-        <Text style={styles.friendInterestsEmpty}>Not shared</Text>
+        <Text style={styles.friendInterestsEmpty}>{t('profile:interests.not_shared')}</Text>
       </View>
     );
   }
@@ -105,10 +105,10 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
         >
           <Sparkles size={24} color="#eb7825" strokeWidth={2} />
           <Text style={styles.emptyText}>
-            Tell us what you're into — it helps us find your next favorite thing.
+            {t('profile:interests.empty_text')}
           </Text>
           <View style={styles.addButton}>
-            <Text style={styles.addButtonText}>Add Interests</Text>
+            <Text style={styles.addButtonText}>{t('profile:interests.add_interests')}</Text>
           </View>
         </TrackedTouchableOpacity>
       ) : (
@@ -131,7 +131,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
                   {IconComponent && (
                     <IconComponent size={14} color="#ffffff" strokeWidth={2.5} />
                   )}
-                  <Text style={styles.intentText}>{intent.label}</Text>
+                  <Text style={styles.intentText}>{t(`common:intent_${intent.id.replace(/-/g, '_')}`)}</Text>
                 </LinearGradient>
               </Animated.View>
             );

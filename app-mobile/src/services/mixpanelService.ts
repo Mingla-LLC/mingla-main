@@ -1,4 +1,6 @@
 import { Mixpanel } from "mixpanel-react-native";
+import { Platform } from "react-native";
+import * as Application from "expo-application";
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
 
@@ -69,6 +71,41 @@ class MixpanelService {
   reset(): void {
     if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.reset();
+  }
+
+  /**
+   * Register super properties that attach to every subsequent event.
+   * Call after login and when relevant state changes (tier, city, mode).
+   */
+  registerSuperProperties(properties: Record<string, unknown>): void {
+    if (!this.initialized || !this.mixpanel) return;
+    this.mixpanel.registerSuperProperties(properties);
+  }
+
+  /**
+   * Start a timer for an event. When track() is later called with
+   * the same event name, a $duration property is automatically added.
+   */
+  timeEvent(eventName: string): void {
+    if (!this.initialized || !this.mixpanel) return;
+    this.mixpanel.timeEvent(eventName);
+  }
+
+  /**
+   * Increment a numeric user profile property (e.g., total_saves += 1).
+   */
+  incrementUserProperty(property: string, by: number = 1): void {
+    if (!this.initialized || !this.mixpanel) return;
+    this.mixpanel.getPeople().increment(property, by);
+  }
+
+  /**
+   * Set user profile properties only if they don't already exist.
+   * Used for first-time milestone dates (first_save_at, first_friend_at, etc.).
+   */
+  setUserPropertyOnce(properties: Record<string, unknown>): void {
+    if (!this.initialized || !this.mixpanel) return;
+    this.mixpanel.getPeople().setOnce(properties);
   }
 
   // ─── Convenience helpers ────────────────────────────────────────────
