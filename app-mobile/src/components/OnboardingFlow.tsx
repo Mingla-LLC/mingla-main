@@ -19,6 +19,8 @@ import {
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { Icon } from './ui/Icon'
+// WhatsAppLogo available when WhatsApp channel is enabled in Twilio Console
+// import { WhatsAppLogo } from './ui/BrandIcons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -29,7 +31,7 @@ import { PreferencesService } from '../services/preferencesService'
 import { locationService } from '../services/locationService'
 import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGeocode'
 import { geocodingService } from '../services/geocodingService'
-import { sendOtp, verifyOtp } from '../services/otpService'
+import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
@@ -754,6 +756,9 @@ const OnboardingFlow = ({
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false)
   const [resendCountdown, setResendCountdown] = useState(0)
   const [otpAttempts, setOtpAttempts] = useState(0)
+  const [activeChannel, setActiveChannel] = useState<OtpChannel>('sms')
+  const [channelConfirmation, setChannelConfirmation] = useState<string | null>(null)
+  const [showChannelOptions, setShowChannelOptions] = useState(false)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
@@ -1082,7 +1087,13 @@ const OnboardingFlow = ({
   // ─── Resend Countdown Timer ───
   useEffect(() => {
     if (resendCountdown <= 0) return
-    const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000)
+    const timer = setTimeout(() => setResendCountdown((prev) => {
+      if (prev <= 1) {
+        setShowChannelOptions(true)
+        return 0
+      }
+      return prev - 1
+    }), 1000)
     return () => clearTimeout(timer)
   }, [resendCountdown])
 
@@ -1150,6 +1161,9 @@ const OnboardingFlow = ({
         goToSubStep('gender_identity')
         return
       }
+      setActiveChannel('sms')
+      setChannelConfirmation(null)
+      setShowChannelOptions(false)
       setResendCountdown(30)
       setOtpAttempts(0)
       goNext() // advance to OTP sub-step
@@ -1158,11 +1172,12 @@ const OnboardingFlow = ({
     }
   }, [isPhoneValid, buildE164, goNext, data.phoneVerified, goToSubStep])
 
-  // ─── Resend OTP (does NOT advance state — used for auto-resend after 3 failures) ───
-  const handleResendOtp = useCallback(async () => {
-    logger.action('Resend OTP pressed')
+  // ─── Resend OTP via Channel (replaces old SMS-only handleResendOtp) ───
+  const handleResendViaChannel = useCallback(async (channel: OtpChannel) => {
+    logger.action(`Resend OTP via ${channel}`)
     setSendingOtp(true)
-    const result = await sendOtp(buildE164())
+    setChannelConfirmation(null)
+    const result = await sendOtp(buildE164(), channel)
     setSendingOtp(false)
     if (result.success) {
       // Server confirmed phone is already verified — skip OTP, mark verified
@@ -1172,7 +1187,20 @@ const OnboardingFlow = ({
         goToSubStep('gender_identity')
         return
       }
+      setActiveChannel(channel)
+      setShowChannelOptions(false)
       setResendCountdown(30)
+      switch (channel) {
+        case 'sms':
+          setChannelConfirmation('Code re-sent via SMS')
+          break
+        case 'whatsapp':
+          setChannelConfirmation('Code sent via WhatsApp')
+          break
+        case 'call':
+          setChannelConfirmation('Calling you now...')
+          break
+      }
     } else {
       // Phone claimed by another user — navigate back to phone step with error
       if (result.error?.includes('already associated')) {
@@ -1183,12 +1211,20 @@ const OnboardingFlow = ({
         goToSubStep('phone')
         return
       }
-      // Generic resend failure
-      setPhoneError(result.error || "Couldn't resend code. Try again.")
+      // Rate limit — hide channel options, show error
+      if (result.error?.includes('Too many attempts')) {
+        setShowChannelOptions(false)
+      }
+      setPhoneError(result.error || "Couldn't send code. Try again.")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       goToSubStep('phone')
     }
   }, [buildE164, goToSubStep])
+
+  // Thin wrapper for backward compat (auto-resend references)
+  const handleResendOtp = useCallback(() => {
+    handleResendViaChannel('sms')
+  }, [handleResendViaChannel])
 
   // ─── Verify OTP ───
   const handleVerifyOtp = useCallback(
@@ -1228,14 +1264,14 @@ const OnboardingFlow = ({
         setOtpAttempts((a) => a + 1)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
         if (otpAttempts >= 2) {
-          // Auto-resend after 3 failures — does NOT advance past OTP
+          // Show channel picker instead of auto-resending SMS
           setOtpCode('')
           setOtpAttempts(0)
-          handleResendOtp()
+          setShowChannelOptions(true)
         }
       }
     },
-    [buildE164, goNext, otpAttempts, handleResendOtp, goToSubStep]
+    [buildE164, goNext, otpAttempts, goToSubStep]
   )
 
   // ─── Location Capture ───
@@ -1994,7 +2030,7 @@ const OnboardingFlow = ({
             style={styles.consentRow}
             onPress={() => setSmsConsentChecked(prev => !prev)}
             accessibilityRole="checkbox"
-            accessibilityLabel="Agree to receive text messages from Mingla"
+            accessibilityLabel="Agree to receive messages from Mingla"
             accessibilityState={{ checked: smsConsentChecked }}
           >
             <Checkbox
@@ -2004,7 +2040,7 @@ const OnboardingFlow = ({
               style={styles.consentCheckbox}
             />
             <Text style={styles.consentText}>
-              I agree to receive texts from Mingla, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our{' '}
+              I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our{' '}
               <Text
                 style={styles.consentLink}
                 onPress={() => {
@@ -2044,6 +2080,9 @@ const OnboardingFlow = ({
         <View>
           <Text style={styles.headline}>Enter the code</Text>
           <Text style={styles.body}>Sent to {buildE164()}</Text>
+          {channelConfirmation && (
+            <Text style={styles.channelConfirmation}>{channelConfirmation}</Text>
+          )}
           <View style={styles.otpContainer}>
             <OTPInput
               length={6}
@@ -2056,20 +2095,40 @@ const OnboardingFlow = ({
           </View>
           {otpLoading ? (
             <Text style={[styles.caption, styles.textCenter]}>Verifying...</Text>
+          ) : sendingOtp ? (
+            <Text style={[styles.caption, styles.textCenter]}>Sending...</Text>
           ) : (
             <>
-              <View style={styles.resendRow}>
-                {resendCountdown > 0 ? (
+              {resendCountdown > 0 && !showChannelOptions ? (
+                <View style={styles.resendRow}>
                   <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
-                ) : (
-                  <Pressable onPress={handleResendOtp}>
-                    <Text style={styles.linkText}>Resend code</Text>
+                </View>
+              ) : showChannelOptions ? (
+                <View style={styles.channelOptions}>
+                  <Text style={styles.channelOptionsLabel}>Didn't get it? Try another way:</Text>
+                  <Pressable
+                    style={styles.channelButton}
+                    onPress={() => handleResendViaChannel('sms')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Resend code via SMS"
+                  >
+                    <Icon name="message-square" size={18} color={colors.text.secondary} />
+                    <Text style={styles.channelButtonText}>Resend SMS</Text>
                   </Pressable>
-                )}
-              </View>
+                  <Pressable
+                    style={styles.channelButton}
+                    onPress={() => handleResendViaChannel('call')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Receive code via phone call"
+                  >
+                    <Icon name="call" size={18} color={colors.text.secondary} />
+                    <Text style={styles.channelButtonText}>Call me instead</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {otpError && (
                 <Text style={styles.errorText}>
-                  {otpAttempts >= 3 ? 'Three tries, no luck. Sending a fresh code.' : "That code didn't land. Try again."}
+                  {otpAttempts >= 3 ? "Three tries, no luck. Try a different method below." : "That code didn't land. Try again."}
                 </Text>
               )}
             </>
@@ -3257,6 +3316,39 @@ const styles = StyleSheet.create({
   resendRow: {
     alignItems: 'center',
     marginBottom: spacing.md,
+  },
+  // ─── OTP Channel Options ───
+  channelConfirmation: {
+    ...typography.sm,
+    color: colors.success[600],
+    textAlign: 'center' as const,
+    marginTop: spacing.xs,
+  },
+  channelOptions: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  channelOptionsLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  channelButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.secondary,
+    gap: spacing.sm,
+  },
+  channelButtonText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
   },
   // ─── Value Prop Dots ───
   dotIndicator: {

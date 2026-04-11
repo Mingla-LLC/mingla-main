@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-09
+> Last updated: 2026-04-10
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -11,7 +11,7 @@
 | Surface | Domain | Key Files | Grade | Items Tracked | Coverage |
 |---------|--------|-----------|-------|---------------|----------|
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
-| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 10F) | 12 | Weak |
+| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (3A, 9F) | 12 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
@@ -95,7 +95,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0018 | Skip button responsiveness | Onboarding | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
 | ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. All legal URLs centralized in urls.ts → usemingla.com. 660 lines hardcoded text deleted. InAppBrowserModal for Profile + Paywall. |
 | ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. Checkbox + TCPA consent text. CTA gated. InAppBrowserModal links. Full accessibility. |
-| ORCH-0370 | OTP multi-channel support — add WhatsApp and voice call fallback channels via Twilio Verify | Onboarding | S2 | missing-feature | investigated | F | — | INVESTIGATION_OTP_MULTI_CHANNEL_REPORT.md — 3-file change (send-otp, otpService, OnboardingFlow). verify-otp channel-agnostic. TCPA consent update needed. WhatsApp needs Console setup. |
+| ORCH-0370 | OTP multi-channel support — add WhatsApp and voice call fallback channels via Twilio Verify | Onboarding | S2 | missing-feature | closed | A | 2026-04-10 | QA PASS. 16/16 tests, 0 defects. send-otp accepts channel param (sms/whatsapp/call). OTP sub-step shows fallback buttons. Consent text covers all channels. verify-otp untouched. |
 
 ### Section 3: Discovery / Explore (Card Deck)
 

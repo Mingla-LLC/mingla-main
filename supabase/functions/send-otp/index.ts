@@ -8,6 +8,13 @@ const corsHeaders = {
 
 const E164_REGEX = /^\+[1-9]\d{1,14}$/
 
+// ALLOWED_CHANNELS: Twilio Verify channel allowlist.
+// WhatsApp requires Console setup (WhatsApp Sender on Verify Service).
+// Voice is enabled by default. Do not add 'auto' or 'sna' without reviewing
+// investigation ORCH-0370 for UX and rate-limit implications.
+const ALLOWED_CHANNELS = ['sms', 'whatsapp', 'call'] as const
+type AllowedChannel = typeof ALLOWED_CHANNELS[number]
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -36,9 +43,17 @@ serve(async (req) => {
       })
     }
 
-    const { phone } = await req.json()
+    const { phone, channel: rawChannel } = await req.json()
     if (!phone || !E164_REGEX.test(phone)) {
       return new Response(JSON.stringify({ error: 'Invalid phone number format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const channel: AllowedChannel = rawChannel ?? 'sms'
+    if (!ALLOWED_CHANNELS.includes(channel)) {
+      return new Response(JSON.stringify({ error: 'Invalid channel. Must be sms, whatsapp, or call.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -111,7 +126,7 @@ serve(async (req) => {
           'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({ To: phone, Channel: 'sms' }),
+        body: new URLSearchParams({ To: phone, Channel: channel }),
       }
     )
 
@@ -131,7 +146,7 @@ serve(async (req) => {
       })
     }
 
-    return new Response(JSON.stringify({ success: true, status: twilioData.status }), {
+    return new Response(JSON.stringify({ success: true, status: twilioData.status, channel }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
