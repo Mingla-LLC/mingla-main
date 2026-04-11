@@ -50,3 +50,29 @@ export function useSubmitFeedback() {
     },
   });
 }
+
+// ── Delete Mutation ────────────────────────────────────────────────────────
+
+export function useDeleteFeedback() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['beta-feedback', 'delete'],
+    mutationFn: (params: {
+      feedbackId: string;
+      audioPath: string;
+      screenshotPaths: string[] | null;
+    }) =>
+      betaFeedbackService.deleteFeedback(
+        params.feedbackId,
+        params.audioPath,
+        params.screenshotPaths,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: feedbackKeys.all });
+    },
+    onError: (error) => {
+      console.error('[useBetaFeedback] Delete failed:', error.message);
+    },
+  });
+}

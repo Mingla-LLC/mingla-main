@@ -414,6 +414,34 @@ async function getScreenshotSignedUrls(
   return results;
 }
 
+// ── Delete Feedback ────────────────────────────────────────────────────────
+
+async function deleteFeedback(
+  feedbackId: string,
+  audioPath: string,
+  screenshotPaths: string[] | null,
+): Promise<void> {
+  // 1. Delete storage files (best-effort — orphaned files are harmless)
+  const allPaths = [audioPath, ...(screenshotPaths ?? [])];
+  const { error: storageError } = await supabase.storage
+    .from('beta-feedback')
+    .remove(allPaths);
+
+  if (storageError) {
+    console.warn('[BetaFeedback] Storage cleanup error (non-blocking):', storageError.message);
+  }
+
+  // 2. Delete database row (required — must succeed)
+  const { error: deleteError } = await supabase
+    .from('beta_feedback')
+    .delete()
+    .eq('id', feedbackId);
+
+  if (deleteError) {
+    throw new Error(`Failed to delete feedback: ${deleteError.message}`);
+  }
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────────
 
 export const feedbackRecorder = new FeedbackRecorder();
@@ -422,6 +450,7 @@ export const betaFeedbackService = {
   uploadFeedbackAudio,
   uploadFeedbackScreenshots,
   submitFeedback,
+  deleteFeedback,
   getUserFeedbackHistory,
   getFeedbackAudioUrl,
   getScreenshotSignedUrls,

@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { Icon } from './ui/Icon';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
-import { useFeedbackHistory } from '../hooks/useBetaFeedback';
+import { useFeedbackHistory, useDeleteFeedback } from '../hooks/useBetaFeedback';
 import { betaFeedbackService, type BetaFeedback, type FeedbackCategory } from '../services/betaFeedbackService';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -65,9 +66,13 @@ function formatDuration(ms: number): string {
 function FeedbackItem({
   item,
   onViewScreenshot,
+  onDelete,
+  isDeleting,
 }: {
   item: BetaFeedback;
   onViewScreenshot: (url: string) => void;
+  onDelete: (item: BetaFeedback) => void;
+  isDeleting: boolean;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -126,7 +131,30 @@ function FeedbackItem({
             {CATEGORY_LABELS[item.category] ?? item.category}
           </Text>
         </View>
-        <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+          {isDeleting ? (
+            <ActivityIndicator size="small" color={colors.gray[400]} />
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Delete Feedback',
+                  "Delete this feedback? This can't be undone.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: () => onDelete(item) },
+                  ],
+                );
+              }}
+              hitSlop={8}
+              activeOpacity={0.7}
+              accessibilityLabel="Delete this feedback"
+            >
+              <Icon name="trash" size={16} color={colors.gray[400]} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <View style={styles.itemMeta}>
@@ -181,6 +209,23 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
   const insets = useSafeAreaInsets();
   const { data: history, isLoading, isError } = useFeedbackHistory();
   const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteMutation = useDeleteFeedback();
+
+  const handleDelete = async (item: BetaFeedback): Promise<void> => {
+    setDeletingId(item.id);
+    try {
+      await deleteMutation.mutateAsync({
+        feedbackId: item.id,
+        audioPath: item.audio_path,
+        screenshotPaths: item.screenshot_paths,
+      });
+    } catch {
+      Alert.alert('Error', "Couldn't delete feedback. Try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -222,7 +267,12 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
               data={history ?? []}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <FeedbackItem item={item} onViewScreenshot={(url) => setFullScreenImageUrl(url)} />
+                <FeedbackItem
+                  item={item}
+                  onViewScreenshot={(url) => setFullScreenImageUrl(url)}
+                  onDelete={handleDelete}
+                  isDeleting={deletingId === item.id}
+                />
               )}
               ListEmptyComponent={renderEmpty}
               contentContainerStyle={styles.listContent}
@@ -325,6 +375,11 @@ const styles = StyleSheet.create({
   categoryBadgeText: {
     ...typography.xs,
     fontWeight: fontWeights.semibold,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   itemDate: {
     ...typography.xs,
