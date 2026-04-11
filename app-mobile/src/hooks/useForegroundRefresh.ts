@@ -35,6 +35,8 @@ const CRITICAL_QUERY_KEYS = [
   ['discover-experiences'],       // discover grid experiences
   ['map-cards-singles'],          // map view single cards
   ['map-cards-curated'],          // map view curated cards
+  ['nearby-people'],              // nearby people on discover map (ORCH-0385)
+  ['map-settings'],               // map visibility & activity status (ORCH-0385)
 ] as const;
 
 const DEBOUNCE_MS = 500;

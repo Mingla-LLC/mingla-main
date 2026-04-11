@@ -589,6 +589,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0382 | BoardDiscussion dropdown menu renders flat — needs proper RN dropdown component | Collab Sessions | S2 | ux | open | F | — | Pre-existing: shadcn/Radix DropdownMenu never worked in RN. Now stubbed as pass-through (items always visible). Needs react-native-popup-menu or ActionSheet. QA_ORCH-0376 P2-001. |
 | ORCH-0383 | enhancedFavoritesService dead code | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | Deleted in ORCH-0384 sweep. smartNotificationService import stubbed. |
 | ORCH-0384 | Full dead code sweep — 78 dead files deleted, 24K lines removed, across components/hooks/services/utils | Code Quality | S2 | design-debt | closed | A | 2026-04-11 | Forensic verified 87 candidates: 78 deleted, 12 false positives saved. 2 cascading fixes (useLifecycleLogger, enhancedFavoritesService). tsc=0, iOS build clean. Reports: INVESTIGATION + IMPLEMENTATION_ORCH-0384. |
+| ORCH-0385 | Map avatars disappear after returning from background — `['nearby-people']` added to `CRITICAL_QUERY_KEYS` + tracksViewChanges reset | Map & Location | S1 | bug | closed | A | 2026-04-11 | QA PASS 7/7. Added `['nearby-people']` + `['map-settings']` to foreground refresh. tracksViewChanges resets on data change. 2 files, ~6 lines. Reports: INVESTIGATION + IMPLEMENTATION + QA_ORCH-0385. |
 
 ---
 

@@ -1,7 +1,7 @@
 # Master Bug List
 
 > Last updated: 2026-04-11
-> Total: 306 | Open: 131 | Closed: 107 | Verified (B grade): 21 | Deferred: 1
+> Total: 307 | Open: 131 | Closed: 108 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -117,6 +117,12 @@
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
+
+## Recently Closed (Map Foreground Refresh)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-0385 | Map avatars disappear after background | Added `['nearby-people']` + `['map-settings']` to `CRITICAL_QUERY_KEYS`. tracksViewChanges resets on data change. | 2026-04-11 | QA_ORCH-0385 PASS 7/7 |
 
 ## Recently Closed (Map Wave 2)
 

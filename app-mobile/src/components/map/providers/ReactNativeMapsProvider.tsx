@@ -42,11 +42,14 @@ export function ReactNativeMapsProvider({
 
   // Allow person markers to re-render for 3s so avatar images load,
   // then disable tracksViewChanges for performance (ORCH-0361).
+  // Resets on every nearbyPeople change so new/updated markers get a
+  // rendering window after foreground refresh (ORCH-0385).
   const [peopleTrackChanges, setPeopleTrackChanges] = useState(true);
   useEffect(() => {
+    setPeopleTrackChanges(true);
     const timer = setTimeout(() => setPeopleTrackChanges(false), 3000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [nearbyPeople]);
 
   const visiblePlaceCards = useMemo(() => {
     const cardMap = new Map(filteredCards.map((card) => [card.id, card]));
