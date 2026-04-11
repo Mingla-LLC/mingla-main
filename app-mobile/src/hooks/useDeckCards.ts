@@ -155,7 +155,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       );
     },
     staleTime: Infinity,            // Deck only refreshes on explicit preference change (query key changes). Never auto-refetch — deck is an active swipe session, not a feed.
-    gcTime: 2 * 60 * 60 * 1000,    // 2 hours
+    gcTime: 24 * 60 * 60 * 1000,   // 24 hours — matches AsyncStorage maxAge so persisted data stays usable
     enabled: isEnabled,
     retry: 1,
     placeholderData: (previousData) => previousData,

@@ -39,7 +39,7 @@ const CRITICAL_QUERY_KEYS = [
   ['map-settings'],               // map visibility & activity status (ORCH-0385)
 ] as const;
 
-const DEBOUNCE_MS = 500;
+const DEBOUNCE_MS = 200;
 const AUTH_TIMEOUT_MS = 8000;
 const AUTH_RETRY_DELAY_MS = 3000;
 const AUTH_MAX_ATTEMPTS = 3;
