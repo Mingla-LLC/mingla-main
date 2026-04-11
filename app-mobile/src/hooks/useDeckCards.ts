@@ -18,6 +18,57 @@ import { normalizeDateTime } from '../utils/cardConverters';
 const EMPTY_CARDS: Recommendation[] = [];
 const EMPTY_PILLS: string[] = [];
 
+/**
+ * Builds the exact React Query key for a deck-cards query. Exported so that
+ * onboarding prefetch can pre-seed the cache with the identical key shape.
+ * Any divergence between this function and the hook's queryKey means a silent
+ * cache miss — never construct the key independently. ORCH-0386.
+ */
+export interface DeckQueryKeyParams {
+  lat: number;
+  lng: number;
+  categories: string[];
+  intents: string[];
+  priceTiers: string[];
+  budgetMin: number;
+  budgetMax: number;
+  travelMode: string;
+  travelConstraintType: string;
+  travelConstraintValue: number;
+  datetimePref?: string;
+  dateOption?: string;
+  timeSlot?: string | null;
+  batchSeed: number;
+  excludeCardIds?: string[];
+}
+
+export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[] {
+  const roundedLat = Math.round(params.lat * 1000) / 1000;
+  const roundedLng = Math.round(params.lng * 1000) / 1000;
+  const nd = params.datetimePref
+    ? normalizeDateTime(params.datetimePref)
+    : undefined;
+
+  return [
+    'deck-cards',
+    roundedLat,
+    roundedLng,
+    [...params.categories].sort().join(','),
+    [...params.intents].sort().join(','),
+    [...(params.priceTiers ?? [])].sort().join(','),
+    params.budgetMin,
+    params.budgetMax,
+    params.travelMode,
+    params.travelConstraintType,
+    params.travelConstraintValue,
+    nd,
+    params.dateOption ?? 'now',
+    params.timeSlot ?? '',
+    params.batchSeed,
+    [...(params.excludeCardIds ?? [])].sort().join(','),
+  ] as const;
+}
+
 interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
   categories: string[];
@@ -54,57 +105,33 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
 
   const isEnabled = enabled && location !== null;
 
-  // Round coordinates to 3 decimal places (~110m) in the query key to prevent
-  // trivial GPS drift from invalidating the deck cache. Full-precision coords
-  // are still passed to queryFn for accurate API results.
-  const roundedLat = location ? Math.round(location.lat * 1000) / 1000 : null;
-  const roundedLng = location ? Math.round(location.lng * 1000) / 1000 : null;
-
-  // Normalize datetimePref to prevent "Z" vs "+00:00" format differences from
-  // creating duplicate query keys (same moment, different string representation).
-  const normalizedDatetime = params.datetimePref
-    ? normalizeDateTime(params.datetimePref)
-    : undefined;
+  // Build query key using the shared function — guarantees identical key shape
+  // between this hook and onboarding prefetch (ORCH-0386).
+  const queryKey = location
+    ? buildDeckQueryKey({
+        lat: location.lat,
+        lng: location.lng,
+        categories: params.categories,
+        intents: params.intents ?? [],
+        priceTiers: params.priceTiers ?? [],
+        budgetMin: params.budgetMin,
+        budgetMax: params.budgetMax,
+        travelMode: params.travelMode,
+        travelConstraintType: params.travelConstraintType,
+        travelConstraintValue: params.travelConstraintValue,
+        datetimePref: params.datetimePref,
+        dateOption: params.dateOption,
+        timeSlot: params.timeSlot,
+        batchSeed: params.batchSeed,
+        excludeCardIds: params.excludeCardIds,
+      })
+    : ['deck-cards', null];
 
   const query = useQuery<DeckResponse>({
-    queryKey: [
-      'deck-cards',
-      roundedLat,
-      roundedLng,
-      params.categories.sort().join(','),
-      (params.intents ?? []).sort().join(','),
-      (params.priceTiers ?? []).sort().join(','),
-      params.budgetMin,
-      params.budgetMax,
-      params.travelMode,
-      params.travelConstraintType,
-      params.travelConstraintValue,
-      normalizedDatetime,
-      params.dateOption ?? 'now',
-      params.timeSlot ?? '',
-      params.batchSeed,
-      (params.excludeCardIds ?? []).sort().join(','),
-    ],
+    queryKey,
     queryFn: () => {
-      // Build the query key for setQueryData (same key used by this useQuery)
-      const qk = [
-        'deck-cards',
-        roundedLat,
-        roundedLng,
-        params.categories.sort().join(','),
-        (params.intents ?? []).sort().join(','),
-        (params.priceTiers ?? []).sort().join(','),
-        params.budgetMin,
-        params.budgetMax,
-        params.travelMode,
-        params.travelConstraintType,
-        params.travelConstraintValue,
-        normalizedDatetime,
-        params.dateOption ?? 'now',
-        params.timeSlot ?? '',
-        params.batchSeed,
-        (params.excludeCardIds ?? []).sort().join(','),
-      ];
+      // Use the same queryKey for onSinglesReady partial cache updates
+      const qk = queryKey;
 
       return deckService.fetchDeck(
         {

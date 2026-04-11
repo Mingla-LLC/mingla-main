@@ -17,7 +17,7 @@ import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useDeckCards } from "../hooks/useDeckCards";
-import { deckService, getLastWarmPoolTimestamp } from "../services/deckService";
+import { deckService } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
@@ -143,7 +143,6 @@ export const RecommendationsProvider: React.FC<
   const refreshKey = propRefreshKey;
   const previousRefreshKeyRef = useRef(propRefreshKey);
   const currentCacheKeyRef = useRef<string | null>(null);
-  const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
 
   // ── Deck session state (Zustand) ────────────────────────────────────
@@ -298,46 +297,6 @@ export const RecommendationsProvider: React.FC<
 
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
-
-  // ── Unified Deck Pool Warming ───────────────────────────────────────────
-  useEffect(() => {
-    if (userLocation && userPrefs && !warmPoolFired.current) {
-      warmPoolFired.current = true;
-
-      // Skip if warm pool was already fired recently (e.g., by onboarding)
-      const lastWarm = getLastWarmPoolTimestamp();
-      if (Date.now() - lastWarm < 30_000) {
-        console.log('[RecommendationsContext] Warm pool skipped — already fired within 30s');
-        return;
-      }
-
-      // Stagger warm pool 2s after initial load. The warm pool is fire-and-forget
-      // (UI doesn't wait for it), so delaying it costs nothing. But it prevents
-      // 4+ concurrent HTTP/2 requests from competing for the same TCP connection
-      // on iOS, which causes head-of-line blocking and cascading timeouts.
-      const warmDelay = setTimeout(() => {
-        const warmStart = Date.now();
-        deckService.warmDeckPool({
-          location: userLocation,
-          categories: userPrefs.categories ?? [],
-          intents: (userPrefs.intents ?? []).slice(0, 1),
-          priceTiers: (userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish']) as PriceTierSlug[],
-          budgetMin: userPrefs.budget_min ?? 0,
-          budgetMax: userPrefs.budget_max ?? 1000,
-          travelMode: userPrefs.travel_mode ?? 'walking',
-          travelConstraintType: 'time' as const,
-          travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
-          datetimePref: userPrefs.datetime_pref ?? undefined,
-          dateOption: userPrefs.date_option ?? 'now',
-          timeSlot: userPrefs.time_slot ?? null,
-        }).then(() => {
-          if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
-        }).catch(() => {});
-      }, 2000);
-
-      return () => clearTimeout(warmDelay);
-    }
-  }, [userLocation, userPrefs]);
 
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
@@ -611,8 +570,6 @@ export const RecommendationsProvider: React.FC<
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
       }
-      // Reset warm pool so it re-fires with new preferences
-      warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
       consecutiveSkipCountRef.current = 0;
       // DO NOT call queryClient.invalidateQueries — the query key change
@@ -843,7 +800,6 @@ export const RecommendationsProvider: React.FC<
       setHasMoreCards(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
-      warmPoolFired.current = false;
       sessionServedIdsRef.current.clear();
       consecutiveSkipCountRef.current = 0;
 

@@ -20,13 +20,6 @@ import { getCategoryIcon } from '../utils/categoryUtils';
 import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
 
-// ── Warm pool deduplication timestamp ────────────────────────────────────────
-let lastWarmPoolTimestamp: number = 0;
-
-export function getLastWarmPoolTimestamp(): number {
-  return lastWarmPoolTimestamp;
-}
-
 export interface DeckParams {
   location: { lat: number; lng: number };
   categories: string[];
@@ -464,11 +457,6 @@ class DeckService {
     };
   }
 
-  /** Pre-warm is disabled — pool is now admin-managed, no autonomous Google calls */
-  async warmDeckPool(_params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
-    lastWarmPoolTimestamp = Date.now();
-    // No-op: warm pool concept is dead. Admins manage the pool directly.
-  }
 }
 
 export const deckService = new DeckService();
