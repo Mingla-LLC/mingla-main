@@ -545,13 +545,13 @@ const ExperienceCard = ({
                 {experience.images.length > 1 && (
                   <>
                     <TrackedTouchableOpacity logComponent="ExperienceCard"
-                      onPress={() => prevImage(experience.images.length)}
+                      onPress={() => prevImage(experience.images!.length)}
                       style={[styles.imageNavigation, styles.leftNav]}
                     >
                       <Icon name="chevron-back" size={16} color="white" />
                     </TrackedTouchableOpacity>
                     <TrackedTouchableOpacity logComponent="ExperienceCard"
-                      onPress={() => nextImage(experience.images.length)}
+                      onPress={() => nextImage(experience.images!.length)}
                       style={[styles.imageNavigation, styles.rightNav]}
                     >
                       <Icon name="chevron-forward" size={16} color="white" />

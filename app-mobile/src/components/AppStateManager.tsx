@@ -113,6 +113,7 @@ export function useAppState() {
     | "profile"
     | "profile-settings"
     | "account-settings"
+    | "activity"
 ;
 
   // Pages safe to restore after process death. Board-view and modal-like pages

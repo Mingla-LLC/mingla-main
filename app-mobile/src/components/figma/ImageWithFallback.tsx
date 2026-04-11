@@ -5,9 +5,9 @@ import { Text, View, Image, ImageSourcePropType, ImageStyle, StyleProp } from 'r
 const ERROR_PLACEHOLDER_SIZE = 88;
 
 interface ImageWithFallbackProps {
-  source: ImageSourcePropType;
+  source?: ImageSourcePropType;
+  src?: string;
   style?: StyleProp<ImageStyle>;
-  className?: string;
   alt?: string;
   onError?: () => void;
   [key: string]: any;
@@ -23,19 +23,19 @@ export function ImageWithFallback(props: ImageWithFallbackProps) {
     }
   }
 
-  const { source, style, className, alt, ...rest } = props
+  const { source, src, style, alt, ...rest } = props
+  const resolvedSource = source ?? (src ? { uri: src } : undefined);
 
-  return didError ? (
+  return didError || !resolvedSource ? (
     <View
-      className={`inline-block bg-gray-100 text-center align-middle ${className ?? ''}`}
-      style={[style, { width: ERROR_PLACEHOLDER_SIZE, height: ERROR_PLACEHOLDER_SIZE }]}
+      style={[style, { width: ERROR_PLACEHOLDER_SIZE, height: ERROR_PLACEHOLDER_SIZE, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' }]}
       accessibilityLabel={alt ?? 'Image unavailable'}
     >
-      <View className="flex items-center justify-center w-full h-full">
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 24, color: '#666' }}>📷</Text>
       </View>
     </View>
   ) : (
-    <Image source={source} style={style} accessibilityLabel={alt} onError={handleError} {...rest} />
+    <Image source={resolvedSource} style={style} accessibilityLabel={alt} onError={handleError} {...rest} />
   )
 }

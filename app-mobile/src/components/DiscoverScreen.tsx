@@ -374,7 +374,7 @@ interface NightOutCardProps {
 
 // Filter types
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
-type PriceFilter = "any" | "chill" | "comfy" | "bougie" | "lavish";
+type PriceFilter = "any" | "chill" | "comfy" | "bougie" | "lavish" | "free" | "under-25" | "25-50" | "50-100" | "over-100";
 type GenreFilter = "all" | "afrobeats" | "dancehall" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "acoustic-indie";
 
 interface NightOutFilters {
@@ -2006,7 +2006,8 @@ export default function DiscoverScreen({
           // Auth failure: don't set date guard, allow retry on next foreground
           console.log('[Discover] Auth error — will retry on next foreground');
           hasFetchedRef.current = false;
-          if (cachedData && cachedData.recommendations.length > 0) {
+          const staleCache = getDiscoverCacheFromMemory();
+          if (staleCache && staleCache.recommendations.length > 0) {
             // Silently keep stale cache, no error banner
             return;
           }
@@ -2730,13 +2731,8 @@ export default function DiscoverScreen({
     setMapCenterTrigger(p => p + 1);
   };
 
-  const handleBirthdayChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === "android") {
-      setShowBirthdayPicker(false);
-    }
-    if (selectedDate) {
-      setPersonBirthday(selectedDate);
-    }
+  const handleBirthdayChange = (_event: unknown, _selectedDate?: Date) => {
+    // Birthday picker state was removed — handler kept for future use
   };
 
   const formatBirthdayForDisplay = (date: Date): string => {
@@ -3161,8 +3157,8 @@ export default function DiscoverScreen({
 
       if (locationLat && locationLng && selectedPillId !== "for-you") {
         const personGender = selectedPill?.gender;
-        const gender: "man" | "woman" | null =
-          personGender === "man" || personGender === "woman" ? personGender : null;
+        const gender: "male" | "female" | null =
+          personGender === "man" ? "male" : personGender === "woman" ? "female" : null;
 
         const personCustomHolidays = customHolidays
           .filter((h) => h.personId === selectedPillId)
@@ -3794,10 +3790,10 @@ export default function DiscoverScreen({
                           }}
                         >
                           <FeaturedCard
-                            card={featuredCard}
+                            card={featuredCard!}
                             currency={accountPreferences?.currency}
                             measurementSystem={accountPreferences?.measurementSystem}
-                            onPress={() => handleCardPress(featuredCard)}
+                            onPress={() => handleCardPress(featuredCard!)}
                           />
                         </Animated.View>
                       ) : null}

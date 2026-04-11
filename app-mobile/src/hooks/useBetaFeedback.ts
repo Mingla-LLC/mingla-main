@@ -16,7 +16,7 @@ export const feedbackKeys = {
 
 export function useIsBetaTester(): boolean {
   const profile = useAppStore((s) => s.profile);
-  return (profile as Record<string, unknown>)?.is_beta_tester === true;
+  return (profile as unknown as Record<string, unknown>)?.is_beta_tester === true;
 }
 
 // ── Feedback History ────────────────────────────────────────────────────────

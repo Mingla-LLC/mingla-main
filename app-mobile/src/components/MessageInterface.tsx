@@ -60,8 +60,12 @@ interface Friend {
   name: string;
   username: string;
   avatar?: string;
+  avatar_url?: string;
+  status?: string;
   isOnline: boolean;
   lastSeen?: string;
+  mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 interface MessageInterfaceProps {
@@ -89,6 +93,7 @@ interface MessageInterfaceProps {
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
   availableFriends?: Friend[];
+  accountPreferences?: any;
   isBlocked?: boolean;
   isUnfriended?: boolean;
   isDeletedAccount?: boolean;

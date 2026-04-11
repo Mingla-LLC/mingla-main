@@ -89,6 +89,7 @@ interface SavedCard {
     popular?: boolean;
   }>;
 
+  openingHours?: Record<string, string>;
   lat: number;
   lng: number;
 }

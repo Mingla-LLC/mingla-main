@@ -30,7 +30,7 @@ import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { Conversation } from "../hooks/useMessages";
+import { Conversation, Message as ConvMessage } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -59,6 +59,7 @@ import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
 interface ConnectionsPageProps {
+  isTabVisible?: boolean;
   onSendCollabInvite?: (friend: any) => void;
   onAddToBoard?: (
     sessionIds: string[],
@@ -360,10 +361,10 @@ export default function ConnectionsPageRefactored({
 
         return {
           id: conv.id,
-          created_by: conv.created_by,
+          created_by: conv.created_by ?? '',
           created_at: conv.created_at,
           participants,
-          last_message: conv.last_message || undefined,
+          last_message: conv.last_message as unknown as ConvMessage | undefined,
           unread_count: conv.unread_count || 0,
           messages: [],
         };
@@ -568,7 +569,7 @@ export default function ConnectionsPageRefactored({
   const transformMessage = useCallback(
     (msg: DirectMessage, userId: string): Message => ({
       id: msg.id,
-      senderId: msg.sender_id,
+      senderId: msg.sender_id ?? '',
       senderName: msg.sender_name || "Unknown",
       content: msg.content,
       timestamp: msg.created_at,
@@ -1162,11 +1163,11 @@ export default function ConnectionsPageRefactored({
           // is immediately visible and marked as read below. Incrementing here
           // would inflate the tab badge until the next fetchConversations.
           setConversations((prev) =>
-            prev.map((conv) => {
+            prev.map((conv): Conversation => {
               if (conv.id === conversationId) {
                 return {
                   ...conv,
-                  last_message: newMessage,
+                  last_message: newMessage as unknown as ConvMessage,
                   // Keep unread_count at 0 — user is actively viewing this chat
                 };
               }
@@ -1410,9 +1411,9 @@ export default function ConnectionsPageRefactored({
 
       // Update conversation with real message
       setConversations((prev) =>
-        prev.map((conv) => {
+        prev.map((conv): Conversation => {
           if (conv.id === currentConversationId) {
-            return { ...conv, last_message: sentMessage };
+            return { ...conv, last_message: sentMessage as unknown as ConvMessage };
           }
           return conv;
         })

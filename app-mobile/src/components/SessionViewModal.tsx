@@ -461,12 +461,8 @@ export default function SessionViewModal({
     if (!visible) {
       setActiveTab("saved");
       setSavedCards([]);
-      setParticipants([]);
       setUnreadMessages(0);
       setCardMessageCounts({});
-      setSessionValid(null);
-      setHasPermission(null);
-      setIsAdmin(false);
     }
   }, [visible]);
 

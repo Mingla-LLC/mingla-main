@@ -197,7 +197,6 @@ export const useBoardSession = (sessionId?: string) => {
         const normalized = normalizePreferencesForSave({
           date_option: newPreferences.date_option,
           time_slot: newPreferences.time_slot,
-          exact_time: newPreferences.exact_time,
           datetime_pref: newPreferences.datetime_pref,
           use_gps_location: newPreferences.use_gps_location,
           custom_location: newPreferences.custom_location,
@@ -208,7 +207,6 @@ export const useBoardSession = (sessionId?: string) => {
           // Overwrite with normalized values (only the fields normalization touches)
           date_option: normalized.date_option,
           time_slot: normalized.time_slot,
-          exact_time: normalized.exact_time,
           datetime_pref: normalized.datetime_pref,
           use_gps_location: normalized.use_gps_location,
           custom_location: normalized.custom_location,
@@ -321,7 +319,7 @@ export const useBoardSession = (sessionId?: string) => {
           }
           setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
         },
-        onParticipantJoined: (participant) => {
+        onParticipantJoined: (participant: { user_id: string; [key: string]: unknown }) => {
           if (capturedSessionId !== stableSessionIdRef.current) {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;
@@ -338,7 +336,7 @@ export const useBoardSession = (sessionId?: string) => {
             };
           });
         },
-        onParticipantLeft: (participant) => {
+        onParticipantLeft: (participant: { user_id: string; [key: string]: unknown }) => {
           if (capturedSessionId !== stableSessionIdRef.current) {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;

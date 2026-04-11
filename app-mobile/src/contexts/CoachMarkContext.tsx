@@ -155,6 +155,11 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     }
   }, [currentStep]);
 
+  // ── Register target measurement ─────────────────────────────────────────
+  const registerTarget = useCallback((stepId: number, rect: TargetRect): void => {
+    targetMeasurements.set(stepId, rect);
+  }, [targetMeasurements]);
+
   // ── Known-position scroll for profile steps ─────────────────────────────
   const scrollToKnownPosition = useCallback((step: number): void => {
     // Unlock scroll so programmatic scrollTo works (scrollEnabled must be true)
@@ -224,11 +229,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         if (error) console.warn('[CoachMark] Failed to persist step:', error.message);
       });
   }, [user?.id]);
-
-  // ── Register target measurement ─────────────────────────────────────────
-  const registerTarget = useCallback((stepId: number, rect: TargetRect): void => {
-    targetMeasurements.set(stepId, rect);
-  }, [targetMeasurements]);
 
   // ── Register scroll ref ─────────────────────────────────────────────────
   const registerScrollRef = useCallback((tabName: string, ref: React.RefObject<any>): void => {

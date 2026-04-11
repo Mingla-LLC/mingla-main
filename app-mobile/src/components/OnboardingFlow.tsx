@@ -2382,6 +2382,10 @@ const OnboardingFlow = ({
 
     // ─── STEP 3 ───
     if (subStep === 'location') {
+      // Pre-compute requesting state to avoid TS narrowing inside if-branches:
+      // inside `if (locationStatus === 'settings')`, TS narrows to literal 'settings'
+      // and flags comparisons to 'requesting' as impossible.
+      const isRequesting = locationStatus === 'requesting';
       if (locationStatus === 'granted') {
         return (
           <Pressable
@@ -2428,16 +2432,16 @@ const OnboardingFlow = ({
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
               <Pressable
-                style={[styles.locRetryButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
+                style={[styles.locRetryButton, isRequesting && styles.locGlassButtonDisabled]}
                 onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
-                disabled={locationStatus === 'requesting'}
+                disabled={isRequesting}
               >
-                {locationStatus === 'requesting' ? (
+                {isRequesting ? (
                   <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
                 ) : (
                   <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 )}
-                <Text style={styles.locRetryText}>{locationStatus === 'requesting' ? 'Finding you...' : "I've turned it on — retry"}</Text>
+                <Text style={styles.locRetryText}>{isRequesting ? 'Finding you...' : "I've turned it on — retry"}</Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
@@ -2472,20 +2476,20 @@ const OnboardingFlow = ({
             </Animated.Text>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
               <Pressable
-                style={[styles.locGlassButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
+                style={[styles.locGlassButton, isRequesting && styles.locGlassButtonDisabled]}
                 onPress={() => {
                   logger.action('Retry location from error state')
                   handleLocationRequest()
                 }}
-                disabled={locationStatus === 'requesting'}
+                disabled={isRequesting}
               >
-                {locationStatus === 'requesting' ? (
+                {isRequesting ? (
                   <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
                 ) : (
                   <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
                 )}
                 <Text style={styles.locButtonText}>
-                  {locationStatus === 'requesting' ? 'Finding you...' : 'Try Again'}
+                  {isRequesting ? 'Finding you...' : 'Try Again'}
                 </Text>
               </Pressable>
             </Animated.View>

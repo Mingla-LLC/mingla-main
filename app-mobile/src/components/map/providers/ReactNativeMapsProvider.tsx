@@ -116,7 +116,7 @@ export function ReactNativeMapsProvider({
           tracksViewChanges={false}
           anchor={{ x: 0.5, y: 0.35 }}
           zIndex={30}
-          cluster={false}
+          {...{ cluster: false }}
         >
           <View style={styles.userMarker}>
             <View style={styles.userMarkerPulse} />
@@ -153,7 +153,7 @@ export function ReactNativeMapsProvider({
           tracksViewChanges={peopleTrackChanges}
           zIndex={zIndex}
           anchor={{ x: 0.5, y: 0.35 }}
-          cluster={false}
+          {...{ cluster: false }}
           tappable
         >
           <Pressable

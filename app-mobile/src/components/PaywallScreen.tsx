@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from './ui/Icon';
 import RevenueCatUI from 'react-native-purchases-ui'
-import type { CustomerInfo, PurchasesStoreTransaction } from 'react-native-purchases'
+import type { CustomerInfo, PurchasesStoreTransaction, PurchasesError } from 'react-native-purchases'
 import { useQueryClient } from '@tanstack/react-query'
 import { revenueCatKeys } from '../hooks/useRevenueCat'
 import { subscriptionKeys } from '../hooks/useSubscription'
@@ -121,7 +121,7 @@ export default function PaywallScreen({ userId, onClose }: PaywallScreenProps) {
 
   // Called on any purchase error
   const handlePurchaseError = useCallback(
-    ({ error }: { error: Error }) => {
+    ({ error }: { error: PurchasesError }) => {
       // userCancelled errors are silent — the user chose to back out
       if ((error as unknown as { userCancelled?: boolean }).userCancelled) return
       Alert.alert('Purchase failed', error.message)

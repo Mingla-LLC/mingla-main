@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
 
 interface SavedExperiencesPageProps {
+  isTabVisible?: boolean;
   savedCards: any[];
   isLoading?: boolean;
   userPreferences?: any;
@@ -336,7 +337,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
           <View style={styles.filterHalf}>
             <Dropdown
               label="Match Score"
-              value={matchScoreFilter}
+              value={String(matchScoreFilter ?? '')}
               options={matchScoreOptions}
               onSelect={(value) => setMatchScoreFilter(value)}
               placeholder="Any score"

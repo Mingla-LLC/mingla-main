@@ -32,11 +32,11 @@ export function initializeAppsFlyer(): void {
         onDeepLinkListener: true,
         timeToWaitForATTUserAuthorization: 0, // deferred — ATT requested after coach mark tour (ORCH-0349)
       },
-      (result) => {
+      (result: unknown) => {
         if (__DEV__) console.log('[AppsFlyer] SDK initialized:', result)
         _initialized = true
       },
-      (error) => {
+      (error: unknown) => {
         console.warn('[AppsFlyer] SDK initialization failed:', error)
       },
     )
@@ -57,7 +57,7 @@ export function initializeAppsFlyer(): void {
 export function setAppsFlyerUserId(userId: string): void {
   if (!_initialized) return
   try {
-    appsFlyer.setCustomerUserId(userId, (result) => {
+    appsFlyer.setCustomerUserId(userId, (result: unknown) => {
       if (__DEV__) console.log('[AppsFlyer] Customer user ID set:', result)
     })
   } catch (e) {
@@ -133,10 +133,10 @@ export function logAppsFlyerEvent(
     appsFlyer.logEvent(
       eventName,
       eventValues,
-      (result) => {
+      (result: unknown) => {
         if (__DEV__) console.log(`[AppsFlyer] Event logged (${eventName}):`, result)
       },
-      (error) => {
+      (error: unknown) => {
         console.warn(`[AppsFlyer] Event logging failed (${eventName}):`, error)
       },
     )

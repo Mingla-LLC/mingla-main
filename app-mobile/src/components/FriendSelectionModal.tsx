@@ -11,8 +11,12 @@ interface Friend {
   name: string;
   username: string;
   avatar?: string;
+  avatar_url?: string;
   isOnline: boolean;
   lastSeen?: string;
+  status?: string;
+  mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 interface FriendSelectionModalProps {

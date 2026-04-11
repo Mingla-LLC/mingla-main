@@ -117,7 +117,11 @@ export function useAcceptPairRequest() {
   return useMutation<
     { pairingId: string; pairedWithUserId: string },
     Error,
-    string
+    string,
+    {
+      prevIncoming: [readonly unknown[], PairRequest[] | undefined][];
+      prevPills: [readonly unknown[], PairingPill[] | undefined][];
+    }
   >({
     mutationKey: ["pairings", "accept"],
     mutationFn: async (id) => acceptPairRequest(id),
@@ -188,7 +192,14 @@ export function useAcceptPairRequest() {
 export function useDeclinePairRequest() {
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.user?.id);
-  return useMutation<void, Error, string>({
+  return useMutation<
+    void,
+    Error,
+    string,
+    {
+      prevIncoming: [readonly unknown[], PairRequest[] | undefined][];
+    }
+  >({
     mutationKey: ["pairings", "decline"],
     mutationFn: async (id) => declinePairRequest(id),
     onMutate: async (requestId) => {

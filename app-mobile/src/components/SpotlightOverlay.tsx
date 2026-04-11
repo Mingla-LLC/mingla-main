@@ -197,7 +197,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     }
 
     // Horizontal: center on target, clamp to screen
-    const targetCenterX = target.x + target.width / 2;
+    const targetCenterX = target!.x + target!.width / 2;
     bubbleLeft = Math.max(
       BUBBLE_MARGIN,
       Math.min(targetCenterX - bubbleWidth / 2, screenWidth - bubbleWidth - BUBBLE_MARGIN)

@@ -407,7 +407,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
             ) : (
               messages.map((message, index) => {
                 const isOwnMessage = message.user_id === user?.id;
-                const senderName = getParticipantName(message.user_id);
+                const senderName = getParticipantName(message.user_id ?? '');
                 const showAvatar = index === 0 || messages[index - 1].user_id !== message.user_id;
                 const showTime = index === messages.length - 1 ||
                   new Date(message.created_at).getTime() - new Date(messages[index + 1].created_at).getTime() > 300000;

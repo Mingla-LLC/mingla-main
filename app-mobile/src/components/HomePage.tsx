@@ -26,6 +26,7 @@ import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.pn
 const ANIMATION_DURATION = 400;
 
 interface HomePageProps {
+  isTabVisible?: boolean;
   onOpenPreferences: () => void;
   onOpenCollabPreferences?: () => void;
   currentMode: "solo" | string;
@@ -36,7 +37,7 @@ interface HomePageProps {
   };
   onAddToCalendar: (experienceData: any) => void;
   savedCards?: any[];
-  onSaveCard?: (card: any) => void;
+  onSaveCard?: (card: any) => Promise<boolean>;
   onShareCard?: (card: any) => void;
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   removedCardIds?: string[];
@@ -135,6 +136,7 @@ export default function HomePage({
   });
 
   const noop = useMemo(() => () => {}, []);
+  const asyncNoop = useMemo(() => async (_card: any): Promise<boolean> => false, []);
 
   const handleOpenNotifications = useCallback(() => {
     setShowNotificationsModal(true);
@@ -309,7 +311,7 @@ export default function HomePage({
             accountPreferences={accountPreferences}
             currentMode={currentMode}
             onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || noop}
+            onCardLike={onSaveCard || asyncNoop}
             onShareCard={onShareCard}
             onPurchaseComplete={onPurchaseComplete}
             removedCardIds={removedCardIds}

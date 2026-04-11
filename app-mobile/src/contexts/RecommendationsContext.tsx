@@ -26,6 +26,7 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
+import { PriceTierSlug } from '../constants/priceTiers';
 import { useSessionDeck } from '../hooks/useSessionDeck';
 import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
 
@@ -59,7 +60,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   travel_constraint_value: 30,
   datetime_pref: null,
   use_gps_location: true,
-  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
+  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'] as string[],
 });
 
 interface RecommendationsContextType {
@@ -126,18 +127,6 @@ export const RecommendationsProvider: React.FC<
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
 
-  // Persist exhaustion state so "That's a Wrap" survives app restart.
-  // Scoped per user+mode. Resets on preference change (refreshKey change).
-  const exhaustionKey = `deck_exhausted_${user?.id}_${currentMode}`;
-  useEffect(() => {
-    AsyncStorage.getItem(exhaustionKey).then(val => {
-      if (val === 'true') setIsExhausted(true);
-    }).catch(() => {});
-  }, [exhaustionKey]);
-  useEffect(() => {
-    AsyncStorage.setItem(exhaustionKey, isExhausted ? 'true' : 'false').catch(() => {});
-  }, [isExhausted, exhaustionKey]);
-
   const prefetchFiredRef = useRef(false);
   // Session-scoped dedup: tracks all card IDs served in the current session.
   // Cleared on preference change and mode switch. Catches the prefetch race
@@ -166,6 +155,19 @@ export const RecommendationsProvider: React.FC<
   } = useAppStore();
 
   const user = useAppStore((state) => state.user);
+
+  // Persist exhaustion state so "That's a Wrap" survives app restart.
+  // Scoped per user+mode. Resets on preference change (refreshKey change).
+  const exhaustionKey = `deck_exhausted_${user?.id}_${currentMode}`;
+  useEffect(() => {
+    AsyncStorage.getItem(exhaustionKey).then(val => {
+      if (val === 'true') setIsExhausted(true);
+    }).catch(() => {});
+  }, [exhaustionKey]);
+  useEffect(() => {
+    AsyncStorage.setItem(exhaustionKey, isExhausted ? 'true' : 'false').catch(() => {});
+  }, [isExhausted, exhaustionKey]);
+
   const cardsCache = useCardsCache();
   const {
     currentSession,
@@ -319,7 +321,7 @@ export const RecommendationsProvider: React.FC<
           location: userLocation,
           categories: userPrefs.categories ?? [],
           intents: (userPrefs.intents ?? []).slice(0, 1),
-          priceTiers: userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
+          priceTiers: (userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish']) as PriceTierSlug[],
           budgetMin: userPrefs.budget_min ?? 0,
           budgetMax: userPrefs.budget_max ?? 1000,
           travelMode: userPrefs.travel_mode ?? 'walking',
@@ -458,7 +460,7 @@ export const RecommendationsProvider: React.FC<
     : userPrefs?.travel_constraint_value ?? 30;
 
   const effectiveDatetimePref = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.datetimePref
+    ? (collabDeckParams.datetimePref ?? undefined)
     : userPrefs?.datetime_pref ?? undefined;
 
   // dateOption, timeSlot: collab aggregation doesn't compute these
@@ -480,7 +482,7 @@ export const RecommendationsProvider: React.FC<
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
     intents: activeDeckParams?.intents ?? [],
-    priceTiers: effectivePriceTiers,
+    priceTiers: effectivePriceTiers as PriceTierSlug[],
     budgetMin: effectiveBudgetMin, // Always 0 — kept for interface compat
     budgetMax: effectiveBudgetMax,
     travelMode: effectiveTravelMode,
@@ -681,15 +683,15 @@ export const RecommendationsProvider: React.FC<
         const prefetchIntents = activeDeckParams.intents ?? [];
         const prefetchPriceTiers = isSoloMode
           ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
-          : (activeDeckParams.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
-        const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams.budgetMin ?? 0);
-        const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams.budgetMax ?? 1000);
-        const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (activeDeckParams.travelMode ?? 'walking');
+          : (collabDeckParams?.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
+        const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (collabDeckParams?.budgetMin ?? 0);
+        const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (collabDeckParams?.budgetMax ?? 1000);
+        const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
         const prefetchConstraintType = 'time' as const;
-        const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
+        const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
         const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
-        const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
+        const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
           ? normalizeDateTime(rawDatetimePref)
@@ -719,7 +721,7 @@ export const RecommendationsProvider: React.FC<
             location: activeDeckLocation,
             categories: prefetchCategories,
             intents: prefetchIntents,
-            priceTiers: prefetchPriceTiers,
+            priceTiers: prefetchPriceTiers as PriceTierSlug[],
             budgetMin: prefetchBudgetMin,
             budgetMax: prefetchBudgetMax,
             travelMode: prefetchTravelMode,

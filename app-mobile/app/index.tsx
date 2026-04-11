@@ -78,7 +78,6 @@ import { logger } from "../src/utils/logger";
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
-import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
@@ -125,7 +124,6 @@ Sentry.init({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AppContent() {
-  useLifecycleLogger();
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();
